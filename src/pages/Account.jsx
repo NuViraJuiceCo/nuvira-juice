@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import {
-  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, Leaf, Heart
+  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, Leaf, Heart, BookOpen, Sparkles, Calendar
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -12,6 +12,12 @@ const menuItems = [
   { icon: Bell, label: 'Notifications', path: '/notifications', desc: 'Updates & promotions' },
   { icon: HelpCircle, label: 'Help & Support', path: '/support', desc: 'FAQ & contact us' },
   { icon: Settings, label: 'Settings', path: '/account/settings', desc: 'Preferences & info' },
+];
+
+const brandItems = [
+  { icon: BookOpen, label: 'Our Story', path: '/our-story', desc: 'The NuVira origin & mission' },
+  { icon: Sparkles, label: 'Why NuVira', path: '/why-nuvira', desc: 'Philosophy behind every bottle' },
+  { icon: Calendar, label: 'Events & Community', path: '/events', desc: 'STL pop-ups, drops & more' },
 ];
 
 export default function Account() {
@@ -77,6 +83,34 @@ export default function Account() {
         ))}
       </div>
 
+      {/* Brand Section */}
+      <div className="px-4 mt-4">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">Brand</p>
+        <div className="space-y-1.5">
+          {brandItems.map(({ icon: Icon, label, path, desc }, i) => (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 + i * 0.05 }}
+            >
+              <Link to={path}>
+                <div className="flex items-center gap-3 p-3.5 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors">
+                  <div className="w-9 h-9 bg-primary/8 rounded-lg flex items-center justify-center shrink-0">
+                    <Icon className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{label}</p>
+                    <p className="text-[10px] text-muted-foreground">{desc}</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
       {/* Logout */}
       <div className="px-4 mt-6">
         <button
@@ -90,11 +124,12 @@ export default function Account() {
 
       {/* Brand Footer */}
       <div className="text-center mt-8">
-        <div className="flex items-center gap-1 justify-center">
-          <Leaf className="w-3.5 h-3.5 text-primary" />
-          <span className="font-heading text-sm font-semibold text-primary">NuVira Juice</span>
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-0.5">Nourish from within</p>
+        <img
+          src="https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png"
+          alt="NuVira Juice Company"
+          className="h-6 mx-auto mb-1"
+        />
+        <p className="text-[10px] text-muted-foreground">Real. Living. Nutrition.</p>
       </div>
     </div>
   );

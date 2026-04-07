@@ -19,6 +19,9 @@ import OrderHistory from '@/pages/OrderHistory';
 import Notifications from '@/pages/Notifications';
 import Support from '@/pages/Support';
 import AccountSettings from '@/pages/AccountSettings';
+import OurStory from '@/pages/OurStory';
+import WhyNuVira from '@/pages/WhyNuVira';
+import Events from '@/pages/Events';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -57,6 +60,9 @@ const AuthenticatedApp = () => {
           <Route path="/account/orders" element={<OrderHistory />} />
           <Route path="/account/settings" element={<AccountSettings />} />
           <Route path="/support" element={<Support />} />
+          <Route path="/our-story" element={<OurStory />} />
+          <Route path="/why-nuvira" element={<WhyNuVira />} />
+          <Route path="/events" element={<Events />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
