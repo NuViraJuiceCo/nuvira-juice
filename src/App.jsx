@@ -5,7 +5,20 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-// Add page imports here
+import { CartProvider } from '@/lib/cartContext';
+import AppLayout from '@/components/layout/AppLayout';
+import Home from '@/pages/Home';
+import Shop from '@/pages/Shop';
+import ProductDetail from '@/pages/ProductDetail';
+import Cart from '@/pages/Cart';
+import Checkout from '@/pages/Checkout';
+import OrderConfirmation from '@/pages/OrderConfirmation';
+import OrderTracker from '@/pages/OrderTracker';
+import Account from '@/pages/Account';
+import OrderHistory from '@/pages/OrderHistory';
+import Notifications from '@/pages/Notifications';
+import Support from '@/pages/Support';
+import AccountSettings from '@/pages/AccountSettings';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -32,10 +45,25 @@ const AuthenticatedApp = () => {
 
   // Render the main app
   return (
-    <Routes>
-      {/* Add your page Route elements here */}
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+    <CartProvider>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/shop" element={<Shop />} />
+          <Route path="/shop/:id" element={<ProductDetail />} />
+          <Route path="/cart" element={<Cart />} />
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/account" element={<Account />} />
+          <Route path="/account/orders" element={<OrderHistory />} />
+          <Route path="/account/settings" element={<AccountSettings />} />
+          <Route path="/support" element={<Support />} />
+        </Route>
+        <Route path="/checkout" element={<Checkout />} />
+        <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
+        <Route path="/order-tracker/:id" element={<OrderTracker />} />
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </CartProvider>
   );
 };
 
