@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +20,8 @@ export default function Cart() {
   const scheduleRules = schedules[0]?.rules || [];
   const deliveryText = getDeliveryDisplayText(scheduleRules);
   const deliveryFee = 5.00;
+  const juiceCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const meetsMinimum = juiceCount >= 3;
 
   if (items.length === 0) {
     return (
@@ -42,6 +44,16 @@ export default function Cart() {
         <h1 className="font-heading text-xl font-bold">Your Cart</h1>
         <p className="text-xs text-muted-foreground">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
       </div>
+
+      {/* Minimum Order Notice */}
+      {!meetsMinimum && (
+        <div className="mx-4 mb-3 bg-accent/10 border border-accent/30 rounded-xl p-3 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-accent shrink-0" />
+          <p className="text-xs font-medium text-accent-foreground">
+            Minimum order is 3 bottles. Add {3 - juiceCount} more to checkout.
+          </p>
+        </div>
+      )}
 
       {/* Delivery Estimate */}
       <div className="mx-4 mb-4 bg-primary/5 rounded-xl p-3 flex items-center gap-2">
@@ -109,10 +121,11 @@ export default function Cart() {
           </div>
           <Button
             onClick={() => navigate('/checkout')}
-            className="w-full h-12 rounded-xl font-semibold text-sm"
+            disabled={!meetsMinimum}
+            className="w-full h-12 rounded-xl font-semibold text-sm disabled:opacity-50"
           >
-            Checkout
-            <ArrowRight className="w-4 h-4 ml-2" />
+            {meetsMinimum ? 'Checkout' : `Add ${3 - juiceCount} more bottle${3 - juiceCount > 1 ? 's' : ''}`}
+            {meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
         </div>
       </div>

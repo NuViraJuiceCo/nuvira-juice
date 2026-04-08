@@ -33,7 +33,13 @@ export default function Checkout() {
   const deliveryFee = fulfillmentType === 'delivery' ? 5.00 : 0;
   const total = subtotal + deliveryFee;
 
+  const totalBottles = items.reduce((sum, item) => sum + item.quantity, 0);
+
   const handlePlaceOrder = async () => {
+    if (totalBottles < 3) {
+      toast.error('Minimum order is 3 bottles');
+      return;
+    }
     if (fulfillmentType === 'delivery' && !address.trim()) {
       toast.error('Please enter a delivery address');
       return;
