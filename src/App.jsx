@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { CartProvider } from '@/lib/cartContext';
 import AppLayout from '@/components/layout/AppLayout';
+import SplashScreen from '@/components/SplashScreen';
 import Home from '@/pages/Home';
 import Shop from '@/pages/Shop';
 import ProductDetail from '@/pages/ProductDetail';
@@ -22,9 +23,18 @@ import AccountSettings from '@/pages/AccountSettings';
 import OurStory from '@/pages/OurStory';
 import WhyNuVira from '@/pages/WhyNuVira';
 import Events from '@/pages/Events';
+import Merch from '@/pages/Merch';
+import Subscribe from '@/pages/Subscribe';
+import Referral from '@/pages/Referral';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const [showSplash, setShowSplash] = React.useState(() => !sessionStorage.getItem('splashShown'));
+
+  const handleSplashDone = () => {
+    sessionStorage.setItem('splashShown', '1');
+    setShowSplash(false);
+  };
 
   // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
@@ -49,6 +59,7 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <CartProvider>
+      {showSplash && <SplashScreen onDone={handleSplashDone} />}
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
@@ -63,6 +74,9 @@ const AuthenticatedApp = () => {
           <Route path="/our-story" element={<OurStory />} />
           <Route path="/why-nuvira" element={<WhyNuVira />} />
           <Route path="/events" element={<Events />} />
+          <Route path="/merch" element={<Merch />} />
+          <Route path="/subscribe" element={<Subscribe />} />
+          <Route path="/referral" element={<Referral />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import {
-  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, Leaf, Heart, BookOpen, Sparkles, Calendar
+  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -42,20 +42,36 @@ export default function Account() {
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="px-4 -mt-1 mb-4">
-        <div className="flex gap-3">
-          <div className="flex-1 bg-secondary/60 rounded-xl p-3 text-center">
-            <Heart className="w-4 h-4 text-primary mx-auto mb-1" />
-            <p className="text-xs font-medium">Loyalty</p>
-            <p className="text-[10px] text-muted-foreground">Coming soon</p>
-          </div>
-          <div className="flex-1 bg-secondary/60 rounded-xl p-3 text-center">
-            <Leaf className="w-4 h-4 text-primary mx-auto mb-1" />
-            <p className="text-xs font-medium">Subscribe</p>
-            <p className="text-[10px] text-muted-foreground">Coming soon</p>
-          </div>
+      {/* Quick Action Cards */}
+      <div className="px-4 -mt-1 mb-4 space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <Link to="/subscribe">
+            <div className="bg-primary/10 rounded-xl p-3 text-center border border-primary/20 active:bg-primary/20 transition-colors">
+              <Repeat2 className="w-4 h-4 text-primary mx-auto mb-1" />
+              <p className="text-xs font-semibold text-primary">Subscribe</p>
+              <p className="text-[10px] text-muted-foreground">Save up to 15%</p>
+            </div>
+          </Link>
+          <Link to="/referral">
+            <div className="bg-accent/10 rounded-xl p-3 text-center border border-accent/20 active:bg-accent/20 transition-colors">
+              <Gift className="w-4 h-4 text-accent-foreground mx-auto mb-1" />
+              <p className="text-xs font-semibold">Refer & Earn</p>
+              <p className="text-[10px] text-muted-foreground">Give $5, get a bottle</p>
+            </div>
+          </Link>
         </div>
+        <Link to="/merch">
+          <div className="bg-foreground/5 rounded-xl p-3 flex items-center justify-between border border-border/40 active:bg-foreground/10 transition-colors">
+            <div className="flex items-center gap-2">
+              <Shirt className="w-4 h-4 text-foreground/60" />
+              <div>
+                <p className="text-xs font-semibold">NuVira Merch</p>
+                <p className="text-[10px] text-muted-foreground">Gear for the wellness lifestyle</p>
+              </div>
+            </div>
+            <span className="text-[9px] font-bold bg-muted text-muted-foreground px-2 py-0.5 rounded-full">Soon</span>
+          </div>
+        </Link>
       </div>
 
       {/* Menu */}
