@@ -5,17 +5,21 @@ import { ArrowLeft, MapPin, Calendar, Users, ExternalLink } from 'lucide-react';
 
 const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
 
+const FESTIVAL_LOGO = 'https://static.wixstatic.com/media/44fb75_aec8657df9b14cdda95892acea64c86c~mv2.png/v1/fill/w_274,h_275,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Untitled%20design.png';
+
 const events = [
   {
     id: 1,
     title: 'Missouri Spirit Festival',
     date: 'Saturday, May 30, 2026',
     time: '3:00 PM – 7:00 PM',
-    location: 'Missouri Spirit Festival',
-    description: 'Come find us at the Missouri Spirit Festival! We\'ll be running our booth with fresh cold-pressed juices available for purchase. Stop by, taste our lineup, and connect with the NuVira team.',
+    location: '5521 Water St, Augusta, MO 63332',
+    description: 'A high-energy celebration of craft spirits, food, and community set in the historic river town of Augusta. Over 40 vendors, live music, food trucks, artisan vendors, and family-friendly activities — NuVira will be there with our booth. Come taste our cold-pressed juice lineup and connect with the team. Benefiting STL Hero Network.',
     type: 'Festival',
-    image_url: TRIO_URL,
+    image_url: FESTIVAL_LOGO,
     link: 'https://www.mospiritfestival.com',
+    tickets_link: 'https://www.mospiritfestival.com/events/the-missouri-spirit-festival',
+    highlights: ['40+ Vendors', 'Live Music', 'Family Friendly', 'Benefiting STL Hero Network'],
   },
 ];
 
@@ -106,17 +110,28 @@ export default function Events() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>
-                {event.link && (
-                  <a
-                    href={event.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-3 text-xs font-semibold text-primary"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    mospiritfestival.com
-                  </a>
+                {event.highlights && (
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {event.highlights.map(h => (
+                      <span key={h} className="text-[10px] font-semibold bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">{h}</span>
+                    ))}
+                  </div>
                 )}
+                <div className="flex gap-2 mt-3">
+                  {event.tickets_link && (
+                    <a href={event.tickets_link} target="_blank" rel="noopener noreferrer"
+                      className="flex-1 text-center text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-xl">
+                      Get Tickets
+                    </a>
+                  )}
+                  {event.link && (
+                    <a href={event.link} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs font-semibold text-primary px-3 py-2 rounded-xl border border-primary/30">
+                      <ExternalLink className="w-3 h-3" />
+                      Website
+                    </a>
+                  )}
+                </div>
               </div>
             </motion.div>
           ))}
