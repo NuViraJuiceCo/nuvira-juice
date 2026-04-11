@@ -59,9 +59,9 @@ export default function Cart() {
 
       {/* Production Day Banner */}
       {productionInfo && (
-        <div className="mx-4 mb-2 bg-accent/10 border border-accent/30 rounded-xl p-3 flex items-center gap-2">
-          <Zap className="w-4 h-4 text-accent shrink-0 fill-accent" />
-          <p className="text-xs font-semibold text-accent-foreground">{productionInfo.label}</p>
+        <div className="mx-4 mb-2 bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center gap-2">
+          <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
+          <p className="text-xs font-semibold text-amber-900">{productionInfo.label}</p>
         </div>
       )}
 
