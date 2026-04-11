@@ -1,40 +1,21 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin, Calendar, Users } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Users, ExternalLink } from 'lucide-react';
 
 const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
 
 const events = [
   {
     id: 1,
-    title: 'NuVira Pop-Up — Soulard Market',
-    date: 'Saturday, April 19, 2026',
-    time: '9:00 AM – 1:00 PM',
-    location: 'Soulard Farmers Market, St. Louis, MO',
-    description: 'Come find us at Soulard! Taste all three signature juices, meet the team, and grab bottles fresh off the press.',
-    type: 'Pop-Up',
+    title: 'Missouri Spirit Festival',
+    date: 'Saturday, May 30, 2026',
+    time: '3:00 PM – 7:00 PM',
+    location: 'Missouri Spirit Festival',
+    description: 'Come find us at the Missouri Spirit Festival! We\'ll be running our booth with fresh cold-pressed juices available for purchase. Stop by, taste our lineup, and connect with the NuVira team.',
+    type: 'Festival',
     image_url: TRIO_URL,
-  },
-  {
-    id: 2,
-    title: 'Wellness Wednesday with NuVira',
-    date: 'Wednesday, April 23, 2026',
-    time: '7:00 AM – 10:00 AM',
-    location: 'Forest Park, St. Louis, MO',
-    description: 'Join us for a morning of movement, mindfulness, and fresh juice in Forest Park. Free to attend. Juices available for purchase.',
-    type: 'Community',
-    image_url: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&h=400&fit=crop",
-  },
-  {
-    id: 3,
-    title: 'Summer Drop Launch',
-    date: 'Saturday, May 3, 2026',
-    time: 'Online Drop — 10:00 AM',
-    location: 'NuVira App Exclusive',
-    description: 'Our summer seasonal lineup drops exclusively for app members first. Stay tuned for announcements.',
-    type: 'Drop',
-    image_url: "https://images.unsplash.com/photo-1500621873626-f0a41a1f5d84?w=600&h=400&fit=crop",
+    link: 'https://www.mospiritfestival.com',
   },
 ];
 
@@ -42,6 +23,7 @@ const typeColors = {
   'Pop-Up': 'bg-accent/20 text-accent-foreground',
   'Community': 'bg-primary/10 text-primary',
   'Drop': 'bg-secondary text-secondary-foreground',
+  'Festival': 'bg-purple-100 text-purple-700',
 };
 
 export default function Events() {
@@ -124,6 +106,17 @@ export default function Events() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>
+                {event.link && (
+                  <a
+                    href={event.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-3 text-xs font-semibold text-primary"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    mospiritfestival.com
+                  </a>
+                )}
               </div>
             </motion.div>
           ))}
