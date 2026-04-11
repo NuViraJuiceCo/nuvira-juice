@@ -120,12 +120,7 @@ export default function Home() {
 
       <TickerBanner />
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
-      {productionInfo && (
-        <div className="mx-4 mt-3 bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center gap-2">
-          <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
-          <p className="text-xs font-semibold text-amber-900">{productionInfo.label}</p>
-        </div>
-      )}
+
       <QuickReorder lastOrder={lastOrder} />
 
       <ProductRow
