@@ -1,3 +1,57 @@
+// Simple zip code lookup for delivery zones (O'Fallon, MO based)
+// Zone 1: 63366 (O'Fallon) = 0 miles
+// Zone 2: 63301-63304 (St. Charles area) = ~8 miles
+// Zone 3: 63101-63199 (St. Louis area) = ~12 miles
+
+const STORE_ZIP = '63366';
+const ZONE_LOOKUP = {
+  '63366': { zone: 'zone1', distance: 0 },
+  '63303': { zone: 'zone2', distance: 8 },
+  '63304': { zone: 'zone2', distance: 8 },
+  '63301': { zone: 'zone2', distance: 8 },
+  '63302': { zone: 'zone2', distance: 8 },
+  '63101': { zone: 'zone3', distance: 12 },
+  '63102': { zone: 'zone3', distance: 12 },
+  '63103': { zone: 'zone3', distance: 12 },
+  '63104': { zone: 'zone3', distance: 12 },
+  '63105': { zone: 'zone3', distance: 12 },
+  '63106': { zone: 'zone3', distance: 12 },
+  '63107': { zone: 'zone3', distance: 12 },
+  '63108': { zone: 'zone3', distance: 12 },
+  '63109': { zone: 'zone3', distance: 12 },
+  '63110': { zone: 'zone3', distance: 12 },
+  '63111': { zone: 'zone3', distance: 12 },
+  '63112': { zone: 'zone3', distance: 12 },
+  '63113': { zone: 'zone3', distance: 12 },
+  '63114': { zone: 'zone3', distance: 12 },
+  '63115': { zone: 'zone3', distance: 12 },
+  '63116': { zone: 'zone3', distance: 12 },
+  '63117': { zone: 'zone3', distance: 12 },
+  '63118': { zone: 'zone3', distance: 12 },
+  '63119': { zone: 'zone3', distance: 12 },
+  '63120': { zone: 'zone3', distance: 12 },
+  '63121': { zone: 'zone3', distance: 12 },
+  '63122': { zone: 'zone3', distance: 12 },
+  '63123': { zone: 'zone3', distance: 12 },
+  '63124': { zone: 'zone3', distance: 12 },
+  '63125': { zone: 'zone3', distance: 12 },
+  '63126': { zone: 'zone3', distance: 12 },
+  '63127': { zone: 'zone3', distance: 12 },
+  '63128': { zone: 'zone3', distance: 12 },
+  '63129': { zone: 'zone3', distance: 12 },
+  '63130': { zone: 'zone3', distance: 12 },
+  '63131': { zone: 'zone3', distance: 12 },
+  '63132': { zone: 'zone3', distance: 12 },
+  '63133': { zone: 'zone3', distance: 12 },
+  '63134': { zone: 'zone3', distance: 12 },
+  '63135': { zone: 'zone3', distance: 12 },
+  '63136': { zone: 'zone3', distance: 12 },
+  '63137': { zone: 'zone3', distance: 12 },
+  '63138': { zone: 'zone3', distance: 12 },
+  '63139': { zone: 'zone3', distance: 12 },
+  '63140': { zone: 'zone3', distance: 12 },
+};
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
@@ -7,48 +61,23 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Address is required' }, { status: 400 });
     }
 
-    // Store location (O'Fallon, MO)
-    const storeCoords = { lat: 38.6783, lng: -90.7367 };
-
-    // Geocode customer address using free Nominatim API (OpenStreetMap)
-    const geocodeUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
-    const geocodeRes = await fetch(geocodeUrl, {
-      headers: { 'User-Agent': 'NuVira-Juice-App' }
-    });
-    const geocodeData = await geocodeRes.json();
-
-    if (!geocodeData || geocodeData.length === 0) {
-      return Response.json({ error: 'Address not found' }, { status: 400 });
+    // Extract zip code from address (look for 5-digit number)
+    const zipMatch = address.match(/\b\d{5}\b/);
+    if (!zipMatch) {
+      return Response.json({ error: 'Please include a valid zip code in your address' }, { status: 400 });
     }
 
-    const customerCoords = { lat: parseFloat(geocodeData[0].lat), lng: parseFloat(geocodeData[0].lon) };
+    const zip = zipMatch[0];
+    const zoneInfo = ZONE_LOOKUP[zip];
 
-    // Calculate distance using haversine formula
-    const R = 3959; // Earth's radius in miles
-    const dLat = (customerCoords.lat - storeCoords.lat) * Math.PI / 180;
-    const dLng = (customerCoords.lng - storeCoords.lng) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(storeCoords.lat * Math.PI / 180) * Math.cos(customerCoords.lat * Math.PI / 180) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-
-    // Determine zone based on distance
-    let zone = null;
-    if (distance <= 5) {
-      zone = 'zone1';
-    } else if (distance <= 10) {
-      zone = 'zone2';
-    } else if (distance <= 15) {
-      zone = 'zone3';
-    } else {
-      return Response.json({ error: 'Address is outside delivery range (max 15 miles)' }, { status: 400 });
+    if (!zoneInfo) {
+      return Response.json({ error: 'This zip code is outside our delivery range. We currently deliver within Zone 3 (max 15 miles).' }, { status: 400 });
     }
 
     return Response.json({
-      distance,
-      zone,
-      formatted_address: geocodeData[0].display_name,
+      distance: zoneInfo.distance,
+      zone: zoneInfo.zone,
+      zip_code: zip,
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
