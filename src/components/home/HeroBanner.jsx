@@ -57,10 +57,10 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="absolute top-4 right-4 bg-white/15 backdrop-blur-sm border border-white/25 rounded-full px-3 py-1 flex items-center gap-1.5"
+          className="absolute top-3 right-3 bg-white/15 backdrop-blur-sm border border-white/25 rounded-full px-2.5 py-1 flex items-center gap-1"
         >
-          <Zap className="w-3 h-3 text-yellow-300 fill-yellow-300" />
-          <span className="text-white text-[10px] font-semibold">{deliveryText}</span>
+          <Zap className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300" />
+          <span className="text-white text-[9px] font-semibold">{deliveryText}</span>
         </motion.div>
       )}
 
@@ -79,7 +79,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.25 }}
-            className="text-white font-heading text-2xl font-bold leading-tight mb-1.5 drop-shadow-lg"
+            className="text-white font-heading text-lg sm:text-2xl font-bold leading-tight mb-1.5 drop-shadow-lg"
             style={{ whiteSpace: 'pre-line' }}
           >
             {banner.title}

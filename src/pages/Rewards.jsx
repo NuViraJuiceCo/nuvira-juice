@@ -11,17 +11,17 @@ const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f794548115
 
 const MILESTONES = [
   { points: 0, label: '0' },
-  { points: 300, label: '300' },
-  { points: 600, label: '600' },
+  { points: 500, label: '500' },
   { points: 1000, label: '1K' },
-  { points: 2000, label: '2K' },
+  { points: 2500, label: '2.5K' },
+  { points: 5000, label: '5K' },
 ];
 
 const DEFAULT_REWARDS = [
-  { title: 'Free Bottle', description: 'Any 32oz cold-pressed juice', points_required: 300, icon: '🍶', reward_type: 'free_bottle' },
-  { title: 'Free Delivery', description: 'On your next order', points_required: 600, icon: '🚚', reward_type: 'free_delivery' },
-  { title: 'Free 32oz Juice', description: 'Any flavor, any day', points_required: 1000, icon: '🍊', reward_type: 'free_bottle' },
-  { title: 'Bundle Deal', description: '6-pack at the price of 4', points_required: 2000, icon: '🎁', reward_type: 'bundle' },
+  { title: 'Free 2oz Shot', description: 'Any wellness add-on shot', points_required: 500, icon: '🥃', reward_type: 'free_bottle' },
+  { title: 'Free Delivery', description: 'On your next order', points_required: 1000, icon: '🚚', reward_type: 'free_delivery' },
+  { title: 'Free 32oz Juice', description: 'Any flavor, any day', points_required: 2500, icon: '🍊', reward_type: 'free_bottle' },
+  { title: 'Bundle Deal', description: '6-pack at the price of 4', points_required: 5000, icon: '🎁', reward_type: 'bundle' },
 ];
 
 const HOW_TO_EARN = [

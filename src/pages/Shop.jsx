@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,8 +19,8 @@ export default function Shop() {
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const filterParam = urlParams.get('filter');
+  const [searchParams] = useSearchParams();
+  const filterParam = searchParams.get('filter');
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products'],
