@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, MessageCircle, HelpCircle, Mail, ChevronDown, ChevronUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, MessageCircle, HelpCircle, Mail, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -102,6 +103,21 @@ export default function Support() {
             </motion.div>
           ))}
         </div>
+      </div>
+      {/* Legal & Compliance */}
+      <div className="px-4 mt-6 mb-2">
+        <Link to="/legal">
+          <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Legal & Compliance</p>
+                <p className="text-[10px] text-muted-foreground">Licenses, disclaimers & policies</p>
+              </div>
+            </div>
+            <span className="text-xs text-muted-foreground">›</span>
+          </div>
+        </Link>
       </div>
     </div>
   );

@@ -146,6 +146,8 @@ export default function Account() {
           className="h-6 mx-auto mb-1"
         />
         <p className="text-[10px] text-muted-foreground">Real. Living. Nutrition.</p>
+        <Link to="/legal" className="text-[10px] text-primary underline mt-1 block">Legal & Compliance</Link>
+        <p className="text-[10px] text-muted-foreground mt-0.5">© {new Date().getFullYear()} NuVira Juice Company · Wentzville, MO</p>
       </div>
     </div>
   );

@@ -28,6 +28,7 @@ import Merch from '@/pages/Merch';
 import Subscribe from '@/pages/Subscribe';
 import Referral from '@/pages/Referral';
 import Rewards from '@/pages/Rewards';
+import Legal from '@/pages/Legal';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -80,6 +81,7 @@ const AuthenticatedApp = () => {
           <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/referral" element={<Referral />} />
           <Route path="/rewards" element={<Rewards />} />
+          <Route path="/legal" element={<Legal />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
