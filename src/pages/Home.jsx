@@ -8,6 +8,7 @@ import QuickReorder from '@/components/home/QuickReorder';
 import ProductRow from '@/components/home/ProductRow';
 import DeliveryBadge from '@/components/home/DeliveryBadge';
 import BrandSection from '@/components/home/BrandSection';
+import TickerBanner from '@/components/home/TickerBanner';
 import MerchTeaser from '@/components/home/MerchTeaser';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
@@ -101,6 +102,7 @@ export default function Home() {
       </motion.div>
 
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
+      <TickerBanner />
       <QuickReorder lastOrder={lastOrder} />
 
       <ProductRow
