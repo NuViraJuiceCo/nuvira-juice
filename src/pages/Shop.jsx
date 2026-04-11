@@ -19,7 +19,7 @@ export default function Shop() {
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const filterParam = searchParams.get('filter');
 
   const { data: products = [], isLoading } = useQuery({
@@ -80,7 +80,7 @@ export default function Shop() {
         {CATEGORIES.map(cat => (
           <button
             key={cat.key}
-            onClick={() => setCategory(cat.key)}
+            onClick={() => { setCategory(cat.key); setSearchParams({}); }}
             className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
               category === cat.key
                 ? 'bg-primary text-primary-foreground'
