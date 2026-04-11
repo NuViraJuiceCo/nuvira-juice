@@ -148,7 +148,7 @@ export default function ProductDetail() {
       </motion.div>
 
       {/* Bottom Bar */}
-      <div className="fixed bottom-16 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border">
+      <div className="fixed bottom-16 md:bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border">
         <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3">
           <div className="flex items-center gap-3 bg-secondary rounded-xl px-3 py-2">
             <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="active:scale-90 transition-transform">
