@@ -88,7 +88,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35 }}
-            className="text-white/80 text-xs mb-4 drop-shadow"
+            className="text-white/80 text-xs mb-4 drop-shadow line-clamp-2"
           >
             {banner.subtitle}
           </motion.p>
