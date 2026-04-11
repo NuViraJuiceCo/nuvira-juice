@@ -9,26 +9,35 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mt-6"
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-40px' }}
+      transition={{ duration: 0.5 }}
+      className="mt-7"
     >
       <div className="flex items-center justify-between px-4 mb-3">
         <div>
-          <h3 className="font-heading text-lg font-semibold">{title}</h3>
+          <h3 className="font-heading text-lg font-bold">{title}</h3>
           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
         </div>
         {linkTo && (
-          <Link to={linkTo} className="text-xs text-primary font-medium flex items-center gap-0.5">
+          <Link to={linkTo} className="text-xs text-primary font-semibold flex items-center gap-0.5 bg-primary/8 px-3 py-1 rounded-full">
             See All <ChevronRight className="w-3 h-3" />
           </Link>
         )}
       </div>
-      <div className="flex gap-3 overflow-x-auto px-4 pb-2 no-scrollbar snap-x snap-mandatory">
+      <div className="flex gap-3 overflow-x-auto px-4 pb-3 no-scrollbar snap-x snap-mandatory">
         {products.map((product, i) => (
-          <div key={product.id} className="snap-start shrink-0 w-40">
+          <motion.div
+            key={product.id}
+            initial={{ opacity: 0, x: 20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: i * 0.07, duration: 0.4 }}
+            className="snap-start shrink-0 w-40"
+          >
             <ProductCard product={product} compact />
-          </div>
+          </motion.div>
         ))}
       </div>
     </motion.section>

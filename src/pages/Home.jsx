@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -62,27 +63,42 @@ export default function Home() {
   return (
     <div className="pb-4">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-5 pb-2">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="flex items-center justify-between px-4 pt-5 pb-2"
+      >
         <div>
           <img src={LOGO_URL} alt="NuVira Juice Company" className="h-8" />
           {user?.full_name && (
-            <p className="text-xs text-muted-foreground mt-1">
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="text-xs text-muted-foreground mt-1"
+            >
               Hey {user.full_name.split(' ')[0]} 👋
-            </p>
+            </motion.p>
           )}
         </div>
         <div className="flex items-center gap-2">
           <DeliveryBadge scheduleRules={scheduleRules} />
-          <Link to="/notifications" className="relative w-8 h-8 flex items-center justify-center rounded-full bg-muted">
+          <Link to="/notifications" className="relative w-9 h-9 flex items-center justify-center rounded-full bg-muted shadow-sm">
             <Bell className="w-4 h-4 text-foreground" />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-accent text-accent-foreground text-[9px] font-bold rounded-full flex items-center justify-center">
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 400 }}
+                className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-accent text-accent-foreground text-[9px] font-bold rounded-full flex items-center justify-center"
+              >
                 {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
+              </motion.span>
             )}
           </Link>
         </div>
-      </div>
+      </motion.div>
 
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
       <QuickReorder lastOrder={lastOrder} />
