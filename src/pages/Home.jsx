@@ -12,6 +12,7 @@ import TickerBanner from '@/components/home/TickerBanner';
 import MerchTeaser from '@/components/home/MerchTeaser';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
+import OnboardingQuiz from '@/components/onboarding/OnboardingQuiz';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -54,6 +55,18 @@ export default function Home() {
   });
 
   const scheduleRules = schedules[0]?.rules || [];
+
+  const { data: userProfile, refetch: refetchProfile } = useQuery({
+    queryKey: ['user-profile', user?.email],
+    queryFn: async () => {
+      const res = await base44.entities.UserProfile.filter({ customer_email: user?.email });
+      return res[0] || null;
+    },
+    enabled: !!user?.email,
+  });
+
+  const showOnboarding = userProfile !== undefined && !userProfile?.onboarding_complete;
+
   const featured = products.filter(p => p.is_featured);
   const bestSellers = products.filter(p => p.is_best_seller);
   const seasonal = products.filter(p => p.is_seasonal);
@@ -63,6 +76,7 @@ export default function Home() {
 
   return (
     <div className="pb-4">
+      {showOnboarding && <OnboardingQuiz onComplete={() => refetchProfile()} />}
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}

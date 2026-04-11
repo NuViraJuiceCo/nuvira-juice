@@ -49,10 +49,10 @@ export default function Cart() {
 
       {/* Minimum Order Notice */}
       {!meetsMinimum && (
-        <div className="mx-4 mb-3 bg-accent/10 border border-accent/30 rounded-xl p-3 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-accent shrink-0" />
-          <p className="text-xs font-medium text-accent-foreground">
-            Minimum order is 3 bottles. Add {3 - juiceCount} more to checkout.
+        <div className="mx-4 mb-3 bg-orange-50 border border-orange-300 rounded-xl p-3 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
+          <p className="text-xs font-semibold text-orange-900">
+            Minimum order is 3 bottles — add {3 - juiceCount} more to checkout.
           </p>
         </div>
       )}

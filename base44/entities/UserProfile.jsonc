@@ -1,0 +1,46 @@
+{
+  "name": "UserProfile",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string"
+    },
+    "wellness_goals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "juice_experience": {
+      "type": "string",
+      "enum": [
+        "new",
+        "occasional",
+        "weekly",
+        "daily"
+      ]
+    },
+    "flavor_preferences": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "drink_time": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "afternoon",
+        "post_workout",
+        "anytime"
+      ]
+    },
+    "onboarding_complete": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "customer_email"
+  ]
+}
