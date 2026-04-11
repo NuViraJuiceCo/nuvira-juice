@@ -1,0 +1,50 @@
+{
+  "name": "SubscriptionBundle",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Bundle name (e.g., Trio, Mix 6)"
+    },
+    "bottle_count": {
+      "type": "number",
+      "description": "Total bottles in bundle"
+    },
+    "description": {
+      "type": "string",
+      "description": "Bundle description"
+    },
+    "default_composition": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Default product mix for this bundle"
+    },
+    "is_customizable": {
+      "type": "boolean",
+      "default": true,
+      "description": "Can customer customize the composition"
+    },
+    "sort_order": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "name",
+    "bottle_count",
+    "default_composition"
+  ]
+}

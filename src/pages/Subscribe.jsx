@@ -1,13 +1,54 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Check, Zap, Crown, Leaf } from 'lucide-react';
+import { ArrowLeft, Check, Zap, Crown, Leaf, Truck, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { useQuery } from '@tanstack/react-query';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
+
+const bundles = [
+  {
+    id: 'trio',
+    name: 'The Trio',
+    bottle_count: 3,
+    description: 'One of each: AURA, RE-NU, OASIS',
+    default: ['AURA', 'RE-NU', 'OASIS'],
+  },
+  {
+    id: '3pack',
+    name: 'Mix 3',
+    bottle_count: 3,
+    description: 'Choose your own 3-bottle mix',
+    customizable: true,
+  },
+  {
+    id: '6pack',
+    name: 'Mix 6',
+    bottle_count: 6,
+    description: 'Default: 2 AURA, 2 RE-NU, 2 OASIS (customize anytime)',
+    default: ['AURA', 'AURA', 'RE-NU', 'RE-NU', 'OASIS', 'OASIS'],
+    customizable: true,
+  },
+  {
+    id: '9pack',
+    name: 'Mix 9',
+    bottle_count: 9,
+    description: 'Default: 3 AURA, 3 RE-NU, 3 OASIS (customize anytime)',
+    default: ['AURA', 'AURA', 'AURA', 'RE-NU', 'RE-NU', 'RE-NU', 'OASIS', 'OASIS', 'OASIS'],
+    customizable: true,
+  },
+];
+
+const deliveryZones = [
+  { id: 'zone1', name: 'Within 5 miles', miles: 5, fee: 3.99 },
+  { id: 'zone2', name: 'Within 10 miles', miles: 10, fee: 5.99 },
+  { id: 'zone3', name: 'Within 15 miles', miles: 15, fee: 7.99 },
+];
 
 const plans = [
   {
@@ -72,15 +113,24 @@ const plans = [
 export default function Subscribe() {
   const { user } = useAuth();
   const [selected, setSelected] = useState('monthly');
+  const [selectedBundle, setSelectedBundle] = useState('trio');
+  const [selectedZone, setSelectedZone] = useState('zone1');
+  const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleJoin = async () => {
+    if (!address.trim()) {
+      toast.error('Please enter your delivery address');
+      return;
+    }
     const plan = plans.find(p => p.id === selected);
+    const bundle = bundles.find(b => b.id === selectedBundle);
+    const zone = deliveryZones.find(z => z.id === selectedZone);
     setLoading(true);
     await base44.integrations.Core.SendEmail({
       to: 'nuvirajuiceco@gmail.com',
-      subject: `New Subscription Request — ${plan.name}`,
-      body: `${user?.full_name || 'A customer'} (${user?.email}) wants to subscribe to the ${plan.name} plan (${plan.price}${plan.period}).`,
+      subject: `New Subscription Request — ${plan.name} + ${bundle.name}`,
+      body: `${user?.full_name || 'A customer'} (${user?.email}) wants to subscribe to the ${plan.name} plan with ${bundle.name} bundle (${bundle.bottle_count} bottles). Delivery Zone: ${zone.name} ($${zone.fee.toFixed(2)} fee). Address: ${address}`,
     });
     setLoading(false);
     toast.success("We received your request! Our team will reach out within 24 hours to finalize your subscription.");
@@ -107,8 +157,87 @@ export default function Subscribe() {
         </p>
       </div>
 
+      {/* Bundles Section */}
+      <div className="px-4 mt-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Choose Your Bundle</p>
+        <div className="space-y-2">
+          {bundles.map(bundle => (
+            <motion.button
+              key={bundle.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => setSelectedBundle(bundle.id)}
+              className={`w-full text-left rounded-xl border-2 p-3 transition-all ${
+                selectedBundle === bundle.id
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border/40 bg-card'
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="font-semibold text-sm">{bundle.name}</p>
+                  <p className="text-xs text-muted-foreground leading-snug">{bundle.description}</p>
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ml-2 ${
+                  selectedBundle === bundle.id ? 'border-primary bg-primary' : 'border-border'
+                }`}>
+                  {selectedBundle === bundle.id && <Check className="w-3 h-3 text-white" />}
+                </div>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      </div>
+
+      {/* Delivery Zone Section */}
+      <div className="px-4 mt-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Delivery Zone & Fee</p>
+        <div className="space-y-2">
+          {deliveryZones.map(zone => (
+            <motion.button
+              key={zone.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => setSelectedZone(zone.id)}
+              className={`w-full text-left rounded-xl border-2 p-3 transition-all flex items-center justify-between ${
+                selectedZone === zone.id
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border/40 bg-card'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <p className="font-semibold text-sm">{zone.name}</p>
+                  <p className="text-xs text-muted-foreground">Delivery fee</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm">${zone.fee.toFixed(2)}</span>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  selectedZone === zone.id ? 'border-primary bg-primary' : 'border-border'
+                }`}>
+                  {selectedZone === zone.id && <Check className="w-3 h-3 text-white" />}
+                </div>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      </div>
+
+      {/* Address Section */}
+      <div className="px-4 mt-6">
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">Delivery Address</label>
+        <Input
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          placeholder="123 Main St, St. Louis, MO"
+          className="rounded-xl h-11"
+        />
+      </div>
+
       {/* Plans */}
-      <div className="px-4 mt-2 space-y-3">
+      <div className="px-4 mt-6 space-y-3">
         {plans.map(({ id, icon: Icon, name, price, period, savings, badge, color, bg, perks }, i) => (
           <motion.button
             key={id}
@@ -155,7 +284,7 @@ export default function Subscribe() {
       </div>
 
       {/* CTA */}
-      <div className="px-4 mt-5 space-y-3">
+      <div className="px-4 mt-6 space-y-3">
         <Button
           onClick={handleJoin}
           disabled={loading}

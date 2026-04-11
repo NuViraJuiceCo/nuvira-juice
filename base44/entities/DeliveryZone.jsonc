@@ -1,0 +1,27 @@
+{
+  "name": "DeliveryZone",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Zone name (e.g., Zone 1)"
+    },
+    "max_miles": {
+      "type": "number",
+      "description": "Maximum miles from store"
+    },
+    "delivery_fee": {
+      "type": "number",
+      "description": "Delivery fee for this zone"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name",
+    "max_miles",
+    "delivery_fee"
+  ]
+}

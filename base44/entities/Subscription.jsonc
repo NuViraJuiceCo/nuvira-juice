@@ -1,0 +1,70 @@
+{
+  "name": "Subscription",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Reference to SubscriptionPlan"
+    },
+    "bundle_id": {
+      "type": "string",
+      "description": "Reference to SubscriptionBundle"
+    },
+    "custom_composition": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Customer's custom juice mix (if customized)"
+    },
+    "delivery_zone_id": {
+      "type": "string",
+      "description": "Reference to DeliveryZone"
+    },
+    "delivery_address": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "cancelled"
+      ],
+      "default": "active"
+    },
+    "next_delivery_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "started_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "paused_until": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "customer_email",
+    "plan_id",
+    "bundle_id",
+    "delivery_zone_id",
+    "delivery_address"
+  ]
+}

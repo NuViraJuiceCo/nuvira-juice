@@ -1,0 +1,53 @@
+{
+  "name": "SubscriptionPlan",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Plan name (e.g., Weekly Fresh, Monthly Ritual)"
+    },
+    "frequency": {
+      "type": "string",
+      "enum": [
+        "weekly",
+        "biweekly",
+        "monthly"
+      ],
+      "description": "Delivery frequency"
+    },
+    "base_price": {
+      "type": "number",
+      "description": "Price per cycle"
+    },
+    "bottle_count": {
+      "type": "number",
+      "description": "Total bottles per delivery"
+    },
+    "discount_percent": {
+      "type": "number",
+      "description": "Discount percentage off regular prices"
+    },
+    "perks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of benefits"
+    },
+    "is_featured": {
+      "type": "boolean",
+      "default": false
+    },
+    "sort_order": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "name",
+    "frequency",
+    "base_price",
+    "bottle_count",
+    "discount_percent"
+  ]
+}
