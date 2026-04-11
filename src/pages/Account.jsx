@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 
 const menuItems = [
   { icon: ShoppingBag, label: 'Order History', path: '/account/orders', desc: 'View past & active orders' },
+  { icon: Repeat2, label: 'My Subscriptions', path: '/account/subscriptions', desc: 'Manage subscriptions' },
   { icon: Bell, label: 'Notifications', path: '/notifications', desc: 'Updates & promotions' },
   { icon: HelpCircle, label: 'Help & Support', path: '/support', desc: 'FAQ & contact us' },
   { icon: Settings, label: 'Settings', path: '/account/settings', desc: 'Preferences & info' },
