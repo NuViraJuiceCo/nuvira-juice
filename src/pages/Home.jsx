@@ -101,8 +101,8 @@ export default function Home() {
         </div>
       </motion.div>
 
-      <HeroBanner banners={banners} scheduleRules={scheduleRules} />
       <TickerBanner />
+      <HeroBanner banners={banners} scheduleRules={scheduleRules} />
       <QuickReorder lastOrder={lastOrder} />
 
       <ProductRow
