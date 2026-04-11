@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
-import { ArrowLeft, ChevronRight, Package } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Package, RotateCcw } from 'lucide-react';
+import { useCart } from '@/lib/cartContext';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
@@ -87,6 +89,18 @@ export default function OrderHistory() {
 
 function OrderCard({ order, index }) {
   const isActive = !['delivered', 'picked_up'].includes(order.status);
+  const { addItem } = useCart();
+  const navigate = useNavigate();
+
+  const handleReorder = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    order.items?.forEach(item => {
+      addItem({ id: item.product_id, title: item.title, price: item.price, image_url: item.image_url }, item.quantity || 1);
+    });
+    toast.success('Items added to cart!');
+    navigate('/cart');
+  };
 
   return (
     <motion.div
@@ -127,7 +141,18 @@ function OrderCard({ order, index }) {
             <p className="text-xs text-muted-foreground flex-1 truncate">
               {order.items?.map(i => i.title).join(', ')}
             </p>
-            <p className="text-sm font-semibold">${order.total?.toFixed(2)}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold">${order.total?.toFixed(2)}</p>
+              {!isActive && (
+                <button
+                  onClick={handleReorder}
+                  className="flex items-center gap-1 bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-1 rounded-full active:scale-95 transition-transform"
+                >
+                  <RotateCcw className="w-2.5 h-2.5" />
+                  Reorder
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </Link>
