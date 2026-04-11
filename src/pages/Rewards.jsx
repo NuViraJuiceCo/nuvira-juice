@@ -63,7 +63,7 @@ export default function Rewards() {
   return (
     <div className="pb-24 bg-background min-h-screen">
       {/* Header */}
-      <div className="relative bg-primary px-4 pt-10 pb-14 overflow-hidden">
+      <div className="relative bg-primary px-4 pt-10 pb-6 overflow-hidden">
         <div className="absolute inset-0 opacity-10"
           style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, white 0%, transparent 50%), radial-gradient(circle at 80% 20%, white 0%, transparent 50%)' }}
         />
@@ -88,7 +88,7 @@ export default function Rewards() {
       </div>
 
       {/* Points Progress Card */}
-      <div className="mx-4 -mt-8 relative z-10">
+      <div className="mx-4 mt-4 relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -119,15 +119,6 @@ export default function Rewards() {
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-primary rounded-full shadow-sm" />
               </motion.div>
             </div>
-            {/* Next reward marker */}
-            {nextReward && (
-              <div
-                className="absolute -top-5 text-[9px] font-bold text-primary"
-                style={{ left: `${(nextReward.points_required / 2000) * 100}%`, transform: 'translateX(-50%)' }}
-              >
-                Next ▼
-              </div>
-            )}
           </div>
 
           {/* Milestone labels */}
