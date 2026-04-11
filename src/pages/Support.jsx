@@ -50,7 +50,7 @@ export default function Support() {
         <MessageCircle className="w-8 h-8 text-primary mx-auto mb-2" />
         <h2 className="font-heading text-base font-semibold mb-1">Need Help?</h2>
         <p className="text-xs text-muted-foreground mb-3">We're here for you</p>
-        <a href="mailto:hello@nuvirajuice.com">
+        <a href="mailto:info@nuvirajuice.com">
           <Button size="sm" className="rounded-full px-5">
             <Mail className="w-3.5 h-3.5 mr-1.5" />
             Email Us
