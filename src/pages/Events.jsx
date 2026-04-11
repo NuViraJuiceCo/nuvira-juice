@@ -16,7 +16,7 @@ const events = [
     location: '5521 Water St, Augusta, MO 63332',
     description: 'A high-energy celebration of craft spirits, food, and community set in the historic river town of Augusta. Over 40 vendors, live music, food trucks, artisan vendors, and family-friendly activities — NuVira will be there with our booth. Come taste our cold-pressed juice lineup and connect with the team. Benefiting STL Hero Network.',
     type: 'Festival',
-    image_url: FESTIVAL_LOGO,
+    image_url: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/53c8c0417_generated_image.png',
     link: 'https://www.mospiritfestival.com',
     tickets_link: 'https://www.mospiritfestival.com/events/the-missouri-spirit-festival',
     highlights: ['40+ Vendors', 'Live Music', 'Family Friendly', 'Benefiting STL Hero Network'],
