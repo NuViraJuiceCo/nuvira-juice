@@ -18,7 +18,7 @@ const MILESTONES = [
 ];
 
 const DEFAULT_REWARDS = [
-  { title: 'Free Bottle', description: 'Any 16oz cold-pressed juice', points_required: 300, icon: '🍶', reward_type: 'free_bottle' },
+  { title: 'Free Bottle', description: 'Any 32oz cold-pressed juice', points_required: 300, icon: '🍶', reward_type: 'free_bottle' },
   { title: 'Free Delivery', description: 'On your next order', points_required: 600, icon: '🚚', reward_type: 'free_delivery' },
   { title: 'Free 32oz Juice', description: 'Any flavor, any day', points_required: 1000, icon: '🍊', reward_type: 'free_bottle' },
   { title: 'Bundle Deal', description: '6-pack at the price of 4', points_required: 2000, icon: '🎁', reward_type: 'bundle' },
