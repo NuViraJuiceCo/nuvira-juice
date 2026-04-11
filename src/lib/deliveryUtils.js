@@ -54,3 +54,22 @@ export function getDeliveryShortText(scheduleRules) {
   if (!date) return 'Next batch';
   return format(date, 'EEEE, MMM d');
 }
+
+// Returns production info if today is a production day (day before a delivery day)
+export function getProductionInfo(scheduleRules, now = new Date()) {
+  const rules = (scheduleRules && scheduleRules.length > 0) ? scheduleRules : DEFAULT_RULES;
+  const today = getDay(now);
+
+  // Check if tomorrow is a delivery day for any rule
+  const tomorrow = (today + 1) % 7;
+  const deliveryRule = rules.find(r => r.delivery_day === tomorrow);
+  if (!deliveryRule) return null;
+
+  // Today is production day — delivery is tomorrow
+  const deliveryDate = addDays(now, 1);
+  return {
+    isProductionDay: true,
+    deliveryDate,
+    label: `In production today · Delivered ${format(deliveryDate, 'EEEE, MMM d')}`,
+  };
+}

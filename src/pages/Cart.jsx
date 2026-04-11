@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { getDeliveryDisplayText } from '@/lib/deliveryUtils';
+import { getDeliveryDisplayText, getProductionInfo } from '@/lib/deliveryUtils';
+import { Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Cart() {
@@ -19,6 +20,7 @@ export default function Cart() {
 
   const scheduleRules = schedules[0]?.rules || [];
   const deliveryText = getDeliveryDisplayText(scheduleRules);
+  const productionInfo = getProductionInfo(scheduleRules);
   const deliveryFee = 5.00;
   const juiceCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const meetsMinimum = juiceCount >= 3;
@@ -52,6 +54,14 @@ export default function Cart() {
           <p className="text-xs font-medium text-accent-foreground">
             Minimum order is 3 bottles. Add {3 - juiceCount} more to checkout.
           </p>
+        </div>
+      )}
+
+      {/* Production Day Banner */}
+      {productionInfo && (
+        <div className="mx-4 mb-2 bg-accent/10 border border-accent/30 rounded-xl p-3 flex items-center gap-2">
+          <Zap className="w-4 h-4 text-accent shrink-0 fill-accent" />
+          <p className="text-xs font-semibold text-accent-foreground">{productionInfo.label}</p>
         </div>
       )}
 
