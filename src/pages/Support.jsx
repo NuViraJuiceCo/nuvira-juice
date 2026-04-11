@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, MessageCircle, HelpCircle, Mail, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, MessageCircle, HelpCircle, Mail, ChevronDown, ChevronUp, ShieldCheck, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -104,8 +104,28 @@ export default function Support() {
           ))}
         </div>
       </div>
+      {/* Google Review */}
+      <div className="px-4 mt-6">
+        <a
+          href="https://g.page/r/nuvirajuiceco/review"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-xl border border-yellow-200 active:bg-yellow-100 transition-colors">
+            <div className="flex items-center gap-3">
+              <Star className="w-4 h-4 text-yellow-500 fill-yellow-400" />
+              <div>
+                <p className="text-sm font-medium">Leave a Google Review</p>
+                <p className="text-[10px] text-muted-foreground">Share your NuVira experience</p>
+              </div>
+            </div>
+            <span className="text-xs text-yellow-600">›</span>
+          </div>
+        </a>
+      </div>
+
       {/* Legal & Compliance */}
-      <div className="px-4 mt-6 mb-2">
+      <div className="px-4 mt-4 mb-2">
         <Link to="/legal">
           <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors">
             <div className="flex items-center gap-3">
