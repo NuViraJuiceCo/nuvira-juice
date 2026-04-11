@@ -4,6 +4,8 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import HeroBanner from '@/components/home/HeroBanner';
+import { getProductionInfo } from '@/lib/deliveryUtils';
+import { Zap } from 'lucide-react';
 import QuickReorder from '@/components/home/QuickReorder';
 import ProductRow from '@/components/home/ProductRow';
 import DeliveryBadge from '@/components/home/DeliveryBadge';
@@ -55,6 +57,7 @@ export default function Home() {
   });
 
   const scheduleRules = schedules[0]?.rules || [];
+  const productionInfo = getProductionInfo(scheduleRules);
 
   const { data: userProfile, refetch: refetchProfile } = useQuery({
     queryKey: ['user-profile', user?.email],
@@ -117,6 +120,12 @@ export default function Home() {
 
       <TickerBanner />
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
+      {productionInfo && (
+        <div className="mx-4 mt-3 bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center gap-2">
+          <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
+          <p className="text-xs font-semibold text-amber-900">{productionInfo.label}</p>
+        </div>
+      )}
       <QuickReorder lastOrder={lastOrder} />
 
       <ProductRow
