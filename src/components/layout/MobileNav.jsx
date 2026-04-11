@@ -1,14 +1,14 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, ShoppingBag, User, Bell } from 'lucide-react';
+import { Home, Search, ShoppingBag, User, Star } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { motion } from 'framer-motion';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
-  { path: '/shop', icon: Search, label: 'Shop' },
+  { path: '/shop', icon: Search, label: 'Menu' },
   { path: '/cart', icon: ShoppingBag, label: 'Cart' },
-  { path: '/notifications', icon: Bell, label: 'Updates' },
+  { path: '/rewards', icon: Star, label: 'Rewards' },
   { path: '/account', icon: User, label: 'Account' },
 ];
 
@@ -22,7 +22,8 @@ export default function MobileNav() {
         {navItems.map(({ path, icon: Icon, label }) => {
           const isActive = location.pathname === path || 
             (path === '/shop' && location.pathname.startsWith('/shop')) ||
-            (path === '/account' && location.pathname.startsWith('/account'));
+            (path === '/account' && location.pathname.startsWith('/account')) ||
+            (path === '/rewards' && location.pathname === '/rewards');
 
           return (
             <Link

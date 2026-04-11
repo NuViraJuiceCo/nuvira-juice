@@ -77,6 +77,35 @@ export default function Checkout() {
       }],
     });
 
+    // Award points: 10 pts per $1 spent
+    const ptsEarned = Math.floor(total * 10);
+    const existingPoints = await base44.entities.UserPoints.filter({ customer_email: user?.email || 'guest@nuvira.com' });
+    if (existingPoints[0]) {
+      await base44.entities.UserPoints.update(existingPoints[0].id, {
+        total_points: (existingPoints[0].total_points || 0) + ptsEarned,
+        lifetime_points: (existingPoints[0].lifetime_points || 0) + ptsEarned,
+        points_history: [...(existingPoints[0].points_history || []), {
+          amount: ptsEarned,
+          type: 'earned',
+          description: `Order ${orderNumber}`,
+          timestamp: new Date().toISOString(),
+        }],
+      });
+    } else {
+      await base44.entities.UserPoints.create({
+        customer_email: user?.email || 'guest@nuvira.com',
+        total_points: ptsEarned,
+        lifetime_points: ptsEarned,
+        redeemed_points: 0,
+        points_history: [{
+          amount: ptsEarned,
+          type: 'earned',
+          description: `Order ${orderNumber}`,
+          timestamp: new Date().toISOString(),
+        }],
+      });
+    }
+
     clearCart();
     navigate(`/order-confirmation/${order.id}`);
   };
