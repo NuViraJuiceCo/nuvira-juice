@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Truck, Package } from 'lucide-react';
+import { ArrowLeft, Truck, Package, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { Switch } from '@/components/ui/switch';
 import { base44 } from '@/api/base44Client';
 import { getDeliveryDisplayText, getNextDeliveryDate } from '@/lib/deliveryUtils';
 import { format } from 'date-fns';
@@ -21,17 +22,29 @@ export default function Checkout() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [usePoints, setUsePoints] = useState(false);
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
     queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
   });
 
+  const { data: userPointsData } = useQuery({
+    queryKey: ['user-points', user?.email],
+    queryFn: () => base44.entities.UserPoints.filter({ customer_email: user?.email }),
+    enabled: !!user?.email,
+  });
+  const availablePoints = userPointsData?.[0]?.total_points || 0;
+  // 100 pts = $1
+  const maxDiscount = Math.floor(availablePoints / 100);
+  const pointsDiscount = usePoints ? Math.min(maxDiscount, subtotal) : 0;
+  const pointsUsed = pointsDiscount * 100;
+
   const scheduleRules = schedules[0]?.rules || [];
   const deliveryDate = getNextDeliveryDate(scheduleRules);
   const deliveryText = getDeliveryDisplayText(scheduleRules, fulfillmentType);
   const deliveryFee = fulfillmentType === 'delivery' ? 5.00 : 0;
-  const total = subtotal + deliveryFee;
+  const total = Math.max(0, subtotal - pointsDiscount + deliveryFee);
 
   const totalBottles = items.reduce((sum, item) => {
     if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
@@ -60,10 +73,8 @@ export default function Checkout() {
       subtotal,
       delivery_fee: deliveryFee,
       total,
-      fulfillment_type: fulfillmentType,
-      delivery_address: address,
-      contact_phone: phone,
-      estimated_delivery_date: deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : null,
+      points_discount: pointsDiscount,
+      points_used: pointsUsed,
       customer_email: user?.email || null,
     });
 
@@ -98,6 +109,27 @@ export default function Checkout() {
           <p className="text-[10px] text-muted-foreground">Included in our next fresh batch</p>
         </div>
       </div>
+
+      {/* Points Redemption */}
+      {user?.email && availablePoints >= 100 && (
+        <div className="mx-4 mb-5 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                <Gift className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Use Loyalty Points</p>
+                <p className="text-[11px] text-amber-700">{availablePoints.toLocaleString()} pts · save ${maxDiscount.toFixed(2)}</p>
+              </div>
+            </div>
+            <Switch checked={usePoints} onCheckedChange={setUsePoints} />
+          </div>
+          {usePoints && (
+            <p className="text-xs text-amber-700 mt-2 font-medium">✓ {pointsUsed.toLocaleString()} points applied · -${pointsDiscount.toFixed(2)} off</p>
+          )}
+        </div>
+      )}
 
       {/* Fulfillment Type */}
       <div className="px-4 mb-5">
@@ -163,6 +195,11 @@ export default function Checkout() {
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
             <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
           </div>
+          {pointsDiscount > 0 && (
+            <div className="flex justify-between text-xs text-amber-600 mb-1 font-medium">
+              <span>Points Discount</span><span>-${pointsDiscount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
             <span>{fulfillmentType === 'delivery' ? 'Delivery' : 'Pickup'}</span>
             <span>{deliveryFee > 0 ? `$${deliveryFee.toFixed(2)}` : 'Free'}</span>

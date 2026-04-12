@@ -6,7 +6,7 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { items, subtotal, delivery_fee, total, fulfillment_type, delivery_address, contact_phone, estimated_delivery_date, customer_email } = await req.json();
+    const { items, subtotal, delivery_fee, total, fulfillment_type, delivery_address, contact_phone, estimated_delivery_date, customer_email, points_discount, points_used } = await req.json();
 
     // Create order in DB first with pending_payment status
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
@@ -62,6 +62,35 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Build discounts if points were redeemed
+    let discounts = [];
+    if (points_discount > 0) {
+      const coupon = await stripe.coupons.create({
+        amount_off: Math.round(points_discount * 100),
+        currency: 'usd',
+        duration: 'once',
+        name: `${points_used} Loyalty Points`,
+      });
+      discounts = [{ coupon: coupon.id }];
+
+      // Deduct points from user's account
+      if (customer_email) {
+        const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email });
+        if (existing[0]) {
+          await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
+            total_points: Math.max(0, (existing[0].total_points || 0) - points_used),
+            redeemed_points: (existing[0].redeemed_points || 0) + points_used,
+            points_history: [...(existing[0].points_history || []), {
+              amount: -points_used,
+              type: 'redeemed',
+              description: `Redeemed at checkout`,
+              timestamp: new Date().toISOString(),
+            }],
+          });
+        }
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: lineItems,
@@ -69,6 +98,7 @@ Deno.serve(async (req) => {
       success_url: `${origin}/order-confirmation/${order.id}?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/checkout`,
       customer_email: customer_email || undefined,
+      ...(discounts.length > 0 ? { discounts } : {}),
       metadata: {
         base44_app_id: Deno.env.get('BASE44_APP_ID'),
         order_id: order.id,
