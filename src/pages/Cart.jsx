@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { isPreLaunch, launchDateFormatted } from '@/lib/launchConfig';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
@@ -129,13 +130,18 @@ export default function Cart() {
             <span>Total</span>
             <span>${(subtotal + deliveryFee).toFixed(2)}</span>
           </div>
+          {isPreLaunch() && (
+            <div className="mb-3 bg-amber-50 border border-amber-300 rounded-xl p-3 text-center">
+              <p className="text-xs font-semibold text-amber-900">🚀 Orders open {launchDateFormatted()} — browse freely until then!</p>
+            </div>
+          )}
           <Button
             onClick={() => navigate('/checkout')}
-            disabled={!meetsMinimum}
+            disabled={!meetsMinimum || isPreLaunch()}
             className="w-full h-12 rounded-xl font-semibold text-sm disabled:opacity-50"
           >
-            {meetsMinimum ? 'Checkout' : `Add ${3 - juiceCount} more bottle${3 - juiceCount > 1 ? 's' : ''}`}
-            {meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
+            {isPreLaunch() ? `Opens ${launchDateFormatted()}` : meetsMinimum ? 'Checkout' : `Add ${3 - juiceCount} more bottle${3 - juiceCount > 1 ? 's' : ''}`}
+            {!isPreLaunch() && meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
         </div>
       </div>
