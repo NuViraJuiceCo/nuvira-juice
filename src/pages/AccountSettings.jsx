@@ -20,13 +20,37 @@ export default function AccountSettings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Save form data to localStorage as user types (user-specific key)
+  const saveToLocalStorage = (full, ph, addr, bd) => {
+    const key = `accountSettings_${user?.email || 'guest'}`;
+    localStorage.setItem(key, JSON.stringify({ full, ph, addr, bd }));
+  };
+
+  // Load form data from localStorage on mount (user-specific key)
+  const loadFromLocalStorage = () => {
+    const key = `accountSettings_${user?.email || 'guest'}`;
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : null;
+  };
+
+  // Clear localStorage for current user
+  const clearLocalStorage = () => {
+    const key = `accountSettings_${user?.email || 'guest'}`;
+    localStorage.removeItem(key);
+  };
 
   useEffect(() => {
-    if (user?.email) {
+    const saved = loadFromLocalStorage();
+    if (saved) {
+      // Load from localStorage if available (user was editing)
+      setFullName(saved.full || user?.full_name || '');
+      setPhone(saved.ph || '');
+      setAddress(saved.addr || '');
+      setBirthday(saved.bd || '');
+    } else if (user?.email) {
+      // Load from server if no localStorage data
       setFullName(user.full_name || '');
-      
-      // Load additional profile data
       base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
         if (profiles.length > 0) {
           const profile = profiles[0];
@@ -34,14 +58,13 @@ export default function AccountSettings() {
           setAddress(profile.address || '');
           setBirthday(profile.birthday || '');
         } else {
-          // Reset to empty if no profile exists
           setPhone('');
           setAddress('');
           setBirthday('');
         }
       });
     }
-  }, [user, refreshKey]);
+  }, [user?.email]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -67,6 +90,8 @@ export default function AccountSettings() {
         });
       }
       
+      // Clear localStorage after successful save
+      clearLocalStorage();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
@@ -93,7 +118,10 @@ export default function AccountSettings() {
           <div className="space-y-3">
             <div>
               <Label className="text-xs text-muted-foreground">Full Name</Label>
-              <Input value={fullName} onChange={e => setFullName(e.target.value)} className="rounded-xl h-11" />
+              <Input value={fullName} onChange={e => {
+                setFullName(e.target.value);
+                saveToLocalStorage(e.target.value, phone, address, birthday);
+              }} className="rounded-xl h-11" />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Email</Label>
@@ -111,7 +139,10 @@ export default function AccountSettings() {
               <Label className="text-xs text-muted-foreground">Phone Number</Label>
               <Input
                 value={phone}
-                onChange={e => setPhone(e.target.value)}
+                onChange={e => {
+                  setPhone(e.target.value);
+                  saveToLocalStorage(fullName, e.target.value, address, birthday);
+                }}
                 placeholder="(555) 123-4567"
                 className="rounded-xl h-11"
               />
@@ -120,7 +151,10 @@ export default function AccountSettings() {
               <Label className="text-xs text-muted-foreground">Default Delivery Address</Label>
               <Input
                 value={address}
-                onChange={e => setAddress(e.target.value)}
+                onChange={e => {
+                  setAddress(e.target.value);
+                  saveToLocalStorage(fullName, phone, e.target.value, birthday);
+                }}
                 placeholder="123 Main St, City, State"
                 className="rounded-xl h-11"
               />
@@ -130,7 +164,10 @@ export default function AccountSettings() {
               <Input
                 type="date"
                 value={birthday}
-                onChange={e => setBirthday(e.target.value)}
+                onChange={e => {
+                  setBirthday(e.target.value);
+                  saveToLocalStorage(fullName, phone, address, e.target.value);
+                }}
                 className="rounded-xl h-11"
               />
             </div>
