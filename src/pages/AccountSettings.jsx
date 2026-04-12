@@ -90,8 +90,8 @@ export default function AccountSettings() {
         });
       }
       
-      // Clear localStorage after successful save
-      clearLocalStorage();
+      // Keep localStorage cache updated with latest saved data
+      saveToLocalStorage(fullName, phone, address, birthday);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
