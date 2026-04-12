@@ -97,6 +97,11 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* Fixed headers should account for notch */
+.fixed-header {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
 /* Native mobile feel */
 body {
   overscroll-behavior: none;

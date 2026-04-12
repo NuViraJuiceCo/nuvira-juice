@@ -10,10 +10,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { CartProvider } from '@/lib/cartContext';
 import AppLayout from '@/components/layout/AppLayout';
 import SplashScreen from '@/components/SplashScreen';
-import Home from '@/pages/Home';
-import Shop from '@/pages/Shop';
 import ProductDetail from '@/pages/ProductDetail';
-import Cart from '@/pages/Cart';
 import Checkout from '@/pages/Checkout';
 import OrderConfirmation from '@/pages/OrderConfirmation';
 import OrderTracker from '@/pages/OrderTracker';
@@ -72,10 +69,10 @@ const AuthenticatedApp = () => {
       {showSplash && <SplashScreen onDone={handleSplashDone} />}
       <Routes>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/shop" element={<Shop />} />
+          <Route path="/" element={null} />
+          <Route path="/shop" element={null} />
           <Route path="/shop/:id" element={<ProductDetail />} />
-          <Route path="/cart" element={<Cart />} />
+          <Route path="/cart" element={null} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/account" element={<Account />} />
           <Route path="/account/orders" element={<OrderHistory />} />
