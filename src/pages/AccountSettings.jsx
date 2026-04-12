@@ -50,12 +50,13 @@ export default function AccountSettings() {
           <div className="space-y-3">
             <div>
               <Label className="text-xs text-muted-foreground">Full Name</Label>
-              <Input value={user?.full_name || ''} disabled className="rounded-xl h-11 bg-secondary/30" />
+              <Input value={user?.full_name || ''} disabled className="rounded-xl h-11 bg-secondary/30 opacity-70" />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Email</Label>
-              <Input value={user?.email || ''} disabled className="rounded-xl h-11 bg-secondary/30" />
+              <Input value={user?.email || ''} disabled className="rounded-xl h-11 bg-secondary/30 opacity-70" />
             </div>
+            <p className="text-[10px] text-muted-foreground">Name and email are managed by your account and cannot be changed here.</p>
           </div>
         </div>
 
