@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Truck, MapPin, Package } from 'lucide-react';
+import { ArrowLeft, Truck, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,13 +33,18 @@ export default function Checkout() {
   const deliveryFee = fulfillmentType === 'delivery' ? 5.00 : 0;
   const total = subtotal + deliveryFee;
 
-  const totalBottles = items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalBottles = items.reduce((sum, item) => {
+    if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
+    return sum + item.quantity;
+  }, 0);
 
   const handlePlaceOrder = async () => {
-    if (totalBottles < 3) {
-      toast.error('Minimum order is 3 bottles');
+    // Block checkout if running inside an iframe (preview mode)
+    if (window.self !== window.top) {
+      alert('Checkout only works from the published app, not the preview.');
       return;
     }
+
     if (fulfillmentType === 'delivery' && !address.trim()) {
       toast.error('Please enter a delivery address');
       return;
@@ -50,18 +55,8 @@ export default function Checkout() {
     }
 
     setIsSubmitting(true);
-    const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
-
-    const order = await base44.entities.Order.create({
-      order_number: orderNumber,
-      customer_email: user?.email || 'guest@nuvira.com',
-      items: items.map(i => ({
-        product_id: i.product_id,
-        title: i.title,
-        price: i.price,
-        quantity: i.quantity,
-        image_url: i.image_url,
-      })),
+    const res = await base44.functions.invoke('createCheckoutSession', {
+      items,
       subtotal,
       delivery_fee: deliveryFee,
       total,
@@ -69,45 +64,15 @@ export default function Checkout() {
       delivery_address: address,
       contact_phone: phone,
       estimated_delivery_date: deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : null,
-      status: 'order_received',
-      status_history: [{
-        status: 'order_received',
-        timestamp: new Date().toISOString(),
-        message: "We've received your order!",
-      }],
+      customer_email: user?.email || null,
     });
 
-    // Award points: 10 pts per $1 spent
-    const ptsEarned = Math.floor(total * 10);
-    const existingPoints = await base44.entities.UserPoints.filter({ customer_email: user?.email || 'guest@nuvira.com' });
-    if (existingPoints[0]) {
-      await base44.entities.UserPoints.update(existingPoints[0].id, {
-        total_points: (existingPoints[0].total_points || 0) + ptsEarned,
-        lifetime_points: (existingPoints[0].lifetime_points || 0) + ptsEarned,
-        points_history: [...(existingPoints[0].points_history || []), {
-          amount: ptsEarned,
-          type: 'earned',
-          description: `Order ${orderNumber}`,
-          timestamp: new Date().toISOString(),
-        }],
-      });
+    if (res.data?.url) {
+      window.location.href = res.data.url;
     } else {
-      await base44.entities.UserPoints.create({
-        customer_email: user?.email || 'guest@nuvira.com',
-        total_points: ptsEarned,
-        lifetime_points: ptsEarned,
-        redeemed_points: 0,
-        points_history: [{
-          amount: ptsEarned,
-          type: 'earned',
-          description: `Order ${orderNumber}`,
-          timestamp: new Date().toISOString(),
-        }],
-      });
+      toast.error(res.data?.error || 'Failed to start checkout. Please try again.');
+      setIsSubmitting(false);
     }
-
-    clearCart();
-    navigate(`/order-confirmation/${order.id}`);
   };
 
   if (items.length === 0) {
@@ -215,7 +180,7 @@ export default function Checkout() {
           disabled={isSubmitting}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {isSubmitting ? 'Placing Order...' : `Place Order · $${total.toFixed(2)}`}
+          {isSubmitting ? 'Redirecting to payment...' : `Pay · $${total.toFixed(2)}`}
         </Button>
       </div>
     </div>
