@@ -7,13 +7,18 @@ import { useCart } from '@/lib/cartContext';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { getDeliveryDisplayText, getProductionInfo } from '@/lib/deliveryUtils';
-import { Zap } from 'lucide-react';
+import { Zap, Gift } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import BundleComposer from '@/components/cart/BundleComposer';
+import { useAuth } from '@/lib/AuthContext';
+import { isBirthdayRewardActive, useBirthdayReward } from '@/lib/birthdayReward';
 
 export default function Cart() {
-  const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount } = useCart();
+  const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem } = useCart();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const birthdayActive = isBirthdayRewardActive(user?.birthday);
+  const { rewardInCart, addBirthdayReward, removeBirthdayReward } = useBirthdayReward(items, addItem, removeItem);
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
@@ -57,6 +62,26 @@ export default function Cart() {
         <h1 className="font-heading text-xl font-bold">Your Cart</h1>
         <p className="text-xs text-muted-foreground">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
       </div>
+
+      {/* Birthday Reward Banner */}
+      {birthdayActive && meetsMinimum && (
+        <div className="mx-4 mb-3 bg-pink-50 border border-pink-200 rounded-xl p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Gift className="w-4 h-4 text-pink-500 shrink-0" />
+              <div>
+                <p className="text-xs font-semibold text-pink-900">🎂 Birthday Reward — Free 12oz Juice!</p>
+                <p className="text-[10px] text-pink-700">Add a free bottle to your order (valid 30 days)</p>
+              </div>
+            </div>
+            {rewardInCart ? (
+              <button onClick={removeBirthdayReward} className="text-[10px] font-semibold text-pink-500 underline">Remove</button>
+            ) : (
+              <button onClick={addBirthdayReward} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-full">Add Free</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Minimum Order Notice */}
       {!meetsMinimum && (

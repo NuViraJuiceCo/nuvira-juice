@@ -37,8 +37,10 @@ Deno.serve(async (req) => {
 
     const origin = req.headers.get('origin') || 'https://app.base44.com';
 
-    // Build Stripe line items
-    const lineItems = items.map(item => ({
+    // Build Stripe line items (skip free birthday reward — price is $0)
+    const lineItems = items
+      .filter(item => item.product_id !== '__birthday_reward__' && item.price > 0)
+      .map(item => ({
       price_data: {
         currency: 'usd',
         product_data: {

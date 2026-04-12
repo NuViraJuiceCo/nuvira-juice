@@ -13,18 +13,20 @@ export default function AccountSettings() {
   const { user } = useAuth();
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (user) {
       setPhone(user.phone || '');
       setAddress(user.default_address || '');
+      setBirthday(user.birthday || '');
     }
   }, [user]);
 
   const handleSave = async () => {
     setIsSaving(true);
-    await base44.auth.updateMe({ phone, default_address: address });
+    await base44.auth.updateMe({ phone, default_address: address, birthday });
     toast.success('Settings saved');
     setIsSaving(false);
   };
@@ -73,6 +75,15 @@ export default function AccountSettings() {
                 value={address}
                 onChange={e => setAddress(e.target.value)}
                 placeholder="123 Main St, City, State"
+                className="rounded-xl h-11"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Birthday (for your free annual bottle 🎂)</Label>
+              <Input
+                type="date"
+                value={birthday}
+                onChange={e => setBirthday(e.target.value)}
                 className="rounded-xl h-11"
               />
             </div>
