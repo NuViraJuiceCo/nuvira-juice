@@ -34,6 +34,7 @@ import Legal from '@/pages/Legal';
 import Connect from '@/pages/Connect';
 import Partner from '@/pages/Partner';
 import BookEvent from '@/pages/BookEvent';
+import ScrollToTop from '@/components/ScrollToTop';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -67,6 +68,7 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <CartProvider>
+      <ScrollToTop />
       {showSplash && <SplashScreen onDone={handleSplashDone} />}
       <Routes>
         <Route element={<AppLayout />}>
