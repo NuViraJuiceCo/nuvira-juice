@@ -14,7 +14,7 @@ export default function AppLayout() {
       {/* Main content */}
       <div className="flex-1 min-w-0">
         <main className="pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto overflow-hidden">
-          <AnimatePresence mode="wait">
+          <AnimatePresence>
             <motion.div
               key={location.pathname}
               initial={{ x: 24, opacity: 0 }}
