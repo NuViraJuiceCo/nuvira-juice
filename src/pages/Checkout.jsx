@@ -112,21 +112,21 @@ export default function Checkout() {
 
       {/* Points Redemption */}
       {user?.email && availablePoints >= 100 && (
-        <div className="mx-4 mb-5 bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <div className="mx-4 mb-5 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+              <div className="w-8 h-8 bg-amber-500/20 rounded-full flex items-center justify-center">
                 <Gift className="w-4 h-4 text-amber-600" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-amber-900">Use Loyalty Points</p>
-                <p className="text-[11px] text-amber-700">{availablePoints.toLocaleString()} pts · save ${maxDiscount.toFixed(2)}</p>
+                <p className="text-sm font-semibold text-foreground">Use Loyalty Points</p>
+                <p className="text-[11px] text-muted-foreground">{availablePoints.toLocaleString()} pts · save ${maxDiscount.toFixed(2)}</p>
               </div>
             </div>
             <Switch checked={usePoints} onCheckedChange={setUsePoints} />
           </div>
           {usePoints && (
-            <p className="text-xs text-amber-700 mt-2 font-medium">✓ {pointsUsed.toLocaleString()} points applied · -${pointsDiscount.toFixed(2)} off</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 font-medium">✓ {pointsUsed.toLocaleString()} points applied · -${pointsDiscount.toFixed(2)} off</p>
           )}
         </div>
       )}

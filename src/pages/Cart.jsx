@@ -65,13 +65,13 @@ export default function Cart() {
 
       {/* Birthday Reward Banner */}
       {birthdayActive && meetsMinimum && (
-        <div className="mx-4 mb-3 bg-pink-50 border border-pink-200 rounded-xl p-3">
+        <div className="mx-4 mb-3 bg-pink-500/10 border border-pink-500/30 rounded-xl p-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Gift className="w-4 h-4 text-pink-500 shrink-0" />
               <div>
-                <p className="text-xs font-semibold text-pink-900">🎂 Birthday Reward — Free 12oz Juice!</p>
-                <p className="text-[10px] text-pink-700">Add a free bottle to your order (valid 30 days)</p>
+                <p className="text-xs font-semibold">🎂 Birthday Reward — Free 12oz Juice!</p>
+                <p className="text-[10px] text-muted-foreground">Add a free bottle to your order (valid 30 days)</p>
               </div>
             </div>
             {rewardInCart ? (
@@ -85,9 +85,9 @@ export default function Cart() {
 
       {/* Minimum Order Notice */}
       {!meetsMinimum && (
-        <div className="mx-4 mb-3 bg-orange-50 border border-orange-300 rounded-xl p-3 flex items-center gap-2">
+        <div className="mx-4 mb-3 bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
-          <p className="text-xs font-semibold text-orange-900">
+          <p className="text-xs font-semibold text-foreground">
             Minimum order is 3 bottles — add {3 - juiceCount} more to checkout.
           </p>
         </div>
@@ -95,9 +95,9 @@ export default function Cart() {
 
       {/* Production Day Banner */}
       {productionInfo && (
-        <div className="mx-4 mb-2 bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center gap-2">
+        <div className="mx-4 mb-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-center gap-2">
           <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
-          <p className="text-xs font-semibold text-amber-900">{productionInfo.label}</p>
+          <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">{productionInfo.label}</p>
         </div>
       )}
 
@@ -178,8 +178,8 @@ export default function Cart() {
             <span>${(subtotal + deliveryFee).toFixed(2)}</span>
           </div>
           {isPreLaunch() && (
-            <div className="mb-3 bg-amber-50 border border-amber-300 rounded-xl p-3 text-center">
-              <p className="text-xs font-semibold text-amber-900">🚀 Orders open {launchDateFormatted()} — browse freely until then!</p>
+            <div className="mb-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-center">
+              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">🚀 Orders open {launchDateFormatted()} — browse freely until then!</p>
             </div>
           )}
           <Button
