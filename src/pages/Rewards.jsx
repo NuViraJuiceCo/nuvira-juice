@@ -20,10 +20,10 @@ const MILESTONES = [
 ];
 
 const DEFAULT_REWARDS = [
-  { title: 'Free 2oz Shot', description: 'Any wellness add-on shot', points_required: 500, icon: '🥃', reward_type: 'free_bottle' },
+  { title: 'Free 2oz Shot', description: 'Any wellness add-on shot', points_required: 500, icon: '💛', reward_type: 'free_bottle' },
   { title: 'Free Delivery', description: 'On your next order', points_required: 1000, icon: '🚚', reward_type: 'free_delivery' },
   { title: 'Free 32oz Juice', description: 'Any flavor, any day', points_required: 2500, icon: '🍊', reward_type: 'free_bottle' },
-  { title: 'Bundle Deal', description: '6-pack at the price of 4', points_required: 5000, icon: '🎁', reward_type: 'bundle' },
+  { title: 'Bundle Deal', description: '6-pack at the price of 3', points_required: 5000, icon: '🎁', reward_type: 'bundle' },
 ];
 
 const HOW_TO_EARN = [
