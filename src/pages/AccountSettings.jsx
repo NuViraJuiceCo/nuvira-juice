@@ -20,6 +20,7 @@ export default function AccountSettings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (user?.email) {
@@ -35,7 +36,7 @@ export default function AccountSettings() {
         }
       });
     }
-  }, [user]);
+  }, [user, refreshKey]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -62,6 +63,8 @@ export default function AccountSettings() {
       }
       
       setSaveSuccess(true);
+      // Trigger refresh to reload data from server
+      setRefreshKey(prev => prev + 1);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
       console.error('Save error:', err);
