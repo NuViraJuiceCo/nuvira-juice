@@ -153,7 +153,7 @@ export default function OnboardingQuiz({ onComplete }) {
       </div>
 
       {/* Options */}
-      <div className="flex-1 overflow-y-auto px-4 py-5">
+      <div className="flex-1 overflow-y-auto px-4 py-5 pb-24">
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
