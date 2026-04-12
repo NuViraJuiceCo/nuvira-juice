@@ -22,11 +22,18 @@ export default function AccountSettings() {
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
   useEffect(() => {
-    if (user) {
+    if (user?.email) {
       setFullName(user.full_name || '');
-      setPhone(user.phone || '');
-      setAddress(user.default_address || '');
-      setBirthday(user.birthday || '');
+      
+      // Load additional profile data
+      base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
+        if (profiles.length > 0) {
+          const profile = profiles[0];
+          setPhone(profile.phone || '');
+          setAddress(profile.address || '');
+          setBirthday(profile.birthday || '');
+        }
+      });
     }
   }, [user]);
 
@@ -35,6 +42,25 @@ export default function AccountSettings() {
     setSaveSuccess(false);
     try {
       await base44.auth.updateMe({ full_name: fullName });
+      
+      // Save additional profile data
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
+      if (profiles.length > 0) {
+        await base44.entities.UserProfile.update(profiles[0].id, {
+          customer_email: user?.email,
+          phone,
+          address,
+          birthday,
+        });
+      } else {
+        await base44.entities.UserProfile.create({
+          customer_email: user?.email,
+          phone,
+          address,
+          birthday,
+        });
+      }
+      
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
