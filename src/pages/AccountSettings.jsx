@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ArrowLeft, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,8 @@ export default function AccountSettings() {
   const [address, setAddress] = useState('');
   const [birthday, setBirthday] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -94,7 +97,56 @@ export default function AccountSettings() {
           <Save className="w-4 h-4 mr-2" />
           {isSaving ? 'Saving...' : 'Save Changes'}
         </Button>
+
+        {/* Account Deletion */}
+        <div className="pt-4 border-t border-border">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-destructive mb-2">Danger Zone</h2>
+          <p className="text-xs text-muted-foreground mb-3">Deleting your account is permanent and cannot be undone.</p>
+          <Button
+            variant="destructive"
+            onClick={() => setShowDeleteDialog(true)}
+            className="w-full h-11 rounded-xl font-semibold"
+          >
+            Delete My Account
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Account</DialogTitle>
+            <DialogDescription>
+              This action is permanent and cannot be undone. All your data, orders, and points will be removed.
+              Type <strong>DELETE</strong> to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <input
+            value={deleteConfirm}
+            onChange={e => setDeleteConfirm(e.target.value)}
+            placeholder="Type DELETE to confirm"
+            className="w-full h-10 rounded-lg border border-input px-3 text-sm"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteConfirm !== 'DELETE'}
+              onClick={async () => {
+                await base44.integrations.Core.SendEmail({
+                  to: 'nuvirajuiceco@gmail.com',
+                  subject: 'Account Deletion Request',
+                  body: `User ${user?.email} (${user?.full_name}) has requested account deletion.`,
+                });
+                setShowDeleteDialog(false);
+                toast.success('Deletion request submitted. We will process it within 48 hours.');
+              }}
+            >
+              Confirm Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

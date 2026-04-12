@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Building2, Dumbbell, Briefcase, Heart, Mail, Check, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -115,14 +116,16 @@ export default function Partner() {
         <Input placeholder="Phone (optional)" type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="rounded-xl h-11" />
 
         {/* Business Type Select */}
-        <select
-          value={form.type}
-          onChange={e => setForm({ ...form, type: e.target.value })}
-          className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Business Type (optional)</option>
-          {partnerTypes.map(t => <option key={t.label} value={t.label}>{t.label}</option>)}
-        </select>
+        <Select value={form.type} onValueChange={val => setForm({ ...form, type: val })}>
+          <SelectTrigger className="w-full h-11 rounded-xl">
+            <SelectValue placeholder="Business Type (optional)" />
+          </SelectTrigger>
+          <SelectContent>
+            {partnerTypes.map(t => (
+              <SelectItem key={t.label} value={t.label}>{t.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <textarea
           placeholder="Tell us about your space and what you're looking for (optional)"

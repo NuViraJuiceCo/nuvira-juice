@@ -1,5 +1,6 @@
 import React from 'react';
 import SEO from '@/components/SEO';
+import PullToRefresh from '@/components/PullToRefresh';
 import { motion } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
@@ -78,7 +79,15 @@ export default function Home() {
   const lastOrder = orders[0];
   const unreadCount = notifications.length;
 
+  const { refetch: refetchProducts } = useQuery({ queryKey: ['products'], queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 50) });
+  const { refetch: refetchSchedules } = useQuery({ queryKey: ['delivery-schedule'], queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }) });
+
+  const handleRefresh = async () => {
+    await Promise.all([refetchProducts(), refetchSchedules()]);
+  };
+
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <div className="pb-4">
       <SEO
         title="Home"
@@ -165,5 +174,6 @@ export default function Home() {
       <MerchTeaser />
       <BrandSection />
     </div>
+    </PullToRefresh>
   );
 }

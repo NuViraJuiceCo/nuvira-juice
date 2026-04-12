@@ -37,18 +37,18 @@ export default function BundleComposer({ bundleSize, composition, juices, onChan
           <div className="flex items-center gap-2">
             <button
               onClick={() => adjust(juice, -1)}
-              className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center disabled:opacity-30"
+              className="w-11 h-11 rounded-full bg-secondary flex items-center justify-center disabled:opacity-30"
               disabled={getQty(juice.id) === 0}
             >
-              <Minus className="w-3 h-3" />
+              <Minus className="w-3.5 h-3.5" />
             </button>
             <span className="text-sm font-bold w-4 text-center">{getQty(juice.id)}</span>
             <button
               onClick={() => adjust(juice, 1)}
-              className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center disabled:opacity-30"
+              className="w-11 h-11 rounded-full bg-secondary flex items-center justify-center disabled:opacity-30"
               disabled={remaining === 0}
             >
-              <Plus className="w-3 h-3" />
+              <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import SEO from '@/components/SEO';
+import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -23,7 +24,7 @@ export default function Shop() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filterParam = searchParams.get('filter');
 
-  const { data: products = [], isLoading } = useQuery({
+  const { data: products = [], isLoading, refetch } = useQuery({
     queryKey: ['products'],
     queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 100),
   });
@@ -56,6 +57,7 @@ export default function Shop() {
   }, [products, category, search, filterParam]);
 
   return (
+    <PullToRefresh onRefresh={refetch}>
     <div className="pb-4">
       <SEO
         title="Shop Cold-Pressed Juices"
@@ -128,5 +130,6 @@ export default function Shop() {
         )}
       </div>
     </div>
+    </PullToRefresh>
   );
 }

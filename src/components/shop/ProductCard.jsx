@@ -42,7 +42,7 @@ export default function ProductCard({ product, compact = false }) {
             <motion.button
               onClick={handleQuickAdd}
               whileTap={{ scale: 0.85 }}
-              className="absolute bottom-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg"
+              className="absolute bottom-2 right-2 w-11 h-11 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg"
             >
               <Plus className="w-3.5 h-3.5" />
             </motion.button>
@@ -80,7 +80,7 @@ export default function ProductCard({ product, compact = false }) {
           )}
           <button
             onClick={handleQuickAdd}
-            className="absolute bottom-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"
+            className="absolute bottom-2 right-2 w-11 h-11 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"
           >
             <Plus className="w-4 h-4" />
           </button>
