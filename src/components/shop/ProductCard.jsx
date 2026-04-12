@@ -36,7 +36,7 @@ export default function ProductCard({ product, compact = false }) {
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
             {/* Price badge */}
             <div className="absolute bottom-2 left-2 bg-white/90 backdrop-blur-sm rounded-full px-2 py-0.5">
-              <span className="text-[11px] font-bold text-foreground">${product.price?.toFixed(2)}</span>
+              <span className="text-[11px] font-bold text-slate-900">${product.price?.toFixed(2)}</span>
             </div>
             {/* Add button */}
             <motion.button
