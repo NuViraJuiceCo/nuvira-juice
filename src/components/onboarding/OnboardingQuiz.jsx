@@ -152,6 +152,27 @@ export default function OnboardingQuiz({ onComplete }) {
         <p className="text-primary-foreground/70 text-xs mt-1">{current.subtitle}</p>
       </div>
 
+      {/* Button - Sticky */}
+      <div className="sticky top-0 bg-gradient-to-b from-background to-transparent px-4 pt-4 pb-3 z-10">
+        <Button
+          onClick={handleNext}
+          disabled={!canNext() || saving}
+          className="w-full h-11 rounded-xl font-semibold text-sm"
+        >
+          {saving ? 'Saving...' : step === STEPS.length - 1 ? (
+            <>
+              <Leaf className="w-4 h-4 mr-2" />
+              Start My Journey
+            </>
+          ) : (
+            <>
+              Next
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </>
+          )}
+        </Button>
+      </div>
+
       {/* Options */}
       <div className="flex-1 overflow-y-auto px-4 py-5">
         <AnimatePresence mode="wait">
@@ -160,7 +181,7 @@ export default function OnboardingQuiz({ onComplete }) {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="grid grid-cols-2 gap-3 mb-6"
+            className="grid grid-cols-2 gap-3"
           >
             {current.options.map((opt, i) => {
               const selected = isSelected(current.key, opt.value);
@@ -184,23 +205,6 @@ export default function OnboardingQuiz({ onComplete }) {
             })}
           </motion.div>
         </AnimatePresence>
-        <Button
-          onClick={handleNext}
-          disabled={!canNext() || saving}
-          className="w-full h-12 rounded-xl font-semibold text-sm mb-6"
-        >
-          {saving ? 'Saving...' : step === STEPS.length - 1 ? (
-            <>
-              <Leaf className="w-4 h-4 mr-2" />
-              Start My Journey
-            </>
-          ) : (
-            <>
-              Next
-              <ArrowRight className="w-4 h-4 ml-1" />
-            </>
-          )}
-        </Button>
       </div>
     </div>
   );
