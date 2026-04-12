@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SEO from '@/components/SEO';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Gift, Copy, Share2, Users, Check } from 'lucide-react';
@@ -62,6 +63,7 @@ export default function Referral() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
+      <SEO title="Refer & Earn" description="Share NuVira with friends. They get $5 off their first order. You earn a free bottle. Real. Living. Nutrition." />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/account">

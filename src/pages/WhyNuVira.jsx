@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SEO from '@/components/SEO';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
@@ -63,6 +64,10 @@ function AccordionItem({ title, body }) {
 export default function WhyNuVira() {
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Why NuVira"
+        description="Cold-pressed, never compromised. Learn why NuVira's small-batch, made-to-order juices are the gold standard in living nutrition."
+      />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/account">

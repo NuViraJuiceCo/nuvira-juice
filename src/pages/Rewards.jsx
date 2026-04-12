@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -62,6 +63,7 @@ export default function Rewards() {
 
   return (
     <div className="pb-24 bg-background min-h-screen">
+      <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles. Start earning today." />
       {/* Header */}
       <div className="relative bg-primary px-4 pt-10 pb-6 overflow-hidden">
         <div className="absolute inset-0 opacity-10"

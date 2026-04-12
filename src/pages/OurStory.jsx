@@ -1,4 +1,5 @@
 import React from 'react';
+import SEO from '@/components/SEO';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Leaf, Heart, Sparkles, MapPin } from 'lucide-react';
@@ -17,6 +18,11 @@ const values = [
 export default function OurStory() {
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Our Story"
+        description="NuVira Juice Company was built on real, living nutrition. Cold-pressed in St. Louis, made to order, no compromises. Learn our story."
+        image="https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg"
+      />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/account">

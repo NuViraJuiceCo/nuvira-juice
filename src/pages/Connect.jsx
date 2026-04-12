@@ -1,4 +1,5 @@
 import React from 'react';
+import SEO from '@/components/SEO';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -72,6 +73,7 @@ export default function Connect() {
 
   return (
     <div className="pb-10">
+      <SEO title="Connect With Us" description="Follow NuVira Juice Co on Instagram, TikTok, and Facebook. Fresh content, drops, events & STL community vibes." />
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
