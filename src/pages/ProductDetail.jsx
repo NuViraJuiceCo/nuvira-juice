@@ -36,7 +36,13 @@ export default function ProductDetail() {
 
   const handleAddToCart = () => {
     if (!product) return;
-    addItem(product, quantity);
+    const extra = {};
+    if (product.category === 'bundle') {
+      const sizeNum = parseInt((product.size || '').replace(/[^0-9]/g, ''));
+      extra.bundle_size = (sizeNum || 3) * quantity;
+      extra.bundle_composition = [];
+    }
+    addItem(product, quantity, extra);
     toast.success(`${product.title} added to cart`);
   };
 

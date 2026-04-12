@@ -12,7 +12,7 @@ export function CartProvider({ children }) {
     localStorage.setItem('nuvira_cart', JSON.stringify(items));
   }, [items]);
 
-  const addItem = (product, quantity = 1) => {
+  const addItem = (product, quantity = 1, extra = {}) => {
     setItems(prev => {
       const existing = prev.find(i => i.product_id === product.id);
       if (existing) {
@@ -28,7 +28,9 @@ export function CartProvider({ children }) {
         price: product.price,
         quantity,
         image_url: product.image_url,
-        size: product.size
+        size: product.size,
+        category: product.category,
+        ...extra,
       }];
     });
   };
@@ -47,6 +49,10 @@ export function CartProvider({ children }) {
     );
   };
 
+  const updateBundleComposition = (productId, composition) => {
+    setItems(prev => prev.map(i => i.product_id === productId ? { ...i, bundle_composition: composition } : i));
+  };
+
   const clearCart = () => setItems([]);
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -54,7 +60,7 @@ export function CartProvider({ children }) {
 
   return (
     <CartContext.Provider value={{
-      items, addItem, removeItem, updateQuantity, clearCart, subtotal, itemCount
+      items, addItem, removeItem, updateQuantity, updateBundleComposition, clearCart, subtotal, itemCount
     }}>
       {children}
     </CartContext.Provider>

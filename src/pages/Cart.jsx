@@ -9,14 +9,21 @@ import { base44 } from '@/api/base44Client';
 import { getDeliveryDisplayText, getProductionInfo } from '@/lib/deliveryUtils';
 import { Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import BundleComposer from '@/components/cart/BundleComposer';
 
 export default function Cart() {
-  const { items, updateQuantity, removeItem, subtotal, itemCount } = useCart();
+  const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount } = useCart();
   const navigate = useNavigate();
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
     queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
+  });
+
+  const { data: juices = [] } = useQuery({
+    queryKey: ['juices-for-bundle'],
+    queryFn: () => base44.entities.Product.filter({ category: 'juice', is_available: true }, 'sort_order', 20),
+    enabled: items.some(i => i.category === 'bundle'),
   });
 
   const scheduleRules = schedules[0]?.rules || [];
@@ -82,34 +89,46 @@ export default function Cart() {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
-              className="flex gap-3 bg-card rounded-xl border border-border/50 p-3"
+              className="bg-card rounded-xl border border-border/50 p-3"
             >
-              <div className="w-16 h-16 bg-secondary/50 rounded-lg overflow-hidden shrink-0">
-                {item.image_url ? (
-                  <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-2xl">🍊</div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{item.title}</p>
-                {item.size && <p className="text-[10px] text-muted-foreground">{item.size}</p>}
-                <p className="text-sm font-semibold mt-1">${(item.price * item.quantity).toFixed(2)}</p>
-              </div>
-              <div className="flex flex-col items-end justify-between">
-                <button onClick={() => removeItem(item.product_id)} className="p-1">
-                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                </button>
-                <div className="flex items-center gap-2 bg-secondary rounded-lg px-2 py-1">
-                  <button onClick={() => updateQuantity(item.product_id, item.quantity - 1)}>
-                    <Minus className="w-3 h-3" />
+              <div className="flex gap-3">
+                <div className="w-16 h-16 bg-secondary/50 rounded-lg overflow-hidden shrink-0">
+                  {item.image_url ? (
+                    <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-2xl">🍊</div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{item.title}</p>
+                  {item.size && <p className="text-[10px] text-muted-foreground">{item.size}</p>}
+                  <p className="text-sm font-semibold mt-1">${(item.price * item.quantity).toFixed(2)}</p>
+                </div>
+                <div className="flex flex-col items-end justify-between">
+                  <button onClick={() => removeItem(item.product_id)} className="p-1">
+                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
-                  <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
-                  <button onClick={() => updateQuantity(item.product_id, item.quantity + 1)}>
-                    <Plus className="w-3 h-3" />
-                  </button>
+                  <div className="flex items-center gap-2 bg-secondary rounded-lg px-2 py-1">
+                    <button onClick={() => updateQuantity(item.product_id, item.quantity - 1)}>
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
+                    <button onClick={() => updateQuantity(item.product_id, item.quantity + 1)}>
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {/* Bundle Composer */}
+              {item.category === 'bundle' && item.bundle_size && (
+                <BundleComposer
+                  bundleSize={item.bundle_size}
+                  composition={item.bundle_composition || []}
+                  juices={juices}
+                  onChange={(comp) => updateBundleComposition(item.product_id, comp)}
+                />
+              )}
             </motion.div>
           ))}
         </AnimatePresence>
