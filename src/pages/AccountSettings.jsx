@@ -38,10 +38,11 @@ export default function AccountSettings() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
+      console.error('Save error:', err);
       toast.error('Failed to save settings');
-      console.error(err);
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   return (
