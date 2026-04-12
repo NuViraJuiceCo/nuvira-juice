@@ -39,7 +39,7 @@ export default function ProductDetail() {
     const extra = {};
     if (product.category === 'bundle') {
       const sizeNum = parseInt((product.size || '').replace(/[^0-9]/g, ''));
-      extra.bundle_size = (sizeNum || 3) * quantity;
+      extra.bottles_per_unit = sizeNum || 3;
       extra.bundle_composition = [];
     }
     addItem(product, quantity, extra);
@@ -134,18 +134,16 @@ export default function ProductDetail() {
             </div>
           )}
 
-          {/* Wellness Note */}
-          {product.wellness_note && (
-            <div className="mt-3 bg-primary/5 rounded-xl p-3.5">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Info className="w-3.5 h-3.5 text-primary" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">Wellness</h3>
-              </div>
-              <p className="text-xs text-foreground/70 leading-relaxed">{product.wellness_note}</p>
-            </div>
-          )}
+          {/* Certifications */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
+              <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-primary/8 text-primary border border-primary/20 rounded-full">
+                ✓ {cert}
+              </span>
+            ))}
+          </div>
 
-          {/* Related */}
+          {/* Wellness Note */}
           {related.length > 0 && (
             <div className="mt-6">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">You might also like</h3>

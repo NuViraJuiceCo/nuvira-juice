@@ -7,28 +7,44 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const faqs = [
   {
+    q: 'What makes NuVira juices different?',
+    a: 'Our juices are cold-pressed from whole fruits and vegetables and crafted to support hydration, clarity, and wellness. Never heated, never compromised.',
+  },
+  {
+    q: 'Do you use any preservatives?',
+    a: 'Never. Each bottle is 100% natural with zero artificial additives. Clean ingredients, nothing else.',
+  },
+  {
+    q: 'How long do the juices last?',
+    a: 'Keep refrigerated. Enjoy within 3 days of opening for best freshness and maximum nutrients.',
+  },
+  {
     q: 'How does delivery work?',
     a: 'We produce fresh juice in small batches. Depending on when you order, your juice will be delivered on the next scheduled delivery day. You can see your estimated delivery date at checkout.',
   },
   {
+    q: 'What areas do you deliver to?',
+    a: "We currently deliver within the St. Louis area. Check at checkout if we deliver to your address. We're expanding coverage regularly.",
+  },
+  {
+    q: 'Can I customize my juice order?',
+    a: 'Yes! You can mix and match flavors or choose from our curated bundles to fit your lifestyle and wellness goals.',
+  },
+  {
+    q: 'Can I subscribe to receive juices regularly?',
+    a: 'Yes! We offer flexible subscription plans so you can enjoy your favorite juices every week without reordering. Visit the Subscribe section in your account.',
+  },
+  {
+    q: 'Do you have bulk or corporate packages?',
+    a: 'We sure do! We provide special pricing for bulk orders and corporate wellness programs — perfect for teams, events, and offices. Email us to learn more.',
+  },
+  {
+    q: 'Are your bottles recyclable?',
+    a: 'Yes. Our bottles and packaging are eco-friendly and recyclable.',
+  },
+  {
     q: 'Can I change or cancel my order?',
     a: 'You can contact us before your order enters production. Once juicing begins, we cannot modify the order to ensure freshness.',
-  },
-  {
-    q: 'What areas do you deliver to?',
-    a: "We currently deliver within our local area. Check at checkout if we deliver to your address. We're expanding coverage regularly.",
-  },
-  {
-    q: 'How should I store my juice?',
-    a: 'Keep your juice refrigerated at all times. Our cold-pressed juices are best consumed within 3-5 days of delivery for maximum freshness and nutrients.',
-  },
-  {
-    q: 'Do you offer subscriptions?',
-    a: "We're working on a subscription service so you can get fresh juice delivered on a regular schedule. Stay tuned!",
-  },
-  {
-    q: 'Are your juices organic?',
-    a: 'We source the highest quality ingredients, prioritizing organic and locally-sourced produce whenever possible.',
   },
 ];
 
@@ -50,7 +66,7 @@ export default function Support() {
         <MessageCircle className="w-8 h-8 text-primary mx-auto mb-2" />
         <h2 className="font-heading text-base font-semibold mb-1">Need Help?</h2>
         <p className="text-xs text-muted-foreground mb-3">We're here for you</p>
-        <a href="mailto:info@nuvirajuice.com">
+        <a href="mailto:nuvirajuiceco@gmail.com">
           <Button size="sm" className="rounded-full px-5">
             <Mail className="w-3.5 h-3.5 mr-1.5" />
             Email Us
@@ -69,7 +85,7 @@ export default function Support() {
               key={i}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
+              transition={{ delay: i * 0.04 }}
               className="bg-card rounded-xl border border-border/50 overflow-hidden"
             >
               <button
@@ -104,10 +120,11 @@ export default function Support() {
           ))}
         </div>
       </div>
+
       {/* Google Review */}
       <div className="px-4 mt-6">
         <a
-          href="https://g.page/r/nuvirajuiceco/review"
+          href="https://www.google.com/maps/place/NuVira+Juice+Company/@38.7028093,-90.7162366,11z/data=!3m1!4b1!4m6!3m5!1s0x6ba31dd76fc40465:0x251d9ffa6e774456!8m2!3d38.702657!4d-90.5514294!16s%2Fg%2F11xsw1cxfz"
           target="_blank"
           rel="noopener noreferrer"
         >

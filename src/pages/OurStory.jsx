@@ -110,11 +110,49 @@ export default function OurStory() {
           </p>
         </motion.section>
 
+        {/* Customer Reviews */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+        >
+          <h3 className="font-heading text-lg font-semibold mb-4">What People Are Saying</h3>
+          <div className="space-y-4">
+            {[
+              {
+                name: 'Jesse Kahlon',
+                review: "NuVira Juice Co. is truly a standout when it comes to fresh, vibrant, and delicious juices! Every sip tastes like it's been crafted with care, quality, and passion. The flavors are perfectly balanced — refreshing, nutrient-packed, and never too sweet. You can literally taste the freshness in every bottle.",
+              },
+              {
+                name: 'Jagdish Kaur',
+                review: "Nuvira juice is truly amazing. It's fresh, vibrant and packed with natural flavours. I could taste the quality in every sip and knowing it's cold pressed with real ingredients makes it even better. It's the perfect blend of amazing taste and real health benefits that give you clean energy and nourishment that I could feel. Would highly recommend!",
+              },
+            ].map(({ name, review }) => (
+              <div key={name} className="bg-secondary/50 rounded-2xl border border-border/40 p-5">
+                <div className="flex gap-0.5 mb-3">
+                  {[1,2,3,4,5].map(s => <span key={s} className="text-yellow-400 text-sm">★</span>)}
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-3 italic">"{review}"</p>
+                <p className="text-xs font-semibold text-foreground">— {name}</p>
+                <p className="text-[10px] text-muted-foreground">Verified Google Review</p>
+              </div>
+            ))}
+          </div>
+          <a
+            href="https://www.google.com/maps/place/NuVira+Juice+Company/@38.7028093,-90.7162366,11z"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 flex items-center justify-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-sm font-semibold text-yellow-700"
+          >
+            ⭐ Leave a Google Review
+          </a>
+        </motion.section>
+
         {/* CTA */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
+          transition={{ delay: 0.4 }}
           className="text-center pb-4"
         >
           <Link to="/shop">

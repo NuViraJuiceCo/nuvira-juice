@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const TICKER_ITEMS = ['Cold-Pressed', 'No Additives', 'Made in STL', 'Small-Batch', 'Never Heated', 'Real Ingredients', 'Locally Sourced'];
+const TICKER_ITEMS = ['Cold-Pressed', 'No Additives', 'Made in STL', 'Small-Batch', 'Never Heated', 'Vegan', 'Non-GMO', 'Gluten-Free', 'Real Ingredients', 'Locally Sourced', 'No Fillers', 'No Compromises'];
 
 export default function TickerBanner() {
   return (

@@ -32,9 +32,12 @@ export default function BrandSection() {
           <img src={TRIO_URL} alt="NuVira Juices" className="w-full h-36 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-br from-primary/90 via-primary/75 to-primary/50" />
           <div className="absolute inset-0 p-4 flex flex-col justify-between">
-            <p className="font-heading text-primary-foreground font-bold text-lg leading-tight">
-              The NuVira Difference
-            </p>
+            <div>
+              <p className="font-heading text-primary-foreground font-bold text-lg leading-tight">
+                The NuVira Difference
+              </p>
+              <p className="text-primary-foreground/70 text-[10px] mt-0.5">No fillers. No compromises.</p>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {values.map(({ icon: Icon, title, desc }, i) => (
                 <motion.div

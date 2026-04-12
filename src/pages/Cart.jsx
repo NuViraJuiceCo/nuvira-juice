@@ -30,7 +30,7 @@ export default function Cart() {
   const deliveryText = getDeliveryDisplayText(scheduleRules);
   const productionInfo = getProductionInfo(scheduleRules);
   const deliveryFee = 5.00;
-  const juiceCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const juiceCount = items.reduce((sum, item) => sum + (item.bottles_per_unit ? item.bottles_per_unit * item.quantity : item.quantity), 0);
   const meetsMinimum = juiceCount >= 3;
 
   if (items.length === 0) {
@@ -121,9 +121,9 @@ export default function Cart() {
               </div>
 
               {/* Bundle Composer */}
-              {item.category === 'bundle' && item.bundle_size && (
+              {item.category === 'bundle' && item.bottles_per_unit && (
                 <BundleComposer
-                  bundleSize={item.bundle_size}
+                  bundleSize={item.bottles_per_unit * item.quantity}
                   composition={item.bundle_composition || []}
                   juices={juices}
                   onChange={(comp) => updateBundleComposition(item.product_id, comp)}
