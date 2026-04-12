@@ -42,9 +42,9 @@ export default function ProductCard({ product, compact = false }) {
             <motion.button
               onClick={handleQuickAdd}
               whileTap={{ scale: 0.85 }}
-              className="absolute bottom-2 right-2 w-11 h-11 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg"
+              className="absolute bottom-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3 h-3" />
             </motion.button>
             {product.is_best_seller && (
               <div className="absolute top-2 left-2 bg-accent text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow">
