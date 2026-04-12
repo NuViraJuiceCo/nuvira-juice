@@ -267,9 +267,9 @@ export default function Rewards() {
                 }`}
               >
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 ${
-                  unlocked ? 'bg-primary/10' : 'bg-muted'
+                  unlocked ? 'bg-green-100' : 'bg-muted'
                 }`}>
-                  {unlocked ? (reward.icon || '🎁') : <Lock className="w-4 h-4 text-muted-foreground" />}
+                  {reward.icon || '🎁'}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-semibold ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
