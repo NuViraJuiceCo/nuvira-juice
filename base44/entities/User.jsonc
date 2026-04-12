@@ -1,0 +1,29 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "user",
+        "admin"
+      ],
+      "default": "user",
+      "description": "User role - new signups default to user"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Phone number"
+    },
+    "address": {
+      "type": "string",
+      "description": "Default delivery address"
+    },
+    "birthday": {
+      "type": "string",
+      "format": "date",
+      "description": "Birthday for rewards"
+    }
+  },
+  "required": []
+}
