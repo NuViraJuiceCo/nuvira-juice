@@ -91,6 +91,16 @@ export default function AccountSettings() {
       
       // Keep localStorage cache updated with latest saved data
       saveToLocalStorage(fullName, phone, address, birthday);
+      
+      // Sync to operations hub
+      await base44.functions.invoke('syncUserToHub', {
+        email: user?.email,
+        full_name: fullName,
+        phone,
+        address,
+        birthday,
+      });
+      
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
