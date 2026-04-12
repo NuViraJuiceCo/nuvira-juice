@@ -187,16 +187,22 @@ export default function OnboardingQuiz({ onComplete }) {
       </div>
 
       {/* Footer */}
-      <div className="px-4 pb-6 pt-3 border-t border-border safe-area-bottom">
+      <div className="px-4 py-4 pt-3 border-t border-border" style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom) + 1.5rem))' }}>
         <Button
           onClick={handleNext}
           disabled={!canNext() || saving}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
           {saving ? 'Saving...' : step === STEPS.length - 1 ? (
-            <><Leaf className="w-4 h-4 mr-2" />Start My Journey</>
+            <>
+              <Leaf className="w-4 h-4 mr-2" />
+              Start My Journey
+            </>
           ) : (
-            <>Next <ArrowRight className="w-4 h-4 ml-1" /></>
+            <>
+              Next
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </>
           )}
         </Button>
       </div>
