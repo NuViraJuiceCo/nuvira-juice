@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -50,6 +51,7 @@ export default function ProductDetail() {
   if (!product) {
     return (
       <div className="min-h-screen flex items-center justify-center">
+        <SEO title="Product Not Found" description="This product could not be found." />
         <p className="text-muted-foreground">Product not found</p>
       </div>
     );
@@ -57,6 +59,12 @@ export default function ProductDetail() {
 
   return (
     <div className="pb-32">
+      <SEO
+        title={product.title}
+        description={product.short_description || product.description}
+        image={product.image_url}
+        type="product"
+      />
       {/* Image */}
       <div className="relative">
         <div className="aspect-square bg-secondary/50 overflow-hidden">

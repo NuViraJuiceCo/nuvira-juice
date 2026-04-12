@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -56,6 +57,10 @@ export default function Shop() {
 
   return (
     <div className="pb-4">
+      <SEO
+        title="Shop Cold-Pressed Juices"
+        description="Browse NuVira's lineup of fresh cold-pressed juices, bundles, and wellness packs. Order online for delivery in the St. Louis, MO area."
+      />
       {/* Header */}
       <div className="px-4 pt-4 pb-3">
         <h1 className="font-heading text-xl font-bold">Shop</h1>

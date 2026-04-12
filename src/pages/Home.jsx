@@ -1,4 +1,5 @@
 import React from 'react';
+import SEO from '@/components/SEO';
 import { motion } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
@@ -79,6 +80,10 @@ export default function Home() {
 
   return (
     <div className="pb-4">
+      <SEO
+        title="Home"
+        description="Fresh cold-pressed juices delivered to your door in the St. Louis area. Real. Living. Nutrition. — NuVira Juice Co., Wentzville, MO."
+      />
       {showOnboarding && <OnboardingQuiz onComplete={() => refetchProfile()} />}
       {/* Header */}
       <motion.div
