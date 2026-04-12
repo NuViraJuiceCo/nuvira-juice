@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 export default function AccountSettings() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [birthday, setBirthday] = useState('');
@@ -21,6 +22,7 @@ export default function AccountSettings() {
 
   useEffect(() => {
     if (user) {
+      setFullName(user.full_name || '');
       setPhone(user.phone || '');
       setAddress(user.default_address || '');
       setBirthday(user.birthday || '');
@@ -30,7 +32,7 @@ export default function AccountSettings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await base44.auth.updateMe({ phone, default_address: address, birthday });
+      await base44.auth.updateMe({ full_name: fullName, phone, default_address: address, birthday });
       toast.success('Settings saved!');
     } catch (err) {
       toast.error('Failed to save settings');
@@ -54,13 +56,13 @@ export default function AccountSettings() {
           <div className="space-y-3">
             <div>
               <Label className="text-xs text-muted-foreground">Full Name</Label>
-              <Input value={user?.full_name || ''} disabled className="rounded-xl h-11 bg-secondary/30 opacity-70" />
+              <Input value={fullName} onChange={e => setFullName(e.target.value)} className="rounded-xl h-11" />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Email</Label>
               <Input value={user?.email || ''} disabled className="rounded-xl h-11 bg-secondary/30 opacity-70" />
             </div>
-            <p className="text-[10px] text-muted-foreground">Name and email are managed by your account and cannot be changed here.</p>
+            <p className="text-[10px] text-muted-foreground">Email is managed by your account and cannot be changed here.</p>
           </div>
         </div>
 
