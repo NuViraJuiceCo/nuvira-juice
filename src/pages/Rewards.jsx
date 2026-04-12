@@ -63,35 +63,84 @@ export default function Rewards() {
     ? Math.min(100, ((totalPoints - prevMilestone.points) / (nextMilestone.points - prevMilestone.points)) * 100)
     : 100;
 
+  if (!user) {
+    return (
+      <div className="pb-24 bg-background min-h-screen">
+        <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles. Start earning today." />
+        <div className="relative bg-primary px-4 pt-10 pb-8 overflow-hidden">
+          <div className="absolute inset-0 opacity-10"
+            style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, white 0%, transparent 50%), radial-gradient(circle at 80% 20%, white 0%, transparent 50%)' }}
+          />
+          <div className="relative z-10 text-center">
+            <img src={LOGO_URL} alt="NuVira" className="h-6 mb-5 brightness-0 invert opacity-80 mx-auto" />
+            <div className="w-16 h-16 bg-white/15 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Star className="w-8 h-8 text-yellow-300 fill-yellow-300" />
+            </div>
+            <h1 className="font-heading text-2xl font-bold text-primary-foreground mb-2">NuVira Rewards</h1>
+            <p className="text-primary-foreground/80 text-sm max-w-xs mx-auto">Earn points on every order and unlock free bottles, delivery, and exclusive bundles.</p>
+          </div>
+        </div>
+
+        <div className="mx-4 mt-5 space-y-3">
+          {/* Join CTA */}
+          <div className="bg-card border border-primary/30 rounded-2xl p-5 text-center shadow-sm">
+            <Trophy className="w-8 h-8 text-primary mx-auto mb-2" />
+            <h2 className="font-heading text-lg font-bold mb-1">Join the Program</h2>
+            <p className="text-xs text-muted-foreground mb-4">Create an account to start earning points with every purchase.</p>
+            <button
+              onClick={() => base44.auth.redirectToLogin()}
+              className="w-full h-11 bg-primary text-primary-foreground rounded-xl font-semibold text-sm"
+            >
+              Sign Up / Log In to Earn
+            </button>
+          </div>
+
+          {/* How it works */}
+          <div className="bg-card rounded-2xl border border-border/40 overflow-hidden divide-y divide-border/40">
+            <div className="px-4 py-3 bg-muted/40">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">How to Earn</p>
+            </div>
+            {HOW_TO_EARN.map(({ icon: Icon, label, pts }) => (
+              <div key={label} className="flex items-center justify-between px-4 py-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-primary/8 rounded-lg flex items-center justify-center">
+                    <Icon className="w-4 h-4 text-primary" />
+                  </div>
+                  <p className="text-sm font-medium">{label}</p>
+                </div>
+                <span className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">{pts}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Preview rewards */}
+          <h2 className="font-heading text-base font-bold pt-2">Rewards You Can Unlock</h2>
+          <div className="space-y-2">
+            {DEFAULT_REWARDS.map((reward, i) => (
+              <div key={i} className="flex items-center gap-3 bg-card border border-border/40 rounded-2xl p-4">
+                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center text-lg shrink-0">
+                  {reward.icon}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">{reward.title}</p>
+                  <p className="text-xs text-muted-foreground">{reward.description}</p>
+                </div>
+                <div className="flex items-center gap-0.5">
+                  <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                  <span className="text-xs font-bold">{reward.points_required.toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="h-8" />
+      </div>
+    );
+  }
+
   return (
     <div className="pb-24 bg-background min-h-screen">
       <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles. Start earning today." />
-      {/* Header */}
-      <div className="relative bg-primary px-4 pt-10 pb-6 overflow-hidden">
-        <div className="absolute inset-0 opacity-10"
-          style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, white 0%, transparent 50%), radial-gradient(circle at 80% 20%, white 0%, transparent 50%)' }}
-        />
-        <div className="relative z-10">
-          <img src={LOGO_URL} alt="NuVira" className="h-6 mb-4 brightness-0 invert opacity-80" />
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-primary-foreground/70 text-sm">Welcome back,</p>
-              <h1 className="font-heading text-2xl font-bold text-primary-foreground">
-                {user?.full_name?.split(' ')[0] || 'Friend'}
-              </h1>
-            </div>
-            <div className="bg-white/15 rounded-2xl px-4 py-3 text-right">
-              <div className="flex items-center gap-1.5 justify-end">
-                <Star className="w-4 h-4 text-yellow-300 fill-yellow-300" />
-                <span className="font-heading text-2xl font-bold text-white">{totalPoints.toLocaleString()}</span>
-              </div>
-              <p className="text-primary-foreground/70 text-xs mt-0.5">Total Points</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Points Progress Card */}
       <div className="mx-4 mt-4 relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
