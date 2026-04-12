@@ -30,7 +30,10 @@ export default function Cart() {
   const deliveryText = getDeliveryDisplayText(scheduleRules);
   const productionInfo = getProductionInfo(scheduleRules);
   const deliveryFee = 5.00;
-  const juiceCount = items.reduce((sum, item) => sum + (item.bottles_per_unit ? item.bottles_per_unit * item.quantity : item.quantity), 0);
+  const juiceCount = items.reduce((sum, item) => {
+    if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
+    return sum + item.quantity;
+  }, 0);
   const meetsMinimum = juiceCount >= 3;
 
   if (items.length === 0) {
