@@ -38,7 +38,7 @@ export default function Partner() {
     }
     setLoading(true);
     await base44.integrations.Core.SendEmail({
-      to: 'info@nuvirajuice.com',
+      to: 'admin@nuvirajuice.com',
       subject: `New Partnership Inquiry — ${form.business}`,
       body: `Partnership inquiry received:\n\nName: ${form.name}\nBusiness: ${form.business}\nType: ${form.type || 'Not specified'}\nEmail: ${form.email}\nPhone: ${form.phone || 'Not provided'}\nNotes: ${form.notes || 'None'}`,
     });
