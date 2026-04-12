@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -26,7 +27,7 @@ export default function OrderHistory() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const { data: orders = [], isLoading } = useQuery({
+  const { data: orders = [], isLoading, refetch } = useQuery({
     queryKey: ['my-orders-all'],
     queryFn: () => base44.entities.Order.filter(
       { customer_email: user?.email },
@@ -40,8 +41,9 @@ export default function OrderHistory() {
   const completedOrders = orders.filter(o => ['delivered', 'picked_up'].includes(o.status));
 
   return (
+    <PullToRefresh onRefresh={refetch}>
     <div className="pb-4">
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+      <div className="flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />
         </button>
@@ -84,6 +86,7 @@ export default function OrderHistory() {
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }
 

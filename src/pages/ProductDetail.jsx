@@ -82,7 +82,8 @@ export default function ProductDetail() {
         </div>
         <button
           onClick={() => navigate(-1)}
-          className="absolute top-4 left-4 w-9 h-9 bg-card/80 backdrop-blur-md rounded-full flex items-center justify-center"
+          className="absolute left-4 w-9 h-9 bg-card/80 backdrop-blur-md rounded-full flex items-center justify-center"
+          style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
         >
           <ArrowLeft className="w-4 h-4" />
         </button>

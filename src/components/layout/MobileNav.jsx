@@ -29,6 +29,7 @@ export default function MobileNav() {
             <Link
               key={path}
               to={path}
+              onClick={() => { if (isActive) window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 relative"
             >
               <div className="relative">

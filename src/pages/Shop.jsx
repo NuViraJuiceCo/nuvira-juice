@@ -64,7 +64,7 @@ export default function Shop() {
         description="Browse NuVira's lineup of fresh cold-pressed juices, bundles, and wellness packs. Order online for delivery in the St. Louis, MO area."
       />
       {/* Header */}
-      <div className="px-4 pt-4 pb-3">
+      <div className="px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
         <h1 className="font-heading text-xl font-bold">Shop</h1>
         <p className="text-xs text-muted-foreground">Fresh cold-pressed juices & more</p>
       </div>

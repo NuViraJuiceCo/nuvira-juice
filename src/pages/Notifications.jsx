@@ -1,8 +1,10 @@
 import React from 'react';
 import { base44 } from '@/api/base44Client';
+import { useNavigate } from 'react-router-dom';
+import PullToRefresh from '@/components/PullToRefresh';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
-import { Bell, Package, Sparkles, Megaphone, Check } from 'lucide-react';
+import { Bell, Package, Sparkles, Megaphone, Check, ArrowLeft } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -23,9 +25,10 @@ const typeColors = {
 
 export default function Notifications() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: notifications = [], isLoading } = useQuery({
+  const { data: notifications = [], isLoading, refetch } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => base44.entities.Notification.filter(
       { customer_email: user?.email },
@@ -41,10 +44,16 @@ export default function Notifications() {
   });
 
   return (
+    <PullToRefresh onRefresh={refetch}>
     <div className="pb-4">
-      <div className="px-4 pt-4 pb-3">
-        <h1 className="font-heading text-xl font-bold">Updates</h1>
-        <p className="text-xs text-muted-foreground">Stay in the loop</p>
+      <div className="flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center shrink-0">
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div>
+          <h1 className="font-heading text-xl font-bold">Updates</h1>
+          <p className="text-xs text-muted-foreground">Stay in the loop</p>
+        </div>
       </div>
 
       {isLoading ? (
@@ -99,5 +108,6 @@ export default function Notifications() {
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }
