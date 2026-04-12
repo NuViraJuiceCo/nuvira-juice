@@ -17,7 +17,6 @@ export default function AccountSettings() {
   const [birthday, setBirthday] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
   useEffect(() => {
@@ -30,9 +29,13 @@ export default function AccountSettings() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    await base44.auth.updateMe({ phone, default_address: address, birthday });
+    try {
+      await base44.auth.updateMe({ phone, default_address: address, birthday });
+      toast.success('Settings saved!');
+    } catch (err) {
+      toast.error('Failed to save settings');
+    }
     setIsSaving(false);
-    setShowWelcome(true);
   };
 
   return (
@@ -114,27 +117,7 @@ export default function AccountSettings() {
         </div>
       </div>
 
-      {/* Welcome Modal */}
-      <Dialog open={showWelcome} onOpenChange={setShowWelcome}>
-        <DialogContent className="text-center">
-          <div className="flex flex-col items-center gap-3 py-2">
-            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-              <Star className="w-8 h-8 text-primary fill-primary/30" />
-            </div>
-            <DialogTitle className="font-heading text-xl font-bold">Welcome to NuVira Rewards! 🎉</DialogTitle>
-            <DialogDescription className="text-sm text-foreground/70 leading-relaxed">
-              Your profile is saved and you're officially part of the NuVira family. Start earning points with every order — free bottles, free delivery, and exclusive bundles await!
-            </DialogDescription>
-            <div className="flex flex-col gap-2 w-full mt-1">
-              <Button onClick={() => { setShowWelcome(false); }} className="w-full h-11 rounded-xl font-semibold">
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                Let's Go!
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
+      {/* Delete Account Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
