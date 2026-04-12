@@ -27,7 +27,13 @@ export default function Account() {
   const { user } = useAuth();
 
   const handleLogout = () => {
-    base44.auth.logout('/');
+    if (user?.email) {
+      // User is logged in, logout
+      base44.auth.logout('/');
+    } else {
+      // Guest/logged out, redirect to login
+      base44.auth.redirectToLogin('/');
+    }
   };
 
   return (
@@ -137,14 +143,14 @@ export default function Account() {
         </Link>
       </div>
 
-      {/* Logout */}
-      <div className="px-4 mt-6">
+      {/* Logout / Login */}
+      <div className="px-4 mt-6 mb-8">
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-destructive transition-colors px-3"
+          className="w-full flex items-center justify-center gap-2 text-sm font-medium py-3 rounded-xl border border-border bg-card hover:bg-secondary transition-colors"
         >
           <LogOut className="w-4 h-4" />
-          Log out
+          {user?.email ? 'Log out' : 'Log in'}
         </button>
       </div>
 
