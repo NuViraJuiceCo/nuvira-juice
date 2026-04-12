@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, MessageCircle, HelpCircle, Mail, ChevronDown, ChevronUp, ShieldCheck, Star } from 'lucide-react';
+import { ArrowLeft, MessageCircle, HelpCircle, Mail, ChevronDown, ChevronUp, ShieldCheck, Star, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 
 const faqs = [
   {
@@ -51,6 +55,29 @@ const faqs = [
 export default function Support() {
   const navigate = useNavigate();
   const [openIndex, setOpenIndex] = useState(null);
+  const [contactForm, setContactForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const [isSending, setIsSending] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!contactForm.name || !contactForm.email || !contactForm.subject || !contactForm.message) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    setIsSending(true);
+    try {
+      await base44.integrations.Core.SendEmail({
+        to: 'nuvirajuiceco@gmail.com',
+        subject: `Support Request: ${contactForm.subject}`,
+        body: `Name: ${contactForm.name}\nEmail: ${contactForm.email}\n\nMessage:\n${contactForm.message}`,
+      });
+      toast.success('Message sent! We\'ll get back to you soon.');
+      setContactForm({ name: '', email: '', subject: '', message: '' });
+    } catch (err) {
+      toast.error('Failed to send message. Please try again.');
+    }
+    setIsSending(false);
+  };
 
   return (
     <div className="pb-4">
@@ -61,17 +88,56 @@ export default function Support() {
         <h1 className="font-heading text-xl font-bold">Help & Support</h1>
       </div>
 
-      {/* Contact */}
-      <div className="mx-4 mb-6 bg-primary/5 rounded-2xl p-5 text-center">
-        <MessageCircle className="w-8 h-8 text-primary mx-auto mb-2" />
-        <h2 className="font-heading text-base font-semibold mb-1">Need Help?</h2>
-        <p className="text-xs text-muted-foreground mb-3">We're here for you</p>
-        <a href="mailto:nuvirajuiceco@gmail.com">
-          <Button size="sm" className="rounded-full px-5">
-            <Mail className="w-3.5 h-3.5 mr-1.5" />
-            Email Us
+      {/* Contact Form */}
+      <div className="mx-4 mb-6 bg-card rounded-2xl border border-border/50 p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <MessageCircle className="w-5 h-5 text-primary" />
+          <h2 className="font-heading text-base font-semibold">Get in Touch</h2>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <Label className="text-xs text-muted-foreground">Your Name</Label>
+            <Input
+              placeholder="John Doe"
+              value={contactForm.name}
+              onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+              className="rounded-lg h-10 mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Email Address</Label>
+            <Input
+              type="email"
+              placeholder="you@example.com"
+              value={contactForm.email}
+              onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+              className="rounded-lg h-10 mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Subject</Label>
+            <Input
+              placeholder="How can we help?"
+              value={contactForm.subject}
+              onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })}
+              className="rounded-lg h-10 mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Message</Label>
+            <textarea
+              placeholder="Tell us what's on your mind..."
+              value={contactForm.message}
+              onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1 resize-none"
+              rows="4"
+            />
+          </div>
+          <Button type="submit" disabled={isSending} className="w-full h-10 rounded-lg">
+            <Send className="w-3.5 h-3.5 mr-2" />
+            {isSending ? 'Sending...' : 'Send Message'}
           </Button>
-        </a>
+        </form>
       </div>
 
       {/* FAQ */}
