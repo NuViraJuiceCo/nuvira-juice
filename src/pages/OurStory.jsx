@@ -142,7 +142,7 @@ export default function OurStory() {
             href="https://www.google.com/maps/place/NuVira+Juice+Company/@38.7028093,-90.7162366,11z"
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 flex items-center justify-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-sm font-semibold text-yellow-700"
+            className="mt-4 flex items-center justify-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-sm font-semibold text-yellow-600 dark:text-yellow-400"
           >
             ⭐ Leave a Google Review
           </a>
