@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ArrowLeft, Save, Star, CheckCircle2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { toast } from 'sonner';
 export default function AccountSettings() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -105,6 +107,9 @@ export default function AccountSettings() {
         address,
         birthday,
       });
+      
+      // Refresh auth context so home page reflects updated name
+      queryClient.invalidateQueries({ queryKey: ['auth'] });
       
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
