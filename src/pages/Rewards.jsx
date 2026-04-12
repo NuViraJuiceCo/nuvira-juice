@@ -4,7 +4,8 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
-import { Star, Lock, ChevronRight, Gift, Zap, ShoppingBag, Users, Trophy, CheckCircle } from 'lucide-react';
+import { Star, Lock, ChevronRight, Gift, Zap, ShoppingBag, Users, Trophy, CheckCircle, Cake } from 'lucide-react';
+import { isBirthdayRewardActive } from '@/lib/birthdayReward';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -29,7 +30,7 @@ const HOW_TO_EARN = [
   { icon: ShoppingBag, label: 'Place an Order', pts: '+10 pts per $1' },
   { icon: Users, label: 'Refer a Friend', pts: '+50 pts' },
   { icon: Zap, label: 'First Order Bonus', pts: '+100 pts' },
-  { icon: Star, label: 'Birthday Reward', pts: 'Free 12oz Juice 🎂' },
+
 ];
 
 export default function Rewards() {
@@ -51,6 +52,7 @@ export default function Rewards() {
   });
 
   const totalPoints = pointsData?.total_points || 0;
+  const birthdayActive = isBirthdayRewardActive(user?.birthday);
   const rewards = rewardTiers.length > 0 ? rewardTiers : DEFAULT_REWARDS;
 
   const nextReward = rewards.find(r => r.points_required > totalPoints);
@@ -131,6 +133,47 @@ export default function Rewards() {
               </span>
             ))}
           </div>
+        </motion.div>
+      </div>
+
+      {/* Birthday Reward */}
+      <div className="mx-4 mt-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className={`rounded-2xl border p-4 flex items-center gap-4 ${
+            birthdayActive
+              ? 'bg-pink-50 border-pink-200'
+              : 'bg-card border-border/40'
+          }`}
+        >
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 ${
+            birthdayActive ? 'bg-pink-100' : 'bg-muted'
+          }`}>
+            <Cake className={`w-6 h-6 ${birthdayActive ? 'text-pink-500' : 'text-muted-foreground'}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${birthdayActive ? 'text-pink-900' : 'text-foreground'}`}>
+              Birthday Reward
+            </p>
+            {birthdayActive ? (
+              <p className="text-xs text-pink-700">🎂 Your free 12oz juice is waiting in your cart!</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {user?.birthday ? 'Free 12oz juice valid 30 days after your birthday' : 'Add your birthday in Settings to unlock'}
+              </p>
+            )}
+          </div>
+          {birthdayActive ? (
+            <Link to="/cart">
+              <span className="text-xs font-bold text-pink-600 bg-pink-100 px-2.5 py-1 rounded-full whitespace-nowrap">Claim →</span>
+            </Link>
+          ) : !user?.birthday ? (
+            <Link to="/account/settings">
+              <span className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full whitespace-nowrap">Set Birthday</span>
+            </Link>
+          ) : null}
         </motion.div>
       </div>
 
