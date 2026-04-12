@@ -35,11 +35,11 @@ Your data is retained as long as your account is active. You may request deletio
 
 YOUR RIGHTS
 • Access or correct your personal data at any time in Account Settings
-• Request full deletion by emailing nuvirajuiceco@gmail.com
+• Request full deletion by emailing info@nuvirajuice.com
 • California residents may exercise CCPA rights by contacting us
 
 CONTACT
-nuvirajuiceco@gmail.com · Wentzville, MO`,
+info@nuvirajuice.com · Wentzville, MO`,
   },
   {
     icon: FileText,
@@ -71,12 +71,12 @@ NO RETURNS ON FOOD PRODUCTS
 • For health and safety reasons, we cannot accept returns on consumable products once delivered.
 
 CANCELLATIONS
-• Orders may be cancelled before production begins (typically the day before your scheduled delivery). Contact us ASAP at nuvirajuiceco@gmail.com.
+• Orders may be cancelled before production begins (typically the day before your scheduled delivery). Contact us ASAP at info@nuvirajuice.com.
 
 SUBSCRIPTIONS
 • Subscriptions may be paused or cancelled at any time with 48 hours notice before the next billing cycle.
 
-Contact: nuvirajuiceco@gmail.com`,
+Contact: info@nuvirajuice.com`,
   },
   {
     icon: AlertTriangle,
@@ -194,7 +194,7 @@ export default function Legal() {
       <div className="mx-4 mt-6 text-center space-y-1">
         <p className="text-[10px] text-muted-foreground">
           Questions? Contact us at{' '}
-          <a href="mailto:nuvirajuiceco@gmail.com" className="text-primary underline">nuvirajuiceco@gmail.com</a>
+          <a href="mailto:info@nuvirajuice.com" className="text-primary underline">info@nuvirajuice.com</a>
         </p>
         <p className="text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Company · Wentzville, MO</p>
         <p className="text-[10px] text-muted-foreground">Last updated: {LAST_UPDATED}</p>
