@@ -2,7 +2,7 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 
 const SITE_NAME = 'NuVira Juice Co.';
-const DEFAULT_IMAGE = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg';
+const DEFAULT_IMAGE = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/421b89061_generated_image.png';
 const DEFAULT_DESCRIPTION = 'Fresh cold-pressed juices delivered to your door. Real. Living. Nutrition. — NuVira Juice Co., Wentzville, MO.';
 
 export default function SEO({ title, description, image, type = 'website' }) {
