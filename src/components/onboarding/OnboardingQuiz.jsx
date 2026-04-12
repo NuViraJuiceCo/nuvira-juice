@@ -187,7 +187,7 @@ export default function OnboardingQuiz({ onComplete }) {
       </div>
 
       {/* Footer */}
-      <div className="px-4 pb-8 pt-3 border-t border-border">
+      <div className="px-4 pb-6 pt-3 border-t border-border safe-area-bottom">
         <Button
           onClick={handleNext}
           disabled={!canNext() || saving}
