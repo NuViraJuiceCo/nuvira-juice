@@ -33,6 +33,11 @@ export default function AccountSettings() {
           setPhone(profile.phone || '');
           setAddress(profile.address || '');
           setBirthday(profile.birthday || '');
+        } else {
+          // Reset to empty if no profile exists
+          setPhone('');
+          setAddress('');
+          setBirthday('');
         }
       });
     }
@@ -42,13 +47,13 @@ export default function AccountSettings() {
     setIsSaving(true);
     setSaveSuccess(false);
     try {
+      // Save user's full name to User entity
       await base44.auth.updateMe({ full_name: fullName });
       
       // Save additional profile data
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
       if (profiles.length > 0) {
         await base44.entities.UserProfile.update(profiles[0].id, {
-          customer_email: user?.email,
           phone,
           address,
           birthday,
@@ -63,8 +68,6 @@ export default function AccountSettings() {
       }
       
       setSaveSuccess(true);
-      // Trigger refresh to reload data from server
-      setRefreshKey(prev => prev + 1);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
       console.error('Save error:', err);
@@ -72,7 +75,7 @@ export default function AccountSettings() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }
 
   return (
     <div className="pb-4">
