@@ -69,8 +69,13 @@ export default function AccountSettings() {
     setIsSaving(true);
     setSaveSuccess(false);
     try {
-      // Save user's full name to User entity
-      await base44.auth.updateMe({ full_name: fullName });
+      // Save to User entity (visible in dashboard)
+      await base44.auth.updateMe({ 
+        full_name: fullName,
+        phone,
+        address,
+        birthday,
+      });
       
       // Save additional profile data
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
