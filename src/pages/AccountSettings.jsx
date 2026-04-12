@@ -140,7 +140,7 @@ export default function AccountSettings() {
               disabled={deleteConfirm !== 'DELETE'}
               onClick={async () => {
                 await base44.integrations.Core.SendEmail({
-                  to: 'nuvirajuiceco@gmail.com',
+                  to: 'info@nuvirajuice.com',
                   subject: 'Account Deletion Request',
                   body: `User ${user?.email} (${user?.full_name}) has requested account deletion.`,
                 });

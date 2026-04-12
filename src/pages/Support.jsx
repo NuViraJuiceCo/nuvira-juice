@@ -67,7 +67,7 @@ export default function Support() {
     setIsSending(true);
     try {
       await base44.integrations.Core.SendEmail({
-        to: 'nuvirajuiceco@gmail.com',
+        to: 'info@nuvirajuice.com',
         subject: `Support Request: ${contactForm.subject}`,
         body: `Name: ${contactForm.name}\nEmail: ${contactForm.email}\n\nMessage:\n${contactForm.message}`,
       });
