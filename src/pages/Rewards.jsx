@@ -29,7 +29,7 @@ const HOW_TO_EARN = [
   { icon: ShoppingBag, label: 'Place an Order', pts: '+10 pts per $1' },
   { icon: Users, label: 'Refer a Friend', pts: '+50 pts' },
   { icon: Zap, label: 'First Order Bonus', pts: '+100 pts' },
-  { icon: Star, label: 'Birthday Reward', pts: '+200 pts' },
+  { icon: Star, label: 'Birthday Reward', pts: 'Free 12oz Juice 🎂' },
 ];
 
 export default function Rewards() {
