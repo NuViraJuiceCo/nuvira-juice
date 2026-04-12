@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
+import { useQuery } from '@tanstack/react-query';
 import {
   User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper
 } from 'lucide-react';
@@ -25,6 +26,14 @@ const brandItems = [
 
 export default function Account() {
   const { user } = useAuth();
+  const { data: userProfile } = useQuery({
+    queryKey: ['user-profile', user?.email],
+    queryFn: async () => {
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
+      return profiles[0] || null;
+    },
+    enabled: !!user?.email,
+  });
 
   const handleLogout = () => {
     if (user?.email) {
@@ -44,9 +53,15 @@ export default function Account() {
           <div className="w-14 h-14 bg-primary/15 rounded-full flex items-center justify-center">
             <User className="w-6 h-6 text-primary" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="font-heading text-xl font-bold">{user?.full_name || 'Guest'}</h1>
             <p className="text-xs text-muted-foreground">{user?.email}</p>
+            {userProfile?.phone && (
+              <p className="text-xs text-muted-foreground">{userProfile.phone}</p>
+            )}
+            {userProfile?.address && (
+              <p className="text-xs text-muted-foreground line-clamp-1">{userProfile.address}</p>
+            )}
           </div>
         </div>
       </div>
