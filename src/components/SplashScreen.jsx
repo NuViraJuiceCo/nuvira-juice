@@ -21,7 +21,7 @@ export default function SplashScreen({ onDone }) {
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
-          className="fixed inset-0 z-[9999] bg-primary flex flex-col items-center justify-center"
+          className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
@@ -34,7 +34,7 @@ export default function SplashScreen({ onDone }) {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4, duration: 0.5 }}
-              className="text-primary-foreground/70 text-xs tracking-[0.2em] uppercase font-light"
+              className="text-white/60 text-xs tracking-[0.2em] uppercase font-light"
             >
               Real. Living. Nutrition.
             </motion.p>
@@ -49,7 +49,7 @@ export default function SplashScreen({ onDone }) {
             {[0, 1, 2].map(i => (
               <motion.div
                 key={i}
-                className="w-1.5 h-1.5 rounded-full bg-primary-foreground/40"
+                className="w-1.5 h-1.5 rounded-full bg-white/40"
                 animate={{ opacity: [0.3, 1, 0.3] }}
                 transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
               />
