@@ -21,10 +21,16 @@ export default function AccountSettings() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
-  // Save form data to localStorage as user types (user-specific key)
+  // Save form data to localStorage, merging with existing data
   const saveToLocalStorage = (full, ph, addr, bd) => {
     const key = `accountSettings_${user?.email || 'guest'}`;
-    localStorage.setItem(key, JSON.stringify({ full, ph, addr, bd }));
+    const existing = loadFromLocalStorage() || {};
+    localStorage.setItem(key, JSON.stringify({ 
+      full: full !== undefined ? full : existing.full || fullName,
+      ph: ph !== undefined ? ph : existing.ph || phone,
+      addr: addr !== undefined ? addr : existing.addr || address,
+      bd: bd !== undefined ? bd : existing.bd || birthday
+    }));
   };
 
   // Load form data from localStorage on mount (user-specific key)
@@ -42,14 +48,14 @@ export default function AccountSettings() {
 
   useEffect(() => {
     const saved = loadFromLocalStorage();
-    if (saved) {
+    if (saved && (saved.full || saved.ph || saved.addr || saved.bd)) {
       // Load from localStorage if available (user was editing)
       setFullName(saved.full || user?.full_name || '');
       setPhone(saved.ph || '');
       setAddress(saved.addr || '');
       setBirthday(saved.bd || '');
     } else if (user?.email) {
-      // Load from server if no localStorage data
+      // Load from server
       setFullName(user.full_name || '');
       base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
         if (profiles.length > 0) {
@@ -57,6 +63,8 @@ export default function AccountSettings() {
           setPhone(profile.phone || '');
           setAddress(profile.address || '');
           setBirthday(profile.birthday || '');
+          // Cache server data
+          saveToLocalStorage(user.full_name || '', profile.phone || '', profile.address || '', profile.birthday || '');
         } else {
           setPhone('');
           setAddress('');
@@ -119,8 +127,9 @@ export default function AccountSettings() {
             <div>
               <Label className="text-xs text-muted-foreground">Full Name</Label>
               <Input value={fullName} onChange={e => {
-                setFullName(e.target.value);
-                saveToLocalStorage(e.target.value, phone, address, birthday);
+                const newVal = e.target.value;
+                setFullName(newVal);
+                saveToLocalStorage(newVal, undefined, undefined, undefined);
               }} className="rounded-xl h-11" />
             </div>
             <div>
@@ -140,8 +149,9 @@ export default function AccountSettings() {
               <Input
                 value={phone}
                 onChange={e => {
-                  setPhone(e.target.value);
-                  saveToLocalStorage(fullName, e.target.value, address, birthday);
+                  const newVal = e.target.value;
+                  setPhone(newVal);
+                  saveToLocalStorage(undefined, newVal, undefined, undefined);
                 }}
                 placeholder="(555) 123-4567"
                 className="rounded-xl h-11"
@@ -152,8 +162,9 @@ export default function AccountSettings() {
               <Input
                 value={address}
                 onChange={e => {
-                  setAddress(e.target.value);
-                  saveToLocalStorage(fullName, phone, e.target.value, birthday);
+                  const newVal = e.target.value;
+                  setAddress(newVal);
+                  saveToLocalStorage(undefined, undefined, newVal, undefined);
                 }}
                 placeholder="123 Main St, City, State"
                 className="rounded-xl h-11"
@@ -165,8 +176,9 @@ export default function AccountSettings() {
                 type="date"
                 value={birthday}
                 onChange={e => {
-                  setBirthday(e.target.value);
-                  saveToLocalStorage(fullName, phone, address, e.target.value);
+                  const newVal = e.target.value;
+                  setBirthday(newVal);
+                  saveToLocalStorage(undefined, undefined, undefined, newVal);
                 }}
                 className="rounded-xl h-11"
               />
