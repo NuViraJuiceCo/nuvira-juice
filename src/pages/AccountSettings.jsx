@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, Save, Star, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Save, Star, CheckCircle2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +17,7 @@ export default function AccountSettings() {
   const [address, setAddress] = useState('');
   const [birthday, setBirthday] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
@@ -31,9 +32,11 @@ export default function AccountSettings() {
 
   const handleSave = async () => {
     setIsSaving(true);
+    setSaveSuccess(false);
     try {
       await base44.auth.updateMe({ full_name: fullName });
-      toast.success('Settings saved!');
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
       toast.error('Failed to save settings');
       console.error(err);
@@ -102,8 +105,19 @@ export default function AccountSettings() {
         </div>
 
         <Button onClick={handleSave} disabled={isSaving} className="w-full h-11 rounded-xl font-semibold">
-          <Save className="w-4 h-4 mr-2" />
-          {isSaving ? 'Saving...' : 'Save Changes'}
+          {saveSuccess ? (
+            <>
+              <Check className="w-4 h-4 mr-2" />
+              Saved!
+            </>
+          ) : isSaving ? (
+            'Saving...'
+          ) : (
+            <>
+              <Save className="w-4 h-4 mr-2" />
+              Save Changes
+            </>
+          )}
         </Button>
 
         {/* Account Deletion */}
