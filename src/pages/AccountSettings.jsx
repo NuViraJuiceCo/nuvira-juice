@@ -108,11 +108,11 @@ export default function AccountSettings() {
         birthday,
       });
       
-      // Refresh auth context so home page reflects updated name
-      queryClient.invalidateQueries({ queryKey: ['auth'] });
-      
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        window.location.reload(); // Reload to refresh auth context with updated name
+      }, 1500);
     } catch (err) {
       console.error('Save error:', err);
       toast.error('Failed to save settings');
