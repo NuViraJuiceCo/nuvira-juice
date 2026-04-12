@@ -130,6 +130,10 @@ export default function Subscribe() {
   };
 
   const handleJoin = async () => {
+    if (window.self !== window.top) {
+      alert('Checkout only works from the published app, not the preview.');
+      return;
+    }
     if (!address.trim()) {
       toast.error('Please enter your delivery address');
       return;
@@ -140,15 +144,19 @@ export default function Subscribe() {
     }
     const plan = plans.find(p => p.id === selected);
     const bundle = bundles.find(b => b.id === selectedBundle);
-    const zone = deliveryZones.find(z => z.id === calculatedZone);
     setLoading(true);
-    await base44.integrations.Core.SendEmail({
-      to: 'nuvirajuiceco@gmail.com',
-      subject: `New Subscription Request — ${plan.name} + ${bundle.name}`,
-      body: `${user?.full_name || 'A customer'} (${user?.email}) wants to subscribe to the ${plan.name} plan with ${bundle.name} bundle (${bundle.bottle_count} bottles). Delivery Zone: ${zone.name} ($${zone.fee.toFixed(2)} fee). Address: ${address}`,
+    const res = await base44.functions.invoke('createSubscriptionSession', {
+      plan_id: selected,
+      bundle_id: selectedBundle,
+      address,
+      customer_email: user?.email || null,
     });
-    setLoading(false);
-    toast.success("We received your request! Our team will reach out within 24 hours to finalize your subscription.");
+    if (res.data?.url) {
+      window.location.href = res.data.url;
+    } else {
+      toast.error(res.data?.error || 'Failed to start checkout. Please try again.');
+      setLoading(false);
+    }
   };
 
   return (
@@ -297,11 +305,11 @@ export default function Subscribe() {
           disabled={loading}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {loading ? 'Sending...' : `Join ${plans.find(p => p.id === selected)?.name}`}
+          {loading ? 'Redirecting to payment...' : `Subscribe — ${plans.find(p => p.id === selected)?.price}${plans.find(p => p.id === selected)?.period}`}
         </Button>
         <p className="text-center text-[10px] text-muted-foreground leading-relaxed">
-          No commitments. Skip, pause, or cancel anytime.
-          Our team will contact you to confirm your first delivery window.
+          No commitments. Cancel anytime directly from your Stripe billing portal.
+          Secured by Stripe — Apple Pay, Google Pay & all major cards accepted.
         </p>
       </div>
 
@@ -310,9 +318,9 @@ export default function Subscribe() {
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">FAQs</p>
         <div className="space-y-3">
           {[
-            { q: 'When will I be charged?', a: 'Billing happens at the start of each cycle. Our team will set up your billing when confirming your subscription.' },
+            { q: 'When will I be charged?', a: 'Your card is charged immediately when you subscribe, then automatically on the same day each week or month.' },
             { q: 'Can I choose my juices?', a: 'Yes — Monthly and VIP members can mix & match AURA, RE-NU, and OASIS for each delivery.' },
-            { q: 'How do I pause or cancel?', a: 'Email us or message support anytime. No fees, no penalties. We believe in flexibility.' },
+            { q: 'How do I pause or cancel?', a: 'You can cancel anytime through your Stripe billing portal or by emailing us. No fees, no penalties.' },
             { q: 'What does "order priority" mean?', a: 'Subscribers get their orders pressed first within each delivery window — so your juice is always the freshest.' },
           ].map(({ q, a }) => (
             <div key={q} className="bg-card border border-border/40 rounded-xl p-4">
