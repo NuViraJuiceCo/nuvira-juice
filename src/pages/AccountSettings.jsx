@@ -32,10 +32,11 @@ export default function AccountSettings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await base44.auth.updateMe({ full_name: fullName, phone, default_address: address, birthday });
+      await base44.auth.updateMe({ full_name: fullName });
       toast.success('Settings saved!');
     } catch (err) {
       toast.error('Failed to save settings');
+      console.error(err);
     }
     setIsSaving(false);
   };
