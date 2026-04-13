@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { User, CheckCircle2 } from 'lucide-react';
 
 export default function ProfileSetup({ onComplete }) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
@@ -94,10 +94,8 @@ export default function ProfileSetup({ onComplete }) {
 
     setSaving(false);
     setDone(true);
-    setTimeout(() => {
-      onComplete();
-      window.location.reload();
-    }, 1600);
+    await refreshUser();
+    setTimeout(() => onComplete(), 1600);
   };
 
   if (done) {
