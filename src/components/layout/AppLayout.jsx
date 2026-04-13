@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import Home from '@/pages/Home';
+import ProfileSetup from '@/components/onboarding/ProfileSetup';
 import Shop from '@/pages/Shop';
 import Cart from '@/pages/Cart';
 
@@ -12,8 +13,10 @@ import SideNav from './SideNav';
 export default function AppLayout() {
   const location = useLocation();
   const isTabRoute = TAB_PATHS.includes(location.pathname);
+  const [profileDone, setProfileDone] = useState(false);
   return (
     <div className="min-h-screen bg-background flex">
+      {!profileDone && <ProfileSetup onComplete={() => setProfileDone(true)} />}
       {/* Sidebar — tablet & desktop */}
       <SideNav />
 
