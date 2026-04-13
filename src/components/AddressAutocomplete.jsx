@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Input } from '@/components/ui/input';
+import React, { useEffect, useRef } from 'react';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyCj2tE8wuBqsvM42qrGTheceZyqPJpJpng';
 
@@ -25,8 +24,13 @@ function loadGoogleMaps(callback) {
 export default function AddressAutocomplete({ value, onChange, placeholder, className }) {
   const inputRef = useRef(null);
   const autocompleteRef = useRef(null);
-  // Only use value as initial state — don't sync back to avoid fighting Google Places
-  const [inputValue, setInputValue] = useState(value || '');
+
+  // Set initial value once
+  useEffect(() => {
+    if (inputRef.current && value) {
+      inputRef.current.value = value;
+    }
+  }, []);
 
   useEffect(() => {
     loadGoogleMaps(() => {
@@ -38,22 +42,19 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
       autocompleteRef.current.addListener('place_changed', () => {
         const place = autocompleteRef.current.getPlace();
         const formatted = place.formatted_address || inputRef.current.value;
-        setInputValue(formatted);
+        inputRef.current.value = formatted;
         onChange(formatted);
       });
     });
   }, []);
 
   return (
-    <Input
+    <input
       ref={inputRef}
-      value={inputValue}
-      onChange={e => {
-        setInputValue(e.target.value);
-        onChange(e.target.value);
-      }}
+      defaultValue={value || ''}
+      onChange={e => onChange(e.target.value)}
       placeholder={placeholder || '123 Main St, City, State'}
-      className={className}
+      className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm ${className || ''}`}
       autoComplete="off"
     />
   );
