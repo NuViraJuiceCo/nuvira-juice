@@ -12,6 +12,7 @@ import ProductCard from '@/components/shop/ProductCard';
 const CATEGORIES = [
   { key: 'all', label: 'All' },
   { key: 'juice', label: 'Juices' },
+  { key: 'shot', label: 'Shots' },
   { key: 'bundle', label: 'Bundles' },
   { key: 'wellness_pack', label: 'Wellness' },
   { key: 'seasonal', label: 'Seasonal' },
@@ -27,6 +28,11 @@ export default function Shop() {
   const { data: products = [], isLoading, refetch } = useQuery({
     queryKey: ['products'],
     queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 100),
+  });
+
+  const { data: shots = [] } = useQuery({
+    queryKey: ['shots-coming-soon'],
+    queryFn: () => base44.entities.Product.filter({ category: 'shot', is_available: false }, 'sort_order', 10),
   });
 
   const filtered = useMemo(() => {
@@ -107,7 +113,7 @@ export default function Shop() {
               <div key={i} className="bg-secondary/50 rounded-xl aspect-[3/4] animate-pulse" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && category !== 'shot' ? (
           <div className="text-center py-16">
             <p className="text-muted-foreground text-sm">No products found</p>
           </div>
@@ -127,6 +133,41 @@ export default function Shop() {
               ))}
             </AnimatePresence>
           </motion.div>
+        )}
+
+        {/* Wellness Shots — Coming Soon */}
+        {(category === 'all' || category === 'shot') && shots.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="font-heading text-base font-bold">Wellness Shots</h2>
+              <span className="text-[10px] font-bold text-accent bg-accent/15 px-2 py-0.5 rounded-full">Coming Soon</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {shots.map(shot => (
+                <div key={shot.id} className="relative rounded-xl overflow-hidden border border-border/40 bg-card">
+                  {/* Image */}
+                  <div className="aspect-square bg-muted flex items-center justify-center text-4xl">
+                    {shot.image_url
+                      ? <img src={shot.image_url} alt={shot.title} className="w-full h-full object-cover opacity-60" />
+                      : '💛'}
+                  </div>
+                  {/* Badge */}
+                  <div className="absolute top-2 left-2">
+                    <span className="text-[9px] font-bold bg-accent text-white px-2 py-0.5 rounded-full">Coming Soon</span>
+                  </div>
+                  {/* Info */}
+                  <div className="p-3">
+                    <p className="text-sm font-semibold leading-tight">{shot.title}</p>
+                    {shot.short_description && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{shot.short_description}</p>
+                    )}
+                    {shot.size && <p className="text-[10px] text-muted-foreground">{shot.size}</p>}
+                    <p className="text-xs font-bold text-muted-foreground mt-1.5">${shot.price.toFixed(2)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

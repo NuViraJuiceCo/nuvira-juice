@@ -26,6 +26,7 @@
       "type": "string",
       "enum": [
         "juice",
+        "shot",
         "bundle",
         "wellness_pack",
         "seasonal",
