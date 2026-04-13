@@ -36,12 +36,10 @@ export default function Account() {
   });
 
   const handleLogout = () => {
-    if (user?.email) {
-      // User is logged in, logout
-      base44.auth.logout('/');
+    if (user) {
+      base44.auth.logout();
     } else {
-      // Guest/logged out, redirect to login
-      base44.auth.redirectToLogin('/');
+      base44.auth.redirectToLogin(window.location.pathname);
     }
   };
 
@@ -165,7 +163,7 @@ export default function Account() {
           className="w-full flex items-center justify-center gap-2 text-sm font-medium py-3 rounded-xl border border-border bg-card hover:bg-secondary transition-colors"
         >
           <LogOut className="w-4 h-4" />
-          {user?.email ? 'Log out' : 'Log in'}
+          {user ? 'Sign Out' : 'Sign In'}
         </button>
       </div>
 
