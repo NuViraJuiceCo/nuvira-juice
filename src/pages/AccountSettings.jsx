@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, Save, Star, CheckCircle2, Check } from 'lucide-react';
+import { ArrowLeft, Save, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,102 +13,56 @@ import { toast } from 'sonner';
 export default function AccountSettings() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [birthday, setBirthday] = useState('');
+  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', address: '', birthday: '' });
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
-  // Save form data to localStorage
-  const saveToLocalStorage = (first, last, ph, addr, bd) => {
-    const key = `accountSettings_${user?.email || 'guest'}`;
-    localStorage.setItem(key, JSON.stringify({ first, last, ph, addr, bd }));
-  };
+  const setField = (field, val) => setForm(prev => ({ ...prev, [field]: val }));
 
-  // Load form data from localStorage on mount (user-specific key)
-  const loadFromLocalStorage = () => {
+  const saveToLocalStorage = (data) => {
     const key = `accountSettings_${user?.email || 'guest'}`;
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : null;
+    localStorage.setItem(key, JSON.stringify({ first: data.firstName, last: data.lastName, ph: data.phone, addr: data.address, bd: data.birthday }));
   };
 
   useEffect(() => {
-    const saved = loadFromLocalStorage();
+    if (!user?.email) return;
+    const key = `accountSettings_${user.email}`;
+    const saved = localStorage.getItem(key);
     if (saved) {
-      setFirstName(saved.first || '');
-      setLastName(saved.last || '');
-      setPhone(saved.ph || '');
-      setAddress(saved.addr || '');
-      setBirthday(saved.bd || '');
-    } else if (user?.email) {
-      setFirstName(user.first_name || '');
-      setLastName(user.last_name || '');
+      const s = JSON.parse(saved);
+      setForm({ firstName: s.first || '', lastName: s.last || '', phone: s.ph || '', address: s.addr || '', birthday: s.bd || '' });
+    } else {
       base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
         const profile = profiles[0];
-        const ph = profile?.phone || '';
-        const addr = profile?.address || '';
-        const bd = profile?.birthday || '';
-        setPhone(ph);
-        setAddress(addr);
-        setBirthday(bd);
-        saveToLocalStorage(user.first_name || '', user.last_name || '', ph, addr, bd);
+        setForm({
+          firstName: user.first_name || '',
+          lastName: user.last_name || '',
+          phone: profile?.phone || '',
+          address: profile?.address || '',
+          birthday: profile?.birthday || '',
+        });
       });
     }
   }, [user?.email]);
 
   const handleSave = async () => {
+    const { firstName, lastName, phone, address, birthday } = form;
     setIsSaving(true);
     setSaveSuccess(false);
     try {
-      // Save to User entity (visible in dashboard)
-      await base44.auth.updateMe({ 
-        first_name: firstName,
-        last_name: lastName,
-        phone,
-        address,
-        birthday,
-      });
-      
-      // Save additional profile data
+      await base44.auth.updateMe({ first_name: firstName, last_name: lastName, phone, address, birthday });
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
       if (profiles.length > 0) {
-        await base44.entities.UserProfile.update(profiles[0].id, {
-          phone,
-          address,
-          birthday,
-        });
+        await base44.entities.UserProfile.update(profiles[0].id, { phone, address, birthday });
       } else {
-        await base44.entities.UserProfile.create({
-          customer_email: user?.email,
-          phone,
-          address,
-          birthday,
-        });
+        await base44.entities.UserProfile.create({ customer_email: user?.email, phone, address, birthday });
       }
-      
-      // Keep localStorage cache updated with latest saved data
-      saveToLocalStorage(firstName, lastName, phone, address, birthday);
-      
-      // Sync to operations hub
-      await base44.functions.invoke('syncUserToHub', {
-        email: user?.email,
-        first_name: firstName,
-        last_name: lastName,
-        phone,
-        address,
-        birthday,
-      });
-      
+      saveToLocalStorage(form);
+      await base44.functions.invoke('syncUserToHub', { email: user?.email, first_name: firstName, last_name: lastName, phone, address, birthday });
       setSaveSuccess(true);
-      setTimeout(() => {
-        setSaveSuccess(false);
-        window.location.reload(); // Reload to refresh auth context with updated name
-      }, 1500);
+      setTimeout(() => { setSaveSuccess(false); window.location.reload(); }, 1500);
     } catch (err) {
       console.error('Save error:', err);
       toast.error('Failed to save settings');
@@ -135,19 +88,11 @@ export default function AccountSettings() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs text-muted-foreground">First Name</Label>
-                <Input value={firstName} onChange={e => {
-                  const newVal = e.target.value;
-                  setFirstName(newVal);
-                  saveToLocalStorage(newVal, lastName, phone, address, birthday);
-                }} className="rounded-xl h-11" />
+                <Input value={form.firstName} onChange={e => setField('firstName', e.target.value)} className="rounded-xl h-11" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Last Name</Label>
-                <Input value={lastName} onChange={e => {
-                  const newVal = e.target.value;
-                  setLastName(newVal);
-                  saveToLocalStorage(firstName, newVal, phone, address, birthday);
-                }} className="rounded-xl h-11" />
+                <Input value={form.lastName} onChange={e => setField('lastName', e.target.value)} className="rounded-xl h-11" />
               </div>
             </div>
             <div>
@@ -164,41 +109,15 @@ export default function AccountSettings() {
           <div className="space-y-3">
             <div>
               <Label className="text-xs text-muted-foreground">Phone Number</Label>
-              <Input
-                value={phone}
-                onChange={e => {
-                  const newVal = e.target.value;
-                  setPhone(newVal);
-                  saveToLocalStorage(firstName, lastName, newVal, address, birthday);
-                }}
-                placeholder="(555) 123-4567"
-                className="rounded-xl h-11"
-              />
+              <Input value={form.phone} onChange={e => setField('phone', e.target.value)} placeholder="(555) 123-4567" className="rounded-xl h-11" />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Default Delivery Address</Label>
-              <AddressAutocomplete
-                value={address}
-                onChange={newVal => {
-                  setAddress(newVal);
-                  saveToLocalStorage(firstName, lastName, phone, newVal, birthday);
-                }}
-                placeholder="123 Main St, City, State"
-                className="rounded-xl h-11"
-              />
+              <AddressAutocomplete value={form.address} onChange={val => setField('address', val)} placeholder="123 Main St, City, State" className="rounded-xl h-11" />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Birthday (for your free annual bottle 🎂)</Label>
-              <Input
-                type="date"
-                value={birthday}
-                onChange={e => {
-                  const newVal = e.target.value;
-                  setBirthday(newVal);
-                  saveToLocalStorage(firstName, lastName, phone, address, newVal);
-                }}
-                className="rounded-xl h-11"
-              />
+              <Input type="date" value={form.birthday} onChange={e => setField('birthday', e.target.value)} className="rounded-xl h-11" />
             </div>
           </div>
         </div>
@@ -258,7 +177,7 @@ export default function AccountSettings() {
                 await base44.integrations.Core.SendEmail({
                   to: 'info@nuvirajuice.com',
                   subject: 'Account Deletion Request',
-                  body: `User ${user?.email} (${firstName} ${lastName}) has requested account deletion.`,
+                  body: `User ${user?.email} (${form.firstName} ${form.lastName}) has requested account deletion.`,
                 });
                 setShowDeleteDialog(false);
                 toast.success('Deletion request submitted. We will process it within 48 hours.');
