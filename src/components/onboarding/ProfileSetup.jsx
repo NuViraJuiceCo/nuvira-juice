@@ -26,7 +26,7 @@ export default function ProfileSetup({ onComplete }) {
     }
     // Fast path: localStorage flag
     if (localStorage.getItem(`profileComplete_${user.email}`)) {
-      onComplete();
+      onComplete(false);
       return;
     }
     // Server check
@@ -34,7 +34,7 @@ export default function ProfileSetup({ onComplete }) {
       const profile = profiles[0];
       if (profile?.phone) {
         localStorage.setItem(`profileComplete_${user.email}`, '1');
-        onComplete();
+        onComplete(false);
       } else {
         // Pre-fill any existing data
         setFirstName(user.first_name || '');
@@ -100,7 +100,7 @@ export default function ProfileSetup({ onComplete }) {
     setSaving(false);
     setDone(true);
     await refreshUser();
-    setTimeout(() => onComplete(), 1600);
+    setTimeout(() => onComplete(true), 1600);
   };
 
   if (done) {

@@ -19,7 +19,7 @@ export default function AppLayout() {
   const [showQuiz, setShowQuiz] = useState(false);
   return (
     <div className="min-h-screen bg-background flex">
-      {!profileDone && <ProfileSetup onComplete={() => { setProfileDone(true); setShowQuiz(true); }} />}
+      {!profileDone && <ProfileSetup onComplete={(isNew) => { setProfileDone(true); if (isNew) setShowQuiz(true); }} />}
       {profileDone && showQuiz && !quizDone && <OnboardingQuiz onComplete={() => { setQuizDone(true); setShowQuiz(false); }} />}
       {/* Sidebar — tablet & desktop */}
       <SideNav />
