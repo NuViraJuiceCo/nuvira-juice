@@ -5,41 +5,88 @@ import { useAuth } from '@/lib/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { User } from 'lucide-react';
+import { User, CheckCircle2 } from 'lucide-react';
+
+// Check if user has completed mandatory profile fields
+function isProfileComplete(user) {
+  if (!user?.email) return true; // not logged in, skip
+  const cacheKey = `profileComplete_${user.email}`;
+  return !!localStorage.getItem(cacheKey);
+}
 
 export default function ProfileSetup({ onComplete }) {
   const { user } = useAuth();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState(user?.first_name || '');
+  const [lastName, setLastName] = useState(user?.last_name || '');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Don't show if user already has a full name (from Google SSO or already set)
-  if (user?.full_name && user.full_name !== user.email) {
+  // Skip if already completed
+  if (isProfileComplete(user)) {
     onComplete();
     return null;
   }
 
+  const canSubmit = firstName.trim() && lastName.trim() && phone.trim();
+
   const handleSubmit = async () => {
-    if (!firstName.trim() || !lastName.trim()) {
-      return;
-    }
+    if (!canSubmit) return;
     setSaving(true);
-    const fullName = `${firstName.trim()} ${lastName.trim()}`;
-    await base44.auth.updateMe({ full_name: fullName });
+
+    // Save name to User entity
+    await base44.auth.updateMe({
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+    });
+
+    // Save profile details to UserProfile entity
+    const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
+    const profileData = { phone: phone.trim(), address: address.trim(), birthday };
+    if (profiles.length > 0) {
+      await base44.entities.UserProfile.update(profiles[0].id, profileData);
+    } else {
+      await base44.entities.UserProfile.create({ customer_email: user.email, ...profileData });
+    }
+
+    // Sync to operations hub
+    await base44.functions.invoke('syncUserToHub', {
+      email: user.email,
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+      birthday,
+    });
+
+    // Cache in localStorage so settings page and home page reflect immediately
+    const settingsKey = `accountSettings_${user.email}`;
+    localStorage.setItem(settingsKey, JSON.stringify({
+      first: firstName.trim(),
+      last: lastName.trim(),
+      ph: phone.trim(),
+      addr: address.trim(),
+      bd: birthday,
+    }));
+
+    // Mark profile as complete
+    localStorage.setItem(`profileComplete_${user.email}`, '1');
+
     setSaving(false);
     setDone(true);
-    setTimeout(() => onComplete(), 1200);
+    setTimeout(() => onComplete(), 1400);
   };
 
   if (done) {
     return (
       <div className="fixed inset-0 z-50 bg-primary flex flex-col items-center justify-center px-8 text-center">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }}>
-          <User className="w-16 h-16 text-white mb-4" />
+          <CheckCircle2 className="w-16 h-16 text-white mb-4" />
         </motion.div>
         <motion.h2 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-          className="font-heading text-2xl font-bold text-white mb-2">Welcome!</motion.h2>
+          className="font-heading text-2xl font-bold text-white mb-2">You're all set, {firstName}!</motion.h2>
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
           className="text-primary-foreground/80 text-sm">Your profile is ready.</motion.p>
       </div>
@@ -47,57 +94,96 @@ export default function ProfileSetup({ onComplete }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+    <div className="fixed inset-0 z-50 bg-background flex flex-col overflow-y-auto">
       {/* Header */}
       <div className="px-6 pt-10 pb-6 bg-primary">
-        <motion.h1
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="font-heading text-xl font-bold text-white mb-1"
-        >
-          Complete Your Profile
-        </motion.h1>
-        <p className="text-primary-foreground/70 text-sm">Help us personalize your experience.</p>
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-center gap-2 mb-1">
+            <User className="w-5 h-5 text-white" />
+            <h1 className="font-heading text-xl font-bold text-white">Complete Your Profile</h1>
+          </div>
+          <p className="text-primary-foreground/70 text-sm">We need a few details to get your orders to you.</p>
+        </motion.div>
       </div>
 
       {/* Form */}
-      <div className="flex-1 flex flex-col justify-center px-6 py-8">
+      <div className="flex-1 px-6 py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="space-y-4"
+          className="space-y-4 max-w-md mx-auto"
         >
+          {/* Name */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">First Name <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="John"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="rounded-lg h-11"
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">Last Name <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="Doe"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="rounded-lg h-11"
+              />
+            </div>
+          </div>
+
+          {/* Phone */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-2 block">First Name</Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Phone Number <span className="text-destructive">*</span></Label>
             <Input
-              placeholder="John"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="(555) 123-4567"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               className="rounded-lg h-11"
-              autoFocus
+              type="tel"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">Used for delivery updates only.</p>
+          </div>
+
+          {/* Address */}
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Default Delivery Address</Label>
+            <Input
+              placeholder="123 Main St, Wentzville, MO"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="rounded-lg h-11"
             />
           </div>
+
+          {/* Birthday */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-2 block">Last Name</Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Birthday 🎂 <span className="text-[10px] text-muted-foreground">(free bottle on your birthday!)</span></Label>
             <Input
-              placeholder="Doe"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
+              type="date"
+              value={birthday}
+              onChange={(e) => setBirthday(e.target.value)}
               className="rounded-lg h-11"
             />
           </div>
+
+          <p className="text-[10px] text-muted-foreground">Fields marked <span className="text-destructive">*</span> are required.</p>
         </motion.div>
       </div>
 
       {/* Footer */}
-      <div className="px-6 pb-6 pt-4 border-t border-border safe-area-bottom">
+      <div className="px-6 pb-8 pt-4 border-t border-border safe-area-bottom">
         <Button
           onClick={handleSubmit}
-          disabled={!firstName.trim() || !lastName.trim() || saving}
+          disabled={!canSubmit || saving}
           className="w-full h-11 rounded-lg font-semibold text-sm"
         >
-          {saving ? 'Saving...' : 'Continue'}
+          {saving ? 'Saving...' : 'Save & Continue'}
         </Button>
       </div>
     </div>
