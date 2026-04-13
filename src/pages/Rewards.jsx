@@ -55,6 +55,24 @@ export default function Rewards() {
   const birthdayActive = isBirthdayRewardActive(user?.birthday);
   const rewards = rewardTiers.length > 0 ? rewardTiers : DEFAULT_REWARDS;
 
+  const [activeReward, setActiveReward] = useState(() => {
+    if (!user?.email) return null;
+    try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
+  });
+
+  const handleApplyReward = (reward) => {
+    const r = { id: reward.id, title: reward.title, description: reward.description, reward_type: reward.reward_type, points_required: reward.points_required, icon: reward.icon };
+    localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(r));
+    setActiveReward(r);
+    toast.success(`${reward.title} applied! Head to your cart to use it.`);
+  };
+
+  const handleRemoveReward = () => {
+    localStorage.removeItem(`activeReward_${user.email}`);
+    setActiveReward(null);
+    toast.success('Reward removed.');
+  };
+
   const nextReward = rewards.find(r => r.points_required > totalPoints);
   const nextMilestone = MILESTONES.find(m => m.points > totalPoints) || MILESTONES[MILESTONES.length - 1];
   const prevMilestone = [...MILESTONES].reverse().find(m => m.points <= totalPoints) || MILESTONES[0];
@@ -287,17 +305,18 @@ export default function Rewards() {
                 </div>
                 <div className="text-right shrink-0">
                   {unlocked ? (
-                    <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded-full">Earned!</span>
+                    activeReward?.id === reward.id ? (
+                      <button
+                        onClick={handleRemoveReward}
+                        className="text-xs font-bold text-destructive bg-destructive/10 px-2.5 py-1 rounded-full whitespace-nowrap"
+                      >Applied ✓</button>
+                    ) : (
+                      <button
+                        onClick={() => handleApplyReward(reward)}
+                        className="text-xs font-bold text-white bg-primary px-2.5 py-1 rounded-full whitespace-nowrap"
+                      >Apply →</button>
+                    )
                   ) : (
-                    <div>
-                      <div className="flex items-center gap-0.5 justify-end">
-                        <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                        <span className="text-xs font-bold">{reward.points_required.toLocaleString()}</span>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">pts</p>
-                    </div>
-                  )}
-                </div>
               </motion.div>
             );
           })}

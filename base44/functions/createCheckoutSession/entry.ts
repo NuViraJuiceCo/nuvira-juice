@@ -6,9 +6,14 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { items, subtotal, delivery_fee, total, fulfillment_type, delivery_address, contact_phone, estimated_delivery_date, customer_email, points_discount, points_used } = await req.json();
+    const {
+      items, subtotal, delivery_fee, total,
+      fulfillment_type, delivery_address, contact_phone, estimated_delivery_date,
+      customer_email, points_discount, points_used,
+      active_reward, reward_discount,
+    } = await req.json();
 
-    // Create order in DB first with pending_payment status
+    // Create order in DB first
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
     const order = await base44.asServiceRole.entities.Order.create({
       order_number: orderNumber,
@@ -41,16 +46,16 @@ Deno.serve(async (req) => {
     const lineItems = items
       .filter(item => item.product_id !== '__birthday_reward__' && item.price > 0)
       .map(item => ({
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: item.title,
-          ...(item.image_url ? { images: [item.image_url] } : {}),
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: item.title,
+            ...(item.image_url ? { images: [item.image_url] } : {}),
+          },
+          unit_amount: Math.round(item.price * 100),
         },
-        unit_amount: Math.round(item.price * 100),
-      },
-      quantity: item.quantity,
-    }));
+        quantity: item.quantity,
+      }));
 
     // Add delivery fee as a line item if applicable
     if (delivery_fee > 0) {
@@ -64,14 +69,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build discounts if points were redeemed
+    // Build discounts (points redemption + tier reward discount)
     let discounts = [];
-    if (points_discount > 0) {
+    const totalDiscountCents =
+      Math.round((points_discount || 0) * 100) +
+      Math.round((reward_discount || 0) * 100);
+
+    if (totalDiscountCents > 0) {
+      const discountParts = [];
+      if (points_used) discountParts.push(`${points_used} Loyalty Points`);
+      if (active_reward?.title) discountParts.push(active_reward.title);
+
       const coupon = await stripe.coupons.create({
-        amount_off: Math.round(points_discount * 100),
+        amount_off: totalDiscountCents,
         currency: 'usd',
         duration: 'once',
-        name: `${points_used} Loyalty Points`,
+        name: discountParts.join(' + ') || 'Discount',
       });
       discounts = [{ coupon: coupon.id }];
 
@@ -79,15 +92,18 @@ Deno.serve(async (req) => {
       if (customer_email) {
         const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email });
         if (existing[0]) {
+          const deductPoints = (points_used || 0) + (active_reward?.points_required || 0);
+          const historyEntries = [];
+          if (points_used) {
+            historyEntries.push({ amount: -points_used, type: 'redeemed', description: 'Redeemed at checkout', timestamp: new Date().toISOString() });
+          }
+          if (active_reward?.points_required) {
+            historyEntries.push({ amount: -active_reward.points_required, type: 'redeemed', description: `Redeemed: ${active_reward.title}`, timestamp: new Date().toISOString() });
+          }
           await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-            total_points: Math.max(0, (existing[0].total_points || 0) - points_used),
-            redeemed_points: (existing[0].redeemed_points || 0) + points_used,
-            points_history: [...(existing[0].points_history || []), {
-              amount: -points_used,
-              type: 'redeemed',
-              description: `Redeemed at checkout`,
-              timestamp: new Date().toISOString(),
-            }],
+            total_points: Math.max(0, (existing[0].total_points || 0) - deductPoints),
+            redeemed_points: (existing[0].redeemed_points || 0) + deductPoints,
+            points_history: [...(existing[0].points_history || []), ...historyEntries],
           });
         }
       }

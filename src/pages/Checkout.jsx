@@ -26,6 +26,11 @@ export default function Checkout() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
 
+  const activeReward = React.useMemo(() => {
+    if (!user?.email) return null;
+    try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
+  }, [user?.email]);
+
   const { data: userProfile } = useQuery({
     queryKey: ['user-profile-checkout', user?.email],
     queryFn: async () => {
@@ -67,8 +72,11 @@ export default function Checkout() {
   const scheduleRules = schedules[0]?.rules || [];
   const deliveryDate = getNextDeliveryDate(scheduleRules);
   const deliveryText = getDeliveryDisplayText(scheduleRules, fulfillmentType);
-  const deliveryFee = fulfillmentType === 'delivery' ? 5.00 : 0;
-  const total = Math.max(0, subtotal - pointsDiscount + deliveryFee);
+  const rewardFreeDelivery = activeReward?.reward_type === 'free_delivery';
+  const rewardDiscountPct = activeReward?.reward_type === 'discount' ? 10 : 0;
+  const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
+  const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery) ? 5.00 : 0;
+  const total = Math.max(0, subtotal - pointsDiscount - rewardDiscountAmt + deliveryFee);
 
   const totalBottles = items.reduce((sum, item) => {
     if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
@@ -101,6 +109,8 @@ export default function Checkout() {
       points_discount: pointsDiscount,
       points_used: pointsUsed,
       customer_email: user?.email || null,
+      active_reward: activeReward || null,
+      reward_discount: rewardDiscountAmt,
     });
 
     if (res.data?.url) {
@@ -223,6 +233,16 @@ export default function Checkout() {
           {pointsDiscount > 0 && (
             <div className="flex justify-between text-xs text-amber-600 mb-1 font-medium">
               <span>Points Discount</span><span>-${pointsDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {activeReward && rewardDiscountAmt > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>{activeReward.title}</span><span>-${rewardDiscountAmt.toFixed(2)}</span>
+            </div>
+          )}
+          {activeReward && rewardFreeDelivery && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>{activeReward.title}</span><span>Free!</span>
             </div>
           )}
           <div className="flex justify-between text-xs text-muted-foreground mb-1">

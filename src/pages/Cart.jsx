@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { isPreLaunch, launchDateFormatted } from '@/lib/launchConfig';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle } from 'lucide-react';
@@ -29,6 +29,11 @@ export default function Cart() {
 
   const birthday = userProfile?.birthday || user?.birthday;
   const birthdayActive = isBirthdayRewardActive(birthday);
+
+  const [activeReward, setActiveReward] = useState(() => {
+    if (!user?.email) return null;
+    try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
+  });
   const { rewardInCart, addBirthdayReward, removeBirthdayReward } = useBirthdayReward(items, addItem, removeItem);
 
   const { data: schedules = [] } = useQuery({
@@ -73,6 +78,20 @@ export default function Cart() {
         <h1 className="font-heading text-xl font-bold">Your Cart</h1>
         <p className="text-xs text-muted-foreground">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
       </div>
+
+      {/* Active Tier Reward Banner */}
+      {activeReward && (
+        <div className="mx-4 mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{activeReward.icon || '🎁'}</span>
+            <div className="flex-1">
+              <p className="text-xs font-semibold">{activeReward.title} — Active!</p>
+              <p className="text-[10px] text-muted-foreground">{activeReward.description} · Will be applied at checkout</p>
+            </div>
+            <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Active</span>
+          </div>
+        </div>
+      )}
 
       {/* Birthday Reward Banner */}
       {birthdayActive && meetsMinimum && (
