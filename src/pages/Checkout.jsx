@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Package, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useCart } from '@/lib/cartContext';
@@ -19,7 +20,7 @@ export default function Checkout() {
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
   const [fulfillmentType, setFulfillmentType] = useState('delivery');
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
   const [phone, setPhone] = useState('');
   const [prefilled, setPrefilled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,7 +41,10 @@ export default function Checkout() {
     const savedPhone = userProfile?.phone || user?.phone || '';
     const savedAddress = userProfile?.address || user?.address || '';
     if (savedPhone) setPhone(savedPhone);
-    if (savedAddress) setAddress(savedAddress);
+    if (savedAddress) {
+      const parts = savedAddress.split(',').map(s => s.trim());
+      setAddress({ street: parts[0]||'', city: parts[1]||'', state: parts[2]||'', zip: parts[3]||'' });
+    }
     if (savedPhone || savedAddress) setPrefilled(true);
   }, [userProfile, user, prefilled]);
 
@@ -78,7 +82,8 @@ export default function Checkout() {
       return;
     }
 
-    if (fulfillmentType === 'delivery' && !address.trim()) {
+    const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+    if (fulfillmentType === 'delivery' && !address.street.trim()) {
       toast.error('Please enter a delivery address');
       return;
     }
@@ -192,10 +197,10 @@ export default function Checkout() {
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
               Delivery Address
             </Label>
-            <Input
+            <AddressAutocomplete
               value={address}
-              onChange={e => setAddress(e.target.value)}
-              placeholder="123 Main St, City, State"
+              onChange={setAddress}
+              placeholder="123 Main St"
               className="rounded-xl h-11"
             />
           </div>

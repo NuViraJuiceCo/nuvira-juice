@@ -32,15 +32,19 @@ export default function AccountSettings() {
     const saved = localStorage.getItem(key);
     if (saved) {
       const s = JSON.parse(saved);
-      setForm({ firstName: s.first || '', lastName: s.last || '', phone: s.ph || '', address: s.addr || '', birthday: s.bd || '' });
+      const rawAddr = s.addr || '';
+      const addrVal = typeof rawAddr === 'object' ? rawAddr : (() => { const p = rawAddr.split(',').map(x => x.trim()); return { street: p[0]||'', city: p[1]||'', state: p[2]||'', zip: p[3]||'' }; })();
+      setForm({ firstName: s.first || '', lastName: s.last || '', phone: s.ph || '', address: addrVal, birthday: s.bd || '' });
     } else {
       base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
         const profile = profiles[0];
+          const rawAddr = profile?.address || '';
+        const parts = rawAddr.split(',').map(s => s.trim());
         setForm({
           firstName: user.first_name || '',
           lastName: user.last_name || '',
           phone: profile?.phone || '',
-          address: profile?.address || '',
+          address: { street: parts[0] || '', city: parts[1] || '', state: parts[2] || '', zip: parts[3] || '' },
           birthday: profile?.birthday || '',
         });
       });
@@ -52,15 +56,16 @@ export default function AccountSettings() {
     setIsSaving(true);
     setSaveSuccess(false);
     try {
-      await base44.auth.updateMe({ first_name: firstName, last_name: lastName, phone, address, birthday });
+      const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+      await base44.auth.updateMe({ first_name: firstName, last_name: lastName, phone, address: addrString, birthday });
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
       if (profiles.length > 0) {
-        await base44.entities.UserProfile.update(profiles[0].id, { phone, address, birthday });
+        await base44.entities.UserProfile.update(profiles[0].id, { phone, address: addrString, birthday });
       } else {
-        await base44.entities.UserProfile.create({ customer_email: user?.email, phone, address, birthday });
+        await base44.entities.UserProfile.create({ customer_email: user?.email, phone, address: addrString, birthday });
       }
       saveToLocalStorage(form);
-      await base44.functions.invoke('syncUserToHub', { email: user?.email, first_name: firstName, last_name: lastName, phone, address, birthday });
+      await base44.functions.invoke('syncUserToHub', { email: user?.email, first_name: firstName, last_name: lastName, phone, address: addrString, birthday });
       setSaveSuccess(true);
       setTimeout(() => { setSaveSuccess(false); window.location.reload(); }, 1500);
     } catch (err) {

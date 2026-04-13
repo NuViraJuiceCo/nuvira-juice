@@ -13,7 +13,7 @@ export default function ProfileSetup({ onComplete }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
   const [birthday, setBirthday] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
@@ -39,7 +39,10 @@ export default function ProfileSetup({ onComplete }) {
         // Pre-fill any existing data
         setFirstName(user.first_name || '');
         setLastName(user.last_name || '');
-        if (profile?.address) setAddress(profile.address);
+        if (profile?.address) {
+          const parts = profile.address.split(',').map(s => s.trim());
+          setAddress({ street: parts[0] || '', city: parts[1] || '', state: parts[2] || '', zip: parts[3] || '' });
+        }
         if (profile?.birthday) setBirthday(profile.birthday);
         setShow(true);
       }
@@ -62,7 +65,8 @@ export default function ProfileSetup({ onComplete }) {
 
     // Save profile details to UserProfile entity
     const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
-    const profileData = { phone: phone.trim(), address: address.trim(), birthday };
+    const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+    const profileData = { phone: phone.trim(), address: addrString, birthday };
     if (profiles.length > 0) {
       await base44.entities.UserProfile.update(profiles[0].id, profileData);
     } else {
