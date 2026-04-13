@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
+import { base44 } from '@/api/base44Client';
 
 export default function AddressAutocomplete({ value, onChange, placeholder, className }) {
   const [suggestions, setSuggestions] = useState([]);
@@ -8,16 +9,13 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
   const containerRef = useRef(null);
 
   const fetchSuggestions = (query) => {
-    if (!query || query.length < 4) { setSuggestions([]); return; }
+    if (!query || query.length < 3) { setSuggestions([]); setOpen(false); return; }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(query)}&countrycodes=us`,
-        { headers: { 'Accept-Language': 'en' } }
-      );
-      const data = await res.json();
-      setSuggestions(data.map(d => d.display_name));
-      setOpen(data.length > 0);
+      const res = await base44.functions.invoke('addressSuggest', { query });
+      const list = res.data?.suggestions || [];
+      setSuggestions(list);
+      setOpen(list.length > 0);
     }, 350);
   };
 
