@@ -24,6 +24,17 @@ const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f794548115
 export default function Home() {
   const { user } = useAuth();
 
+  // Read first name from localStorage cache so it reflects immediately after settings change
+  const cachedFirstName = React.useMemo(() => {
+    if (!user?.email) return null;
+    try {
+      const saved = localStorage.getItem(`accountSettings_${user.email}`);
+      return saved ? JSON.parse(saved).first || null : null;
+    } catch { return null; }
+  }, [user?.email]);
+
+  const displayFirstName = cachedFirstName || user?.first_name;
+
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 50),
@@ -107,14 +118,14 @@ export default function Home() {
       >
         <div>
           <img src={LOGO_URL} alt="NuVira Juice Company" className="h-8" />
-          {user?.first_name && (
+          {displayFirstName && (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.3 }}
               className="text-xs text-muted-foreground mt-1"
             >
-              Hey {user.first_name} 👋
+              Hey {displayFirstName} 👋
             </motion.p>
           )}
         </div>
