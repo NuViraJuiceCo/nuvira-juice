@@ -107,14 +107,14 @@ export default function Home() {
       >
         <div>
           <img src={LOGO_URL} alt="NuVira Juice Company" className="h-8" />
-          {user?.full_name && (
+          {user?.first_name && (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.3 }}
               className="text-xs text-muted-foreground mt-1"
             >
-              Hey {user.full_name.split(' ')[0]} 👋
+              Hey {user.first_name} 👋
             </motion.p>
           )}
         </div>

@@ -2,28 +2,30 @@
   "name": "User",
   "type": "object",
   "properties": {
+    "first_name": {
+      "type": "string",
+      "description": "User's first name"
+    },
+    "last_name": {
+      "type": "string",
+      "description": "User's last name"
+    },
     "role": {
       "type": "string",
       "enum": [
         "user",
         "admin"
       ],
-      "default": "user",
-      "description": "User role - new signups default to user"
+      "default": "user"
     },
     "phone": {
-      "type": "string",
-      "description": "Phone number"
+      "type": "string"
     },
     "address": {
-      "type": "string",
-      "description": "Default delivery address"
+      "type": "string"
     },
     "birthday": {
-      "type": "string",
-      "format": "date",
-      "description": "Birthday for rewards"
+      "type": "string"
     }
-  },
-  "required": []
+  }
 }

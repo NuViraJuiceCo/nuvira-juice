@@ -14,7 +14,8 @@ export default function AccountSettings() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [birthday, setBirthday] = useState('');
@@ -24,9 +25,9 @@ export default function AccountSettings() {
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
   // Save form data to localStorage
-  const saveToLocalStorage = (full, ph, addr, bd) => {
+  const saveToLocalStorage = (first, last, ph, addr, bd) => {
     const key = `accountSettings_${user?.email || 'guest'}`;
-    localStorage.setItem(key, JSON.stringify({ full, ph, addr, bd }));
+    localStorage.setItem(key, JSON.stringify({ first, last, ph, addr, bd }));
   };
 
   // Load form data from localStorage on mount (user-specific key)
@@ -36,23 +37,17 @@ export default function AccountSettings() {
     return saved ? JSON.parse(saved) : null;
   };
 
-  // Clear localStorage for current user
-  const clearLocalStorage = () => {
-    const key = `accountSettings_${user?.email || 'guest'}`;
-    localStorage.removeItem(key);
-  };
-
   useEffect(() => {
     const saved = loadFromLocalStorage();
     if (saved) {
-      // Always load from localStorage cache first
-      setFullName(saved.full || '');
+      setFirstName(saved.first || '');
+      setLastName(saved.last || '');
       setPhone(saved.ph || '');
       setAddress(saved.addr || '');
       setBirthday(saved.bd || '');
     } else if (user?.email) {
-      // First visit: load from server and cache it
-      setFullName(user.full_name || '');
+      setFirstName(user.first_name || '');
+      setLastName(user.last_name || '');
       base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
         const profile = profiles[0];
         const ph = profile?.phone || '';
@@ -61,8 +56,7 @@ export default function AccountSettings() {
         setPhone(ph);
         setAddress(addr);
         setBirthday(bd);
-        // Cache to localStorage
-        saveToLocalStorage(user.full_name || '', ph, addr, bd);
+        saveToLocalStorage(user.first_name || '', user.last_name || '', ph, addr, bd);
       });
     }
   }, [user?.email]);
@@ -73,7 +67,8 @@ export default function AccountSettings() {
     try {
       // Save to User entity (visible in dashboard)
       await base44.auth.updateMe({ 
-        full_name: fullName,
+        first_name: firstName,
+        last_name: lastName,
         phone,
         address,
         birthday,
@@ -97,12 +92,13 @@ export default function AccountSettings() {
       }
       
       // Keep localStorage cache updated with latest saved data
-      saveToLocalStorage(fullName, phone, address, birthday);
+      saveToLocalStorage(firstName, lastName, phone, address, birthday);
       
       // Sync to operations hub
       await base44.functions.invoke('syncUserToHub', {
         email: user?.email,
-        full_name: fullName,
+        first_name: firstName,
+        last_name: lastName,
         phone,
         address,
         birthday,
@@ -135,13 +131,23 @@ export default function AccountSettings() {
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Profile</h2>
           <div className="space-y-3">
-            <div>
-              <Label className="text-xs text-muted-foreground">Full Name</Label>
-              <Input value={fullName} onChange={e => {
-                const newVal = e.target.value;
-                setFullName(newVal);
-                saveToLocalStorage(newVal, phone, address, birthday);
-              }} className="rounded-xl h-11" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">First Name</Label>
+                <Input value={firstName} onChange={e => {
+                  const newVal = e.target.value;
+                  setFirstName(newVal);
+                  saveToLocalStorage(newVal, lastName, phone, address, birthday);
+                }} className="rounded-xl h-11" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Last Name</Label>
+                <Input value={lastName} onChange={e => {
+                  const newVal = e.target.value;
+                  setLastName(newVal);
+                  saveToLocalStorage(firstName, newVal, phone, address, birthday);
+                }} className="rounded-xl h-11" />
+              </div>
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Email</Label>
@@ -162,7 +168,7 @@ export default function AccountSettings() {
                 onChange={e => {
                   const newVal = e.target.value;
                   setPhone(newVal);
-                  saveToLocalStorage(fullName, newVal, address, birthday);
+                  saveToLocalStorage(firstName, lastName, newVal, address, birthday);
                 }}
                 placeholder="(555) 123-4567"
                 className="rounded-xl h-11"
@@ -175,7 +181,7 @@ export default function AccountSettings() {
                 onChange={e => {
                   const newVal = e.target.value;
                   setAddress(newVal);
-                  saveToLocalStorage(fullName, phone, newVal, birthday);
+                  saveToLocalStorage(firstName, lastName, phone, newVal, birthday);
                 }}
                 placeholder="123 Main St, City, State"
                 className="rounded-xl h-11"
@@ -189,7 +195,7 @@ export default function AccountSettings() {
                 onChange={e => {
                   const newVal = e.target.value;
                   setBirthday(newVal);
-                  saveToLocalStorage(fullName, phone, address, newVal);
+                  saveToLocalStorage(firstName, lastName, phone, address, newVal);
                 }}
                 className="rounded-xl h-11"
               />
@@ -252,7 +258,7 @@ export default function AccountSettings() {
                 await base44.integrations.Core.SendEmail({
                   to: 'info@nuvirajuice.com',
                   subject: 'Account Deletion Request',
-                  body: `User ${user?.email} (${user?.full_name}) has requested account deletion.`,
+                  body: `User ${user?.email} (${firstName} ${lastName}) has requested account deletion.`,
                 });
                 setShowDeleteDialog(false);
                 toast.success('Deletion request submitted. We will process it within 48 hours.');
