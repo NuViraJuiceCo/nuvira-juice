@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/AuthContext';
 import { CheckCircle, Truck, ArrowRight, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
@@ -10,6 +11,7 @@ import { motion } from 'framer-motion';
 export default function OrderConfirmation() {
   const orderId = window.location.pathname.split('/').pop();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const { data: order, isLoading } = useQuery({
     queryKey: ['order', orderId],
@@ -53,7 +55,7 @@ export default function OrderConfirmation() {
         transition={{ delay: 0.2 }}
         className="text-center"
       >
-        <h1 className="font-heading text-2xl font-bold mb-1">Order Confirmed!</h1>
+        <h1 className="font-heading text-2xl font-bold mb-1">{user?.first_name ? `Thanks, ${user.first_name}!` : 'Order Confirmed!'}</h1>
         <p className="text-sm text-muted-foreground mb-1">Order #{order.order_number}</p>
         <p className="text-xs text-muted-foreground">We've received your order</p>
       </motion.div>

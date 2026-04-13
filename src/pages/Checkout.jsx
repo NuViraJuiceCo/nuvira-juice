@@ -21,8 +21,28 @@ export default function Checkout() {
   const [fulfillmentType, setFulfillmentType] = useState('delivery');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
+  const [prefilled, setPrefilled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
+
+  const { data: userProfile } = useQuery({
+    queryKey: ['user-profile-checkout', user?.email],
+    queryFn: async () => {
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
+      return profiles[0] || null;
+    },
+    enabled: !!user?.email,
+  });
+
+  // Pre-populate fields from saved profile once
+  React.useEffect(() => {
+    if (prefilled || !user) return;
+    const savedPhone = userProfile?.phone || user?.phone || '';
+    const savedAddress = userProfile?.address || user?.address || '';
+    if (savedPhone) setPhone(savedPhone);
+    if (savedAddress) setAddress(savedAddress);
+    if (savedPhone || savedAddress) setPrefilled(true);
+  }, [userProfile, user, prefilled]);
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
