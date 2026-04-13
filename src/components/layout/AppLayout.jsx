@@ -8,15 +8,19 @@ import Cart from '@/pages/Cart';
 
 const TAB_PATHS = ['/', '/shop', '/cart'];
 import MobileNav from './MobileNav';
+import OnboardingQuiz from '@/components/onboarding/OnboardingQuiz';
 import SideNav from './SideNav';
 
 export default function AppLayout() {
   const location = useLocation();
   const isTabRoute = TAB_PATHS.includes(location.pathname);
   const [profileDone, setProfileDone] = useState(false);
+  const [quizDone, setQuizDone] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
   return (
     <div className="min-h-screen bg-background flex">
-      {!profileDone && <ProfileSetup onComplete={() => setProfileDone(true)} />}
+      {!profileDone && <ProfileSetup onComplete={() => { setProfileDone(true); setShowQuiz(true); }} />}
+      {profileDone && showQuiz && !quizDone && <OnboardingQuiz onComplete={() => { setQuizDone(true); setShowQuiz(false); }} />}
       {/* Sidebar — tablet & desktop */}
       <SideNav />
 
