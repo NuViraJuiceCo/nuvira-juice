@@ -94,7 +94,10 @@ export default function ProfileSetup({ onComplete }) {
 
     setSaving(false);
     setDone(true);
-    setTimeout(() => onComplete(), 1600);
+    setTimeout(() => {
+      onComplete();
+      window.location.reload();
+    }, 1600);
   };
 
   if (done) {
