@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/AuthContext';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 
@@ -176,10 +177,9 @@ export default function AccountSettings() {
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Default Delivery Address</Label>
-              <Input
+              <AddressAutocomplete
                 value={address}
-                onChange={e => {
-                  const newVal = e.target.value;
+                onChange={newVal => {
                   setAddress(newVal);
                   saveToLocalStorage(firstName, lastName, phone, newVal, birthday);
                 }}

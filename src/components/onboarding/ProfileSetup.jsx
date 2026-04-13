@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { User, CheckCircle2 } from 'lucide-react';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 
 export default function ProfileSetup({ onComplete }) {
   const { user, refreshUser } = useAuth();
@@ -171,10 +172,10 @@ export default function ProfileSetup({ onComplete }) {
           {/* Address */}
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">Default Delivery Address</Label>
-            <Input
-              placeholder="123 Main St, Wentzville, MO"
+            <AddressAutocomplete
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={setAddress}
+              placeholder="123 Main St, Wentzville, MO"
               className="rounded-lg h-11"
             />
           </div>
