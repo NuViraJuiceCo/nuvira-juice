@@ -54,7 +54,7 @@ export default function Account() {
             <User className="w-6 h-6 text-primary" />
           </div>
           <div className="flex-1">
-            <h1 className="font-heading text-xl font-bold">{user?.full_name || 'Guest'}</h1>
+            <h1 className="font-heading text-xl font-bold">{user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'Guest'}</h1>
             <p className="text-xs text-muted-foreground">{user?.email}</p>
             {userProfile?.phone && (
               <p className="text-xs text-muted-foreground">{userProfile.phone}</p>
