@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -6,13 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { User, CheckCircle2 } from 'lucide-react';
-
-// Check if user has completed mandatory profile fields
-function isProfileComplete(user) {
-  if (!user?.email) return true; // not logged in, skip
-  const cacheKey = `profileComplete_${user.email}`;
-  return !!localStorage.getItem(cacheKey);
-}
 
 export default function ProfileSetup({ onComplete }) {
   const { user } = useAuth();
@@ -23,12 +16,40 @@ export default function ProfileSetup({ onComplete }) {
   const [birthday, setBirthday] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [checked, setChecked] = useState(false); // whether we've checked server
+  const [needsSetup, setNeedsSetup] = useState(false);
 
-  // Skip if already completed
-  if (isProfileComplete(user)) {
-    onComplete();
-    return null;
-  }
+  useEffect(() => {
+    if (!user?.email) {
+      // Not logged in — skip
+      onComplete();
+      return;
+    }
+    // Fast path: localStorage flag (same browser)
+    if (localStorage.getItem(`profileComplete_${user.email}`)) {
+      onComplete();
+      return;
+    }
+    // Server check: does UserProfile have a phone number?
+    base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
+      const profile = profiles[0];
+      if (profile?.phone) {
+        // Already complete — cache and skip
+        localStorage.setItem(`profileComplete_${user.email}`, '1');
+        onComplete();
+      } else {
+        // Pre-fill what we have
+        if (profile?.phone) setPhone(profile.phone);
+        if (profile?.address) setAddress(profile.address);
+        if (profile?.birthday) setBirthday(profile.birthday);
+        setNeedsSetup(true);
+        setChecked(true);
+      }
+    });
+  }, [user?.email]);
+
+  // Still checking — render nothing (don't block the page)
+  if (!checked || !needsSetup) return null;
 
   const canSubmit = firstName.trim() && lastName.trim() && phone.trim();
 
