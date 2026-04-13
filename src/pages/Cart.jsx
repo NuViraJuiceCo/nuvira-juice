@@ -17,7 +17,18 @@ export default function Cart() {
   const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem } = useCart();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const birthdayActive = isBirthdayRewardActive(user?.birthday);
+
+  const { data: userProfile } = useQuery({
+    queryKey: ['user-profile-cart', user?.email],
+    queryFn: async () => {
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
+      return profiles[0] || null;
+    },
+    enabled: !!user?.email,
+  });
+
+  const birthday = userProfile?.birthday || user?.birthday;
+  const birthdayActive = isBirthdayRewardActive(birthday);
   const { rewardInCart, addBirthdayReward, removeBirthdayReward } = useBirthdayReward(items, addItem, removeItem);
 
   const { data: schedules = [] } = useQuery({
