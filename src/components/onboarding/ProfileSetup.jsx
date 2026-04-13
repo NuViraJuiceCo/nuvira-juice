@@ -80,7 +80,7 @@ export default function ProfileSetup({ onComplete }) {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone: phone.trim(),
-        address: address.trim(),
+        address: addrString,
         birthday,
       });
     } catch (e) {
@@ -92,7 +92,7 @@ export default function ProfileSetup({ onComplete }) {
       first: firstName.trim(),
       last: lastName.trim(),
       ph: phone.trim(),
-      addr: address.trim(),
+      addr: addrString,
       bd: birthday,
     }));
     localStorage.setItem(`profileComplete_${user.email}`, '1');
