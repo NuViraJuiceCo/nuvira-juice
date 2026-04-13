@@ -194,11 +194,19 @@ export default function ProfileSetup({ onComplete }) {
           </div>
 
           <p className="text-[10px] text-muted-foreground">Fields marked <span className="text-destructive">*</span> are required.</p>
+
+          <Button
+            onClick={handleSubmit}
+            disabled={!canSubmit || saving}
+            className="w-full h-11 rounded-lg font-semibold text-sm mt-2"
+          >
+            {saving ? 'Saving...' : 'Save & Continue'}
+          </Button>
         </motion.div>
       </div>
 
       {/* Footer */}
-      <div className="px-6 pb-8 pt-4 border-t border-border safe-area-bottom">
+      <div className="sticky bottom-0 px-6 pb-8 pt-4 border-t border-border bg-background safe-area-bottom">
         <Button
           onClick={handleSubmit}
           disabled={!canSubmit || saving}
