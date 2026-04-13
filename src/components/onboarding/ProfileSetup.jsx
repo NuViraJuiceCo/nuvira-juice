@@ -9,47 +9,43 @@ import { User, CheckCircle2 } from 'lucide-react';
 
 export default function ProfileSetup({ onComplete }) {
   const { user } = useAuth();
-  const [firstName, setFirstName] = useState(user?.first_name || '');
-  const [lastName, setLastName] = useState(user?.last_name || '');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [birthday, setBirthday] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
-  const [checked, setChecked] = useState(false); // whether we've checked server
-  const [needsSetup, setNeedsSetup] = useState(false);
+  const [show, setShow] = useState(false);
 
   useEffect(() => {
     if (!user?.email) {
-      // Not logged in — skip
       onComplete();
       return;
     }
-    // Fast path: localStorage flag (same browser)
+    // Fast path: localStorage flag
     if (localStorage.getItem(`profileComplete_${user.email}`)) {
       onComplete();
       return;
     }
-    // Server check: does UserProfile have a phone number?
+    // Server check
     base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
       const profile = profiles[0];
       if (profile?.phone) {
-        // Already complete — cache and skip
         localStorage.setItem(`profileComplete_${user.email}`, '1');
         onComplete();
       } else {
-        // Pre-fill what we have
-        if (profile?.phone) setPhone(profile.phone);
+        // Pre-fill any existing data
+        setFirstName(user.first_name || '');
+        setLastName(user.last_name || '');
         if (profile?.address) setAddress(profile.address);
         if (profile?.birthday) setBirthday(profile.birthday);
-        setNeedsSetup(true);
-        setChecked(true);
+        setShow(true);
       }
     });
   }, [user?.email]);
 
-  // Still checking — render nothing (don't block the page)
-  if (!checked || !needsSetup) return null;
+  if (!show) return null;
 
   const canSubmit = firstName.trim() && lastName.trim() && phone.trim();
 
@@ -73,36 +69,37 @@ export default function ProfileSetup({ onComplete }) {
     }
 
     // Sync to operations hub
-    await base44.functions.invoke('syncUserToHub', {
-      email: user.email,
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      phone: phone.trim(),
-      address: address.trim(),
-      birthday,
-    });
+    try {
+      await base44.functions.invoke('syncUserToHub', {
+        email: user.email,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        birthday,
+      });
+    } catch (e) {
+      // non-critical
+    }
 
-    // Cache in localStorage so settings page and home page reflect immediately
-    const settingsKey = `accountSettings_${user.email}`;
-    localStorage.setItem(settingsKey, JSON.stringify({
+    // Cache in localStorage so AccountSettings and Home reflect immediately
+    localStorage.setItem(`accountSettings_${user.email}`, JSON.stringify({
       first: firstName.trim(),
       last: lastName.trim(),
       ph: phone.trim(),
       addr: address.trim(),
       bd: birthday,
     }));
-
-    // Mark profile as complete
     localStorage.setItem(`profileComplete_${user.email}`, '1');
 
     setSaving(false);
     setDone(true);
-    setTimeout(() => onComplete(), 1400);
+    setTimeout(() => onComplete(), 1600);
   };
 
   if (done) {
     return (
-      <div className="fixed inset-0 z-50 bg-primary flex flex-col items-center justify-center px-8 text-center">
+      <div className="fixed inset-0 z-[100] bg-primary flex flex-col items-center justify-center px-8 text-center">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }}>
           <CheckCircle2 className="w-16 h-16 text-white mb-4" />
         </motion.div>
@@ -115,9 +112,9 @@ export default function ProfileSetup({ onComplete }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col overflow-y-auto">
+    <div className="fixed inset-0 z-[100] bg-background flex flex-col" style={{ overflowY: 'auto' }}>
       {/* Header */}
-      <div className="px-6 pt-10 pb-6 bg-primary">
+      <div className="px-6 pt-10 pb-6 bg-primary shrink-0">
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-center gap-2 mb-1">
             <User className="w-5 h-5 text-white" />
@@ -128,7 +125,7 @@ export default function ProfileSetup({ onComplete }) {
       </div>
 
       {/* Form */}
-      <div className="flex-1 px-6 py-8">
+      <div className="flex-1 px-6 py-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -144,7 +141,6 @@ export default function ProfileSetup({ onComplete }) {
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 className="rounded-lg h-11"
-                autoFocus
               />
             </div>
             <div>
@@ -184,7 +180,9 @@ export default function ProfileSetup({ onComplete }) {
 
           {/* Birthday */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Birthday 🎂 <span className="text-[10px] text-muted-foreground">(free bottle on your birthday!)</span></Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">
+              Birthday 🎂 <span className="text-[10px] text-muted-foreground">(free bottle on your birthday!)</span>
+            </Label>
             <Input
               type="date"
               value={birthday}
@@ -195,25 +193,15 @@ export default function ProfileSetup({ onComplete }) {
 
           <p className="text-[10px] text-muted-foreground">Fields marked <span className="text-destructive">*</span> are required.</p>
 
+          {/* Save Button — always visible inside the form */}
           <Button
             onClick={handleSubmit}
             disabled={!canSubmit || saving}
-            className="w-full h-11 rounded-lg font-semibold text-sm mt-2"
+            className="w-full h-12 rounded-xl font-semibold text-base mt-4"
           >
-            {saving ? 'Saving...' : 'Save & Continue'}
+            {saving ? 'Saving...' : 'Save & Continue →'}
           </Button>
         </motion.div>
-      </div>
-
-      {/* Footer */}
-      <div className="sticky bottom-0 px-6 pb-8 pt-4 border-t border-border bg-background safe-area-bottom">
-        <Button
-          onClick={handleSubmit}
-          disabled={!canSubmit || saving}
-          className="w-full h-11 rounded-lg font-semibold text-sm"
-        >
-          {saving ? 'Saving...' : 'Save & Continue'}
-        </Button>
       </div>
     </div>
   );
