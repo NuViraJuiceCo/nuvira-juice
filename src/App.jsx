@@ -62,27 +62,6 @@ const AuthenticatedApp = () => {
     }
   }
 
-  // Require login — redirect guests to login
-  if (!user) {
-    navigateToLogin();
-    return null;
-  }
-
-  // Require admin role
-  if (user.role !== 'admin') {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-background px-6 text-center">
-        <div className="text-4xl mb-4">🔒</div>
-        <h1 className="font-heading text-xl font-bold mb-2">Access Restricted</h1>
-        <p className="text-sm text-muted-foreground mb-6">This app is only available to NuVira admins.</p>
-        <button
-          onClick={() => base44.auth.logout()}
-          className="text-sm font-medium text-primary underline"
-        >Sign out</button>
-      </div>
-    );
-  }
-
   // Render the main app
   return (
     <CartProvider>
