@@ -25,11 +25,8 @@ function loadGoogleMaps(callback) {
 export default function AddressAutocomplete({ value, onChange, placeholder, className }) {
   const inputRef = useRef(null);
   const autocompleteRef = useRef(null);
+  // Only use value as initial state — don't sync back to avoid fighting Google Places
   const [inputValue, setInputValue] = useState(value || '');
-
-  useEffect(() => {
-    setInputValue(value || '');
-  }, [value]);
 
   useEffect(() => {
     loadGoogleMaps(() => {
