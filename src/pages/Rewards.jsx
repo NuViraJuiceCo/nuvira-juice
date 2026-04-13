@@ -6,7 +6,9 @@ import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
 import { Star, Lock, ChevronRight, Gift, Zap, ShoppingBag, Users, Trophy, CheckCircle, Cake } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import FreeProductPicker from '@/components/FreeProductPicker';
+import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
@@ -35,7 +37,11 @@ const HOW_TO_EARN = [
 
 export default function Rewards() {
   const { user } = useAuth();
+  const { addItem } = useCart();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingReward, setPendingReward] = useState(null);
 
   const { data: pointsData } = useQuery({
     queryKey: ['user-points', user?.email],
@@ -61,10 +67,24 @@ export default function Rewards() {
   });
 
   const handleApplyReward = (reward) => {
+    if (reward.reward_type === 'free_bottle') {
+      setPendingReward(reward);
+      setPickerOpen(true);
+      return;
+    }
     const r = { id: reward.id, title: reward.title, description: reward.description, reward_type: reward.reward_type, points_required: reward.points_required, icon: reward.icon };
     localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(r));
     setActiveReward(r);
     toast.success(`${reward.title} applied! Head to your cart to use it.`);
+  };
+
+  const handleFreeProductSelect = (product) => {
+    // Add the chosen product to cart as free
+    addItem({ ...product, id: `__free_reward_${product.id}__`, price: 0, title: `${pendingReward?.icon || '🎁'} ${product.title} (Free)` }, 1, { isFreeReward: true });
+    setPickerOpen(false);
+    setPendingReward(null);
+    toast.success(`${product.title} added to your cart for free!`);
+    navigate('/cart');
   };
 
   const handleRemoveReward = () => {
@@ -368,6 +388,14 @@ export default function Rewards() {
       )}
 
       <div className="h-8" />
+
+      <FreeProductPicker
+        open={pickerOpen}
+        onClose={() => { setPickerOpen(false); setPendingReward(null); }}
+        onSelect={handleFreeProductSelect}
+        title={pendingReward ? `Choose Your ${pendingReward.title}` : 'Choose Your Free Item'}
+        category="juice"
+      />
     </div>
   );
 }

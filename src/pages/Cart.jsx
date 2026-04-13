@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import BundleComposer from '@/components/cart/BundleComposer';
 import { useAuth } from '@/lib/AuthContext';
 import { isBirthdayRewardActive, useBirthdayReward } from '@/lib/birthdayReward';
+import FreeProductPicker from '@/components/FreeProductPicker';
 
 export default function Cart() {
   const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem } = useCart();
@@ -30,11 +31,16 @@ export default function Cart() {
   const birthday = userProfile?.birthday || user?.birthday;
   const birthdayActive = isBirthdayRewardActive(birthday);
 
+  const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [activeReward, setActiveReward] = useState(() => {
     if (!user?.email) return null;
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
   });
   const { rewardInCart, addBirthdayReward, removeBirthdayReward } = useBirthdayReward(items, addItem, removeItem);
+
+  const handleBirthdayProductSelect = (product) => {
+    addItem({ ...product, id: '__birthday_reward__', price: 0, title: `🎂 ${product.title} (Free)` }, 1, { isBirthdayReward: true });
+  };
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
@@ -107,7 +113,7 @@ export default function Cart() {
             {rewardInCart ? (
               <button onClick={removeBirthdayReward} className="text-[10px] font-semibold text-pink-500 underline">Remove</button>
             ) : (
-              <button onClick={addBirthdayReward} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-full">Add Free</button>
+              <button onClick={() => setShowBirthdayPicker(true)} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-full">Choose Free</button>
             )}
           </div>
         </div>
@@ -222,6 +228,13 @@ export default function Cart() {
           </Button>
         </div>
       </div>
+      <FreeProductPicker
+        open={showBirthdayPicker}
+        onClose={() => setShowBirthdayPicker(false)}
+        onSelect={handleBirthdayProductSelect}
+        title="Choose Your Free Birthday Juice"
+        category="juice"
+      />
     </div>
   );
 }
