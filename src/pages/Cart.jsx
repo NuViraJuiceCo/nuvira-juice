@@ -57,9 +57,12 @@ export default function Cart() {
   const deliveryText = getDeliveryDisplayText(scheduleRules);
   const productionInfo = getProductionInfo(scheduleRules);
   const deliveryFee = 5.00;
+  // Shots are 2oz so require 6 minimum; juices/bundles require 3 minimum.
+  // Normalize: each shot counts as 0.5 toward the minimum (so 6 shots = 3 units).
   const juiceCount = items.reduce((sum, item) => {
     if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
-    if (item.category === 'juice' || item.category === 'shot') return sum + item.quantity;
+    if (item.category === 'juice') return sum + item.quantity;
+    if (item.category === 'shot') return sum + item.quantity * 0.5;
     return sum;
   }, 0);
   const meetsMinimum = juiceCount >= 3;
@@ -122,12 +125,12 @@ export default function Cart() {
 
       {/* Minimum Order Notice */}
       {!meetsMinimum && (
-        <div className="mx-4 mb-3 bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
-          <p className="text-xs font-semibold text-foreground">
-            Minimum order is 3 bottles — add {3 - juiceCount} more to checkout.
-          </p>
-        </div>
+      <div className="mx-4 mb-3 bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center gap-2">
+      <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
+      <p className="text-xs font-semibold text-foreground">
+        Minimum order is 3 juices or 6 shots — add more to checkout.
+      </p>
+      </div>
       )}
 
       {/* Production Day Banner */}
@@ -224,7 +227,7 @@ export default function Cart() {
             disabled={!meetsMinimum || isPreLaunch()}
             className="w-full h-12 rounded-xl font-semibold text-sm disabled:opacity-50"
           >
-            {isPreLaunch() ? `Opens ${launchDateFormatted()}` : meetsMinimum ? 'Checkout' : `Add ${3 - juiceCount} more bottle${3 - juiceCount > 1 ? 's' : ''}`}
+            {isPreLaunch() ? `Opens ${launchDateFormatted()}` : meetsMinimum ? 'Checkout' : 'Add more to checkout'}
             {!isPreLaunch() && meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
         </div>
