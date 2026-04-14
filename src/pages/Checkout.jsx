@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Truck, Package, Gift } from 'lucide-react';
+import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -19,7 +18,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
-  const [fulfillmentType, setFulfillmentType] = useState('delivery');
+  const fulfillmentType = 'delivery';
   const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
   const [phone, setPhone] = useState('');
   const [prefilled, setPrefilled] = useState(false);
@@ -166,29 +165,6 @@ export default function Checkout() {
         </div>
       )}
 
-      {/* Fulfillment Type */}
-      <div className="px-4 mb-5">
-        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">
-          Fulfillment
-        </Label>
-        <RadioGroup value={fulfillmentType} onValueChange={setFulfillmentType} className="flex gap-3">
-          <label className={`flex-1 flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-colors ${
-            fulfillmentType === 'delivery' ? 'border-primary bg-primary/5' : 'border-border'
-          }`}>
-            <RadioGroupItem value="delivery" />
-            <Truck className="w-4 h-4" />
-            <span className="text-sm font-medium">Delivery</span>
-          </label>
-          <label className={`flex-1 flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-colors ${
-            fulfillmentType === 'pickup' ? 'border-primary bg-primary/5' : 'border-border'
-          }`}>
-            <RadioGroupItem value="pickup" />
-            <Package className="w-4 h-4" />
-            <span className="text-sm font-medium">Pickup</span>
-          </label>
-        </RadioGroup>
-      </div>
-
       {/* Contact */}
       <div className="px-4 space-y-4 mb-5">
         <div>
@@ -246,7 +222,7 @@ export default function Checkout() {
             </div>
           )}
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>{fulfillmentType === 'delivery' ? 'Delivery' : 'Pickup'}</span>
+            <span>Delivery</span>
             <span>{deliveryFee > 0 ? `$${deliveryFee.toFixed(2)}` : 'Free'}</span>
           </div>
           <div className="flex justify-between text-sm font-bold mt-1.5">
