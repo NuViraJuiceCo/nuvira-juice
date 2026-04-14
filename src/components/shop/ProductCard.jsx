@@ -10,7 +10,12 @@ export default function ProductCard({ product, compact = false }) {
   const handleQuickAdd = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    addItem(product);
+    const extra = {};
+    if (product.category === 'bundle') {
+      extra.bottles_per_unit = product.bottle_count || 3;
+      extra.bundle_composition = [];
+    }
+    addItem(product, 1, extra);
   };
 
   if (compact) {
