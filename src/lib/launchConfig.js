@@ -2,7 +2,7 @@
 export const LAUNCH_DATE = new Date('2026-04-22T00:00:00');
 
 export function isPreLaunch() {
-  return false; // TESTING: temporarily disabled — re-enable before April 22nd
+  return new Date() < LAUNCH_DATE;
 }
 
 export function launchDateFormatted() {
