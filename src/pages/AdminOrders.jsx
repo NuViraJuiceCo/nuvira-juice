@@ -145,17 +145,10 @@ export default function AdminOrders() {
   const [filter, setFilter] = useState('active');
   const [advancingId, setAdvancingId] = useState(null);
 
-  if (user?.role !== 'admin') {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <p className="text-muted-foreground text-sm">Access denied. Admins only.</p>
-      </div>
-    );
-  }
-
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['admin-orders', filter],
     queryFn: () => base44.entities.Order.list('-created_date', 100),
+    enabled: user?.role === 'admin',
   });
 
   const filtered = filter === 'active'
@@ -184,6 +177,14 @@ export default function AdminOrders() {
     setAdvancingId(order.id);
     advanceMutation.mutate({ order, nextStage });
   };
+
+  if (user?.role !== 'admin') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <p className="text-muted-foreground text-sm">Access denied. Admins only.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-10">
