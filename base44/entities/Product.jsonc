@@ -58,6 +58,10 @@
       "type": "string",
       "description": "Bottle size or quantity"
     },
+    "bottle_count": {
+      "type": "number",
+      "description": "Number of bottles in this bundle (only for bundle category)"
+    },
     "tags": {
       "type": "array",
       "items": {
