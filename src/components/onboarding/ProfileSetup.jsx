@@ -27,7 +27,7 @@ export default function ProfileSetup({ onComplete }) {
     // Always check DB — never rely on localStorage for onboarding gate
     base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
       const profile = profiles[0];
-      if (profile?.phone) {
+      if (profile?.phone || profile?.onboarding_complete || user?.first_name) {
         onComplete(false);
       } else {
         // Pre-fill any existing data
