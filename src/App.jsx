@@ -31,6 +31,7 @@ import Legal from '@/pages/Legal';
 import Connect from '@/pages/Connect';
 import Partner from '@/pages/Partner';
 import BookEvent from '@/pages/BookEvent';
+import AdminOrders from '@/pages/AdminOrders';
 import ScrollToTop from '@/components/ScrollToTop';
 import { base44 } from '@/api/base44Client';
 
@@ -90,6 +91,7 @@ const AuthenticatedApp = () => {
           <Route path="/connect" element={<Connect />} />
           <Route path="/partner" element={<Partner />} />
           <Route path="/book-event" element={<BookEvent />} />
+          <Route path="/admin/orders" element={<AdminOrders />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />

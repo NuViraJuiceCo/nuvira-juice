@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import {
-  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper
+  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -155,6 +155,25 @@ export default function Account() {
           </div>
         </Link>
       </div>
+
+      {/* Admin Section */}
+      {user?.role === 'admin' && (
+        <div className="px-4 mt-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">Admin</p>
+          <Link to="/admin/orders">
+            <div className="flex items-center gap-3 p-3.5 bg-primary/5 rounded-xl border border-primary/20 active:bg-primary/10 transition-colors">
+              <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
+                <ClipboardList className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium">Order Management</p>
+                <p className="text-[10px] text-muted-foreground">Update order statuses</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* Logout / Login */}
       <div className="px-4 mt-6 mb-8">
