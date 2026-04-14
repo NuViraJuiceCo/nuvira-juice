@@ -58,7 +58,7 @@ export default function Cart() {
   const productionInfo = getProductionInfo(scheduleRules);
   const deliveryFee = 5.00;
   const juiceCount = items.reduce((sum, item) => {
-    if (item.category === 'bundle') return sum + (item.bottles_per_unit || 1) * item.quantity;
+    if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
     if (item.category === 'juice' || item.category === 'shot') return sum + item.quantity;
     return sum;
   }, 0);
