@@ -24,16 +24,10 @@ export default function ProfileSetup({ onComplete }) {
       onComplete();
       return;
     }
-    // Fast path: localStorage flag
-    if (localStorage.getItem(`profileComplete_${user.email}`)) {
-      onComplete(false);
-      return;
-    }
-    // Server check
+    // Always check DB — never rely on localStorage for onboarding gate
     base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
       const profile = profiles[0];
       if (profile?.phone) {
-        localStorage.setItem(`profileComplete_${user.email}`, '1');
         onComplete(false);
       } else {
         // Pre-fill any existing data
@@ -86,16 +80,6 @@ export default function ProfileSetup({ onComplete }) {
     } catch (e) {
       // non-critical
     }
-
-    // Cache in localStorage so AccountSettings and Home reflect immediately
-    localStorage.setItem(`accountSettings_${user.email}`, JSON.stringify({
-      first: firstName.trim(),
-      last: lastName.trim(),
-      ph: phone.trim(),
-      addr: addrString,
-      bd: birthday,
-    }));
-    localStorage.setItem(`profileComplete_${user.email}`, '1');
 
     setSaving(false);
     setDone(true);

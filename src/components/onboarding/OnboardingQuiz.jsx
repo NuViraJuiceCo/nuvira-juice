@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -68,6 +68,18 @@ export default function OnboardingQuiz({ onComplete }) {
   const [answers, setAnswers] = useState({});
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    if (!user?.email) { onComplete(); return; }
+    base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
+      if (profiles[0]?.onboarding_complete) {
+        onComplete();
+      } else {
+        setChecked(true);
+      }
+    });
+  }, [user?.email]);
 
   const current = STEPS[step];
 
@@ -101,17 +113,20 @@ export default function OnboardingQuiz({ onComplete }) {
       setStep(s => s + 1);
       return;
     }
-    // Save
+    // Save — upsert so re-runs don't create duplicate profiles
     setSaving(true);
-    await base44.entities.UserProfile.create({
-      customer_email: user.email,
-      ...answers,
-      onboarding_complete: true,
-    });
+    const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
+    if (profiles.length > 0) {
+      await base44.entities.UserProfile.update(profiles[0].id, { ...answers, onboarding_complete: true });
+    } else {
+      await base44.entities.UserProfile.create({ customer_email: user.email, ...answers, onboarding_complete: true });
+    }
     setSaving(false);
     setDone(true);
     setTimeout(() => onComplete(), 1800);
   };
+
+  if (!checked) return null;
 
   if (done) {
     return (
