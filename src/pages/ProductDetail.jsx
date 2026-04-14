@@ -38,8 +38,11 @@ export default function ProductDetail() {
     if (!product) return;
     const extra = {};
     if (product.category === 'bundle') {
-      const sizeNum = parseInt((product.size || '').replace(/[^0-9]/g, ''));
-      extra.bottles_per_unit = sizeNum || 3;
+      // Extract bottle count from size field (e.g. "6 Pack", "3 Bottles", "12oz x6")
+      const numbers = (product.size || '').match(/\d+/g)?.map(Number) || [];
+      // Take the largest number found (to avoid picking oz/ml values)
+      const sizeNum = numbers.length > 0 ? Math.max(...numbers) : 0;
+      extra.bottles_per_unit = sizeNum >= 2 ? sizeNum : 3;
       extra.bundle_composition = [];
     }
     addItem(product, quantity, extra);
