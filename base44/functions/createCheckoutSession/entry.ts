@@ -6,6 +6,12 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+
+    if (!user) {
+      return Response.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const {
       items, subtotal, delivery_fee, total,
       fulfillment_type, delivery_address, contact_phone, estimated_delivery_date,

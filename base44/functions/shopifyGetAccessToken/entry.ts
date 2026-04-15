@@ -9,6 +9,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
+  const user = await base44.auth.me();
+
+  if (!user) {
+    return Response.json({ error: 'Authentication required' }, { status: 401 });
+  }
 
   const CLIENT_ID = Deno.env.get('SHOPIFY_CLIENT_ID');
   const CLIENT_SECRET = Deno.env.get('SHOPIFY_API_TOKEN'); // the "Secret" from dev dashboard

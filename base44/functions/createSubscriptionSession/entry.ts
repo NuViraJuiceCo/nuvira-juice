@@ -11,6 +11,13 @@ const PRICE_IDS = {
 
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+
+    if (!user) {
+      return Response.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const { plan_id, bundle_id, address, customer_email } = await req.json();
 
     const priceId = PRICE_IDS[plan_id];

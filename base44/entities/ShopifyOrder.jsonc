@@ -229,5 +229,27 @@
   "required": [
     "shopify_order_id",
     "shopify_order_number"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "email": "info@nuvirajuice.com"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "email": "info@nuvirajuice.com"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "email": "info@nuvirajuice.com"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "email": "info@nuvirajuice.com"
+      }
+    }
+  }
 }
