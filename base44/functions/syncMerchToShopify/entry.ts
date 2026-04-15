@@ -9,12 +9,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const storeUrl = Deno.env.get('SHOPIFY_STORE_URL');
+    const rawStoreUrl = Deno.env.get('SHOPIFY_STORE_URL');
     const accessToken = Deno.env.get('SHOPIFY_API_TOKEN');
 
-    if (!storeUrl || !accessToken) {
+    if (!rawStoreUrl || !accessToken) {
       return Response.json({ error: 'Shopify credentials not configured' }, { status: 500 });
     }
+
+    const storeUrl = rawStoreUrl.replace(/^https?:\/\//, '');
 
     // Fetch all merch items
     const merchItems = await base44.entities.Merch.filter({}, 'sort_order', 100);

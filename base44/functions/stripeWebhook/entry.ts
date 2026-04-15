@@ -41,6 +41,10 @@ Deno.serve(async (req) => {
             status_history: statusHistory,
           });
           console.log(`Order ${orderId} updated to scheduled_for_juicing`);
+
+          // Push this order into Shopify so both systems stay in sync
+          base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: orderId })
+            .catch(err => console.error('Failed to push order to Shopify:', err.message));
         }
       }
 
