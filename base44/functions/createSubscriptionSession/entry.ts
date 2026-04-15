@@ -3,12 +3,6 @@ import Stripe from 'npm:stripe@14';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
-const PRICE_IDS = {
-  weekly: 'price_1TLDrGRGJIVhpC3aRqEFp1Ga',
-  monthly: 'price_1TLDrGRGJIVhpC3aPmkjPydA',
-  vip: 'price_1TLDrGRGJIVhpC3afCcPptZV',
-};
-
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -20,9 +14,16 @@ Deno.serve(async (req) => {
 
     const { plan_id, bundle_id, address, customer_email } = await req.json();
 
-    const priceId = PRICE_IDS[plan_id];
+    // Fetch the plan from Base44 to get the Stripe price ID
+    const plans = await base44.asServiceRole.entities.SubscriptionPlan.filter({ id: plan_id });
+    if (!plans.length) {
+      return Response.json({ error: 'Plan not found' }, { status: 404 });
+    }
+
+    const plan = plans[0];
+    const priceId = plan.stripe_price_id;
     if (!priceId) {
-      return Response.json({ error: 'Invalid plan selected' }, { status: 400 });
+      return Response.json({ error: 'Plan not synced to Stripe yet. Please sync the plan first.' }, { status: 400 });
     }
 
     const origin = req.headers.get('origin') || 'https://app.base44.com';
