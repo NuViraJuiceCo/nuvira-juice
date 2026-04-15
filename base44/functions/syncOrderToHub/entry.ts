@@ -1,5 +1,8 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
     const body = await req.json();
     const { data: order } = body;
 
@@ -7,39 +10,29 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No order data' }, { status: 400 });
     }
 
-    console.log(`Syncing order ${order.id} to operational hub`);
+    console.log(`Syncing order ${order.id} to hub`);
 
-    // Sync order data to hub
-    const response = await fetch('https://api.base44.com/functions/69da9e8036b037ad40a9a73f/receiveOrder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(order),
-    });
-
-    if (!response.ok) {
-      console.error(`Hub response: ${response.status}`, await response.text());
-      return Response.json({ error: 'Failed to sync order' }, { status: 500 });
-    }
-
-    // Create notification in hub
+    // Build notification message
     const itemsPreview = order.items?.slice(0, 2).map(i => i.title).join(', ') || 'Order items';
     const itemsCount = order.items?.length || 0;
-    const notificationMessage = itemsCount > 2 
-      ? `${itemsPreview} + ${itemsCount - 2} more` 
+    const notificationMessage = itemsCount > 2
+      ? `${itemsPreview} + ${itemsCount - 2} more`
       : itemsPreview;
 
-    await fetch('https://api.base44.com/functions/69da9e8036b037ad40a9a73f/createNotification', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: `New Order #${order.order_number}`,
+    // Create notification for the customer
+    if (order.customer_email) {
+      await base44.asServiceRole.entities.Notification.create({
+        customer_email: order.customer_email,
+        title: `Order #${order.order_number} Confirmed`,
         message: `${notificationMessage} • $${order.total?.toFixed(2)}`,
-        customer: order.customer_email,
-        orderId: order.id,
-      }),
-    });
+        type: 'order_update',
+        order_id: order.id,
+        is_read: false,
+      });
+      console.log(`Notification created for ${order.customer_email}`);
+    }
 
-    console.log(`Order ${order.id} synced successfully with notification`);
+    console.log(`Order ${order.id} synced successfully`);
     return Response.json({ success: true, orderId: order.id });
   } catch (error) {
     console.error('Sync error:', error.message);
