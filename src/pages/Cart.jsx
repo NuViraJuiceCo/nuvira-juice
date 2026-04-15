@@ -29,7 +29,7 @@ export default function Cart() {
   });
 
   const birthday = userProfile?.birthday || user?.birthday;
-  const birthdayActive = isBirthdayRewardActive(birthday);
+  const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
 
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [activeReward, setActiveReward] = useState(() => {

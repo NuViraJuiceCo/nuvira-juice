@@ -68,7 +68,7 @@ export default function Rewards() {
 
   const totalPoints = pointsData?.total_points || 0;
   const birthday = userProfile?.birthday || user?.birthday;
-  const birthdayActive = isBirthdayRewardActive(birthday);
+  const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
   const rewards = rewardTiers.length > 0 ? rewardTiers : DEFAULT_REWARDS;
 
   const [activeReward, setActiveReward] = useState(() => {

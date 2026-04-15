@@ -3,24 +3,32 @@ import { isWithinInterval, addDays, parseISO, setYear } from 'date-fns';
 export const BIRTHDAY_REWARD_PRODUCT_ID = '__birthday_reward__';
 
 /**
- * Returns true if today is within 30 days after the user's birthday (any year).
+ * Returns true if today is within 30 days after the user's birthday,
+ * BUT only for birthdays that occur AFTER the user's signup date.
+ * This prevents users from claiming the reward immediately after setting their birthday.
  */
-export function isBirthdayRewardActive(birthday) {
+export function isBirthdayRewardActive(birthday, signupDate) {
   if (!birthday) return false;
   try {
     const today = new Date();
     const bday = parseISO(birthday);
-    // Set birthday to current year
-    const thisYearBday = setYear(bday, today.getFullYear());
-    const windowEnd = addDays(thisYearBday, 30);
+    const signup = signupDate ? new Date(signupDate) : null;
+
+    // Check a given year's birthday window
+    const isWindowActive = (yearBday) => {
+      // Skip if this birthday occurred on or before signup (first eligible birthday must be after signup)
+      if (signup && yearBday <= signup) return false;
+      const windowEnd = addDays(yearBday, 30);
+      return isWithinInterval(today, { start: yearBday, end: windowEnd });
+    };
 
     // Check current year window
-    if (isWithinInterval(today, { start: thisYearBday, end: windowEnd })) return true;
+    const thisYearBday = setYear(bday, today.getFullYear());
+    if (isWindowActive(thisYearBday)) return true;
 
     // Also check previous year's window (handles Jan birthdays rolling into new year)
     const lastYearBday = setYear(bday, today.getFullYear() - 1);
-    const lastYearWindowEnd = addDays(lastYearBday, 30);
-    if (isWithinInterval(today, { start: lastYearBday, end: lastYearWindowEnd })) return true;
+    if (isWindowActive(lastYearBday)) return true;
 
     return false;
   } catch {
