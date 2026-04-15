@@ -58,11 +58,13 @@ Deno.serve(async (req) => {
 
   let shopifyRes;
 
+  const storeHost = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '');
+
   if (shopifyProductId) {
     // Update existing Shopify product
     console.log('Updating existing Shopify product:', shopifyProductId);
     shopifyRes = await fetch(
-      `https://${SHOPIFY_STORE_URL}/admin/api/2024-01/products/${shopifyProductId}.json`,
+      `https://${storeHost}/admin/api/2024-01/products/${shopifyProductId}.json`,
       {
         method: 'PUT',
         headers: {
@@ -76,7 +78,7 @@ Deno.serve(async (req) => {
     // Create new Shopify product
     console.log('Creating new Shopify product:', product.title);
     shopifyRes = await fetch(
-      `https://${SHOPIFY_STORE_URL}/admin/api/2024-01/products.json`,
+      `https://${storeHost}/admin/api/2024-01/products.json`,
       {
         method: 'POST',
         headers: {

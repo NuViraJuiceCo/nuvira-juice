@@ -18,8 +18,9 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Shopify credentials not configured' }, { status: 500 });
   }
 
+  const storeHost = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '');
   const shopifyRes = await fetch(
-    `https://${SHOPIFY_STORE_URL}/admin/api/2024-01/products.json?limit=250&status=any`,
+    `https://${storeHost}/admin/api/2024-01/products.json?limit=250&status=any`,
     { headers: { 'X-Shopify-Access-Token': SHOPIFY_API_TOKEN, 'Content-Type': 'application/json' } }
   );
 

@@ -17,7 +17,8 @@ Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
 
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const url = `https://${SHOPIFY_STORE_URL}/admin/api/2024-01/orders.json?status=any&limit=50&updated_at_min=${since}`;
+  const storeHost = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '');
+  const url = `https://${storeHost}/admin/api/2024-01/orders.json?status=any&limit=50&updated_at_min=${since}`;
 
   let orders = [];
   const shopifyRes = await fetch(url, {
