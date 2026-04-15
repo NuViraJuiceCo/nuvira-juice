@@ -2,6 +2,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
+  
+  // This function is called by entity automation (internal platform trigger)
+  // No user auth required since it's invoked server-to-server
   const body = await req.json();
 
   console.log('syncOrderToHub payload keys:', Object.keys(body));

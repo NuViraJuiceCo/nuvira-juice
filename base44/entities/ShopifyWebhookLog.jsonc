@@ -39,22 +39,22 @@
   "rls": {
     "create": {
       "user_condition": {
-        "email": "info@nuvirajuice.com"
+        "role": "admin"
       }
     },
     "read": {
       "user_condition": {
-        "email": "info@nuvirajuice.com"
+        "role": "admin"
       }
     },
     "update": {
       "user_condition": {
-        "email": "info@nuvirajuice.com"
+        "role": "admin"
       }
     },
     "delete": {
       "user_condition": {
-        "email": "info@nuvirajuice.com"
+        "role": "admin"
       }
     }
   }
