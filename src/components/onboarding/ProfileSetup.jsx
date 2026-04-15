@@ -6,15 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { User, CheckCircle2 } from 'lucide-react';
-import AddressAutocomplete from '@/components/AddressAutocomplete';
 
 export default function ProfileSetup({ onComplete }) {
   const { user, refreshUser } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
-  const [birthday, setBirthday] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [show, setShow] = useState(false);
@@ -25,24 +21,24 @@ export default function ProfileSetup({ onComplete }) {
       onComplete();
       return;
     }
-    // Always check DB — never rely on localStorage for onboarding gate
     base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
       const profile = profiles[0];
-      if (profile?.phone || profile?.onboarding_complete) {
+      // If profile already exists (any record), skip this step
+      if (profile) {
         onComplete(false);
+        return;
+      }
+      // Check if auth already provides name
+      const authFirstName = user.first_name || '';
+      const authLastName = user.last_name || '';
+      setFirstName(authFirstName);
+      setLastName(authLastName);
+
+      if (authFirstName && authLastName) {
+        // Name is fully provided by auth — silently create profile and move on
+        base44.entities.UserProfile.create({ customer_email: user.email }).then(() => onComplete(false));
       } else {
-        // Pre-fill name from auth provider (e.g. Sign in with Apple already provides this)
-        const authFirstName = user.first_name || '';
-        const authLastName = user.last_name || '';
-        setFirstName(authFirstName);
-        setLastName(authLastName);
-        // If auth already provided the name, mark it so we don't re-ask
-        if (authFirstName || authLastName) setNameFromAuth(true);
-        if (profile?.address) {
-          const parts = profile.address.split(',').map(s => s.trim());
-          setAddress({ street: parts[0] || '', city: parts[1] || '', state: parts[2] || '', zip: parts[3] || '' });
-        }
-        if (profile?.birthday) setBirthday(profile.birthday);
+        setNameFromAuth(!!(authFirstName || authLastName));
         setShow(true);
       }
     });
@@ -50,46 +46,24 @@ export default function ProfileSetup({ onComplete }) {
 
   if (!show) return null;
 
-  const canSubmit = (nameFromAuth || (firstName.trim() && lastName.trim())) && phone.trim();
+  const canSubmit = firstName.trim() && lastName.trim();
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSaving(true);
 
-    // Save name to User entity
     await base44.auth.updateMe({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
     });
 
-    // Save profile details to UserProfile entity
-    const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
-    const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
-    const profileData = { phone: phone.trim(), address: addrString, birthday };
-    if (profiles.length > 0) {
-      await base44.entities.UserProfile.update(profiles[0].id, profileData);
-    } else {
-      await base44.entities.UserProfile.create({ customer_email: user.email, ...profileData });
-    }
-
-    // Sync to operations hub
-    try {
-      await base44.functions.invoke('syncUserToHub', {
-        email: user.email,
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        phone: phone.trim(),
-        address: addrString,
-        birthday,
-      });
-    } catch (e) {
-      // non-critical
-    }
+    // Create a minimal profile record to mark this step as done
+    await base44.entities.UserProfile.create({ customer_email: user.email });
 
     setSaving(false);
     setDone(true);
     await refreshUser();
-    setTimeout(() => onComplete(true), 1600);
+    setTimeout(() => onComplete(true), 1400);
   };
 
   if (done) {
@@ -99,111 +73,66 @@ export default function ProfileSetup({ onComplete }) {
           <CheckCircle2 className="w-16 h-16 text-white mb-4" />
         </motion.div>
         <motion.h2 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-          className="font-heading text-2xl font-bold text-white mb-2">You're all set, {firstName}!</motion.h2>
+          className="font-heading text-2xl font-bold text-white mb-2">Welcome, {firstName}!</motion.h2>
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-          className="text-primary-foreground/80 text-sm">Your profile is ready.</motion.p>
+          className="text-primary-foreground/80 text-sm">Let's find your perfect juice.</motion.p>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background flex flex-col" style={{ overflowY: 'auto' }}>
+    <div className="fixed inset-0 z-[100] bg-background flex flex-col">
       {/* Header */}
       <div className="px-6 pt-10 pb-6 bg-primary shrink-0">
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-center gap-2 mb-1">
             <User className="w-5 h-5 text-white" />
-            <h1 className="font-heading text-xl font-bold text-white">Complete Your Profile</h1>
+            <h1 className="font-heading text-xl font-bold text-white">What's your name?</h1>
           </div>
-          <p className="text-primary-foreground/70 text-sm">We need a few details to get your orders to you.</p>
+          <p className="text-primary-foreground/70 text-sm">Just so we know what to call you.</p>
         </motion.div>
       </div>
 
       {/* Form */}
-      <div className="flex-1 px-6 py-6">
+      <div className="flex-1 px-6 py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="space-y-4 max-w-md mx-auto"
         >
-          {/* Name — pre-filled & read-only if provided by auth (e.g. Sign in with Apple) */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">
-                First Name {!nameFromAuth && <span className="text-destructive">*</span>}
-              </Label>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">First Name</Label>
               <Input
                 placeholder="John"
                 value={firstName}
                 onChange={(e) => !nameFromAuth && setFirstName(e.target.value)}
                 readOnly={nameFromAuth}
                 className={`rounded-lg h-11 ${nameFromAuth ? 'bg-muted/60 text-muted-foreground cursor-default' : ''}`}
+                autoFocus
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">
-                Last Name {!nameFromAuth && <span className="text-destructive">*</span>}
-              </Label>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">Last Name</Label>
               <Input
                 placeholder="Doe"
                 value={lastName}
-                onChange={(e) => !nameFromAuth && setLastName(e.target.value)}
-                readOnly={nameFromAuth}
-                className={`rounded-lg h-11 ${nameFromAuth ? 'bg-muted/60 text-muted-foreground cursor-default' : ''}`}
+                onChange={(e) => setLastName(e.target.value)}
+                className="rounded-lg h-11"
               />
             </div>
           </div>
           {nameFromAuth && (
-            <p className="text-[10px] text-muted-foreground -mt-2">Name provided by your sign-in account.</p>
+            <p className="text-[10px] text-muted-foreground">First name provided by your sign-in account.</p>
           )}
 
-          {/* Phone */}
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Phone Number <span className="text-destructive">*</span></Label>
-            <Input
-              placeholder="(555) 123-4567"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="rounded-lg h-11"
-              type="tel"
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">Used for delivery updates only.</p>
-          </div>
-
-          {/* Address */}
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Default Delivery Address</Label>
-            <AddressAutocomplete
-              value={address}
-              onChange={setAddress}
-              placeholder="123 Main St, Wentzville, MO"
-              className="rounded-lg h-11"
-            />
-          </div>
-
-          {/* Birthday */}
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">
-              Birthday 🎂 <span className="text-[10px] text-muted-foreground">(free bottle on your birthday!)</span>
-            </Label>
-            <Input
-              type="date"
-              value={birthday}
-              onChange={(e) => setBirthday(e.target.value)}
-              className="rounded-lg h-11"
-            />
-          </div>
-
-          <p className="text-[10px] text-muted-foreground">Fields marked <span className="text-destructive">*</span> are required.</p>
-
-          {/* Save Button — always visible inside the form */}
           <Button
             onClick={handleSubmit}
             disabled={!canSubmit || saving}
-            className="w-full h-12 rounded-xl font-semibold text-base mt-4"
+            className="w-full h-12 rounded-xl font-semibold text-base mt-2"
           >
-            {saving ? 'Saving...' : 'Save & Continue →'}
+            {saving ? 'Saving...' : 'Continue →'}
           </Button>
         </motion.div>
       </div>

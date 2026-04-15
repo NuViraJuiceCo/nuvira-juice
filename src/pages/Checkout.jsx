@@ -100,6 +100,18 @@ export default function Checkout() {
     }
 
     setIsSubmitting(true);
+
+    // Save phone & address to profile so they persist to account settings
+    if (user?.email) {
+      const profileData = { phone: phone.trim(), address: addrString };
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
+      if (profiles.length > 0) {
+        await base44.entities.UserProfile.update(profiles[0].id, profileData);
+      } else {
+        await base44.entities.UserProfile.create({ customer_email: user.email, ...profileData });
+      }
+    }
+
     const res = await base44.functions.invoke('createCheckoutSession', {
       items,
       subtotal,
