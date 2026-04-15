@@ -52,13 +52,23 @@ export default function Rewards() {
     enabled: !!user?.email,
   });
 
+  const { data: userProfile } = useQuery({
+    queryKey: ['user-profile-rewards', user?.email],
+    queryFn: async () => {
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
+      return profiles[0] || null;
+    },
+    enabled: !!user?.email,
+  });
+
   const { data: rewardTiers = [] } = useQuery({
     queryKey: ['reward-tiers'],
     queryFn: () => base44.entities.RewardTier.filter({ is_active: true }, 'sort_order', 20),
   });
 
   const totalPoints = pointsData?.total_points || 0;
-  const birthdayActive = isBirthdayRewardActive(user?.birthday);
+  const birthday = userProfile?.birthday || user?.birthday;
+  const birthdayActive = isBirthdayRewardActive(birthday);
   const rewards = rewardTiers.length > 0 ? rewardTiers : DEFAULT_REWARDS;
 
   const [activeReward, setActiveReward] = useState(() => {
@@ -248,7 +258,7 @@ export default function Rewards() {
               <p className="text-xs text-pink-700">🎂 Your free 12oz juice is waiting in your cart!</p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                {user?.birthday ? 'Free 12oz juice valid 30 days after your birthday' : 'Add your birthday in Settings to unlock'}
+                {birthday ? 'Free 12oz juice valid 30 days after your birthday' : 'Add your birthday in Settings to unlock'}
               </p>
             )}
           </div>
@@ -256,7 +266,7 @@ export default function Rewards() {
             <Link to="/cart">
               <span className="text-xs font-bold text-pink-600 bg-pink-100 px-2.5 py-1 rounded-full whitespace-nowrap">Claim →</span>
             </Link>
-          ) : !user?.birthday ? (
+          ) : !birthday ? (
             <Link to="/account/settings">
               <span className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full whitespace-nowrap">Set Birthday</span>
             </Link>
