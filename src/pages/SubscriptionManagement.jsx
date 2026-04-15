@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Calendar, Pause, SkipForward, Plus, Edit2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import CompositionEditor from '@/components/subscription/CompositionEditor';
 
 export default function SubscriptionManagement() {
   const { user } = useAuth();
@@ -15,6 +16,7 @@ export default function SubscriptionManagement() {
   const [selectedSubId, setSelectedSubId] = useState(null);
   const [pauseDuration, setPauseDuration] = useState('1week');
   const [customDate, setCustomDate] = useState('');
+  const [editingSub, setEditingSub] = useState(null);
 
   const { data: subscriptions = [], refetch } = useQuery({
     queryKey: ['subscriptions', user?.email],
@@ -30,6 +32,11 @@ export default function SubscriptionManagement() {
   const { data: bundles = [] } = useQuery({
     queryKey: ['subscription-bundles'],
     queryFn: () => base44.entities.SubscriptionBundle.filter({}, 'sort_order', 50),
+  });
+
+  const { data: juiceProducts = [] } = useQuery({
+    queryKey: ['juice-products'],
+    queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 50),
   });
 
   const getPlanName = (planId) => plans.find(p => p.id === planId)?.name || 'Plan';
@@ -146,6 +153,20 @@ export default function SubscriptionManagement() {
                     <div>Since {new Date(sub.started_date).toLocaleDateString()}</div>
                   </div>
 
+                  {/* Customize composition */}
+                  <button
+                    onClick={() => setEditingSub(sub)}
+                    className="w-full mb-2 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    Customize My Juice Mix
+                    {sub.custom_composition?.length > 0 && (
+                      <span className="bg-primary text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-1">
+                        {sub.custom_composition.reduce((a, i) => a + i.quantity, 0)} bottles set
+                      </span>
+                    )}
+                  </button>
+
                   <div className="flex gap-2">
                     <Button
                       onClick={() => {
@@ -231,6 +252,19 @@ export default function SubscriptionManagement() {
           </div>
         )}
       </div>
+
+      {/* Composition Editor */}
+      <AnimatePresence>
+        {editingSub && (
+          <CompositionEditor
+            subscription={editingSub}
+            bundle={bundles.find(b => b.id === editingSub.bundle_id)}
+            products={juiceProducts}
+            onClose={() => setEditingSub(null)}
+            onSaved={refetch}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Pause Modal */}
       {showPauseModal && (
