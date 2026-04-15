@@ -1,0 +1,79 @@
+{
+  "name": "ShopifyProduct",
+  "type": "object",
+  "properties": {
+    "shopify_product_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "handle": {
+      "type": "string"
+    },
+    "product_type": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "draft",
+        "archived"
+      ],
+      "default": "active"
+    },
+    "vendor": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "shopify_variant_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "compare_at_price": {
+            "type": "number"
+          },
+          "inventory_quantity": {
+            "type": "number"
+          },
+          "inventory_policy": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "base44_product_id": {
+      "type": "string",
+      "description": "Linked Base44 Product entity ID if mapped"
+    },
+    "synced_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "shopify_product_id",
+    "title"
+  ]
+}

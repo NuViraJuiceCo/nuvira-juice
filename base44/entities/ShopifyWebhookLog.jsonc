@@ -1,0 +1,39 @@
+{
+  "name": "ShopifyWebhookLog",
+  "type": "object",
+  "properties": {
+    "topic": {
+      "type": "string",
+      "description": "Shopify webhook topic e.g. orders/create"
+    },
+    "shopify_order_id": {
+      "type": "string"
+    },
+    "shopify_order_number": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "received",
+        "processed",
+        "failed",
+        "duplicate"
+      ],
+      "default": "received"
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "payload_preview": {
+      "type": "string",
+      "description": "First 500 chars of payload"
+    },
+    "processed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "topic"
+  ]
+}

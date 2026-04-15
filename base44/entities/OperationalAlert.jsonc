@@ -1,0 +1,54 @@
+{
+  "name": "OperationalAlert",
+  "type": "object",
+  "properties": {
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "new_order",
+        "same_day_pickup",
+        "next_day_delivery",
+        "high_volume",
+        "inventory_shortage",
+        "missing_info",
+        "payment_issue",
+        "refund",
+        "cancellation"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "shopify_order_id": {
+      "type": "string"
+    },
+    "order_number": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "default": "info"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false
+    },
+    "resolved": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "alert_type",
+    "title",
+    "message"
+  ]
+}

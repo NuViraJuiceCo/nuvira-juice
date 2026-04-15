@@ -1,0 +1,51 @@
+{
+  "name": "ShopifySyncLog",
+  "type": "object",
+  "properties": {
+    "sync_type": {
+      "type": "string",
+      "enum": [
+        "orders",
+        "products",
+        "inventory",
+        "manual",
+        "webhook"
+      ],
+      "default": "webhook"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "error",
+        "partial"
+      ],
+      "default": "success"
+    },
+    "records_synced": {
+      "type": "number",
+      "default": 0
+    },
+    "records_failed": {
+      "type": "number",
+      "default": 0
+    },
+    "error_details": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "triggered_by": {
+      "type": "string",
+      "description": "webhook | cron | manual | admin"
+    }
+  },
+  "required": [
+    "sync_type",
+    "status"
+  ]
+}

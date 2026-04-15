@@ -1,0 +1,233 @@
+{
+  "name": "ShopifyOrder",
+  "type": "object",
+  "properties": {
+    "shopify_order_id": {
+      "type": "string",
+      "description": "Shopify order GID or numeric ID"
+    },
+    "shopify_order_number": {
+      "type": "string",
+      "description": "e.g. #1001"
+    },
+    "base44_order_id": {
+      "type": "string",
+      "description": "Linked Base44 Order record ID"
+    },
+    "source_channel": {
+      "type": "string",
+      "enum": [
+        "online",
+        "pos",
+        "draft",
+        "subscription",
+        "wholesale",
+        "admin",
+        "event"
+      ],
+      "default": "online"
+    },
+    "customer_name": {
+      "type": "string"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "customer_phone": {
+      "type": "string"
+    },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "shopify_line_item_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "variant_title": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "price": {
+            "type": "number"
+          },
+          "total_discount": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "fulfillment_method": {
+      "type": "string",
+      "enum": [
+        "delivery",
+        "pickup",
+        "shipping",
+        "pos"
+      ],
+      "default": "delivery"
+    },
+    "delivery_address": {
+      "type": "string"
+    },
+    "requested_delivery_date": {
+      "type": "string"
+    },
+    "requested_time_window": {
+      "type": "string"
+    },
+    "payment_status": {
+      "type": "string"
+    },
+    "fulfillment_status": {
+      "type": "string"
+    },
+    "shopify_fulfillment_status": {
+      "type": "string"
+    },
+    "financial_status": {
+      "type": "string"
+    },
+    "subtotal": {
+      "type": "number"
+    },
+    "total_tax": {
+      "type": "number"
+    },
+    "total_discounts": {
+      "type": "number"
+    },
+    "tip_received": {
+      "type": "number"
+    },
+    "total_price": {
+      "type": "number"
+    },
+    "discount_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "customer_notes": {
+      "type": "string"
+    },
+    "internal_notes": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "is_pos_order": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_subscription": {
+      "type": "boolean",
+      "default": false
+    },
+    "subscription_cadence": {
+      "type": "string",
+      "enum": [
+        "weekly",
+        "biweekly",
+        "monthly",
+        ""
+      ]
+    },
+    "event_name": {
+      "type": "string"
+    },
+    "event_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "event_location": {
+      "type": "string"
+    },
+    "assigned_driver": {
+      "type": "string"
+    },
+    "production_status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "awaiting_production",
+        "in_production",
+        "bottled",
+        "labeled",
+        "qc_checked",
+        "packed",
+        "in_cold_storage",
+        "assigned_for_pickup",
+        "assigned_for_delivery",
+        "fulfilled",
+        "canceled",
+        "refunded"
+      ],
+      "default": "new"
+    },
+    "workflow_checklist": {
+      "type": "object",
+      "properties": {
+        "produce_pulled": {
+          "type": "boolean",
+          "default": false
+        },
+        "ingredients_prepped": {
+          "type": "boolean",
+          "default": false
+        },
+        "juice_pressed": {
+          "type": "boolean",
+          "default": false
+        },
+        "bottled": {
+          "type": "boolean",
+          "default": false
+        },
+        "labeled": {
+          "type": "boolean",
+          "default": false
+        },
+        "qc_checked": {
+          "type": "boolean",
+          "default": false
+        },
+        "packed": {
+          "type": "boolean",
+          "default": false
+        },
+        "in_cold_storage": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "shopify_synced_at": {
+      "type": "string"
+    },
+    "shopify_raw_payload": {
+      "type": "object"
+    },
+    "assigned_delivery_date": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "shopify_order_id",
+    "shopify_order_number"
+  ]
+}
