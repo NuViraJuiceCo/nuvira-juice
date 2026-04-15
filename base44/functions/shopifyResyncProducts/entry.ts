@@ -11,19 +11,17 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Admin only' }, { status: 403 });
   }
 
-  const SHOPIFY_CLIENT_ID = Deno.env.get('SHOPIFY_CLIENT_ID');
   const SHOPIFY_API_TOKEN = Deno.env.get('SHOPIFY_API_TOKEN');
   const SHOPIFY_STORE_URL = Deno.env.get('SHOPIFY_STORE_URL');
 
-  if (!SHOPIFY_CLIENT_ID || !SHOPIFY_API_TOKEN || !SHOPIFY_STORE_URL) {
+  if (!SHOPIFY_API_TOKEN || !SHOPIFY_STORE_URL) {
     return Response.json({ error: 'Shopify credentials not configured' }, { status: 500 });
   }
 
-  const shopifyAuth = 'Basic ' + btoa(`${SHOPIFY_CLIENT_ID}:${SHOPIFY_API_TOKEN}`);
   const storeHost = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '');
   const shopifyRes = await fetch(
     `https://${storeHost}/admin/api/2024-01/products.json?limit=250&status=any`,
-    { headers: { 'Authorization': shopifyAuth, 'Content-Type': 'application/json' } }
+    { headers: { 'X-Shopify-Access-Token': SHOPIFY_API_TOKEN, 'Content-Type': 'application/json' } }
   );
 
   if (!shopifyRes.ok) {

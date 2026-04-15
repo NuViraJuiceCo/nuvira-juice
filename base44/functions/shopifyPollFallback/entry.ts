@@ -6,16 +6,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 Deno.serve(async (req) => {
-  const SHOPIFY_CLIENT_ID = Deno.env.get('SHOPIFY_CLIENT_ID');
   const SHOPIFY_API_TOKEN = Deno.env.get('SHOPIFY_API_TOKEN');
   const SHOPIFY_STORE_URL = Deno.env.get('SHOPIFY_STORE_URL');
 
-  if (!SHOPIFY_CLIENT_ID || !SHOPIFY_API_TOKEN || !SHOPIFY_STORE_URL) {
+  if (!SHOPIFY_API_TOKEN || !SHOPIFY_STORE_URL) {
     console.warn('Shopify credentials not set — skipping poll');
     return Response.json({ skipped: true });
   }
 
-  const shopifyAuth = 'Basic ' + btoa(`${SHOPIFY_CLIENT_ID}:${SHOPIFY_API_TOKEN}`);
   const base44 = createClientFromRequest(req);
 
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -24,7 +22,7 @@ Deno.serve(async (req) => {
 
   let orders = [];
   const shopifyRes = await fetch(url, {
-    headers: { 'Authorization': shopifyAuth },
+    headers: { 'X-Shopify-Access-Token': SHOPIFY_API_TOKEN },
   });
   if (!shopifyRes.ok) {
     console.error('Shopify poll error:', shopifyRes.status);

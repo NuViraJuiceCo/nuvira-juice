@@ -8,16 +8,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
 
-  const SHOPIFY_CLIENT_ID = Deno.env.get('SHOPIFY_CLIENT_ID');
   const SHOPIFY_API_TOKEN = Deno.env.get('SHOPIFY_API_TOKEN');
   const SHOPIFY_STORE_URL = Deno.env.get('SHOPIFY_STORE_URL');
 
-  if (!SHOPIFY_CLIENT_ID || !SHOPIFY_API_TOKEN || !SHOPIFY_STORE_URL) {
+  if (!SHOPIFY_API_TOKEN || !SHOPIFY_STORE_URL) {
     console.error('Missing Shopify credentials');
     return Response.json({ error: 'Shopify credentials not configured' }, { status: 500 });
   }
-
-  const shopifyAuth = 'Basic ' + btoa(`${SHOPIFY_CLIENT_ID}:${SHOPIFY_API_TOKEN}`);
 
   const body = await req.json();
   const { event, data } = body;
@@ -58,7 +55,7 @@ Deno.serve(async (req) => {
       `https://${storeHost}/admin/api/2024-01/products/${shopifyProductId}.json`,
       {
         method: 'PUT',
-        headers: { 'Authorization': shopifyAuth, 'Content-Type': 'application/json' },
+        headers: { 'X-Shopify-Access-Token': SHOPIFY_API_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify(shopifyPayload),
       }
     );
@@ -68,7 +65,7 @@ Deno.serve(async (req) => {
       `https://${storeHost}/admin/api/2024-01/products.json`,
       {
         method: 'POST',
-        headers: { 'Authorization': shopifyAuth, 'Content-Type': 'application/json' },
+        headers: { 'X-Shopify-Access-Token': SHOPIFY_API_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify(shopifyPayload),
       }
     );
