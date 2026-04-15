@@ -18,6 +18,7 @@ export default function ProfileSetup({ onComplete }) {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [show, setShow] = useState(false);
+  const [nameFromAuth, setNameFromAuth] = useState(false);
 
   useEffect(() => {
     if (!user?.email) {
@@ -27,12 +28,16 @@ export default function ProfileSetup({ onComplete }) {
     // Always check DB — never rely on localStorage for onboarding gate
     base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
       const profile = profiles[0];
-      if (profile?.phone || profile?.onboarding_complete || user?.first_name) {
+      if (profile?.phone || profile?.onboarding_complete) {
         onComplete(false);
       } else {
-        // Pre-fill any existing data
-        setFirstName(user.first_name || '');
-        setLastName(user.last_name || '');
+        // Pre-fill name from auth provider (e.g. Sign in with Apple already provides this)
+        const authFirstName = user.first_name || '';
+        const authLastName = user.last_name || '';
+        setFirstName(authFirstName);
+        setLastName(authLastName);
+        // If auth already provided the name, mark it so we don't re-ask
+        if (authFirstName || authLastName) setNameFromAuth(true);
         if (profile?.address) {
           const parts = profile.address.split(',').map(s => s.trim());
           setAddress({ street: parts[0] || '', city: parts[1] || '', state: parts[2] || '', zip: parts[3] || '' });
@@ -45,7 +50,7 @@ export default function ProfileSetup({ onComplete }) {
 
   if (!show) return null;
 
-  const canSubmit = firstName.trim() && lastName.trim() && phone.trim();
+  const canSubmit = (nameFromAuth || (firstName.trim() && lastName.trim())) && phone.trim();
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -122,27 +127,36 @@ export default function ProfileSetup({ onComplete }) {
           transition={{ delay: 0.1 }}
           className="space-y-4 max-w-md mx-auto"
         >
-          {/* Name */}
+          {/* Name — pre-filled & read-only if provided by auth (e.g. Sign in with Apple) */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">First Name <span className="text-destructive">*</span></Label>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">
+                First Name {!nameFromAuth && <span className="text-destructive">*</span>}
+              </Label>
               <Input
                 placeholder="John"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="rounded-lg h-11"
+                onChange={(e) => !nameFromAuth && setFirstName(e.target.value)}
+                readOnly={nameFromAuth}
+                className={`rounded-lg h-11 ${nameFromAuth ? 'bg-muted/60 text-muted-foreground cursor-default' : ''}`}
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">Last Name <span className="text-destructive">*</span></Label>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">
+                Last Name {!nameFromAuth && <span className="text-destructive">*</span>}
+              </Label>
               <Input
                 placeholder="Doe"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="rounded-lg h-11"
+                onChange={(e) => !nameFromAuth && setLastName(e.target.value)}
+                readOnly={nameFromAuth}
+                className={`rounded-lg h-11 ${nameFromAuth ? 'bg-muted/60 text-muted-foreground cursor-default' : ''}`}
               />
             </div>
           </div>
+          {nameFromAuth && (
+            <p className="text-[10px] text-muted-foreground -mt-2">Name provided by your sign-in account.</p>
+          )}
 
           {/* Phone */}
           <div>
