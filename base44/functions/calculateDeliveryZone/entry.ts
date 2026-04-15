@@ -1,3 +1,5 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
 // Simple zip code lookup for delivery zones (O'Fallon, MO based)
 // Zone 1: 63366 (O'Fallon) = 0 miles
 // Zone 2: 63301-63304 (St. Charles area) = ~8 miles
@@ -54,6 +56,13 @@ const ZONE_LOOKUP = {
 
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+
+    if (!user) {
+      return Response.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { address } = body;
 
