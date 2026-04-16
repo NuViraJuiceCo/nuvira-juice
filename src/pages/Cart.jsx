@@ -223,7 +223,15 @@ export default function Cart() {
             </div>
           )}
           <Button
-            onClick={() => navigate('/checkout')}
+            onClick={() => {
+              if (isPreLaunch()) return;
+              if (!meetsMinimum) return;
+              if (!user) {
+                base44.auth.redirectToLogin('/checkout');
+                return;
+              }
+              navigate('/checkout');
+            }}
             disabled={!meetsMinimum || isPreLaunch()}
             className="w-full h-12 rounded-xl font-semibold text-sm disabled:opacity-50"
           >
