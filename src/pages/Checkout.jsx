@@ -26,6 +26,7 @@ export default function Checkout() {
   const [prefilled, setPrefilled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
+  const [smsConsent, setSmsConsent] = useState(false);
   const [showOutOfArea, setShowOutOfArea] = useState(false);
 
   const activeReward = React.useMemo(() => {
@@ -52,6 +53,7 @@ export default function Checkout() {
       const parts = savedAddress.split(',').map(s => s.trim());
       setAddress({ street: parts[0]||'', city: parts[1]||'', state: parts[2]||'', zip: parts[3]||'' });
     }
+    if (userProfile?.sms_consent) setSmsConsent(true);
     if (savedPhone || savedAddress) setPrefilled(true);
   }, [userProfile, user, prefilled]);
 
@@ -117,7 +119,12 @@ export default function Checkout() {
 
     // Save phone & address to profile so they persist to account settings
     if (user?.email) {
-      const profileData = { phone: phone.trim(), address: addrString };
+      const profileData = {
+        phone: phone.trim(),
+        address: addrString,
+        sms_consent: smsConsent,
+        sms_consent_date: smsConsent ? new Date().toISOString() : null,
+      };
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
       if (profiles.length > 0) {
         await base44.entities.UserProfile.update(profiles[0].id, profileData);
@@ -212,6 +219,17 @@ export default function Checkout() {
             placeholder="(555) 123-4567"
             className="rounded-xl h-11"
           />
+          <label className="flex items-start gap-2.5 mt-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={smsConsent}
+              onChange={e => setSmsConsent(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded border-border accent-primary shrink-0"
+            />
+            <span className="text-[11px] text-muted-foreground leading-snug">
+              Send me order updates via SMS. I agree to receive text messages from NuVira Juice Co. at the number above. Message &amp; data rates may apply. Reply STOP to unsubscribe.
+            </span>
+          </label>
         </div>
         {fulfillmentType === 'delivery' && (
           <div>

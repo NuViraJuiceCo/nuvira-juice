@@ -42,6 +42,15 @@
     "onboarding_complete": {
       "type": "boolean",
       "default": false
+    },
+    "sms_consent": {
+      "type": "boolean",
+      "default": false,
+      "description": "User has consented to receive order updates via SMS"
+    },
+    "sms_consent_date": {
+      "type": "string",
+      "description": "ISO timestamp when user granted SMS consent"
     }
   },
   "required": [
