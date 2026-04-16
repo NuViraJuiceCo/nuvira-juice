@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Check, Zap, Crown, Leaf, MapPin } from 'lucide-react';
@@ -26,6 +26,7 @@ export default function Subscribe() {
   const [calculatedDistance, setCalculatedDistance] = useState(null);
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const debounceRef = useRef(null);
 
   const { data: plans = [] } = useQuery({
     queryKey: ['subscriptionPlans'],
@@ -42,13 +43,16 @@ export default function Subscribe() {
     if (plans.length > 0 && !selectedPlanId) setSelectedPlanId(plans[1]?.id || plans[0]?.id);
   }, [plans]);
 
-  const calculateDistance = async (addr) => {
+  const calculateDistance = (addr) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!addr.trim() || addr.length < 5) return;
     setCalculating(true);
-    const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
-    setCalculatedDistance(res.data.distance);
-    setCalculatedZone(res.data.zone);
-    setCalculating(false);
+    debounceRef.current = setTimeout(async () => {
+      const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
+      setCalculatedDistance(res.data.distance);
+      setCalculatedZone(res.data.zone);
+      setCalculating(false);
+    }, 800);
   };
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
@@ -215,9 +219,18 @@ export default function Subscribe() {
 
       {/* CTA */}
       <div className="px-4 mt-6 space-y-3">
+        {!address.trim() && (
+          <p className="text-center text-xs text-amber-600 font-medium">⚠ Enter your delivery address above to continue</p>
+        )}
+        {address.trim() && calculating && (
+          <p className="text-center text-xs text-muted-foreground">Calculating your delivery zone...</p>
+        )}
+        {address.trim() && !calculating && !calculatedZone && (
+          <p className="text-center text-xs text-amber-600 font-medium">⚠ Could not verify delivery to that address — try a more complete address</p>
+        )}
         <Button
           onClick={handleJoin}
-          disabled={loading}
+          disabled={loading || !selectedPlanId || !address.trim() || calculating || !calculatedZone}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
           {loading ? 'Redirecting to payment...' : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
