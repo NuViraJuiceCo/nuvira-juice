@@ -101,8 +101,9 @@ export default function Home() {
     <PullToRefresh onRefresh={handleRefresh}>
     <div className="pb-4">
       <SEO
-        title="Home"
-        description="Fresh cold-pressed juices delivered to your door in the St. Louis area. Real. Living. Nutrition. — NuVira Juice Co., Wentzville, MO."
+        title="Cold-Pressed Juice Delivery in Wentzville & St. Louis, MO"
+        description="NuVira Juice Co. delivers fresh cold-pressed juices in Wentzville, O'Fallon, St. Charles, and the greater St. Louis area. Order online today — Real. Living. Nutrition."
+        keywords="cold pressed juice Wentzville MO, juice delivery St. Louis, fresh juice O'Fallon, NuVira Juice Co, juice cleanse St. Charles, wellness shots Missouri, cold pressed juice delivery near me"
       />
 
       {/* Header */}

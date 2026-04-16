@@ -62,13 +62,37 @@ export default function ProductDetail() {
     );
   }
 
+  const productStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": product.title,
+    "description": product.short_description || product.description || '',
+    "image": product.image_url || '',
+    "brand": { "@type": "Brand", "name": "NuVira Juice Co." },
+    "offers": {
+      "@type": "Offer",
+      "url": `https://www.nuvirajuice.com/shop/${product.id}`,
+      "priceCurrency": "USD",
+      "price": product.price?.toFixed(2),
+      "availability": product.is_available !== false ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      "seller": { "@type": "Organization", "name": "NuVira Juice Co." }
+    },
+    "additionalProperty": product.ingredients ? [{
+      "@type": "PropertyValue",
+      "name": "Ingredients",
+      "value": product.ingredients
+    }] : undefined
+  };
+
   return (
     <div className="pb-32">
       <SEO
-        title={product.title}
-        description={product.short_description || product.description}
+        title={`${product.title} — Cold-Pressed Juice | Wentzville, MO`}
+        description={product.short_description || product.description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`}
         image={product.image_url}
         type="product"
+        keywords={`${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`}
+        structuredData={productStructuredData}
       />
       {/* Image */}
       <div className="relative">
