@@ -28,6 +28,10 @@ Deno.serve(async (req) => {
 
   const product = data;
 
+  // Build SEO-friendly meta title and description from Base44 data
+  const metaTitle = product.title + (product.size ? ` ${product.size}` : '') + ' | NuVira Juice';
+  const metaDescription = product.short_description || product.description?.substring(0, 160) || `${product.title} — fresh cold-pressed juice from NuVira.`;
+
   // Build Shopify product payload
   const shopifyPayload = {
     product: {
@@ -36,6 +40,8 @@ Deno.serve(async (req) => {
       product_type: product.category || '',
       status: product.is_available !== false ? 'active' : 'draft',
       tags: (product.tags || []).join(', '),
+      metafields_global_title_tag: metaTitle,
+      metafields_global_description_tag: metaDescription,
       variants: [
         {
           price: String(product.price || 0),
