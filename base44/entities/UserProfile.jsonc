@@ -5,6 +5,10 @@
     "customer_email": {
       "type": "string"
     },
+    "contact_email": {
+      "type": "string",
+      "description": "User's real contact email (may differ from auth email, e.g. Sign in with Apple relay)"
+    },
     "wellness_goals": {
       "type": "array",
       "items": {
