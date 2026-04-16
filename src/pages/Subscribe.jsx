@@ -67,16 +67,23 @@ export default function Subscribe() {
       return;
     }
     setLoading(true);
-    const res = await base44.functions.invoke('createSubscriptionSession', {
-      plan_id: selectedPlanId,
-      bundle_id: null,
-      address,
-      customer_email: user?.email || null,
-    });
-    if (res.data?.url) {
-      window.location.href = res.data.url;
-    } else {
-      toast.error(res.data?.error || 'Failed to start checkout. Please try again.');
+    try {
+      const res = await base44.functions.invoke('createSubscriptionSession', {
+        plan_id: selectedPlanId,
+        bundle_id: null,
+        address,
+        customer_email: user?.email || null,
+      });
+      if (res.data?.url) {
+        window.location.href = res.data.url;
+      } else {
+        console.error('Checkout session error:', res.data);
+        toast.error(res.data?.error || 'Failed to start checkout. Please try again.');
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      toast.error('An error occurred. Please try again.');
       setLoading(false);
     }
   };
