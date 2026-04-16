@@ -97,7 +97,10 @@
       (function() {
         var mq = window.matchMedia('(prefers-color-scheme: dark)');
         function apply(e) {
-          document.documentElement.classList.toggle('dark', e.matches);
+          var isDark = e.matches;
+          document.documentElement.classList.toggle('dark', isDark);
+          document.documentElement.style.background = isDark ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
+          document.body.style.background = isDark ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
         }
         apply(mq);
         mq.addEventListener('change', apply);
