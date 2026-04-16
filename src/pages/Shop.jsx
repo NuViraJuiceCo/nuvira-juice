@@ -48,10 +48,11 @@ export default function Shop() {
     // Search
     if (search.trim()) {
       const q = search.toLowerCase();
+      const wordBoundaryRegex = new RegExp(`\\b${q}`, 'i');
       result = result.filter(p =>
-        p.title?.toLowerCase().includes(q) ||
-        p.short_description?.toLowerCase().includes(q) ||
-        p.ingredients?.toLowerCase().includes(q) ||
+        wordBoundaryRegex.test(p.title || '') ||
+        wordBoundaryRegex.test(p.short_description || '') ||
+        wordBoundaryRegex.test(p.ingredients || '') ||
         p.tags?.some(t => t.toLowerCase().includes(q))
       );
     }
