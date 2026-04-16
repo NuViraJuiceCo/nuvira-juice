@@ -58,10 +58,6 @@ export default function Subscribe() {
       alert('Checkout only works from the published app, not the preview.');
       return;
     }
-    if (!user) {
-      base44.auth.redirectToLogin('/subscribe');
-      return;
-    }
     if (!address.trim()) {
       toast.error('Please enter your delivery address');
       return;
