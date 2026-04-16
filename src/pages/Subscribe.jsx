@@ -21,7 +21,6 @@ const PLAN_STYLES = [
 export default function Subscribe() {
   const { user } = useAuth();
   const [selectedPlanId, setSelectedPlanId] = useState(null);
-  const [selectedBundleId, setSelectedBundleId] = useState(null);
   const [address, setAddress] = useState('');
   const [calculatedZone, setCalculatedZone] = useState(null);
   const [calculatedDistance, setCalculatedDistance] = useState(null);
@@ -31,13 +30,6 @@ export default function Subscribe() {
   const { data: plans = [] } = useQuery({
     queryKey: ['subscriptionPlans'],
     queryFn: () => base44.entities.SubscriptionPlan.list('sort_order'),
-    onSuccess: (data) => { if (data.length > 0 && !selectedPlanId) setSelectedPlanId(data[1]?.id || data[0]?.id); },
-  });
-
-  const { data: bundles = [] } = useQuery({
-    queryKey: ['subscriptionBundles'],
-    queryFn: () => base44.entities.SubscriptionBundle.list('sort_order'),
-    onSuccess: (data) => { if (data.length > 0 && !selectedBundleId) setSelectedBundleId(data[0]?.id); },
   });
 
   const { data: deliveryZones = [] } = useQuery({
@@ -45,13 +37,10 @@ export default function Subscribe() {
     queryFn: () => base44.entities.DeliveryZone.filter({ is_active: true }, 'max_miles'),
   });
 
-  // Set defaults once data loads
+  // Set default plan once data loads
   React.useEffect(() => {
     if (plans.length > 0 && !selectedPlanId) setSelectedPlanId(plans[1]?.id || plans[0]?.id);
   }, [plans]);
-  React.useEffect(() => {
-    if (bundles.length > 0 && !selectedBundleId) setSelectedBundleId(bundles[0]?.id);
-  }, [bundles]);
 
   const calculateDistance = async (addr) => {
     if (!addr.trim() || addr.length < 5) return;
@@ -63,7 +52,6 @@ export default function Subscribe() {
   };
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
-  const selectedBundle = bundles.find(b => b.id === selectedBundleId);
 
   const handleJoin = async () => {
     if (window.self !== window.top) {
@@ -85,7 +73,6 @@ export default function Subscribe() {
     setLoading(true);
     const res = await base44.functions.invoke('createSubscriptionSession', {
       plan_id: selectedPlanId,
-      bundle_id: selectedBundleId,
       address,
       customer_email: user?.email || null,
     });
@@ -116,38 +103,6 @@ export default function Subscribe() {
         <p className="text-sm text-muted-foreground leading-relaxed">
           Subscribe and never run out of the nutrition your body needs. Cancel or adjust anytime.
         </p>
-      </div>
-
-      {/* Bundles Section */}
-      <div className="px-4 mt-6">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Choose Your Bundle</p>
-        <div className="space-y-2">
-          {bundles.map(bundle => (
-            <motion.button
-              key={bundle.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              onClick={() => setSelectedBundleId(bundle.id)}
-              className={`w-full text-left rounded-xl border-2 p-3 transition-all ${
-                selectedBundleId === bundle.id
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border/40 bg-card'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">{bundle.name}</p>
-                  <p className="text-xs text-muted-foreground leading-snug">{bundle.description}</p>
-                </div>
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ml-2 ${
-                  selectedBundleId === bundle.id ? 'border-primary bg-primary' : 'border-border'
-                }`}>
-                  {selectedBundleId === bundle.id && <Check className="w-3 h-3 text-white" />}
-                </div>
-              </div>
-            </motion.button>
-          ))}
-        </div>
       </div>
 
       {/* Address Section & Zone Calculation */}
@@ -217,7 +172,10 @@ export default function Subscribe() {
                   </div>
                   <div>
                     <p className="font-semibold text-sm">{plan.name}</p>
-                    {savings && <p className="text-[10px] text-primary font-medium">{savings}</p>}
+                    <p className="text-xs font-semibold text-primary">
+                      {plan.bottle_count} bottles{plan.frequency === 'weekly' ? '/week' : '/month'}
+                      {plan.bottle_count > 3 && plan.frequency === 'monthly' ? ` · mix & match` : ''}
+                    </p>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -226,6 +184,7 @@ export default function Subscribe() {
                       {style.badge}
                     </span>
                   )}
+                  {savings && <p className="text-[9px] text-primary font-bold">{savings}</p>}
                   <div className="text-right">
                     <span className="font-heading text-lg font-bold">${plan.base_price}</span>
                     <span className="text-xs text-muted-foreground">{period}</span>
