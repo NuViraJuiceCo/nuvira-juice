@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import {
-  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap
+  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -173,13 +173,25 @@ export default function Account() {
             </div>
           </Link>
           <Link to="/admin/shopify">
-            <div className="flex items-center gap-3 p-3.5 bg-primary/5 rounded-xl border border-primary/20 active:bg-primary/10 transition-colors">
+            <div className="flex items-center gap-3 p-3.5 bg-primary/5 rounded-xl border border-primary/20 active:bg-primary/10 transition-colors mb-2">
               <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
                 <Zap className="w-4 h-4 text-primary" />
               </div>
               <div className="flex-1">
                 <p className="text-sm font-medium">Shopify Integration</p>
                 <p className="text-[10px] text-muted-foreground">Orders, sync, webhooks, reports</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </div>
+          </Link>
+          <Link to="/admin/products">
+            <div className="flex items-center gap-3 p-3.5 bg-primary/5 rounded-xl border border-primary/20 active:bg-primary/10 transition-colors">
+              <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
+                <ImagePlus className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium">Product Images</p>
+                <p className="text-[10px] text-muted-foreground">Upload & manage product photos</p>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>

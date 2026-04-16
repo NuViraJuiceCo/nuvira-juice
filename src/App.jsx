@@ -33,6 +33,7 @@ import Partner from '@/pages/Partner';
 import BookEvent from '@/pages/BookEvent';
 import AdminOrders from '@/pages/AdminOrders';
 import ShopifyDashboard from '@/pages/admin/ShopifyDashboard';
+import AdminProducts from '@/pages/admin/AdminProducts';
 import ScrollToTop from '@/components/ScrollToTop';
 import { base44 } from '@/api/base44Client';
 
@@ -94,6 +95,7 @@ const AuthenticatedApp = () => {
           <Route path="/book-event" element={<BookEvent />} />
           <Route path="/admin/orders" element={<AdminOrders />} />
           <Route path="/admin/shopify" element={<ShopifyDashboard />} />
+          <Route path="/admin/products" element={<AdminProducts />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
