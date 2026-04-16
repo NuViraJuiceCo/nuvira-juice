@@ -33,6 +33,10 @@ export default function ProductCard({ product, compact = false }) {
                 className="w-full h-full object-cover"
                 whileHover={{ scale: 1.05 }}
                 transition={{ duration: 0.4 }}
+                width="300"
+                height="400"
+                loading="lazy"
+                decoding="async"
               />
             ) : (
               <div className="w-full h-full bg-secondary/50 flex items-center justify-center text-4xl">🍊</div>
@@ -74,7 +78,7 @@ export default function ProductCard({ product, compact = false }) {
       >
         <div className="aspect-[4/3] bg-secondary/50 relative overflow-hidden">
           {product.image_url ? (
-            <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" />
+            <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" width="400" height="300" loading="lazy" decoding="async" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-5xl">🍊</div>
           )}

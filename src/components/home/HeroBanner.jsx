@@ -44,6 +44,10 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
             src={banner.image_url}
             alt={banner.title}
             className="w-full h-full object-cover"
+            fetchpriority="high"
+            decoding="async"
+            width="800"
+            height="576"
           />
           {/* Rich layered gradient */}
           <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
