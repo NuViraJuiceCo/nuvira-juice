@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import { base44 } from '@/api/base44Client';
 import { getDeliveryDisplayText, getNextDeliveryDate } from '@/lib/deliveryUtils';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { AnimatePresence } from 'framer-motion';
+import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -24,6 +26,7 @@ export default function Checkout() {
   const [prefilled, setPrefilled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
+  const [showOutOfArea, setShowOutOfArea] = useState(false);
 
   const activeReward = React.useMemo(() => {
     if (!user?.email) return null;
@@ -94,6 +97,17 @@ export default function Checkout() {
       toast.error('Please enter a delivery address');
       return;
     }
+
+    // Check delivery zone via backend
+    if (fulfillmentType === 'delivery') {
+      const addrCheck = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+      const zoneRes = await base44.functions.invoke('calculateDeliveryZone', { address: addrCheck });
+      if (!zoneRes.data?.zone) {
+        setIsSubmitting(false);
+        setShowOutOfArea(true);
+        return;
+      }
+    }
     if (!phone.trim()) {
       toast.error('Please enter your phone number');
       return;
@@ -139,6 +153,15 @@ export default function Checkout() {
 
   return (
     <div className="pb-8">
+      <AnimatePresence>
+        {showOutOfArea && (
+          <OutOfAreaModal
+            address={[address.street, address.city, address.state, address.zip].filter(Boolean).join(', ')}
+            zip={address.zip}
+            onClose={() => setShowOutOfArea(false)}
+          />
+        )}
+      </AnimatePresence>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">

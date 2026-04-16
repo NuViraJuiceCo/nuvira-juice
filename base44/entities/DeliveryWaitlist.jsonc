@@ -1,0 +1,44 @@
+{
+  "name": "DeliveryWaitlist",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "description": "Contact email for waitlist notification"
+    },
+    "address": {
+      "type": "string",
+      "description": "Address they tried to deliver to"
+    },
+    "zip": {
+      "type": "string",
+      "description": "ZIP code of the out-of-area address"
+    },
+    "notified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether we've notified them that delivery is available"
+    }
+  },
+  "required": [
+    "email"
+  ],
+  "rls": {
+    "create": {},
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
