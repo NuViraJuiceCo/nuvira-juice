@@ -1,17 +1,20 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-
 // Simple zip code lookup for delivery zones (O'Fallon, MO based)
-// Zone 1: 63366 (O'Fallon) = 0 miles
-// Zone 2: 63301-63304 (St. Charles area) = ~8 miles
-// Zone 3: 63101-63199 (St. Louis area) = ~12 miles
+// Zone 1: 63366 (O'Fallon), 63368 (Lake St. Louis), 63385 (Wentzville) = 0-10 miles
+// Zone 2: 63301-63304 (St. Charles area), 63376 (St. Peters) = ~8-12 miles
+// Zone 3: 63101-63199 (St. Louis area) = ~12-15 miles
 
 const STORE_ZIP = '63366';
 const ZONE_LOOKUP = {
-  '63366': { zone: 'zone1', distance: 0 },
+  '63366': { zone: 'zone1', distance: 0 },   // O'Fallon
+  '63368': { zone: 'zone1', distance: 5 },   // Lake St. Louis
+  '63385': { zone: 'zone1', distance: 8 },   // Wentzville
+  '63386': { zone: 'zone1', distance: 10 },  // Wentzville (alt)
   '63303': { zone: 'zone2', distance: 8 },
   '63304': { zone: 'zone2', distance: 8 },
   '63301': { zone: 'zone2', distance: 8 },
   '63302': { zone: 'zone2', distance: 8 },
+  '63376': { zone: 'zone2', distance: 10 },  // St. Peters
+  '63367': { zone: 'zone2', distance: 12 },  // Lake St. Louis / Dardenne Prairie
   '63101': { zone: 'zone3', distance: 12 },
   '63102': { zone: 'zone3', distance: 12 },
   '63103': { zone: 'zone3', distance: 12 },
@@ -56,13 +59,6 @@ const ZONE_LOOKUP = {
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user) {
-      return Response.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
     const body = await req.json();
     const { address } = body;
 
