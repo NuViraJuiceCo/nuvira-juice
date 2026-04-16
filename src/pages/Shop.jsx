@@ -29,6 +29,11 @@ export default function Shop() {
     queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 100),
   });
 
+  const { data: bundles = [] } = useQuery({
+    queryKey: ['bundles'],
+    queryFn: () => base44.entities.SubscriptionBundle.list('sort_order', 100),
+  });
+
 
 
   const filtered = useMemo(() => {
@@ -49,12 +54,32 @@ export default function Shop() {
     if (search.trim()) {
       const q = search.toLowerCase();
       const wordBoundaryRegex = new RegExp(`\\b${q}`, 'i');
-      result = result.filter(p =>
-        wordBoundaryRegex.test(p.title || '') ||
-        wordBoundaryRegex.test(p.short_description || '') ||
-        wordBoundaryRegex.test(p.ingredients || '') ||
-        p.tags?.some(t => t.toLowerCase().includes(q))
-      );
+      result = result.filter(p => {
+        // Direct product match
+        const directMatch = wordBoundaryRegex.test(p.title || '') ||
+          wordBoundaryRegex.test(p.short_description || '') ||
+          wordBoundaryRegex.test(p.ingredients || '') ||
+          p.tags?.some(t => t.toLowerCase().includes(q));
+        
+        if (directMatch) return true;
+        
+        // Check if bundle contains products matching the search
+        if (p.category === 'bundle') {
+          const bundle = bundles.find(b => b.id === p.id);
+          if (bundle?.default_composition) {
+            const containsIngredient = bundle.default_composition.some(item => {
+              const product = products.find(prod => prod.id === item.product_id);
+              return product && (
+                wordBoundaryRegex.test(product.ingredients || '') ||
+                wordBoundaryRegex.test(product.title || '')
+              );
+            });
+            return containsIngredient;
+          }
+        }
+        
+        return false;
+      });
     }
 
     return result;
