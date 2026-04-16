@@ -66,6 +66,10 @@ export default function Subscribe() {
       toast.error('Please wait for distance calculation or enter a valid address');
       return;
     }
+    if (!selectedPlanId) {
+      toast.error('Please select a plan');
+      return;
+    }
     setLoading(true);
     try {
       const res = await base44.functions.invoke('createSubscriptionSession', {

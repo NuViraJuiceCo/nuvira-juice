@@ -6,21 +6,14 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user) {
-      return Response.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
     const { plan_id, bundle_id, address, customer_email } = await req.json();
 
     // Fetch the plan from Base44 to get the Stripe price ID
-    const plans = await base44.asServiceRole.entities.SubscriptionPlan.filter({ id: plan_id });
-    if (!plans.length) {
+    const allPlans = await base44.asServiceRole.entities.SubscriptionPlan.list();
+    const plan = allPlans.find(p => p.id === plan_id);
+    if (!plan) {
       return Response.json({ error: 'Plan not found' }, { status: 404 });
     }
-
-    const plan = plans[0];
     const priceId = plan.stripe_price_id;
     if (!priceId) {
       return Response.json({ error: 'Plan not synced to Stripe yet. Please sync the plan first.' }, { status: 400 });
