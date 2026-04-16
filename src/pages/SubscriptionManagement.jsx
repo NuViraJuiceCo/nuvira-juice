@@ -29,18 +29,13 @@ export default function SubscriptionManagement() {
     queryFn: () => base44.entities.SubscriptionPlan.filter({}, 'sort_order', 50),
   });
 
-  const { data: bundles = [] } = useQuery({
-    queryKey: ['subscription-bundles'],
-    queryFn: () => base44.entities.SubscriptionBundle.filter({}, 'sort_order', 50),
-  });
-
   const { data: juiceProducts = [] } = useQuery({
     queryKey: ['juice-products'],
     queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 50),
   });
 
-  const getPlanName = (planId) => plans.find(p => p.id === planId)?.name || 'Plan';
-  const getBundleName = (bundleId) => bundles.find(b => b.id === bundleId)?.name || 'Bundle';
+  const getPlan = (planId) => plans.find(p => p.id === planId);
+  const getPlanName = (planId) => getPlan(planId)?.name || 'Plan';
 
   const handlePause = async (subId) => {
     const sub = subscriptions.find(s => s.id === subId);
@@ -140,7 +135,7 @@ export default function SubscriptionManagement() {
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="font-semibold text-sm">{getPlanName(sub.plan_id)}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{getBundleName(sub.bundle_id)} • {sub.delivery_zone_id}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{getPlan(sub.plan_id)?.bottle_count} bottles · {getPlan(sub.plan_id)?.frequency}</p>
                     </div>
                     <span className="bg-primary/20 text-primary text-[9px] font-bold px-2 py-1 rounded-full">Active</span>
                   </div>
@@ -213,7 +208,7 @@ export default function SubscriptionManagement() {
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="font-semibold text-sm">{getPlanName(sub.plan_id)}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{getBundleName(sub.bundle_id)} • {sub.delivery_zone_id}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{getPlan(sub.plan_id)?.bottle_count} bottles · {getPlan(sub.plan_id)?.frequency}</p>
                     </div>
                     <span className="bg-muted text-muted-foreground text-[9px] font-bold px-2 py-1 rounded-full">Paused</span>
                   </div>
@@ -258,7 +253,7 @@ export default function SubscriptionManagement() {
         {editingSub && (
           <CompositionEditor
             subscription={editingSub}
-            bundle={bundles.find(b => b.id === editingSub.bundle_id)}
+            plan={getPlan(editingSub.plan_id)}
             products={juiceProducts}
             onClose={() => setEditingSub(null)}
             onSaved={refetch}

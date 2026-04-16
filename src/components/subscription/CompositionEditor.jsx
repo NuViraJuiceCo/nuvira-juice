@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 
-export default function CompositionEditor({ subscription, bundle, products, onClose, onSaved }) {
-  // Build initial quantities from existing custom_composition or default_composition
+export default function CompositionEditor({ subscription, plan, products, onClose, onSaved }) {
+  // Build initial quantities from existing custom_composition
   const source = subscription.custom_composition?.length
     ? subscription.custom_composition
-    : (bundle?.default_composition || []);
+    : [];
 
   const initialCounts = {};
   source.forEach(item => {
@@ -19,7 +19,7 @@ export default function CompositionEditor({ subscription, bundle, products, onCl
   const [counts, setCounts] = useState(initialCounts);
   const [saving, setSaving] = useState(false);
 
-  const totalBottles = bundle?.bottle_count || 6;
+  const totalBottles = plan?.bottle_count || 6;
   const totalSelected = Object.values(counts).reduce((a, b) => a + b, 0);
   const remaining = totalBottles - totalSelected;
 
