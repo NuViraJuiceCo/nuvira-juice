@@ -73,6 +73,7 @@ export default function Subscribe() {
     setLoading(true);
     const res = await base44.functions.invoke('createSubscriptionSession', {
       plan_id: selectedPlanId,
+      bundle_id: null,
       address,
       customer_email: user?.email || null,
     });
