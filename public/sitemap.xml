@@ -20,6 +20,71 @@
     <priority>0.9</priority>
   </url>
 
+  <!-- Individual Product Pages -->
+
+  <!-- AURA -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69d490ce699b5f1ac4dde495</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- RE-NU -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69d490ce699b5f1ac4dde496</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- OASIS -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69d490ce699b5f1ac4dde497</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- Orange Juice -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69d5b9df48ee4ce27d9eb8fa</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Pineapple Juice -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69d5b9df48ee4ce27d9eb8fb</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Watermelon Juice -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69d5b9df48ee4ce27d9eb8fc</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- 2-Day Ritual Pack -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69deb45a1564dc5386afefa3</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- 3-Day Ritual Pack -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69deb45a1564dc5386afefa4</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- 4-Day Ritual Pack -->
+  <url>
+    <loc>https://www.nuvirajuice.com/shop/69deb45a1564dc5386afefa5</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
   <!-- Brand / Info Pages -->
   <url>
     <loc>https://www.nuvirajuice.com/our-story</loc>
