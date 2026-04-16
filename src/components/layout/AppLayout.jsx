@@ -26,7 +26,7 @@ export default function AppLayout() {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
-        <main className="pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto overflow-hidden">
+        <main className="pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           {/* Always-mounted tab panels — preserves scroll & state */}
           <div style={{ display: location.pathname === '/' ? 'block' : 'none' }}><Home /></div>
           <div style={{ display: location.pathname === '/shop' ? 'block' : 'none' }}><Shop /></div>
