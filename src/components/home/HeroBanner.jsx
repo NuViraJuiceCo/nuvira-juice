@@ -117,6 +117,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
             <button
               key={i}
               onClick={() => setCurrent(i)}
+              aria-label={`Go to slide ${i + 1}`}
               className={`h-1.5 rounded-full transition-all duration-300 ${i === current ? 'bg-white w-5' : 'bg-white/40 w-1.5'}`}
             />
           ))}

@@ -129,7 +129,7 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-2">
           <DeliveryBadge scheduleRules={scheduleRules} />
-          <Link to="/notifications" className="relative w-9 h-9 flex items-center justify-center rounded-full bg-muted shadow-sm">
+          <Link to="/notifications" aria-label="View notifications" className="relative w-9 h-9 flex items-center justify-center rounded-full bg-muted shadow-sm">
             <Bell className="w-4 h-4 text-foreground" />
             {unreadCount > 0 && (
               <motion.span
