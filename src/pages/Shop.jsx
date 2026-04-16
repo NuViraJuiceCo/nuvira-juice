@@ -51,6 +51,7 @@ export default function Shop() {
       result = result.filter(p =>
         p.title?.toLowerCase().includes(q) ||
         p.short_description?.toLowerCase().includes(q) ||
+        p.ingredients?.toLowerCase().includes(q) ||
         p.tags?.some(t => t.toLowerCase().includes(q))
       );
     }
