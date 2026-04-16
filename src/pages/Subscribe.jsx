@@ -45,13 +45,21 @@ export default function Subscribe() {
 
   const calculateDistance = (addr) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    setCalculatedZone(null);
+    setCalculatedDistance(null);
     if (!addr.trim() || addr.length < 5) return;
     setCalculating(true);
     debounceRef.current = setTimeout(async () => {
-      const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
-      setCalculatedDistance(res.data.distance);
-      setCalculatedZone(res.data.zone);
-      setCalculating(false);
+      try {
+        const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
+        setCalculatedDistance(res.data.distance);
+        setCalculatedZone(res.data.zone);
+      } catch {
+        setCalculatedZone(null);
+        setCalculatedDistance(null);
+      } finally {
+        setCalculating(false);
+      }
     }, 800);
   };
 
