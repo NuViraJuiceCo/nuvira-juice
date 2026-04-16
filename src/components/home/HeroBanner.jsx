@@ -30,30 +30,46 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
 
   return (
     <div className="relative mt-3 overflow-hidden" style={{ height: '72vw', maxHeight: '300px', minHeight: '220px' }}>
-      {/* Full-bleed image with zoom animation */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={current}
-          initial={{ opacity: 0, scale: 1.08 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-          className="absolute inset-0"
-        >
-          <img
-            src={banner.image_url}
-            alt={banner.title}
-            className="w-full h-full object-cover"
-            fetchpriority="high"
-            decoding="async"
-            width="800"
-            height="576"
-          />
-          {/* Rich layered gradient */}
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-        </motion.div>
-      </AnimatePresence>
+
+      {/* LCP image: rendered immediately, no animation, fetchpriority high */}
+      <div className="absolute inset-0">
+        <img
+          src={activeBanners[0].image_url}
+          alt={activeBanners[0].title}
+          className="w-full h-full object-cover"
+          fetchpriority="high"
+          decoding="sync"
+          width="800"
+          height="576"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+      </div>
+
+      {/* Animated layer for multi-banner transitions only */}
+      {activeBanners.length > 1 && (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={current}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+            className="absolute inset-0"
+          >
+            <img
+              src={banner.image_url}
+              alt={banner.title}
+              className="w-full h-full object-cover"
+              decoding="async"
+              width="800"
+              height="576"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+          </motion.div>
+        </AnimatePresence>
+      )}
 
       {/* Floating delivery badge */}
       {deliveryText && (
@@ -70,43 +86,28 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
 
       {/* Content */}
       <div className="absolute inset-0 flex flex-col justify-between p-5">
-        <motion.img
-          initial={{ opacity: 0, x: -15 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
+        <img
           src={LOGO_URL}
           alt="NuVira"
           className="w-24 drop-shadow-lg brightness-0 invert opacity-90"
+          width="96"
+          height="32"
         />
         <div>
-          <motion.p
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
+          <p
             className="text-white font-heading text-lg sm:text-2xl font-bold leading-tight mb-1.5 drop-shadow-lg"
             style={{ whiteSpace: 'pre-line' }}
           >
             {banner.title}
-          </motion.p>
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
-            className="text-white/80 text-xs mb-4 drop-shadow line-clamp-2"
-          >
+          </p>
+          <p className="text-white/80 text-xs mb-4 drop-shadow line-clamp-2">
             {banner.subtitle}
-          </motion.p>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.45, type: 'spring', stiffness: 300 }}
-          >
-            <Link to={banner.link_to || '/shop'}>
-              <Button size="sm" className="bg-white text-primary hover:bg-white/90 font-bold rounded-full px-6 h-9 text-xs shadow-lg shadow-black/20">
-                Order Now <ArrowRight className="w-3.5 h-3.5 ml-1" />
-              </Button>
-            </Link>
-          </motion.div>
+          </p>
+          <Link to={banner.link_to || '/shop'}>
+            <Button size="sm" className="bg-white text-primary hover:bg-white/90 font-bold rounded-full px-6 h-9 text-xs shadow-lg shadow-black/20">
+              Order Now <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </Link>
         </div>
       </div>
 
