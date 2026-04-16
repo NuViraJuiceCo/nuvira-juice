@@ -46,7 +46,7 @@ export default function Account() {
   return (
     <div className="pb-4">
       {/* Profile Header */}
-      <div className="bg-gradient-to-b from-primary/10 to-transparent px-4 pt-6 pb-6">
+      <div className="bg-gradient-to-b from-primary/10 to-transparent px-4 pb-6" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-3.5">
           <div className="w-14 h-14 bg-primary/15 rounded-full flex items-center justify-center">
             <User className="w-6 h-6 text-primary" />
