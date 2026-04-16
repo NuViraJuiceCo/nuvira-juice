@@ -96,18 +96,23 @@
     <script>
       (function() {
         var mq = window.matchMedia('(prefers-color-scheme: dark)');
-        function apply(e) {
-          var isDark = e.matches;
-          document.documentElement.classList.toggle('dark', isDark);
-          document.documentElement.style.background = isDark ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
-          document.body.style.background = isDark ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
-        }
-        apply(mq);
-        mq.addEventListener('change', apply);
+        var isDark = mq.matches;
+        var bg = isDark ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
+        document.documentElement.classList.toggle('dark', isDark);
+        document.documentElement.style.background = bg;
+        document.documentElement.style.backgroundColor = bg;
+        mq.addEventListener('change', function(e) {
+          var d = e.matches;
+          var c = d ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
+          document.documentElement.classList.toggle('dark', d);
+          document.documentElement.style.background = c;
+          document.documentElement.style.backgroundColor = c;
+          document.body && (document.body.style.background = c);
+        });
       })();
     </script>
   </head>
-  <body>
+  <body style="background: inherit;">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
