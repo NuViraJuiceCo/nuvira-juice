@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, Pause, SkipForward, Plus, Edit2 } from 'lucide-react';
+import { ArrowLeft, Calendar, Pause, SkipForward, Plus, Edit2, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import CompositionEditor from '@/components/subscription/CompositionEditor';
 export default function SubscriptionManagement() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [selectedSubId, setSelectedSubId] = useState(null);
   const [pauseDuration, setPauseDuration] = useState('1week');
@@ -103,6 +104,21 @@ export default function SubscriptionManagement() {
     setLoading(false);
   };
 
+  const handleManageBilling = async () => {
+    if (window.self !== window.top) {
+      alert('Billing management only works from the published app, not the preview.');
+      return;
+    }
+    setBillingLoading(true);
+    const res = await base44.functions.invoke('stripeCustomerPortal', {});
+    if (res.data?.url) {
+      window.location.href = res.data.url;
+    } else {
+      toast.error(res.data?.error || 'Could not open billing portal. Please contact support.');
+    }
+    setBillingLoading(false);
+  };
+
   const activeSubscriptions = subscriptions.filter(s => s.status === 'active');
   const pausedSubscriptions = subscriptions.filter(s => s.status === 'paused');
 
@@ -162,7 +178,7 @@ export default function SubscriptionManagement() {
                     )}
                   </button>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mb-2">
                     <Button
                       onClick={() => {
                         setSelectedSubId(sub.id);
@@ -186,6 +202,16 @@ export default function SubscriptionManagement() {
                       Skip
                     </Button>
                   </div>
+                  <Button
+                    onClick={handleManageBilling}
+                    disabled={billingLoading}
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-9 text-xs rounded-lg"
+                  >
+                    <CreditCard className="w-3 h-3 mr-1" />
+                    {billingLoading ? 'Loading...' : 'Manage Billing & Payment'}
+                  </Button>
                 </motion.div>
               ))}
             </div>
