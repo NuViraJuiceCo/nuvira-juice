@@ -12,9 +12,9 @@ export default function TickerBanner() {
         className="flex gap-0 whitespace-nowrap"
       >
         {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
-          <span key={i} className="text-primary-foreground/90 text-xs font-semibold uppercase tracking-widest px-5 flex items-center gap-3">
-            {item}
-            <span className="w-1 h-1 rounded-full bg-primary-foreground/40 inline-block" />
+          <span key={i} className="text-white text-xs font-semibold uppercase tracking-widest flex items-center">
+            <span className="px-6">{item}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-white/50 inline-block shrink-0" />
           </span>
         ))}
       </motion.div>
