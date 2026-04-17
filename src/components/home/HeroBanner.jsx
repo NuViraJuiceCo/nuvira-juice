@@ -85,7 +85,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
       )}
 
       {/* Content */}
-      <div className="absolute inset-0 flex flex-col justify-between p-5">
+      <div className="absolute inset-0 flex flex-col p-5">
         <img
           src={LOGO_URL}
           alt="NuVira"
@@ -93,7 +93,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           width="96"
           height="32"
         />
-        <div>
+        <div className="flex-1 flex flex-col justify-center pb-6">
           <p
             className="text-white font-heading text-lg sm:text-2xl font-bold leading-tight mb-1.5 drop-shadow-lg"
             style={{ whiteSpace: 'pre-line' }}
@@ -103,27 +103,28 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           <p className="text-white/80 text-xs mb-4 drop-shadow line-clamp-2">
             {banner.subtitle}
           </p>
-          <Link to={banner.link_to || '/shop'}>
-            <Button size="sm" className="bg-white text-primary hover:bg-white/90 font-bold rounded-full px-6 h-9 text-xs shadow-lg shadow-black/20">
-              Order Now <ArrowRight className="w-3.5 h-3.5 ml-1" />
-            </Button>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to={banner.link_to || '/shop'}>
+              <Button size="sm" className="bg-white text-primary hover:bg-white/90 font-bold rounded-full px-6 h-9 text-xs shadow-lg shadow-black/20">
+                Order Now <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </Link>
+            {/* Dots inline with button */}
+            {activeBanners.length > 1 && (
+              <div className="flex gap-1.5">
+                {activeBanners.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrent(i)}
+                    aria-label={`Go to slide ${i + 1}`}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${i === current ? 'bg-white w-5' : 'bg-white/40 w-1.5'}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* Dots */}
-      {activeBanners.length > 1 && (
-        <div className="absolute bottom-4 right-5 flex gap-1.5">
-          {activeBanners.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrent(i)}
-              aria-label={`Go to slide ${i + 1}`}
-              className={`h-1.5 rounded-full transition-all duration-300 ${i === current ? 'bg-white w-5' : 'bg-white/40 w-1.5'}`}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

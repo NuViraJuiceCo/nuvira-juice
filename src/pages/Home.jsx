@@ -14,6 +14,7 @@ import DeliveryBadge from '@/components/home/DeliveryBadge';
 import BrandSection from '@/components/home/BrandSection';
 import TickerBanner from '@/components/home/TickerBanner';
 import MerchTeaser from '@/components/home/MerchTeaser';
+import NotificationPrompt from '@/components/home/NotificationPrompt';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 
@@ -147,6 +148,7 @@ export default function Home() {
 
       <TickerBanner />
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
+      <NotificationPrompt />
 
       <QuickReorder lastOrder={lastOrder} />
 

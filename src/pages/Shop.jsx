@@ -1,15 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import SEO from '@/components/SEO';
 import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductCard from '@/components/shop/ProductCard';
 
-const CATEGORIES = [
+const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
   { key: 'juice', label: 'Juices' },
   { key: 'bundle', label: 'Bundles' },
@@ -23,6 +24,12 @@ export default function Shop() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const filterParam = searchParams.get('filter');
+
+  // Always reset to "all" tab when navigating to the shop page
+  useEffect(() => {
+    setCategory('all');
+    setSearch('');
+  }, []);
 
   const { data: products = [], isLoading, refetch } = useQuery({
     queryKey: ['products'],
@@ -46,7 +53,9 @@ export default function Shop() {
     else if (filterParam === 'bundles') result = result.filter(p => p.category === 'bundle');
 
     // Category filter
-    if (category !== 'all') {
+    if (category === 'seasonal') {
+      result = result.filter(p => p.is_seasonal || p.category === 'seasonal');
+    } else if (category !== 'all') {
       result = result.filter(p => p.category === category);
     }
 
@@ -111,9 +120,13 @@ export default function Shop() {
         </div>
       </div>
 
-      {/* Categories */}
+      {/* Categories — only show tabs that have products (except "all") */}
       <div className="flex gap-2 px-4 overflow-x-auto pb-3 no-scrollbar">
-        {CATEGORIES.map(cat => (
+        {ALL_CATEGORIES.filter(cat => {
+          if (cat.key === 'all') return true;
+          if (cat.key === 'seasonal') return products.some(p => p.is_seasonal || p.category === 'seasonal');
+          return products.some(p => p.category === cat.key);
+        }).map(cat => (
           <button
             key={cat.key}
             onClick={() => { setCategory(cat.key); setSearchParams({}); }}
@@ -136,9 +149,16 @@ export default function Shop() {
               <div key={i} className="bg-secondary/50 rounded-xl aspect-[3/4] animate-pulse" />
             ))}
           </div>
-        ) : filtered.length === 0 && category !== 'shot' ? (
-          <div className="text-center py-16">
-            <p className="text-muted-foreground text-sm">No products found</p>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <p className="text-lg font-heading font-semibold mb-1">Coming Soon</p>
+            <p className="text-muted-foreground text-sm mb-5">New Drops Are On The Way</p>
+            <button
+              onClick={() => { setCategory('all'); setSearchParams({}); }}
+              className="px-6 py-2 bg-primary text-primary-foreground rounded-full text-sm font-semibold"
+            >
+              Shop All Juices
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -156,8 +176,6 @@ export default function Shop() {
             </AnimatePresence>
           </div>
         )}
-
-
       </div>
     </div>
     </PullToRefresh>

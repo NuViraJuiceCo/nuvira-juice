@@ -58,7 +58,7 @@ export default function OrderHistory() {
         <div className="flex flex-col items-center justify-center py-20">
           <Package className="w-10 h-10 text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground">No orders yet</p>
-          <Link to="/shop" className="text-sm text-primary font-medium mt-2">Start Shopping</Link>
+          <Link to="/shop" onClick={() => sessionStorage.setItem('shopResetTab', '1')} className="text-sm text-primary font-medium mt-2">Start Shopping</Link>
         </div>
       ) : (
         <div className="px-4">
