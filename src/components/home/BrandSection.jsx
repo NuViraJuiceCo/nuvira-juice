@@ -33,10 +33,10 @@ export default function BrandSection() {
           <div className="absolute inset-0 bg-gradient-to-br from-primary/90 via-primary/75 to-primary/50" />
           <div className="absolute inset-0 p-4 flex flex-col justify-between">
             <div>
-              <p className="font-heading text-primary-foreground font-bold text-lg leading-tight">
+              <p className="font-heading text-white font-bold text-lg leading-tight">
                 The NuVira Difference
               </p>
-              <p className="text-primary-foreground/70 text-[10px] mt-0.5">No fillers. No compromises.</p>
+              <p className="text-white/75 text-[10px] mt-0.5">No fillers. No compromises.</p>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {values.map(({ icon: Icon, title, desc }, i) => (
