@@ -3,10 +3,11 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
-// Pre-order window: Apr 22 – Apr 29. Launch (capture) date: Apr 30.
-const PREORDER_START = new Date('2026-04-22T00:00:00');
-const PREORDER_END   = new Date('2026-04-29T23:59:59');
-const FULFILLMENT_DATE = '2026-04-30';
+// Pre-orders: Apr 23 – Apr 30. Production (capture) day: May 1. First delivery: May 2.
+const PREORDER_START    = new Date('2026-04-23T00:00:00');
+const PREORDER_END      = new Date('2026-04-30T23:59:59');
+const FULFILLMENT_DATE  = '2026-05-01'; // Production / payment capture day
+const DELIVERY_DATE     = '2026-05-02'; // First delivery date for all pre-orders
 
 function isPreorderWindow() {
   const now = new Date();
@@ -46,13 +47,13 @@ Deno.serve(async (req) => {
       fulfillment_type: fulfillment_type || 'delivery',
       delivery_address: delivery_address || '',
       contact_phone: contact_phone || '',
-      estimated_delivery_date: preorder ? FULFILLMENT_DATE : (estimated_delivery_date || null),
+      estimated_delivery_date: preorder ? DELIVERY_DATE : (estimated_delivery_date || null),
       status: 'order_received',
       status_history: [{
         status: 'order_received',
         timestamp: new Date().toISOString(),
         message: preorder
-          ? "Pre-order received! Payment will be captured on April 30th when production begins."
+          ? "Pre-order received! Payment will be captured on May 1st when production begins. Delivery: May 2nd."
           : "We've received your order!",
       }],
       is_preorder: preorder,
@@ -160,13 +161,14 @@ Deno.serve(async (req) => {
         currency: 'usd',
         capture_method: 'manual', // authorize only — captured on Apr 30
         receipt_email: customer_email || undefined,
-        description: `NuVira Pre-Order ${orderNumber} — Capture April 30, 2026`,
+        description: `NuVira Pre-Order ${orderNumber} — Capture May 1, 2026 · Delivery May 2`,
         metadata: {
           base44_app_id: Deno.env.get('BASE44_APP_ID'),
           order_id: order.id,
           order_number: orderNumber,
           is_preorder: 'true',
           fulfillment_date: FULFILLMENT_DATE,
+            delivery_date: DELIVERY_DATE,
         },
       });
 

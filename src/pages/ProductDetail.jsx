@@ -124,7 +124,7 @@ export default function ProductDetail() {
           {/* Pre-order badge — show if store is in pre-order mode OR this product is flagged */}
           {(isPreorderMode() || product.is_preorder) && (
             <span className="inline-block bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2 border border-primary/20">
-              ✦ Pre-Order — Ships April 30th
+              ✦ Pre-Order — Delivered May 2nd
             </span>
           )}
           {product.is_seasonal && (

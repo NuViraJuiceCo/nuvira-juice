@@ -228,10 +228,10 @@ export default function Checkout() {
         <Truck className="w-5 h-5 text-primary shrink-0" />
         <div>
           <p className="text-sm font-semibold text-primary">
-            {isPreorderMode() ? 'Delivery: May 1st, 2026' : deliveryText}
+            {isPreorderMode() ? 'Delivery: May 2nd, 2026' : deliveryText}
           </p>
           <p className="text-[10px] text-muted-foreground">
-            {isPreorderMode() ? 'Pre-orders fulfilled starting April 30th' : 'Included in our next fresh batch'}
+            {isPreorderMode() ? 'Pre-orders produced May 1st · delivered May 2nd' : 'Included in our next fresh batch'}
           </p>
         </div>
       </div>
@@ -376,7 +376,7 @@ export default function Checkout() {
           disabled={isSubmitting}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {isSubmitting ? 'Redirecting to payment...' : isPreorderMode() ? `Pre-Order · $${total.toFixed(2)} — Charged Apr 30` : `Pay · $${total.toFixed(2)}`}
+          {isSubmitting ? 'Redirecting to payment...' : isPreorderMode() ? `Pre-Order · $${total.toFixed(2)} — Charged May 1st` : `Pay · $${total.toFixed(2)}`}
         </Button>
       </div>
     </div>

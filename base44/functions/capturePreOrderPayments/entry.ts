@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
         statusHistory.push({
           status: 'in_production',
           timestamp: new Date().toISOString(),
-          message: "It's launch day! Payment captured — your pre-order is now in production. 🎉",
+          message: "It's launch day! Payment captured — your pre-order is now in production. Delivery: May 2nd. 🎉",
         });
 
         await base44.asServiceRole.entities.Order.update(order.id, {
@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.integrations.Core.SendEmail({
             to: order.customer_email,
             subject: "It's launch day! Your NuVira pre-order is in production 🌿",
-            body: `Great news! Today is April 30th — NuVira Juice Co. is officially launching!\n\nYour pre-order #${order.order_number} has been confirmed and we're juicing it fresh right now. Expect delivery tomorrow, May 1st.\n\nThank you for believing in us from the start.\n\n— The NuVira Team`,
+            body: `Great news! Today is May 1st — NuVira Juice Co. is officially launching!\n\nYour pre-order #${order.order_number} has been confirmed and we're juicing it fresh right now. Expect delivery tomorrow, May 2nd.\n\nThank you for believing in us from the start.\n\n— The NuVira Team`,
           });
         }
 

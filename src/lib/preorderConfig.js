@@ -1,11 +1,13 @@
 // Pre-order configuration
-// The app is in pre-order mode between PREORDER_START and PREORDER_END (inclusive).
-// On and after LAUNCH_DATE, the store is fully live.
+// Pre-orders: April 23 – April 30 (inclusive).
+// Launch / first production day: May 1st.
+// First delivery date for ALL orders (pre-orders + May 1st orders): May 2nd.
 
-export const PREORDER_START = new Date('2026-04-22T00:00:00'); // April 22 soft launch
-export const PREORDER_END   = new Date('2026-04-29T23:59:59'); // Last day of pre-orders
-export const LAUNCH_DATE    = new Date('2026-04-30T00:00:00'); // Capture + fulfillment begins
-export const FULFILLMENT_DATE_STR = '2026-04-30';             // ISO date string for DB
+export const PREORDER_START       = new Date('2026-04-23T00:00:00'); // Pre-orders open April 23
+export const PREORDER_END         = new Date('2026-04-30T23:59:59'); // Last day to pre-order
+export const LAUNCH_DATE          = new Date('2026-05-01T00:00:00'); // Production day / live store
+export const FULFILLMENT_DATE_STR = '2026-05-01';                    // Production date (capture payments)
+export const FIRST_DELIVERY_DATE  = '2026-05-02';                    // All pre-orders + May 1 orders delivered
 
 /**
  * Returns true if the current date/time falls within the pre-order window.
@@ -21,7 +23,6 @@ export function isPreorderMode() {
  */
 export function isProductPreorder(product = null) {
   if (isPreorderMode()) return true;
-  // Per-product pre-order flag (for future seasonal/new product pre-orders)
   if (product?.is_preorder) return true;
   return false;
 }
