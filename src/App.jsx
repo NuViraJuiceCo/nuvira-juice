@@ -37,7 +37,6 @@ import AdminProducts from '@/pages/admin/AdminProducts';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import DriverReturns from '@/pages/driver/DriverReturns';
 import ReturnReward from '@/pages/ReturnReward';
-import KitchenDashboard from '@/pages/KitchenDashboard';
 import ScrollToTop from '@/components/ScrollToTop';
 import { base44 } from '@/api/base44Client';
 
@@ -103,7 +102,6 @@ const AuthenticatedApp = () => {
           <Route path="/admin/bag-returns" element={<BagReturnAdmin />} />
           <Route path="/driver/returns" element={<DriverReturns />} />
           <Route path="/return-reward" element={<ReturnReward />} />
-          <Route path="/kitchen" element={<KitchenDashboard />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
