@@ -13,10 +13,10 @@ export default function PreLaunchBanner() {
     <motion.div
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mx-4 mt-4 mb-5"
+      className="mb-5"
     >
-      <div className="bg-primary dark:bg-white rounded-2xl p-5 relative overflow-hidden border border-primary/20 dark:border-border">
-        <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/10 dark:bg-primary/5 rounded-full" />
+      <div className="bg-primary dark:bg-white rounded-2xl p-6 relative overflow-hidden border border-primary/20 dark:border-border">
+        <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-white/10 dark:bg-primary/5 rounded-full" />
         
         {/* Main content */}
         <div className="flex items-start gap-4 relative mb-4">

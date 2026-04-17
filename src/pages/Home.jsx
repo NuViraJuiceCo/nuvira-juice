@@ -16,6 +16,7 @@ import MerchTeaser from '@/components/home/MerchTeaser';
 import SustainabilityTeaser from '@/components/home/SustainabilityTeaser';
 import NotificationPrompt from '@/components/home/NotificationPrompt';
 import PreLaunchBanner from '@/components/PreLaunchBanner';
+import PreorderBanner from '@/components/PreorderBanner';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 
@@ -150,8 +151,9 @@ export default function Home() {
       <TickerBanner />
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
       
-      <div className="mt-6">
+      <div className="mt-6 px-4">
         <PreLaunchBanner />
+        <PreorderBanner />
       </div>
 
       <div className="mt-4">
