@@ -29,7 +29,7 @@ export default function BrandSection() {
       {/* NuVira Difference */}
       <div className="mx-4">
         <div className="relative rounded-2xl overflow-hidden">
-          <img src={TRIO_URL} alt="NuVira Juices" className="w-full h-36 object-cover" />
+          <img src={TRIO_URL} alt="NuVira Juices" className="w-full h-48 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-br from-primary/90 via-primary/75 to-primary/50" />
           <div className="absolute inset-0 p-4 flex flex-col justify-between">
             <div>
