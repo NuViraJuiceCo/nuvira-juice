@@ -23,7 +23,7 @@ export default function OutOfAreaModal({ address, zip, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center px-4 pb-8">
+    <div className="fixed inset-0 z-40 bg-black/50 flex items-end justify-center px-4 pb-8">
       <motion.div
         initial={{ y: 80, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}

@@ -37,7 +37,7 @@ function CreditModal({ onClose, balance, earned, used, history, returns }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
       <motion.div
@@ -45,7 +45,7 @@ function CreditModal({ onClose, balance, earned, used, history, returns }) {
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        className="fixed inset-x-0 bottom-0 z-50 bg-background rounded-t-3xl max-h-[88vh] flex flex-col"
+        className="fixed inset-x-0 bottom-0 z-40 bg-background rounded-t-3xl max-h-[88vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Handle */}

@@ -70,7 +70,7 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
           autoComplete="off"
         />
         {open && suggestions.length > 0 && (
-          <ul className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto text-sm">
+          <ul className="absolute z-10 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto text-sm">
             {suggestions.map((s, i) => (
               <li
                 key={i}
