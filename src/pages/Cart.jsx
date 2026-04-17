@@ -203,7 +203,7 @@ export default function Cart() {
       </div>
 
       {/* Bottom Summary */}
-      <div className="fixed bottom-16 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border">
+      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border">
         <div className="max-w-lg mx-auto px-4 py-3">
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
             <span>Subtotal</span>
