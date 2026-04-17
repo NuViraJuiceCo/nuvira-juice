@@ -4,16 +4,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Leaf, ChevronDown, ChevronRight, CheckCircle2, XCircle, Search } from 'lucide-react';
+import { ArrowLeft, Leaf, ChevronDown, ChevronRight, Search, Package } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-const VERIFICATION_STATUS_COLOR = {
-  requested: 'bg-amber-100 text-amber-700',
-  verified: 'bg-green-100 text-green-700',
-  partially_verified: 'bg-amber-100 text-amber-700',
+const STATUS_COLOR = {
+  requested: 'bg-amber-50 text-amber-700',
+  verified: 'bg-primary/10 text-primary',
+  partially_verified: 'bg-amber-50 text-amber-700',
   not_found: 'bg-secondary text-muted-foreground',
-  not_eligible: 'bg-red-100 text-red-700',
+  not_eligible: 'bg-red-50 text-red-600',
 };
 
 const REJECTION_REASONS = [
@@ -23,20 +23,26 @@ const REJECTION_REASONS = [
   { key: 'other', label: 'Other' },
 ];
 
-function ReturnCard({ ret, onVerify }) {
+function bagSummary(r) {
+  const parts = [];
+  if ((r.small_bags_requested || 0) > 0) parts.push(`${r.small_bags_requested} Small`);
+  if ((r.tote_bags_requested || 0) > 0) parts.push(`${r.tote_bags_requested} Tote`);
+  return parts.join(' + ') || '—';
+}
+
+function ReturnCard({ ret, onVerify, credits }) {
   const [expanded, setExpanded] = useState(false);
   const [smallStatus, setSmallStatus] = useState('accepted');
   const [toteStatus, setToteStatus] = useState('accepted');
-  const [rejectionReason, setRejectionReason] = useState('dirty_stained');
-  const [driverNotes, setDriverNotes] = useState('');
+  const [reason, setReason] = useState('dirty_stained');
+  const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const hasBags = ret.small_bags_requested > 0 || ret.tote_bags_requested > 0;
   const isPending = ret.verification_status === 'requested';
 
   const calcCredit = () => {
     let c = 0;
-    if (ret.small_bags_requested > 0 && smallStatus === 'accepted') c += ret.small_bags_requested * 1;
+    if (ret.small_bags_requested > 0 && smallStatus === 'accepted') c += ret.small_bags_requested;
     if (ret.tote_bags_requested > 0 && toteStatus === 'accepted') c += ret.tote_bags_requested * 2;
     return c;
   };
@@ -46,9 +52,8 @@ function ReturnCard({ ret, onVerify }) {
     const credit = calcCredit();
     const smallAcc = smallStatus === 'accepted' ? ret.small_bags_requested : 0;
     const toteAcc = toteStatus === 'accepted' ? ret.tote_bags_requested : 0;
-
     let vStatus = 'verified';
-    if (credit === 0) vStatus = smallStatus === 'not_found' || toteStatus === 'not_found' ? 'not_found' : 'not_eligible';
+    if (credit === 0) vStatus = (smallStatus === 'not_found' || toteStatus === 'not_found') ? 'not_found' : 'not_eligible';
     else if (smallAcc < ret.small_bags_requested || toteAcc < ret.tote_bags_requested) vStatus = 'partially_verified';
 
     await onVerify(ret, {
@@ -56,38 +61,34 @@ function ReturnCard({ ret, onVerify }) {
       tote_bag_status: toteStatus,
       small_bags_accepted: smallAcc,
       tote_bags_accepted: toteAcc,
-      rejection_reason: (smallStatus !== 'accepted' || toteStatus !== 'accepted') ? rejectionReason : '',
-      driver_notes: driverNotes,
+      rejection_reason: (smallStatus === 'not_eligible' || toteStatus === 'not_eligible') ? reason : '',
+      driver_notes: notes,
       verification_status: vStatus,
       credit_issued: credit,
-    });
+    }, credits);
     setSaving(false);
     setExpanded(false);
   };
 
   return (
     <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center gap-3 p-4 text-left">
+      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center gap-3.5 p-4 text-left">
+        <div className="w-9 h-9 bg-muted rounded-full flex items-center justify-center shrink-0">
+          <Package className="w-4 h-4 text-muted-foreground" />
+        </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <p className="text-sm font-bold truncate">{ret.customer_email}</p>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${VERIFICATION_STATUS_COLOR[ret.verification_status] || ''}`}>
-              {ret.verification_status?.replace('_', ' ')}
+          <p className="text-sm font-semibold truncate">{ret.customer_email}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <span className="text-[10px] text-muted-foreground">{bagSummary(ret)}</span>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLOR[ret.verification_status] || ''}`}>
+              {ret.verification_status?.replace(/_/g, ' ')}
             </span>
-          </div>
-          <div className="flex gap-2">
-            {ret.small_bags_requested > 0 && (
-              <span className="text-[10px] bg-secondary px-2 py-0.5 rounded-full">{ret.small_bags_requested} Small</span>
-            )}
-            {ret.tote_bags_requested > 0 && (
-              <span className="text-[10px] bg-secondary px-2 py-0.5 rounded-full">{ret.tote_bags_requested} Tote</span>
-            )}
           </div>
           <p className="text-[10px] text-muted-foreground mt-0.5">
             {ret.created_date ? format(new Date(ret.created_date), 'MMM d, yyyy · h:mm a') : ''}
           </p>
         </div>
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {ret.credit_issued > 0 && <span className="text-xs font-semibold text-primary">+${ret.credit_issued.toFixed(2)}</span>}
           {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
         </div>
@@ -99,94 +100,76 @@ function ReturnCard({ ret, onVerify }) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-t border-border/40"
+            className="overflow-hidden"
           >
-            <div className="p-4 space-y-4">
+            <div className="p-4 border-t border-border/40 space-y-4">
               {!isPending ? (
-                <div className="space-y-2 text-sm">
-                  <p><span className="text-muted-foreground">Small bags:</span> {ret.small_bags_accepted || 0} accepted / {ret.small_bags_requested || 0} requested</p>
-                  <p><span className="text-muted-foreground">Tote bags:</span> {ret.tote_bags_accepted || 0} accepted / {ret.tote_bags_requested || 0} requested</p>
-                  {ret.rejection_reason && <p><span className="text-muted-foreground">Reason:</span> {ret.rejection_reason}</p>}
-                  {ret.driver_notes && <p><span className="text-muted-foreground">Notes:</span> {ret.driver_notes}</p>}
-                  {ret.verified_by && <p className="text-xs text-muted-foreground">Verified by {ret.verified_by}</p>}
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p><span className="text-foreground font-medium">Small bags:</span> {ret.small_bags_accepted || 0} of {ret.small_bags_requested || 0} accepted</p>
+                  <p><span className="text-foreground font-medium">Tote bags:</span> {ret.tote_bags_accepted || 0} of {ret.tote_bags_requested || 0} accepted</p>
+                  {ret.rejection_reason && <p><span className="text-foreground font-medium">Reason:</span> {ret.rejection_reason}</p>}
+                  {ret.driver_notes && <p><span className="text-foreground font-medium">Notes:</span> {ret.driver_notes}</p>}
+                  {ret.verified_by && <p className="text-[10px]">Verified by {ret.verified_by}</p>}
                 </div>
               ) : (
                 <>
                   {ret.small_bags_requested > 0 && (
                     <div>
-                      <p className="text-xs font-semibold mb-2">Small Lunch Bag ({ret.small_bags_requested})</p>
-                      <div className="flex gap-2">
-                        {['accepted', 'not_eligible', 'not_found'].map(s => (
-                          <button
-                            key={s}
-                            onClick={() => setSmallStatus(s)}
-                            className={`text-[10px] font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                              smallStatus === s ? 'bg-primary text-primary-foreground border-primary' : 'border-border bg-card'
-                            }`}
-                          >
-                            {s === 'accepted' ? 'Found & Accepted' : s === 'not_eligible' ? 'Not Eligible' : 'Not Found'}
+                      <p className="text-xs font-semibold mb-2">Small Lunch Bag ×{ret.small_bags_requested}</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {[['accepted', 'Found & Accepted'], ['not_eligible', 'Not Eligible'], ['not_found', 'Not Found']].map(([v, l]) => (
+                          <button key={v} onClick={() => setSmallStatus(v)}
+                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${smallStatus === v ? 'bg-primary text-primary-foreground border-primary' : 'border-border bg-background'}`}>
+                            {l}
                           </button>
                         ))}
                       </div>
                     </div>
                   )}
-
                   {ret.tote_bags_requested > 0 && (
                     <div>
-                      <p className="text-xs font-semibold mb-2">Tote Bag ({ret.tote_bags_requested})</p>
+                      <p className="text-xs font-semibold mb-2">Tote Bag ×{ret.tote_bags_requested}</p>
                       <div className="flex gap-2 flex-wrap">
-                        {['accepted', 'not_eligible', 'not_found'].map(s => (
-                          <button
-                            key={s}
-                            onClick={() => setToteStatus(s)}
-                            className={`text-[10px] font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                              toteStatus === s ? 'bg-primary text-primary-foreground border-primary' : 'border-border bg-card'
-                            }`}
-                          >
-                            {s === 'accepted' ? 'Found & Accepted' : s === 'not_eligible' ? 'Not Eligible' : 'Not Found'}
+                        {[['accepted', 'Found & Accepted'], ['not_eligible', 'Not Eligible'], ['not_found', 'Not Found']].map(([v, l]) => (
+                          <button key={v} onClick={() => setToteStatus(v)}
+                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${toteStatus === v ? 'bg-primary text-primary-foreground border-primary' : 'border-border bg-background'}`}>
+                            {l}
                           </button>
                         ))}
                       </div>
                     </div>
                   )}
-
                   {(smallStatus === 'not_eligible' || toteStatus === 'not_eligible') && (
                     <div>
-                      <p className="text-xs font-semibold mb-2">Reason Not Eligible</p>
+                      <p className="text-xs font-semibold mb-2">Reason</p>
                       <div className="flex gap-2 flex-wrap">
                         {REJECTION_REASONS.map(r => (
-                          <button
-                            key={r.key}
-                            onClick={() => setRejectionReason(r.key)}
-                            className={`text-[10px] px-3 py-1.5 rounded-full border ${rejectionReason === r.key ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'border-border'}`}
-                          >
+                          <button key={r.key} onClick={() => setReason(r.key)}
+                            className={`text-[11px] px-3 py-1.5 rounded-xl border transition-colors ${reason === r.key ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'border-border bg-background'}`}>
                             {r.label}
                           </button>
                         ))}
                       </div>
                     </div>
                   )}
-
                   <div>
-                    <p className="text-xs font-semibold mb-1.5">Driver Notes (optional)</p>
+                    <p className="text-xs font-semibold mb-1.5">Admin Notes</p>
                     <textarea
-                      value={driverNotes}
-                      onChange={e => setDriverNotes(e.target.value)}
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
                       rows={2}
-                      placeholder="Any notes about this return..."
-                      className="w-full text-xs border border-border rounded-xl px-3 py-2 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="Optional notes..."
+                      className="w-full text-xs border border-border rounded-xl px-3 py-2.5 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
-
-                  <div className="bg-primary/5 rounded-xl p-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold">Credit to Issue</p>
-                    <p className="text-lg font-heading font-bold text-primary">${calcCredit().toFixed(2)}</p>
+                  <div className="bg-primary/5 rounded-xl p-3.5 flex items-center justify-between">
+                    <p className="text-sm font-medium">Credit to Issue</p>
+                    <p className="font-heading text-xl font-bold text-primary">${calcCredit().toFixed(2)}</p>
                   </div>
-
                   <button
                     onClick={handleSubmit}
                     disabled={saving}
-                    className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                    className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
                   >
                     {saving ? 'Saving...' : 'Submit Verification'}
                   </button>
@@ -209,19 +192,18 @@ export default function BagReturnAdmin() {
 
   const { data: returns = [], isLoading } = useQuery({
     queryKey: ['admin-bag-returns'],
-    queryFn: () => base44.entities.BagReturn.list('-created_date', 200),
+    queryFn: () => base44.entities.BagReturn.list('-created_date', 300),
     enabled: user?.role === 'admin',
   });
 
-  const { data: credits = [] } = useQuery({
+  const { data: allCredits = [] } = useQuery({
     queryKey: ['admin-all-credits'],
-    queryFn: () => base44.entities.NuViraCredit.list('-created_date', 200),
+    queryFn: () => base44.entities.NuViraCredit.list('-created_date', 500),
     enabled: user?.role === 'admin',
   });
 
   const verifyMutation = useMutation({
-    mutationFn: async ({ ret, data }) => {
-      // Update the return record
+    mutationFn: async ({ ret, data, credits }) => {
       await base44.entities.BagReturn.update(ret.id, {
         ...data,
         verified_by: user.email,
@@ -229,13 +211,12 @@ export default function BagReturnAdmin() {
         credit_applied: data.credit_issued > 0,
       });
 
-      // If credit to issue, update or create NuViraCredit wallet
       if (data.credit_issued > 0) {
         const existing = credits.find(c => c.customer_email === ret.customer_email);
-        const historyEntry = {
+        const entry = {
           amount: data.credit_issued,
           type: 'earned',
-          description: `Return + Reward — ${data.verification_status === 'partially_verified' ? 'Partial Return' : 'Bag Return'}`,
+          description: `Return + Reward${data.verification_status === 'partially_verified' ? ' (Partial)' : ''}`,
           bag_return_id: ret.id,
           order_id: ret.order_id,
           timestamp: new Date().toISOString(),
@@ -244,7 +225,7 @@ export default function BagReturnAdmin() {
           await base44.entities.NuViraCredit.update(existing.id, {
             balance: (existing.balance || 0) + data.credit_issued,
             lifetime_earned: (existing.lifetime_earned || 0) + data.credit_issued,
-            history: [...(existing.history || []), historyEntry],
+            history: [...(existing.history || []), entry],
           });
         } else {
           await base44.entities.NuViraCredit.create({
@@ -252,33 +233,32 @@ export default function BagReturnAdmin() {
             balance: data.credit_issued,
             lifetime_earned: data.credit_issued,
             lifetime_used: 0,
-            history: [historyEntry],
+            history: [entry],
           });
         }
-        // Send notification
         await base44.integrations.Core.SendEmail({
           to: ret.customer_email,
-          subject: 'Return Verified — Your NuVira Credit Is Ready',
-          body: `Your NuVira return has been processed and $${data.credit_issued.toFixed(2)} has been added to your account.\n\nSustainability, The NuVira Way.`,
+          subject: 'Return Verified — NuVira Credits Added',
+          body: `Your NuVira return has been verified and $${data.credit_issued.toFixed(2)} in NuVira Credits has been added to your account.\n\nSustainability, The NuVira Way.`,
         });
       } else if (data.verification_status === 'not_eligible') {
         await base44.integrations.Core.SendEmail({
           to: ret.customer_email,
           subject: 'Return Not Eligible',
-          body: `Your bag was not eligible for reuse this time. Please ensure bags are clean, odor-free, and in reusable condition.`,
+          body: `Your bag was not eligible for reuse this time. Bags must be clean, odor-free, and free of damage to qualify.`,
         });
       } else if (data.verification_status === 'not_found') {
         await base44.integrations.Core.SendEmail({
           to: ret.customer_email,
-          subject: 'Return Not Found',
-          body: `We did not locate a bag at your delivery location. If you believe this is an error, please contact us.`,
+          subject: 'Return Not Located',
+          body: `We were unable to locate a bag at your delivery address. If you believe this is an error, please contact us.`,
         });
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-bag-returns'] });
       queryClient.invalidateQueries({ queryKey: ['admin-all-credits'] });
-      toast.success('Return verified');
+      toast.success('Verification saved');
     },
     onError: () => toast.error('Verification failed'),
   });
@@ -292,61 +272,72 @@ export default function BagReturnAdmin() {
   });
 
   // Analytics
-  const allVerified = returns.filter(r => r.verification_status !== 'requested');
-  const totalSmall = allVerified.reduce((s, r) => s + (r.small_bags_accepted || 0), 0);
-  const totalTotes = allVerified.reduce((s, r) => s + (r.tote_bags_accepted || 0), 0);
-  const totalCredits = allVerified.reduce((s, r) => s + (r.credit_issued || 0), 0);
-  const accepted = allVerified.filter(r => r.verification_status === 'verified' || r.verification_status === 'partially_verified').length;
-  const acceptanceRate = allVerified.length > 0 ? Math.round((accepted / allVerified.length) * 100) : 0;
+  const verified = returns.filter(r => r.verification_status !== 'requested');
+  const totalSmall = verified.reduce((s, r) => s + (r.small_bags_accepted || 0), 0);
+  const totalTotes = verified.reduce((s, r) => s + (r.tote_bags_accepted || 0), 0);
+  const totalCredits = verified.reduce((s, r) => s + (r.credit_issued || 0), 0);
+  const accepted = verified.filter(r => ['verified', 'partially_verified'].includes(r.verification_status)).length;
+  const acceptanceRate = verified.length > 0 ? Math.round((accepted / verified.length) * 100) : 0;
+  const estimatedSavings = (totalSmall * 0.45) + (totalTotes * 2.50); // Rough packaging cost savings
+
+  const analytics = [
+    { label: 'Totes Returned', value: totalTotes },
+    { label: 'Small Bags', value: totalSmall },
+    { label: 'Credits Issued', value: `$${totalCredits.toFixed(2)}` },
+    { label: 'Acceptance Rate', value: `${acceptanceRate}%` },
+    { label: 'Est. Savings', value: `$${estimatedSavings.toFixed(2)}` },
+    { label: 'Total Returns', value: verified.length },
+  ];
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      <div className="bg-primary px-4 pt-10 pb-5">
-        <button onClick={() => navigate('/account')} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
+      <div className="bg-primary px-4 pt-10 pb-6">
+        <button onClick={() => navigate('/account')} className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center mb-4">
           <ArrowLeft className="w-4 h-4 text-white" />
         </button>
         <div className="flex items-center gap-2 mb-1">
-          <Leaf className="w-5 h-5 text-primary-foreground/80" />
+          <Leaf className="w-5 h-5 text-primary-foreground/70" />
           <h1 className="font-heading text-2xl font-bold text-primary-foreground">Return + Reward</h1>
         </div>
-        <p className="text-primary-foreground/70 text-xs">Verify customer bag returns</p>
+        <p className="text-primary-foreground/60 text-xs">Verify bag returns · Issue NuVira Credits</p>
       </div>
 
       {/* Analytics */}
-      <div className="px-4 mt-4 grid grid-cols-2 gap-3 mb-4">
-        {[
-          { label: 'Totes Returned', value: totalTotes },
-          { label: 'Small Bags', value: totalSmall },
-          { label: 'Credits Issued', value: `$${totalCredits.toFixed(2)}` },
-          { label: 'Acceptance Rate', value: `${acceptanceRate}%` },
-        ].map(stat => (
-          <div key={stat.label} className="bg-card border border-border/50 rounded-xl p-3">
-            <p className="text-xs text-muted-foreground">{stat.label}</p>
-            <p className="font-heading text-xl font-bold text-primary">{stat.value}</p>
-          </div>
-        ))}
+      <div className="px-4 mt-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Program Analytics</p>
+        <div className="grid grid-cols-3 gap-2">
+          {analytics.map(({ label, value }) => (
+            <div key={label} className="bg-card border border-border/50 rounded-xl p-3 text-center">
+              <p className="font-heading text-lg font-bold text-primary">{value}</p>
+              <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{label}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Search */}
-      <div className="px-4 mb-3">
+      <div className="px-4 mt-4">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by email..."
-            className="w-full pl-9 h-10 text-sm bg-secondary/60 border-0 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full pl-10 h-11 text-sm bg-card border border-border/50 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex gap-2 px-4 mb-4">
-        {[{ key: 'pending', label: `Pending (${returns.filter(r => r.verification_status === 'requested').length})` }, { key: 'verified', label: 'Verified' }].map(tab => (
+      {/* Tabs */}
+      <div className="flex gap-2 px-4 mt-3 mb-4">
+        {[
+          { key: 'pending', label: `Pending (${returns.filter(r => r.verification_status === 'requested').length})` },
+          { key: 'verified', label: 'Verified' },
+        ].map(tab => (
           <button
             key={tab.key}
             onClick={() => setFilter(tab.key)}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
           >
             {tab.label}
           </button>
@@ -354,14 +345,14 @@ export default function BagReturnAdmin() {
       </div>
 
       {/* List */}
-      <div className="px-4 space-y-3">
+      <div className="px-4 space-y-2">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
-            <Leaf className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <Leaf className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">No {filter} returns</p>
           </div>
         ) : (
@@ -369,7 +360,8 @@ export default function BagReturnAdmin() {
             <ReturnCard
               key={ret.id}
               ret={ret}
-              onVerify={(ret, data) => verifyMutation.mutateAsync({ ret, data })}
+              credits={allCredits}
+              onVerify={(ret, data, credits) => verifyMutation.mutateAsync({ ret, data, credits: allCredits })}
             />
           ))
         )}
