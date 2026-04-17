@@ -153,13 +153,15 @@ export default function Cart() {
         </div>
       )}
 
-      {/* Delivery Estimate */}
-      <div className="mx-4 mb-4 bg-primary/5 rounded-xl p-3 flex items-center gap-2">
-        <Truck className="w-4 h-4 text-primary shrink-0" />
-        <p className="text-xs font-medium text-primary">
-          {isPreorderMode() ? 'Delivered Friday, May 2nd' : deliveryText}
-        </p>
-      </div>
+      {/* Delivery Estimate — only show accurate dates once live */}
+      {(!isPreLaunch() || isPreorderMode()) && (
+        <div className="mx-4 mb-4 bg-primary/5 rounded-xl p-3 flex items-center gap-2">
+          <Truck className="w-4 h-4 text-primary shrink-0" />
+          <p className="text-xs font-medium text-primary">
+            {isPreorderMode() ? 'Delivered Friday, May 2nd' : deliveryText}
+          </p>
+        </div>
+      )}
 
       {/* Cart Items */}
       <div className="px-4 space-y-3">
