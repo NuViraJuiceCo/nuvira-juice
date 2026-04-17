@@ -61,6 +61,12 @@ Deno.serve(async (req) => {
       payment_captured: !preorder, // regular orders are immediately captured
     });
 
+    // Sync order to hub
+    await base44.asServiceRole.functions.invoke('syncOrderToHub', { data: order }).catch(err => {
+      console.error('Failed to sync order to hub:', err.message);
+      // Non-blocking — continue checkout even if hub sync fails
+    });
+
     const origin = req.headers.get('origin') || 'https://app.base44.com';
 
     // Build Stripe line items
