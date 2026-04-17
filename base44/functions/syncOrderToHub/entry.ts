@@ -1,16 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { createClient } from 'npm:@base44/sdk@0.8.25';
 
-// Hub app ID extracted from: https://api.base44.com/api/apps/69da9e8036b037ad40a9a73f
-const HUB_APP_ID = '69da9e8036b037ad40a9a73f';
-const HUB_API_TOKEN = Deno.env.get('HUB_API_TOKEN');
-
-function getHubClient() {
-  return createClient({
-    appId: HUB_APP_ID,
-    token: HUB_API_TOKEN,
-  });
-}
+const HUB_API_URL = Deno.env.get('HUB_API_URL');
+const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
 // Map a customer-app Order to the hub's ShopifyOrder schema
 function mapOrderToHub(order) {
@@ -61,23 +52,29 @@ Deno.serve(async (req) => {
 
     // --- 1. Push to hub ShopifyOrder ---
     const hubPayload = mapOrderToHub(order);
-    let hubRecord = null;
+    let hubRecordId = null;
 
     try {
-      console.log('Initializing hub client...');
-      const hub = getHubClient();
-      console.log('Hub client ready, filtering existing records...');
-      const existing = await hub.entities.ShopifyOrder.filter({ base44_order_id: order.id });
-      console.log('Filter result:', JSON.stringify(existing)?.substring(0, 200));
-      if (existing && existing.length > 0) {
-        hubRecord = await hub.entities.ShopifyOrder.update(existing[0].id, hubPayload);
-        console.log(`Updated hub ShopifyOrder ${existing[0].id}`);
+      console.log('Pushing order to hub via HTTP...');
+      const hubResponse = await fetch(`${HUB_API_URL}/functions/receiveOrderFromCustomerApp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-sync-secret': CUSTOMER_APP_SYNC_SECRET,
+        },
+        body: JSON.stringify(order),
+      });
+
+      if (!hubResponse.ok) {
+        const errorText = await hubResponse.text();
+        console.error(`Hub push failed (${hubResponse.status}):`, errorText);
       } else {
-        hubRecord = await hub.entities.ShopifyOrder.create(hubPayload);
-        console.log(`Created hub ShopifyOrder ${hubRecord?.id}`);
+        const hubData = await hubResponse.json();
+        hubRecordId = hubData.id;
+        console.log(`Successfully synced to hub, record ID: ${hubRecordId}`);
       }
     } catch (hubErr) {
-      console.error('Hub push error:', hubErr.message, hubErr.stack?.substring(0, 500));
+      console.error('Hub push error:', hubErr.message);
       // Non-fatal — still create the in-app notification
     }
 
@@ -102,7 +99,7 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       orderId: order.id,
-      hubRecordId: hubRecord?.id || null,
+      hubRecordId: hubRecordId,
     });
   } catch (error) {
     console.error('syncOrderToHub error:', error.message);
