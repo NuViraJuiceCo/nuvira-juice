@@ -23,20 +23,12 @@ export default function SustainabilityTeaser() {
             </div>
             <div className="flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60 mb-0.5">Sustainability</p>
-              <h3 className="font-heading text-lg font-bold text-white leading-tight">Return + Reward</h3>
-              <p className="text-white/70 text-xs mt-1 leading-relaxed">
-                Leave your NuVira bag at your door on your next delivery and earn credits toward future orders.
-              </p>
-              <div className="flex items-center gap-1 mt-3 text-white text-xs font-semibold">
-                Learn more <ArrowRight className="w-3.5 h-3.5" />
+              <h3 className="font-heading text-xl font-bold text-white leading-tight">Return + Reward</h3>
+              <p className="text-white/60 text-xs mt-1">The NuVira Way</p>
+              <div className="flex items-center gap-1 mt-4 text-white text-xs font-semibold">
+                Earn credits — see how <ArrowRight className="w-3.5 h-3.5" />
               </div>
             </div>
-          </div>
-
-          {/* Credit pills */}
-          <div className="flex gap-2 mt-4 relative">
-            <span className="bg-white/15 text-white text-[10px] font-semibold px-3 py-1 rounded-full">Small Bag = $1 Credit</span>
-            <span className="bg-white/15 text-white text-[10px] font-semibold px-3 py-1 rounded-full">Tote Bag = $2 Credit</span>
           </div>
         </div>
       </Link>
