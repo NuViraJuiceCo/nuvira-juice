@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useAuth } from '@/lib/AuthContext';
 import { Clock, CheckCircle2, AlertCircle, Truck } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -35,6 +37,22 @@ const statusLabels = {
 };
 
 export default function KitchenDashboard() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  // Redirect non-admins
+  if (user && user.role !== 'admin') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <p className="text-lg font-semibold text-slate-900 mb-2">Access Denied</p>
+          <p className="text-slate-600 mb-4">This dashboard is for admins only.</p>
+          <button onClick={() => navigate('/')} className="text-primary underline">← Back to home</button>
+        </div>
+      </div>
+    );
+  }
+
   const { data: orders = [], isLoading, refetch } = useQuery({
     queryKey: ['kitchen-orders'],
     queryFn: () => base44.entities.ShopifyOrder.filter({}, '-created_date', 50),
