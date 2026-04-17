@@ -148,7 +148,9 @@ export default function Home() {
 
       <TickerBanner />
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
-      <NotificationPrompt />
+      <div className="mt-4">
+        <NotificationPrompt />
+      </div>
 
       <QuickReorder lastOrder={lastOrder} />
 
