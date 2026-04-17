@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
       payment_captured: true,
     };
 
-    const response = await fetch(`${HUB_API_URL}receiveOrderFromCustomerApp`, {
+    const response = await fetch(HUB_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
