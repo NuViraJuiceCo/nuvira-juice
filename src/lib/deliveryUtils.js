@@ -1,4 +1,5 @@
 import { addDays, nextDay, format, getDay } from 'date-fns';
+import { LAUNCH_DATE } from '@/lib/preorderConfig';
 
 // Default schedule if no DB schedule exists
 const DEFAULT_RULES = [
@@ -57,6 +58,11 @@ export function getDeliveryShortText(scheduleRules) {
 
 // Returns production info if today is a production day (day before a delivery day)
 export function getProductionInfo(scheduleRules, now = new Date()) {
+  // If before launch date, no production info yet
+  if (now < LAUNCH_DATE) {
+    return null;
+  }
+
   const rules = (scheduleRules && scheduleRules.length > 0) ? scheduleRules : DEFAULT_RULES;
   const today = getDay(now);
 

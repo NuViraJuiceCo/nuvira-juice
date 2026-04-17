@@ -7,7 +7,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import HeroBanner from '@/components/home/HeroBanner';
 import { getProductionInfo } from '@/lib/deliveryUtils';
-import { Zap } from 'lucide-react';
 import QuickReorder from '@/components/home/QuickReorder';
 import ProductRow from '@/components/home/ProductRow';
 import DeliveryBadge from '@/components/home/DeliveryBadge';
@@ -16,6 +15,8 @@ import TickerBanner from '@/components/home/TickerBanner';
 import MerchTeaser from '@/components/home/MerchTeaser';
 import SustainabilityTeaser from '@/components/home/SustainabilityTeaser';
 import NotificationPrompt from '@/components/home/NotificationPrompt';
+import PreLaunchBanner from '@/components/PreLaunchBanner';
+import PreorderBanner from '@/components/PreorderBanner';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 
@@ -148,6 +149,8 @@ export default function Home() {
       </motion.div>
 
       <TickerBanner />
+      <PreLaunchBanner />
+      <PreorderBanner />
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
       <div className="mt-4">
         <NotificationPrompt />
