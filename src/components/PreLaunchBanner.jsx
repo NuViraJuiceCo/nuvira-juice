@@ -15,28 +15,32 @@ export default function PreLaunchBanner() {
       animate={{ opacity: 1, y: 0 }}
       className="mx-4 mb-5"
     >
-      <div className="bg-primary rounded-2xl p-4 relative overflow-hidden">
+      <div className="bg-primary rounded-2xl p-5 relative overflow-hidden">
         <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/5 rounded-full" />
-        <div className="flex items-start gap-3 relative">
-          <div className="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-            <Clock className="w-4 h-4 text-white" />
+        
+        {/* Main content */}
+        <div className="flex items-start gap-4 relative mb-4">
+          <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center shrink-0">
+            <Clock className="w-5 h-5 text-white" />
           </div>
-          <div className="flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-0.5">Coming Soon</p>
-            <p className="font-heading text-base font-bold text-white leading-tight">We're Launching May 1st</p>
-            <p className="text-white/70 text-xs mt-1 leading-relaxed">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-2">Coming Soon</p>
+            <p className="font-heading text-lg font-bold text-white leading-tight mb-3">We're Launching May 1st</p>
+            <p className="text-white/70 text-xs leading-relaxed">
               Get ready for fresh cold-pressed juice. Pre-orders open <span className="font-semibold text-white">April 23rd</span>. Everything ships <span className="font-semibold text-white">May 2nd</span>.
             </p>
           </div>
           {daysUntilLaunch > 0 && (
-            <div className="shrink-0 bg-white/15 rounded-xl px-2.5 py-1.5 text-center">
-              <p className="font-heading text-xl font-bold text-white leading-none">{daysUntilLaunch}</p>
-              <p className="text-[9px] text-white/60 font-medium">days</p>
+            <div className="shrink-0 bg-white/15 rounded-xl px-3 py-2 text-center">
+              <p className="font-heading text-2xl font-bold text-white leading-none">{daysUntilLaunch}</p>
+              <p className="text-[9px] text-white/60 font-medium mt-1">days</p>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1.5 mt-3 relative">
-          <Clock className="w-3 h-3 text-white/50" />
+
+        {/* Footer */}
+        <div className="flex items-center gap-1.5 relative pt-3 border-t border-white/10">
+          <Clock className="w-3 h-3 text-white/40 shrink-0" />
           <p className="text-[10px] text-white/50">Pre-orders open April 23rd · Delivery May 2nd</p>
         </div>
       </div>
