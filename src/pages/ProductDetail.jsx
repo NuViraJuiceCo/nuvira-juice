@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import SEO from '@/components/SEO';
+import PreorderBanner from '@/components/PreorderBanner';
+import { isPreorderMode } from '@/lib/preorderConfig';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -119,6 +121,12 @@ export default function ProductDetail() {
         className="px-4 -mt-4 relative"
       >
         <div className="bg-card rounded-t-2xl pt-5 px-1">
+          {/* Pre-order badge — show if store is in pre-order mode OR this product is flagged */}
+          {(isPreorderMode() || product.is_preorder) && (
+            <span className="inline-block bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2 border border-primary/20">
+              ✦ Pre-Order — Ships April 30th
+            </span>
+          )}
           {product.is_seasonal && (
             <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-0.5 rounded-full mb-2">
               Seasonal Drop
@@ -200,7 +208,7 @@ export default function ProductDetail() {
             className="flex-1 h-11 rounded-xl font-semibold"
           >
             <ShoppingBag className="w-4 h-4 mr-2" />
-            Add to Cart · ${(product.price * quantity).toFixed(2)}
+            {(isPreorderMode() || product.is_preorder) ? `Pre-Order · $${(product.price * quantity).toFixed(2)}` : `Add to Cart · $${(product.price * quantity).toFixed(2)}`}
           </Button>
         </div>
       </div>

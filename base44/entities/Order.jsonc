@@ -93,6 +93,29 @@
     },
     "notes": {
       "type": "string"
+    },
+    "is_preorder": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if this order was placed during a pre-order window"
+    },
+    "preorder_fulfillment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "The date when this pre-order will be fulfilled / payment captured"
+    },
+    "stripe_payment_intent_id": {
+      "type": "string",
+      "description": "Stripe PaymentIntent ID for manual capture pre-orders"
+    },
+    "stripe_checkout_session_id": {
+      "type": "string",
+      "description": "Stripe Checkout Session ID"
+    },
+    "payment_captured": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the Stripe payment has been captured (always true for regular orders)"
     }
   },
   "required": [

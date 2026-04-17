@@ -30,21 +30,39 @@ Deno.serve(async (req) => {
         const orders = await base44.asServiceRole.entities.Order.filter({ id: orderId });
         if (orders.length > 0) {
           const order = orders[0];
-          const statusHistory = order.status_history || [];
-          statusHistory.push({
-            status: 'scheduled_for_juicing',
-            timestamp: new Date().toISOString(),
-            message: 'Payment confirmed — your order is scheduled for juicing!',
-          });
-          await base44.asServiceRole.entities.Order.update(orderId, {
-            status: 'scheduled_for_juicing',
-            status_history: statusHistory,
-          });
-          console.log(`Order ${orderId} updated to scheduled_for_juicing`);
 
-          // Push this order into Shopify so both systems stay in sync
-          base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: orderId })
-            .catch(err => console.error('Failed to push order to Shopify:', err.message));
+          // For pre-orders: payment is authorized but NOT captured yet.
+          // Store the payment intent ID and leave status as order_received.
+          const isPreorder = session.metadata?.is_preorder === 'true' || order.is_preorder;
+
+          if (isPreorder) {
+            // Capture the payment_intent ID from the session
+            const paymentIntentId = session.payment_intent;
+            const updates = {};
+            if (paymentIntentId) updates.stripe_payment_intent_id = paymentIntentId;
+            if (Object.keys(updates).length > 0) {
+              await base44.asServiceRole.entities.Order.update(orderId, updates);
+            }
+            console.log(`Pre-order ${orderId} authorized. PaymentIntent: ${paymentIntentId}. Will capture on Apr 30.`);
+          } else {
+            // Regular order: mark as scheduled for juicing
+            const statusHistory = order.status_history || [];
+            statusHistory.push({
+              status: 'scheduled_for_juicing',
+              timestamp: new Date().toISOString(),
+              message: 'Payment confirmed — your order is scheduled for juicing!',
+            });
+            await base44.asServiceRole.entities.Order.update(orderId, {
+              status: 'scheduled_for_juicing',
+              status_history: statusHistory,
+              payment_captured: true,
+            });
+            console.log(`Order ${orderId} updated to scheduled_for_juicing`);
+
+            // Push this order into Shopify so both systems stay in sync
+            base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: orderId })
+              .catch(err => console.error('Failed to push order to Shopify:', err.message));
+          }
         }
       }
 

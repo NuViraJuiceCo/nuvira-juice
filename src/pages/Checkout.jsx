@@ -16,6 +16,8 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
+import PreorderBanner from '@/components/PreorderBanner';
+import { isPreorderMode } from '@/lib/preorderConfig';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -218,12 +220,19 @@ export default function Checkout() {
         <h1 className="font-heading text-xl font-bold">Checkout</h1>
       </div>
 
+      {/* Pre-order Banner (shown during pre-order window) */}
+      <PreorderBanner />
+
       {/* Delivery Estimate */}
       <div className="mx-4 mb-5 bg-primary/5 rounded-xl p-3.5 flex items-center gap-2.5">
         <Truck className="w-5 h-5 text-primary shrink-0" />
         <div>
-          <p className="text-sm font-semibold text-primary">{deliveryText}</p>
-          <p className="text-[10px] text-muted-foreground">Included in our next fresh batch</p>
+          <p className="text-sm font-semibold text-primary">
+            {isPreorderMode() ? 'Delivery: May 1st, 2026' : deliveryText}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {isPreorderMode() ? 'Pre-orders fulfilled starting April 30th' : 'Included in our next fresh batch'}
+          </p>
         </div>
       </div>
 
@@ -367,7 +376,7 @@ export default function Checkout() {
           disabled={isSubmitting}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {isSubmitting ? 'Redirecting to payment...' : `Pay · $${total.toFixed(2)}`}
+          {isSubmitting ? 'Redirecting to payment...' : isPreorderMode() ? `Pre-Order · $${total.toFixed(2)} — Charged Apr 30` : `Pay · $${total.toFixed(2)}`}
         </Button>
       </div>
     </div>
