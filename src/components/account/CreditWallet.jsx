@@ -69,7 +69,7 @@ function CreditModal({ onClose, balance, earned, used, history, returns }) {
           {/* Balance Card */}
           <div className="bg-primary rounded-2xl p-5 text-primary-foreground">
             <p className="text-[10px] font-bold uppercase tracking-widest text-primary-foreground/60 mb-3">Available Balance</p>
-            <p className="font-heading text-5xl font-bold tracking-tight mb-0.5">${balance.toFixed(2)}</p>
+            <p className="font-heading text-5xl font-bold tracking-tight mb-0.5 text-white">${balance.toFixed(2)}</p>
             <p className="text-xs text-primary-foreground/50">Applied automatically at checkout</p>
             <div className="grid grid-cols-2 gap-4 mt-5 pt-4 border-t border-primary-foreground/15">
               <div>
@@ -203,7 +203,7 @@ export default function CreditWallet() {
               </div>
               <span className="text-[10px] text-primary-foreground/40 font-medium">Tap to view →</span>
             </div>
-            <p className="font-heading text-5xl font-bold tracking-tight mb-0.5">$0.00</p>
+            <p className="font-heading text-5xl font-bold tracking-tight mb-0.5 text-white">$0.00</p>
             <p className="text-xs text-primary-foreground/50">No credits yet — earn through returns & more</p>
           </div>
         </button>
@@ -233,7 +233,7 @@ export default function CreditWallet() {
               </div>
               <span className="text-[10px] text-primary-foreground/40 font-medium">Tap to view →</span>
             </div>
-            <p className="font-heading text-5xl font-bold tracking-tight mb-0.5">${balance.toFixed(2)}</p>
+            <p className="font-heading text-5xl font-bold tracking-tight mb-0.5 text-white">${balance.toFixed(2)}</p>
             <p className="text-xs text-primary-foreground/50">Available for your next order</p>
             <div className="grid grid-cols-2 gap-4 mt-5 pt-4 border-t border-primary-foreground/15">
               <div>
