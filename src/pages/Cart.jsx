@@ -134,8 +134,8 @@ export default function Cart() {
       </div>
       )}
 
-      {/* Production Day Banner */}
-      {productionInfo && (
+      {/* Production Day Banner — hide during pre-launch / pre-order since dates would be inaccurate */}
+      {productionInfo && !isPreLaunch() && !isPreorderMode() && (
         <div className="mx-4 mb-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-center gap-2">
           <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
           <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">{productionInfo.label}</p>
