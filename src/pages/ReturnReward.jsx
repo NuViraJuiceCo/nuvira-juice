@@ -3,6 +3,9 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Leaf, ArrowLeft, Package, CheckCircle, Truck, DollarSign, HelpCircle } from 'lucide-react';
 import SEO from '@/components/SEO';
+import { useAuth } from '@/lib/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 
 const steps = [
   {
@@ -72,6 +75,19 @@ const faqs = [
 
 export default function ReturnReward() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const { data: creditData } = useQuery({
+    queryKey: ['nuvira-credits-rr', user?.email],
+    queryFn: async () => {
+      const res = await base44.entities.NuViraCredit.filter({ customer_email: user?.email });
+      return res[0] || null;
+    },
+    enabled: !!user?.email,
+  });
+
+  const balance = creditData?.balance || 0;
+  const lifetimeEarned = creditData?.lifetime_earned || 0;
 
   return (
     <div className="pb-12">
@@ -186,19 +202,51 @@ export default function ReturnReward() {
         </div>
       </div>
 
-      {/* CTA */}
+      {/* Credit Balance CTA */}
       <div className="px-5 mt-10">
-        <Link to="/account">
-          <div className="bg-primary rounded-2xl p-5 flex items-center gap-4">
+        {user ? (
+          <Link to="/account">
+            <div className="bg-primary rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Leaf className="w-4 h-4 text-primary-foreground/60" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary-foreground/60">Your NuVira Credits</p>
+                </div>
+                <p className="text-[10px] text-primary-foreground/50 font-medium">View account →</p>
+              </div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="font-heading text-4xl font-bold text-white">${balance.toFixed(2)}</p>
+                  <p className="text-white/50 text-xs mt-0.5">Available balance</p>
+                </div>
+                {lifetimeEarned > 0 && (
+                  <div className="text-right">
+                    <p className="text-white/80 text-sm font-semibold">${lifetimeEarned.toFixed(2)}</p>
+                    <p className="text-white/40 text-[10px]">lifetime earned</p>
+                  </div>
+                )}
+              </div>
+              {balance === 0 && (
+                <p className="text-white/50 text-xs mt-3 leading-relaxed">
+                  No credits yet — select a bag return at your next checkout to get started.
+                </p>
+              )}
+            </div>
+          </Link>
+        ) : (
+          <button
+            onClick={() => base44.auth.redirectToLogin('/return-reward')}
+            className="w-full bg-primary rounded-2xl p-5 flex items-center gap-4 text-left"
+          >
             <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center shrink-0">
               <Leaf className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="font-heading text-base font-bold text-white">View Your Credits</p>
-              <p className="text-white/60 text-xs mt-0.5">Check your NuVira Credit balance</p>
+              <p className="font-heading text-base font-bold text-white">Sign In to View Credits</p>
+              <p className="text-white/60 text-xs mt-0.5">Track your NuVira Credit balance</p>
             </div>
-          </div>
-        </Link>
+          </button>
+        )}
         <p className="text-center text-[10px] text-muted-foreground mt-4">Sustainability, The NuVira Way</p>
       </div>
     </div>
