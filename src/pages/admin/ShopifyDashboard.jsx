@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,7 +8,6 @@ import { ArrowLeft, RefreshCw, Package, ShoppingCart, BarChart3, Settings, Bell,
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import SyncStatusDashboard from '@/components/admin/SyncStatusDashboard';
-import { useState } from 'react';
 
 const NAV_TABS = [
   { key: 'orders', label: 'Orders', icon: ShoppingCart },
