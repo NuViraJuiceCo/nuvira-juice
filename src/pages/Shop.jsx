@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import React, { useState, useMemo, useEffect } from 'react';
 import SEO from '@/components/SEO';
 import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
