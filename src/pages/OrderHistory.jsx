@@ -4,7 +4,7 @@ import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
-import { ArrowLeft, ChevronRight, Package, RotateCcw } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -26,6 +26,12 @@ const statusLabels = {
 export default function OrderHistory() {
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  const { data: bagReturns = [] } = useQuery({
+    queryKey: ['my-bag-returns'],
+    queryFn: () => base44.entities.BagReturn.filter({ customer_email: user?.email }, '-created_date', 50),
+    enabled: !!user?.email,
+  });
 
   const { data: orders = [], isLoading, refetch } = useQuery({
     queryKey: ['my-orders-all'],
@@ -78,7 +84,7 @@ export default function OrderHistory() {
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Completed</h2>
               <div className="space-y-2">
                 {completedOrders.map((order, i) => (
-                  <OrderCard key={order.id} order={order} index={i} />
+                  <OrderCard key={order.id} order={order} index={i} bagReturn={bagReturns.find(r => r.order_id === order.id)} />
                 ))}
               </div>
             </>
@@ -90,7 +96,15 @@ export default function OrderHistory() {
   );
 }
 
-function OrderCard({ order, index }) {
+const returnStatusColor = {
+  requested: 'text-amber-600 bg-amber-50',
+  verified: 'text-primary bg-primary/10',
+  partially_verified: 'text-amber-600 bg-amber-50',
+  not_found: 'text-muted-foreground bg-secondary',
+  not_eligible: 'text-muted-foreground bg-secondary',
+};
+
+function OrderCard({ order, index, bagReturn }) {
   const isActive = !['delivered', 'picked_up'].includes(order.status);
   const { addItem } = useCart();
   const navigate = useNavigate();
@@ -129,6 +143,18 @@ function OrderCard({ order, index }) {
               <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
             </div>
           </div>
+          {bagReturn && (
+            <div className="flex items-center gap-1.5 mb-2">
+              <Leaf className="w-3 h-3 text-primary" />
+              <span className="text-[10px] text-muted-foreground">Return + Reward</span>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${returnStatusColor[bagReturn.verification_status] || ''}`}>
+                {bagReturn.verification_status === 'requested' ? 'Pending' : bagReturn.verification_status?.replace('_', ' ')}
+              </span>
+              {bagReturn.credit_issued > 0 && (
+                <span className="text-[10px] font-semibold text-primary">+${bagReturn.credit_issued.toFixed(2)}</span>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <div className="flex -space-x-2">
               {order.items?.slice(0, 3).map((item, i) => (

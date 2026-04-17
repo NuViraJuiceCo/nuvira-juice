@@ -1,0 +1,132 @@
+{
+  "name": "BagReturn",
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "description": "Reference to the Order entity"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "small_bags_requested": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of small lunch bags customer said they'd return"
+    },
+    "tote_bags_requested": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of tote bags customer said they'd return"
+    },
+    "small_bags_accepted": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of small bags verified and accepted by driver"
+    },
+    "tote_bags_accepted": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of tote bags verified and accepted by driver"
+    },
+    "small_bag_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "not_eligible",
+        "not_found"
+      ],
+      "default": "pending"
+    },
+    "tote_bag_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "not_eligible",
+        "not_found"
+      ],
+      "default": "pending"
+    },
+    "rejection_reason": {
+      "type": "string",
+      "enum": [
+        "dirty_stained",
+        "odor",
+        "damaged",
+        "other",
+        ""
+      ],
+      "default": ""
+    },
+    "rejection_notes": {
+      "type": "string"
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "verified",
+        "partially_verified",
+        "not_found",
+        "not_eligible"
+      ],
+      "default": "requested"
+    },
+    "credit_issued": {
+      "type": "number",
+      "default": 0,
+      "description": "Total credit in dollars issued after verification"
+    },
+    "credit_applied": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the credit has been added to the customer wallet"
+    },
+    "verified_by": {
+      "type": "string",
+      "description": "Driver/admin email who verified"
+    },
+    "verified_at": {
+      "type": "string",
+      "description": "ISO timestamp of verification"
+    },
+    "photo_url": {
+      "type": "string",
+      "description": "Optional photo for disputes or rejected bags"
+    },
+    "driver_notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "order_id",
+    "customer_email"
+  ],
+  "rls": {
+    "create": {},
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

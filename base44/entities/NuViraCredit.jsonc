@@ -1,0 +1,88 @@
+{
+  "name": "NuViraCredit",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string"
+    },
+    "balance": {
+      "type": "number",
+      "default": 0,
+      "description": "Current available credit in dollars"
+    },
+    "lifetime_earned": {
+      "type": "number",
+      "default": 0,
+      "description": "Total credits ever earned"
+    },
+    "lifetime_used": {
+      "type": "number",
+      "default": 0,
+      "description": "Total credits ever used"
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "earned",
+              "used",
+              "adjusted"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "order_id": {
+            "type": "string"
+          },
+          "bag_return_id": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "customer_email"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

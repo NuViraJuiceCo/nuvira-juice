@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
+import BagReturnSelector from '@/components/checkout/BagReturnSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
@@ -28,6 +29,8 @@ export default function Checkout() {
   const [usePoints, setUsePoints] = useState(false);
   const [smsConsent, setSmsConsent] = useState(false);
   const [showOutOfArea, setShowOutOfArea] = useState(false);
+  const [bagReturn, setBagReturn] = useState({ smallBags: 0, toteBags: 0 });
+  const [useCredits, setUseCredits] = useState(false);
 
   const activeReward = React.useMemo(() => {
     if (!user?.email) return null;
@@ -62,6 +65,21 @@ export default function Checkout() {
     queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
   });
 
+  const { data: userCreditsData } = useQuery({
+    queryKey: ['nuvira-credits-checkout', user?.email],
+    queryFn: async () => {
+      const res = await base44.entities.NuViraCredit.filter({ customer_email: user?.email });
+      return res[0] || null;
+    },
+    enabled: !!user?.email,
+  });
+
+  const { data: lastOrderData = [] } = useQuery({
+    queryKey: ['last-order-checkout', user?.email],
+    queryFn: () => base44.entities.Order.filter({ customer_email: user?.email }, '-created_date', 1),
+    enabled: !!user?.email,
+  });
+
   const { data: userPointsData } = useQuery({
     queryKey: ['user-points', user?.email],
     queryFn: () => base44.entities.UserPoints.filter({ customer_email: user?.email }),
@@ -80,7 +98,13 @@ export default function Checkout() {
   const rewardDiscountPct = activeReward?.reward_type === 'discount' ? 10 : 0;
   const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
   const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery) ? 5.00 : 0;
-  const total = Math.max(0, subtotal - pointsDiscount - rewardDiscountAmt + deliveryFee);
+  const availableCredits = userCreditsData?.balance || 0;
+  const creditsDiscount = useCredits ? Math.min(availableCredits, subtotal) : 0;
+  const total = Math.max(0, subtotal - pointsDiscount - rewardDiscountAmt - creditsDiscount + deliveryFee);
+
+  // Last order bottle count for smart bag suggestion
+  const lastOrderItems = lastOrderData[0]?.items || [];
+  const lastOrderBottles = lastOrderItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
   const totalBottles = items.reduce((sum, item) => {
     if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
@@ -133,6 +157,22 @@ export default function Checkout() {
       }
     }
 
+    // Save bag return request if any
+    if ((bagReturn.smallBags > 0 || bagReturn.toteBags > 0) && user?.email) {
+      try {
+        await base44.entities.BagReturn.create({
+          order_id: 'pending', // will be updated post-checkout
+          customer_email: user.email,
+          small_bags_requested: bagReturn.smallBags,
+          tote_bags_requested: bagReturn.toteBags,
+          verification_status: 'requested',
+          credit_issued: 0,
+        });
+      } catch (e) {
+        // non-blocking
+      }
+    }
+
     const res = await base44.functions.invoke('createCheckoutSession', {
       items,
       subtotal,
@@ -140,6 +180,7 @@ export default function Checkout() {
       total,
       points_discount: pointsDiscount,
       points_used: pointsUsed,
+      credits_discount: creditsDiscount,
       customer_email: user?.email || null,
       active_reward: activeReward || null,
       reward_discount: rewardDiscountAmt,
@@ -185,6 +226,27 @@ export default function Checkout() {
           <p className="text-[10px] text-muted-foreground">Included in our next fresh batch</p>
         </div>
       </div>
+
+      {/* NuVira Credits */}
+      {user?.email && availableCredits > 0 && (
+        <div className="mx-4 mb-5 bg-primary/5 border border-primary/20 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-primary/15 rounded-full flex items-center justify-center">
+                <span className="text-sm">🌿</span>
+              </div>
+              <div>
+                <p className="text-sm font-semibold">NuVira Credits</p>
+                <p className="text-[11px] text-muted-foreground">${availableCredits.toFixed(2)} available</p>
+              </div>
+            </div>
+            <Switch checked={useCredits} onCheckedChange={setUseCredits} />
+          </div>
+          {useCredits && (
+            <p className="text-xs text-primary mt-2 font-medium">✓ -${creditsDiscount.toFixed(2)} applied to this order</p>
+          )}
+        </div>
+      )}
 
       {/* Points Redemption */}
       {user?.email && availablePoints >= 100 && (
@@ -246,6 +308,15 @@ export default function Checkout() {
         )}
       </div>
 
+      {/* Bag Return — delivery only */}
+      {fulfillmentType === 'delivery' && (
+        <BagReturnSelector
+          totalBottles={totalBottles}
+          lastOrderBottles={lastOrderBottles || null}
+          onChange={setBagReturn}
+        />
+      )}
+
       {/* Order Summary */}
       <div className="mx-4 bg-secondary/40 rounded-xl p-4 mb-5">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Order Summary</h3>
@@ -272,6 +343,11 @@ export default function Checkout() {
           {activeReward && rewardFreeDelivery && (
             <div className="flex justify-between text-xs text-primary mb-1 font-medium">
               <span>{activeReward.title}</span><span>Free!</span>
+            </div>
+          )}
+          {creditsDiscount > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>NuVira Credits</span><span>-${creditsDiscount.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
