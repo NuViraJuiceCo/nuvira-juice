@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { isPreLaunch, launchDateFormatted } from '@/lib/launchConfig';
+import { isPreorderMode } from '@/lib/preorderConfig';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
@@ -141,10 +142,23 @@ export default function Cart() {
         </div>
       )}
 
+      {/* Pre-order window banner */}
+      {isPreorderMode() && (
+        <div className="mx-4 mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3 flex items-center gap-2">
+          <span className="text-base shrink-0">✦</span>
+          <div>
+            <p className="text-xs font-semibold text-primary">Pre-Order Window: April 23–30</p>
+            <p className="text-[10px] text-muted-foreground">Card authorized now · charged May 1st when production begins · delivered May 2nd</p>
+          </div>
+        </div>
+      )}
+
       {/* Delivery Estimate */}
       <div className="mx-4 mb-4 bg-primary/5 rounded-xl p-3 flex items-center gap-2">
         <Truck className="w-4 h-4 text-primary shrink-0" />
-        <p className="text-xs font-medium text-primary">{deliveryText}</p>
+        <p className="text-xs font-medium text-primary">
+          {isPreorderMode() ? 'Delivered Friday, May 2nd' : deliveryText}
+        </p>
       </div>
 
       {/* Cart Items */}
@@ -217,9 +231,14 @@ export default function Cart() {
             <span>Total</span>
             <span>${(subtotal + deliveryFee).toFixed(2)}</span>
           </div>
-          {isPreLaunch() && (
+          {isPreLaunch() && !isPreorderMode() && (
             <div className="mb-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-center">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">🚀 Orders open {launchDateFormatted()} — browse freely until then!</p>
+              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">🚀 Pre-orders open April 23rd — full ordering opens May 1st!</p>
+            </div>
+          )}
+          {isPreorderMode() && (
+            <div className="mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3 text-center">
+              <p className="text-xs font-semibold text-primary">✦ Pre-Order — Card authorized today, charged May 1st · Delivered May 2nd</p>
             </div>
           )}
           <Button
@@ -232,10 +251,10 @@ export default function Cart() {
               }
               navigate('/checkout');
             }}
-            disabled={!meetsMinimum || isPreLaunch()}
+            disabled={!meetsMinimum || (isPreLaunch() && !isPreorderMode())}
             className="w-full h-12 rounded-xl font-semibold text-sm disabled:opacity-50"
           >
-            {isPreLaunch() ? `Opens ${launchDateFormatted()}` : meetsMinimum ? 'Checkout' : 'Add more to checkout'}
+            {(isPreLaunch() && !isPreorderMode()) ? 'Pre-orders open April 23rd' : isPreorderMode() ? 'Pre-Order Checkout' : meetsMinimum ? 'Checkout' : 'Add more to checkout'}
             {!isPreLaunch() && meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
         </div>
