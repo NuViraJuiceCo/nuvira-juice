@@ -7,7 +7,6 @@ import { base44 } from '@/api/base44Client';
 import { ArrowLeft, RefreshCw, Package, ShoppingCart, BarChart3, Settings, Bell, CheckCircle, AlertTriangle, XCircle, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
-import SyncStatusDashboard from '@/components/admin/SyncStatusDashboard';
 
 const NAV_TABS = [
   { key: 'orders', label: 'Orders', icon: ShoppingCart },
@@ -536,9 +535,6 @@ function ReportsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Hub Sync Status */}
-      <SyncStatusDashboard />
-
       {/* Sales Stats */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Total Orders" value={orders.length} />
