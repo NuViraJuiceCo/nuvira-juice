@@ -150,11 +150,17 @@ function CreditModal({ onClose, balance, earned, used, history, returns }) {
             <div className="flex items-center justify-between p-4 bg-primary/5 border border-primary/15 rounded-2xl">
               <div className="flex items-center gap-2">
                 <Leaf className="w-4 h-4 text-primary" />
-                <p className="text-sm font-semibold text-primary">Return + Reward</p>
+                <p className="text-sm font-semibold text-primary">Earn Credits — Return + Reward</p>
               </div>
               <ChevronRight className="w-4 h-4 text-primary" />
             </div>
           </Link>
+
+          {returns.length === 0 && history.length === 0 && (
+            <p className="text-center text-[11px] text-muted-foreground pb-2">
+              Credits can be earned through bag returns, promotions, and more.
+            </p>
+          )}
         </div>
       </motion.div>
     </AnimatePresence>
@@ -188,19 +194,29 @@ export default function CreditWallet() {
   if (!creditData && returns.length === 0) {
     return (
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mt-4">
-        <Link to="/return-reward">
-          <div className="bg-primary/5 border border-primary/15 rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-2">
-              <Leaf className="w-4 h-4 text-primary" />
-              <p className="text-xs font-semibold uppercase tracking-wider text-primary">Return + Reward</p>
+        <button onClick={() => setShowModal(true)} className="w-full text-left">
+          <div className="bg-primary rounded-2xl p-5 text-primary-foreground">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Leaf className="w-4 h-4 text-primary-foreground/60" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary-foreground/60">NuVira Credits</p>
+              </div>
+              <span className="text-[10px] text-primary-foreground/40 font-medium">Tap to view →</span>
             </div>
-            <p className="font-heading text-base font-bold leading-snug mb-1">Earn NuVira Credits</p>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Leave your NuVira bag at your door on your next delivery to earn credit toward future orders.
-            </p>
-            <p className="text-[10px] text-primary font-semibold mt-3">Sustainability, The NuVira Way →</p>
+            <p className="font-heading text-5xl font-bold tracking-tight mb-0.5">$0.00</p>
+            <p className="text-xs text-primary-foreground/50">No credits yet — earn through returns & more</p>
           </div>
-        </Link>
+        </button>
+        {showModal && (
+          <CreditModal
+            onClose={() => setShowModal(false)}
+            balance={0}
+            earned={0}
+            used={0}
+            history={[]}
+            returns={[]}
+          />
+        )}
       </motion.div>
     );
   }
