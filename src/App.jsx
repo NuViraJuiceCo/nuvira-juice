@@ -36,6 +36,7 @@ import ShopifyDashboard from '@/pages/admin/ShopifyDashboard';
 import AdminProducts from '@/pages/admin/AdminProducts';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import DriverReturns from '@/pages/driver/DriverReturns';
+import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
 import { base44 } from '@/api/base44Client';
 
@@ -100,6 +101,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/products" element={<AdminProducts />} />
           <Route path="/admin/bag-returns" element={<BagReturnAdmin />} />
           <Route path="/driver/returns" element={<DriverReturns />} />
+          <Route path="/return-reward" element={<ReturnReward />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />

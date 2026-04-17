@@ -11,7 +11,7 @@ export default function SustainabilityTeaser() {
       transition={{ duration: 0.5 }}
       className="mx-4 my-5"
     >
-      <Link to="/account">
+      <Link to="/return-reward">
         <div className="relative overflow-hidden bg-primary rounded-2xl p-5">
           {/* Decorative circles */}
           <div className="absolute -top-6 -right-6 w-28 h-28 bg-white/5 rounded-full" />
