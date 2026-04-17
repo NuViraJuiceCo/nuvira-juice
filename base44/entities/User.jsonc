@@ -14,7 +14,8 @@
       "type": "string",
       "enum": [
         "user",
-        "admin"
+        "admin",
+        "driver"
       ],
       "default": "user"
     },
@@ -27,5 +28,12 @@
     "birthday": {
       "type": "string"
     }
-  }
+  },
+  "required": [
+    "first_name",
+    "last_name",
+    "phone",
+    "address",
+    "birthday"
+  ]
 }
