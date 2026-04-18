@@ -38,6 +38,9 @@ import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import DriverReturns from '@/pages/driver/DriverReturns';
 import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
+import Home from '@/pages/Home';
+import Shop from '@/pages/Shop';
+import Cart from '@/pages/Cart';
 import { base44 } from '@/api/base44Client';
 
 const AuthenticatedApp = () => {
@@ -75,10 +78,10 @@ const AuthenticatedApp = () => {
       {showSplash && <SplashScreen onDone={handleSplashDone} />}
       <Routes>
         <Route element={<AppLayout />}>
-          <Route path="/" element={null} />
-          <Route path="/shop" element={null} />
+          <Route path="/" element={<Home />} />
+          <Route path="/shop" element={<Shop />} />
           <Route path="/shop/:id" element={<ProductDetail />} />
-          <Route path="/cart" element={null} />
+          <Route path="/cart" element={<Cart />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/account" element={<Account />} />
           <Route path="/account/orders" element={<OrderHistory />} />
