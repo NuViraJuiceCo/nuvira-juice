@@ -13,26 +13,22 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
-    const loyaltyRecords = await base44.asServiceRole.entities.UserPoints.list();
+    
+    // Assuming hub has a LoyaltyMember or similar entity
+    // Adjust entity name if different
+    const members = await base44.asServiceRole.entities.LoyaltyMember.list();
 
     const formatted = {
-      customers: loyaltyRecords.map(record => ({
-        customer_email: record.customer_email,
-        total_points: record.total_points,
-        lifetime_points: record.lifetime_points,
-        redeemed_points: record.redeemed_points,
-        points_history: (record.points_history || []).map(entry => ({
-          amount: entry.amount,
-          type: entry.type,
-          description: entry.description,
-          order_id: entry.order_id || null,
-          reward_id: entry.reward_id || null,
-          timestamp: entry.timestamp,
-        })),
+      customers: members.map(m => ({
+        customer_email: m.email,
+        total_points: m.total_points || 0,
+        lifetime_points: m.lifetime_points || 0,
+        redeemed_points: m.redeemed_points || 0,
+        points_history: m.points_history || [],
       })),
     };
 
-    console.log(`getLoyaltyDataForSync: returning ${formatted.customers.length} customer records`);
+    console.log(`getLoyaltyDataForSync: returning ${formatted.customers.length} loyalty members`);
     return Response.json(formatted);
   } catch (error) {
     console.error('getLoyaltyDataForSync error:', error.message);
