@@ -41,11 +41,12 @@ const STATUS_COLORS = {
 
 const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
 
-function OrderCard({ order, onAdvance, isAdvancing }) {
+function OrderCard({ order, onAdvance, onGoBack, isAdvancing }) {
   const [expanded, setExpanded] = useState(false);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
   const currentIndex = stages.findIndex(s => s.key === order.status);
   const nextStage = stages[currentIndex + 1];
+  const prevStage = stages[currentIndex - 1];
   const isComplete = !nextStage;
 
   return (
@@ -116,20 +117,31 @@ function OrderCard({ order, onAdvance, isAdvancing }) {
                 <p className="text-xs text-muted-foreground mt-1">Step {currentIndex + 1} of {stages.length}</p>
               </div>
 
-              {/* Advance Button */}
-              {!isComplete ? (
-                <button
-                  onClick={() => onAdvance(order, nextStage)}
-                  disabled={isAdvancing}
-                  className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                >
-                  {isAdvancing ? 'Updating...' : `→ Mark as "${nextStage.label}"`}
-                </button>
-              ) : (
-                <div className="w-full py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
-                  ✓ Order Complete
-                </div>
-              )}
+              {/* Advance / Go Back Buttons */}
+              <div className="flex gap-2">
+                {prevStage && (
+                  <button
+                    onClick={() => onGoBack(order, prevStage)}
+                    disabled={isAdvancing}
+                    className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                  >
+                    ← Back
+                  </button>
+                )}
+                {!isComplete ? (
+                  <button
+                    onClick={() => onAdvance(order, nextStage)}
+                    disabled={isAdvancing}
+                    className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                  >
+                    {isAdvancing ? 'Updating...' : `→ "${nextStage.label}"`}
+                  </button>
+                ) : (
+                  <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
+                    ✓ Complete
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -155,27 +167,32 @@ export default function AdminOrders() {
     ? orders.filter(o => ACTIVE_STATUSES.includes(o.status))
     : orders.filter(o => ['delivered', 'picked_up'].includes(o.status));
 
-  const advanceMutation = useMutation({
-    mutationFn: ({ order, nextStage }) => {
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ order, stage }) => {
       const newHistory = [
         ...(order.status_history || []),
-        { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label }
+        { status: stage.key, timestamp: new Date().toISOString(), message: stage.label }
       ];
       return base44.entities.Order.update(order.id, {
-        status: nextStage.key,
+        status: stage.key,
         status_history: newHistory,
       });
     },
-    onSuccess: (_, { nextStage }) => {
+    onSuccess: (_, { stage, direction }) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
-      toast.success(`Order advanced to "${nextStage.label}"`);
+      toast.success(direction === 'back' ? `Reverted to "${stage.label}"` : `Advanced to "${stage.label}"`);
       setAdvancingId(null);
     },
   });
 
   const handleAdvance = (order, nextStage) => {
     setAdvancingId(order.id);
-    advanceMutation.mutate({ order, nextStage });
+    updateStatusMutation.mutate({ order, stage: nextStage, direction: 'forward' });
+  };
+
+  const handleGoBack = (order, prevStage) => {
+    setAdvancingId(order.id);
+    updateStatusMutation.mutate({ order, stage: prevStage, direction: 'back' });
   };
 
   if (user?.role !== 'admin') {
@@ -231,6 +248,7 @@ export default function AdminOrders() {
               key={order.id}
               order={order}
               onAdvance={handleAdvance}
+              onGoBack={handleGoBack}
               isAdvancing={advancingId === order.id}
             />
           ))
