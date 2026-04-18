@@ -38,6 +38,8 @@ export function getNextDeliveryDate(scheduleRules, now = new Date()) {
 }
 
 export function getDeliveryDisplayText(scheduleRules, fulfillmentType = 'delivery') {
+  if (new Date() < LAUNCH_DATE) return null;
+
   const date = getNextDeliveryDate(scheduleRules);
   if (!date) return 'Next available batch';
 
@@ -51,6 +53,8 @@ export function getDeliveryDisplayText(scheduleRules, fulfillmentType = 'deliver
 }
 
 export function getDeliveryShortText(scheduleRules) {
+  if (new Date() < LAUNCH_DATE) return 'Coming May 1st';
+
   const date = getNextDeliveryDate(scheduleRules);
   if (!date) return 'Next batch';
   return format(date, 'EEEE, MMM d');
