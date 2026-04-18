@@ -34,16 +34,24 @@ Deno.serve(async (req) => {
 
     // POST to admin hub's receiveLoyaltySignup function endpoint
     const url = `${ADMIN_APP_URL}/functions/receiveLoyaltySignup`;
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+    };
+
+    console.log(`sendLoyaltySignup: HTTP Request Details`);
+    console.log(`  Method: POST`);
+    console.log(`  URL: ${url}`);
+    console.log(`  Headers:`, JSON.stringify(requestHeaders));
+    console.log(`  Body:`, JSON.stringify(payload));
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
+      headers: requestHeaders,
       body: JSON.stringify(payload),
     });
     
-    console.log(`sendLoyaltySignup: POSTing to ${url}`);
+    console.log(`sendLoyaltySignup: Response status ${response.status}`);
 
     if (!response.ok) {
       const errorText = await response.text();
