@@ -19,31 +19,24 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const body = await req.json();
 
-    if (!body.orders || !Array.isArray(body.orders)) {
-      console.error('syncOrdersFromHub: invalid payload');
-      return Response.json({ error: 'Invalid payload' }, { status: 400 });
+    if (!body.id || !body.order_number) {
+      console.error('syncOrdersFromHub: missing required fields');
+      return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const results = [];
-    for (const order of body.orders) {
-      try {
-        const existing = await base44.asServiceRole.entities.Order.filter({ order_number: order.order_number });
-        
-        if (existing.length > 0) {
-          await base44.asServiceRole.entities.Order.update(existing[0].id, order);
-          results.push({ order_number: order.order_number, action: 'updated' });
-        } else {
-          await base44.asServiceRole.entities.Order.create(order);
-          results.push({ order_number: order.order_number, action: 'created' });
-        }
-      } catch (err) {
-        console.error(`syncOrdersFromHub: error syncing ${order.order_number}:`, err.message);
-        results.push({ order_number: order.order_number, action: 'failed', error: err.message });
-      }
+    const existing = await base44.asServiceRole.entities.Order.filter({ order_number: body.order_number });
+
+    let orderId;
+    if (existing.length > 0) {
+      await base44.asServiceRole.entities.Order.update(existing[0].id, body);
+      orderId = existing[0].id;
+    } else {
+      const created = await base44.asServiceRole.entities.Order.create(body);
+      orderId = created.id;
     }
 
-    console.log(`syncOrdersFromHub: synced ${results.length} orders`);
-    return Response.json({ success: true, results });
+    console.log(`syncOrdersFromHub: synced order ${body.order_number}`);
+    return Response.json({ success: true, id: orderId });
   } catch (error) {
     console.error('syncOrdersFromHub error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });

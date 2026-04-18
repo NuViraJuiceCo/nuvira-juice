@@ -26,8 +26,6 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing action or hub_event_id' }, { status: 400 });
     }
 
-    let result;
-
     if (action === 'create' || action === 'update') {
       if (!event) {
         return Response.json({ error: 'Missing event data for create/update' }, { status: 400 });
@@ -37,26 +35,20 @@ Deno.serve(async (req) => {
 
       if (existing.length > 0) {
         await base44.asServiceRole.entities.Event.update(existing[0].id, event);
-        result = { hub_event_id, action: 'updated' };
       } else {
         await base44.asServiceRole.entities.Event.create({ ...event, hub_event_id });
-        result = { hub_event_id, action: 'created' };
       }
     } else if (action === 'delete') {
       const existing = await base44.asServiceRole.entities.Event.filter({ hub_event_id });
-      
       if (existing.length > 0) {
         await base44.asServiceRole.entities.Event.delete(existing[0].id);
-        result = { hub_event_id, action: 'deleted' };
-      } else {
-        result = { hub_event_id, action: 'not_found' };
       }
     } else {
       return Response.json({ error: 'Invalid action' }, { status: 400 });
     }
 
     console.log(`syncEventsFromHub: ${action} event ${hub_event_id}`);
-    return Response.json({ success: true, result });
+    return Response.json({ success: true });
   } catch (error) {
     console.error('syncEventsFromHub error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
