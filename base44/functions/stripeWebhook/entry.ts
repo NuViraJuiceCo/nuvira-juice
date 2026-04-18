@@ -66,6 +66,18 @@ Deno.serve(async (req) => {
             // Sync confirmed order to hub
             base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: orderId })
               .catch(err => console.error('Failed to sync order to hub:', err.message));
+
+            // Send order confirmation email to customer
+            base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
+              order_id: orderId,
+              customer_email: customerEmail,
+              order_number: order.order_number,
+              items: order.items,
+              total: order.total,
+              delivery_address: order.delivery_address,
+              estimated_delivery_date: order.estimated_delivery_date,
+            })
+              .catch(err => console.error('Failed to send order confirmation email:', err.message));
           }
         }
       }
