@@ -170,6 +170,16 @@ export default function Checkout() {
           verification_status: 'requested',
           credit_issued: 0,
         });
+        // Sync bag return to hub (non-blocking)
+        base44.functions.invoke('syncCustomerToHub', {
+          event: 'customer.bag_return_requested',
+          customer_email: user.email,
+          data: {
+            small_bags_requested: bagReturn.smallBags,
+            tote_bags_requested: bagReturn.toteBags,
+            estimated_credit: (bagReturn.smallBags * 1) + (bagReturn.toteBags * 2),
+          },
+        }).catch(() => {});
       } catch (e) {
         // non-blocking
       }
@@ -180,6 +190,10 @@ export default function Checkout() {
       subtotal,
       delivery_fee: deliveryFee,
       total,
+      fulfillment_type: fulfillmentType,
+      delivery_address: addrString,
+      contact_phone: phone.trim(),
+      estimated_delivery_date: deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : null,
       points_discount: pointsDiscount,
       points_used: pointsUsed,
       credits_discount: creditsDiscount,

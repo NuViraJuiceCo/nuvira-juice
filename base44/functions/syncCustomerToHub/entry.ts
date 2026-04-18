@@ -4,41 +4,36 @@ const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
 /**
- * Syncs customer profile data to the operations hub.
- * Called by: AccountSettings on save, onboarding completion.
- * Payload: { email, first_name, last_name, phone, address, birthday }
+ * Syncs customer profile/interaction data to the operations hub.
+ * Called by: profile updates, bag return submissions, onboarding completion, etc.
+ * Payload: { event, customer_email, data }
+ *   event: 'customer.profile_updated' | 'customer.bag_return' | 'customer.onboarding_complete'
  */
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
-    const { email, first_name, last_name, phone, address, birthday } = body;
 
-    if (!email) {
-      return Response.json({ error: 'Missing email' }, { status: 400 });
+    const { event, customer_email, data } = body;
+
+    if (!customer_email) {
+      console.error('syncCustomerToHub: missing customer_email');
+      return Response.json({ error: 'Missing customer_email' }, { status: 400 });
     }
 
     if (!HUB_API_URL) {
-      console.log('syncUserToHub: HUB_API_URL not set, skipping');
+      console.log('syncCustomerToHub: HUB_API_URL not set, skipping');
       return Response.json({ success: true, skipped: true });
     }
 
     const payload = {
-      event: 'customer.profile_updated',
+      event: event || 'customer.interaction',
       source: 'customer_app',
-      customer_email: email,
-      data: {
-        email,
-        first_name,
-        last_name,
-        full_name: [first_name, last_name].filter(Boolean).join(' '),
-        phone,
-        address,
-        birthday,
-        synced_at: new Date().toISOString(),
-      },
+      customer_email,
+      data,
+      synced_at: new Date().toISOString(),
     };
 
-    console.log(`syncUserToHub: syncing profile for ${email}`);
+    console.log(`syncCustomerToHub: syncing event "${event}" for ${customer_email}`);
 
     const response = await fetch(HUB_API_URL, {
       method: 'POST',
@@ -51,15 +46,15 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`syncUserToHub: hub returned ${response.status}:`, errorText);
+      console.error(`syncCustomerToHub: hub returned ${response.status}:`, errorText);
       return Response.json({ error: `Hub returned ${response.status}`, details: errorText }, { status: response.status });
     }
 
     const result = await response.json();
-    console.log(`syncUserToHub: profile for ${email} synced successfully`);
+    console.log(`syncCustomerToHub: "${event}" for ${customer_email} synced successfully`);
     return Response.json({ success: true, hub_response: result });
   } catch (error) {
-    console.error('syncUserToHub error:', error.message);
+    console.error('syncCustomerToHub error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

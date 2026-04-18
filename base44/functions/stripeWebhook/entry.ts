@@ -62,6 +62,10 @@ Deno.serve(async (req) => {
             // Push this order into Shopify so both systems stay in sync
             base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: orderId })
               .catch(err => console.error('Failed to push order to Shopify:', err.message));
+
+            // Sync confirmed order to hub
+            base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: orderId })
+              .catch(err => console.error('Failed to sync order to hub:', err.message));
           }
         }
       }
