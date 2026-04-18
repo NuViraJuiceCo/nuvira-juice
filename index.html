@@ -96,32 +96,13 @@
     <script>
       (function() {
         try { localStorage.removeItem('theme'); } catch(e) {}
-
         var mq = window.matchMedia('(prefers-color-scheme: dark)');
-
         function applyTheme(isDark) {
-          var bg = isDark ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
           document.documentElement.classList.toggle('dark', isDark);
-          document.documentElement.style.background = bg;
-          document.documentElement.style.backgroundColor = bg;
+          document.documentElement.style.background = isDark ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
         }
-
         applyTheme(mq.matches);
-
-        // Re-enforce on OS change
         mq.addEventListener('change', function(e) { applyTheme(e.matches); });
-
-        // Watch for anything (SDK, React libs) trying to add/remove 'dark' class wrongly
-        var observer = new MutationObserver(function() {
-          var isDark = mq.matches;
-          var hasDark = document.documentElement.classList.contains('dark');
-          if (isDark !== hasDark) {
-            observer.disconnect();
-            applyTheme(isDark);
-            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-          }
-        });
-        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
       })();
     </script>
   </head>
