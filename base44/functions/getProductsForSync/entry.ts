@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
       id: p.id,
       name: p.title,
       price: p.price,
-      sku: p.sku || null,
+      sku: p.shopify_product_id || null,
       description: p.description,
       category: p.category,
       image_url: p.image_url,

@@ -31,12 +31,15 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Missing event data for create/update' }, { status: 400 });
       }
 
+      const eventData = { ...event, title: event.name };
+      delete eventData.name;
+
       const existing = await base44.asServiceRole.entities.Event.filter({ hub_event_id });
 
       if (existing.length > 0) {
-        await base44.asServiceRole.entities.Event.update(existing[0].id, event);
+        await base44.asServiceRole.entities.Event.update(existing[0].id, eventData);
       } else {
-        await base44.asServiceRole.entities.Event.create({ ...event, hub_event_id });
+        await base44.asServiceRole.entities.Event.create({ ...eventData, hub_event_id });
       }
     } else if (action === 'delete') {
       const existing = await base44.asServiceRole.entities.Event.filter({ hub_event_id });
