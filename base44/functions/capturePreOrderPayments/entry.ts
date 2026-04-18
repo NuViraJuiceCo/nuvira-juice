@@ -71,11 +71,15 @@ Deno.serve(async (req) => {
             });
           }
 
-          // Send notification email
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            to: order.customer_email,
-            subject: "It's launch day! Your NuVira pre-order is in production 🌿",
-            body: `Great news! Today is May 1st — NuVira Juice Co. is officially launching!\n\nYour pre-order #${order.order_number} has been confirmed and we're juicing it fresh right now. Expect delivery tomorrow, May 2nd.\n\nThank you for believing in us from the start.\n\n— The NuVira Team`,
+          // Send notification email via Resend
+          await base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
+            order_id: order.id,
+            customer_email: order.customer_email,
+            order_number: order.order_number,
+            items: order.items,
+            total: order.total,
+            delivery_address: order.delivery_address,
+            estimated_delivery_date: order.estimated_delivery_date,
           });
         }
 
@@ -83,14 +87,8 @@ Deno.serve(async (req) => {
       } catch (err) {
         console.error(`Failed to capture payment for order ${order.order_number}:`, err.message);
 
-        // Notify customer of payment failure
-        if (order.customer_email) {
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            to: order.customer_email,
-            subject: 'Action Required — NuVira Pre-Order Payment Issue',
-            body: `Hi there,\n\nWe attempted to process your pre-order #${order.order_number} on launch day but encountered a payment issue.\n\nPlease contact us or update your payment method so we can fulfill your order.\n\nWe're sorry for the inconvenience.\n\n— The NuVira Team`,
-          });
-        }
+        // Log failure (customer will see order status in dashboard)
+        console.error(`Payment capture failed for order ${order.order_number}: ${err.message}`);
 
         results.failed.push({ order_number: order.order_number, error: err.message });
       }

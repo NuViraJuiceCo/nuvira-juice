@@ -3,22 +3,23 @@
   "type": "object",
   "properties": {
     "customer_email": {
-      "type": "string"
+      "type": "string",
+      "description": "Customer email address"
     },
     "balance": {
       "type": "number",
       "default": 0,
-      "description": "Current available credit in dollars"
+      "description": "Current available credit balance in dollars"
     },
-    "lifetime_earned": {
+    "lifetime_issued": {
       "type": "number",
       "default": 0,
-      "description": "Total credits ever earned"
+      "description": "Total credits ever issued to this customer"
     },
     "lifetime_used": {
       "type": "number",
       "default": 0,
-      "description": "Total credits ever used"
+      "description": "Total credits ever redeemed"
     },
     "history": {
       "type": "array",
@@ -31,9 +32,9 @@
           "type": {
             "type": "string",
             "enum": [
-              "earned",
+              "issued",
               "used",
-              "adjusted"
+              "adjustment"
             ]
           },
           "description": {
@@ -42,15 +43,13 @@
           "order_id": {
             "type": "string"
           },
-          "bag_return_id": {
-            "type": "string"
-          },
           "timestamp": {
             "type": "string"
           }
         }
       },
-      "default": []
+      "default": [],
+      "description": "History of credit transactions"
     }
   },
   "required": [
