@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-sync-secret': CUSTOMER_APP_SYNC_SECRET,
+        'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
       },
       body: JSON.stringify(payload),
     });
