@@ -2,14 +2,14 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Calendar, Users, ExternalLink } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 
 const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
 
-const FESTIVAL_LOGO = 'https://static.wixstatic.com/media/44fb75_aec8657df9b14cdda95892acea64c86c~mv2.png/v1/fill/w_274,h_275,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Untitled%20design.png';
-
-const events = [
+const HARDCODED_EVENTS = [
   {
-    id: 1,
+    id: 'hardcoded-1',
     title: 'Missouri Spirit Festival',
     date: 'Saturday, May 30, 2026',
     time: '3:00 PM – 7:00 PM',
@@ -31,6 +31,19 @@ const typeColors = {
 };
 
 export default function Events() {
+  const { data: dbEvents = [] } = useQuery({
+    queryKey: ['events'],
+    queryFn: () => base44.entities.Event.filter({ is_active: true }, 'date', 50),
+  });
+
+  // Merge: hub-synced events take precedence, hardcoded ones fill in if not already covered
+  const hubEventTitles = new Set(dbEvents.map(e => e.title));
+  const hardcodedFiltered = HARDCODED_EVENTS.filter(e => !hubEventTitles.has(e.title));
+  const events = [
+    ...dbEvents.map(e => ({ ...e, id: e.id })),
+    ...hardcodedFiltered,
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -81,6 +94,9 @@ export default function Events() {
         {/* Events List */}
         <div className="space-y-4">
           <h3 className="font-heading text-lg font-semibold">Upcoming</h3>
+          {events.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-6">No upcoming events at this time. Check back soon!</p>
+          )}
           {events.map((event, i) => (
             <motion.div
               key={event.id}
