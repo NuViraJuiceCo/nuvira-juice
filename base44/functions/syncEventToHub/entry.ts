@@ -33,16 +33,22 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true });
     }
 
-    const hub_event_id = record?.hub_event_id || entityId;
+    // For events without hub_event_id, skip syncing (they're locally created only)
+    const hub_event_id = record?.hub_event_id;
+    if (!hub_event_id && eventType !== 'delete') {
+      console.log(`syncEventToHub: event ${entityId} has no hub_event_id, skipping sync`);
+      return Response.json({ success: true, skipped: true, reason: 'no_hub_event_id' });
+    }
+
     const action = eventType === 'delete' ? 'delete' : eventType; // create | update | delete
 
     const payload = {
       action,
-      hub_event_id,
+      hub_event_id: hub_event_id || entityId,
       event: action !== 'delete' ? record : undefined,
     };
 
-    console.log(`syncEventToHub: pushing ${action} for event ${hub_event_id}`);
+    console.log(`syncEventToHub: pushing ${action} for event ${hub_event_id || entityId}`);
 
     const response = await fetch(`${HUB_API_URL}/api/events/sync`, {
       method: 'POST',
