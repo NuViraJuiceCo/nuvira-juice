@@ -1,0 +1,78 @@
+{
+  "name": "LoyaltyMember",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "description": "Customer email address"
+    },
+    "total_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Current available loyalty points"
+    },
+    "lifetime_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Total points ever earned"
+    },
+    "redeemed_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Total points ever redeemed"
+    },
+    "points_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "earned",
+              "redeemed",
+              "bonus",
+              "adjustment"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "description": "History of point transactions"
+    }
+  },
+  "required": [
+    "email"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
