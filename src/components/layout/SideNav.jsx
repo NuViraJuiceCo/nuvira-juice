@@ -20,10 +20,10 @@ export default function SideNav() {
   return (
     <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-border min-h-screen sticky top-0 h-screen">
       {/* Logo */}
-      <div className="px-6 border-b border-border" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: '1.5rem' }}>
+      <Link to="/" className="px-6 border-b border-border block" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: '1.5rem' }}>
         <img src={LOGO_URL} alt="NuVira" className="h-8" />
         <p className="text-[10px] text-muted-foreground mt-1">Real. Living. Nutrition.</p>
-      </div>
+      </Link>
 
       {/* Nav Items */}
       <nav className="flex-1 px-3 py-4 space-y-1">
