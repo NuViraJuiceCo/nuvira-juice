@@ -75,6 +75,9 @@ export default function Rewards() {
     if (!user?.email) return null;
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
   });
+  
+  const [signupForm, setSignupForm] = useState({ email: '', full_name: '', phone: '' });
+  const [signupLoading, setSignupLoading] = useState(false);
 
   const handleApplyReward = (reward) => {
     if (reward.reward_type === 'free_bottle') {
@@ -101,6 +104,30 @@ export default function Rewards() {
     localStorage.removeItem(`activeReward_${user.email}`);
     setActiveReward(null);
     toast.success('Reward removed.');
+  };
+
+  const handleSignupSubmit = async (e) => {
+    e.preventDefault();
+    if (!signupForm.email || !signupForm.full_name) {
+      toast.error('Please fill in email and name');
+      return;
+    }
+    setSignupLoading(true);
+    try {
+      await base44.functions.invoke('sendLoyaltySignup', {
+        email: signupForm.email,
+        full_name: signupForm.full_name,
+        phone: signupForm.phone || null,
+        signup_date: new Date().toISOString().split('T')[0],
+      });
+      toast.success('Welcome to NuVira Rewards! 🎉');
+      setSignupForm({ email: '', full_name: '', phone: '' });
+    } catch (err) {
+      console.error('Signup error:', err);
+      toast.error('Failed to sign up. Please try again.');
+    } finally {
+      setSignupLoading(false);
+    }
   };
 
   const nextReward = rewards.find(r => r.points_required > totalPoints);
@@ -130,16 +157,53 @@ export default function Rewards() {
         </div>
 
         <div className="mx-4 mt-5 space-y-3">
-          {/* Join CTA */}
-          <div className="bg-card border border-primary/30 rounded-2xl p-5 text-center shadow-sm">
+          {/* Loyalty Signup Form */}
+          <div className="bg-card border border-primary/30 rounded-2xl p-5 shadow-sm">
             <Trophy className="w-8 h-8 text-primary mx-auto mb-2" />
-            <h2 className="font-heading text-lg font-bold mb-1">Join the Program</h2>
-            <p className="text-xs text-muted-foreground mb-4">Create an account to start earning points with every purchase.</p>
+            <h2 className="font-heading text-lg font-bold mb-1 text-center">Join NuVira Rewards</h2>
+            <p className="text-xs text-muted-foreground mb-4 text-center">Sign up for loyalty rewards and earn points with every order!</p>
+            <form onSubmit={handleSignupSubmit} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Full Name"
+                value={signupForm.full_name}
+                onChange={(e) => setSignupForm({ ...signupForm, full_name: e.target.value })}
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+                required
+              />
+              <input
+                type="email"
+                placeholder="Email"
+                value={signupForm.email}
+                onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+                required
+              />
+              <input
+                type="tel"
+                placeholder="Phone (optional)"
+                value={signupForm.phone}
+                onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })}
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+              />
+              <button
+                type="submit"
+                disabled={signupLoading}
+                className="w-full h-11 bg-primary text-primary-foreground rounded-xl font-semibold text-sm disabled:opacity-50"
+              >
+                {signupLoading ? 'Signing up...' : 'Join Rewards'}
+              </button>
+            </form>
+          </div>
+
+          {/* Login CTA */}
+          <div className="bg-card border border-border/40 rounded-2xl p-5 text-center shadow-sm">
+            <h3 className="font-semibold text-sm mb-2">Already have an account?</h3>
             <button
               onClick={() => base44.auth.redirectToLogin()}
-              className="w-full h-11 bg-primary text-primary-foreground rounded-xl font-semibold text-sm"
+              className="w-full h-11 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm"
             >
-              Sign Up / Log In to Earn
+              Log In
             </button>
           </div>
 
