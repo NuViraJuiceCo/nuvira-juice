@@ -40,6 +40,14 @@
       "items": {
         "type": "string"
       }
+    },
+    "website_link": {
+      "type": "string",
+      "description": "URL to the event's website"
+    },
+    "tickets_link": {
+      "type": "string",
+      "description": "Direct URL to purchase tickets"
     }
   },
   "required": [

@@ -126,8 +126,8 @@ export default function Events() {
                       Get Tickets
                     </a>
                   )}
-                  {event.link && (
-                    <a href={event.link} target="_blank" rel="noopener noreferrer"
+                  {event.website_link && (
+                    <a href={event.website_link} target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1 text-xs font-semibold text-primary px-3 py-2 rounded-xl border border-primary/30">
                       <ExternalLink className="w-3 h-3" />
                       Website
