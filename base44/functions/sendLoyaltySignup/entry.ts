@@ -33,7 +33,8 @@ Deno.serve(async (req) => {
     console.log(`sendLoyaltySignup: posting signup for ${email}`);
 
     // POST to admin hub's receiveLoyaltySignup function endpoint
-    const url = `${ADMIN_APP_URL}/functions/receiveLoyaltySignup`;
+    const baseUrl = ADMIN_APP_URL.endsWith('/') ? ADMIN_APP_URL.slice(0, -1) : ADMIN_APP_URL;
+    const url = `${baseUrl}/functions/receiveLoyaltySignup`;
     const requestHeaders = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
