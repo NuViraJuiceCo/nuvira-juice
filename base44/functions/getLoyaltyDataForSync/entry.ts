@@ -21,7 +21,14 @@ Deno.serve(async (req) => {
         total_points: record.total_points,
         lifetime_points: record.lifetime_points,
         redeemed_points: record.redeemed_points,
-        points_history: record.points_history || [],
+        points_history: (record.points_history || []).map(entry => ({
+          amount: entry.amount,
+          type: entry.type,
+          description: entry.description,
+          order_id: entry.order_id || null,
+          reward_id: entry.reward_id || null,
+          timestamp: entry.timestamp,
+        })),
       })),
     };
 
