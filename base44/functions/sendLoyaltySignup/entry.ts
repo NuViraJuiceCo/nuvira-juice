@@ -32,7 +32,9 @@ Deno.serve(async (req) => {
 
     console.log(`sendLoyaltySignup: posting signup for ${email}`);
 
-    const response = await fetch(`${ADMIN_APP_URL}/functions/receiveLoyaltySignup`, {
+    // POST to admin hub's receiveLoyaltySignup function endpoint
+    const url = `${ADMIN_APP_URL}/functions/receiveLoyaltySignup`;
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -40,6 +42,8 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify(payload),
     });
+    
+    console.log(`sendLoyaltySignup: POSTing to ${url}`);
 
     if (!response.ok) {
       const errorText = await response.text();
