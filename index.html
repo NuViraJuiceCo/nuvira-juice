@@ -95,19 +95,11 @@
 
     <script>
       (function() {
-        // Clear any stale theme stored by next-themes or other libraries
+        // Always light mode — remove dark class and any stale theme storage
         try { localStorage.removeItem('theme'); } catch(e) {}
-
-        var mq = window.matchMedia('(prefers-color-scheme: dark)');
-        function applyTheme(isDark) {
-          var bg = isDark ? 'hsl(150, 15%, 8%)' : 'hsl(40, 30%, 97%)';
-          document.documentElement.classList.toggle('dark', isDark);
-          document.documentElement.style.background = bg;
-          document.documentElement.style.backgroundColor = bg;
-          if (document.body) document.body.style.background = bg;
-        }
-        applyTheme(mq.matches);
-        mq.addEventListener('change', function(e) { applyTheme(e.matches); });
+        document.documentElement.classList.remove('dark');
+        document.documentElement.style.background = 'hsl(40, 30%, 97%)';
+        document.documentElement.style.backgroundColor = 'hsl(40, 30%, 97%)';
       })();
     </script>
   </head>
