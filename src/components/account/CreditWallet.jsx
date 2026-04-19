@@ -187,7 +187,7 @@ export default function CreditWallet() {
   });
 
   const balance = creditData?.balance || 0;
-  const earned = creditData?.lifetime_earned || 0;
+  const earned = creditData?.lifetime_issued || 0;
   const used = creditData?.lifetime_used || 0;
   const history = creditData?.history || [];
 

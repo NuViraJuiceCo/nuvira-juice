@@ -1,25 +1,34 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
 Deno.serve(async (req) => {
   try {
-    const { data } = await req.json();
-    const shopifyOrder = data;
+    const base44 = createClientFromRequest(req);
+    const body = await req.json();
+    // Support both entity automation payload (body.data) and direct call
+    const shopifyOrder = body.data || body;
 
     if (!shopifyOrder || !shopifyOrder.id) {
       console.error('No Shopify order data in payload');
       return Response.json({ error: 'No order data' }, { status: 400 });
     }
 
-    console.log(`Syncing Shopify order ${shopifyOrder.id} to hub`);
+    if (!HUB_API_URL) {
+      console.log('syncShopifyOrderToHub: HUB_API_URL not set, skipping');
+      return Response.json({ success: true, skipped: true });
+    }
+
+    console.log(`Syncing Shopify order ${shopifyOrder.shopify_order_number || shopifyOrder.id} to hub`);
 
     const response = await fetch(HUB_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-sync-secret': CUSTOMER_APP_SYNC_SECRET,
+        'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
       },
-      body: JSON.stringify(shopifyOrder),
+      body: JSON.stringify({ event: 'shopify_order.created', source: 'customer_app', order: shopifyOrder }),
     });
 
     if (!response.ok) {

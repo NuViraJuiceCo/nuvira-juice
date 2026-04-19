@@ -125,7 +125,7 @@ function OrderCard({ order, index, bagReturn }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
     >
-      <Link to={isActive ? `/order-tracker/${order.id}` : `/order-tracker/${order.id}`}>
+      <Link to={`/order-tracker/${order.id}`}>
         <div className="bg-card rounded-xl border border-border/50 p-3.5 active:bg-secondary/50 transition-colors">
           <div className="flex items-start justify-between mb-2">
             <div>
