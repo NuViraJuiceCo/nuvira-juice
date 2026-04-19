@@ -14,7 +14,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { type, limit = 50, skip = 0, filter = {} } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { type, limit = 50, skip = 0, filter = {} } = body;
 
     let data;
 

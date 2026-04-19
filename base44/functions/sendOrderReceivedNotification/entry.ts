@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'NuVira Juice Co <orders@nuvirajuice.com>',
+        from: 'NuVira Juice Co <info@nuvirajuice.com>',
         to: customer_email,
         subject: `Your Order #${order_number || order_id} is Confirmed!`,
         html,
