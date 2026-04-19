@@ -87,8 +87,7 @@ Deno.serve(async (req) => {
       } catch (err) {
         console.error(`Failed to capture payment for order ${order.order_number}:`, err.message);
 
-        // Log failure (customer will see order status in dashboard)
-        console.error(`Payment capture failed for order ${order.order_number}: ${err.message}`);
+        // customer will see order status in dashboard
 
         results.failed.push({ order_number: order.order_number, error: err.message });
       }
