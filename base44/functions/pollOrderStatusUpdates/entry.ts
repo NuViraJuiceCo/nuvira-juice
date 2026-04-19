@@ -18,11 +18,13 @@ Deno.serve(async (req) => {
     }
 
     // Fetch order updates from hub
-    const response = await fetch(`${HUB_API_URL}/orders/updates`, {
-      method: 'GET',
+    const response = await fetch(HUB_API_URL, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {
