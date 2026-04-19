@@ -1,27 +1,27 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+const HUB_SYNC_SECRET = Deno.env.get('HUB_SYNC_SECRET');
 
 /**
  * Receives individual loyalty point transactions from hub and appends to UserPoints
  * Called by: Hub app pushing transaction updates to customer app
+ * Auth: Authorization: Bearer <HUB_SYNC_SECRET>
  * Payload: { customers: [{ customer_email, amount, type, description, order_id, reward_id, timestamp }] }
- * Behavior: Appends each transaction to ledger, recalculates totals
  */
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token || token !== HUB_SYNC_SECRET) {
+    console.error('receivePointsSync: unauthorized request');
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    const authHeader = req.headers.get('Authorization') || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-
-    if (!token || token !== CUSTOMER_APP_SYNC_SECRET) {
-      console.error('receivePointsSync: unauthorized request');
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const base44 = createClientFromRequest(req);
     const { customers } = await req.json();
 
@@ -29,15 +29,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing or invalid customers array' }, { status: 400 });
     }
 
-    let created = 0;
-    let updated = 0;
+    let processed = 0;
 
     for (const txn of customers) {
       const { customer_email, amount, type, description, order_id, reward_id, timestamp } = txn;
 
-      if (!customer_email || amount === undefined || !type) continue;
+      if (!customer_email || amount === undefined || !type) {
+        console.warn('receivePointsSync: skipping invalid transaction', txn);
+        continue;
+      }
 
-      // Build transaction entry
       const entry = {
         amount,
         type, // earned | redeemed | bonus | adjustment
@@ -47,15 +48,13 @@ Deno.serve(async (req) => {
         timestamp: timestamp || new Date().toISOString(),
       };
 
-      // Check if record exists
       const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email });
 
       if (existing.length > 0) {
         const rec = existing[0];
-        const history = rec.points_history || [];
-        history.push(entry);
+        const history = [...(rec.points_history || []), entry];
 
-        // Recalculate totals: lifetime_points = all earned + bonus, redeemed_points = all redeemed, total = lifetime - redeemed
+        // Recalculate totals from full history
         let lifetime = 0;
         let redeemed = 0;
         for (const h of history) {
@@ -73,11 +72,9 @@ Deno.serve(async (req) => {
           redeemed_points: redeemed,
           points_history: history,
         });
-        updated++;
       } else {
-        // Create new record with first transaction
-        const lifetime = (entry.type === 'earned' || entry.type === 'bonus' || entry.type === 'adjustment') ? entry.amount : 0;
-        const redeemed = entry.type === 'redeemed' ? entry.amount : 0;
+        const lifetime = (type === 'earned' || type === 'bonus' || type === 'adjustment') ? amount : 0;
+        const redeemed = type === 'redeemed' ? amount : 0;
         const total = Math.max(0, lifetime - redeemed);
 
         await base44.asServiceRole.entities.UserPoints.create({
@@ -87,12 +84,13 @@ Deno.serve(async (req) => {
           redeemed_points: redeemed,
           points_history: [entry],
         });
-        created++;
       }
+
+      processed++;
     }
 
-    console.log(`receivePointsSync: synced ${customers.length} transactions (created: ${created}, updated: ${updated})`);
-    return Response.json({ success: true, created, updated, total: customers.length });
+    console.log(`receivePointsSync: processed ${processed}/${customers.length} transactions`);
+    return Response.json({ status: 'success', processed });
   } catch (error) {
     console.error('receivePointsSync error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
