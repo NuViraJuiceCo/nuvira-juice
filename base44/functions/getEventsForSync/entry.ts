@@ -4,6 +4,8 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
+    
     const authHeader = req.headers.get('Authorization') || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -11,8 +13,6 @@ Deno.serve(async (req) => {
       console.error('getEventsForSync: unauthorized request');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const base44 = createClientFromRequest(req);
     const events = await base44.asServiceRole.entities.Event.list();
 
     const formatted = events.map(e => ({

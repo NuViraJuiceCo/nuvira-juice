@@ -8,6 +8,8 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const base44 = createClientFromRequest(req);
+    
     const authHeader = req.headers.get('Authorization') || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -15,8 +17,6 @@ Deno.serve(async (req) => {
       console.error('syncEventsFromHub: unauthorized request');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const base44 = createClientFromRequest(req);
     const body = await req.json();
 
     const { action, hub_event_id, event } = body;

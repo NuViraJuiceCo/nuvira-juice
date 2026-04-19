@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
 
     console.log(`syncEventToHub: pushing ${action} for event ${hub_event_id || entityId}`);
 
-    const response = await fetch(`${HUB_API_URL}/api/events/sync`, {
+    const response = await fetch(`${HUB_API_URL}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
