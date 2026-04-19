@@ -18,8 +18,7 @@ Deno.serve(async (req) => {
     }
 
     // Fetch order updates from hub
-    const hubFunctionUrl = `${HUB_API_URL}/api/functions/getOrderUpdatesForCustomerApp`;
-    const response = await fetch(hubFunctionUrl, {
+    const response = await fetch(HUB_API_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
