@@ -146,8 +146,8 @@ export default function Cart() {
         <div className="mx-4 mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3 flex items-center gap-2">
           <span className="text-base shrink-0">✦</span>
           <div>
-            <p className="text-xs font-semibold text-primary">Pre-Order Window: April 23–30</p>
-            <p className="text-[10px] text-muted-foreground">Card authorized now · charged May 1st when production begins · delivered May 2nd</p>
+            <p className="text-xs font-semibold text-primary">Pre-Order Window: April 23–30, 2026</p>
+            <p className="text-[10px] text-muted-foreground">Card authorized now · charged May 1st, 2026 when production begins · delivered May 2nd, 2026</p>
           </div>
         </div>
       )}
@@ -239,7 +239,7 @@ export default function Cart() {
           )}
           {isPreorderMode() && (
             <div className="mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3 text-center">
-              <p className="text-xs font-semibold text-primary">✦ Pre-Order — Card authorized today, charged May 1st · Delivered May 2nd</p>
+              <p className="text-xs font-semibold text-primary">✦ Pre-Order — Card authorized today, charged May 1st, 2026 · Delivered May 2nd, 2026</p>
             </div>
           )}
           <Button

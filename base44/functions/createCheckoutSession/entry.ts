@@ -6,8 +6,8 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 // Pre-orders: Apr 23 – Apr 30. Production (capture) day: May 1. First delivery: May 2.
 const PREORDER_START    = new Date('2026-04-23T00:00:00');
 const PREORDER_END      = new Date('2026-04-30T23:59:59');
-const FULFILLMENT_DATE  = '2026-05-01'; // Production / payment capture day
-const DELIVERY_DATE     = '2026-05-02'; // First delivery date for all pre-orders
+const FULFILLMENT_DATE  = '2026-05-01'; // Production / payment capture day: May 1, 2026
+const DELIVERY_DATE     = '2026-05-02'; // First delivery date: May 2, 2026
 
 function isPreorderWindow() {
   const now = new Date();
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
         currency: 'usd',
         capture_method: 'manual', // authorize only — captured on Apr 30
         receipt_email: customer_email || undefined,
-        description: `NuVira Pre-Order ${orderNumber} — Capture May 1, 2026 · Delivery May 2`,
+        description: `NuVira Pre-Order ${orderNumber} — Captured May 1, 2026 · Delivered May 2, 2026`,
         metadata: {
           base44_app_id: Deno.env.get('BASE44_APP_ID'),
           order_id: order.id,

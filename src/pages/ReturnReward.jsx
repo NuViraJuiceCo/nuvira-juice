@@ -87,7 +87,7 @@ export default function ReturnReward() {
   });
 
   const balance = creditData?.balance || 0;
-  const lifetimeEarned = creditData?.lifetime_earned || 0;
+  const lifetimeEarned = creditData?.lifetime_issued || 0;
 
   return (
     <div className="pb-12">

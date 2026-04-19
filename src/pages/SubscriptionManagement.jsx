@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Calendar, Pause, SkipForward, Plus, Edit2, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,15 @@ import CompositionEditor from '@/components/subscription/CompositionEditor';
 export default function SubscriptionManagement() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+
+  // Show success toast when returning from Stripe subscription checkout
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('subscribed') === 'true') {
+      toast.success('Subscription activated! Welcome to NuVira Wellness. 🌿');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
   const [billingLoading, setBillingLoading] = useState(false);
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [selectedSubId, setSelectedSubId] = useState(null);

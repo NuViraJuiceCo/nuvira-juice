@@ -1,5 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
-import Stripe from 'npm:stripe@14';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/order-confirmation/sub_{CHECKOUT_SESSION_ID}`,
+      success_url: `${origin}/account/subscriptions?subscribed=true`,
       cancel_url: `${origin}/subscribe`,
       customer_email: customer_email || undefined,
       metadata: {

@@ -224,14 +224,14 @@ export default function BagReturnAdmin() {
         if (existing) {
           await base44.entities.NuViraCredit.update(existing.id, {
             balance: (existing.balance || 0) + data.credit_issued,
-            lifetime_earned: (existing.lifetime_earned || 0) + data.credit_issued,
+            lifetime_issued: (existing.lifetime_issued || 0) + data.credit_issued,
             history: [...(existing.history || []), entry],
           });
         } else {
           await base44.entities.NuViraCredit.create({
             customer_email: ret.customer_email,
             balance: data.credit_issued,
-            lifetime_earned: data.credit_issued,
+            lifetime_issued: data.credit_issued,
             lifetime_used: 0,
             history: [entry],
           });
