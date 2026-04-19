@@ -1,13 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+const HUB_SYNC_SECRET = Deno.env.get('HUB_SYNC_SECRET');
 
 Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get('Authorization') || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
-    if (!token || token !== CUSTOMER_APP_SYNC_SECRET) {
+    if (!token || token !== HUB_SYNC_SECRET) {
       console.error('getLoyaltyDataForSync: unauthorized request');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
