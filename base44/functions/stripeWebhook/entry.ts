@@ -78,6 +78,18 @@ Deno.serve(async (req) => {
               estimated_delivery_date: order.estimated_delivery_date,
             })
               .catch(err => console.error('Failed to send order confirmation email:', err.message));
+
+            // Send order confirmation SMS if customer has a phone number
+            if (order.contact_phone) {
+              base44.asServiceRole.functions.invoke('sendOrderSms', {
+                phone_number: order.contact_phone,
+                order_number: order.order_number,
+                items: order.items,
+                total: order.total,
+                estimated_delivery_date: order.estimated_delivery_date,
+              })
+                .catch(err => console.error('Failed to send order confirmation SMS:', err.message));
+            }
           }
         }
       }
