@@ -238,7 +238,7 @@ const DROP_LOCATIONS = [
   'With Neighbor', 'Mailroom / Lobby', 'Left on Porch', 'Other',
 ];
 
-function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver, onReturnVerified, allCredits, user, isUpdating }) {
+function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver, onMarkStage, onReturnVerified, allCredits, user, isUpdating }) {
   const [expanded, setExpanded] = useState(false);
   const [showDeliverForm, setShowDeliverForm] = useState(false);
   const [showUnableForm, setShowUnableForm] = useState(false);
@@ -367,19 +367,29 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
               {!isDelivered && (
                 <>
                   {!showDeliverForm && !showUnableForm && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button onClick={() => setShowDeliverForm(true)} disabled={isUpdating}
-                        className="py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
-                        <Truck className="w-4 h-4" />
-                        Delivered
-                      </button>
-                      <button onClick={() => setShowUnableForm(true)} disabled={isUpdating}
-                        className="py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4" />
-                        Unable to Deliver
-                      </button>
-                    </div>
-                  )}
+                    <>
+                      {/* Progressive stage button — let driver manually update as they progress */}
+                      {nextStage && nextStage.key !== 'delivered' && (
+                        <button onClick={() => onMarkStage(order, nextStage)} disabled={isUpdating}
+                          className="w-full py-2.5 border border-primary text-primary rounded-xl text-xs font-semibold active:scale-95 transition-transform">
+                          → Mark {nextStage.label}
+                        </button>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => setShowDeliverForm(true)} disabled={isUpdating}
+                          className="py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
+                          <Truck className="w-4 h-4" />
+                          Delivered
+                        </button>
+                        <button onClick={() => setShowUnableForm(true)} disabled={isUpdating}
+                          className="py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4" />
+                          Unable to Deliver
+                        </button>
+                      </div>
+                      </>
+                      )}
 
                   {/* ── Proof of Delivery Form ── */}
                   {showDeliverForm && (
@@ -525,24 +535,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
     try {
       const res = await base44.functions.invoke('optimizeDeliveryRoute', { date: date || undefined, optimize: true });
       setRouteData(res.data);
-
-      // Mark all non-delivered orders as out_for_delivery and notify customers
-      const ordersToNotify = (res.data?.optimized_orders || queuedOrders).filter(o => o.status !== 'delivered');
-      await Promise.all(ordersToNotify.map(async (order) => {
-        const newHistory = [
-          ...(order.status_history || []),
-          { status: 'out_for_delivery', timestamp: new Date().toISOString(), message: 'Your order is out for delivery!' },
-        ];
-        await base44.entities.Order.update(order.id, { status: 'out_for_delivery', status_history: newHistory });
-        await base44.integrations.Core.SendEmail({
-          to: order.customer_email,
-          subject: `Your NuVira order #${order.order_number} is on its way! 🚚`,
-          body: `Hi there!\n\nGreat news — your NuVira order is out for delivery today!\n\n📦 Order: #${order.order_number}\n📍 Delivering to: ${order.delivery_address}\n\nYour driver is on the route and will be with you soon. You can track your order status in the app.\n\nThanks for choosing NuVira — stay nourished! 🥤\n\nThe NuVira Team`,
-        });
-      }));
-
-      toast.success(`Route optimized! ${ordersToNotify.length} customer${ordersToNotify.length !== 1 ? 's' : ''} notified.`);
-      loadQueue();
+      toast.success(`Route optimized! ${queuedOrders.length} stops`);
     } catch {
       toast.error('Optimization failed');
     } finally {
@@ -613,6 +606,19 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
       toast.success('Stop marked — admin notified');
       loadQueue();
       setRouteData(null);
+    } catch {
+      toast.error('Update failed');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleMarkStage = async (order, nextStage) => {
+    setUpdatingId(order.id);
+    const newHistory = [...(order.status_history || []), { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label }];
+    try {
+      await base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
+      loadQueue();
     } catch {
       toast.error('Update failed');
     } finally {
@@ -737,6 +743,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
                       pendingReturn={pendingReturnsByEmail[order.customer_email] || null}
                       onMarkDelivered={(order, photo, loc) => handleMarkDelivered(order, photo, loc)}
                       onMarkUnableToDeliver={handleMarkUnableToDeliver}
+                      onMarkStage={handleMarkStage}
                       onReturnVerified={(ret, data) => onBagReturnVerified(ret, data)}
                       allCredits={allCredits}
                       user={user}
