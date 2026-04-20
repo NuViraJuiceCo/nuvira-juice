@@ -93,6 +93,8 @@ function bagSummary(r) {
 function InlineBagReturn({ ret, user, onVerifyComplete }) {
   const [smallStatus, setSmallStatus] = useState('accepted');
   const [toteStatus, setToteStatus] = useState('accepted');
+  const [smallAccepted, setSmallAccepted] = useState(ret.small_bags_requested || 0);
+  const [toteAccepted, setToteAccepted] = useState(ret.tote_bags_requested || 0);
   const [reason, setReason] = useState('dirty_stained');
   const [notes, setNotes] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
@@ -108,8 +110,8 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
 
   const calcCredit = () => {
     let c = 0;
-    if (ret.small_bags_requested > 0 && smallStatus === 'accepted') c += ret.small_bags_requested;
-    if (ret.tote_bags_requested > 0 && toteStatus === 'accepted') c += ret.tote_bags_requested * 2;
+    if (smallStatus === 'accepted') c += smallAccepted;
+    if (toteStatus === 'accepted') c += toteAccepted * 2;
     return c;
   };
 
@@ -127,15 +129,13 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
   const handleSubmit = async () => {
     setSaving(true);
     const credit = calcCredit();
-    const smallAcc = smallStatus === 'accepted' ? ret.small_bags_requested : 0;
-    const toteAcc = toteStatus === 'accepted' ? ret.tote_bags_requested : 0;
     let vStatus = 'verified';
     if (credit === 0) vStatus = (smallStatus === 'not_found' || toteStatus === 'not_found') ? 'not_found' : 'not_eligible';
-    else if (smallAcc < ret.small_bags_requested || toteAcc < ret.tote_bags_requested) vStatus = 'partially_verified';
+    else if (smallAccepted < ret.small_bags_requested || toteAccepted < ret.tote_bags_requested) vStatus = 'partially_verified';
 
     await onVerifyComplete(ret, {
       small_bag_status: smallStatus, tote_bag_status: toteStatus,
-      small_bags_accepted: smallAcc, tote_bags_accepted: toteAcc,
+      small_bags_accepted: smallAccepted, tote_bags_accepted: toteAccepted,
       rejection_reason: (smallStatus === 'not_eligible' || toteStatus === 'not_eligible') ? reason : '',
       driver_notes: notes, photo_url: photoUrl || '',
       verification_status: vStatus, credit_issued: credit,
@@ -153,8 +153,8 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
 
       {ret.small_bags_requested > 0 && (
         <div>
-          <p className="text-xs font-semibold text-amber-800 mb-2">Small Bag ×{ret.small_bags_requested}</p>
-          <div className="flex gap-2 flex-wrap">
+          <p className="text-xs font-semibold text-amber-800 mb-2">Small Bags</p>
+          <div className="flex gap-2 flex-wrap mb-2">
             {bagStatusOptions.map(([v, l]) => (
               <button key={v} onClick={() => setSmallStatus(v)}
                 className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${smallStatus === v ? 'bg-amber-600 text-white border-amber-600' : 'border-amber-300 bg-white text-amber-800'}`}>
@@ -162,13 +162,20 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
               </button>
             ))}
           </div>
+          {smallStatus === 'accepted' && (
+            <div className="flex items-center gap-2 bg-white border border-amber-300 rounded-xl px-3 py-2">
+              <button onClick={() => setSmallAccepted(Math.max(0, smallAccepted - 1))} className="text-amber-700 font-bold text-lg">−</button>
+              <span className="flex-1 text-center text-sm font-semibold text-amber-800">{smallAccepted} collected</span>
+              <button onClick={() => setSmallAccepted(smallAccepted + 1)} className="text-amber-700 font-bold text-lg">+</button>
+            </div>
+          )}
         </div>
       )}
 
       {ret.tote_bags_requested > 0 && (
         <div>
-          <p className="text-xs font-semibold text-amber-800 mb-2">Tote Bag ×{ret.tote_bags_requested}</p>
-          <div className="flex gap-2 flex-wrap">
+          <p className="text-xs font-semibold text-amber-800 mb-2">Tote Bags</p>
+          <div className="flex gap-2 flex-wrap mb-2">
             {bagStatusOptions.map(([v, l]) => (
               <button key={v} onClick={() => setToteStatus(v)}
                 className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${toteStatus === v ? 'bg-amber-600 text-white border-amber-600' : 'border-amber-300 bg-white text-amber-800'}`}>
@@ -176,6 +183,13 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
               </button>
             ))}
           </div>
+          {toteStatus === 'accepted' && (
+            <div className="flex items-center gap-2 bg-white border border-amber-300 rounded-xl px-3 py-2">
+              <button onClick={() => setToteAccepted(Math.max(0, toteAccepted - 1))} className="text-amber-700 font-bold text-lg">−</button>
+              <span className="flex-1 text-center text-sm font-semibold text-amber-800">{toteAccepted} collected</span>
+              <button onClick={() => setToteAccepted(toteAccepted + 1)} className="text-amber-700 font-bold text-lg">+</button>
+            </div>
+          )}
         </div>
       )}
 
