@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Truck, Package, Check } from 'lucide-react';
+import { ArrowLeft, Truck, Package, Check, Clock, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
@@ -39,6 +39,19 @@ export default function OrderTracker() {
     refetchInterval: 30000,
   });
 
+  const isOutForDelivery = ['out_for_delivery', 'arriving_soon', 'bottled_packed'].includes(order?.status)
+    && order?.fulfillment_type === 'delivery';
+
+  const { data: etaData } = useQuery({
+    queryKey: ['delivery-eta', orderId],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getDeliveryEta', { order_id: orderId });
+      return res.data;
+    },
+    enabled: !!orderId && isOutForDelivery,
+    refetchInterval: 5 * 60 * 1000, // refresh every 5 min
+  });
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -57,7 +70,6 @@ export default function OrderTracker() {
 
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
   const currentIndex = stages.findIndex(s => s.key === order.status);
-
   const isDelivery = order.fulfillment_type !== 'pickup';
 
   return (
@@ -71,22 +83,78 @@ export default function OrderTracker() {
         <h1 className="font-heading text-2xl font-bold text-primary-foreground mt-0.5">Track Your Order</h1>
 
         {/* ETA Card */}
-        <div className="mt-4 bg-white/15 rounded-2xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+        <div className="mt-4 bg-white/15 rounded-2xl p-4 flex items-start gap-3">
+          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
             {isDelivery ? <Truck className="w-5 h-5 text-white" /> : <Package className="w-5 h-5 text-white" />}
           </div>
-          <div>
-            <p className="text-primary-foreground/70 text-xs">
-              {isDelivery ? 'Estimated Delivery' : 'Estimated Pickup'}
-            </p>
-            <p className="font-heading text-base font-bold text-white">
-              {order.estimated_delivery_date
-                ? format(new Date(order.estimated_delivery_date), 'EEEE, MMMM d')
-                : 'Next fresh batch'}
-            </p>
+          <div className="flex-1">
+            {etaData?.eta_window ? (
+              <>
+                <p className="text-primary-foreground/70 text-xs">Estimated Arrival Window</p>
+                <p className="font-heading text-xl font-bold text-white">{etaData.eta_window}</p>
+                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                  <div className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-white/60" />
+                    <p className="text-white/70 text-xs">{etaData.message}</p>
+                  </div>
+                  {etaData.stops_total > 0 && (
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-white/60" />
+                      <p className="text-white/70 text-xs">
+                        {etaData.stops_total - etaData.stops_ahead} of {etaData.stops_total} stops done
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : etaData?.message && !etaData?.eta_window ? (
+              <>
+                <p className="text-primary-foreground/70 text-xs">{isDelivery ? 'Delivery Status' : 'Pickup Date'}</p>
+                <p className="font-heading text-base font-bold text-white">
+                  {order.estimated_delivery_date
+                    ? format(new Date(order.estimated_delivery_date), 'EEEE, MMMM d')
+                    : 'Next fresh batch'}
+                </p>
+                <p className="text-white/70 text-xs mt-1">{etaData.message}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-primary-foreground/70 text-xs">
+                  {isDelivery ? 'Estimated Delivery' : 'Estimated Pickup'}
+                </p>
+                <p className="font-heading text-base font-bold text-white">
+                  {order.estimated_delivery_date
+                    ? format(new Date(order.estimated_delivery_date), 'EEEE, MMMM d')
+                    : 'Next fresh batch'}
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Live Route Progress Banner */}
+      {etaData?.stops_total > 0 && (
+        <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+            <p className="text-xs font-semibold text-blue-700">Driver is on the route</p>
+          </div>
+          <div className="flex gap-1 mb-2">
+            {Array.from({ length: etaData.stops_total }).map((_, i) => {
+              const completedCount = etaData.stops_total - etaData.stops_ahead - (etaData.stops_ahead === 0 ? 1 : 0);
+              const isDone = i < completedCount;
+              const isCurrent = i === completedCount;
+              return (
+                <div key={i} className={`h-2 flex-1 rounded-full transition-colors ${
+                  isDone ? 'bg-blue-500' : isCurrent ? 'bg-blue-300 animate-pulse' : 'bg-blue-100'
+                }`} />
+              );
+            })}
+          </div>
+          <p className="text-xs text-blue-600">{etaData.message}</p>
+        </div>
+      )}
 
       {/* Progress Tracker */}
       <div className="mx-4 mt-5">
