@@ -14,31 +14,43 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { date } = body; // YYYY-MM-DD
+    const { date, optimize } = body; // date: YYYY-MM-DD, optimize: boolean
 
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     if (!apiKey) {
       return Response.json({ error: 'Google Maps API key not configured' }, { status: 500 });
     }
 
-    // Fetch orders for the given date that are out for delivery
-    const orders = await base44.asServiceRole.entities.Order.list('-created_date', 200);
-    const targetDate = date || new Date().toISOString().slice(0, 10);
+    // Fetch all active delivery orders
+    const orders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
 
-    const deliveryOrders = orders.filter(o => {
+    // Queue = any delivery order that hasn't been delivered/picked up yet
+    const QUEUED_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon'];
+
+    let deliveryOrders = orders.filter(o => {
       const isDelivery = o.fulfillment_type === 'delivery';
-      const isActive = ['bottled_packed', 'out_for_delivery', 'arriving_soon'].includes(o.status);
-      const matchesDate = o.estimated_delivery_date === targetDate ||
-        (!o.estimated_delivery_date && o.created_date?.startsWith(targetDate));
-      return isDelivery && isActive && o.delivery_address;
+      const isQueued = QUEUED_STATUSES.includes(o.status);
+      return isDelivery && isQueued && o.delivery_address;
     });
 
+    // If a date is provided, further filter by estimated_delivery_date
+    if (date) {
+      const dateFiltered = deliveryOrders.filter(o => o.estimated_delivery_date === date || o.assigned_delivery_date === date);
+      // Only apply date filter if it actually matches some orders, otherwise show all queued
+      if (dateFiltered.length > 0) deliveryOrders = dateFiltered;
+    }
+
     if (deliveryOrders.length === 0) {
-      return Response.json({ optimized_orders: [], total_distance: 0, total_duration: 0 });
+      return Response.json({ orders: [], optimized_orders: null });
+    }
+
+    // If not optimizing, just return the raw queued orders
+    if (!optimize) {
+      return Response.json({ orders: deliveryOrders, optimized_orders: null });
     }
 
     if (deliveryOrders.length === 1) {
-      return Response.json({ optimized_orders: deliveryOrders, total_distance: null, total_duration: null });
+      return Response.json({ orders: deliveryOrders, optimized_orders: deliveryOrders, total_distance_miles: null, total_duration_minutes: null });
     }
 
     // Build waypoints for Routes API
@@ -95,6 +107,7 @@ Deno.serve(async (req) => {
     const totalDurationSeconds = route.duration ? parseInt(route.duration.replace('s', '')) : 0;
 
     return Response.json({
+      orders: deliveryOrders,
       optimized_orders: ordersWithLegs,
       total_distance_miles: Math.round((totalDistanceMeters / 1609.344) * 10) / 10,
       total_duration_minutes: Math.round(totalDurationSeconds / 60),

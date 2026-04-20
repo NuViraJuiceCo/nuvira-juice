@@ -145,26 +145,63 @@ function StopCard({ order, bagReturns, onMarkStatus, isUpdating, onSwitchToRetur
   );
 }
 
-function RouteTab({ bagReturns, onSwitchToReturns }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [routeData, setRouteData] = useState(null);
-  const [loadingRoute, setLoadingRoute] = useState(false);
-  const [updatingId, setUpdatingId] = useState(null);
-  const queryClient = useQueryClient();
+const STATUS_LABEL = {
+  order_received: 'Received',
+  scheduled_for_juicing: 'Scheduled',
+  in_production: 'In Production',
+  bottled_packed: 'Packed',
+  out_for_delivery: 'Out for Delivery',
+  arriving_soon: 'Arriving Soon',
+  delivered: 'Delivered',
+};
 
-  const fetchRoute = async () => {
-    setLoadingRoute(true);
+const STATUS_COLOR = {
+  order_received: 'bg-blue-100 text-blue-700',
+  scheduled_for_juicing: 'bg-purple-100 text-purple-700',
+  in_production: 'bg-amber-100 text-amber-700',
+  bottled_packed: 'bg-orange-100 text-orange-700',
+  out_for_delivery: 'bg-cyan-100 text-cyan-700',
+  arriving_soon: 'bg-teal-100 text-teal-700',
+  delivered: 'bg-green-100 text-green-700',
+};
+
+function RouteTab({ bagReturns, onSwitchToReturns }) {
+  const [date, setDate] = useState('');
+  const [queuedOrders, setQueuedOrders] = useState(null); // all queued (unoptimized)
+  const [routeData, setRouteData] = useState(null);       // optimized result
+  const [loading, setLoading] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
+
+  // Load the delivery queue on mount
+  const loadQueue = async () => {
+    setLoading(true);
+    setRouteData(null);
     try {
-      const res = await base44.functions.invoke('optimizeDeliveryRoute', { date });
-      setRouteData(res.data);
-    } catch (err) {
-      toast.error('Failed to load route');
+      const res = await base44.functions.invoke('optimizeDeliveryRoute', { date: date || undefined, optimize: false });
+      setQueuedOrders(res.data?.orders || []);
+    } catch {
+      toast.error('Failed to load delivery queue');
     } finally {
-      setLoadingRoute(false);
+      setLoading(false);
     }
   };
 
-  useEffect(() => { fetchRoute(); }, [date]);
+  const optimizeRoute = async () => {
+    if (!queuedOrders?.length) return;
+    setOptimizing(true);
+    try {
+      const res = await base44.functions.invoke('optimizeDeliveryRoute', { date: date || undefined, optimize: true });
+      setRouteData(res.data);
+      toast.success('Route optimized!');
+    } catch {
+      toast.error('Optimization failed');
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  useEffect(() => { loadQueue(); }, [date]);
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ order, status }) => {
@@ -174,32 +211,34 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
       ];
       return base44.entities.Order.update(order.id, { status, status_history: newHistory });
     },
-    onSuccess: () => { toast.success('Status updated'); setUpdatingId(null); fetchRoute(); },
+    onSuccess: () => { toast.success('Status updated'); setUpdatingId(null); loadQueue(); setRouteData(null); },
     onError: () => { toast.error('Update failed'); setUpdatingId(null); },
   });
 
-  const orders = routeData?.optimized_orders || [];
-  const delivered = orders.filter(o => o.status === 'delivered').length;
-  const bagReturnCount = bagReturns.filter(r => orders.some(o => o.customer_email === r.customer_email)).length;
+  const displayOrders = routeData?.optimized_orders || queuedOrders || [];
+  const isOptimized = !!routeData?.optimized_orders;
+  const delivered = displayOrders.filter(o => o.status === 'delivered').length;
+  const bagReturnCount = bagReturns.filter(r => displayOrders.some(o => o.customer_email === r.customer_email)).length;
 
   return (
     <div className="pb-10">
-      {/* Date + refresh */}
+      {/* Date filter + refresh */}
       <div className="px-4 pt-4 flex gap-2">
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+        <input type="date" value={date} onChange={e => { setDate(e.target.value); setRouteData(null); }}
+          placeholder="Filter by date (optional)"
           className="flex-1 bg-card border border-border text-sm px-3 py-2 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary" />
-        <button onClick={fetchRoute} disabled={loadingRoute}
+        <button onClick={loadQueue} disabled={loading}
           className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center shrink-0">
-          <RefreshCw className={`w-4 h-4 text-muted-foreground ${loadingRoute ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-4 h-4 text-muted-foreground ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-4 divide-x divide-border border-y border-border bg-card mt-4">
         {[
-          { label: 'Stops', value: orders.length, color: 'text-foreground' },
+          { label: 'Queued', value: queuedOrders?.length ?? '—', color: 'text-foreground' },
           { label: 'Done', value: delivered, color: 'text-green-600' },
-          { label: 'Left', value: orders.length - delivered, color: 'text-primary' },
+          { label: 'Left', value: displayOrders.length - delivered, color: 'text-primary' },
           { label: 'Returns', value: bagReturnCount, color: 'text-amber-600' },
         ].map(s => (
           <div key={s.label} className="py-3 text-center">
@@ -209,11 +248,27 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
         ))}
       </div>
 
-      {/* Route summary */}
-      {routeData?.total_distance_miles && (
-        <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-          <p className="text-xs text-blue-700 font-medium">~{routeData.total_duration_minutes} min · {routeData.total_distance_miles} mi total</p>
+      {/* Optimize Route CTA */}
+      {queuedOrders?.length > 0 && !isOptimized && (
+        <div className="px-4 mt-4">
+          <button onClick={optimizeRoute} disabled={optimizing}
+            className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
+            {optimizing
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Optimizing...</>
+              : <><Route className="w-4 h-4" /> Optimize Route ({queuedOrders.length} stops)</>
+            }
+          </button>
+        </div>
+      )}
+
+      {/* Route summary (post-optimize) */}
+      {isOptimized && routeData?.total_distance_miles && (
+        <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+            <p className="text-xs text-blue-700 font-medium">~{routeData.total_duration_minutes} min · {routeData.total_distance_miles} mi total</p>
+          </div>
+          <button onClick={() => { setRouteData(null); }} className="text-[10px] text-blue-500 font-semibold underline">Reset</button>
         </div>
       )}
 
@@ -228,38 +283,60 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
         </button>
       )}
 
-      {/* Stop list */}
+      {/* Order list */}
       <div className="px-4 mt-4 space-y-3">
-        {loadingRoute ? (
+        {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-muted-foreground">Optimizing route...</p>
+            <p className="text-sm text-muted-foreground">Loading delivery queue...</p>
           </div>
-        ) : orders.length === 0 ? (
+        ) : displayOrders.length === 0 ? (
           <div className="text-center py-16">
             <CheckCircle2 className="w-10 h-10 text-primary mx-auto mb-3" />
-            <p className="text-sm font-semibold">No deliveries for this date</p>
-            <p className="text-xs text-muted-foreground mt-1">Try a different date above.</p>
+            <p className="text-sm font-semibold">No queued deliveries</p>
+            <p className="text-xs text-muted-foreground mt-1">All deliveries are completed or try clearing the date filter.</p>
           </div>
         ) : (
           <>
-            <p className="text-xs text-muted-foreground font-medium px-1">{orders.length} stop{orders.length > 1 ? 's' : ''} · optimized order</p>
-            {orders.map((order, idx) => (
-              <div key={order.id} className="flex gap-2">
-                <div className="flex flex-col items-center pt-4 shrink-0">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${order.status === 'delivered' ? 'bg-green-100 text-green-600' : 'bg-primary text-primary-foreground'}`}>
-                    {order.status === 'delivered' ? '✓' : idx + 1}
+            <p className="text-xs text-muted-foreground font-medium px-1">
+              {isOptimized ? `${displayOrders.length} stops · optimized order` : `${displayOrders.length} stop${displayOrders.length > 1 ? 's' : ''} · tap "Optimize Route" to sort`}
+            </p>
+            {displayOrders.map((order, idx) => (
+              <div key={order.id} className={`flex gap-2 ${isOptimized ? '' : ''}`}>
+                {isOptimized && (
+                  <div className="flex flex-col items-center pt-4 shrink-0">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${order.status === 'delivered' ? 'bg-green-100 text-green-600' : 'bg-primary text-primary-foreground'}`}>
+                      {order.status === 'delivered' ? '✓' : idx + 1}
+                    </div>
+                    {idx < displayOrders.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1" />}
                   </div>
-                  {idx < orders.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1" />}
-                </div>
+                )}
                 <div className="flex-1 pb-2">
-                  <StopCard
-                    order={order}
-                    bagReturns={bagReturns}
-                    onMarkStatus={(order, status) => { setUpdatingId(order.id); updateStatusMutation.mutate({ order, status }); }}
-                    isUpdating={updatingId === order.id}
-                    onSwitchToReturns={onSwitchToReturns}
-                  />
+                  {isOptimized ? (
+                    <StopCard
+                      order={order}
+                      bagReturns={bagReturns}
+                      onMarkStatus={(order, status) => { setUpdatingId(order.id); updateStatusMutation.mutate({ order, status }); }}
+                      isUpdating={updatingId === order.id}
+                      onSwitchToReturns={onSwitchToReturns}
+                    />
+                  ) : (
+                    // Queue view — simple card showing address + status
+                    <div className="bg-card border border-border/50 rounded-2xl p-4 flex items-center gap-3">
+                      <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center shrink-0">
+                        <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm font-semibold">#{order.order_number}</p>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLOR[order.status] || 'bg-muted text-muted-foreground'}`}>
+                            {STATUS_LABEL[order.status] || order.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.delivery_address}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
