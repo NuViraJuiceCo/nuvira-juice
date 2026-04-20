@@ -42,10 +42,12 @@ import Home from '@/pages/Home';
 import Shop from '@/pages/Shop';
 import Cart from '@/pages/Cart';
 import { base44 } from '@/api/base44Client';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user } = useAuth();
   const [showSplash, setShowSplash] = React.useState(() => !sessionStorage.getItem('splashShown'));
+  const location = useLocation();
 
   const handleSplashDone = () => {
     sessionStorage.setItem('splashShown', '1');
@@ -69,6 +71,12 @@ const AuthenticatedApp = () => {
       navigateToLogin();
       return null;
     }
+  }
+
+  // Auto-redirect drivers to /driver (but not admins — they see everything)
+  if (user?.role === 'driver' && !location.pathname.startsWith('/driver')) {
+    window.location.replace('/driver');
+    return null;
   }
 
   // Render the main app
