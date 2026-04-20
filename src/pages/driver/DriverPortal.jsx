@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -7,11 +6,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import {
   Leaf, MapPin, Navigation, CheckCircle2, ChevronDown, ChevronRight,
-  RefreshCw, Clock, Route, XCircle, Recycle, Package, Camera, X
+  RefreshCw, Clock, Route, XCircle, Recycle, Package, Camera, X,
+  AlertTriangle, Truck, RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// ─── Shared ────────────────────────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────────────────────
 
 const DELIVERY_STAGES = [
   { key: 'bottled_packed', label: 'Packed' },
@@ -20,20 +20,45 @@ const DELIVERY_STAGES = [
   { key: 'delivered', label: 'Delivered' },
 ];
 
-const RETURN_STATUS_COLOR = {
-  requested: 'bg-amber-50 text-amber-700',
-  verified: 'bg-primary/10 text-primary',
-  partially_verified: 'bg-amber-50 text-amber-700',
-  not_found: 'bg-secondary text-muted-foreground',
-  not_eligible: 'bg-red-50 text-red-600',
-};
+const UNABLE_TO_DELIVER_REASONS = [
+  { key: 'customer_not_home', label: 'Customer Not Home' },
+  { key: 'wrong_address', label: 'Wrong Address' },
+  { key: 'access_issue', label: 'Access Issue' },
+  { key: 'refused_delivery', label: 'Customer Refused' },
+  { key: 'other', label: 'Other' },
+];
 
 const REJECTION_REASONS = [
   { key: 'dirty_stained', label: 'Dirty / Stained' },
   { key: 'odor', label: 'Odor' },
   { key: 'damaged', label: 'Damaged' },
+  { key: 'customer_not_home', label: 'Customer Not Home' },
   { key: 'other', label: 'Other' },
 ];
+
+const RETURN_STATUS_COLOR = {
+  requested: 'bg-amber-50 text-amber-700',
+  verified: 'bg-green-50 text-green-700',
+  partially_verified: 'bg-amber-50 text-amber-700',
+  not_found: 'bg-secondary text-muted-foreground',
+  not_eligible: 'bg-red-50 text-red-600',
+  unable_to_collect: 'bg-red-50 text-red-600',
+};
+
+const STATUS_LABEL = {
+  order_received: 'Received', scheduled_for_juicing: 'Scheduled',
+  in_production: 'In Production', bottled_packed: 'Packed',
+  out_for_delivery: 'Out for Delivery', arriving_soon: 'Arriving Soon', delivered: 'Delivered',
+};
+
+const STATUS_COLOR = {
+  order_received: 'bg-blue-100 text-blue-700', scheduled_for_juicing: 'bg-purple-100 text-purple-700',
+  in_production: 'bg-amber-100 text-amber-700', bottled_packed: 'bg-orange-100 text-orange-700',
+  out_for_delivery: 'bg-cyan-100 text-cyan-700', arriving_soon: 'bg-teal-100 text-teal-700',
+  delivered: 'bg-green-100 text-green-700',
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function mapsUrl(address) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
@@ -52,25 +77,180 @@ function bagSummary(r) {
   return parts.join(' + ') || '—';
 }
 
-// ─── Route Tab ─────────────────────────────────────────────────────────────
+// ─── Inline Bag Return Verifier (embedded inside StopCard) ──────────────────
 
-function StopCard({ order, bagReturns, onMarkStatus, isUpdating, onSwitchToReturns }) {
-  const [expanded, setExpanded] = useState(false);
-  const pendingReturn = bagReturns.find(
-    r => r.customer_email === order.customer_email && r.verification_status === 'requested'
+function InlineBagReturn({ ret, user, onVerifyComplete }) {
+  const [smallStatus, setSmallStatus] = useState('accepted');
+  const [toteStatus, setToteStatus] = useState('accepted');
+  const [reason, setReason] = useState('dirty_stained');
+  const [notes, setNotes] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
+
+  const bagStatusOptions = [
+    ['accepted', '✓ Accepted'],
+    ['not_eligible', '✗ Not Eligible'],
+    ['not_found', '? Not Found'],
+  ];
+
+  const calcCredit = () => {
+    let c = 0;
+    if (ret.small_bags_requested > 0 && smallStatus === 'accepted') c += ret.small_bags_requested;
+    if (ret.tote_bags_requested > 0 && toteStatus === 'accepted') c += ret.tote_bags_requested * 2;
+    return c;
+  };
+
+  const handlePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setPhotoUrl(file_url);
+    } catch { toast.error('Photo upload failed'); }
+    setUploading(false);
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    const credit = calcCredit();
+    const smallAcc = smallStatus === 'accepted' ? ret.small_bags_requested : 0;
+    const toteAcc = toteStatus === 'accepted' ? ret.tote_bags_requested : 0;
+    let vStatus = 'verified';
+    if (credit === 0) vStatus = (smallStatus === 'not_found' || toteStatus === 'not_found') ? 'not_found' : 'not_eligible';
+    else if (smallAcc < ret.small_bags_requested || toteAcc < ret.tote_bags_requested) vStatus = 'partially_verified';
+
+    await onVerifyComplete(ret, {
+      small_bag_status: smallStatus, tote_bag_status: toteStatus,
+      small_bags_accepted: smallAcc, tote_bags_accepted: toteAcc,
+      rejection_reason: (smallStatus === 'not_eligible' || toteStatus === 'not_eligible') ? reason : '',
+      driver_notes: notes, photo_url: photoUrl || '',
+      verification_status: vStatus, credit_issued: credit,
+      verified_by: user?.email, verified_at: new Date().toISOString(), credit_applied: credit > 0,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <Recycle className="w-4 h-4 text-amber-600 shrink-0" />
+        <p className="text-sm font-bold text-amber-800">Bag Return — {bagSummary(ret)}</p>
+      </div>
+
+      {ret.small_bags_requested > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-amber-800 mb-2">Small Bag ×{ret.small_bags_requested}</p>
+          <div className="flex gap-2 flex-wrap">
+            {bagStatusOptions.map(([v, l]) => (
+              <button key={v} onClick={() => setSmallStatus(v)}
+                className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${smallStatus === v ? 'bg-amber-600 text-white border-amber-600' : 'border-amber-300 bg-white text-amber-800'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {ret.tote_bags_requested > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-amber-800 mb-2">Tote Bag ×{ret.tote_bags_requested}</p>
+          <div className="flex gap-2 flex-wrap">
+            {bagStatusOptions.map(([v, l]) => (
+              <button key={v} onClick={() => setToteStatus(v)}
+                className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${toteStatus === v ? 'bg-amber-600 text-white border-amber-600' : 'border-amber-300 bg-white text-amber-800'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(smallStatus === 'not_eligible' || toteStatus === 'not_eligible') && (
+        <div>
+          <p className="text-xs font-semibold text-amber-800 mb-2">Rejection Reason</p>
+          <div className="flex gap-2 flex-wrap">
+            {REJECTION_REASONS.map(r => (
+              <button key={r.key} onClick={() => setReason(r.key)}
+                className={`text-[11px] px-3 py-1.5 rounded-xl border transition-colors ${reason === r.key ? 'bg-red-100 border-red-300 text-red-700' : 'border-amber-300 bg-white text-amber-800'}`}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-xs font-semibold text-amber-800 mb-1.5">Photo <span className="font-normal text-amber-600">(recommended)</span></p>
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
+        {photoUrl ? (
+          <div className="relative inline-block w-full">
+            <img src={photoUrl} alt="Evidence" className="w-full max-w-xs rounded-xl border border-amber-200" />
+            <button onClick={() => setPhotoUrl('')} className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center">
+              <X className="w-3.5 h-3.5 text-white" />
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => fileRef.current?.click()} disabled={uploading}
+            className="flex items-center gap-2 px-4 py-2.5 border-2 border-dashed border-amber-300 rounded-xl text-xs text-amber-700 w-full justify-center bg-white">
+            {uploading ? <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" /> : <Camera className="w-4 h-4" />}
+            {uploading ? 'Uploading...' : 'Take or Upload Photo'}
+          </button>
+        )}
+      </div>
+
+      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Driver notes (optional)"
+        className="w-full text-xs border border-amber-300 rounded-xl px-3 py-2.5 bg-white resize-none focus:outline-none focus:ring-1 focus:ring-amber-400 text-amber-900 placeholder:text-amber-400" />
+
+      <div className="bg-white border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Leaf className="w-4 h-4 text-amber-600" />
+          <p className="text-sm font-semibold text-amber-800">Credit to Issue</p>
+        </div>
+        <p className="font-heading text-xl font-bold text-amber-700">${calcCredit().toFixed(2)}</p>
+      </div>
+
+      <button onClick={handleSubmit} disabled={saving || uploading}
+        className="w-full py-3 bg-amber-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform">
+        {saving ? 'Submitting...' : 'Confirm Bag Return'}
+      </button>
+    </div>
   );
+}
+
+// ─── Stop Card ──────────────────────────────────────────────────────────────
+
+function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver, onReturnVerified, allCredits, user, isUpdating }) {
+  const [expanded, setExpanded] = useState(false);
+  const [showUnableForm, setShowUnableForm] = useState(false);
+  const [unableReason, setUnableReason] = useState('customer_not_home');
+  const [unableNotes, setUnableNotes] = useState('');
+
   const isDelivered = order.status === 'delivered';
   const currentStageIndex = DELIVERY_STAGES.findIndex(s => s.key === order.status);
   const nextStage = DELIVERY_STAGES[currentStageIndex + 1];
+  const returnVerified = pendingReturn && pendingReturn.verification_status !== 'requested';
+
+  const handleUnableSubmit = () => {
+    onMarkUnableToDeliver(order, unableReason, unableNotes);
+    setShowUnableForm(false);
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`bg-card border rounded-2xl overflow-hidden ${isDelivered ? 'border-green-200 opacity-70' : pendingReturn ? 'border-amber-300' : 'border-border/50'}`}
+      className={`bg-card border rounded-2xl overflow-hidden ${
+        isDelivered ? 'border-green-200 opacity-75'
+        : pendingReturn ? 'border-amber-300'
+        : 'border-border/50'
+      }`}
     >
+      {/* Header row */}
       <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center gap-3 p-4 text-left active:bg-secondary/30 transition-colors">
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 font-heading font-bold text-sm ${isDelivered ? 'bg-green-100 text-green-600' : 'bg-primary/10 text-primary'}`}>
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isDelivered ? 'bg-green-100 text-green-600' : 'bg-primary/10 text-primary'}`}>
           {isDelivered ? <CheckCircle2 className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
         </div>
         <div className="flex-1 min-w-0">
@@ -84,7 +264,9 @@ function StopCard({ order, bagReturns, onMarkStatus, isUpdating, onSwitchToRetur
           {pendingReturn && (
             <div className="flex items-center gap-1 mt-1">
               <Recycle className="w-3 h-3 text-amber-600" />
-              <p className="text-[10px] font-semibold text-amber-600">Bag return to collect</p>
+              <p className="text-[10px] font-semibold text-amber-600">
+                {pendingReturn.verification_status === 'requested' ? 'Bag return to collect' : 'Return handled ✓'}
+              </p>
             </div>
           )}
         </div>
@@ -98,11 +280,15 @@ function StopCard({ order, bagReturns, onMarkStatus, isUpdating, onSwitchToRetur
         {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-3">
+
+              {/* Customer info */}
               <div className="space-y-0.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Customer</p>
                 <p className="text-xs">{order.customer_email}</p>
                 {order.contact_phone && <p className="text-xs font-semibold">{order.contact_phone}</p>}
               </div>
+
+              {/* Items */}
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Items</p>
                 {order.items?.map((item, i) => (
@@ -110,30 +296,104 @@ function StopCard({ order, bagReturns, onMarkStatus, isUpdating, onSwitchToRetur
                 ))}
               </div>
 
-              {pendingReturn && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Recycle className="w-4 h-4 text-amber-600" />
-                    <p className="text-xs font-semibold text-amber-700">Bag Return — {bagSummary(pendingReturn)}</p>
+              {/* Inline bag return verifier — only if pending */}
+              {pendingReturn && pendingReturn.verification_status === 'requested' && (
+                <InlineBagReturn
+                  ret={pendingReturn}
+                  user={user}
+                  onVerifyComplete={onReturnVerified}
+                />
+              )}
+
+              {/* Return already handled */}
+              {pendingReturn && pendingReturn.verification_status !== 'requested' && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-green-700">Return Verified</p>
+                    <p className="text-[10px] text-green-600">{pendingReturn.verification_status?.replace(/_/g, ' ')} · ${(pendingReturn.credit_issued || 0).toFixed(2)} credit issued</p>
                   </div>
-                  <button onClick={onSwitchToReturns} className="mt-1 w-full py-2 bg-amber-500 text-white rounded-lg text-xs font-semibold">
-                    Verify Return Now →
-                  </button>
                 </div>
               )}
 
+              {/* Navigate button */}
               <a href={mapsUrl(order.delivery_address)} target="_blank" rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 w-full py-3 bg-blue-500 text-white rounded-xl text-sm font-semibold active:scale-95 transition-transform">
                 <Navigation className="w-4 h-4" />
                 Navigate to Stop
               </a>
 
-              {!isDelivered && nextStage && (
-                <button onClick={() => onMarkStatus(order, nextStage.key)} disabled={isUpdating}
-                  className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform">
-                  {isUpdating ? 'Updating...' : nextStage.key === 'delivered' ? '✓ Mark Delivered' : `→ ${nextStage.label}`}
-                </button>
+              {/* Delivery actions */}
+              {!isDelivered && (
+                <>
+                  {!showUnableForm ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => onMarkDelivered(order)}
+                        disabled={isUpdating}
+                        className="py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
+                        <Truck className="w-4 h-4" />
+                        {isUpdating ? 'Updating...' : 'Mark Delivered'}
+                      </button>
+                      <button
+                        onClick={() => setShowUnableForm(true)}
+                        disabled={isUpdating}
+                        className="py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4" />
+                        Unable to Deliver
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-red-700">Unable to Deliver</p>
+                        <button onClick={() => setShowUnableForm(false)} className="text-red-400">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-red-700 mb-2">Reason</p>
+                        <div className="flex flex-wrap gap-2">
+                          {UNABLE_TO_DELIVER_REASONS.map(r => (
+                            <button key={r.key} onClick={() => setUnableReason(r.key)}
+                              className={`text-[11px] px-3 py-1.5 rounded-xl border transition-colors ${unableReason === r.key ? 'bg-red-600 text-white border-red-600' : 'border-red-200 bg-white text-red-700'}`}>
+                              {r.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <textarea
+                        value={unableNotes}
+                        onChange={e => setUnableNotes(e.target.value)}
+                        rows={2}
+                        placeholder="Additional notes..."
+                        className="w-full text-xs border border-red-200 rounded-xl px-3 py-2.5 bg-white resize-none focus:outline-none focus:ring-1 focus:ring-red-300 text-red-900 placeholder:text-red-300"
+                      />
+                      <button
+                        onClick={handleUnableSubmit}
+                        disabled={isUpdating}
+                        className="w-full py-3 bg-red-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform">
+                        {isUpdating ? 'Submitting...' : 'Submit & Move On'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Progressive stage buttons (out for delivery → arriving soon) */}
+                  {nextStage && nextStage.key !== 'delivered' && (
+                    <button onClick={() => {
+                      const newHistory = [
+                        ...(order.status_history || []),
+                        { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label },
+                      ];
+                      base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
+                    }}
+                      className="w-full py-2.5 border border-primary text-primary rounded-xl text-xs font-semibold active:scale-95 transition-transform">
+                      → Mark {nextStage.label}
+                    </button>
+                  )}
+                </>
               )}
+
               {isDelivered && (
                 <div className="py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">✓ Delivered</div>
               )}
@@ -145,35 +405,16 @@ function StopCard({ order, bagReturns, onMarkStatus, isUpdating, onSwitchToRetur
   );
 }
 
-const STATUS_LABEL = {
-  order_received: 'Received',
-  scheduled_for_juicing: 'Scheduled',
-  in_production: 'In Production',
-  bottled_packed: 'Packed',
-  out_for_delivery: 'Out for Delivery',
-  arriving_soon: 'Arriving Soon',
-  delivered: 'Delivered',
-};
+// ─── Route Tab ──────────────────────────────────────────────────────────────
 
-const STATUS_COLOR = {
-  order_received: 'bg-blue-100 text-blue-700',
-  scheduled_for_juicing: 'bg-purple-100 text-purple-700',
-  in_production: 'bg-amber-100 text-amber-700',
-  bottled_packed: 'bg-orange-100 text-orange-700',
-  out_for_delivery: 'bg-cyan-100 text-cyan-700',
-  arriving_soon: 'bg-teal-100 text-teal-700',
-  delivered: 'bg-green-100 text-green-700',
-};
-
-function RouteTab({ bagReturns, onSwitchToReturns }) {
+function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
   const [date, setDate] = useState('');
-  const [queuedOrders, setQueuedOrders] = useState(null); // all queued (unoptimized)
-  const [routeData, setRouteData] = useState(null);       // optimized result
+  const [queuedOrders, setQueuedOrders] = useState(null);
+  const [routeData, setRouteData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
 
-  // Load the delivery queue on mount
   const loadQueue = async () => {
     setLoading(true);
     setRouteData(null);
@@ -203,29 +444,78 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
 
   useEffect(() => { loadQueue(); }, [date]);
 
-  const updateStatusMutation = useMutation({
-    mutationFn: ({ order, status }) => {
-      const newHistory = [
-        ...(order.status_history || []),
-        { status, timestamp: new Date().toISOString(), message: DELIVERY_STAGES.find(s => s.key === status)?.label || status },
-      ];
-      return base44.entities.Order.update(order.id, { status, status_history: newHistory });
-    },
-    onSuccess: () => { toast.success('Status updated'); setUpdatingId(null); loadQueue(); setRouteData(null); },
-    onError: () => { toast.error('Update failed'); setUpdatingId(null); },
-  });
+  const handleMarkDelivered = async (order) => {
+    setUpdatingId(order.id);
+    const newHistory = [
+      ...(order.status_history || []),
+      { status: 'delivered', timestamp: new Date().toISOString(), message: 'Delivered' },
+    ];
+    try {
+      await base44.entities.Order.update(order.id, { status: 'delivered', status_history: newHistory });
+      toast.success('Marked as delivered');
+      loadQueue();
+      setRouteData(null);
+    } catch {
+      toast.error('Update failed');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleMarkUnableToDeliver = async (order, reason, notes) => {
+    setUpdatingId(order.id);
+    const newHistory = [
+      ...(order.status_history || []),
+      { status: 'order_received', timestamp: new Date().toISOString(), message: `Unable to deliver: ${reason}${notes ? ` — ${notes}` : ''}` },
+    ];
+    try {
+      // Revert to order_received so admin can reschedule
+      await base44.entities.Order.update(order.id, {
+        status: 'order_received',
+        status_history: newHistory,
+        notes: `Unable to deliver on ${new Date().toLocaleDateString()} — Reason: ${reason}${notes ? `. ${notes}` : ''}`,
+      });
+      // If there's a bag return tied to this order, mark it unable_to_collect
+      const linkedReturn = bagReturns.find(r => r.customer_email === order.customer_email && r.verification_status === 'requested');
+      if (linkedReturn) {
+        await base44.entities.BagReturn.update(linkedReturn.id, {
+          verification_status: 'unable_to_collect',
+          rejection_reason: reason === 'customer_not_home' ? 'customer_not_home' : 'other',
+          driver_notes: `Unable to deliver — ${reason}${notes ? `. ${notes}` : ''}`,
+          verified_by: user?.email,
+          verified_at: new Date().toISOString(),
+        });
+      }
+      toast.success('Stop marked — admin notified');
+      loadQueue();
+      setRouteData(null);
+    } catch {
+      toast.error('Update failed');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const displayOrders = routeData?.optimized_orders || queuedOrders || [];
   const isOptimized = !!routeData?.optimized_orders;
   const delivered = displayOrders.filter(o => o.status === 'delivered').length;
-  const bagReturnCount = bagReturns.filter(r => displayOrders.some(o => o.customer_email === r.customer_email)).length;
+
+  // Map pending returns by customer email for quick lookup
+  const pendingReturnsByEmail = {};
+  bagReturns.forEach(r => {
+    if (!pendingReturnsByEmail[r.customer_email]) {
+      pendingReturnsByEmail[r.customer_email] = r;
+    }
+  });
+
+  // Count returns linked to today's route stops
+  const routeReturnCount = displayOrders.filter(o => pendingReturnsByEmail[o.customer_email]?.verification_status === 'requested').length;
 
   return (
     <div className="pb-10">
-      {/* Date filter + refresh */}
+      {/* Date filter */}
       <div className="px-4 pt-4 flex gap-2">
         <input type="date" value={date} onChange={e => { setDate(e.target.value); setRouteData(null); }}
-          placeholder="Filter by date (optional)"
           className="flex-1 bg-card border border-border text-sm px-3 py-2 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary" />
         <button onClick={loadQueue} disabled={loading}
           className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center shrink-0">
@@ -238,8 +528,8 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
         {[
           { label: 'Queued', value: queuedOrders?.length ?? '—', color: 'text-foreground' },
           { label: 'Done', value: delivered, color: 'text-green-600' },
-          { label: 'Left', value: displayOrders.length - delivered, color: 'text-primary' },
-          { label: 'Returns', value: bagReturnCount, color: 'text-amber-600' },
+          { label: 'Left', value: (queuedOrders?.length ?? 0) - delivered, color: 'text-primary' },
+          { label: 'Returns', value: routeReturnCount, color: 'text-amber-600' },
         ].map(s => (
           <div key={s.label} className="py-3 text-center">
             <p className={`text-xl font-bold font-heading ${s.color}`}>{s.value}</p>
@@ -248,7 +538,7 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
         ))}
       </div>
 
-      {/* Optimize Route CTA */}
+      {/* Optimize CTA */}
       {queuedOrders?.length > 0 && !isOptimized && (
         <div className="px-4 mt-4">
           <button onClick={optimizeRoute} disabled={optimizing}
@@ -261,26 +551,15 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
         </div>
       )}
 
-      {/* Route summary (post-optimize) */}
+      {/* Route summary */}
       {isOptimized && routeData?.total_distance_miles && (
         <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-            <p className="text-xs text-blue-700 font-medium">~{routeData.total_duration_minutes} min · {routeData.total_distance_miles} mi total</p>
+            <p className="text-xs text-blue-700 font-medium">~{routeData.total_duration_minutes} min · {routeData.total_distance_miles} mi</p>
           </div>
-          <button onClick={() => { setRouteData(null); }} className="text-[10px] text-blue-500 font-semibold underline">Reset</button>
+          <button onClick={() => setRouteData(null)} className="text-[10px] text-blue-500 font-semibold underline">Reset</button>
         </div>
-      )}
-
-      {/* Returns shortcut */}
-      {bagReturnCount > 0 && (
-        <button onClick={onSwitchToReturns} className="mx-4 mt-3 w-[calc(100%-2rem)] bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Recycle className="w-4 h-4 text-amber-600" />
-            <p className="text-xs font-semibold text-amber-700">{bagReturnCount} bag return{bagReturnCount > 1 ? 's' : ''} to verify</p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-amber-600" />
-        </button>
       )}
 
       {/* Order list */}
@@ -294,15 +573,17 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
           <div className="text-center py-16">
             <CheckCircle2 className="w-10 h-10 text-primary mx-auto mb-3" />
             <p className="text-sm font-semibold">No queued deliveries</p>
-            <p className="text-xs text-muted-foreground mt-1">All deliveries are completed or try clearing the date filter.</p>
+            <p className="text-xs text-muted-foreground mt-1">All done or try clearing the date filter.</p>
           </div>
         ) : (
           <>
             <p className="text-xs text-muted-foreground font-medium px-1">
-              {isOptimized ? `${displayOrders.length} stops · optimized order` : `${displayOrders.length} stop${displayOrders.length > 1 ? 's' : ''} · tap "Optimize Route" to sort`}
+              {isOptimized
+                ? `${displayOrders.length} stops · optimized order`
+                : `${displayOrders.length} stop${displayOrders.length > 1 ? 's' : ''} · tap "Optimize Route" to sort`}
             </p>
             {displayOrders.map((order, idx) => (
-              <div key={order.id} className={`flex gap-2 ${isOptimized ? '' : ''}`}>
+              <div key={order.id} className="flex gap-2">
                 {isOptimized && (
                   <div className="flex flex-col items-center pt-4 shrink-0">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${order.status === 'delivered' ? 'bg-green-100 text-green-600' : 'bg-primary text-primary-foreground'}`}>
@@ -315,13 +596,15 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
                   {isOptimized ? (
                     <StopCard
                       order={order}
-                      bagReturns={bagReturns}
-                      onMarkStatus={(order, status) => { setUpdatingId(order.id); updateStatusMutation.mutate({ order, status }); }}
+                      pendingReturn={pendingReturnsByEmail[order.customer_email] || null}
+                      onMarkDelivered={handleMarkDelivered}
+                      onMarkUnableToDeliver={handleMarkUnableToDeliver}
+                      onReturnVerified={(ret, data) => onBagReturnVerified(ret, data)}
+                      allCredits={allCredits}
+                      user={user}
                       isUpdating={updatingId === order.id}
-                      onSwitchToReturns={onSwitchToReturns}
                     />
                   ) : (
-                    // Queue view — simple card showing address + status
                     <div className="bg-card border border-border/50 rounded-2xl p-4 flex items-center gap-3">
                       <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center shrink-0">
                         <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
@@ -332,6 +615,11 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLOR[order.status] || 'bg-muted text-muted-foreground'}`}>
                             {STATUS_LABEL[order.status] || order.status}
                           </span>
+                          {pendingReturnsByEmail[order.customer_email] && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                              <Recycle className="w-2.5 h-2.5 inline mr-0.5" />Return
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.delivery_address}</p>
                       </div>
@@ -349,60 +637,9 @@ function RouteTab({ bagReturns, onSwitchToReturns }) {
 
 // ─── Returns Tab ────────────────────────────────────────────────────────────
 
-function ReturnCard({ ret, allCredits, onVerify }) {
-  const { user } = useAuth();
+function ReturnCard({ ret, user, onVerify }) {
   const [expanded, setExpanded] = useState(false);
-  const [smallStatus, setSmallStatus] = useState('accepted');
-  const [toteStatus, setToteStatus] = useState('accepted');
-  const [reason, setReason] = useState('dirty_stained');
-  const [notes, setNotes] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const fileRef = useRef(null);
-
   const isPending = ret.verification_status === 'requested';
-  const bagStatus = [['accepted', '✓ Accepted'], ['not_eligible', '✗ Not Eligible'], ['not_found', '? Not Found']];
-
-  const calcCredit = () => {
-    let c = 0;
-    if (ret.small_bags_requested > 0 && smallStatus === 'accepted') c += ret.small_bags_requested;
-    if (ret.tote_bags_requested > 0 && toteStatus === 'accepted') c += ret.tote_bags_requested * 2;
-    return c;
-  };
-
-  const handlePhoto = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setPhotoUrl(file_url);
-    } catch { toast.error('Photo upload failed'); }
-    setUploading(false);
-  };
-
-  const handleSubmit = async () => {
-    setSaving(true);
-    const credit = calcCredit();
-    const smallAcc = smallStatus === 'accepted' ? ret.small_bags_requested : 0;
-    const toteAcc = toteStatus === 'accepted' ? ret.tote_bags_requested : 0;
-    let vStatus = 'verified';
-    if (credit === 0) vStatus = (smallStatus === 'not_found' || toteStatus === 'not_found') ? 'not_found' : 'not_eligible';
-    else if (smallAcc < ret.small_bags_requested || toteAcc < ret.tote_bags_requested) vStatus = 'partially_verified';
-
-    await onVerify(ret, {
-      small_bag_status: smallStatus, tote_bag_status: toteStatus,
-      small_bags_accepted: smallAcc, tote_bags_accepted: toteAcc,
-      rejection_reason: (smallStatus === 'not_eligible' || toteStatus === 'not_eligible') ? reason : '',
-      driver_notes: notes, photo_url: photoUrl || '',
-      verification_status: vStatus, credit_issued: credit,
-      verified_by: user?.email, verified_at: new Date().toISOString(), credit_applied: credit > 0,
-    }, allCredits);
-
-    setSaving(false);
-    setExpanded(false);
-  };
 
   return (
     <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
@@ -431,97 +668,18 @@ function ReturnCard({ ret, allCredits, onVerify }) {
       <AnimatePresence>
         {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="p-4 border-t border-border/40 space-y-4">
+            <div className="p-4 border-t border-border/40 space-y-3">
               {!isPending ? (
-                <div className="space-y-2 text-sm text-muted-foreground">
+                <div className="space-y-1.5 text-sm text-muted-foreground">
                   <p><span className="text-foreground font-medium">Small bags:</span> {ret.small_bags_accepted || 0} of {ret.small_bags_requested || 0} accepted</p>
                   <p><span className="text-foreground font-medium">Tote bags:</span> {ret.tote_bags_accepted || 0} of {ret.tote_bags_requested || 0} accepted</p>
-                  {ret.rejection_reason && <p><span className="text-foreground font-medium">Reason:</span> {ret.rejection_reason}</p>}
+                  {ret.rejection_reason && <p><span className="text-foreground font-medium">Reason:</span> {ret.rejection_reason.replace(/_/g, ' ')}</p>}
                   {ret.driver_notes && <p><span className="text-foreground font-medium">Notes:</span> {ret.driver_notes}</p>}
                   {ret.photo_url && <img src={ret.photo_url} alt="Evidence" className="w-full max-w-xs rounded-xl border border-border mt-2" />}
                   {ret.verified_by && <p className="text-[10px]">Verified by {ret.verified_by}</p>}
                 </div>
               ) : (
-                <>
-                  {ret.small_bags_requested > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold mb-2">Small Bag ×{ret.small_bags_requested}</p>
-                      <div className="flex gap-2 flex-wrap">
-                        {bagStatus.map(([v, l]) => (
-                          <button key={v} onClick={() => setSmallStatus(v)}
-                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${smallStatus === v ? 'bg-primary text-primary-foreground border-primary' : 'border-border bg-background'}`}>
-                            {l}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {ret.tote_bags_requested > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold mb-2">Tote Bag ×{ret.tote_bags_requested}</p>
-                      <div className="flex gap-2 flex-wrap">
-                        {bagStatus.map(([v, l]) => (
-                          <button key={v} onClick={() => setToteStatus(v)}
-                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${toteStatus === v ? 'bg-primary text-primary-foreground border-primary' : 'border-border bg-background'}`}>
-                            {l}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(smallStatus === 'not_eligible' || toteStatus === 'not_eligible') && (
-                    <div>
-                      <p className="text-xs font-semibold mb-2">Reason</p>
-                      <div className="flex gap-2 flex-wrap">
-                        {REJECTION_REASONS.map(r => (
-                          <button key={r.key} onClick={() => setReason(r.key)}
-                            className={`text-[11px] px-3 py-1.5 rounded-xl border transition-colors ${reason === r.key ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'border-border bg-background'}`}>
-                            {r.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="text-xs font-semibold mb-2">Photo <span className="text-muted-foreground font-normal">(recommended)</span></p>
-                    <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
-                    {photoUrl ? (
-                      <div className="relative inline-block">
-                        <img src={photoUrl} alt="Evidence" className="w-full max-w-xs rounded-xl border border-border" />
-                        <button onClick={() => setPhotoUrl('')} className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center">
-                          <X className="w-3.5 h-3.5 text-white" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button onClick={() => fileRef.current?.click()} disabled={uploading}
-                        className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-xl text-sm text-muted-foreground w-full justify-center">
-                        {uploading ? <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <Camera className="w-4 h-4" />}
-                        {uploading ? 'Uploading...' : 'Take or Upload Photo'}
-                      </button>
-                    )}
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold mb-1.5">Notes <span className="text-muted-foreground font-normal">(optional)</span></p>
-                    <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Any notes..."
-                      className="w-full text-xs border border-border rounded-xl px-3 py-2.5 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary" />
-                  </div>
-
-                  <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Leaf className="w-4 h-4 text-primary" />
-                      <p className="text-sm font-semibold">Credit to Issue</p>
-                    </div>
-                    <p className="font-heading text-xl font-bold text-primary">${calcCredit().toFixed(2)}</p>
-                  </div>
-
-                  <button onClick={handleSubmit} disabled={saving || uploading}
-                    className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform">
-                    {saving ? 'Submitting...' : 'Confirm & Submit'}
-                  </button>
-                </>
+                <InlineBagReturn ret={ret} user={user} onVerifyComplete={onVerify} />
               )}
             </div>
           </motion.div>
@@ -531,7 +689,7 @@ function ReturnCard({ ret, allCredits, onVerify }) {
   );
 }
 
-function ReturnsTab({ returns, allCredits, isLoading, onVerify }) {
+function ReturnsTab({ returns, user, isLoading, onVerify }) {
   const [filter, setFilter] = useState('pending');
   const pending = returns.filter(r => r.verification_status === 'requested');
   const completed = returns.filter(r => r.verification_status !== 'requested');
@@ -540,7 +698,6 @@ function ReturnsTab({ returns, allCredits, isLoading, onVerify }) {
 
   return (
     <div className="pb-10">
-      {/* Stats */}
       <div className="grid grid-cols-3 divide-x divide-border border-b border-border bg-card">
         {[
           { label: 'Pending', value: pending.length, color: 'text-amber-600' },
@@ -554,7 +711,6 @@ function ReturnsTab({ returns, allCredits, isLoading, onVerify }) {
         ))}
       </div>
 
-      {/* Filter */}
       <div className="flex gap-2 px-4 mt-4 mb-3">
         {[
           { key: 'pending', label: `Pending (${pending.length})` },
@@ -576,11 +732,10 @@ function ReturnsTab({ returns, allCredits, isLoading, onVerify }) {
           <div className="text-center py-20">
             <CheckCircle2 className="w-10 h-10 text-primary mx-auto mb-3" />
             <p className="text-sm font-semibold">{filter === 'pending' ? 'All caught up.' : 'No completed returns yet.'}</p>
-            <p className="text-xs text-muted-foreground mt-1">{filter === 'pending' ? 'No pending bag returns.' : 'Verified returns will appear here.'}</p>
           </div>
         ) : (
           displayed.map(ret => (
-            <ReturnCard key={ret.id} ret={ret} allCredits={allCredits} onVerify={onVerify} />
+            <ReturnCard key={ret.id} ret={ret} user={user} onVerify={(data) => onVerify(ret, data)} />
           ))
         )}
       </div>
@@ -645,6 +800,12 @@ export default function DriverPortal() {
           subject: 'Return Not Eligible',
           body: `Your bag was not eligible for reuse this time. Bags must be clean, odor-free, and free of damage to qualify.\n\nThank you for participating.`,
         });
+      } else if (data.verification_status === 'unable_to_collect') {
+        await base44.integrations.Core.SendEmail({
+          to: ret.customer_email,
+          subject: 'Bag Return — Unable to Collect Today',
+          body: `We were unable to collect your bags during today's delivery. We'll try again on your next delivery. Thank you for your patience!`,
+        });
       } else if (data.verification_status === 'not_found') {
         await base44.integrations.Core.SendEmail({
           to: ret.customer_email,
@@ -656,7 +817,7 @@ export default function DriverPortal() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['driver-bag-returns'] });
       queryClient.invalidateQueries({ queryKey: ['driver-all-credits'] });
-      toast.success('Verification submitted');
+      toast.success('Return submitted');
     },
     onError: () => toast.error('Submission failed'),
   });
@@ -687,7 +848,6 @@ export default function DriverPortal() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <div className="bg-primary px-4 pb-4" style={{ paddingTop: 'max(2.5rem, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-2 mb-0.5">
           <Leaf className="w-5 h-5 text-primary-foreground/70" />
@@ -695,7 +855,6 @@ export default function DriverPortal() {
         </div>
         <p className="text-primary-foreground/50 text-[11px]">{user.email}</p>
 
-        {/* Tabs */}
         <div className="flex gap-2 mt-4">
           <button onClick={() => setTab('route')}
             className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-colors ${tab === 'route' ? 'bg-white text-primary' : 'bg-white/20 text-white'}`}>
@@ -715,15 +874,19 @@ export default function DriverPortal() {
         </div>
       </div>
 
-      {/* Tab content */}
       {tab === 'route' ? (
-        <RouteTab bagReturns={pendingReturns} onSwitchToReturns={() => setTab('returns')} />
+        <RouteTab
+          bagReturns={bagReturns}
+          allCredits={allCredits}
+          user={user}
+          onBagReturnVerified={(ret, data) => verifyMutation.mutate({ ret, data })}
+        />
       ) : (
         <ReturnsTab
           returns={bagReturns}
-          allCredits={allCredits}
+          user={user}
           isLoading={returnsLoading}
-          onVerify={(ret, data) => verifyMutation.mutateAsync({ ret, data })}
+          onVerify={(ret, data) => verifyMutation.mutate({ ret, data })}
         />
       )}
     </div>

@@ -11,23 +11,19 @@
     },
     "small_bags_requested": {
       "type": "number",
-      "default": 0,
-      "description": "Number of small lunch bags customer said they'd return"
+      "default": 0
     },
     "tote_bags_requested": {
       "type": "number",
-      "default": 0,
-      "description": "Number of tote bags customer said they'd return"
+      "default": 0
     },
     "small_bags_accepted": {
       "type": "number",
-      "default": 0,
-      "description": "Number of small bags verified and accepted by driver"
+      "default": 0
     },
     "tote_bags_accepted": {
       "type": "number",
-      "default": 0,
-      "description": "Number of tote bags verified and accepted by driver"
+      "default": 0
     },
     "small_bag_status": {
       "type": "string",
@@ -55,6 +51,7 @@
         "dirty_stained",
         "odor",
         "damaged",
+        "customer_not_home",
         "other",
         ""
       ],
@@ -70,34 +67,52 @@
         "verified",
         "partially_verified",
         "not_found",
-        "not_eligible"
+        "not_eligible",
+        "unable_to_collect"
       ],
       "default": "requested"
     },
     "credit_issued": {
       "type": "number",
-      "default": 0,
-      "description": "Total credit in dollars issued after verification"
+      "default": 0
     },
     "credit_applied": {
       "type": "boolean",
-      "default": false,
-      "description": "Whether the credit has been added to the customer wallet"
+      "default": false
     },
     "verified_by": {
-      "type": "string",
-      "description": "Driver/admin email who verified"
+      "type": "string"
     },
     "verified_at": {
-      "type": "string",
-      "description": "ISO timestamp of verification"
+      "type": "string"
     },
     "photo_url": {
-      "type": "string",
-      "description": "Optional photo for disputes or rejected bags"
+      "type": "string"
     },
     "driver_notes": {
       "type": "string"
+    },
+    "delivery_status": {
+      "type": "string",
+      "enum": [
+        "delivered",
+        "unable_to_deliver",
+        ""
+      ],
+      "default": "",
+      "description": "Driver's delivery outcome for the linked order stop"
+    },
+    "unable_to_deliver_reason": {
+      "type": "string",
+      "enum": [
+        "customer_not_home",
+        "wrong_address",
+        "access_issue",
+        "refused_delivery",
+        "other",
+        ""
+      ],
+      "default": ""
     }
   },
   "required": [
@@ -115,13 +130,27 @@
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "user_condition": {
+            "role": "driver"
+          }
         }
       ]
     },
     "update": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "driver"
+          }
+        }
+      ]
     },
     "delete": {
       "user_condition": {
