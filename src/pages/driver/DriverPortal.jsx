@@ -122,7 +122,10 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
       setPhotoUrl(file_url);
-    } catch { toast.error('Photo upload failed'); }
+    } catch (err) { 
+      console.error('Photo upload error:', err);
+      toast.error('Photo upload failed — submission may proceed without photo');
+    }
     setUploading(false);
   };
 
@@ -208,7 +211,7 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
       )}
 
       <div>
-        <p className="text-xs font-semibold text-amber-800 mb-1.5">Photo <span className="font-normal text-amber-600">(recommended)</span></p>
+        <p className="text-xs font-semibold text-amber-800 mb-1.5">Photo <span className="font-normal text-amber-600">(optional)</span></p>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
         {photoUrl ? (
           <div className="relative inline-block w-full">
