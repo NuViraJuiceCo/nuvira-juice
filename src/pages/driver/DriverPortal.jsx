@@ -64,6 +64,17 @@ function mapsUrl(address) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
 }
 
+const DEPOT = "619 N Main St Unit 3, O'Fallon, MO 63366";
+
+function buildFullRouteUrl(orders) {
+  const remaining = orders.filter(o => o.status !== 'delivered');
+  if (remaining.length === 0) return null;
+  const origin = encodeURIComponent(DEPOT);
+  const destination = encodeURIComponent(remaining[remaining.length - 1].delivery_address);
+  const waypoints = remaining.slice(0, -1).map(o => encodeURIComponent(o.delivery_address)).join('|');
+  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ''}&travelmode=driving`;
+}
+
 function formatDuration(seconds) {
   if (!seconds) return null;
   const m = Math.round(seconds / 60);
@@ -658,14 +669,28 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
         </div>
       )}
 
-      {/* Route summary */}
-      {isOptimized && routeData?.total_distance_miles && (
-        <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-            <p className="text-xs text-blue-700 font-medium">~{routeData.total_duration_minutes} min · {routeData.total_distance_miles} mi</p>
-          </div>
-          <button onClick={() => setRouteData(null)} className="text-[10px] text-blue-500 font-semibold underline">Reset</button>
+      {/* Route summary + Open in Maps */}
+      {isOptimized && (
+        <div className="px-4 mt-4 space-y-2">
+          {routeData?.total_distance_miles && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                <p className="text-xs text-blue-700 font-medium">~{routeData.total_duration_minutes} min · {routeData.total_distance_miles} mi</p>
+              </div>
+              <button onClick={() => setRouteData(null)} className="text-[10px] text-blue-500 font-semibold underline">Reset</button>
+            </div>
+          )}
+          {(() => {
+            const url = buildFullRouteUrl(displayOrders);
+            return url ? (
+              <a href={url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-3.5 bg-blue-600 text-white rounded-xl text-sm font-bold active:scale-[0.98] transition-transform">
+                <Navigation className="w-4 h-4" />
+                Open Full Route in Maps
+              </a>
+            ) : null;
+          })()}
         </div>
       )}
 
