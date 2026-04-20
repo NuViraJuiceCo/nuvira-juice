@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Truck, Package, Check, Clock, MapPin } from 'lucide-react';
+import { ArrowLeft, Truck, Package, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
@@ -39,7 +39,7 @@ export default function OrderTracker() {
     refetchInterval: 30000,
   });
 
-  const isOutForDelivery = ['out_for_delivery', 'arriving_soon', 'bottled_packed'].includes(order?.status)
+  const isOnRoute = ['out_for_delivery', 'arriving_soon'].includes(order?.status)
     && order?.fulfillment_type === 'delivery';
 
   const { data: etaData } = useQuery({
@@ -48,8 +48,8 @@ export default function OrderTracker() {
       const res = await base44.functions.invoke('getDeliveryEta', { order_id: orderId });
       return res.data;
     },
-    enabled: !!orderId && isOutForDelivery,
-    refetchInterval: 5 * 60 * 1000, // refresh every 5 min
+    enabled: !!orderId && !!order && isOnRoute,
+    refetchInterval: 3 * 60 * 1000, // refresh every 3 min for live accuracy
   });
 
   if (isLoading) {
@@ -82,77 +82,82 @@ export default function OrderTracker() {
         <p className="text-primary-foreground/70 text-xs font-medium uppercase tracking-wider">Order #{order.order_number}</p>
         <h1 className="font-heading text-2xl font-bold text-primary-foreground mt-0.5">Track Your Order</h1>
 
-        {/* ETA Card */}
+        {/* ETA / Date Card */}
         <div className="mt-4 bg-white/15 rounded-2xl p-4 flex items-start gap-3">
           <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
             {isDelivery ? <Truck className="w-5 h-5 text-white" /> : <Package className="w-5 h-5 text-white" />}
           </div>
           <div className="flex-1">
-            {etaData?.eta_window ? (
-              <>
-                <p className="text-primary-foreground/70 text-xs">Estimated Arrival Window</p>
-                <p className="font-heading text-xl font-bold text-white">{etaData.eta_window}</p>
-                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                  <div className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-white/60" />
-                    <p className="text-white/70 text-xs">{etaData.message}</p>
-                  </div>
-                  {etaData.stops_total > 0 && (
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-white/60" />
-                      <p className="text-white/70 text-xs">
-                        {etaData.stops_total - etaData.stops_ahead} of {etaData.stops_total} stops done
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : etaData?.message && !etaData?.eta_window ? (
-              <>
-                <p className="text-primary-foreground/70 text-xs">{isDelivery ? 'Delivery Status' : 'Pickup Date'}</p>
-                <p className="font-heading text-base font-bold text-white">
-                  {order.estimated_delivery_date
-                    ? format(new Date(order.estimated_delivery_date), 'EEEE, MMMM d')
-                    : 'Next fresh batch'}
-                </p>
-                <p className="text-white/70 text-xs mt-1">{etaData.message}</p>
-              </>
-            ) : (
-              <>
-                <p className="text-primary-foreground/70 text-xs">
-                  {isDelivery ? 'Estimated Delivery' : 'Estimated Pickup'}
-                </p>
-                <p className="font-heading text-base font-bold text-white">
-                  {order.estimated_delivery_date
-                    ? format(new Date(order.estimated_delivery_date), 'EEEE, MMMM d')
-                    : 'Next fresh batch'}
-                </p>
-              </>
+            <p className="text-primary-foreground/70 text-xs">
+              {isOnRoute && etaData?.eta_window ? 'Estimated Arrival Window' : isDelivery ? 'Estimated Delivery' : 'Estimated Pickup'}
+            </p>
+            <p className="font-heading text-xl font-bold text-white">
+              {isOnRoute && etaData?.eta_window
+                ? etaData.eta_window
+                : order.estimated_delivery_date
+                  ? format(new Date(order.estimated_delivery_date), 'EEEE, MMMM d')
+                  : 'Next fresh batch'}
+            </p>
+            {isOnRoute && etaData?.message && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse shrink-0" />
+                <p className="text-white/80 text-xs font-medium">{etaData.message}</p>
+              </div>
+            )}
+            {isOnRoute && etaData?.stops_total > 0 && (
+              <p className="text-white/60 text-xs mt-0.5">
+                {etaData.stops_delivered} of {etaData.stops_total} stops completed
+              </p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Live Route Progress Banner */}
-      {etaData?.stops_total > 0 && (
-        <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-            <p className="text-xs font-semibold text-blue-700">Driver is on the route</p>
+      {/* Live Delivery Progress Card */}
+      {isOnRoute && etaData?.on_route && (
+        <div className="mx-4 mt-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0" />
+            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">Driver is on the way</p>
           </div>
-          <div className="flex gap-1 mb-2">
-            {Array.from({ length: etaData.stops_total }).map((_, i) => {
-              const completedCount = etaData.stops_total - etaData.stops_ahead - (etaData.stops_ahead === 0 ? 1 : 0);
-              const isDone = i < completedCount;
-              const isCurrent = i === completedCount;
-              return (
-                <div key={i} className={`h-2 flex-1 rounded-full transition-colors ${
-                  isDone ? 'bg-blue-500' : isCurrent ? 'bg-blue-300 animate-pulse' : 'bg-blue-100'
-                }`} />
-              );
-            })}
+
+          {/* Progress bar */}
+          {etaData.stops_total > 1 && (
+            <div className="mb-3">
+              <div className="flex gap-1">
+                {Array.from({ length: etaData.stops_total }).map((_, i) => {
+                  const isDone = i < etaData.stops_delivered;
+                  const isYours = i === etaData.stops_total - etaData.stops_remaining + etaData.stops_ahead;
+                  return (
+                    <div key={i} className={`h-2 flex-1 rounded-full transition-all ${
+                      isDone ? 'bg-emerald-500'
+                      : isYours ? 'bg-emerald-300 animate-pulse'
+                      : 'bg-emerald-100'
+                    }`} />
+                  );
+                })}
+              </div>
+              <div className="flex justify-between mt-1">
+                <p className="text-[10px] text-emerald-600">Start</p>
+                <p className="text-[10px] text-emerald-600">Your stop</p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-white rounded-xl p-2.5 text-center">
+              <p className="text-lg font-bold font-heading text-emerald-700">{etaData.stops_ahead ?? 0}</p>
+              <p className="text-[10px] text-muted-foreground">Stops ahead</p>
+            </div>
+            <div className="bg-white rounded-xl p-2.5 text-center">
+              <p className="text-lg font-bold font-heading text-emerald-700">{etaData.stops_delivered ?? 0}</p>
+              <p className="text-[10px] text-muted-foreground">Delivered so far</p>
+            </div>
           </div>
-          <p className="text-xs text-blue-600">{etaData.message}</p>
+
+          <p className="text-[10px] text-emerald-600/70 mt-2.5 text-center">
+            ETA updates automatically · Driver location is private
+          </p>
         </div>
       )}
 

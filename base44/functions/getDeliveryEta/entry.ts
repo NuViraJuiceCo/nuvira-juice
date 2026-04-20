@@ -1,11 +1,10 @@
-// Returns estimated delivery time window for a specific order
-// Based on the optimized route, completed stops, and cumulative leg durations
-// Public endpoint — no driver auth required, but order_id must match customer
+// Returns a live ETA window for a customer's delivery
+// Uses the current state of the route (delivered stops as real-time anchors)
+// to calculate how far the driver is from the customer's stop RIGHT NOW.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const ORIGIN = "619 N Main St Unit 3, O'Fallon, MO 63366";
-const ROUTE_START_HOUR = 9; // Driver typically starts at 9am local time
 
 Deno.serve(async (req) => {
   try {
@@ -18,8 +17,6 @@ Deno.serve(async (req) => {
     }
 
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
-
-    // Fetch the specific order (service role so RLS doesn't block)
     const orders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
     const targetOrder = orders.find(o => o.id === order_id);
 
@@ -27,51 +24,68 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    // Only meaningful for delivery orders that are out for delivery or arriving
-    const activeStatuses = ['bottled_packed', 'out_for_delivery', 'arriving_soon'];
-    if (!activeStatuses.includes(targetOrder.status) || targetOrder.fulfillment_type !== 'delivery') {
-      return Response.json({ eta: null, message: null });
+    // Only show ETA when driver is actively delivering
+    const ON_ROUTE_STATUSES = ['out_for_delivery', 'arriving_soon'];
+    const isOnRoute = ON_ROUTE_STATUSES.includes(targetOrder.status) && targetOrder.fulfillment_type === 'delivery';
+
+    if (!isOnRoute) {
+      return Response.json({ eta: null, on_route: false });
     }
 
-    // Get today's delivery date
+    // Get today's date
     const today = new Date().toISOString().slice(0, 10);
     const deliveryDate = targetOrder.estimated_delivery_date || targetOrder.assigned_delivery_date || today;
 
-    // Fetch all delivery orders for the same delivery date
-    const QUEUED_STATUSES = ['bottled_packed', 'out_for_delivery', 'arriving_soon', 'delivered'];
-    let routeOrders = orders.filter(o => {
+    // Build the full route — all stops that are part of today's run (active + delivered)
+    const ROUTE_STATUSES = ['out_for_delivery', 'arriving_soon', 'delivered'];
+    const routeOrders = orders.filter(o => {
       const isDelivery = o.fulfillment_type === 'delivery';
-      const isRouteStatus = QUEUED_STATUSES.includes(o.status);
-      const matchesDate = o.estimated_delivery_date === deliveryDate || o.assigned_delivery_date === deliveryDate
+      const isRouteStatus = ROUTE_STATUSES.includes(o.status);
+      const matchesDate = o.estimated_delivery_date === deliveryDate
+        || o.assigned_delivery_date === deliveryDate
         || (!o.estimated_delivery_date && !o.assigned_delivery_date);
       return isDelivery && isRouteStatus && o.delivery_address && matchesDate;
     });
 
-    if (routeOrders.length === 0) {
-      return Response.json({ eta: null, message: 'Your delivery is on its way today!' });
+    if (routeOrders.length === 0 || !routeOrders.find(o => o.id === order_id)) {
+      return Response.json({ eta: null, on_route: true, message: 'Your delivery is on its way today!' });
     }
 
-    // Check if target order is in this route
-    const targetInRoute = routeOrders.find(o => o.id === order_id);
-    if (!targetInRoute) {
-      return Response.json({ eta: null, message: 'Your delivery is scheduled for today.' });
-    }
-
-    // If only 1 stop or no API key, return a simple window
-    if (!apiKey || routeOrders.length === 1) {
+    // Single stop — driver is coming directly
+    if (routeOrders.length === 1 || !apiKey) {
+      const now = new Date();
+      const windowStart = new Date(now.getTime() + 10 * 60 * 1000);
+      const windowEnd = new Date(now.getTime() + 40 * 60 * 1000);
+      const fmt = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
       return Response.json({
-        eta: null,
-        message: 'Your order is out for delivery today and will arrive soon!',
+        on_route: true,
+        eta_window: `${fmt(windowStart)} – ${fmt(windowEnd)}`,
         stops_ahead: 0,
+        stops_remaining: 0,
         stops_total: 1,
+        message: 'Your delivery is next!',
       });
     }
 
-    // Call Routes API to get optimized order + cumulative durations
+    // Call Routes API — use ONLY the remaining stops (not yet delivered) to get
+    // accurate drive-time from the driver's current position (approximated as last delivered stop)
+    const deliveredStops = routeOrders.filter(o => o.status === 'delivered');
+    const remainingStops = routeOrders.filter(o => o.status !== 'delivered');
+
+    // Origin for remaining route: if some stops delivered, use last delivered address as current driver position
+    // Otherwise use depot
+    let routeOrigin = ORIGIN;
+    if (deliveredStops.length > 0) {
+      // Sort delivered by updated_date desc to find most recently delivered
+      const sorted = [...deliveredStops].sort((a, b) => new Date(b.updated_date) - new Date(a.updated_date));
+      routeOrigin = sorted[0].delivery_address;
+    }
+
+    // Request route from driver's current position through remaining stops
     const routePayload = {
-      origin: { address: ORIGIN },
+      origin: { address: routeOrigin },
       destination: { address: ORIGIN },
-      intermediates: routeOrders.map(o => ({ address: o.delivery_address })),
+      intermediates: remainingStops.map(o => ({ address: o.delivery_address })),
       travelMode: 'DRIVE',
       optimizeWaypointOrder: true,
       routingPreference: 'TRAFFIC_AWARE',
@@ -91,75 +105,60 @@ Deno.serve(async (req) => {
 
     if (!routeData.routes || routeData.routes.length === 0) {
       console.error('Routes API error:', JSON.stringify(routeData));
-      return Response.json({ eta: null, message: 'Your delivery is on its way today!' });
+      return Response.json({ on_route: true, eta: null, message: 'Your delivery is on its way!' });
     }
 
     const route = routeData.routes[0];
-    const optimizedIndexes = route.optimizedIntermediateWaypointIndex || routeOrders.map((_, i) => i);
+    const optimizedIndexes = route.optimizedIntermediateWaypointIndex || remainingStops.map((_, i) => i);
     const legs = route.legs || [];
 
-    // Build ordered stop list with cumulative durations
-    const optimizedStops = optimizedIndexes.map((originalIdx, stopIdx) => {
-      const order = routeOrders[originalIdx];
-      // legs[0] = origin → stop 0, legs[1] = stop 0 → stop 1, etc.
+    // Build ordered remaining stops with cumulative drive times from NOW
+    let cumulative = 0;
+    const orderedRemaining = optimizedIndexes.map((originalIdx, stopIdx) => {
+      const order = remainingStops[originalIdx];
+      // leg[0] = origin→first stop, leg[1] = first→second, etc.
       const leg = legs[stopIdx] || null;
       const legSeconds = leg ? parseInt(leg.duration?.replace('s', '') || '0') : 0;
-      return { order, stopIdx, legSeconds };
+      cumulative += legSeconds;
+      return { order, stopIdx, cumulativeSeconds: cumulative, legSeconds };
     });
 
-    // Calculate cumulative seconds from route start to each stop
-    let cumulative = 0;
-    const stopsWithTime = optimizedStops.map(s => {
-      cumulative += s.legSeconds;
-      return { ...s, cumulativeSeconds: cumulative };
-    });
+    const targetStop = orderedRemaining.find(s => s.order.id === order_id);
 
-    // Find our target order's position
-    const targetStop = stopsWithTime.find(s => s.order.id === order_id);
     if (!targetStop) {
-      return Response.json({ eta: null, message: 'Your delivery is scheduled for today.' });
+      return Response.json({ on_route: true, eta: null, message: 'Your delivery is on its way!' });
     }
 
-    // Count how many stops before this one are NOT yet delivered
-    const stopsAhead = stopsWithTime.filter(s => s.stopIdx < targetStop.stopIdx && s.order.status !== 'delivered').length;
-    const totalActiveStops = stopsWithTime.filter(s => s.order.status !== 'delivered').length;
+    const stopsAhead = orderedRemaining.filter(s => s.stopIdx < targetStop.stopIdx).length;
+    const stopsRemaining = orderedRemaining.length;
 
-    // Estimate route start time: if any stop is already "out_for_delivery" or "arriving_soon" or "delivered",
-    // infer start was recent. Otherwise assume ROUTE_START_HOUR.
+    // Add a realistic dwell time per stop (2.5 min avg for handoff)
+    const DWELL_PER_STOP_SECONDS = 150;
+    const totalSecondsToArrival = targetStop.cumulativeSeconds + (stopsAhead * DWELL_PER_STOP_SECONDS);
+
     const now = new Date();
-    let routeStartTime;
-    const deliveredStops = stopsWithTime.filter(s => s.order.status === 'delivered');
-    if (deliveredStops.length > 0) {
-      // Use the last delivered stop's verified_at or updated_date to back-calculate start
-      const lastDelivered = deliveredStops[deliveredStops.length - 1];
-      const lastDeliveredTime = new Date(lastDelivered.order.updated_date || now);
-      routeStartTime = new Date(lastDeliveredTime.getTime() - lastDelivered.cumulativeSeconds * 1000);
-    } else {
-      // No deliveries done yet — assume driver started at ROUTE_START_HOUR today
-      routeStartTime = new Date(now);
-      routeStartTime.setHours(ROUTE_START_HOUR, 0, 0, 0);
-      // If current time is already past that, use now as start
-      if (routeStartTime < now) routeStartTime = now;
-    }
+    const estimatedArrival = new Date(now.getTime() + totalSecondsToArrival * 1000);
 
-    // Estimated arrival = route start + cumulative seconds to this stop
-    const estimatedArrival = new Date(routeStartTime.getTime() + targetStop.cumulativeSeconds * 1000);
-
-    // Build a ±30 min window
-    const windowStart = new Date(estimatedArrival.getTime() - 15 * 60 * 1000);
-    const windowEnd = new Date(estimatedArrival.getTime() + 15 * 60 * 1000);
+    // ±20 min window
+    const windowStart = new Date(estimatedArrival.getTime() - 20 * 60 * 1000);
+    const windowEnd = new Date(estimatedArrival.getTime() + 20 * 60 * 1000);
 
     const fmt = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
 
+    const message = stopsAhead === 0
+      ? 'Your delivery is next!'
+      : `${stopsAhead} stop${stopsAhead > 1 ? 's' : ''} ahead of yours`;
+
     return Response.json({
+      on_route: true,
+      eta_window: `${fmt(windowStart)} – ${fmt(windowEnd)}`,
       eta_start: windowStart.toISOString(),
       eta_end: windowEnd.toISOString(),
-      eta_window: `${fmt(windowStart)} – ${fmt(windowEnd)}`,
       stops_ahead: stopsAhead,
-      stops_total: totalActiveStops,
-      message: stopsAhead === 0
-        ? 'Your delivery is next!'
-        : `${stopsAhead} stop${stopsAhead > 1 ? 's' : ''} ahead of yours`,
+      stops_remaining: stopsRemaining,
+      stops_total: routeOrders.length,
+      stops_delivered: deliveredStops.length,
+      message,
     });
 
   } catch (error) {
