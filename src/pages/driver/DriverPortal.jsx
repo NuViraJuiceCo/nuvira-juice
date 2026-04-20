@@ -618,7 +618,14 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
     const newHistory = [...(order.status_history || []), { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label }];
     try {
       await base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
-      loadQueue();
+      // Update route display in-place without re-optimizing
+      if (routeData?.optimized_orders) {
+        const updated = routeData.optimized_orders.map(o => 
+          o.id === order.id ? { ...o, status: nextStage.key, status_history: newHistory } : o
+        );
+        setRouteData({ ...routeData, optimized_orders: updated });
+      }
+      toast.success(`Marked ${nextStage.label}`);
     } catch {
       toast.error('Update failed');
     } finally {
