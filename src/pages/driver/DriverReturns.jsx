@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Leaf, ChevronDown, ChevronRight, Camera, CheckCircle2, XCircle, X, Package } from 'lucide-react';
+import { Leaf, ChevronDown, ChevronRight, Camera, CheckCircle2, XCircle, X, Package, Route } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -357,9 +358,17 @@ export default function DriverReturns() {
     <div className="min-h-screen bg-background pb-10">
       {/* Header */}
       <div className="bg-primary px-4 pb-6" style={{ paddingTop: 'max(2.5rem, env(safe-area-inset-top))' }}>
-        <div className="flex items-center gap-2 mb-1">
-          <Leaf className="w-5 h-5 text-primary-foreground/70" />
-          <h1 className="font-heading text-2xl font-bold text-primary-foreground">Driver Portal</h1>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <Leaf className="w-5 h-5 text-primary-foreground/70" />
+            <h1 className="font-heading text-2xl font-bold text-primary-foreground">Driver Portal</h1>
+          </div>
+          <Link to="/driver/route">
+            <div className="flex items-center gap-1.5 bg-white/20 px-3 py-1.5 rounded-xl">
+              <Route className="w-3.5 h-3.5 text-white" />
+              <span className="text-white text-xs font-semibold">Route</span>
+            </div>
+          </Link>
         </div>
         <p className="text-primary-foreground/60 text-xs">Return + Reward · Bag Verification</p>
         <p className="text-primary-foreground/50 text-[11px] mt-1">{user.email}</p>
