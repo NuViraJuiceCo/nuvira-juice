@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -7,7 +8,7 @@ import { format } from 'date-fns';
 import {
   Leaf, MapPin, Navigation, CheckCircle2, ChevronDown, ChevronRight,
   RefreshCw, Clock, Route, XCircle, Recycle, Package, Camera, X,
-  AlertTriangle, Truck, RotateCcw
+  AlertTriangle, Truck, RotateCcw, ArrowLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -946,6 +947,7 @@ function ReturnsTab({ returns, user, isLoading, onVerify }) {
 
 export default function DriverPortal() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('route');
 
@@ -1049,6 +1051,11 @@ export default function DriverPortal() {
     <div className="min-h-screen bg-background">
       <div className="bg-primary px-4 pb-4" style={{ paddingTop: 'max(2.5rem, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-2 mb-0.5">
+          {user?.role === 'admin' && (
+            <button onClick={() => navigate('/admin/orders')} className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors">
+              <ArrowLeft className="w-4 h-4 text-white" />
+            </button>
+          )}
           <Leaf className="w-5 h-5 text-primary-foreground/70" />
           <h1 className="font-heading text-2xl font-bold text-primary-foreground">Driver Portal</h1>
         </div>
