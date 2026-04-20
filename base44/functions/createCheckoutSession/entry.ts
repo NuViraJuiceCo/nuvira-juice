@@ -23,11 +23,36 @@ Deno.serve(async (req) => {
       fulfillment_type, delivery_address, contact_phone, estimated_delivery_date,
       customer_email, points_discount, points_used,
       active_reward, reward_discount, credits_discount,
-      // Per-product pre-order flag (future use)
       force_preorder,
     } = await req.json();
 
     const preorder = force_preorder || isPreorderWindow();
+
+    // --- Subscription perks: look up active subscription for this customer ---
+    let subFreeDelivery = false;
+    let subDiscountPct = 0;
+    let activeSub = null;
+    if (customer_email) {
+      const subs = await base44.asServiceRole.entities.Subscription.filter({ customer_email, status: 'active' });
+      if (subs.length > 0) {
+        activeSub = subs[0];
+        const allPlans = await base44.asServiceRole.entities.SubscriptionPlan.list();
+        const plan = allPlans.find(p => p.id === activeSub.plan_id);
+        if (plan) {
+          // Monthly Ritual (8%) and VIP Wellness (15%) get free delivery + discount
+          if (plan.discount_percent > 0) {
+            subDiscountPct = plan.discount_percent;
+            subFreeDelivery = true; // any plan with a discount also gets free delivery
+          }
+          console.log(`Subscription perks for ${customer_email}: plan=${plan.name}, freeDelivery=${subFreeDelivery}, discount=${subDiscountPct}%`);
+        }
+      }
+    }
+
+    // Apply subscription perks on top of what frontend sent
+    const effectiveDeliveryFee = subFreeDelivery ? 0 : (delivery_fee || 0);
+    const subDiscountAmt = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
+    const effectiveTotal = Math.max(0, total - (delivery_fee - effectiveDeliveryFee) - subDiscountAmt);
 
     // Create order in DB first
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
@@ -42,8 +67,8 @@ Deno.serve(async (req) => {
         image_url: i.image_url,
       })),
       subtotal,
-      delivery_fee,
-      total,
+      delivery_fee: effectiveDeliveryFee,
+      total: effectiveTotal,
       fulfillment_type: fulfillment_type || 'delivery',
       delivery_address: delivery_address || '',
       contact_phone: contact_phone || '',
@@ -83,29 +108,31 @@ Deno.serve(async (req) => {
         quantity: item.quantity,
       }));
 
-    if (delivery_fee > 0) {
+    if (effectiveDeliveryFee > 0) {
       lineItems.push({
         price_data: {
           currency: 'usd',
           product_data: { name: 'Delivery Fee' },
-          unit_amount: Math.round(delivery_fee * 100),
+          unit_amount: Math.round(effectiveDeliveryFee * 100),
         },
         quantity: 1,
       });
     }
 
-    // Build discounts (points + credits + tier reward)
+    // Build discounts (points + credits + tier reward + subscription discount)
     let discounts = [];
     const totalDiscountCents =
       Math.round((points_discount || 0) * 100) +
       Math.round((reward_discount || 0) * 100) +
-      Math.round((credits_discount || 0) * 100);
+      Math.round((credits_discount || 0) * 100) +
+      Math.round(subDiscountAmt * 100);
 
     if (totalDiscountCents > 0) {
       const discountParts = [];
       if (points_used) discountParts.push(`${points_used} Loyalty Points`);
       if (active_reward?.title) discountParts.push(active_reward.title);
       if (credits_discount > 0) discountParts.push('NuVira Credits');
+      if (subDiscountAmt > 0) discountParts.push(`Subscriber ${subDiscountPct}% Discount`);
 
       const coupon = await stripe.coupons.create({
         amount_off: totalDiscountCents,
@@ -162,7 +189,7 @@ Deno.serve(async (req) => {
       // PRE-ORDER: Use PaymentIntent with manual capture
       // Create a PaymentIntent that authorizes but does NOT charge immediately
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(total * 100),
+        amount: Math.round(effectiveTotal * 100),
         currency: 'usd',
         capture_method: 'manual', // authorize only — captured on Apr 30
         receipt_email: customer_email || undefined,
@@ -234,7 +261,16 @@ Deno.serve(async (req) => {
       stripe_checkout_session_id: session.id,
     });
 
-    return Response.json({ url: session.url, order_id: order.id, is_preorder: preorder });
+    return Response.json({
+      url: session.url,
+      order_id: order.id,
+      is_preorder: preorder,
+      sub_free_delivery: subFreeDelivery,
+      sub_discount_pct: subDiscountPct,
+      sub_discount_amt: subDiscountAmt,
+      effective_delivery_fee: effectiveDeliveryFee,
+      effective_total: effectiveTotal,
+    });
   } catch (error) {
     console.error('Stripe checkout error:', error);
     return Response.json({ error: error.message }, { status: 500 });

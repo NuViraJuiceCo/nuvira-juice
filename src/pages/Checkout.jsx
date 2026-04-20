@@ -87,6 +87,23 @@ export default function Checkout() {
     queryFn: () => base44.entities.UserPoints.filter({ customer_email: user?.email }),
     enabled: !!user?.email,
   });
+
+  // Fetch active subscription + plan to apply perks
+  const { data: activeSubscription } = useQuery({
+    queryKey: ['active-subscription', user?.email],
+    queryFn: async () => {
+      const subs = await base44.entities.Subscription.filter({ customer_email: user.email, status: 'active' });
+      if (!subs.length) return null;
+      const plans = await base44.entities.SubscriptionPlan.list();
+      const plan = plans.find(p => p.id === subs[0].plan_id);
+      return { ...subs[0], plan };
+    },
+    enabled: !!user?.email,
+  });
+
+  const subDiscountPct = activeSubscription?.plan?.discount_percent || 0;
+  const subFreeDelivery = subDiscountPct > 0; // any discounted plan also gets free delivery
+
   const availablePoints = userPointsData?.[0]?.total_points || 0;
   // 100 pts = $1
   const maxDiscount = Math.floor(availablePoints / 100);
@@ -99,10 +116,11 @@ export default function Checkout() {
   const rewardFreeDelivery = activeReward?.reward_type === 'free_delivery';
   const rewardDiscountPct = activeReward?.reward_type === 'discount' ? 10 : 0;
   const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
-  const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery) ? 5.00 : 0;
+  const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery && !subFreeDelivery) ? 5.00 : 0;
+  const subDiscountAmt = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
   const availableCredits = userCreditsData?.balance || 0;
   const creditsDiscount = useCredits ? Math.min(availableCredits, subtotal) : 0;
-  const total = Math.max(0, subtotal - pointsDiscount - rewardDiscountAmt - creditsDiscount + deliveryFee);
+  const total = Math.max(0, subtotal - pointsDiscount - rewardDiscountAmt - subDiscountAmt - creditsDiscount + deliveryFee);
 
   // Last order bottle count for smart bag suggestion
   const lastOrderItems = lastOrderData[0]?.items || [];
@@ -250,6 +268,24 @@ export default function Checkout() {
         </div>
       </div>
 
+      {/* Subscriber Perks Banner */}
+      {activeSubscription?.plan && (
+        <div className="mx-4 mb-5 bg-primary/10 border border-primary/30 rounded-xl p-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center shrink-0">
+              <span className="text-sm">⭐</span>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-primary">{activeSubscription.plan.name} Perks Applied!</p>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                {subFreeDelivery && <p className="text-[11px] text-primary/80">✓ Free delivery</p>}
+                {subDiscountPct > 0 && <p className="text-[11px] text-primary/80">✓ {subDiscountPct}% off your order (-${subDiscountAmt.toFixed(2)})</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* NuVira Credits */}
       {user?.email && availableCredits > 0 && (
         <div className="mx-4 mb-5 bg-primary/5 border border-primary/20 rounded-xl p-4">
@@ -366,6 +402,11 @@ export default function Checkout() {
           {activeReward && rewardFreeDelivery && (
             <div className="flex justify-between text-xs text-primary mb-1 font-medium">
               <span>{activeReward.title}</span><span>Free!</span>
+            </div>
+          )}
+          {subDiscountAmt > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>Subscriber {subDiscountPct}% Discount</span><span>-${subDiscountAmt.toFixed(2)}</span>
             </div>
           )}
           {creditsDiscount > 0 && (

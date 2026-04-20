@@ -28,6 +28,22 @@ export default function Cart() {
     enabled: !!user?.email,
   });
 
+  const { data: activeSubscription } = useQuery({
+    queryKey: ['active-subscription-cart', user?.email],
+    queryFn: async () => {
+      const subs = await base44.entities.Subscription.filter({ customer_email: user.email, status: 'active' });
+      if (!subs.length) return null;
+      const plans = await base44.entities.SubscriptionPlan.list();
+      const plan = plans.find(p => p.id === subs[0].plan_id);
+      return { ...subs[0], plan };
+    },
+    enabled: !!user?.email,
+  });
+
+  const subDiscountPct = activeSubscription?.plan?.discount_percent || 0;
+  const subFreeDelivery = subDiscountPct > 0;
+  const effectiveDeliveryFee = subFreeDelivery ? 0 : 5.00;
+
   const birthday = userProfile?.birthday || user?.birthday;
   const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
 
@@ -56,7 +72,6 @@ export default function Cart() {
   const scheduleRules = schedules[0]?.rules || [];
   const deliveryText = getDeliveryDisplayText(scheduleRules);
   const productionInfo = getProductionInfo(scheduleRules);
-  const deliveryFee = 5.00;
   // Shots are 2oz so require 6 minimum; juices/bundles require 3 minimum.
   // Normalize: each shot counts as 0.5 toward the minimum (so 6 shots = 3 units).
   const juiceCount = items.reduce((sum, item) => {
@@ -88,6 +103,22 @@ export default function Cart() {
         <h1 className="font-heading text-xl font-bold">Your Cart</h1>
         <p className="text-xs text-muted-foreground">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
       </div>
+
+      {/* Subscriber Perks Banner */}
+      {activeSubscription?.plan && (
+        <div className="mx-4 mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3">
+          <div className="flex items-center gap-2">
+            <span className="text-base">⭐</span>
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-primary">{activeSubscription.plan.name} — Subscriber Perks Active</p>
+              <div className="flex flex-wrap gap-x-3">
+                {subFreeDelivery && <p className="text-[10px] text-primary/80">✓ Free delivery</p>}
+                {subDiscountPct > 0 && <p className="text-[10px] text-primary/80">✓ {subDiscountPct}% off applied at checkout</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Active Tier Reward Banner */}
       {activeReward && (
@@ -226,11 +257,11 @@ export default function Cart() {
           </div>
           <div className="flex justify-between text-xs text-muted-foreground mb-2">
             <span>Delivery</span>
-            <span>${deliveryFee.toFixed(2)}</span>
+            <span>{effectiveDeliveryFee === 0 ? <span className="text-primary font-semibold">Free</span> : `$${effectiveDeliveryFee.toFixed(2)}`}</span>
           </div>
           <div className="flex justify-between text-sm font-semibold mb-3">
             <span>Total</span>
-            <span>${(subtotal + deliveryFee).toFixed(2)}</span>
+            <span>${(subtotal + effectiveDeliveryFee).toFixed(2)}</span>
           </div>
           {isPreLaunch() && !isPreorderMode() && (
             <div className="mb-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-center">
