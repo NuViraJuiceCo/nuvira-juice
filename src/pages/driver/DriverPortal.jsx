@@ -222,20 +222,49 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
 
 // ─── Stop Card ──────────────────────────────────────────────────────────────
 
+const DROP_LOCATIONS = [
+  'Front Door', 'Back Door', 'Garage', 'Side Door',
+  'With Neighbor', 'Mailroom / Lobby', 'Left on Porch', 'Other',
+];
+
 function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver, onReturnVerified, allCredits, user, isUpdating }) {
   const [expanded, setExpanded] = useState(false);
+  const [showDeliverForm, setShowDeliverForm] = useState(false);
   const [showUnableForm, setShowUnableForm] = useState(false);
   const [unableReason, setUnableReason] = useState('customer_not_home');
   const [unableNotes, setUnableNotes] = useState('');
+  const [proofPhotoUrl, setProofPhotoUrl] = useState('');
+  const [dropLocation, setDropLocation] = useState('Front Door');
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const proofFileRef = useRef(null);
 
   const isDelivered = order.status === 'delivered';
   const currentStageIndex = DELIVERY_STAGES.findIndex(s => s.key === order.status);
   const nextStage = DELIVERY_STAGES[currentStageIndex + 1];
-  const returnVerified = pendingReturn && pendingReturn.verification_status !== 'requested';
 
   const handleUnableSubmit = () => {
     onMarkUnableToDeliver(order, unableReason, unableNotes);
     setShowUnableForm(false);
+  };
+
+  const handleProofPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingProof(true);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setProofPhotoUrl(file_url);
+    } catch { toast.error('Photo upload failed'); }
+    setUploadingProof(false);
+  };
+
+  const handleConfirmDelivery = () => {
+    if (!proofPhotoUrl) {
+      toast.error('Please take a proof of delivery photo');
+      return;
+    }
+    onMarkDelivered(order, proofPhotoUrl, dropLocation);
+    setShowDeliverForm(false);
   };
 
   return (
@@ -326,30 +355,97 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
               {/* Delivery actions */}
               {!isDelivered && (
                 <>
-                  {!showUnableForm ? (
+                  {/* Progressive stage button */}
+                  {nextStage && nextStage.key !== 'delivered' && !showDeliverForm && !showUnableForm && (
+                    <button onClick={() => {
+                      const newHistory = [...(order.status_history || []), { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label }];
+                      base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
+                    }}
+                      className="w-full py-2.5 border border-primary text-primary rounded-xl text-xs font-semibold active:scale-95 transition-transform">
+                      → Mark {nextStage.label}
+                    </button>
+                  )}
+
+                  {!showDeliverForm && !showUnableForm && (
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => onMarkDelivered(order)}
-                        disabled={isUpdating}
+                      <button onClick={() => setShowDeliverForm(true)} disabled={isUpdating}
                         className="py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
                         <Truck className="w-4 h-4" />
-                        {isUpdating ? 'Updating...' : 'Mark Delivered'}
+                        Delivered
                       </button>
-                      <button
-                        onClick={() => setShowUnableForm(true)}
-                        disabled={isUpdating}
+                      <button onClick={() => setShowUnableForm(true)} disabled={isUpdating}
                         className="py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
                         <AlertTriangle className="w-4 h-4" />
                         Unable to Deliver
                       </button>
                     </div>
-                  ) : (
+                  )}
+
+                  {/* ── Proof of Delivery Form ── */}
+                  {showDeliverForm && (
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-green-800">Proof of Delivery</p>
+                        <button onClick={() => setShowDeliverForm(false)} className="text-green-400">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Photo capture */}
+                      <div>
+                        <p className="text-xs font-semibold text-green-800 mb-2">
+                          Delivery Photo <span className="text-red-500">*</span>
+                          <span className="font-normal text-green-600 ml-1">— required</span>
+                        </p>
+                        <input ref={proofFileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleProofPhoto} />
+                        {proofPhotoUrl ? (
+                          <div className="relative">
+                            <img src={proofPhotoUrl} alt="Proof of delivery" className="w-full rounded-xl border-2 border-green-300 object-cover max-h-48" />
+                            <button onClick={() => setProofPhotoUrl('')} className="absolute top-2 right-2 w-7 h-7 bg-black/60 rounded-full flex items-center justify-center">
+                              <X className="w-3.5 h-3.5 text-white" />
+                            </button>
+                            <div className="absolute bottom-2 left-2 bg-green-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Photo captured
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => proofFileRef.current?.click()} disabled={uploadingProof}
+                            className="flex flex-col items-center gap-2 w-full py-6 border-2 border-dashed border-green-300 rounded-xl bg-white text-green-700 active:scale-95 transition-transform">
+                            {uploadingProof
+                              ? <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                              : <Camera className="w-7 h-7" />}
+                            <p className="text-sm font-semibold">{uploadingProof ? 'Uploading...' : 'Take Delivery Photo'}</p>
+                            <p className="text-[10px] text-green-500">Show package at the door / drop location</p>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Drop location */}
+                      <div>
+                        <p className="text-xs font-semibold text-green-800 mb-2">Left At</p>
+                        <div className="flex flex-wrap gap-2">
+                          {DROP_LOCATIONS.map(loc => (
+                            <button key={loc} onClick={() => setDropLocation(loc)}
+                              className={`text-[11px] px-3 py-1.5 rounded-xl border transition-colors font-medium ${dropLocation === loc ? 'bg-green-600 text-white border-green-600' : 'border-green-200 bg-white text-green-800'}`}>
+                              {loc}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button onClick={handleConfirmDelivery} disabled={isUpdating || uploadingProof || !proofPhotoUrl}
+                        className="w-full py-3.5 bg-green-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
+                        {isUpdating ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Confirming...</> : <><CheckCircle2 className="w-4 h-4" /> Confirm Delivery</>}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ── Unable to Deliver Form ── */}
+                  {showUnableForm && (
                     <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-bold text-red-700">Unable to Deliver</p>
-                        <button onClick={() => setShowUnableForm(false)} className="text-red-400">
-                          <X className="w-4 h-4" />
-                        </button>
+                        <button onClick={() => setShowUnableForm(false)} className="text-red-400"><X className="w-4 h-4" /></button>
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-red-700 mb-2">Reason</p>
@@ -362,40 +458,35 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
                           ))}
                         </div>
                       </div>
-                      <textarea
-                        value={unableNotes}
-                        onChange={e => setUnableNotes(e.target.value)}
-                        rows={2}
+                      <textarea value={unableNotes} onChange={e => setUnableNotes(e.target.value)} rows={2}
                         placeholder="Additional notes..."
-                        className="w-full text-xs border border-red-200 rounded-xl px-3 py-2.5 bg-white resize-none focus:outline-none focus:ring-1 focus:ring-red-300 text-red-900 placeholder:text-red-300"
-                      />
-                      <button
-                        onClick={handleUnableSubmit}
-                        disabled={isUpdating}
+                        className="w-full text-xs border border-red-200 rounded-xl px-3 py-2.5 bg-white resize-none focus:outline-none focus:ring-1 focus:ring-red-300 text-red-900 placeholder:text-red-300" />
+                      <button onClick={handleUnableSubmit} disabled={isUpdating}
                         className="w-full py-3 bg-red-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform">
                         {isUpdating ? 'Submitting...' : 'Submit & Move On'}
                       </button>
                     </div>
                   )}
-
-                  {/* Progressive stage buttons (out for delivery → arriving soon) */}
-                  {nextStage && nextStage.key !== 'delivered' && (
-                    <button onClick={() => {
-                      const newHistory = [
-                        ...(order.status_history || []),
-                        { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label },
-                      ];
-                      base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
-                    }}
-                      className="w-full py-2.5 border border-primary text-primary rounded-xl text-xs font-semibold active:scale-95 transition-transform">
-                      → Mark {nextStage.label}
-                    </button>
-                  )}
                 </>
               )}
 
+              {/* Delivered — show proof */}
               {isDelivered && (
-                <div className="py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">✓ Delivered</div>
+                <div className="space-y-2">
+                  <div className="py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200 flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" /> Delivered
+                    {order.delivery_drop_location && <span className="font-normal text-xs text-green-600">· {order.delivery_drop_location}</span>}
+                  </div>
+                  {order.delivery_photo_url && (
+                    <div className="relative rounded-xl overflow-hidden border border-green-200">
+                      <img src={order.delivery_photo_url} alt="Proof of delivery" className="w-full object-cover max-h-40" />
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-3 py-1.5 flex items-center justify-between">
+                        <p className="text-white text-[10px] font-semibold">Proof of Delivery</p>
+                        {order.delivered_at && <p className="text-white/70 text-[10px]">{format(new Date(order.delivered_at), 'h:mm a')}</p>}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>
@@ -444,15 +535,31 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
 
   useEffect(() => { loadQueue(); }, [date]);
 
-  const handleMarkDelivered = async (order) => {
+  const handleMarkDelivered = async (order, proofPhotoUrl, dropLocation) => {
     setUpdatingId(order.id);
+    const deliveredAt = new Date().toISOString();
     const newHistory = [
       ...(order.status_history || []),
-      { status: 'delivered', timestamp: new Date().toISOString(), message: 'Delivered' },
+      { status: 'delivered', timestamp: deliveredAt, message: `Delivered · ${dropLocation}` },
     ];
     try {
-      await base44.entities.Order.update(order.id, { status: 'delivered', status_history: newHistory });
-      toast.success('Marked as delivered');
+      await base44.entities.Order.update(order.id, {
+        status: 'delivered',
+        status_history: newHistory,
+        delivery_photo_url: proofPhotoUrl,
+        delivery_drop_location: dropLocation,
+        delivered_by: user?.email,
+        delivered_at: deliveredAt,
+      });
+      // Send proof-of-delivery email to customer
+      const itemsList = order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ') || '';
+      const deliveredTime = new Date(deliveredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
+      await base44.integrations.Core.SendEmail({
+        to: order.customer_email,
+        subject: `Your NuVira order #${order.order_number} was delivered! 🌿`,
+        body: `Hi there!\n\nGreat news — your NuVira order has been delivered.\n\n📦 Order: #${order.order_number}\n🕒 Delivered at: ${deliveredTime}\n📍 Left at: ${dropLocation}\n🛍 Items: ${itemsList}\n\nA photo confirmation has been saved to your order. You can view it in your order history.\n\nIf you have any issues, please reach out through the Support section in the app.\n\nThanks for choosing NuVira — stay nourished! 🥤\n\nThe NuVira Team`,
+      });
+      toast.success('Delivery confirmed & customer notified');
       loadQueue();
       setRouteData(null);
     } catch {
@@ -597,7 +704,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
                     <StopCard
                       order={order}
                       pendingReturn={pendingReturnsByEmail[order.customer_email] || null}
-                      onMarkDelivered={handleMarkDelivered}
+                      onMarkDelivered={(order, photo, loc) => handleMarkDelivered(order, photo, loc)}
                       onMarkUnableToDeliver={handleMarkUnableToDeliver}
                       onReturnVerified={(ret, data) => onBagReturnVerified(ret, data)}
                       allCredits={allCredits}
