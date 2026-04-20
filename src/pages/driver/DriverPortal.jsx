@@ -137,7 +137,7 @@ function InlineBagReturn({ ret, user, onVerifyComplete }) {
     if (credit === 0) vStatus = (smallStatus === 'not_found' || toteStatus === 'not_found') ? 'not_found' : 'not_eligible';
     else if (smallAccepted < ret.small_bags_requested || toteAccepted < ret.tote_bags_requested) vStatus = 'partially_verified';
 
-    await onVerifyComplete(ret, {
+    onVerifyComplete(ret, {
       small_bag_status: smallStatus, tote_bag_status: toteStatus,
       small_bags_accepted: smallAccepted, tote_bags_accepted: toteAccepted,
       rejection_reason: (smallStatus === 'not_eligible' || toteStatus === 'not_eligible') ? reason : '',
