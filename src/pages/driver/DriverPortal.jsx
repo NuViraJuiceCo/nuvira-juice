@@ -637,16 +637,21 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
   const isOptimized = !!routeData?.optimized_orders;
   const delivered = displayOrders.filter(o => o.status === 'delivered').length;
 
-  // Map pending returns by customer email for quick lookup
+  // Filter returns to only those linked to today's route orders
+  const todaysOrderIds = new Set(displayOrders.map(o => o.id));
+  const todaysBagReturns = bagReturns.filter(r => todaysOrderIds.has(r.order_id));
+  const pendingBagReturns = bagReturns.filter(r => !todaysOrderIds.has(r.order_id) && r.verification_status === 'requested');
+
+  // Map today's returns by customer email for quick lookup in route
   const pendingReturnsByEmail = {};
-  bagReturns.forEach(r => {
+  todaysBagReturns.forEach(r => {
     if (!pendingReturnsByEmail[r.customer_email]) {
       pendingReturnsByEmail[r.customer_email] = r;
     }
   });
 
   // Count returns linked to today's route stops
-  const routeReturnCount = displayOrders.filter(o => pendingReturnsByEmail[o.customer_email]?.verification_status === 'requested').length;
+  const routeReturnCount = todaysBagReturns.filter(r => r.verification_status === 'requested').length;
 
   return (
     <div className="pb-10">
@@ -666,7 +671,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
           { label: 'Queued', value: queuedOrders?.length ?? '—', color: 'text-foreground' },
           { label: 'Done', value: delivered, color: 'text-green-600' },
           { label: 'Left', value: (queuedOrders?.length ?? 0) - delivered, color: 'text-primary' },
-          { label: 'Returns', value: routeReturnCount, color: 'text-amber-600' },
+          { label: "Today's Returns", value: routeReturnCount, color: 'text-amber-600' },
         ].map(s => (
           <div key={s.label} className="py-3 text-center">
             <p className={`text-xl font-bold font-heading ${s.color}`}>{s.value}</p>
@@ -787,6 +792,27 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
           </>
         )}
       </div>
+
+      {/* Pending Bag Returns — Future deliveries */}
+      {pendingBagReturns.length > 0 && (
+        <div className="px-4 mt-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Pending Collections — Future Deliveries
+          </p>
+          <div className="space-y-2">
+            {pendingBagReturns.map(ret => (
+              <div key={ret.id} className="bg-card border border-border/40 rounded-xl p-3 flex items-center justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium truncate">{ret.customer_email}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{bagSummary(ret)}</p>
+                </div>
+                <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-1 rounded-full shrink-0 ml-2">Pending</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">These will appear in Route when their delivery is scheduled for today.</p>
+        </div>
+      )}
     </div>
   );
 }
