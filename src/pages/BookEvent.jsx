@@ -19,6 +19,17 @@ const eventTypes = [
   { icon: Calendar, label: 'Other' },
 ];
 
+const juiceOptions = [
+  { value: 'bottles', label: 'Full Bottles', desc: '16oz fresh cold-pressed' },
+  { value: 'samples', label: 'Tasting Samples', desc: '2-4oz tastings' },
+];
+
+function getTomorrowMinDate() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.toISOString().split('T')[0];
+}
+
 const includes = [
   'Fresh cold-pressed juice bar setup',
   'Custom bottle labels for your event',
@@ -31,11 +42,12 @@ const includes = [
 export default function BookEvent() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', eventType: '', date: '', guests: '', venue: '', notes: '',
+    name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', venue: '', notes: '',
   });
   const [loading, setLoading] = useState(false);
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+  const minDate = getTomorrowMinDate();
 
   const handleSubmit = async () => {
     if (!form.name || !form.email || !form.eventType) {
@@ -43,14 +55,15 @@ export default function BookEvent() {
       return;
     }
     setLoading(true);
+    const juiceTypeLabel = juiceOptions.find(j => j.value === form.juiceType)?.label || 'Not specified';
     await base44.integrations.Core.SendEmail({
       to: 'nuvirajuiceco@gmail.com',
       subject: `Event Booking Inquiry — ${form.eventType} · ${form.name}`,
-      body: `New event booking inquiry:\n\nName: ${form.name}\nEmail: ${form.email}\nPhone: ${form.phone || 'Not provided'}\nEvent Type: ${form.eventType}\nEvent Date: ${form.date || 'Not specified'}\nGuest Count: ${form.guests || 'Not specified'}\nVenue: ${form.venue || 'Not specified'}\nAdditional Notes: ${form.notes || 'None'}`,
+      body: `New event booking inquiry:\n\nName: ${form.name}\nEmail: ${form.email}\nPhone: ${form.phone || 'Not provided'}\nEvent Type: ${form.eventType}\nEvent Date: ${form.date || 'Not specified'}\nGuest Count: ${form.guests || 'Not specified'}\nJuice Type: ${juiceTypeLabel}\nVenue: ${form.venue || 'Not specified'}\nAdditional Notes: ${form.notes || 'None'}`,
     });
     setLoading(false);
     toast.success("We received your inquiry! We'll be in touch within 48 hours to plan your event.");
-    setForm({ name: '', email: '', phone: '', eventType: '', date: '', guests: '', venue: '', notes: '' });
+    setForm({ name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', venue: '', notes: '' });
   };
 
   return (
@@ -132,12 +145,32 @@ export default function BookEvent() {
 
         <div className="grid grid-cols-2 gap-3">
           <Input placeholder="Phone (optional)" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} className="rounded-xl h-11" />
-          <Input placeholder="Event Date" type="date" value={form.date} onChange={e => set('date', e.target.value)} className="rounded-xl h-11" />
+          <Input placeholder="Event Date" type="date" value={form.date} onChange={e => set('date', e.target.value)} min={minDate} className="rounded-xl h-11" />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Input placeholder="# of Guests" type="number" min="1" value={form.guests} onChange={e => set('guests', e.target.value)} className="rounded-xl h-11" />
           <Input placeholder="Venue / Location" value={form.venue} onChange={e => set('venue', e.target.value)} className="rounded-xl h-11" />
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">What Kind of Juice Service?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {juiceOptions.map(({ value, label, desc }) => (
+              <button
+                key={value}
+                onClick={() => set('juiceType', value)}
+                className={`p-3 rounded-xl border-2 transition-all text-left ${
+                  form.juiceType === value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border/40 bg-card'
+                }`}
+              >
+                <p className="text-sm font-semibold">{label}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{desc}</p>
+              </button>
+            ))}
+          </div>
         </div>
 
         <textarea
