@@ -129,6 +129,43 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Pre-order cancellation: customer canceled before payment was captured
+    if (event.type === 'payment_intent.canceled') {
+      const paymentIntent = event.data.object;
+      const paymentIntentId = paymentIntent.id;
+
+      console.log(`payment_intent.canceled received for PaymentIntent: ${paymentIntentId}`);
+
+      // Find the pre-order order linked to this payment intent
+      const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });
+      if (orders.length > 0) {
+        const order = orders[0];
+        const statusHistory = order.status_history || [];
+        statusHistory.push({
+          status: 'cancelled',
+          timestamp: new Date().toISOString(),
+          message: 'Pre-order cancelled by customer before payment was captured.',
+        });
+        await base44.asServiceRole.entities.Order.update(order.id, {
+          status: 'cancelled',
+          status_history: statusHistory,
+        });
+        console.log(`Pre-order ${order.id} (order #${order.order_number}) marked as cancelled due to PaymentIntent cancellation.`);
+
+        // Create an operational alert so the team is notified
+        await base44.asServiceRole.entities.OperationalAlert.create({
+          alert_type: 'cancellation',
+          title: `Pre-Order Cancelled: #${order.order_number || order.id}`,
+          message: `Customer ${order.customer_email} cancelled their pre-order before payment capture. No juices should be made for this order.`,
+          shopify_order_id: order.shopify_order_id || null,
+          order_number: order.order_number || null,
+          severity: 'warning',
+        });
+      } else {
+        console.log(`payment_intent.canceled: no matching pre-order found for PaymentIntent ${paymentIntentId}`);
+      }
+    }
+
     if (event.type === 'customer.subscription.created' || event.type === 'customer.subscription.updated') {
       const sub = event.data.object;
       const customerEmail = sub.metadata?.customer_email;
