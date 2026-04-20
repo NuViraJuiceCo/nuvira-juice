@@ -25,6 +25,46 @@ Deno.serve(async (req) => {
       const customerEmail = session.customer_email || session.metadata?.customer_email;
       const amountPaid = session.amount_total / 100; // convert cents to dollars
 
+      // Handle subscription checkout — create Subscription record
+      if (session.mode === 'subscription' && session.metadata?.plan_id) {
+        const planId = session.metadata.plan_id;
+        const deliveryAddress = session.metadata.delivery_address || '';
+        const stripeSubscriptionId = session.subscription;
+
+        console.log(`Subscription checkout completed for ${customerEmail}, plan: ${planId}`);
+
+        // Calculate next delivery date (next week for weekly, next month for monthly)
+        const allPlans = await base44.asServiceRole.entities.SubscriptionPlan.list();
+        const plan = allPlans.find(p => p.id === planId);
+        const now = new Date();
+        let nextDelivery = new Date(now);
+        if (plan?.frequency === 'weekly') {
+          nextDelivery.setDate(now.getDate() + 7);
+        } else {
+          nextDelivery.setMonth(now.getMonth() + 1);
+        }
+        const nextDeliveryStr = nextDelivery.toISOString().split('T')[0];
+
+        // Check if subscription already exists (avoid duplicates)
+        const existing = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
+        const alreadyExists = existing.some(s => s.plan_id === planId && s.status === 'active');
+
+        if (!alreadyExists) {
+          await base44.asServiceRole.entities.Subscription.create({
+            customer_email: customerEmail,
+            plan_id: planId,
+            bundle_id: session.metadata.bundle_id || null,
+            delivery_address: deliveryAddress,
+            status: 'active',
+            started_date: now.toISOString().split('T')[0],
+            next_delivery_date: nextDeliveryStr,
+          });
+          console.log(`Subscription record created for ${customerEmail}`);
+        } else {
+          console.log(`Subscription already exists for ${customerEmail}, skipping creation`);
+        }
+      }
+
       // Update order status to confirmed
       if (orderId) {
         const orders = await base44.asServiceRole.entities.Order.filter({ id: orderId });
@@ -166,14 +206,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (event.type === 'customer.subscription.created' || event.type === 'customer.subscription.updated') {
+    if (event.type === 'customer.subscription.updated') {
       const sub = event.data.object;
       const customerEmail = sub.metadata?.customer_email;
       if (customerEmail) {
         const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
         const newStatus = sub.status === 'active' ? 'active' : sub.status === 'paused' ? 'paused' : 'cancelled';
+        // Calculate next delivery from Stripe's current_period_end
+        const nextDeliveryStr = sub.current_period_end
+          ? new Date(sub.current_period_end * 1000).toISOString().split('T')[0]
+          : undefined;
         if (existingSubs.length > 0) {
-          await base44.asServiceRole.entities.Subscription.update(existingSubs[0].id, { status: newStatus });
+          const updates = { status: newStatus };
+          if (nextDeliveryStr) updates.next_delivery_date = nextDeliveryStr;
+          await base44.asServiceRole.entities.Subscription.update(existingSubs[0].id, updates);
           console.log(`Subscription for ${customerEmail} updated to ${newStatus}`);
         }
       }
