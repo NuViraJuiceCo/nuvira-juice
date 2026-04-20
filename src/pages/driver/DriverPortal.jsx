@@ -366,17 +366,6 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
               {/* Delivery actions */}
               {!isDelivered && (
                 <>
-                  {/* Progressive stage button */}
-                  {nextStage && nextStage.key !== 'delivered' && !showDeliverForm && !showUnableForm && (
-                    <button onClick={() => {
-                      const newHistory = [...(order.status_history || []), { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label }];
-                      base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
-                    }}
-                      className="w-full py-2.5 border border-primary text-primary rounded-xl text-xs font-semibold active:scale-95 transition-transform">
-                      → Mark {nextStage.label}
-                    </button>
-                  )}
-
                   {!showDeliverForm && !showUnableForm && (
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => setShowDeliverForm(true)} disabled={isUpdating}
@@ -536,7 +525,24 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
     try {
       const res = await base44.functions.invoke('optimizeDeliveryRoute', { date: date || undefined, optimize: true });
       setRouteData(res.data);
-      toast.success('Route optimized!');
+
+      // Mark all non-delivered orders as out_for_delivery and notify customers
+      const ordersToNotify = (res.data?.optimized_orders || queuedOrders).filter(o => o.status !== 'delivered');
+      await Promise.all(ordersToNotify.map(async (order) => {
+        const newHistory = [
+          ...(order.status_history || []),
+          { status: 'out_for_delivery', timestamp: new Date().toISOString(), message: 'Your order is out for delivery!' },
+        ];
+        await base44.entities.Order.update(order.id, { status: 'out_for_delivery', status_history: newHistory });
+        await base44.integrations.Core.SendEmail({
+          to: order.customer_email,
+          subject: `Your NuVira order #${order.order_number} is on its way! 🚚`,
+          body: `Hi there!\n\nGreat news — your NuVira order is out for delivery today!\n\n📦 Order: #${order.order_number}\n📍 Delivering to: ${order.delivery_address}\n\nYour driver is on the route and will be with you soon. You can track your order status in the app.\n\nThanks for choosing NuVira — stay nourished! 🥤\n\nThe NuVira Team`,
+        });
+      }));
+
+      toast.success(`Route optimized! ${ordersToNotify.length} customer${ordersToNotify.length !== 1 ? 's' : ''} notified.`);
+      loadQueue();
     } catch {
       toast.error('Optimization failed');
     } finally {
