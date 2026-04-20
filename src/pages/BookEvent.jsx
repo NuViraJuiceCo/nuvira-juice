@@ -20,8 +20,13 @@ const eventTypes = [
 ];
 
 const juiceOptions = [
-  { value: 'bottles', label: 'Full Bottles', desc: '16oz fresh cold-pressed' },
+  { value: 'bottles', label: 'Full Bottles', desc: '12oz fresh cold-pressed' },
   { value: 'samples', label: 'Tasting Samples', desc: '2-4oz tastings' },
+];
+
+const serviceModels = [
+  { value: 'prepurchase', label: 'You Pre-Purchase', desc: 'You buy bottles, provide free to guests' },
+  { value: 'consignment', label: 'We Sell On-Site', desc: 'We bring bottles, you set deposit for special pricing' },
 ];
 
 function getTomorrowMinDate() {
@@ -32,17 +37,17 @@ function getTomorrowMinDate() {
 
 const includes = [
   'Fresh cold-pressed juice bar setup',
-  'Custom bottle labels for your event',
-  'Curated flavor menu for your guests',
-  'On-site or pre-packaged service options',
+  'Our full menu of available flavors',
+  'Pre-packaged bottles or samples',
   'Flexible quantities for any group size',
+  'Optional event pricing with deposit',
   'A beautiful, wellness-forward experience',
 ];
 
 export default function BookEvent() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', venue: '', notes: '',
+    name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', serviceModel: '', venue: '', notes: '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -56,14 +61,15 @@ export default function BookEvent() {
     }
     setLoading(true);
     const juiceTypeLabel = juiceOptions.find(j => j.value === form.juiceType)?.label || 'Not specified';
+    const serviceModelLabel = serviceModels.find(s => s.value === form.serviceModel)?.label || 'Not specified';
     await base44.integrations.Core.SendEmail({
       to: 'nuvirajuiceco@gmail.com',
       subject: `Event Booking Inquiry — ${form.eventType} · ${form.name}`,
-      body: `New event booking inquiry:\n\nName: ${form.name}\nEmail: ${form.email}\nPhone: ${form.phone || 'Not provided'}\nEvent Type: ${form.eventType}\nEvent Date: ${form.date || 'Not specified'}\nGuest Count: ${form.guests || 'Not specified'}\nJuice Type: ${juiceTypeLabel}\nVenue: ${form.venue || 'Not specified'}\nAdditional Notes: ${form.notes || 'None'}`,
+      body: `New event booking inquiry:\n\nName: ${form.name}\nEmail: ${form.email}\nPhone: ${form.phone || 'Not provided'}\nEvent Type: ${form.eventType}\nEvent Date: ${form.date || 'Not specified'}\nGuest Count: ${form.guests || 'Not specified'}\nJuice Type: ${juiceTypeLabel}\nService Model: ${serviceModelLabel}\nVenue: ${form.venue || 'Not specified'}\nAdditional Notes: ${form.notes || 'None'}`,
     });
     setLoading(false);
     toast.success("We received your inquiry! We'll be in touch within 48 hours to plan your event.");
-    setForm({ name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', venue: '', notes: '' });
+    setForm({ name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', serviceModel: '', venue: '', notes: '' });
   };
 
   return (
@@ -162,6 +168,26 @@ export default function BookEvent() {
                 onClick={() => set('juiceType', value)}
                 className={`p-3 rounded-xl border-2 transition-all text-left ${
                   form.juiceType === value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border/40 bg-card'
+                }`}
+              >
+                <p className="text-sm font-semibold">{label}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">How Will This Work?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {serviceModels.map(({ value, label, desc }) => (
+              <button
+                key={value}
+                onClick={() => set('serviceModel', value)}
+                className={`p-3 rounded-xl border-2 transition-all text-left ${
+                  form.serviceModel === value
                     ? 'border-primary bg-primary/10'
                     : 'border-border/40 bg-card'
                 }`}
