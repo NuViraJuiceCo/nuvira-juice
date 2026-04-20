@@ -974,20 +974,20 @@ export default function DriverPortal() {
       if (data.credit_issued > 0) {
         const existing = allCredits.find(c => c.customer_email === ret.customer_email);
         const entry = {
-          amount: data.credit_issued, type: 'earned',
+          amount: data.credit_issued, type: 'issued',
           description: `Return + Reward${data.verification_status === 'partially_verified' ? ' (Partial)' : ''}`,
-          bag_return_id: ret.id, order_id: ret.order_id, timestamp: new Date().toISOString(),
+          order_id: ret.order_id, timestamp: new Date().toISOString(),
         };
         if (existing) {
           await base44.entities.NuViraCredit.update(existing.id, {
             balance: (existing.balance || 0) + data.credit_issued,
-            lifetime_earned: (existing.lifetime_earned || 0) + data.credit_issued,
+            lifetime_issued: (existing.lifetime_issued || 0) + data.credit_issued,
             history: [...(existing.history || []), entry],
           });
         } else {
           await base44.entities.NuViraCredit.create({
             customer_email: ret.customer_email, balance: data.credit_issued,
-            lifetime_earned: data.credit_issued, lifetime_used: 0, history: [entry],
+            lifetime_issued: data.credit_issued, lifetime_used: 0, history: [entry],
           });
         }
         await base44.integrations.Core.SendEmail({
