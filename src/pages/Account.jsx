@@ -164,14 +164,14 @@ export default function Account() {
       {(user?.role === 'driver' || user?.role === 'admin') && (
         <div className="px-4 mt-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">Driver</p>
-          <Link to="/driver/returns">
+          <Link to="/driver">
             <div className="flex items-center gap-3 p-3.5 bg-primary/5 rounded-xl border border-primary/20 active:bg-primary/10 transition-colors">
               <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
                 <Truck className="w-4 h-4 text-primary" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium">Bag Pickup Portal</p>
-                <p className="text-[10px] text-muted-foreground">Verify returns & take photos</p>
+                <p className="text-sm font-medium">Driver Portal</p>
+                <p className="text-[10px] text-muted-foreground">Route planner & bag returns</p>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
@@ -195,18 +195,7 @@ export default function Account() {
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
           </Link>
-          <Link to="/admin/bag-returns">
-            <div className="flex items-center gap-3 p-3.5 bg-primary/5 rounded-xl border border-primary/20 active:bg-primary/10 transition-colors mb-2">
-              <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                <Leaf className="w-4 h-4 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium">Return + Reward</p>
-                <p className="text-[10px] text-muted-foreground">Verify bag returns & issue credits</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </div>
-          </Link>
+
           <Link to="/admin/shopify">
             <div className="flex items-center gap-3 p-3.5 bg-primary/5 rounded-xl border border-primary/20 active:bg-primary/10 transition-colors mb-2">
               <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
