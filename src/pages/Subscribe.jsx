@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Check, Zap, Crown, Leaf, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -21,7 +21,7 @@ const PLAN_STYLES = [
 export default function Subscribe() {
   const { user } = useAuth();
   const [selectedPlanId, setSelectedPlanId] = useState(null);
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
   const [calculatedZone, setCalculatedZone] = useState(null);
   const [calculatedDistance, setCalculatedDistance] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -47,7 +47,7 @@ export default function Subscribe() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setCalculatedZone(null);
     setCalculatedDistance(null);
-    if (!addr.trim() || addr.length < 5) return;
+    if (!addr || !addr.trim() || addr.length < 5) return;
     setCalculating(true);
     debounceRef.current = setTimeout(async () => {
       try {
@@ -70,7 +70,8 @@ export default function Subscribe() {
       alert('Checkout only works from the published app, not the preview.');
       return;
     }
-    if (!address.trim()) {
+    const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+    if (!addressString.trim()) {
       toast.error('Please enter your delivery address');
       return;
     }
@@ -87,7 +88,7 @@ export default function Subscribe() {
       const res = await base44.functions.invoke('createSubscriptionSession', {
         plan_id: selectedPlanId,
         bundle_id: null,
-        address,
+        address: addressString,
         customer_email: user?.email || null,
       });
       if (res.data?.url) {
@@ -128,13 +129,14 @@ export default function Subscribe() {
       {/* Address Section & Zone Calculation */}
       <div className="px-4 mt-6">
         <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">Delivery Address</label>
-        <Input
+        <AddressAutocomplete
           value={address}
-          onChange={e => {
-            setAddress(e.target.value);
-            calculateDistance(e.target.value);
+          onChange={addr => {
+            setAddress(addr);
+            const full = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
+            calculateDistance(full);
           }}
-          placeholder="123 Main St, St. Louis, MO"
+          placeholder="123 Main St"
           className="rounded-xl h-11"
         />
       </div>
@@ -227,18 +229,18 @@ export default function Subscribe() {
 
       {/* CTA */}
       <div className="px-4 mt-6 space-y-3">
-        {!address.trim() && (
+        {!address.street.trim() && (
           <p className="text-center text-xs text-amber-600 font-medium">⚠ Enter your delivery address above to continue</p>
         )}
-        {address.trim() && calculating && (
+        {address.street.trim() && calculating && (
           <p className="text-center text-xs text-muted-foreground">Calculating your delivery zone...</p>
         )}
-        {address.trim() && !calculating && !calculatedZone && (
+        {address.street.trim() && !calculating && !calculatedZone && (
           <p className="text-center text-xs text-amber-600 font-medium">⚠ Could not verify delivery to that address — try a more complete address</p>
         )}
         <Button
           onClick={handleJoin}
-          disabled={loading || !selectedPlanId || !address.trim() || calculating || !calculatedZone}
+          disabled={loading || !selectedPlanId || !address.street.trim() || calculating || !calculatedZone}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
           {loading ? 'Redirecting to payment...' : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
