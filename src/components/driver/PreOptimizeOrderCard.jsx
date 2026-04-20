@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronRight, MapPin, Navigation, Recycle, X, Camera } from 'lucide-react';
+import { ChevronDown, ChevronRight, MapPin, Navigation, Recycle, X, Camera, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useRef } from 'react';
@@ -8,6 +8,7 @@ import { useRef } from 'react';
 export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyReturn, user, isUpdating }) {
   const [expanded, setExpanded] = useState(false);
   const [showReturnForm, setShowReturnForm] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [smallStatus, setSmallStatus] = useState('accepted');
   const [toteStatus, setToteStatus] = useState('accepted');
   const [smallAccepted, setSmallAccepted] = useState(pendingReturn?.small_bags_requested || 0);
@@ -71,6 +72,19 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
     });
     setSaving(false);
     setShowReturnForm(false);
+    setIsEditing(false);
+  };
+
+  const handleEditMode = () => {
+    setIsEditing(true);
+    setSmallStatus(pendingReturn.small_bag_status);
+    setToteStatus(pendingReturn.tote_bag_status);
+    setSmallAccepted(pendingReturn.small_bags_accepted || 0);
+    setToteAccepted(pendingReturn.tote_bags_accepted || 0);
+    setReason(pendingReturn.rejection_reason || 'dirty_stained');
+    setNotes(pendingReturn.driver_notes || '');
+    setPhotoUrl(pendingReturn.photo_url || '');
+    setShowReturnForm(true);
   };
 
   return (
@@ -141,11 +155,11 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
               )}
 
               {/* Inline Form */}
-              {showReturnForm && pendingReturn && pendingReturn.verification_status === 'requested' && (
+              {showReturnForm && pendingReturn && (pendingReturn.verification_status === 'requested' || isEditing) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-amber-800">Confirm Bag Amounts</p>
-                    <button onClick={() => setShowReturnForm(false)} className="text-amber-400">
+                    <p className="text-sm font-bold text-amber-800">{isEditing ? 'Re-Verify & Adjust' : 'Confirm Bag Amounts'}</p>
+                    <button onClick={() => { setShowReturnForm(false); setIsEditing(false); }} className="text-amber-400">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -241,9 +255,22 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
               )}
 
               {/* Already verified */}
-              {pendingReturn && pendingReturn.verification_status !== 'requested' && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
-                  <p className="text-xs font-semibold text-green-700">✓ Return Already Verified — ${(pendingReturn.credit_issued || 0).toFixed(2)} credit issued</p>
+              {pendingReturn && pendingReturn.verification_status !== 'requested' && !isEditing && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-green-700">✓ Return Verified</p>
+                      <p className="text-[10px] text-green-600 mt-0.5">${(pendingReturn.credit_issued || 0).toFixed(2)} credit issued</p>
+                    </div>
+                    <button onClick={handleEditMode} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg active:scale-95 transition-transform">
+                      <Edit2 className="w-3 h-3" />
+                      Adjust
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 text-[10px] text-green-700">
+                    <p>Small: {pendingReturn.small_bags_accepted || 0} of {pendingReturn.small_bags_requested || 0}</p>
+                    <p>Tote: {pendingReturn.tote_bags_accepted || 0} of {pendingReturn.tote_bags_requested || 0}</p>
+                  </div>
                 </div>
               )}
             </div>
