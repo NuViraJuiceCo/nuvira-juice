@@ -103,11 +103,12 @@ const AuthenticatedApp = () => {
           <Route path="/admin/shopify" element={<ShopifyDashboard />} />
           <Route path="/admin/products" element={<AdminProducts />} />
           <Route path="/admin/bag-returns" element={<BagReturnAdmin />} />
-          <Route path="/driver" element={<DriverPortal />} />
-          <Route path="/driver/returns" element={<DriverPortal />} />
-          <Route path="/driver/route" element={<DriverPortal />} />
           <Route path="/return-reward" element={<ReturnReward />} />
         </Route>
+        {/* Driver portal — standalone, no customer nav */}
+        <Route path="/driver" element={<DriverPortal />} />
+        <Route path="/driver/returns" element={<DriverPortal />} />
+        <Route path="/driver/route" element={<DriverPortal />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
