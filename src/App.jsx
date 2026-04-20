@@ -35,8 +35,7 @@ import AdminOrders from '@/pages/AdminOrders';
 import ShopifyDashboard from '@/pages/admin/ShopifyDashboard';
 import AdminProducts from '@/pages/admin/AdminProducts';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
-import DriverReturns from '@/pages/driver/DriverReturns';
-import DriverRoute from '@/pages/driver/DriverRoute';
+import DriverPortal from '@/pages/driver/DriverPortal';
 import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
 import Home from '@/pages/Home';
@@ -104,8 +103,9 @@ const AuthenticatedApp = () => {
           <Route path="/admin/shopify" element={<ShopifyDashboard />} />
           <Route path="/admin/products" element={<AdminProducts />} />
           <Route path="/admin/bag-returns" element={<BagReturnAdmin />} />
-          <Route path="/driver/returns" element={<DriverReturns />} />
-          <Route path="/driver/route" element={<DriverRoute />} />
+          <Route path="/driver" element={<DriverPortal />} />
+          <Route path="/driver/returns" element={<DriverPortal />} />
+          <Route path="/driver/route" element={<DriverPortal />} />
           <Route path="/return-reward" element={<ReturnReward />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
