@@ -86,6 +86,19 @@ Deno.serve(async (req) => {
       payment_captured: !preorder, // regular orders are immediately captured
     });
 
+    // Link any pending BagReturns created during checkout to this order
+    if (customer_email) {
+      const pendingReturns = await base44.asServiceRole.entities.BagReturn.filter({
+        customer_email,
+        order_id: 'pending',
+      });
+      for (const ret of pendingReturns) {
+        await base44.asServiceRole.entities.BagReturn.update(ret.id, {
+          order_id: order.id,
+        });
+      }
+    }
+
     // Sync order to hub (non-blocking, fire-and-forget)
     base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id }).catch(err => {
       console.warn('Hub sync queued in background; won\'t block checkout');

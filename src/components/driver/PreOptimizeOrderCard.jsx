@@ -125,7 +125,7 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
               </div>
 
               {/* Bag Return Form */}
-              {pendingReturn && !showReturnForm && (
+              {pendingReturn && pendingReturn.verification_status === 'requested' && !showReturnForm && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                   <div className="flex items-center gap-2 mb-2">
                     <Recycle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -141,7 +141,7 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
               )}
 
               {/* Inline Form */}
-              {showReturnForm && pendingReturn && (
+              {showReturnForm && pendingReturn && pendingReturn.verification_status === 'requested' && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-bold text-amber-800">Confirm Bag Amounts</p>

@@ -180,14 +180,22 @@ export default function Checkout() {
     // Save bag return request if any
     if ((bagReturn.smallBags > 0 || bagReturn.toteBags > 0) && user?.email) {
       try {
-        await base44.entities.BagReturn.create({
-          order_id: 'pending', // will be updated post-checkout
+        // Check for existing pending return for this customer to avoid duplicates
+        const existingPending = await base44.entities.BagReturn.filter({
           customer_email: user.email,
-          small_bags_requested: bagReturn.smallBags,
-          tote_bags_requested: bagReturn.toteBags,
-          verification_status: 'requested',
-          credit_issued: 0,
+          order_id: 'pending',
         });
+        
+        if (existingPending.length === 0) {
+          await base44.entities.BagReturn.create({
+            order_id: 'pending', // will be updated post-checkout
+            customer_email: user.email,
+            small_bags_requested: bagReturn.smallBags,
+            tote_bags_requested: bagReturn.toteBags,
+            verification_status: 'requested',
+            credit_issued: 0,
+          });
+        }
         // Sync bag return to hub (non-blocking)
         base44.functions.invoke('syncCustomerToHub', {
           event: 'customer.bag_return_requested',
