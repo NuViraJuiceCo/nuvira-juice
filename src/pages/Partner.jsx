@@ -28,23 +28,23 @@ const perks = [
 
 export default function Partner() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', business: '', email: '', phone: '', type: '', notes: '' });
+  const [form, setForm] = useState({ name: '', business: '', email: '', phone: '', age: '', type: '', notes: '' });
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!form.name || !form.email || !form.business) {
-      toast.error('Please fill in your name, business, and email.');
+    if (!form.name || !form.email || !form.business || !form.phone || !form.age) {
+      toast.error('Please fill in your name, business, email, phone, and age.');
       return;
     }
     setLoading(true);
     await base44.integrations.Core.SendEmail({
       to: 'admin@nuvirajuice.com',
       subject: `New Partnership Inquiry — ${form.business}`,
-      body: `Partnership inquiry received:\n\nName: ${form.name}\nBusiness: ${form.business}\nType: ${form.type || 'Not specified'}\nEmail: ${form.email}\nPhone: ${form.phone || 'Not provided'}\nNotes: ${form.notes || 'None'}`,
+      body: `Partnership inquiry received:\n\nName: ${form.name}\nAge: ${form.age}\nBusiness: ${form.business}\nType: ${form.type || 'Not specified'}\nEmail: ${form.email}\nPhone: ${form.phone}\nNotes: ${form.notes || 'None'}`,
     });
     setLoading(false);
     toast.success("We got your inquiry! We'll be in touch within 48 hours.");
-    setForm({ name: '', business: '', email: '', phone: '', type: '', notes: '' });
+    setForm({ name: '', business: '', email: '', phone: '', age: '', type: '', notes: '' });
   };
 
   return (
@@ -109,11 +109,12 @@ export default function Partner() {
 
         <div className="grid grid-cols-2 gap-3">
           <Input placeholder="Your Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="rounded-xl h-11" />
-          <Input placeholder="Business Name" value={form.business} onChange={e => setForm({ ...form, business: e.target.value })} className="rounded-xl h-11" />
+          <Input placeholder="Age" type="number" min="18" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })} className="rounded-xl h-11" />
         </div>
 
+        <Input placeholder="Business Name" value={form.business} onChange={e => setForm({ ...form, business: e.target.value })} className="rounded-xl h-11" />
         <Input placeholder="Email Address" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="rounded-xl h-11" />
-        <Input placeholder="Phone (optional)" type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="rounded-xl h-11" />
+        <Input placeholder="Phone Number" type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="rounded-xl h-11" />
 
         {/* Business Type Select */}
         <Select value={form.type} onValueChange={val => setForm({ ...form, type: val })}>
