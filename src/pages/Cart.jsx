@@ -265,7 +265,7 @@ export default function Cart() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Program Includes</p>
                   <div className="space-y-2">
                     {item.bundle_composition && item.bundle_composition.map(comp => {
-                      const juiceProduct = juices.find(j => j.id === comp.product_id);
+                      const juiceProduct = juices.find(j => j.title === comp.product_name);
                       return (
                         <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
                           <div className="w-12 h-12 bg-primary/10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
