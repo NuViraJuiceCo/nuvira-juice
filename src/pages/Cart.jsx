@@ -260,18 +260,18 @@ export default function Cart() {
               </div>
 
               {/* Program Composition Display (no customization) */}
-              {item.category === 'bundle' && item.is_program && (
+              {item.category === 'bundle' && (item.is_program || item.bundle_composition?.length > 0) && (
                 <div className="mt-3 pt-3 border-t border-border/40">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Your Program Includes</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Program Includes</p>
                   <div className="space-y-2">
                     {item.bundle_composition && item.bundle_composition.map(comp => (
-                      <div key={comp.product_id} className="flex items-center gap-2">
-                        <div className="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
-                          {comp.quantity}
+                      <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
+                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg font-heading font-bold text-primary">{comp.quantity}</span>
                         </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold">{comp.product_name}</p>
-                          <p className="text-[10px] text-muted-foreground">per 3-day cycle</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
+                          <p className="text-xs text-muted-foreground">per 3-day cycle</p>
                         </div>
                       </div>
                     ))}
@@ -279,8 +279,8 @@ export default function Cart() {
                 </div>
               )}
 
-              {/* Bundle Composer — regular bundles only */}
-              {item.category === 'bundle' && !item.is_program && item.bottles_per_unit && (
+              {/* Bundle Composer — custom bundles only */}
+              {item.category === 'bundle' && !item.is_program && (!item.bundle_composition || item.bundle_composition.length === 0) && item.bottles_per_unit && (
                 <BundleComposer
                   bundleSize={item.bottles_per_unit * item.quantity}
                   composition={item.bundle_composition || []}
