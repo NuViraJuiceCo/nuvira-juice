@@ -64,20 +64,17 @@ export default function Cart() {
     queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
   });
 
-  // Get all unique juice names from program compositions
-  const juiceNamesInCart = React.useMemo(() => {
-    return [...new Set(items.flatMap(i => i.bundle_composition?.map(c => c.product_name) || []))];
-  }, [items]);
-
   const { data: juices = [] } = useQuery({
-    queryKey: ['juices-for-cart', juiceNamesInCart],
-    queryFn: async () => {
-      if (juiceNamesInCart.length === 0) return [];
-      const allProducts = await base44.entities.Product.list('sort_order', 100);
-      return allProducts.filter(p => juiceNamesInCart.includes(p.title));
-    },
-    enabled: juiceNamesInCart.length > 0,
+    queryKey: ['juices-for-bundle'],
+    queryFn: () => base44.entities.Product.filter({ category: 'juice', is_available: true }, 'sort_order', 20),
+    enabled: items.some(i => i.category === 'bundle' && !i.is_program),
   });
+
+  const juiceColors = {
+    'AURA': 'bg-orange-100 text-orange-700',
+    'OASIS': 'bg-blue-100 text-blue-700',
+    'RE-NU': 'bg-green-100 text-green-700',
+  };
 
   const scheduleRules = schedules[0]?.rules || [];
   const deliveryText = getDeliveryDisplayText(scheduleRules);
@@ -273,24 +270,17 @@ export default function Cart() {
                 <div className="mt-3 pt-3 border-t border-border/40">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Program Includes</p>
                   <div className="space-y-2">
-                    {item.bundle_composition && item.bundle_composition.map(comp => {
-                      const juiceProduct = juices.find(j => j.title === comp.product_name);
-                      return (
-                        <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
-                          <div className="w-12 h-12 bg-primary/10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
-                            {juiceProduct?.image_url ? (
-                              <img src={juiceProduct.image_url} alt={comp.product_name} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-lg font-heading font-bold text-primary">{comp.quantity}</span>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
-                            <p className="text-xs text-muted-foreground">{comp.quantity} bottles per cycle</p>
-                          </div>
+                    {item.bundle_composition && item.bundle_composition.map(comp => (
+                      <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
+                        <div className={`w-12 h-12 rounded-lg flex-shrink-0 flex items-center justify-center font-heading font-bold text-lg ${juiceColors[comp.product_name] || 'bg-slate-200 text-slate-700'}`}>
+                          {comp.quantity}
                         </div>
-                      );
-                    })}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
+                          <p className="text-xs text-muted-foreground">{comp.quantity} bottles per cycle</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
