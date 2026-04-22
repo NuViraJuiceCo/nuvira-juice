@@ -44,6 +44,24 @@ export default function ProgramDetail() {
     setShowUpsell(true);
   };
 
+  const getFixedComposition = () => {
+    const compositions = {
+      radiance: [
+        { product_id: 'aura', product_name: 'AURA', quantity: 9 },
+        { product_id: 'oasis', product_name: 'OASIS', quantity: 3 },
+      ],
+      reset: [
+        { product_id: 're-nu', product_name: 'RE-NU', quantity: 9 },
+        { product_id: 'oasis', product_name: 'OASIS', quantity: 3 },
+      ],
+      hydration: [
+        { product_id: 'oasis', product_name: 'OASIS', quantity: 9 },
+        { product_id: 'aura', product_name: 'AURA', quantity: 3 },
+      ],
+    };
+    return compositions[program.key] || [];
+  };
+
   const handleOneTime = () => {
     addItem(
       {
@@ -53,9 +71,10 @@ export default function ProgramDetail() {
         image_url: null,
         category: 'bundle',
         bottle_count: program.bottles,
+        is_program: true,
       },
       1,
-      { bottles_per_unit: program.bottles, bundle_composition: [] }
+      { bottles_per_unit: program.bottles, bundle_composition: getFixedComposition() }
     );
     selectedShots.forEach(shotId => {
       const shot = AVAILABLE_SHOTS.find(s => s.id === shotId);
