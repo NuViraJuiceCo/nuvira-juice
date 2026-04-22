@@ -264,17 +264,24 @@ export default function Cart() {
                 <div className="mt-3 pt-3 border-t border-border/40">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Program Includes</p>
                   <div className="space-y-2">
-                    {item.bundle_composition && item.bundle_composition.map(comp => (
-                      <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-lg font-heading font-bold text-primary">{comp.quantity}</span>
+                    {item.bundle_composition && item.bundle_composition.map(comp => {
+                      const juiceProduct = juices.find(j => j.id === comp.product_id);
+                      return (
+                        <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
+                          <div className="w-12 h-12 bg-primary/10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
+                            {juiceProduct?.image_url ? (
+                              <img src={juiceProduct.image_url} alt={comp.product_name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-lg font-heading font-bold text-primary">{comp.quantity}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
+                            <p className="text-xs text-muted-foreground">{comp.quantity} bottles per cycle</p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
-                          <p className="text-xs text-muted-foreground">per 3-day cycle</p>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
