@@ -119,6 +119,17 @@ Deno.serve(async (req) => {
             })
               .catch(err => console.error('Failed to send order confirmation email:', err.message));
 
+            // Send order processed notification to operations
+            base44.asServiceRole.functions.invoke('notifyOrderProcessed', {
+              order_id: orderId,
+              order_number: order.order_number,
+              customer_email: customerEmail,
+              items: order.items,
+              total: order.total,
+              delivery_address: order.delivery_address,
+            })
+              .catch(err => console.error('Failed to send operations notification:', err.message));
+
             // Send order confirmation SMS if customer has a phone number
             if (order.contact_phone) {
               base44.asServiceRole.functions.invoke('sendOrderSms', {
