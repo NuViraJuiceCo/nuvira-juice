@@ -30,6 +30,7 @@ export function CartProvider({ children }) {
         image_url: product.image_url,
         size: product.size,
         category: product.category,
+        is_program: product.is_program || false,
         ...extra,
       }];
     });
