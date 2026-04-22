@@ -41,6 +41,7 @@ import ScrollToTop from '@/components/ScrollToTop';
 import Home from '@/pages/Home';
 import Shop from '@/pages/Shop';
 import Cart from '@/pages/Cart';
+import ProgramDetail from '@/pages/ProgramDetail';
 import { base44 } from '@/api/base44Client';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -89,6 +90,7 @@ const AuthenticatedApp = () => {
           <Route path="/" element={<Home />} />
           <Route path="/shop" element={<Shop />} />
           <Route path="/shop/:id" element={<ProductDetail />} />
+          <Route path="/program/:key" element={<ProgramDetail />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/account" element={<Account />} />

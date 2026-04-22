@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { PROGRAMS } from '@/components/home/ProgramCards';
 import { isPreLaunch, launchDateFormatted } from '@/lib/launchConfig';
 import { isPreorderMode } from '@/lib/preorderConfig';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle, Zap, Gift } from 'lucide-react';
@@ -190,6 +191,30 @@ export default function Cart() {
           <p className="text-xs font-medium text-primary">
             {isPreorderMode() ? 'Delivered Friday, May 2nd' : deliveryText}
           </p>
+        </div>
+      )}
+
+      {/* AOV Upsell — Complete Your Routine */}
+      {subtotal > 0 && subtotal < 144 && (
+        <div className="mx-4 mb-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Complete Your Routine</p>
+          <div className="space-y-2">
+            {PROGRAMS.slice(0, 2).map(program => (
+              <Link key={program.key} to={`/program/${program.key}`}>
+                <div className={`flex items-center gap-3 bg-gradient-to-r ${program.color} border ${program.border} rounded-xl p-3`}>
+                  <span className="text-xl">{program.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold">{program.name} Program</p>
+                    <p className="text-[10px] text-muted-foreground">{program.composition} · 12 bottles</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold">${program.price}</p>
+                    <p className={`text-[10px] font-semibold ${program.accent}`}>View</p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 

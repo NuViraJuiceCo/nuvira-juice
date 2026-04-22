@@ -8,6 +8,7 @@ import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductCard from '@/components/shop/ProductCard';
+import ProgramCards from '@/components/home/ProgramCards';
 
 const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -139,6 +140,21 @@ export default function Shop() {
           </button>
         ))}
       </div>
+
+      {/* Programs — show when not searching/filtering */}
+      {!search.trim() && category === 'all' && !filterParam && (
+        <div className="mb-6">
+          <div className="px-4 mb-3">
+            <p className="font-heading text-base font-bold">3-Day Programs</p>
+            <p className="text-[11px] text-muted-foreground">Structured for results — 12 bottles delivered</p>
+          </div>
+          <ProgramCards />
+          <div className="px-4 mt-5 mb-1">
+            <p className="font-heading text-base font-bold">Quick Options</p>
+            <p className="text-[11px] text-muted-foreground">Single bottles & small orders</p>
+          </div>
+        </div>
+      )}
 
       {/* Product Grid */}
       <div className="px-4">

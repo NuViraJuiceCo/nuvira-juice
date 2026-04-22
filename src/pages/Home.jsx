@@ -17,6 +17,7 @@ import SustainabilityTeaser from '@/components/home/SustainabilityTeaser';
 import NotificationPrompt from '@/components/home/NotificationPrompt';
 import PreLaunchBanner from '@/components/PreLaunchBanner';
 import PreorderBanner from '@/components/PreorderBanner';
+import ProgramCards from '@/components/home/ProgramCards';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 
@@ -148,7 +149,7 @@ export default function Home() {
         </div>
       </motion.div>
 
-      <HeroBanner banners={banners} scheduleRules={scheduleRules} />
+      <HeroBanner banners={banners} scheduleRules={scheduleRules} heroHeadline="Build Your Routine" heroSubtext="Choose your goal. We'll handle the rest." />
       <TickerBanner />
       
       <div className="mt-4 px-4">
@@ -162,29 +163,27 @@ export default function Home() {
 
       <QuickReorder lastOrder={lastOrder} />
 
-      <ProductRow
-        title="Our Juices"
-        subtitle="Cold-pressed, never compromised"
-        products={featured.length > 0 ? featured : products.filter(p => p.category === 'juice')}
-        linkTo="/shop"
-      />
+      {/* Programs — Primary Revenue Section */}
+      <div className="mt-5 px-4 mb-2">
+        <p className="font-heading text-xl font-bold mb-0.5">Build Your Routine</p>
+        <p className="text-xs text-muted-foreground">Choose your goal. We'll handle the rest.</p>
+      </div>
+      <div className="mt-3">
+        <ProgramCards />
+      </div>
 
-      {bestSellers.length > 0 && (
-        <ProductRow
-          title="Best Sellers"
-          subtitle="Community favorites"
-          products={bestSellers}
-          linkTo="/shop?filter=best_sellers"
-        />
-      )}
-
-      {bundles.length > 0 && (
-        <ProductRow
-          title="Bundles"
-          subtitle="Save when you bundle"
-          products={bundles}
-          linkTo="/shop?filter=bundle"
-        />
+      {/* Quick Options — Secondary */}
+      {(featured.length > 0 || products.filter(p => p.category === 'juice').length > 0) && (
+        <div className="mt-6">
+          <ProductRow
+            title="Quick Options"
+            subtitle="Single bottles & small bundles"
+            products={[
+              ...products.filter(p => p.category === 'juice' && !p.is_seasonal).slice(0, 4),
+            ]}
+            linkTo="/shop"
+          />
+        </div>
       )}
 
       {seasonal.length > 0 && (
