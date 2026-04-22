@@ -210,11 +210,11 @@ export default function Cart() {
                 <div className={`flex items-center gap-3 bg-gradient-to-r ${program.color} border ${program.border} rounded-xl p-3`}>
                   <span className="text-xl">{program.emoji}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold">{program.name} Program</p>
-                    <p className="text-[10px] text-muted-foreground">{program.composition} · 12 bottles</p>
+                    <p className="text-xs font-semibold text-gray-900">{program.name} Program</p>
+                    <p className="text-[10px] text-gray-700">{program.composition} · 12 bottles</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-bold">${program.price}</p>
+                    <p className="text-sm font-bold text-gray-900">${program.price}</p>
                     <p className={`text-[10px] font-semibold ${program.accent}`}>View</p>
                   </div>
                 </div>
