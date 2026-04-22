@@ -270,17 +270,27 @@ export default function Cart() {
                 <div className="mt-3 pt-3 border-t border-border/40">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Program Includes</p>
                   <div className="space-y-2">
-                    {item.bundle_composition && item.bundle_composition.map(comp => (
-                      <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
-                          <p className="text-xs text-muted-foreground">{comp.quantity} bottles per cycle</p>
+                    {item.bundle_composition && item.bundle_composition.map(comp => {
+                      const juice = juices.find(j => j.title === comp.product_name);
+                      return (
+                        <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+                            {juice?.image_url ? (
+                              <img src={juice.image_url} alt={comp.product_name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-lg">🍊</div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
+                            <p className="text-xs text-muted-foreground">{comp.quantity} bottles</p>
+                          </div>
+                          <div className={`px-2.5 py-1.5 rounded-lg flex items-center justify-center font-heading font-bold text-sm ${juiceColors[comp.product_name] || 'bg-slate-200 text-slate-700'}`}>
+                            {comp.quantity}
+                          </div>
                         </div>
-                        <div className={`px-3 py-2 rounded-lg flex items-center justify-center font-heading font-bold text-base ${juiceColors[comp.product_name] || 'bg-slate-200 text-slate-700'}`}>
-                          {comp.quantity}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
