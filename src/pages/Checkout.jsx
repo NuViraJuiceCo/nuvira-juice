@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
