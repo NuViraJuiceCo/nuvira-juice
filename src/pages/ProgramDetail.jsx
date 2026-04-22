@@ -78,7 +78,7 @@ export default function ProgramDetail() {
     );
     selectedShots.forEach(shotId => {
       const shot = AVAILABLE_SHOTS.find(s => s.id === shotId);
-      if (shot) addItem({ id: shot.id, title: shot.title, price: 4, category: 'shot' }, 1);
+      if (shot) addItem({ id: shot.id, title: shot.title, price: 6, category: 'shot' }, 1);
     });
     toast.success(`${program.name} Program added to cart`);
     setShowUpsell(false);
@@ -188,7 +188,7 @@ export default function ProgramDetail() {
               <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
               <span className="text-[10px] text-muted-foreground ml-auto">$4 each</span>
             </div>
-            <p className="text-[11px] text-muted-foreground mb-3">Pick up to 3 shots — one per day of your program</p>
+            <p className="text-[11px] text-muted-foreground mb-3">Pick up to 3 shots — one per day of your program · $6 each</p>
             <div className="space-y-2">
               {AVAILABLE_SHOTS.map(shot => {
                 const isSelected = selectedShots.includes(shot.id);
