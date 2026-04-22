@@ -14,9 +14,11 @@ Deno.serve(async (req) => {
     if (!plan) {
       return Response.json({ error: 'Plan not found' }, { status: 404 });
     }
+    
+    // Use the stripe_price_id from the plan record
     const priceId = plan.stripe_price_id;
     if (!priceId) {
-      return Response.json({ error: 'Plan not synced to Stripe yet. Please sync the plan first.' }, { status: 400 });
+      return Response.json({ error: `No Stripe price configured for plan "${plan.name}"` }, { status: 400 });
     }
 
     const origin = req.headers.get('origin') || 'https://app.base44.com';
