@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
+import { base44 } from '@/api/base44Client';
 import SubscriptionUpsellModal from '@/components/program/SubscriptionUpsellModal';
 import { PROGRAMS } from '@/components/home/ProgramCards';
 
@@ -63,6 +64,25 @@ export default function ProgramDetail() {
     toast.success(`${program.name} Program added to cart`);
     setShowUpsell(false);
     navigate('/cart');
+  };
+
+  const handleSubscribe = async (planId, deliveryAddress) => {
+    try {
+      const res = await base44.functions.invoke('createSubscriptionSession', {
+        plan_id: planId,
+        bundle_id: null,
+        address: deliveryAddress,
+        customer_email: null,
+      });
+      if (res.data?.url) {
+        window.location.href = res.data.url;
+      } else {
+        toast.error(res.data?.error || 'Failed to start checkout');
+      }
+    } catch (err) {
+      console.error('Subscription checkout error:', err);
+      toast.error('An error occurred. Please try again.');
+    }
   };
 
   return (
@@ -205,6 +225,7 @@ export default function ProgramDetail() {
         open={showUpsell}
         onClose={() => setShowUpsell(false)}
         onOneTime={handleOneTime}
+        onSubscribe={handleSubscribe}
         programName={program.name}
         programTotal={total}
       />

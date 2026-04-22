@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 
 const PLAN_ICONS = { 0: Leaf, 1: Zap, 2: Crown };
 
-export default function SubscriptionUpsellModal({ open, onClose, onOneTime, programName, programTotal }) {
+export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSubscribe, programName, programTotal }) {
   const [selectedPlanId, setSelectedPlanId] = useState(null);
   const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
   const [calculatedZone, setCalculatedZone] = useState(null);
@@ -76,18 +76,8 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, prog
 
     setSubscribing(true);
     try {
-      const res = await base44.functions.invoke('createSubscriptionSession', {
-        plan_id: selectedPlanId,
-        bundle_id: null,
-        address: addressString,
-        customer_email: null,
-      });
-      if (res.data?.url) {
-        window.location.href = res.data.url;
-      } else {
-        toast.error(res.data?.error || 'Failed to start checkout');
-        setSubscribing(false);
-      }
+      // Call the parent callback with plan details
+      onSubscribe(selectedPlanId, addressString);
     } catch (err) {
       console.error('Subscription error:', err);
       toast.error('An error occurred. Please try again.');
