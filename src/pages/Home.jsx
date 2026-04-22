@@ -148,10 +148,10 @@ export default function Home() {
         </div>
       </motion.div>
 
-      <TickerBanner />
       <HeroBanner banners={banners} scheduleRules={scheduleRules} />
+      <TickerBanner />
       
-      <div className="mt-6 px-4">
+      <div className="mt-4 px-4">
         <PreLaunchBanner />
         <PreorderBanner />
       </div>
