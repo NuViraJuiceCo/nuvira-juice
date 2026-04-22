@@ -6,14 +6,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
+import { useQuery } from '@tanstack/react-query';
 import SubscriptionUpsellModal from '@/components/program/SubscriptionUpsellModal';
 import { PROGRAMS } from '@/components/home/ProgramCards';
-
-const AVAILABLE_SHOTS = [
-  { id: 'shot_radiance', title: 'Radiance Shot', subtitle: 'Beet · Apple · Lemon', emoji: '✨' },
-  { id: 'shot_hydration', title: 'Hydration Shot', subtitle: 'Coconut Water · Pink Himalayan Salt · Lime · Honey · Mint', emoji: '💧' },
-  { id: 'shot_reset', title: 'Reset Shot', subtitle: 'Pineapple · Lemon · Ginger · Black Salt', emoji: '🌿' },
-];
 
 const PERKS = [
   'Cold-pressed same day',
@@ -31,13 +26,18 @@ export default function ProgramDetail() {
   const [selectedShots, setSelectedShots] = useState([]); // array of shot ids, max 3
   const [showUpsell, setShowUpsell] = useState(false);
 
+  const { data: shots = [] } = useQuery({
+    queryKey: ['wellness-shots'],
+    queryFn: () => base44.entities.Product.filter({ category: 'shot', is_available: true }, 'sort_order'),
+  });
+
   if (!program) {
     navigate('/shop');
     return null;
   }
 
   const basePrice = program.price;
-  const shotsTotal = selectedShots.length * 6;
+  const shotsTotal = selectedShots.reduce((sum, id) => sum + (shots.find(s => s.id === id)?.price || 0), 0);
   const total = basePrice + shotsTotal;
 
   const handleStartProgram = () => {
@@ -77,8 +77,8 @@ export default function ProgramDetail() {
       { bottles_per_unit: program.bottles, bundle_composition: getFixedComposition() }
     );
     selectedShots.forEach(shotId => {
-      const shot = AVAILABLE_SHOTS.find(s => s.id === shotId);
-      if (shot) addItem({ id: shot.id, title: shot.title, price: 6, category: 'shot' }, 1);
+      const shot = shots.find(s => s.id === shotId);
+      if (shot) addItem({ id: shot.id, title: shot.title, price: shot.price, image_url: shot.image_url, category: 'shot' }, 1);
     });
     toast.success(`${program.name} Program added to cart`);
     setShowUpsell(false);
@@ -176,53 +176,57 @@ export default function ProgramDetail() {
         </motion.div>
 
         {/* Shots Add-On */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.12 }}
-          className="mb-6"
-        >
-          <div className="bg-card border border-border/50 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Zap className="w-4 h-4 text-primary" />
-              <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
-              <span className="text-[10px] text-muted-foreground ml-auto">$4 each</span>
-            </div>
-            <p className="text-[11px] text-muted-foreground mb-3">Pick up to 3 shots — one per day of your program · $6 each</p>
-            <div className="space-y-2">
-              {AVAILABLE_SHOTS.map(shot => {
-                const isSelected = selectedShots.includes(shot.id);
-                const atMax = selectedShots.length >= 3 && !isSelected;
-                return (
-                  <button
-                    key={shot.id}
-                    disabled={atMax}
-                    onClick={() => setSelectedShots(prev =>
-                      isSelected ? prev.filter(id => id !== shot.id) : [...prev, shot.id]
-                    )}
-                    className={`w-full text-left flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition-all ${
-                      isSelected ? 'border-primary bg-primary/5' : atMax ? 'border-border/30 opacity-40' : 'border-border/50 bg-background'
-                    }`}
-                  >
-                    <span className="text-base">{shot.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold">{shot.title}</p>
-                      <p className="text-[10px] text-muted-foreground">{shot.subtitle}</p>
-                    </div>
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-primary bg-primary' : 'border-border'}`}>
-                      {isSelected && <Check className="w-3 h-3 text-white" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            {selectedShots.length > 0 && (
-              <p className="text-[11px] text-primary font-medium mt-3">
-                ✓ {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''} added (+${selectedShots.length * 4})
-              </p>
-            )}
-          </div>
-        </motion.div>
+         <motion.div
+           initial={{ opacity: 0, y: 12 }}
+           animate={{ opacity: 1, y: 0 }}
+           transition={{ delay: 0.12 }}
+           className="mb-6"
+         >
+           <div className="bg-card border border-border/50 rounded-2xl p-4">
+             <div className="flex items-center gap-2 mb-1">
+               <Zap className="w-4 h-4 text-primary" />
+               <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
+               <span className="text-[10px] text-muted-foreground ml-auto">${shots[0]?.price || 6} each</span>
+             </div>
+             <p className="text-[11px] text-muted-foreground mb-3">Pick up to 3 shots — one per day of your program</p>
+             <div className="space-y-2">
+               {shots.map(shot => {
+                 const isSelected = selectedShots.includes(shot.id);
+                 const atMax = selectedShots.length >= 3 && !isSelected;
+                 return (
+                   <button
+                     key={shot.id}
+                     disabled={atMax}
+                     onClick={() => setSelectedShots(prev =>
+                       isSelected ? prev.filter(id => id !== shot.id) : [...prev, shot.id]
+                     )}
+                     className={`w-full text-left flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition-all ${
+                       isSelected ? 'border-primary bg-primary/5' : atMax ? 'border-border/30 opacity-40' : 'border-border/50 bg-background'
+                     }`}
+                   >
+                     {shot.image_url ? (
+                       <img src={shot.image_url} alt={shot.title} className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                     ) : (
+                       <span className="text-base shrink-0">🍊</span>
+                     )}
+                     <div className="flex-1 min-w-0">
+                       <p className="text-xs font-semibold">{shot.title}</p>
+                       <p className="text-[10px] text-muted-foreground">{shot.short_description}</p>
+                     </div>
+                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-primary bg-primary' : 'border-border'}`}>
+                       {isSelected && <Check className="w-3 h-3 text-white" />}
+                     </div>
+                   </button>
+                 );
+               })}
+             </div>
+             {selectedShots.length > 0 && (
+               <p className="text-[11px] text-primary font-medium mt-3">
+                 ✓ {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''} added (+${(selectedShots.reduce((sum, id) => sum + (shots.find(s => s.id === id)?.price || 0), 0)).toFixed(2)})
+               </p>
+             )}
+           </div>
+         </motion.div>
       </div>
 
       {/* Bottom CTA */}
