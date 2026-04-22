@@ -8,13 +8,11 @@ import { toast } from 'sonner';
 import SubscriptionUpsellModal from '@/components/program/SubscriptionUpsellModal';
 import { PROGRAMS } from '@/components/home/ProgramCards';
 
-const SHOTS_ADDON = {
-  id: '__wellness_shots_addon__',
-  title: 'Daily Wellness Shots',
-  description: '3 concentrated wellness shots to amplify your program results.',
-  price: 15,
-  category: 'shot',
-};
+const AVAILABLE_SHOTS = [
+  { id: '69dcf71ebec1895cc5f96db2', title: 'Golden Fire Shot', subtitle: 'Turmeric · Ginger · Black Pepper', emoji: '🔥' },
+  { id: '69dcf71ebec1895cc5f96db3', title: 'Citrus Shield Shot', subtitle: 'Lemon · Cayenne · Elderberry', emoji: '🍋' },
+  { id: '69dcf71ebec1895cc5f96db4', title: 'Green Detox Shot', subtitle: 'Wheatgrass · Spirulina · Cucumber', emoji: '🌿' },
+];
 
 const PERKS = [
   'Cold-pressed same day',
@@ -29,7 +27,7 @@ export default function ProgramDetail() {
   const { addItem } = useCart();
 
   const program = PROGRAMS.find(p => p.key === key);
-  const [shotsAdded, setShotsAdded] = useState(false);
+  const [selectedShots, setSelectedShots] = useState([]); // array of shot ids, max 3
   const [showUpsell, setShowUpsell] = useState(false);
 
   if (!program) {
@@ -38,7 +36,8 @@ export default function ProgramDetail() {
   }
 
   const basePrice = program.price;
-  const total = basePrice + (shotsAdded ? SHOTS_ADDON.price : 0);
+  const shotsTotal = selectedShots.length * 4;
+  const total = basePrice + shotsTotal;
 
   const handleStartProgram = () => {
     setShowUpsell(true);
@@ -57,12 +56,10 @@ export default function ProgramDetail() {
       1,
       { bottles_per_unit: program.bottles, bundle_composition: [] }
     );
-    if (shotsAdded) {
-      addItem(
-        { id: SHOTS_ADDON.id, title: SHOTS_ADDON.title, price: SHOTS_ADDON.price, category: 'shot' },
-        1
-      );
-    }
+    selectedShots.forEach(shotId => {
+      const shot = AVAILABLE_SHOTS.find(s => s.id === shotId);
+      if (shot) addItem({ id: shot.id, title: shot.title, price: 4, category: 'shot' }, 1);
+    });
     toast.success(`${program.name} Program added to cart`);
     setShowUpsell(false);
     navigate('/cart');
@@ -142,44 +139,46 @@ export default function ProgramDetail() {
           transition={{ delay: 0.12 }}
           className="mb-6"
         >
-          <button
-            onClick={() => setShotsAdded(!shotsAdded)}
-            className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${
-              shotsAdded
-                ? 'border-primary bg-primary/5'
-                : 'border-border/50 bg-card'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${shotsAdded ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
-                  <Zap className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
-                  <p className="text-[11px] text-muted-foreground">3 concentrated shots · premium enhancement</p>
-                </div>
-              </div>
-              <div className="shrink-0 ml-2 text-right">
-                <p className="text-sm font-bold">+${SHOTS_ADDON.price}</p>
-                <div className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center ml-auto transition-all ${shotsAdded ? 'border-primary bg-primary' : 'border-border'}`}>
-                  {shotsAdded && <Check className="w-3 h-3 text-white" />}
-                </div>
-              </div>
+          <div className="bg-card border border-border/50 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap className="w-4 h-4 text-primary" />
+              <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
+              <span className="text-[10px] text-muted-foreground ml-auto">$4 each</span>
             </div>
-            <AnimatePresence>
-              {shotsAdded && (
-                <motion.p
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="text-xs text-primary font-medium mt-3 pt-3 border-t border-primary/20"
-                >
-                  ✓ Wellness shots added — your program is now complete
-                </motion.p>
-              )}
-            </AnimatePresence>
-          </button>
+            <p className="text-[11px] text-muted-foreground mb-3">Pick up to 3 shots — one per day of your program</p>
+            <div className="space-y-2">
+              {AVAILABLE_SHOTS.map(shot => {
+                const isSelected = selectedShots.includes(shot.id);
+                const atMax = selectedShots.length >= 3 && !isSelected;
+                return (
+                  <button
+                    key={shot.id}
+                    disabled={atMax}
+                    onClick={() => setSelectedShots(prev =>
+                      isSelected ? prev.filter(id => id !== shot.id) : [...prev, shot.id]
+                    )}
+                    className={`w-full text-left flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition-all ${
+                      isSelected ? 'border-primary bg-primary/5' : atMax ? 'border-border/30 opacity-40' : 'border-border/50 bg-background'
+                    }`}
+                  >
+                    <span className="text-base">{shot.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold">{shot.title}</p>
+                      <p className="text-[10px] text-muted-foreground">{shot.subtitle}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-primary bg-primary' : 'border-border'}`}>
+                      {isSelected && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedShots.length > 0 && (
+              <p className="text-[11px] text-primary font-medium mt-3">
+                ✓ {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''} added (+${selectedShots.length * 4})
+              </p>
+            )}
+          </div>
         </motion.div>
       </div>
 
@@ -188,7 +187,7 @@ export default function ProgramDetail() {
         <div className="max-w-lg mx-auto px-4 py-3">
           <div className="flex justify-between items-baseline mb-2.5">
             <span className="text-xs text-muted-foreground">
-              {program.name} Program{shotsAdded ? ' + Shots' : ''}
+              {program.name} Program{selectedShots.length > 0 ? ` + ${selectedShots.length} Shot${selectedShots.length > 1 ? 's' : ''}` : ''}
             </span>
             <span className="font-heading text-xl font-bold">${total}</span>
           </div>
