@@ -285,8 +285,8 @@ export default function Cart() {
                             <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
                             <p className="text-xs text-muted-foreground">{comp.quantity} bottles</p>
                           </div>
-                          <div className={`px-2.5 py-1.5 rounded-lg flex items-center justify-center font-heading font-bold text-sm ${juiceColors[comp.product_name] || 'bg-slate-200 text-slate-700'}`}>
-                            {comp.quantity}
+                          <div className="flex items-center justify-center">
+                            <span className="text-lg font-heading font-bold text-muted-foreground">{comp.quantity}</span>
                           </div>
                         </div>
                       );
