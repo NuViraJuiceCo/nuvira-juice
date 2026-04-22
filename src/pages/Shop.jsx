@@ -13,6 +13,7 @@ import ProgramCards from '@/components/home/ProgramCards';
 const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
   { key: 'juice', label: 'Juices' },
+  { key: 'shot', label: 'Wellness Shots' },
   { key: 'bundle', label: 'Bundles' },
   { key: 'wellness_pack', label: 'Wellness' },
   { key: 'seasonal', label: 'Seasonal' },
