@@ -271,13 +271,13 @@ export default function Cart() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Program Includes</p>
                   <div className="space-y-2">
                     {item.bundle_composition && item.bundle_composition.map(comp => (
-                      <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-lg flex-shrink-0 flex items-center justify-center font-heading font-bold text-lg ${juiceColors[comp.product_name] || 'bg-slate-200 text-slate-700'}`}>
-                          {comp.quantity}
-                        </div>
-                        <div className="flex-1 min-w-0">
+                      <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center justify-between">
+                        <div>
                           <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
                           <p className="text-xs text-muted-foreground">{comp.quantity} bottles per cycle</p>
+                        </div>
+                        <div className={`px-3 py-2 rounded-lg flex items-center justify-center font-heading font-bold text-base ${juiceColors[comp.product_name] || 'bg-slate-200 text-slate-700'}`}>
+                          {comp.quantity}
                         </div>
                       </div>
                     ))}
