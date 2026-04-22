@@ -9,6 +9,14 @@
       "type": "string",
       "description": "User's real contact email (may differ from auth email, e.g. Sign in with Apple relay)"
     },
+    "phone": {
+      "type": "string",
+      "description": "User's phone number"
+    },
+    "address": {
+      "type": "string",
+      "description": "User's delivery address"
+    },
     "wellness_goals": {
       "type": "array",
       "items": {

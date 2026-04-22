@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
     const order = await base44.asServiceRole.entities.Order.create({
       order_number: orderNumber,
-      customer_email: customer_email || 'guest@nuvira.com',
+      customer_email: customer_email || '',
       items: items.map(i => ({
         product_id: i.product_id,
         title: i.title,

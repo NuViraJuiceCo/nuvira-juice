@@ -51,15 +51,14 @@ export default function Checkout() {
   // Pre-populate fields from saved profile once
   React.useEffect(() => {
     if (prefilled || !user) return;
-    const savedPhone = userProfile?.phone || user?.phone || '';
-    const savedAddress = userProfile?.address || user?.address || '';
-    if (savedPhone) setPhone(savedPhone);
-    if (savedAddress) {
-      const parts = savedAddress.split(',').map(s => s.trim());
+    if (!userProfile) return;
+    if (userProfile?.phone) setPhone(userProfile.phone);
+    if (userProfile?.address) {
+      const parts = userProfile.address.split(',').map(s => s.trim());
       setAddress({ street: parts[0]||'', city: parts[1]||'', state: parts[2]||'', zip: parts[3]||'' });
     }
     if (userProfile?.sms_consent) setSmsConsent(true);
-    if (savedPhone || savedAddress) setPrefilled(true);
+    setPrefilled(true);
   }, [userProfile, user, prefilled]);
 
   const { data: schedules = [] } = useQuery({

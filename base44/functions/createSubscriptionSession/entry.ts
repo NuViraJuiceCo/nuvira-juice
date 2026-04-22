@@ -32,12 +32,14 @@ Deno.serve(async (req) => {
         plan_id,
         bundle_id,
         delivery_address: address || '',
+        customer_email: customer_email || '',
       },
       subscription_data: {
         metadata: {
           plan_id,
           bundle_id,
           delivery_address: address || '',
+          customer_email: customer_email || '',
         },
       },
     });
