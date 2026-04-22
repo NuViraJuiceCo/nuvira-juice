@@ -89,9 +89,9 @@ export default function ProgramDetail() {
           className={`bg-gradient-to-br ${program.color} border ${program.border} rounded-2xl p-6 mb-6`}
         >
           <div className="text-4xl mb-3">{program.emoji}</div>
-          <h1 className="font-heading text-3xl font-bold mb-1">{program.name}</h1>
+          <h1 className="font-heading text-3xl font-bold mb-1 text-gray-900">{program.name}</h1>
           <p className={`text-sm font-semibold ${program.accent} mb-3`}>{program.tagline}</p>
-          <p className="text-sm text-foreground/70 leading-relaxed">{program.description}</p>
+          <p className="text-sm text-gray-700 leading-relaxed">{program.description}</p>
         </motion.div>
 
         {/* Program Details */}
@@ -121,7 +121,7 @@ export default function ProgramDetail() {
           {/* Composition */}
           <div className={`flex items-center gap-2 p-3 rounded-xl bg-gradient-to-br ${program.color} border ${program.border}`}>
             <div className={`w-2.5 h-2.5 rounded-full ${program.dot} shrink-0`} />
-            <p className="text-sm font-semibold">{program.composition}</p>
+            <p className="text-sm font-semibold text-gray-800">{program.composition}</p>
           </div>
 
           {/* Perks */}
