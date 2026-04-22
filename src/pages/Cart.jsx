@@ -263,11 +263,16 @@ export default function Cart() {
               {item.category === 'bundle' && item.is_program && (
                 <div className="mt-3 pt-3 border-t border-border/40">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Your Program Includes</p>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     {item.bundle_composition && item.bundle_composition.map(comp => (
-                      <div key={comp.product_id} className="flex justify-between text-xs">
-                        <span className="text-foreground/80">{comp.quantity}x {comp.product_name}</span>
-                        <span className="text-muted-foreground">3-day cycle</span>
+                      <div key={comp.product_id} className="flex items-center gap-2">
+                        <div className="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
+                          {comp.quantity}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold">{comp.product_name}</p>
+                          <p className="text-[10px] text-muted-foreground">per 3-day cycle</p>
+                        </div>
                       </div>
                     ))}
                   </div>
