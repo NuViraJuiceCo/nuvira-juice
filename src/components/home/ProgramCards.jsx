@@ -68,8 +68,8 @@ export default function ProgramCards() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{program.emoji}</span>
                     <p className="font-heading text-xl font-bold text-gray-900">{program.name}</p>
+                    <span className="text-lg">{program.emoji}</span>
                   </div>
                   <p className={`text-xs font-semibold ${program.accent}`}>{program.tagline}</p>
                 </div>
