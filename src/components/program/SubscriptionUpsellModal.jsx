@@ -1,15 +1,22 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import { Check, Crown, Leaf, Zap, X } from 'lucide-react';
+import { Check, Crown, Leaf, Zap, X, MapPin, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 const PLAN_ICONS = { 0: Leaf, 1: Zap, 2: Crown };
 
 export default function SubscriptionUpsellModal({ open, onClose, onOneTime, programName, programTotal }) {
-  const navigate = useNavigate();
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
+  const [calculatedZone, setCalculatedZone] = useState(null);
+  const [calculatedDistance, setCalculatedDistance] = useState(null);
+  const [calculating, setCalculating] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+  const debounceRef = useRef(null);
 
   const { data: plans = [] } = useQuery({
     queryKey: ['subscriptionPlans'],
@@ -17,9 +24,75 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, prog
     enabled: open,
   });
 
-  const handleSubscribe = (planId) => {
-    onClose();
-    navigate('/subscribe');
+  const { data: deliveryZones = [] } = useQuery({
+    queryKey: ['deliveryZones'],
+    queryFn: () => base44.entities.DeliveryZone.filter({ is_active: true }, 'max_miles'),
+    enabled: open,
+  });
+
+  // Set default plan once data loads
+  useEffect(() => {
+    if (plans.length > 0 && !selectedPlanId) {
+      setSelectedPlanId(plans[1]?.id || plans[0]?.id);
+    }
+  }, [plans]);
+
+  const calculateDistance = (addr) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setCalculatedZone(null);
+    setCalculatedDistance(null);
+    if (!addr || !addr.trim() || addr.length < 5) return;
+    setCalculating(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
+        setCalculatedDistance(res.data.distance);
+        setCalculatedZone(res.data.zone);
+      } catch {
+        setCalculatedZone(null);
+        setCalculatedDistance(null);
+      } finally {
+        setCalculating(false);
+      }
+    }, 800);
+  };
+
+  const selectedPlan = plans.find(p => p.id === selectedPlanId);
+
+  const handleSubscribe = async () => {
+    const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+    if (!addressString.trim()) {
+      toast.error('Please enter your delivery address');
+      return;
+    }
+    if (!calculatedZone) {
+      toast.error('Please wait for distance calculation');
+      return;
+    }
+    if (!selectedPlanId) {
+      toast.error('Please select a plan');
+      return;
+    }
+
+    setSubscribing(true);
+    try {
+      const res = await base44.functions.invoke('createSubscriptionSession', {
+        plan_id: selectedPlanId,
+        bundle_id: null,
+        address: addressString,
+        customer_email: null,
+      });
+      if (res.data?.url) {
+        window.location.href = res.data.url;
+      } else {
+        toast.error(res.data?.error || 'Failed to start checkout');
+        setSubscribing(false);
+      }
+    } catch (err) {
+      console.error('Subscription error:', err);
+      toast.error('An error occurred. Please try again.');
+      setSubscribing(false);
+    }
   };
 
   return (
@@ -59,6 +132,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, prog
               {plans.map((plan, i) => {
                 const Icon = PLAN_ICONS[i] || Leaf;
                 const isHighlighted = plan.is_featured;
+                const isSelected = selectedPlanId === plan.id;
                 const period = plan.frequency === 'weekly' ? '/week' : '/month';
                 const bottleLabel = plan.frequency === 'weekly'
                   ? `${plan.bottle_count} bottles/week`
@@ -67,17 +141,19 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, prog
                 return (
                   <button
                     key={plan.id}
-                    onClick={() => handleSubscribe(plan.id)}
+                    onClick={() => setSelectedPlanId(plan.id)}
                     className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${
-                      isHighlighted
-                        ? 'border-primary bg-primary/5'
+                      isSelected
+                        ? 'border-primary bg-primary/5 shadow-md'
+                        : isHighlighted
+                        ? 'border-primary/30 bg-card'
                         : 'border-border/50 bg-card'
                     }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <div className="flex items-center gap-2 mb-0.5">
-                          <Icon className={`w-4 h-4 ${isHighlighted ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <Icon className={`w-4 h-4 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
                           <p className="font-semibold text-sm">{plan.name}</p>
                           {isHighlighted && (
                             <span className="text-[9px] font-bold bg-primary/15 text-primary px-2 py-0.5 rounded-full">
@@ -110,15 +186,81 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, prog
               })}
             </div>
 
+            {/* Address Input — Only show if a plan is selected */}
+            {selectedPlanId && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 space-y-3 bg-card/50 rounded-2xl p-4 border border-border/40"
+              >
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block">
+                  Delivery Address
+                </label>
+                <AddressAutocomplete
+                  value={address}
+                  onChange={addr => {
+                    setAddress(addr);
+                    const full = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
+                    calculateDistance(full);
+                  }}
+                  placeholder="123 Main St"
+                  className="rounded-xl h-10"
+                />
+
+                {/* Zone Result */}
+                <AnimatePresence>
+                  {calculatedZone && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-primary/5 border border-primary/20 rounded-lg p-2.5 flex items-start gap-2"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                      <div className="text-xs">
+                        <p className="text-muted-foreground">{calculatedDistance?.toFixed(1)} miles away</p>
+                        {(() => {
+                          const zoneIndex = parseInt(calculatedZone?.replace('zone', '')) - 1;
+                          const zone = deliveryZones[zoneIndex];
+                          return zone ? <p className="font-semibold text-primary">${zone.delivery_fee?.toFixed(2)} delivery fee</p> : null;
+                        })()}
+                      </div>
+                    </motion.div>
+                  )}
+                  {calculating && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Calculating...
+                    </div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
+
             {/* One-time Option */}
             <button
               onClick={onOneTime}
-              className="w-full py-3.5 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-border transition-all"
+              className="w-full py-3.5 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-border transition-all mb-3"
             >
               No thanks — one-time purchase (${programTotal})
             </button>
 
-            <p className="text-center text-[10px] text-muted-foreground mt-3">
+            {/* Subscribe Button */}
+            {selectedPlanId && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <Button
+                  onClick={handleSubscribe}
+                  disabled={subscribing || !address.street.trim() || calculating || !calculatedZone}
+                  className="w-full h-11 rounded-xl font-semibold text-sm mb-2"
+                >
+                  {subscribing ? 'Redirecting to payment...' : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
+                </Button>
+              </motion.div>
+            )}
+
+            <p className="text-center text-[10px] text-muted-foreground">
               Cancel anytime. No fees, no penalties.
             </p>
           </motion.div>
