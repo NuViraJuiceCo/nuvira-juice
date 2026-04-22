@@ -69,22 +69,22 @@ export default function ProgramCards() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-lg">{program.emoji}</span>
-                    <p className="font-heading text-xl font-bold text-foreground">{program.name}</p>
+                    <p className="font-heading text-xl font-bold text-gray-900">{program.name}</p>
                   </div>
                   <p className={`text-xs font-semibold ${program.accent}`}>{program.tagline}</p>
                 </div>
                 <div className="text-right shrink-0 ml-3">
-                  <p className="font-heading text-2xl font-bold text-foreground">${program.price}</p>
-                  <p className="text-[10px] text-muted-foreground">{program.days}-day · {program.bottles} bottles</p>
+                  <p className="font-heading text-2xl font-bold text-gray-900">${program.price}</p>
+                  <p className="text-[10px] text-gray-600">{program.days}-day · {program.bottles} bottles</p>
                 </div>
               </div>
 
-              <p className="text-xs text-foreground/70 leading-relaxed mb-4">{program.description}</p>
+              <p className="text-xs text-gray-700 leading-relaxed mb-4">{program.description}</p>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <div className={`w-2 h-2 rounded-full ${program.dot}`} />
-                  <p className="text-[11px] font-medium text-foreground/60">{program.composition}</p>
+                  <p className="text-[11px] font-medium text-gray-600">{program.composition}</p>
                 </div>
                 <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
                   Start Program <ArrowRight className="w-3.5 h-3.5" />
