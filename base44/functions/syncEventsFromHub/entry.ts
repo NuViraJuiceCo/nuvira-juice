@@ -34,10 +34,19 @@ Deno.serve(async (req) => {
       const eventData = { ...event, title: event.name };
       delete eventData.name;
 
-      const existing = await base44.asServiceRole.entities.Event.filter({ hub_event_id });
+      let existing = await base44.asServiceRole.entities.Event.filter({ hub_event_id });
+
+      // Fallback dedup: match by title + date in case hub sent a different hub_event_id for the same event
+      if (existing.length === 0 && eventData.title && eventData.date) {
+        existing = await base44.asServiceRole.entities.Event.filter({ title: eventData.title, date: eventData.date });
+      }
 
       if (existing.length > 0) {
-        await base44.asServiceRole.entities.Event.update(existing[0].id, eventData);
+        // Update the first match and clean up any extra duplicates
+        await base44.asServiceRole.entities.Event.update(existing[0].id, { ...eventData, hub_event_id });
+        for (let i = 1; i < existing.length; i++) {
+          await base44.asServiceRole.entities.Event.delete(existing[i].id);
+        }
       } else {
         await base44.asServiceRole.entities.Event.create({ ...eventData, hub_event_id });
       }
