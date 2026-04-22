@@ -67,6 +67,10 @@ export default function ProgramDetail() {
   };
 
   const handleSubscribe = async (planId, deliveryAddress) => {
+    if (window.self !== window.top) {
+      alert('Checkout only works from the published app, not the preview.');
+      return;
+    }
     try {
       const res = await base44.functions.invoke('createSubscriptionSession', {
         plan_id: planId,
