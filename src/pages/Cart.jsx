@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PROGRAMS } from '@/components/home/ProgramCards';
 import { isPreLaunch, launchDateFormatted } from '@/lib/launchConfig';
@@ -64,10 +64,19 @@ export default function Cart() {
     queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
   });
 
+  // Get all unique juice names from program compositions
+  const juiceNamesInCart = React.useMemo(() => {
+    return [...new Set(items.flatMap(i => i.bundle_composition?.map(c => c.product_name) || []))];
+  }, [items]);
+
   const { data: juices = [] } = useQuery({
-    queryKey: ['juices-for-bundle'],
-    queryFn: () => base44.entities.Product.filter({ category: 'juice', is_available: true }, 'sort_order', 20),
-    enabled: items.some(i => i.category === 'bundle'),
+    queryKey: ['juices-for-cart', juiceNamesInCart],
+    queryFn: async () => {
+      if (juiceNamesInCart.length === 0) return [];
+      const allProducts = await base44.entities.Product.list('sort_order', 100);
+      return allProducts.filter(p => juiceNamesInCart.includes(p.title));
+    },
+    enabled: juiceNamesInCart.length > 0,
   });
 
   const scheduleRules = schedules[0]?.rules || [];
