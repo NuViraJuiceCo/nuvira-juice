@@ -9,9 +9,9 @@ import SubscriptionUpsellModal from '@/components/program/SubscriptionUpsellModa
 import { PROGRAMS } from '@/components/home/ProgramCards';
 
 const AVAILABLE_SHOTS = [
-  { id: '69dcf71ebec1895cc5f96db2', title: 'Golden Fire Shot', subtitle: 'Turmeric · Ginger · Black Pepper', emoji: '🔥' },
-  { id: '69dcf71ebec1895cc5f96db3', title: 'Citrus Shield Shot', subtitle: 'Lemon · Cayenne · Elderberry', emoji: '🍋' },
-  { id: '69dcf71ebec1895cc5f96db4', title: 'Green Detox Shot', subtitle: 'Wheatgrass · Spirulina · Cucumber', emoji: '🌿' },
+  { id: 'shot_radiance', title: 'Radiance Shot', subtitle: 'Beet · Apple · Lemon', emoji: '✨' },
+  { id: 'shot_hydration', title: 'Hydration Shot', subtitle: 'Coconut Water · Pink Himalayan Salt · Lime · Honey · Mint', emoji: '💧' },
+  { id: 'shot_reset', title: 'Reset Shot', subtitle: 'Pineapple · Lemon · Ginger · Black Salt', emoji: '🌿' },
 ];
 
 const PERKS = [
