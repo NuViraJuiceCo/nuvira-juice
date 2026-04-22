@@ -259,8 +259,23 @@ export default function Cart() {
                 </div>
               </div>
 
-              {/* Bundle Composer */}
-              {item.category === 'bundle' && item.bottles_per_unit && (
+              {/* Program Composition Display (no customization) */}
+              {item.category === 'bundle' && item.is_program && (
+                <div className="mt-3 pt-3 border-t border-border/40">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Your Program Includes</p>
+                  <div className="space-y-1">
+                    {item.bundle_composition && item.bundle_composition.map(comp => (
+                      <div key={comp.product_id} className="flex justify-between text-xs">
+                        <span className="text-foreground/80">{comp.quantity}x {comp.product_name}</span>
+                        <span className="text-muted-foreground">3-day cycle</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Bundle Composer — regular bundles only */}
+              {item.category === 'bundle' && !item.is_program && item.bottles_per_unit && (
                 <BundleComposer
                   bundleSize={item.bottles_per_unit * item.quantity}
                   composition={item.bundle_composition || []}
