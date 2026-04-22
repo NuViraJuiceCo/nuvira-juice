@@ -67,7 +67,7 @@ export default function Cart() {
   const { data: juices = [] } = useQuery({
     queryKey: ['juices-for-bundle'],
     queryFn: () => base44.entities.Product.filter({ category: 'juice', is_available: true }, 'sort_order', 20),
-    enabled: items.some(i => i.category === 'bundle' && !i.is_program),
+    enabled: items.some(i => i.category === 'bundle'),
   });
 
   const juiceColors = {
