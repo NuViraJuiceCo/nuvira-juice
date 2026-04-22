@@ -37,7 +37,7 @@ export default function ProgramDetail() {
   }
 
   const basePrice = program.price;
-  const shotsTotal = selectedShots.length * 4;
+  const shotsTotal = selectedShots.length * 6;
   const total = basePrice + shotsTotal;
 
   const handleStartProgram = () => {
