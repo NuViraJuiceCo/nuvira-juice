@@ -77,7 +77,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     setSubscribing(true);
     try {
       // Call the parent callback with plan details
-      onSubscribe(selectedPlanId, addressString);
+      await onSubscribe(selectedPlanId, addressString);
     } catch (err) {
       console.error('Subscription error:', err);
       toast.error('An error occurred. Please try again.');
