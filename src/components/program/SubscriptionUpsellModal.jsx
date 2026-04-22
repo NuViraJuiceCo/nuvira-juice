@@ -1,40 +1,23 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Check, Crown, X } from 'lucide-react';
+import { Check, Crown, Leaf, Zap, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from '@tanstack/react-query';
 
-const SUBSCRIPTION_OPTIONS = [
-  {
-    key: 'vip',
-    name: 'VIP Wellness',
-    price: 269,
-    period: '/month',
-    perDelivery: '$134.50 per delivery',
-    deliveries: '2 deliveries/month · 12 bottles each',
-    bottles: 24,
-    highlight: true,
-    badge: 'Most Popular',
-    perks: ['Free delivery', 'Priority fulfillment', '5% member pricing'],
-  },
-  {
-    key: 'monthly',
-    name: 'Monthly Ritual',
-    price: 139,
-    period: '/month',
-    perDelivery: null,
-    deliveries: '1 delivery/month · 12 bottles',
-    bottles: 12,
-    highlight: false,
-    badge: null,
-    perks: ['5% member pricing', 'Priority access'],
-  },
-];
+const PLAN_ICONS = { 0: Leaf, 1: Zap, 2: Crown };
 
 export default function SubscriptionUpsellModal({ open, onClose, onOneTime, programName, programTotal }) {
   const navigate = useNavigate();
 
-  const handleSubscribe = () => {
+  const { data: plans = [] } = useQuery({
+    queryKey: ['subscriptionPlans'],
+    queryFn: () => base44.entities.SubscriptionPlan.list('sort_order'),
+    enabled: open,
+  });
+
+  const handleSubscribe = (planId) => {
     onClose();
     navigate('/subscribe');
   };
@@ -73,49 +56,58 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, prog
 
             {/* Subscription Cards */}
             <div className="space-y-3 mb-4">
-              {SUBSCRIPTION_OPTIONS.map(plan => (
-                <button
-                  key={plan.key}
-                  onClick={handleSubscribe}
-                  className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${
-                    plan.highlight
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border/50 bg-card'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2 mb-0.5">
-                        {plan.highlight && <Crown className="w-4 h-4 text-primary" />}
-                        <p className="font-semibold text-sm">{plan.name}</p>
-                        {plan.badge && (
-                          <span className="text-[9px] font-bold bg-primary/15 text-primary px-2 py-0.5 rounded-full">
-                            {plan.badge}
-                          </span>
+              {plans.map((plan, i) => {
+                const Icon = PLAN_ICONS[i] || Leaf;
+                const isHighlighted = plan.is_featured;
+                const period = plan.frequency === 'weekly' ? '/week' : '/month';
+                const bottleLabel = plan.frequency === 'weekly'
+                  ? `${plan.bottle_count} bottles/week`
+                  : `${plan.bottle_count} bottles/month`;
+
+                return (
+                  <button
+                    key={plan.id}
+                    onClick={() => handleSubscribe(plan.id)}
+                    className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${
+                      isHighlighted
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border/50 bg-card'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <Icon className={`w-4 h-4 ${isHighlighted ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <p className="font-semibold text-sm">{plan.name}</p>
+                          {isHighlighted && (
+                            <span className="text-[9px] font-bold bg-primary/15 text-primary px-2 py-0.5 rounded-full">
+                              Most Popular
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{bottleLabel}</p>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <div>
+                          <span className="font-heading text-xl font-bold">${plan.base_price}</span>
+                          <span className="text-xs text-muted-foreground">{period}</span>
+                        </div>
+                        {plan.discount_percent > 0 && (
+                          <p className="text-[10px] text-primary font-semibold">Save {plan.discount_percent}%</p>
                         )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground">{plan.deliveries}</p>
                     </div>
-                    <div className="text-right shrink-0 ml-2">
-                      <div>
-                        <span className="font-heading text-xl font-bold">${plan.price}</span>
-                        <span className="text-xs text-muted-foreground">{plan.period}</span>
-                      </div>
-                      {plan.perDelivery && (
-                        <p className="text-[10px] text-primary font-semibold">{plan.perDelivery}</p>
-                      )}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {(plan.perks || []).slice(0, 3).map(perk => (
+                        <div key={perk} className="flex items-center gap-1">
+                          <Check className="w-3 h-3 text-primary shrink-0" />
+                          <span className="text-[10px] text-muted-foreground">{perk}</span>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    {plan.perks.map(perk => (
-                      <div key={perk} className="flex items-center gap-1">
-                        <Check className="w-3 h-3 text-primary shrink-0" />
-                        <span className="text-[10px] text-muted-foreground">{perk}</span>
-                      </div>
-                    ))}
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
 
             {/* One-time Option */}
