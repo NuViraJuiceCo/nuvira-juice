@@ -118,9 +118,9 @@ export default function ProductDetail() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="px-4 -mt-4 relative"
+        className="px-4 pt-6"
       >
-        <div className="bg-card rounded-t-2xl pt-5 px-1">
+        <div className="bg-card rounded-2xl pt-6 px-4">
           {/* Pre-order badge — show if store is in pre-order mode OR this product is flagged */}
           {(isPreorderMode() || product.is_preorder) && (
             <span className="inline-block bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2 border border-primary/20">
