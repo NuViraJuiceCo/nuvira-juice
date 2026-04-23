@@ -131,10 +131,11 @@ Deno.serve(async (req) => {
       // Handle subscription checkout — create Subscription record
       if (session.mode === 'subscription' && session.metadata?.plan_id) {
         const planId = session.metadata.plan_id;
+        const bundleId = session.metadata.bundle_id || null;
         const deliveryAddress = session.metadata.delivery_address || '';
         const stripeSubscriptionId = session.subscription;
 
-        console.log(`Subscription checkout completed for ${customerEmail}, plan: ${planId}`);
+        console.log(`Subscription checkout completed for ${customerEmail}, plan: ${planId}, stripe sub: ${stripeSubscriptionId}`);
 
         // Calculate next delivery date (next week for weekly, next month for monthly)
         const allPlans = await base44.asServiceRole.entities.SubscriptionPlan.list();
@@ -153,16 +154,31 @@ Deno.serve(async (req) => {
         const alreadyExists = existing.some(s => s.plan_id === planId && s.status === 'active');
 
         if (!alreadyExists) {
-          await base44.asServiceRole.entities.Subscription.create({
+          const subscription = await base44.asServiceRole.entities.Subscription.create({
             customer_email: customerEmail,
             plan_id: planId,
-            bundle_id: session.metadata.bundle_id || null,
+            bundle_id: bundleId,
             delivery_address: deliveryAddress,
             status: 'active',
             started_date: now.toISOString().split('T')[0],
             next_delivery_date: nextDeliveryStr,
           });
-          console.log(`Subscription record created for ${customerEmail}`);
+          console.log(`Subscription record created for ${customerEmail}: ${subscription.id}`);
+
+          // Sync subscription to hub
+          base44.asServiceRole.functions.invoke('syncCustomerToHub', {
+            event: 'customer.subscription_created',
+            customer_email: customerEmail,
+            data: {
+              subscription_id: subscription.id,
+              plan_id: planId,
+              plan_name: plan?.name || 'Unknown',
+              frequency: plan?.frequency || 'unknown',
+              delivery_address: deliveryAddress,
+              next_delivery_date: nextDeliveryStr,
+            },
+          })
+            .catch(err => console.error('Failed to sync subscription to hub:', err.message));
         } else {
           console.log(`Subscription already exists for ${customerEmail}, skipping creation`);
         }
