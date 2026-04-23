@@ -127,18 +127,15 @@ export default function Rewards() {
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
     try {
-      const res = await Promise.race([
-        base44.functions.invoke('createLoyaltyMember', {
-          email: signupForm.email.trim(),
-          first_name: signupForm.first_name.trim(),
-          last_name: signupForm.last_name.trim(),
-          phone: signupForm.phone.trim(),
-          address: addrString.trim(),
-          birthday: signupForm.birthday,
-          signup_date: new Date().toISOString().split('T')[0],
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 10000))
-      ]);
+      const res = await base44.functions.invoke('createLoyaltyMember', {
+        email: signupForm.email.trim(),
+        first_name: signupForm.first_name.trim(),
+        last_name: signupForm.last_name.trim(),
+        phone: signupForm.phone.trim(),
+        address: addrString.trim(),
+        birthday: signupForm.birthday,
+        signup_date: new Date().toISOString().split('T')[0],
+      });
 
       clearTimeout(timeoutId);
       
@@ -147,14 +144,16 @@ export default function Rewards() {
         setSuccessEmail(signupForm.email);
         setShowSuccessModal(true);
         setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
+        setSignupLoading(false);
+      } else if (res.data?.error) {
+        toast.error(res.data.error);
+        setSignupLoading(false);
       } else {
-        const errorMsg = res.data?.error || 'Failed to sign up. Please try again.';
-        toast.error(errorMsg);
+        toast.error('Failed to sign up. Please try again.');
+        setSignupLoading(false);
       }
-      setSignupLoading(false);
     } catch (err) {
       clearTimeout(timeoutId);
-      // Axios wraps response errors in err.response
       const errorMsg = err.response?.data?.error || err.message || 'Failed to sign up. Please try again.';
       toast.error(errorMsg === 'Request timeout' ? 'Request took too long. Please try again.' : errorMsg);
       setSignupLoading(false);
