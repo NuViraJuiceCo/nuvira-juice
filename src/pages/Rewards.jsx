@@ -10,6 +10,7 @@ import { isPreorderMode } from '@/lib/preorderConfig';
 import { Link, useNavigate } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
 import RewardsSuccessModal from '@/components/RewardsSuccessModal';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 
@@ -220,13 +221,23 @@ export default function Rewards() {
                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
                 required
               />
-              <input
-                type="text"
+              <AddressAutocomplete
+                value={
+                  signupForm.address 
+                    ? { 
+                        street: signupForm.address.split(',')[0]?.trim() || '',
+                        city: signupForm.address.split(',')[1]?.trim() || '',
+                        state: signupForm.address.split(',')[2]?.trim() || '',
+                        zip: signupForm.address.split(',')[3]?.trim() || ''
+                      }
+                    : { street: '', city: '', state: '', zip: '' }
+                }
+                onChange={(addr) => {
+                  const fullAddress = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
+                  setSignupForm({ ...signupForm, address: fullAddress });
+                }}
                 placeholder="Street Address"
-                value={signupForm.address}
-                onChange={(e) => setSignupForm({ ...signupForm, address: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-                required
+                className="h-10 rounded-lg"
               />
               <input
                 type="date"
