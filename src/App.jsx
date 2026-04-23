@@ -70,7 +70,7 @@ const AuthenticatedApp = () => {
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
       return profiles[0] || null;
     },
-    enabled: !!user?.email && location.pathname !== '/account-setup',
+    enabled: !!user?.email,
   });
 
   const handleSplashDone = () => {
