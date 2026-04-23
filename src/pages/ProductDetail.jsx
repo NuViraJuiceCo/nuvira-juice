@@ -96,15 +96,6 @@ export default function ProductDetail() {
         keywords={`${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`}
         structuredData={productStructuredData}
       />
-      {/* Back button — mobile only (desktop has sidebar) */}
-      <button
-        onClick={() => navigate(-1)}
-        className="md:hidden absolute left-4 w-9 h-9 bg-card/80 backdrop-blur-md rounded-full flex items-center justify-center z-10"
-        style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
-      >
-        <ArrowLeft className="w-4 h-4" />
-      </button>
-
       {/* Desktop back button */}
       <div className="hidden md:flex items-center gap-2 px-6 pt-5 pb-2">
         <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
