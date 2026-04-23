@@ -140,77 +140,75 @@ export default function ProductDetail() {
             animate={{ opacity: 1, y: 0 }}
             className="px-4 pt-6 md:pt-2 md:px-0"
           >
-            <div>
-          {/* Pre-order badge — show if store is in pre-order mode OR this product is flagged */}
-              {(isPreorderMode() || product.is_preorder) && (
-                <span className="inline-block bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2 border border-primary/20">
-                  ✦ Pre-Order — Delivered May 2nd
-                </span>
-              )}
-              {product.is_seasonal && (
-                <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-0.5 rounded-full mb-2">
-                  Seasonal Drop
-                </span>
-              )}
-              <h1 className="font-heading text-2xl font-bold">{product.title}</h1>
-              {product.short_description && (
-                <p className="text-sm text-muted-foreground mt-1">{product.short_description}</p>
-              )}
+            {/* Pre-order badge */}
+            {(isPreorderMode() || product.is_preorder) && (
+              <span className="inline-block bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2 border border-primary/20">
+                ✦ Pre-Order — Delivered May 2nd
+              </span>
+            )}
+            {product.is_seasonal && (
+              <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-0.5 rounded-full mb-2">
+                Seasonal Drop
+              </span>
+            )}
+            <h1 className="font-heading text-2xl font-bold">{product.title}</h1>
+            {product.short_description && (
+              <p className="text-sm text-muted-foreground mt-1">{product.short_description}</p>
+            )}
 
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-xl font-bold">${product.price?.toFixed(2)}</span>
-                {product.compare_at_price && (
-                  <span className="text-sm text-muted-foreground line-through">${product.compare_at_price.toFixed(2)}</span>
-                )}
-                {product.size && (
-                  <span className="text-xs text-muted-foreground ml-auto">{product.size}</span>
-                )}
-              </div>
-
-              {/* Description */}
-              {product.description && (
-                <div className="mt-5">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">About</h3>
-                  <p className="text-sm text-foreground/80 leading-relaxed">{product.description}</p>
-                </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-xl font-bold">${product.price?.toFixed(2)}</span>
+              {product.compare_at_price && (
+                <span className="text-sm text-muted-foreground line-through">${product.compare_at_price.toFixed(2)}</span>
               )}
-
-              {/* Ingredients */}
-              {product.ingredients && (
-                <div className="mt-4 bg-secondary/40 rounded-xl p-3.5">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <Leaf className="w-3.5 h-3.5 text-primary" />
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ingredients</h3>
-                  </div>
-                  <p className="text-xs text-foreground/70 leading-relaxed">{product.ingredients}</p>
-                </div>
-              )}
-
-              {/* Certifications */}
-              <div className="mt-4 flex flex-wrap gap-2">
-                {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
-                  <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-primary/8 text-primary border border-primary/20 rounded-full">
-                    ✓ {cert}
-                  </span>
-                ))}
-              </div>
-
-              {/* You might also like */}
-              {related.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">You might also like</h3>
-                  <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 items-stretch">
-                    {related.map(p => (
-                      <div key={p.id} className="shrink-0 w-36">
-                        <ProductCard product={p} compact />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {product.size && (
+                <span className="text-xs text-muted-foreground ml-auto">{product.size}</span>
               )}
             </div>
+
+            {/* Certifications */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
+                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-primary/8 text-primary border border-primary/20 rounded-full">
+                  ✓ {cert}
+                </span>
+              ))}
+            </div>
+
+            {/* You might also like */}
+            {related.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">You might also like</h3>
+                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 items-stretch">
+                  {related.map(p => (
+                    <div key={p.id} className="shrink-0 w-36">
+                      <ProductCard product={p} compact />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
+      </div>
+
+      {/* About & Ingredients — full width below */}
+      <div className="px-4 md:px-6 mt-6">
+        {product.description && (
+          <div className="mb-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">About</h3>
+            <p className="text-sm text-foreground/80 leading-relaxed">{product.description}</p>
+          </div>
+        )}
+        {product.ingredients && (
+          <div className="bg-secondary/40 rounded-xl p-3.5">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Leaf className="w-3.5 h-3.5 text-primary" />
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ingredients</h3>
+            </div>
+            <p className="text-xs text-foreground/70 leading-relaxed">{product.ingredients}</p>
+          </div>
+        )}
       </div>
 
       {/* Bottom Bar */}
