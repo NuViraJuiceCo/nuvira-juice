@@ -39,25 +39,25 @@ export default function OutOfAreaModal({ address, zip, onClose }) {
             <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-4">
               <MapPin className="w-6 h-6 text-amber-500" />
             </div>
-            <h2 className="font-heading text-xl font-bold mb-1">Outside Our Delivery Range</h2>
+            <h2 className="font-heading text-xl font-bold mb-1">Just Outside Our Range</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              We currently deliver within a 15-mile radius of Wentzville, MO. Your address appears to be outside that range.
+              Your address is outside our standard 15-mile delivery area — but that doesn't always mean we can't get to you!
             </p>
             <div className="bg-primary/5 border border-primary/20 rounded-xl p-3.5 mb-5">
-              <p className="text-sm font-medium text-foreground mb-1">Think we can make it work? 🙌</p>
-              <p className="text-sm text-muted-foreground">
-                Reach out to us and we'll see if we can make an exception for you:
+              <p className="text-sm font-semibold text-foreground mb-1">We may still be able to deliver to you 🚚</p>
+              <p className="text-sm text-muted-foreground mb-2">
+                Reach out to our team and we'll do our best to make it work for you:
               </p>
               <a
                 href="mailto:info@nuvirajuice.com"
-                className="inline-flex items-center gap-1.5 mt-2 text-sm font-semibold text-primary hover:underline"
+                className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline"
               >
                 <Mail className="w-3.5 h-3.5" />
                 info@nuvirajuice.com
               </a>
             </div>
 
-            <p className="text-xs text-muted-foreground mb-3 text-center font-medium">Or join our waitlist for when we expand:</p>
+            <p className="text-xs text-muted-foreground mb-3 text-center font-medium">Also want a heads up when we officially expand to your area?</p>
             <div className="flex gap-2">
               <Input
                 type="email"
