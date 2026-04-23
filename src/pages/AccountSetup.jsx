@@ -141,10 +141,11 @@ export default function AccountSetup() {
 
       if (response?.data?.success) {
         setIsComplete(true);
+        sessionStorage.setItem('setupComplete', '1');
         sessionStorage.removeItem('ordersChecked');
         setTimeout(() => {
           navigate('/shop');
-        }, 2000);
+        }, 1500);
       } else {
         const errorMsg = response?.data?.error || 'Failed to complete setup';
         toast.error(errorMsg);
