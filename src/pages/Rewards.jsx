@@ -149,13 +149,14 @@ export default function Rewards() {
         setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
         setSignupLoading(false);
       } else {
-        toast.error(res.data?.error || 'Failed to sign up.');
+        const errorMsg = res.data?.error || res.response?.data?.error || 'Failed to sign up. Please try again.';
+        toast.error(errorMsg);
         setSignupLoading(false);
       }
     } catch (err) {
       clearTimeout(timeoutId);
-      console.error('Signup error:', err.message);
-      toast.error(err.message === 'Request timeout' ? 'Request took too long. Please try again.' : (err.message || 'Failed to sign up. Please try again.'));
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to sign up. Please try again.';
+      toast.error(errorMsg === 'Request timeout' ? 'Request took too long. Please try again.' : errorMsg);
       setSignupLoading(false);
     }
   };
