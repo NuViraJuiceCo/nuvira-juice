@@ -2,101 +2,102 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+const CAPTURE_DATE = '2026-05-01'; // Production/capture day
 
+/**
+ * Batch-capture all authorized pre-order payments on May 1st.
+ * Run once on May 1st morning via scheduled automation.
+ * Admin-only. Finds all uncaptured payment intents from pre-orders and captures them.
+ */
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
 
-    // Allow admin calls or scheduled automation (no user auth for scheduled)
-    let isAdmin = false;
-    try {
-      const user = await base44.auth.me();
-      isAdmin = user?.role === 'admin';
-    } catch (_) {
-      // Called from scheduled automation — allow via service role
+    if (user?.role !== 'admin') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    // Fetch all uncaptured pre-orders
-    const allOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
-    const pending = allOrders.filter(o => o.is_preorder === true && o.payment_captured !== true && o.stripe_payment_intent_id);
+    const today = new Date().toISOString().split('T')[0];
+    if (today !== CAPTURE_DATE) {
+      return Response.json({
+        message: `Not capture day yet. Today: ${today}, capture day: ${CAPTURE_DATE}`,
+      });
+    }
 
-    console.log(`Found ${pending.length} pre-orders awaiting payment capture`);
+    // Fetch all CheckoutSessions created during pre-order window
+    const checkoutSessions = await base44.asServiceRole.entities.CheckoutSession.filter({});
+    const preorderCheckouts = checkoutSessions.filter(
+      cs => cs.checkout_data?.is_preorder === true
+    );
+
+    console.log(`Found ${preorderCheckouts.length} pre-order checkout sessions`);
 
     const results = { captured: [], failed: [], skipped: [] };
 
-    for (const order of pending) {
+    // Capture each authorized payment
+    for (const checkout of preorderCheckouts) {
       try {
-        // Capture the authorized payment
-        const paymentIntent = await stripe.paymentIntents.capture(order.stripe_payment_intent_id);
-        console.log(`Captured payment for order ${order.order_number}: ${paymentIntent.id}`);
+        const sessionId = checkout.stripe_session_id;
 
-        // Update order: captured + move to in_production
-        const statusHistory = order.status_history || [];
-        statusHistory.push({
-          status: 'in_production',
-          timestamp: new Date().toISOString(),
-          message: "It's launch day! Payment captured — your pre-order is now in production. Delivery: May 2nd. 🎉",
-        });
+        // Retrieve Stripe session to get payment intent
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-        await base44.asServiceRole.entities.Order.update(order.id, {
-          payment_captured: true,
-          status: 'in_production',
-          status_history: statusHistory,
-        });
-
-        // Award loyalty points: 10 pts per $1
-        if (order.customer_email) {
-          const pointsToAward = Math.floor((order.total || 0) * 10);
-          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: order.customer_email });
-          const entry = {
-            amount: pointsToAward,
-            type: 'earned',
-            description: `Pre-order payment of $${(order.total || 0).toFixed(2)}`,
-            timestamp: new Date().toISOString(),
-          };
-          if (existing.length > 0) {
-            const rec = existing[0];
-            await base44.asServiceRole.entities.UserPoints.update(rec.id, {
-              total_points: (rec.total_points || 0) + pointsToAward,
-              lifetime_points: (rec.lifetime_points || 0) + pointsToAward,
-              points_history: [...(rec.points_history || []), entry],
-            });
-          } else {
-            await base44.asServiceRole.entities.UserPoints.create({
-              customer_email: order.customer_email,
-              total_points: pointsToAward,
-              lifetime_points: pointsToAward,
-              redeemed_points: 0,
-              points_history: [entry],
-            });
-          }
-
-          // Send notification email via Resend
-          await base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
-            order_id: order.id,
-            customer_email: order.customer_email,
-            order_number: order.order_number,
-            items: order.items,
-            total: order.total,
-            delivery_address: order.delivery_address,
-            estimated_delivery_date: order.estimated_delivery_date,
-          });
+        if (!session.payment_intent) {
+          results.skipped.push({ sessionId, reason: 'No payment intent' });
+          continue;
         }
 
-        results.captured.push(order.order_number);
+        // Retrieve the payment intent
+        const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
+
+        // Check if already captured or in a capturable state
+        if (paymentIntent.status === 'succeeded') {
+          results.skipped.push({ sessionId, reason: 'Already captured' });
+          continue;
+        }
+
+        if (paymentIntent.status !== 'requires_capture') {
+          results.skipped.push({ sessionId, reason: `Status: ${paymentIntent.status}` });
+          continue;
+        }
+
+        // Capture the authorized amount
+        const captured = await stripe.paymentIntents.capture(session.payment_intent);
+        results.captured.push({
+          sessionId,
+          paymentIntentId: captured.id,
+          amount: captured.amount_captured / 100,
+          email: checkout.customer_email,
+        });
+
+        console.log(`Captured pre-order payment: ${captured.id} ($${captured.amount_captured / 100})`);
       } catch (err) {
-        console.error(`Failed to capture payment for order ${order.order_number}:`, err.message);
-
-        // customer will see order status in dashboard
-
-        results.failed.push({ order_number: order.order_number, error: err.message });
+        results.failed.push({
+          sessionId: checkout.stripe_session_id,
+          error: err.message,
+        });
+        console.error(`Failed to capture ${checkout.stripe_session_id}:`, err.message);
       }
     }
 
-    console.log(`Capture complete. Captured: ${results.captured.length}, Failed: ${results.failed.length}`);
-    return Response.json({ success: true, results });
+    console.log('Capture complete:', {
+      total_captured: results.captured.length,
+      total_failed: results.failed.length,
+      total_skipped: results.skipped.length,
+    });
+
+    return Response.json({
+      success: results.failed.length === 0,
+      summary: {
+        captured: results.captured.length,
+        failed: results.failed.length,
+        skipped: results.skipped.length,
+      },
+      details: results,
+    });
   } catch (error) {
-    console.error('capturePreOrderPayments error:', error);
+    console.error('Capture batch error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
