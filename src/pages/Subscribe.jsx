@@ -56,9 +56,7 @@ export default function Subscribe() {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
         setCalculatedDistance(res.data.distance);
         setCalculatedZone(res.data.zone);
-        if (!res.data.zone) {
-          setShowOutOfArea(true);
-        }
+        // Don't show modal during typing — only on subscribe click
       } catch {
         setCalculatedZone(null);
         setCalculatedDistance(null);
@@ -81,7 +79,13 @@ export default function Subscribe() {
       return;
     }
     if (!calculatedZone) {
-      toast.error('Please wait for distance calculation or enter a valid address');
+      // If still calculating, wait; otherwise address is out of area
+      if (calculating) {
+        toast.error('Please wait while we verify your address');
+        return;
+      }
+      setShowOutOfArea(true);
+      setLoading(false);
       return;
     }
     if (!selectedPlanId) {
@@ -249,12 +253,9 @@ export default function Subscribe() {
         {address.street.trim() && calculating && (
           <p className="text-center text-xs text-muted-foreground">Calculating your delivery zone...</p>
         )}
-        {address.street.trim() && !calculating && !calculatedZone && (
-          <p className="text-center text-xs text-amber-600 font-medium">⚠ Could not verify delivery to that address — try a more complete address</p>
-        )}
         <Button
           onClick={handleJoin}
-          disabled={loading || !selectedPlanId || !address.street.trim() || calculating || !calculatedZone}
+          disabled={loading || !selectedPlanId || !address.street.trim() || calculating}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
           {loading ? 'Redirecting to payment...' : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
