@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
 
     const member = members[0];
 
-    // Push to hub
+    // Push to hub via receivePointsSync endpoint
     const hubApiUrl = Deno.env.get('HUB_API_URL');
     const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Hub not configured' }, { status: 400 });
     }
 
-    const response = await fetch(`${hubApiUrl}/api/customer-app-sync/loyalty-members`, {
+    const response = await fetch(`${hubApiUrl}/api/receivePointsSync`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${hubSecret}`,
