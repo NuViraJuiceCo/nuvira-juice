@@ -232,9 +232,15 @@ export default function Subscribe() {
                   <div>
                     <p className="font-semibold text-sm">{plan.name}</p>
                     <p className="text-xs font-semibold text-primary">
-                      {plan.bottle_count} bottles{plan.frequency === 'weekly' ? '/week' : '/month'}
-                      {plan.bottle_count > 3 && plan.frequency === 'monthly' ? ` · mix & match` : ''}
-                    </p>
+                                {plan.frequency === 'weekly' ? '1 delivery' : '4 weekly deliveries'} · {plan.bottle_count} bottles total
+                              </p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {plan.name === 'Weekly Fresh' 
+                                  ? '1 AURA, 1 RE-NU, 1 OASIS' 
+                                  : plan.name === 'Monthly Ritual' 
+                                  ? '(1 of each flavor per week)' 
+                                  : '(2 of each flavor per week)'}
+                              </p>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -291,7 +297,7 @@ export default function Subscribe() {
         <div className="space-y-3">
           {[
             { q: 'When will I be charged?', a: 'Your card is charged immediately when you subscribe, then automatically on the same day each week or month.' },
-            { q: 'Can I choose my juices?', a: 'Yes — Monthly and VIP members can mix & match AURA, RE-NU, and OASIS for each delivery.' },
+            { q: 'What juices do I get?', a: 'Weekly Fresh: 1 of each flavor (AURA, RE-NU, OASIS). Monthly Ritual & VIP: 1 (or 2 for VIP) of each flavor, 4 times that month.' },
             { q: 'How do I pause or cancel?', a: 'You can cancel anytime through your Stripe billing portal or by emailing us. No fees, no penalties.' },
             { q: 'What does "order priority" mean?', a: 'Subscribers get their orders pressed first within each delivery window — so your juice is always the freshest.' },
           ].map(({ q, a }) => (

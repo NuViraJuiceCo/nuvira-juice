@@ -10,7 +10,6 @@
       "type": "string",
       "enum": [
         "weekly",
-        "biweekly",
         "monthly"
       ],
       "description": "Delivery frequency"
@@ -33,6 +32,36 @@
         "type": "string"
       },
       "description": "List of benefits"
+    },
+    "composition_template": {
+      "type": "object",
+      "description": "How bottles are composed (flavors & quantities per delivery)",
+      "properties": {
+        "deliveries_per_cycle": {
+          "type": "number",
+          "description": "Number of deliveries in this billing cycle (1 for weekly, 4 for monthly)"
+        },
+        "bottles_per_delivery": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "flavor": {
+                "type": "string",
+                "enum": [
+                  "AURA",
+                  "RE-NU",
+                  "OASIS"
+                ]
+              },
+              "quantity": {
+                "type": "number"
+              }
+            }
+          },
+          "description": "Bottle composition for each delivery"
+        }
+      }
     },
     "is_featured": {
       "type": "boolean",
