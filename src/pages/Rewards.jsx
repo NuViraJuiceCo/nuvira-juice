@@ -116,14 +116,27 @@ export default function Rewards() {
     }
     setSignupLoading(true);
     try {
-      await base44.functions.invoke('sendLoyaltySignup', {
+      const res = await base44.functions.invoke('createLoyaltyMember', {
         email: signupForm.email,
         full_name: signupForm.full_name,
         phone: signupForm.phone || null,
         signup_date: new Date().toISOString().split('T')[0],
       });
-      toast.success('Welcome to NuVira Rewards! 🎉');
+
+      if (res.data?.existing) {
+        toast.error('This email is already signed up!');
+        return;
+      }
+
+      if (!res.data?.success) {
+        toast.error('Failed to sign up. Please try again.');
+        return;
+      }
+
+      // Success: show popup notification + email toast
+      toast.success('🎉 Welcome to NuVira Rewards! Check your email for confirmation.');
       setSignupForm({ email: '', full_name: '', phone: '' });
+      queryClient.invalidateQueries({ queryKey: ['user-points'] });
     } catch (err) {
       console.error('Signup error:', err);
       toast.error('Failed to sign up. Please try again.');
