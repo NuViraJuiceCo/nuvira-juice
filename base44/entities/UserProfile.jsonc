@@ -17,6 +17,11 @@
       "type": "string",
       "description": "User's delivery address"
     },
+    "birthday": {
+      "type": "string",
+      "format": "date",
+      "description": "User's birthday (YYYY-MM-DD)"
+    },
     "wellness_goals": {
       "type": "array",
       "items": {

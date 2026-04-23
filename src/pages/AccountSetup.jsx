@@ -64,6 +64,16 @@ export default function AccountSetup() {
     }
   }, [isLoadingAuth, user, navigate]);
 
+  // After successful completion, redirect immediately without waiting for profile query
+  React.useEffect(() => {
+    if (isComplete) {
+      const timer = setTimeout(() => {
+        navigate('/shop');
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isComplete, navigate]);
+
   if (isLoadingAuth || !user) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background">
