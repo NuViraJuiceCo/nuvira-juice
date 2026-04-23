@@ -9,6 +9,7 @@ import { isBirthdayRewardActive } from '@/lib/birthdayReward';
 import { isPreorderMode } from '@/lib/preorderConfig';
 import { Link, useNavigate } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
+import RewardsSuccessModal from '@/components/RewardsSuccessModal';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 
@@ -44,6 +45,8 @@ export default function Rewards() {
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingReward, setPendingReward] = useState(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successName, setSuccessName] = useState('');
 
   const { data: pointsData } = useQuery({
     queryKey: ['user-points', user?.email],
@@ -132,7 +135,9 @@ export default function Rewards() {
       }
 
       // Success: show popup notification + email toast
-      toast.success('🎉 Welcome to NuVira! Check your email for confirmation.');
+      setSuccessName(signupForm.first_name);
+      setShowSuccessModal(true);
+      toast.success('🎉 Welcome to NuVira!');
       setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '' });
       queryClient.invalidateQueries({ queryKey: ['user-points'] });
     } catch (err) {
@@ -504,6 +509,13 @@ export default function Rewards() {
         onSelect={handleFreeProductSelect}
         title={pendingReward ? `Choose Your ${pendingReward.title}` : 'Choose Your Free Item'}
         category="juice"
+      />
+
+      <RewardsSuccessModal
+        open={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        email={signupForm.email || 'your email'}
+        name={successName}
       />
     </div>
   );
