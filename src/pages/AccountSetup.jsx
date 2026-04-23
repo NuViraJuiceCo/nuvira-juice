@@ -60,9 +60,9 @@ export default function AccountSetup() {
 
   React.useEffect(() => {
     if (!isLoadingAuth && !user) {
-      base44.auth.redirectToLogin(window.location.pathname);
+      navigate('/rewards');
     }
-  }, [isLoadingAuth, user]);
+  }, [isLoadingAuth, user, navigate]);
 
   if (isLoadingAuth || !user) {
     return (
