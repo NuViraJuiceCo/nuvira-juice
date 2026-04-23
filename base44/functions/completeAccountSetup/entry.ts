@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
         contact_email: email,
         phone,
         address,
+        birthday,
         onboarding_complete: true,
       });
     } else {
@@ -39,6 +40,7 @@ Deno.serve(async (req) => {
         contact_email: email,
         phone,
         address,
+        birthday,
         onboarding_complete: true,
       });
     }

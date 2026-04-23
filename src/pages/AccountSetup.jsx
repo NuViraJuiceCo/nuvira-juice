@@ -129,19 +129,20 @@ export default function AccountSetup() {
         address: addrString,
       });
 
-      if (response.data?.success) {
+      if (response?.data?.success) {
         setIsComplete(true);
         sessionStorage.removeItem('ordersChecked');
         setTimeout(() => {
           navigate('/');
         }, 2000);
       } else {
-        toast.error(response.data?.error || 'Failed to complete setup');
+        const errorMsg = response?.data?.error || 'Failed to complete setup';
+        toast.error(errorMsg);
         setIsLoading(false);
       }
     } catch (err) {
       console.error('Setup error:', err);
-      toast.error(err?.message || 'Failed to complete setup');
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to complete setup');
       setIsLoading(false);
     }
   };
