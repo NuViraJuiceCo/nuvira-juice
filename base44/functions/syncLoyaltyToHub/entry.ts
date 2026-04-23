@@ -42,6 +42,7 @@ Deno.serve(async (req) => {
         lifetime_points: record.lifetime_points,
         redeemed_points: record.redeemed_points,
         points_history: record.points_history || [],
+        claimed_rewards: record.claimed_rewards || [],
       },
     };
 

@@ -1,66 +1,95 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+/**
+ * Single source of truth for loyalty enrollment.
+ * 1. Pushes to hub first
+ * 2. Creates local LoyaltyMember + UserPoints cache
+ * Called by: completeAccountSetup, enrollNewCustomerInLoyalty
+ */
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    console.log('Client created, checking loyalty member...');
-    
     const { email, first_name, last_name, phone, address, birthday, signup_date } = await req.json();
 
     if (!email || !first_name || !last_name) {
       return Response.json({ error: 'Email, first name, and last name are required' }, { status: 400 });
     }
 
-    // Check if loyalty member already exists
-    console.log('Checking for existing loyalty member:', email);
-    let existing = [];
-    try {
-      existing = await base44.asServiceRole.entities.LoyaltyMember.filter({ email });
-    } catch (filterErr) {
-      console.error('Filter error:', filterErr);
-      // If filter fails, we'll continue - could be first creation
-    }
+    // Check if already enrolled
+    const existing = await base44.asServiceRole.entities.LoyaltyMember.filter({ email });
     if (existing.length > 0) {
-      console.log('Loyalty member already exists:', email);
-      return Response.json({ error: 'This email is already signed up for the rewards program', existing: true }, { status: 409 });
+      console.log(`Loyalty member already exists: ${email}`);
+      return Response.json({ error: 'Already enrolled', existing: true }, { status: 409 });
     }
 
-    // Invite user to the app (non-blocking, with timeout)
-    base44.users.inviteUser(email, 'user')
-      .then(() => console.log(`User invited: ${email}`))
-      .catch(err => console.log(`User invite note: ${err.message}`));
+    const preorderBonus = 250;
+    const fullName = `${first_name} ${last_name}`;
 
-    // Create loyalty member record
+    // Step 1: Enroll in hub (source of truth)
+    const hubApiUrl = Deno.env.get('HUB_API_URL');
+    const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+
+    if (hubApiUrl && hubSecret) {
+      try {
+        await fetch(`${hubApiUrl}/api/customer-app-sync/enroll-loyalty`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${hubSecret}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email,
+            full_name: fullName,
+            phone: phone || null,
+            signup_date: signup_date || new Date().toISOString().split('T')[0],
+            status: 'active',
+            total_points: preorderBonus,
+            lifetime_points: preorderBonus,
+            redeemed_points: 0,
+            points_history: [{
+              amount: preorderBonus,
+              type: 'earned',
+              description: 'Pre-Order Launch Bonus — welcome to NuVira Rewards!',
+              timestamp: new Date().toISOString(),
+            }],
+          }),
+        });
+        console.log(`Enrolled in hub: ${email}`);
+      } catch (hubErr) {
+        console.error('Hub enrollment failed:', hubErr.message);
+        return Response.json({ error: 'Failed to enroll in loyalty program' }, { status: 500 });
+      }
+    }
+
+    // Step 2: Create local LoyaltyMember cache
     const member = await base44.asServiceRole.entities.LoyaltyMember.create({
       email,
-      full_name: `${first_name} ${last_name}`,
+      full_name: fullName,
       phone: phone || null,
       signup_date: signup_date || new Date().toISOString().split('T')[0],
       is_active: true,
     });
 
-    // Create UserProfile account
+    // Step 3: Update/create UserProfile
+    const profileExisting = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: email });
     const profileData = {
       customer_email: email,
       contact_email: email,
       phone: phone || null,
       address: address || null,
-      onboarding_complete: false,
       birthday: birthday || null,
+      onboarding_complete: profileExisting.length > 0 ? profileExisting[0].onboarding_complete : false,
     };
 
-    const profileExisting = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: email });
     if (profileExisting.length === 0) {
       await base44.asServiceRole.entities.UserProfile.create(profileData);
     } else {
-      // Update existing profile with new info
       await base44.asServiceRole.entities.UserProfile.update(profileExisting[0].id, profileData);
     }
 
-    // Initialize UserPoints with pre-order bonus
-    const pointsRecords = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: email });
-    if (pointsRecords.length === 0) {
-      const preorderBonus = 250;
+    // Step 4: Initialize UserPoints cache
+    const pointsExisting = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: email });
+    if (pointsExisting.length === 0) {
       await base44.asServiceRole.entities.UserPoints.create({
         customer_email: email,
         total_points: preorderBonus,
@@ -75,7 +104,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Send confirmation email via Resend (non-blocking)
+    // Step 5: Invite user + send welcome email + notification (non-blocking)
+    base44.users.inviteUser(email, 'user').catch(err => console.log(`Invite note: ${err.message}`));
+
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (resendApiKey) {
       fetch('https://api.resend.com/emails', {
@@ -88,55 +119,30 @@ Deno.serve(async (req) => {
           from: 'nuvira@nuvirajuice.com',
           to: email,
           subject: '🎉 Welcome to NuVira!',
-          html: `
-<h2>Hi ${first_name},</h2>
-<p>Welcome to NuVira Juice Co.! 🌿</p>
-<p>Your account has been created and you're automatically enrolled in our <strong>NuVira Rewards program</strong>. Start earning points on every order!</p>
-<h3>🏆 Your Account is Ready</h3>
-<p>Email: ${email}</p>
-${phone ? `<p>Phone: ${phone}</p>` : ''}
-${address ? `<p>Address: ${address}</p>` : ''}
-<h3>🎁 Rewards Overview</h3>
-<ul>
-  <li><strong>10 points per \$1</strong> spent on orders</li>
-  <li><strong>50 points</strong> for referring a friend</li>
-  <li><strong>250 points bonus</strong> just for joining (you already have this!)</li>
-</ul>
-<h3>✨ Unlock Amazing Rewards</h3>
-<ul>
-  <li>500 pts → Free wellness shot</li>
-  <li>1,000 pts → Free delivery</li>
-  <li>2,500 pts → Free 32oz juice</li>
-  <li>5,000 pts → 6-pack bundle at 50% off</li>
-</ul>
-<p><a href="https://www.nuvirajuice.com/rewards" style="background-color: #2d7c5e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Your Rewards</a></p>
-<p style="margin-top: 20px; font-size: 14px; color: #666;">Questions? Reach out to info@nuvirajuice.com</p>
-<p>Cheers,<br/><strong>The NuVira Team</strong> 🍊</p>
-          `.trim(),
+          html: `<h2>Hi ${first_name},</h2><p>Welcome to NuVira Juice Co.! 🌿</p><p>You're enrolled in <strong>NuVira Rewards</strong> and earned <strong>250 bonus points</strong> just for joining!</p><h3>🎁 Rewards</h3><ul><li>500 pts → Free wellness shot</li><li>1,000 pts → Free delivery</li><li>2,500 pts → Free 32oz juice</li><li>5,000 pts → 6-pack bundle</li></ul><p><a href="https://www.nuvirajuice.com/rewards" style="background-color: #2d7c5e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Rewards</a></p><p>Cheers,<br/><strong>The NuVira Team</strong> 🍊</p>`,
         }),
-      }).catch(err => console.warn('Failed to send email:', err.message));
+      }).catch(err => console.warn('Email failed:', err.message));
     }
 
-    // Create in-app notification (non-blocking)
     base44.asServiceRole.entities.Notification.create({
       customer_email: email,
       title: '🎉 Welcome to NuVira Rewards!',
-      message: `Your account is ready! You've earned 250 bonus points — start shopping and earn more.`,
+      message: `You've earned 250 bonus points — start shopping and earn more.`,
       type: 'general',
       is_read: false,
       icon: '🏆',
-    }).catch(err => console.warn('Failed to create notification:', err.message));
+    }).catch(err => console.warn('Notification failed:', err.message));
 
-    console.log(`New customer account created: ${email} (${first_name} ${last_name}), member ID: ${member.id}`);
+    console.log(`Enrollment complete: ${email} (${fullName}), member ID: ${member.id}`);
 
     return Response.json({
       success: true,
       member_id: member.id,
-      email: email,
-      points_awarded: 250,
+      email,
+      points_awarded: preorderBonus,
     });
   } catch (error) {
-    console.error('Create loyalty member error:', error);
+    console.error('Enrollment error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
