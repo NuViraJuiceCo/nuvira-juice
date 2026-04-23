@@ -21,9 +21,112 @@ Deno.serve(async (req) => {
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      const orderId = session.metadata?.order_id;
       const customerEmail = session.customer_email || session.metadata?.customer_email;
       const amountPaid = session.amount_total / 100; // convert cents to dollars
+
+      // For pre-orders: create the order NOW, after payment authorization succeeds
+      if (session.metadata?.is_preorder === 'true') {
+        const checkoutDataJson = session.metadata?.checkout_data_json;
+        let orderData = {};
+        try {
+          orderData = checkoutDataJson ? JSON.parse(checkoutDataJson) : {};
+        } catch (e) {
+          console.error('Failed to parse checkout data:', e);
+        }
+
+        const orderNumber = orderData.order_number || session.metadata?.order_number;
+        const paymentIntentId = session.payment_intent;
+
+        // Validate referral code if provided
+        if (orderData.referral_code && customerEmail) {
+          const prevOrders = await base44.asServiceRole.entities.Order.filter({ customer_email: customerEmail });
+          const alreadyUsed = prevOrders.some(o => o.referral_code === orderData.referral_code);
+          if (alreadyUsed) {
+            console.warn(`Referral code ${orderData.referral_code} already used by ${customerEmail}, ignoring`);
+            orderData.referral_code = null;
+          }
+        }
+
+        // Create the order in the database
+        const order = await base44.asServiceRole.entities.Order.create({
+          order_number: orderNumber,
+          customer_email: customerEmail || '',
+          items: orderData.items || [],
+          subtotal: orderData.subtotal || 0,
+          delivery_fee: orderData.delivery_fee || 0,
+          total: orderData.total || 0,
+          fulfillment_type: orderData.fulfillment_type || 'delivery',
+          delivery_address: orderData.delivery_address || '',
+          contact_phone: orderData.contact_phone || '',
+          estimated_delivery_date: orderData.estimated_delivery_date,
+          status: 'order_received',
+          status_history: [{
+            status: 'order_received',
+            timestamp: new Date().toISOString(),
+            message: "Pre-order authorized! Payment will be captured on May 1st when production begins. Delivery: May 2nd.",
+          }],
+          is_preorder: true,
+          preorder_fulfillment_date: orderData.preorder_fulfillment_date,
+          payment_captured: false,
+          stripe_payment_intent_id: paymentIntentId,
+          stripe_checkout_session_id: session.id,
+          referral_code: orderData.referral_code || null,
+        });
+
+        console.log(`Pre-order ${order.id} (${orderNumber}) created after payment authorization. PaymentIntent: ${paymentIntentId}`);
+
+        // Deduct points and credits after order is confirmed
+        if (customerEmail && (orderData.points_used || orderData.active_reward?.points_required)) {
+          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
+          if (existing[0]) {
+            const deductPoints = (orderData.points_used || 0) + (orderData.active_reward?.points_required || 0);
+            const historyEntries = [];
+            if (orderData.points_used) {
+              historyEntries.push({ amount: -orderData.points_used, type: 'redeemed', description: 'Redeemed at checkout', timestamp: new Date().toISOString() });
+            }
+            if (orderData.active_reward?.points_required) {
+              historyEntries.push({ amount: -orderData.active_reward.points_required, type: 'redeemed', description: `Redeemed: ${orderData.active_reward.title}`, timestamp: new Date().toISOString() });
+            }
+            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
+              total_points: Math.max(0, (existing[0].total_points || 0) - deductPoints),
+              redeemed_points: (existing[0].redeemed_points || 0) + deductPoints,
+              points_history: [...(existing[0].points_history || []), ...historyEntries],
+            });
+          }
+        }
+
+        if (customerEmail && orderData.credits_discount > 0) {
+          const creditRecs = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: customerEmail });
+          if (creditRecs[0]) {
+            const rec = creditRecs[0];
+            const entry = {
+              amount: orderData.credits_discount,
+              type: 'used',
+              description: `Applied to order ${orderNumber}`,
+              order_id: order.id,
+              timestamp: new Date().toISOString(),
+            };
+            await base44.asServiceRole.entities.NuViraCredit.update(rec.id, {
+              balance: Math.max(0, (rec.balance || 0) - orderData.credits_discount),
+              lifetime_used: (rec.lifetime_used || 0) + orderData.credits_discount,
+              history: [...(rec.history || []), entry],
+            });
+          }
+        }
+
+        // Send pre-order confirmation email
+        base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
+          order_id: order.id,
+          customer_email: customerEmail,
+          order_number: orderNumber,
+          is_preorder: true,
+        })
+          .catch(err => console.error('Failed to send pre-order confirmation email:', err.message));
+
+        // Sync to hub
+        base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id })
+          .catch(err => console.error('Failed to sync pre-order to hub:', err.message));
+      }
 
       // Handle subscription checkout — create Subscription record
       if (session.mode === 'subscription' && session.metadata?.plan_id) {
@@ -65,83 +168,128 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Update order status to confirmed
-      if (orderId) {
-        const orders = await base44.asServiceRole.entities.Order.filter({ id: orderId });
-        if (orders.length > 0) {
-          const order = orders[0];
+      // For regular orders (non-pre-order): create the order NOW after payment succeeds
+      if (session.metadata?.is_preorder !== 'true') {
+        const checkoutDataJson = session.metadata?.checkout_data_json;
+        let orderData = {};
+        try {
+          orderData = checkoutDataJson ? JSON.parse(checkoutDataJson) : {};
+        } catch (e) {
+          console.error('Failed to parse checkout data:', e);
+        }
 
-          // For pre-orders: payment is authorized but NOT captured yet.
-          // Store the payment intent ID and leave status as order_received.
-          const isPreorder = session.metadata?.is_preorder === 'true' || order.is_preorder;
+        const orderNumber = orderData.order_number || session.metadata?.order_number;
 
-          if (isPreorder) {
-            // Capture the payment_intent ID from the session
-            const paymentIntentId = session.payment_intent;
-            const updates = {};
-            if (paymentIntentId) updates.stripe_payment_intent_id = paymentIntentId;
-            if (Object.keys(updates).length > 0) {
-              await base44.asServiceRole.entities.Order.update(orderId, updates);
-            }
-            console.log(`Pre-order ${orderId} authorized. PaymentIntent: ${paymentIntentId}. Will capture on Apr 30.`);
-          } else {
-            // Regular order: mark as scheduled for juicing
-            const statusHistory = order.status_history || [];
-            statusHistory.push({
-              status: 'scheduled_for_juicing',
-              timestamp: new Date().toISOString(),
-              message: 'Payment confirmed — your order is scheduled for juicing!',
-            });
-            await base44.asServiceRole.entities.Order.update(orderId, {
-              status: 'scheduled_for_juicing',
-              status_history: statusHistory,
-              payment_captured: true,
-            });
-            console.log(`Order ${orderId} updated to scheduled_for_juicing`);
-
-            // Push this order into Shopify so both systems stay in sync
-            base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: orderId })
-              .catch(err => console.error('Failed to push order to Shopify:', err.message));
-
-            // Sync confirmed order to hub
-            base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: orderId })
-              .catch(err => console.error('Failed to sync order to hub:', err.message));
-
-            // Send order confirmation email to customer
-            base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
-              order_id: orderId,
-              customer_email: customerEmail,
-              order_number: order.order_number,
-              items: order.items,
-              total: order.total,
-              delivery_address: order.delivery_address,
-              estimated_delivery_date: order.estimated_delivery_date,
-            })
-              .catch(err => console.error('Failed to send order confirmation email:', err.message));
-
-            // Send order processed notification to operations
-            base44.asServiceRole.functions.invoke('notifyOrderProcessed', {
-              order_id: orderId,
-              order_number: order.order_number,
-              customer_email: customerEmail,
-              items: order.items,
-              total: order.total,
-              delivery_address: order.delivery_address,
-            })
-              .catch(err => console.error('Failed to send operations notification:', err.message));
-
-            // Send order confirmation SMS if customer has a phone number
-            if (order.contact_phone) {
-              base44.asServiceRole.functions.invoke('sendOrderSms', {
-                phone_number: order.contact_phone,
-                order_number: order.order_number,
-                items: order.items,
-                total: order.total,
-                estimated_delivery_date: order.estimated_delivery_date,
-              })
-                .catch(err => console.error('Failed to send order confirmation SMS:', err.message));
-            }
+        // Validate referral code if provided
+        if (orderData.referral_code && customerEmail) {
+          const prevOrders = await base44.asServiceRole.entities.Order.filter({ customer_email: customerEmail });
+          const alreadyUsed = prevOrders.some(o => o.referral_code === orderData.referral_code);
+          if (alreadyUsed) {
+            console.warn(`Referral code ${orderData.referral_code} already used by ${customerEmail}, ignoring`);
+            orderData.referral_code = null;
           }
+        }
+
+        // Create the order
+        const order = await base44.asServiceRole.entities.Order.create({
+          order_number: orderNumber,
+          customer_email: customerEmail || '',
+          items: orderData.items || [],
+          subtotal: orderData.subtotal || 0,
+          delivery_fee: orderData.delivery_fee || 0,
+          total: orderData.total || 0,
+          fulfillment_type: orderData.fulfillment_type || 'delivery',
+          delivery_address: orderData.delivery_address || '',
+          contact_phone: orderData.contact_phone || '',
+          estimated_delivery_date: orderData.estimated_delivery_date,
+          status: 'scheduled_for_juicing',
+          status_history: [{
+            status: 'order_received',
+            timestamp: new Date().toISOString(),
+            message: 'We\'ve received your order!',
+          }, {
+            status: 'scheduled_for_juicing',
+            timestamp: new Date().toISOString(),
+            message: 'Payment confirmed — your order is scheduled for juicing!',
+          }],
+          is_preorder: false,
+          payment_captured: true,
+          stripe_checkout_session_id: session.id,
+          referral_code: orderData.referral_code || null,
+        });
+
+        console.log(`Regular order ${order.id} (${orderNumber}) created after payment completed`);
+
+        // Deduct points and credits after order is confirmed
+        if (customerEmail && (orderData.points_used || orderData.active_reward?.points_required)) {
+          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
+          if (existing[0]) {
+            const deductPoints = (orderData.points_used || 0) + (orderData.active_reward?.points_required || 0);
+            const historyEntries = [];
+            if (orderData.points_used) {
+              historyEntries.push({ amount: -orderData.points_used, type: 'redeemed', description: 'Redeemed at checkout', timestamp: new Date().toISOString() });
+            }
+            if (orderData.active_reward?.points_required) {
+              historyEntries.push({ amount: -orderData.active_reward.points_required, type: 'redeemed', description: `Redeemed: ${orderData.active_reward.title}`, timestamp: new Date().toISOString() });
+            }
+            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
+              total_points: Math.max(0, (existing[0].total_points || 0) - deductPoints),
+              redeemed_points: (existing[0].redeemed_points || 0) + deductPoints,
+              points_history: [...(existing[0].points_history || []), ...historyEntries],
+            });
+          }
+        }
+
+        if (customerEmail && orderData.credits_discount > 0) {
+          const creditRecs = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: customerEmail });
+          if (creditRecs[0]) {
+            const rec = creditRecs[0];
+            const entry = {
+              amount: orderData.credits_discount,
+              type: 'used',
+              description: `Applied to order ${orderNumber}`,
+              order_id: order.id,
+              timestamp: new Date().toISOString(),
+            };
+            await base44.asServiceRole.entities.NuViraCredit.update(rec.id, {
+              balance: Math.max(0, (rec.balance || 0) - orderData.credits_discount),
+              lifetime_used: (rec.lifetime_used || 0) + orderData.credits_discount,
+              history: [...(rec.history || []), entry],
+            });
+          }
+        }
+
+        // Push this order into Shopify
+        base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: order.id })
+          .catch(err => console.error('Failed to push order to Shopify:', err.message));
+
+        // Sync to hub
+        base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id })
+          .catch(err => console.error('Failed to sync order to hub:', err.message));
+
+        // Send order confirmation email
+        base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
+          order_id: order.id,
+          customer_email: customerEmail,
+          order_number: orderNumber,
+        })
+          .catch(err => console.error('Failed to send order confirmation email:', err.message));
+
+        // Send operations notification
+        base44.asServiceRole.functions.invoke('notifyOrderProcessed', {
+          order_id: order.id,
+          order_number: orderNumber,
+          customer_email: customerEmail,
+        })
+          .catch(err => console.error('Failed to send operations notification:', err.message));
+
+        // Send SMS if phone provided
+        if (orderData.contact_phone) {
+          base44.asServiceRole.functions.invoke('sendOrderSms', {
+            phone_number: orderData.contact_phone,
+            order_number: orderNumber,
+          })
+            .catch(err => console.error('Failed to send order confirmation SMS:', err.message));
         }
       }
 
