@@ -78,7 +78,7 @@ export default function Rewards() {
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
   });
   
-  const [signupForm, setSignupForm] = useState({ email: '', full_name: '', phone: '' });
+  const [signupForm, setSignupForm] = useState({ email: '', first_name: '', last_name: '', phone: '', address: '' });
   const [signupLoading, setSignupLoading] = useState(false);
 
   const handleApplyReward = (reward) => {
@@ -110,16 +110,18 @@ export default function Rewards() {
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
-    if (!signupForm.email || !signupForm.full_name) {
-      toast.error('Please fill in email and name');
+    if (!signupForm.email || !signupForm.first_name || !signupForm.last_name) {
+      toast.error('Please fill in email, first name, and last name');
       return;
     }
     setSignupLoading(true);
     try {
       const res = await base44.functions.invoke('createLoyaltyMember', {
         email: signupForm.email,
-        full_name: signupForm.full_name,
+        first_name: signupForm.first_name,
+        last_name: signupForm.last_name,
         phone: signupForm.phone || null,
+        address: signupForm.address || null,
         signup_date: new Date().toISOString().split('T')[0],
       });
 
@@ -130,8 +132,8 @@ export default function Rewards() {
       }
 
       // Success: show popup notification + email toast
-      toast.success('🎉 Welcome to NuVira Rewards! Check your email for confirmation.');
-      setSignupForm({ email: '', full_name: '', phone: '' });
+      toast.success('🎉 Welcome to NuVira! Check your email for confirmation.');
+      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '' });
       queryClient.invalidateQueries({ queryKey: ['user-points'] });
     } catch (err) {
       console.error('Signup error:', err);
@@ -179,14 +181,24 @@ export default function Rewards() {
               </div>
             )}
             <form onSubmit={handleSignupSubmit} className="space-y-3">
-              <input
-                type="text"
-                placeholder="Full Name"
-                value={signupForm.full_name}
-                onChange={(e) => setSignupForm({ ...signupForm, full_name: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-                required
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  value={signupForm.first_name}
+                  onChange={(e) => setSignupForm({ ...signupForm, first_name: e.target.value })}
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  value={signupForm.last_name}
+                  onChange={(e) => setSignupForm({ ...signupForm, last_name: e.target.value })}
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+                  required
+                />
+              </div>
               <input
                 type="email"
                 placeholder="Email"
@@ -197,9 +209,16 @@ export default function Rewards() {
               />
               <input
                 type="tel"
-                placeholder="Phone (optional)"
+                placeholder="Phone Number"
                 value={signupForm.phone}
                 onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })}
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Address (optional)"
+                value={signupForm.address}
+                onChange={(e) => setSignupForm({ ...signupForm, address: e.target.value })}
                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
               />
               <button
@@ -207,7 +226,7 @@ export default function Rewards() {
                 disabled={signupLoading}
                 className="w-full h-11 bg-primary text-primary-foreground rounded-xl font-semibold text-sm disabled:opacity-50"
               >
-                {signupLoading ? 'Signing up...' : 'Join Rewards'}
+                {signupLoading ? 'Creating account...' : 'Create Account & Join Rewards'}
               </button>
             </form>
           </div>

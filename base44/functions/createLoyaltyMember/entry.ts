@@ -4,10 +4,10 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     
-    const { email, full_name, phone, signup_date } = await req.json();
+    const { email, first_name, last_name, phone, address, signup_date } = await req.json();
 
-    if (!email || !full_name) {
-      return Response.json({ error: 'Email and name are required' }, { status: 400 });
+    if (!email || !first_name || !last_name) {
+      return Response.json({ error: 'Email, first name, and last name are required' }, { status: 400 });
     }
 
     // Check if loyalty member already exists
@@ -19,17 +19,30 @@ Deno.serve(async (req) => {
     // Create loyalty member record
     const member = await base44.asServiceRole.entities.LoyaltyMember.create({
       email,
-      full_name,
+      full_name: `${first_name} ${last_name}`,
       phone: phone || null,
       signup_date: signup_date || new Date().toISOString().split('T')[0],
       is_active: true,
     });
 
-    // Initialize UserPoints record with pre-order bonus if applicable
+    // Create UserProfile account
+    const profileData = {
+      customer_email: email,
+      contact_email: email,
+      phone: phone || null,
+      address: address || null,
+      onboarding_complete: false,
+    };
+
+    const profileExisting = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: email });
+    if (profileExisting.length === 0) {
+      await base44.asServiceRole.entities.UserProfile.create(profileData);
+    }
+
+    // Initialize UserPoints with pre-order bonus
     const pointsRecords = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: email });
     if (pointsRecords.length === 0) {
-      // Check if we're in pre-order mode (use launch config)
-      const preorderBonus = 250; // 250 pts for pre-order signup
+      const preorderBonus = 250;
       await base44.asServiceRole.entities.UserPoints.create({
         customer_email: email,
         total_points: preorderBonus,
@@ -56,27 +69,31 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           from: 'nuvira@nuvirajuice.com',
           to: email,
-          subject: '🎉 Welcome to NuVira Rewards!',
+          subject: '🎉 Welcome to NuVira!',
           html: `
-<h2>Hi ${full_name},</h2>
-<p>Welcome to the NuVira Rewards program! 🌿</p>
-<p>You're officially signed up and earning points with every order. Here's what you get:</p>
-<h3>🏆 Earn Points</h3>
+<h2>Hi ${first_name},</h2>
+<p>Welcome to NuVira Juice Co.! 🌿</p>
+<p>Your account has been created and you're automatically enrolled in our <strong>NuVira Rewards program</strong>. Start earning points on every order!</p>
+<h3>🏆 Your Account is Ready</h3>
+<p>Email: ${email}</p>
+${phone ? `<p>Phone: ${phone}</p>` : ''}
+${address ? `<p>Address: ${address}</p>` : ''}
+<h3>🎁 Rewards Overview</h3>
 <ul>
-  <li>10 points per \$1 spent on orders</li>
-  <li>50 points for referring a friend</li>
-  <li><strong>250 points pre-order bonus (you have this now!)</strong></li>
+  <li><strong>10 points per \$1</strong> spent on orders</li>
+  <li><strong>50 points</strong> for referring a friend</li>
+  <li><strong>250 points bonus</strong> just for joining (you already have this!)</li>
 </ul>
-<h3>🎁 Redeem Rewards</h3>
+<h3>✨ Unlock Amazing Rewards</h3>
 <ul>
   <li>500 pts → Free wellness shot</li>
   <li>1,000 pts → Free delivery</li>
   <li>2,500 pts → Free 32oz juice</li>
   <li>5,000 pts → 6-pack bundle at 50% off</li>
 </ul>
-<p><a href="https://www.nuvirajuice.com/rewards">Start earning today</a></p>
-<p>Questions? Reach out to us at info@nuvirajuice.com</p>
-<p>Cheers,<br/>NuVira Juice Co. 🍊</p>
+<p><a href="https://www.nuvirajuice.com/rewards" style="background-color: #2d7c5e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Your Rewards</a></p>
+<p style="margin-top: 20px; font-size: 14px; color: #666;">Questions? Reach out to info@nuvirajuice.com</p>
+<p>Cheers,<br/><strong>The NuVira Team</strong> 🍊</p>
           `.trim(),
         }),
       });
@@ -89,13 +106,13 @@ Deno.serve(async (req) => {
     await base44.asServiceRole.entities.Notification.create({
       customer_email: email,
       title: '🎉 Welcome to NuVira Rewards!',
-      message: 'You\'ve been added to the loyalty program. Start earning points on your next order!',
+      message: `Your account is ready! You've earned 250 bonus points — start shopping and earn more.`,
       type: 'general',
       is_read: false,
       icon: '🏆',
     });
 
-    console.log(`New loyalty member created: ${email} (${full_name})`);
+    console.log(`New customer account created: ${email} (${first_name} ${last_name}), member ID: ${member.id}`);
 
     return Response.json({
       success: true,
