@@ -176,7 +176,7 @@ export default function Subscribe() {
             <MapPin className={`w-4 h-4 ${calculatedZone ? 'text-primary' : 'text-destructive'}`} />
             <span className="font-semibold text-sm">{calculatedZone ? 'Delivery Available' : 'Outside Delivery Area'}</span>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <p className="text-xs text-muted-foreground">{calculatedDistance?.toFixed(1)} miles from our kitchen</p>
             {calculatedZone ? (
               (() => {
@@ -185,9 +185,41 @@ export default function Subscribe() {
                 return zone ? <p className="text-sm font-semibold">{zone.name} — ${zone.delivery_fee?.toFixed(2)} delivery fee</p> : null;
               })()
             ) : (
-              <p className="text-sm font-semibold text-destructive">We currently deliver within 20 miles of O'Fallon, MO</p>
+              <>
+                <p className="text-sm font-semibold text-destructive">We currently deliver within 20 miles of O'Fallon, MO</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full mt-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                  onClick={() => setShowOutOfArea(true)}
+                >
+                  Notify me when you deliver to my area
+                </Button>
+              </>
             )}
           </div>
+        </motion.div>
+      )}
+      {/* Show out-of-area modal for unverifiable addresses too */}
+      {calculatedDistance === null && !calculating && address.street.trim() && address.city.trim() && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-4 mt-4 border border-destructive/30 bg-destructive/5 rounded-xl p-4"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <MapPin className="w-4 h-4 text-destructive" />
+            <span className="font-semibold text-sm">Address Not Verified</span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-2">We couldn't verify this address. If you're outside our delivery area, join the waitlist and we'll notify you when we expand.</p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full border-destructive/40 text-destructive hover:bg-destructive/10"
+            onClick={() => setShowOutOfArea(true)}
+          >
+            Notify me when you deliver to my area
+          </Button>
         </motion.div>
       )}
       {calculating && (
