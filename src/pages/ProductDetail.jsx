@@ -87,7 +87,7 @@ export default function ProductDetail() {
   };
 
   return (
-    <div className="pb-32">
+    <div className="pb-32 md:pb-0">
       <SEO
         title={`${product.title} — Cold-Pressed Juice | Wentzville, MO`}
         description={product.short_description || product.description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`}
@@ -96,31 +96,51 @@ export default function ProductDetail() {
         keywords={`${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`}
         structuredData={productStructuredData}
       />
-      {/* Image */}
-      <div className="relative">
-        <div className="aspect-square md:aspect-[16/9] md:max-h-[50vh] bg-secondary/50 overflow-hidden">
-          {product.image_url ? (
-            <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-7xl">🍊</div>
-          )}
-        </div>
-        <button
-          onClick={() => navigate(-1)}
-          className="absolute left-4 w-9 h-9 bg-card/80 backdrop-blur-md rounded-full flex items-center justify-center"
-          style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
-        >
-          <ArrowLeft className="w-4 h-4" />
+      {/* Back button — mobile only (desktop has sidebar) */}
+      <button
+        onClick={() => navigate(-1)}
+        className="md:hidden absolute left-4 w-9 h-9 bg-card/80 backdrop-blur-md rounded-full flex items-center justify-center z-10"
+        style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
+      >
+        <ArrowLeft className="w-4 h-4" />
+      </button>
+
+      {/* Desktop back button */}
+      <div className="hidden md:flex items-center gap-2 px-6 pt-5 pb-2">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Back
         </button>
       </div>
 
-      {/* Content */}
+      {/* Two-column layout on desktop, single column on mobile */}
+      <div className="md:flex md:gap-8 md:px-6 md:pb-24">
+        {/* Image */}
+        <div className="md:w-1/2 md:shrink-0">
+          <div className="relative aspect-square md:aspect-square md:max-h-[60vh] md:rounded-2xl bg-secondary/50 overflow-hidden">
+            {product.image_url ? (
+              <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-7xl">🍊</div>
+            )}
+            {/* Mobile back button overlay */}
+            <button
+              onClick={() => navigate(-1)}
+              className="md:hidden absolute left-4 w-9 h-9 bg-card/80 backdrop-blur-md rounded-full flex items-center justify-center"
+              style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="md:w-1/2 md:overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="px-4 pt-6"
+        className="px-4 pt-6 md:pt-0 md:px-0"
       >
-        <div className="bg-card rounded-2xl pt-6 px-4">
+        <div className="bg-card md:bg-transparent rounded-2xl pt-6 px-4 md:px-0">
           {/* Pre-order badge — show if store is in pre-order mode OR this product is flagged */}
           {(isPreorderMode() || product.is_preorder) && (
             <span className="inline-block bg-primary/10 text-primary text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2 border border-primary/20">
@@ -190,6 +210,8 @@ export default function ProductDetail() {
           )}
         </div>
       </motion.div>
+        </div>
+      </div>
 
       {/* Bottom Bar */}
       <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border shadow-lg">
