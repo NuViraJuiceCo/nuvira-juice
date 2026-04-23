@@ -37,27 +37,26 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Member not in database, try to create via enrollLoyalty function
-    const enrollRes = await base44.functions.invoke('createLoyaltyMember', {
+    // Member not in database, create directly
+    const newMember = await base44.asServiceRole.entities.LoyaltyMember.create({
       email,
-      first_name: '',
-      last_name: '',
-      phone: '',
-      address: '',
-      birthday: '',
+      total_points: 0,
+      lifetime_points: 0,
+      redeemed_points: 0,
+      points_history: [{
+        amount: 0,
+        type: 'earned',
+        description: 'Account created',
+        timestamp: new Date().toISOString(),
+      }],
     });
 
-    if (!enrollRes.data.success) {
-      return Response.json({
-        error: 'Failed to enroll member',
-        details: enrollRes.data.error,
-      }, { status: 400 });
-    }
+    console.log(`Created LoyaltyMember for ${email}: ${newMember.id}`);
 
     return Response.json({
       success: true,
-      message: 'Member enrolled and synced',
-      loyaltyMemberId: enrollRes.data.member_id,
+      message: 'Member created and synced',
+      loyaltyMemberId: newMember.id,
     });
   } catch (error) {
     console.error('Manual sync loyalty member error:', error);
