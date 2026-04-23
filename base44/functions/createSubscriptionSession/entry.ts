@@ -49,6 +49,7 @@ Deno.serve(async (req) => {
           save_default_payment_method: 'on_subscription',
           payment_method_types: ['card'],
         },
+        billing_cycle_anchor: Math.floor(new Date('2026-05-02').getTime() / 1000),
       },
     });
 
