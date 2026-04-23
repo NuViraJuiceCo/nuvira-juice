@@ -136,9 +136,10 @@ export default function Rewards() {
 
       // Success: show popup notification + email toast
       setSuccessName(signupForm.first_name);
+      localStorage.setItem('successEmail', signupForm.email);
+      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '' });
       setShowSuccessModal(true);
       toast.success('🎉 Welcome to NuVira!');
-      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '' });
       queryClient.invalidateQueries({ queryKey: ['user-points'] });
     } catch (err) {
       console.error('Signup error:', err);
@@ -513,9 +514,12 @@ export default function Rewards() {
 
       <RewardsSuccessModal
         open={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        email={signupForm.email || 'your email'}
-        name={successName}
+        onClose={() => {
+          localStorage.removeItem('successEmail');
+          setShowSuccessModal(false);
+        }}
+        email={localStorage.getItem('successEmail') || ''}
+        name={successName || 'Friend'}
       />
     </div>
   );
