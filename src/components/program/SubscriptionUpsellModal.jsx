@@ -17,6 +17,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
   const [calculatedDistance, setCalculatedDistance] = useState(null);
   const [calculating, setCalculating] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  const [showOutOfArea, setShowOutOfArea] = useState(false);
   const debounceRef = useRef(null);
 
   const { data: plans = [] } = useQuery({
@@ -42,6 +43,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setCalculatedZone(null);
     setCalculatedDistance(null);
+    setShowOutOfArea(false);
     if (!addr || !addr.trim() || addr.length < 5) return;
     setCalculating(true);
     debounceRef.current = setTimeout(async () => {
@@ -49,7 +51,12 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
         const d = res.data;
         setCalculatedDistance(d.distance);
-        setCalculatedZone(d.zone || null);
+        if (d.zone) {
+          setCalculatedZone(d.zone);
+        } else {
+          setCalculatedZone(null);
+          setShowOutOfArea(true);
+        }
       } catch (err) {
         console.error('Distance calc error:', err);
         setCalculatedDistance(null);
@@ -61,15 +68,15 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
   };
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
+  const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
 
   const handleSubscribe = async () => {
-    const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
     if (!addressString.trim()) {
       toast.error('Please enter your delivery address');
       return;
     }
-    if (!calculatedZone) {
-      toast.error('Please wait for distance calculation');
+    if (calculating) {
+      toast.error('Please wait while we verify your address');
       return;
     }
     if (!selectedPlanId) {
@@ -92,6 +99,13 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     <AnimatePresence>
       {open && (
         <>
+          {showOutOfArea && (
+            <OutOfAreaModal
+              address={addressString}
+              zip={address.zip}
+              onClose={() => setShowOutOfArea(false)}
+            />
+          )}
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
