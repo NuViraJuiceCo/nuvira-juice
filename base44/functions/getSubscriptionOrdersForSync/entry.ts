@@ -14,10 +14,9 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
-
     const { limit = 100, offset = 0 } = await req.json();
 
-    // Fetch subscriptions with pagination
+    // Fetch subscriptions with pagination (service role)
     const allSubscriptions = await base44.asServiceRole.entities.Subscription.list('-updated_date', 999999);
     const paginatedSubscriptions = allSubscriptions.slice(offset, offset + limit);
 
