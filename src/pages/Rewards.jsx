@@ -115,16 +115,23 @@ export default function Rewards() {
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
+    console.log('Form submission started');
     
     // Validate before loading
     const addrString = [signupForm.address.street, signupForm.address.city, signupForm.address.state, signupForm.address.zip].filter(Boolean).join(', ');
+    console.log('Validation:', { email: signupForm.email, firstName: signupForm.first_name, lastName: signupForm.last_name, phone: signupForm.phone, address: addrString, birthday: signupForm.birthday });
+    
     if (!signupForm.email?.trim() || !signupForm.first_name?.trim() || !signupForm.last_name?.trim() || !signupForm.phone?.trim() || !addrString?.trim() || !signupForm.birthday?.trim()) {
+      console.log('Validation failed');
       toast.error('Please fill in all fields');
       return;
     }
     
+    console.log('Validation passed, setting loading...');
     setSignupLoading(true);
+    
     try {
+      console.log('Calling createLoyaltyMember function...');
       const res = await base44.functions.invoke('createLoyaltyMember', {
          email: signupForm.email.trim(),
          first_name: signupForm.first_name.trim(),
@@ -135,23 +142,24 @@ export default function Rewards() {
          signup_date: new Date().toISOString().split('T')[0],
        });
 
-      console.log('Response:', res.data);
-      if (!res.data?.success) {
+      console.log('Function response received:', res.data);
+      
+      if (res.data?.success) {
+        console.log('Success! Showing modal...');
+        setSuccessName(signupForm.first_name);
+        setSuccessEmail(signupForm.email);
+        setShowSuccessModal(true);
+        setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
+        setSignupLoading(false);
+        toast.success('Account created! Check your email.');
+      } else {
+        console.log('Function returned non-success:', res.data);
         toast.error(res.data?.error || 'Failed to sign up. Please try again.');
         setSignupLoading(false);
-        return;
       }
-
-      // Success
-      console.log('Showing success modal for', signupForm.first_name);
-      setSuccessName(signupForm.first_name);
-      setSuccessEmail(signupForm.email);
-      setShowSuccessModal(true);
-      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
-      setSignupLoading(false);
     } catch (err) {
-      console.error('Signup error:', err.message);
-      toast.error('Failed to sign up. Please try again.');
+      console.error('Signup error:', err);
+      toast.error(err.message || 'Failed to sign up. Please try again.');
       setSignupLoading(false);
     }
   };
