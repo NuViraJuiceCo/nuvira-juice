@@ -12,9 +12,7 @@ import { base44 } from '@/api/base44Client';
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
 function generateCode(user) {
-  if (!user?.full_name) return 'NUVIRA10';
-  const name = user.full_name.split(' ')[0].toUpperCase().replace(/[^A-Z]/g, '');
-  return `${name}10`;
+  return 'NuVira26';
 }
 
 const steps = [
