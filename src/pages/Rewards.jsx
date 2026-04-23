@@ -47,6 +47,7 @@ export default function Rewards() {
   const [pendingReward, setPendingReward] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successName, setSuccessName] = useState('');
+  const [successEmail, setSuccessEmail] = useState('');
 
   const { data: pointsData } = useQuery({
     queryKey: ['user-points', user?.email],
@@ -136,9 +137,9 @@ export default function Rewards() {
 
       // Success: show popup notification + email toast
       setSuccessName(signupForm.first_name);
-      localStorage.setItem('successEmail', signupForm.email);
-      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '' });
+      setSuccessEmail(signupForm.email);
       setShowSuccessModal(true);
+      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '' });
       toast.success('🎉 Welcome to NuVira!');
       queryClient.invalidateQueries({ queryKey: ['user-points'] });
     } catch (err) {
@@ -514,11 +515,8 @@ export default function Rewards() {
 
       <RewardsSuccessModal
         open={showSuccessModal}
-        onClose={() => {
-          localStorage.removeItem('successEmail');
-          setShowSuccessModal(false);
-        }}
-        email={localStorage.getItem('successEmail') || ''}
+        onClose={() => setShowSuccessModal(false)}
+        email={successEmail}
         name={successName || 'Friend'}
       />
     </div>
