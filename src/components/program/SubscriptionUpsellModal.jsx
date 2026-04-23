@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Crown, Leaf, Zap, X, MapPin, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -16,6 +17,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
   const [calculatedDistance, setCalculatedDistance] = useState(null);
   const [calculating, setCalculating] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  const [showOutOfArea, setShowOutOfArea] = useState(false);
   const debounceRef = useRef(null);
 
   const { data: plans = [] } = useQuery({
@@ -60,15 +62,21 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
   };
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
+  const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
 
   const handleSubscribe = async () => {
-    const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
-    if (!addressString.trim()) {
+    const addr = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+    if (!addr.trim()) {
       toast.error('Please enter your delivery address');
       return;
     }
+    if (calculating) {
+      toast.error('Please wait while we verify your address');
+      return;
+    }
     if (!calculatedZone) {
-      toast.error('Please wait for distance calculation');
+      toast.error('This address is outside our delivery area');
+      setShowOutOfArea(true);
       return;
     }
     if (!selectedPlanId) {
@@ -79,7 +87,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     setSubscribing(true);
     try {
       // Call the parent callback with plan details
-      await onSubscribe(selectedPlanId, addressString);
+      await onSubscribe(selectedPlanId, addr);
     } catch (err) {
       console.error('Subscription error:', err);
       toast.error('An error occurred. Please try again.');
@@ -91,6 +99,13 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     <AnimatePresence>
       {open && (
         <>
+          {showOutOfArea && (
+            <OutOfAreaModal
+              address={addressString}
+              zip={address.zip}
+              onClose={() => setShowOutOfArea(false)}
+            />
+          )}
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
