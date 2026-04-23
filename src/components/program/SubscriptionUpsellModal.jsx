@@ -50,12 +50,13 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
       try {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
         const d = res.data;
+        console.log('Distance calc result:', d);
         setCalculatedDistance(d.distance);
         if (d.zone) {
           setCalculatedZone(d.zone);
         } else {
+          console.log('Out of area detected, distance:', d.distance);
           setCalculatedZone(null);
-          setShowOutOfArea(true);
         }
       } catch (err) {
         console.error('Distance calc error:', err);
