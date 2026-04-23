@@ -42,6 +42,7 @@ import Home from '@/pages/Home';
 import Shop from '@/pages/Shop';
 import Cart from '@/pages/Cart';
 import ProgramDetail from '@/pages/ProgramDetail';
+import AccountSetup from '@/pages/AccountSetup';
 import { base44 } from '@/api/base44Client';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -77,6 +78,12 @@ const AuthenticatedApp = () => {
   // Auto-redirect drivers to /driver (but not admins — they see everything)
   if (user?.role === 'driver' && !location.pathname.startsWith('/driver')) {
     window.location.replace('/driver');
+    return null;
+  }
+
+  // Auto-redirect to account setup if user needs onboarding (but skip if already on setup page)
+  if (user && !user?.first_name && location.pathname !== '/account-setup') {
+    window.location.replace('/account-setup');
     return null;
   }
 
@@ -122,6 +129,7 @@ const AuthenticatedApp = () => {
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
+        <Route path="/account-setup" element={<AccountSetup />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </CartProvider>

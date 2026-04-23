@@ -55,6 +55,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const needsOnboarding = () => {
+    if (!user?.email) return false;
+    // Check if user has completed profile setup
+    const hasBasicInfo = user?.first_name && user?.last_name;
+    return !hasBasicInfo;
+  };
+
   const logout = (shouldRedirect = true) => {
     setUser(null);
     setIsAuthenticated(false);
@@ -89,7 +96,8 @@ export const AuthProvider = ({ children }) => {
       logout,
       navigateToLogin,
       checkAppState,
-      refreshUser
+      refreshUser,
+      needsOnboarding
     }}>
       {children}
     </AuthContext.Provider>
