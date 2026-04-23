@@ -5,8 +5,9 @@ const ORIGIN_ADDRESS = "619 N Main St Unit 3, O'Fallon, MO 63366";
 const MAX_DELIVERY_MILES = 15; // outside this = out of area (show waitlist modal)
 
 function getZoneFromMiles(miles) {
-  if (miles <= 10) return 'zone1';
-  if (miles <= 15) return 'zone2';
+  if (miles <= 5) return 'zone1';
+  if (miles <= 10) return 'zone2';
+  if (miles <= 15) return 'zone3';
   return null;
 }
 
