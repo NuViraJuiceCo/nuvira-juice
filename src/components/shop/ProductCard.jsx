@@ -25,7 +25,7 @@ export default function ProductCard({ product, compact = false }) {
           whileTap={{ scale: 0.95 }}
           className="bg-card rounded-2xl border border-border/40 overflow-hidden shadow-sm"
         >
-          <div className="relative overflow-hidden" style={{ aspectRatio: '3/4' }}>
+          <div className="relative overflow-hidden" style={{ aspectRatio: '1/1' }}>
             {product.image_url ? (
               <motion.img
                 src={product.image_url}
