@@ -34,13 +34,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Hub not configured' }, { status: 400 });
     }
 
-    const response = await fetch(`${hubApiUrl}/api/receivePointsSync`, {
+    const response = await fetch(`${hubApiUrl}/functions/loyaltySync`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${hubSecret}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        action: 'update',
         email: member.email,
         total_points: member.total_points,
         lifetime_points: member.lifetime_points,
