@@ -69,6 +69,8 @@ export default function Checkout() {
 
   // Validate address in real-time for delivery orders
   const addressDebounceRef = React.useRef(null);
+  const [hasShownOutOfAreaModal, setHasShownOutOfAreaModal] = React.useState(false);
+  
   React.useEffect(() => {
     if (fulfillmentType !== 'delivery') {
       setAddressValidated(true);
@@ -78,6 +80,7 @@ export default function Checkout() {
     const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
     if (!addrString.trim() || addrString.length < 5) {
       setAddressValidated(false);
+      setHasShownOutOfAreaModal(false);
       return;
     }
 
@@ -88,7 +91,14 @@ export default function Checkout() {
       try {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addrString });
         const zoneData = res.data;
-        setAddressValidated(!!zoneData?.zone);
+        const isValid = !!zoneData?.zone;
+        setAddressValidated(isValid);
+        
+        // Show modal once when address goes out of range
+        if (!isValid && !hasShownOutOfAreaModal) {
+          setHasShownOutOfAreaModal(true);
+          setShowOutOfArea(true);
+        }
       } catch (err) {
         console.error('Address validation error:', err);
         setAddressValidated(false);
@@ -98,7 +108,7 @@ export default function Checkout() {
     }, 800);
 
     return () => clearTimeout(addressDebounceRef.current);
-  }, [address, fulfillmentType]);
+  }, [address, fulfillmentType, hasShownOutOfAreaModal]);
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
@@ -456,12 +466,6 @@ export default function Checkout() {
             />
             {validatingAddress && (
               <p className="text-xs text-muted-foreground mt-1.5">Checking delivery area...</p>
-            )}
-            {!validatingAddress && [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ').length > 5 && !addressValidated && (
-              <div className="mt-1.5 p-2.5 bg-destructive/10 border border-destructive/30 rounded-lg">
-                <p className="text-xs font-medium text-destructive">Outside our delivery area</p>
-                <p className="text-[10px] text-destructive/80 mt-0.5">We deliver within 15 miles. Use the waitlist to be notified when we expand.</p>
-              </div>
             )}
             {!validatingAddress && addressValidated && (
               <p className="text-xs text-primary font-medium mt-1.5">✓ Address validated</p>
