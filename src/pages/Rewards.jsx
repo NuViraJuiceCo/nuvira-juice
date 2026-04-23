@@ -82,7 +82,7 @@ export default function Rewards() {
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
   });
   
-  const [signupForm, setSignupForm] = useState({ email: '', first_name: '', last_name: '', phone: '', address: '' });
+  const [signupForm, setSignupForm] = useState({ email: '', first_name: '', last_name: '', phone: '', address: '', birthday: '' });
   const [signupLoading, setSignupLoading] = useState(false);
 
   const handleApplyReward = (reward) => {
@@ -126,6 +126,7 @@ export default function Rewards() {
         last_name: signupForm.last_name,
         phone: signupForm.phone || null,
         address: signupForm.address || null,
+        birthday: signupForm.birthday || null,
         signup_date: new Date().toISOString().split('T')[0],
       });
 
@@ -140,7 +141,7 @@ export default function Rewards() {
       setSuccessName(signupForm.first_name);
       setSuccessEmail(signupForm.email);
       setShowSuccessModal(true);
-      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '' });
+      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '', birthday: '' });
       toast.success('🎉 Welcome to NuVira!');
       queryClient.invalidateQueries({ queryKey: ['user-points'] });
     } catch (err) {
@@ -223,13 +224,20 @@ export default function Rewards() {
                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
               />
               <input
-                type="text"
-                placeholder="Address (optional)"
-                value={signupForm.address}
-                onChange={(e) => setSignupForm({ ...signupForm, address: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-              />
-              <button
+                 type="text"
+                 placeholder="Address (optional)"
+                 value={signupForm.address}
+                 onChange={(e) => setSignupForm({ ...signupForm, address: e.target.value })}
+                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+               />
+               <input
+                 type="date"
+                 placeholder="Birthday (optional)"
+                 value={signupForm.birthday}
+                 onChange={(e) => setSignupForm({ ...signupForm, birthday: e.target.value })}
+                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+               />
+               <button
                 type="submit"
                 disabled={signupLoading}
                 className="w-full h-11 bg-primary text-primary-foreground rounded-xl font-semibold text-sm disabled:opacity-50"

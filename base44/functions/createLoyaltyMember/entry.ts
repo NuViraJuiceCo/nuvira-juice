@@ -4,7 +4,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     
-    const { email, first_name, last_name, phone, address, signup_date } = await req.json();
+    const { email, first_name, last_name, phone, address, birthday, signup_date } = await req.json();
 
     if (!email || !first_name || !last_name) {
       return Response.json({ error: 'Email, first name, and last name are required' }, { status: 400 });
@@ -32,11 +32,15 @@ Deno.serve(async (req) => {
       phone: phone || null,
       address: address || null,
       onboarding_complete: false,
+      birthday: birthday || null,
     };
 
     const profileExisting = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: email });
     if (profileExisting.length === 0) {
       await base44.asServiceRole.entities.UserProfile.create(profileData);
+    } else {
+      // Update existing profile with new info
+      await base44.asServiceRole.entities.UserProfile.update(profileExisting[0].id, profileData);
     }
 
     // Initialize UserPoints with pre-order bonus
