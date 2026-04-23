@@ -39,11 +39,25 @@ export default function OutOfAreaModal({ address, zip, onClose }) {
             <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-4">
               <MapPin className="w-6 h-6 text-amber-500" />
             </div>
-            <h2 className="font-heading text-xl font-bold mb-1">We're not in your area yet</h2>
-            <p className="text-sm text-muted-foreground mb-5">
-              We currently deliver locally in the Wentzville & St. Louis area. Shipping is coming soon — drop your email and you'll be the first to know when we expand!
+            <h2 className="font-heading text-xl font-bold mb-1">Outside Our Delivery Range</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              We currently deliver within a 15-mile radius of Wentzville, MO. Your address appears to be outside that range.
             </p>
+            <div className="bg-primary/5 border border-primary/20 rounded-xl p-3.5 mb-5">
+              <p className="text-sm font-medium text-foreground mb-1">Think we can make it work? 🙌</p>
+              <p className="text-sm text-muted-foreground">
+                Reach out to us and we'll see if we can make an exception for you:
+              </p>
+              <a
+                href="mailto:info@nuvirajuice.com"
+                className="inline-flex items-center gap-1.5 mt-2 text-sm font-semibold text-primary hover:underline"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                info@nuvirajuice.com
+              </a>
+            </div>
 
+            <p className="text-xs text-muted-foreground mb-3 text-center font-medium">Or join our waitlist for when we expand:</p>
             <div className="flex gap-2">
               <Input
                 type="email"
@@ -57,7 +71,7 @@ export default function OutOfAreaModal({ address, zip, onClose }) {
                 <Mail className="w-4 h-4" />
               </Button>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-3 text-center">No spam — just a heads up when delivery comes to you.</p>
+            <p className="text-[10px] text-muted-foreground mt-2 text-center">No spam — just a heads up when delivery comes to you.</p>
           </>
         ) : (
           <div className="text-center py-4">
