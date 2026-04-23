@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
     // Check if loyalty member already exists
     const existing = await base44.asServiceRole.entities.LoyaltyMember.filter({ email });
     if (existing.length > 0) {
-      return Response.json({ error: 'Already signed up', existing: true }, { status: 200 });
+      return Response.json({ error: 'This email is already signed up for the rewards program', existing: true }, { status: 409 });
     }
 
     // Create loyalty member record

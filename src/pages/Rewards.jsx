@@ -123,13 +123,9 @@ export default function Rewards() {
         signup_date: new Date().toISOString().split('T')[0],
       });
 
-      if (res.data?.existing) {
-        toast.error('This email is already signed up!');
-        return;
-      }
-
       if (!res.data?.success) {
-        toast.error('Failed to sign up. Please try again.');
+        const errMsg = res.data?.error || res.statusText || 'Failed to sign up. Please try again.';
+        toast.error(errMsg);
         return;
       }
 
