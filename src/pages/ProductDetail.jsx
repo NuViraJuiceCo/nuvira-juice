@@ -113,7 +113,7 @@ export default function ProductDetail() {
       </div>
 
       {/* Two-column layout on desktop, single column on mobile */}
-      <div className="md:flex md:gap-8 md:px-6 md:pb-24">
+      <div className="md:flex md:gap-8 md:px-6 md:pb-24 md:items-start">
         {/* Image */}
         <div className="md:w-1/2 md:shrink-0">
           <div className="relative aspect-square md:aspect-square md:max-h-[60vh] md:rounded-2xl bg-secondary/50 overflow-hidden">
@@ -199,7 +199,7 @@ export default function ProductDetail() {
               {related.length > 0 && (
                 <div className="mt-6">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">You might also like</h3>
-                  <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                  <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 items-stretch">
                     {related.map(p => (
                       <div key={p.id} className="shrink-0 w-36">
                         <ProductCard product={p} compact />
