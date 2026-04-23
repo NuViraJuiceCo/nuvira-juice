@@ -132,9 +132,8 @@ const AuthenticatedApp = () => {
     return null;
   }
 
-  // Auto-redirect to account setup if profile is not complete (but skip if already on setup page or just completed)
-  const justCompletedSetup = sessionStorage.getItem('setupComplete');
-  if (user?.email && !userProfileForOnboarding?.onboarding_complete && location.pathname !== '/account-setup' && !justCompletedSetup) {
+  // Auto-redirect to account setup if profile is not complete (but skip if already on setup page)
+  if (user?.email && !userProfileForOnboarding?.onboarding_complete && location.pathname !== '/account-setup') {
     window.location.replace('/account-setup');
     return null;
   }

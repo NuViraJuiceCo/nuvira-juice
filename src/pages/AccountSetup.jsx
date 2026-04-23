@@ -143,8 +143,6 @@ export default function AccountSetup() {
 
       if (response?.data?.success) {
         setIsComplete(true);
-        sessionStorage.setItem('setupComplete', '1');
-        sessionStorage.removeItem('ordersChecked');
         queryClient.invalidateQueries({ queryKey: ['user-onboarding-check'] });
         setTimeout(() => {
           navigate('/shop');
