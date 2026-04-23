@@ -56,7 +56,7 @@ export default function Subscribe() {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
         setCalculatedDistance(res.data.distance);
         setCalculatedZone(res.data.zone);
-        if (!res.data.zone && res.data.distance) {
+        if (!res.data.zone) {
           setShowOutOfArea(true);
         }
       } catch {
