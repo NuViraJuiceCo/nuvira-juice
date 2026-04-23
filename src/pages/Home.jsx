@@ -153,7 +153,6 @@ export default function Home() {
       <TickerBanner />
       
       <div className="mt-4 px-4">
-        <PreLaunchBanner />
         <PreorderBanner />
       </div>
 
