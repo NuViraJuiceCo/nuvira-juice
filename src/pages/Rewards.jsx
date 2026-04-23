@@ -24,11 +24,9 @@ const MILESTONES = [
 
 // Calculate accurate milestone range based on actual points
 const getProgressMilestones = (pts) => {
-  const relevant = MILESTONES.filter(m => m.points <= pts || m.points === MILESTONES.find(x => x.points > pts)?.points);
-  return {
-    prev: relevant[relevant.length - 1] || MILESTONES[0],
-    next: MILESTONES.find(m => m.points > pts) || MILESTONES[MILESTONES.length - 1],
-  };
+  const prev = MILESTONES.reduce((acc, m) => m.points <= pts ? m : acc, MILESTONES[0]);
+  const next = MILESTONES.find(m => m.points > pts) || MILESTONES[MILESTONES.length - 1];
+  return { prev, next };
 };
 
 const DEFAULT_REWARDS = [
