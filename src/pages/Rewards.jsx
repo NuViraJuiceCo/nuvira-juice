@@ -22,6 +22,15 @@ const MILESTONES = [
   { points: 5000, label: '5K' },
 ];
 
+// Calculate accurate milestone range based on actual points
+const getProgressMilestones = (pts) => {
+  const relevant = MILESTONES.filter(m => m.points <= pts || m.points === MILESTONES.find(x => x.points > pts)?.points);
+  return {
+    prev: relevant[relevant.length - 1] || MILESTONES[0],
+    next: MILESTONES.find(m => m.points > pts) || MILESTONES[MILESTONES.length - 1],
+  };
+};
+
 const DEFAULT_REWARDS = [
   { title: 'Free Wellness Shot', description: 'Any wellness add-on shot', points_required: 500, icon: '💛', reward_type: 'free_bottle' },
   { title: 'Free Delivery', description: 'On your next order', points_required: 1000, icon: '🚚', reward_type: 'free_delivery' },
@@ -106,8 +115,7 @@ export default function Rewards() {
   };
 
   const nextReward = rewards.find(r => r.points_required > totalPoints);
-  const nextMilestone = MILESTONES.find(m => m.points > totalPoints) || MILESTONES[MILESTONES.length - 1];
-  const prevMilestone = [...MILESTONES].reverse().find(m => m.points <= totalPoints) || MILESTONES[0];
+  const { prev: prevMilestone, next: nextMilestone } = getProgressMilestones(totalPoints);
 
   const progressPct = nextMilestone.points > prevMilestone.points
     ? Math.min(100, ((totalPoints - prevMilestone.points) / (nextMilestone.points - prevMilestone.points)) * 100)
