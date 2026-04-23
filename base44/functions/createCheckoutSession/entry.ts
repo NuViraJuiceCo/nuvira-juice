@@ -116,33 +116,13 @@ Deno.serve(async (req) => {
     let session;
 
     if (preorder) {
-      // PRE-ORDER: Use PaymentIntent with manual capture
-      // Create a PaymentIntent that authorizes but does NOT charge immediately
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(effectiveTotal * 100),
-        currency: 'usd',
-        capture_method: 'manual', // authorize only — captured on Apr 30
-        receipt_email: customer_email || undefined,
-        description: `NuVira Pre-Order ${orderNumber} — Captured May 1, 2026 · Delivered May 2, 2026`,
-        metadata: {
-          base44_app_id: Deno.env.get('BASE44_APP_ID'),
-          order_id: order.id,
-          order_number: orderNumber,
-          is_preorder: 'true',
-          fulfillment_date: FULFILLMENT_DATE,
-            delivery_date: DELIVERY_DATE,
-        },
-      });
-
-
-
-      // Create a Checkout Session that uses the existing PaymentIntent
+      // PRE-ORDER: Checkout session with manual capture
       session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: lineItems,
         mode: 'payment',
         payment_intent_data: {
-          capture_method: 'manual',
+          capture_method: 'manual', // authorize only — captured on May 1
           metadata: sessionMetadata,
         },
         success_url: `${origin}/order-confirmation?session_id={CHECKOUT_SESSION_ID}&preorder=true`,
