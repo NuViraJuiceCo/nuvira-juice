@@ -99,13 +99,6 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     <AnimatePresence>
       {open && (
         <>
-          {showOutOfArea && (
-            <OutOfAreaModal
-              address={addressString}
-              zip={address.zip}
-              onClose={() => setShowOutOfArea(false)}
-            />
-          )}
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -233,6 +226,27 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
                       </div>
                     </motion.div>
                   )}
+                  {!calculatedZone && calculatedDistance !== null && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-start gap-2"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="text-xs">
+                        <p className="font-semibold text-amber-900">Outside Delivery Area</p>
+                        <p className="text-amber-700 mt-0.5">{calculatedDistance?.toFixed(1)} miles away — we deliver within 15 miles</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 border-amber-500/40 text-amber-600 hover:bg-amber-50 h-8"
+                          onClick={() => setShowOutOfArea(true)}
+                        >
+                          Join the Waitlist
+                        </Button>
+                      </div>
+                    </motion.div>
+                  )}
                   {calculating && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Loader2 className="w-3 h-3 animate-spin" />
@@ -259,12 +273,21 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
               >
                 <Button
                   onClick={handleSubscribe}
-                  disabled={subscribing || !address.street.trim() || calculating || calculatedDistance === null}
+                  disabled={subscribing || !address.street.trim() || calculating || !calculatedZone}
                   className="w-full h-11 rounded-xl font-semibold text-sm mb-2"
                 >
                   {subscribing ? 'Redirecting to payment...' : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
                 </Button>
               </motion.div>
+            )}
+
+            {/* Out of Area Modal */}
+            {showOutOfArea && (
+              <OutOfAreaModal
+                address={addressString}
+                zip={address.zip}
+                onClose={() => setShowOutOfArea(false)}
+              />
             )}
 
             <p className="text-center text-[10px] text-muted-foreground">
