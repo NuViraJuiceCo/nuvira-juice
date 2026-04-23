@@ -1,7 +1,7 @@
 import React from 'react';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster } from "@/components/ui/toaster"
-import { QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
@@ -53,6 +53,16 @@ const AuthenticatedApp = () => {
   const [checkingOrders, setCheckingOrders] = React.useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Fetch user profile for onboarding check (must be at top level)
+  const { data: userProfileForOnboarding } = useQuery({
+    queryKey: ['user-onboarding-check', user?.email],
+    queryFn: async () => {
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
+      return profiles[0] || null;
+    },
+    enabled: !!user?.email && location.pathname !== '/account-setup',
+  });
 
   const handleSplashDone = () => {
     sessionStorage.setItem('splashShown', '1');
@@ -113,8 +123,8 @@ const AuthenticatedApp = () => {
     return null;
   }
 
-  // Auto-redirect to account setup if user needs onboarding (but skip if already on setup page)
-  if (user && !user?.first_name && location.pathname !== '/account-setup') {
+  // Auto-redirect to account setup if profile is not complete (but skip if already on setup page)
+  if (user?.email && !userProfileForOnboarding?.onboarding_complete && location.pathname !== '/account-setup') {
     window.location.replace('/account-setup');
     return null;
   }
