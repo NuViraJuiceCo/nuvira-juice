@@ -37,6 +37,7 @@ export default function Checkout() {
   const [referralApplied, setReferralApplied] = useState(false);
   const [addressValidated, setAddressValidated] = useState(false);
   const [validatingAddress, setValidatingAddress] = useState(false);
+  const [deliveryZone, setDeliveryZone] = useState(null);
   const REFERRAL_DISCOUNT = 5.00;
   const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
 
@@ -93,6 +94,7 @@ export default function Checkout() {
         const zoneData = res.data;
         const isValid = !!zoneData?.zone;
         setAddressValidated(isValid);
+        setDeliveryZone(isValid ? zoneData : null);
         
         // Show modal once when address goes out of range
         if (!isValid && !hasShownOutOfAreaModal) {
@@ -102,6 +104,7 @@ export default function Checkout() {
       } catch (err) {
         console.error('Address validation error:', err);
         setAddressValidated(false);
+        setDeliveryZone(null);
       } finally {
         setValidatingAddress(false);
       }
@@ -164,7 +167,8 @@ export default function Checkout() {
   const rewardFreeDelivery = activeReward?.reward_type === 'free_delivery';
   const rewardDiscountPct = activeReward?.reward_type === 'discount' ? 10 : 0;
   const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
-  const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery && !subFreeDelivery) ? 5.00 : 0;
+  const zoneFee = deliveryZone?.fee || 0;
+  const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery && !subFreeDelivery) ? zoneFee : 0;
   const subDiscountAmt = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
   const availableCredits = userCreditsData?.balance || 0;
   const creditsDiscount = useCredits ? Math.min(availableCredits, subtotal) : 0;
