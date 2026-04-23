@@ -136,6 +136,7 @@ export default function Rewards() {
       }
 
       // Success: show popup notification + email toast
+      console.log('✅ Signup successful, opening modal');
       setSuccessName(signupForm.first_name);
       setSuccessEmail(signupForm.email);
       setShowSuccessModal(true);
