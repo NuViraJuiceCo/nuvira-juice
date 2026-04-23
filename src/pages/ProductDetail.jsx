@@ -98,7 +98,7 @@ export default function ProductDetail() {
       />
       {/* Image */}
       <div className="relative">
-        <div className="aspect-square bg-secondary/50 overflow-hidden">
+        <div className="aspect-square md:aspect-[16/9] md:max-h-[50vh] bg-secondary/50 overflow-hidden">
           {product.image_url ? (
             <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" />
           ) : (
@@ -192,7 +192,7 @@ export default function ProductDetail() {
       </motion.div>
 
       {/* Bottom Bar */}
-      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border">
+      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border shadow-lg">
         <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3">
           <div className="flex items-center gap-3 bg-secondary rounded-xl px-3 py-2">
             <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="active:scale-90 transition-transform">
