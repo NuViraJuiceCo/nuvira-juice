@@ -87,7 +87,7 @@ export default function ProductDetail() {
   };
 
   return (
-    <div className="pb-32 md:pb-0">
+    <div className="pb-48 md:pb-0">
       <SEO
         title={`${product.title} — Cold-Pressed Juice | Wentzville, MO`}
         description={product.short_description || product.description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`}
