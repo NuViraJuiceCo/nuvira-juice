@@ -157,7 +157,8 @@ export default function Checkout() {
     if (fulfillmentType === 'delivery') {
       const addrCheck = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
       const zoneRes = await base44.functions.invoke('calculateDeliveryZone', { address: addrCheck });
-      if (!zoneRes.data?.zone) {
+      const zoneData = zoneRes.data;
+      if (!zoneData?.zone) {
         setIsSubmitting(false);
         setShowOutOfArea(true);
         return;

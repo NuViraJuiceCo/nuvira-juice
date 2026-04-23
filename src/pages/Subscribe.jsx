@@ -54,18 +54,13 @@ export default function Subscribe() {
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
-        setCalculatedDistance(res.data.distance);
-        setCalculatedZone(res.data.zone);
+        const d = res.data;
+        setCalculatedDistance(d.distance);
+        setCalculatedZone(d.zone || null);
       } catch (err) {
-        // Out-of-area returns 400 with distance info — extract it
-        const data = err?.response?.data;
-        if (data?.distance !== undefined) {
-          setCalculatedDistance(data.distance);
-          setCalculatedZone(null); // out of area
-        } else {
-          setCalculatedDistance(null);
-          setCalculatedZone(null);
-        }
+        console.error('Distance calc error:', err);
+        setCalculatedDistance(null);
+        setCalculatedZone(null);
       } finally {
         setCalculating(false);
       }
@@ -90,19 +85,11 @@ export default function Subscribe() {
     }
     // Always do a fresh live check on subscribe click
     setLoading(true);
-    try {
-      const zoneRes = await base44.functions.invoke('calculateDeliveryZone', { address: addressString });
-      setCalculatedDistance(zoneRes.data.distance);
-      setCalculatedZone(zoneRes.data.zone);
-      if (!zoneRes.data.zone) {
-        setShowOutOfArea(true);
-        setLoading(false);
-        return;
-      }
-    } catch (err) {
-      const data = err?.response?.data;
-      setCalculatedDistance(data?.distance ?? null);
-      setCalculatedZone(null);
+    const zoneRes = await base44.functions.invoke('calculateDeliveryZone', { address: addressString });
+    const zoneData = zoneRes.data;
+    setCalculatedDistance(zoneData.distance);
+    setCalculatedZone(zoneData.zone || null);
+    if (!zoneData.zone) {
       setShowOutOfArea(true);
       setLoading(false);
       return;
@@ -199,7 +186,7 @@ export default function Subscribe() {
               })()
             ) : (
               <>
-                <p className="text-sm font-semibold text-destructive">We currently deliver within 20 miles of O'Fallon, MO</p>
+                <p className="text-sm font-semibold text-destructive">We currently deliver within 15 miles of O'Fallon, MO</p>
                 <Button
                   size="sm"
                   variant="outline"
