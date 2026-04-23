@@ -4,13 +4,11 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
-import { Star, Lock, ChevronRight, Gift, Zap, ShoppingBag, Users, Trophy, CheckCircle, Cake } from 'lucide-react';
+import { Star, Lock, Gift, Zap, ShoppingBag, Users, Trophy, Cake } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
 import { isPreorderMode } from '@/lib/preorderConfig';
 import { Link, useNavigate } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
-import RewardsSuccessModal from '@/components/RewardsSuccessModal';
-import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 
@@ -46,9 +44,6 @@ export default function Rewards() {
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingReward, setPendingReward] = useState(null);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successName, setSuccessName] = useState('');
-  const [successEmail, setSuccessEmail] = useState('');
 
   const { data: pointsData } = useQuery({
     queryKey: ['user-points', user?.email],
@@ -82,9 +77,6 @@ export default function Rewards() {
     if (!user?.email) return null;
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
   });
-  
-  const [signupForm, setSignupForm] = useState({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
-  const [signupLoading, setSignupLoading] = useState(false);
 
   const handleApplyReward = (reward) => {
     if (reward.reward_type === 'free_bottle') {
@@ -111,54 +103,6 @@ export default function Rewards() {
     localStorage.removeItem(`activeReward_${user.email}`);
     setActiveReward(null);
     toast.success('Reward removed.');
-  };
-
-  const handleSignupSubmit = async (e) => {
-    e.preventDefault();
-    
-    const addrString = [signupForm.address.street, signupForm.address.city, signupForm.address.state, signupForm.address.zip].filter(Boolean).join(', ');
-    if (!signupForm.email?.trim() || !signupForm.first_name?.trim() || !signupForm.last_name?.trim() || !signupForm.phone?.trim() || !addrString?.trim() || !signupForm.birthday?.trim()) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-    
-    setSignupLoading(true);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
-    try {
-      const res = await base44.functions.invoke('createLoyaltyMember', {
-        email: signupForm.email.trim(),
-        first_name: signupForm.first_name.trim(),
-        last_name: signupForm.last_name.trim(),
-        phone: signupForm.phone.trim(),
-        address: addrString.trim(),
-        birthday: signupForm.birthday,
-        signup_date: new Date().toISOString().split('T')[0],
-      });
-
-      clearTimeout(timeoutId);
-      
-      if (res.data?.success) {
-        setSuccessName(signupForm.first_name);
-        setSuccessEmail(signupForm.email);
-        setShowSuccessModal(true);
-        setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
-        setSignupLoading(false);
-      } else if (res.data?.error) {
-        toast.error(res.data.error);
-        setSignupLoading(false);
-      } else {
-        toast.error('Failed to sign up. Please try again.');
-        setSignupLoading(false);
-      }
-    } catch (err) {
-      clearTimeout(timeoutId);
-      console.error('Signup error caught:', err);
-      const errorMsg = err?.response?.data?.error || err?.data?.error || err?.message || 'Failed to sign up. Please try again.';
-      toast.error(errorMsg === 'Request timeout' ? 'Request took too long. Please try again.' : errorMsg);
-      setSignupLoading(false);
-    }
   };
 
   const nextReward = rewards.find(r => r.points_required > totalPoints);
@@ -188,73 +132,17 @@ export default function Rewards() {
         </div>
 
         <div className="mx-4 mt-5 space-y-3">
-          {/* Signup Form */}
-          <div className="bg-card border border-primary/30 rounded-2xl p-5 shadow-sm">
+          {/* Sign In Prompt */}
+          <div className="bg-card border border-primary/30 rounded-2xl p-5 shadow-sm text-center">
             <Trophy className="w-8 h-8 text-primary mx-auto mb-3" />
-            <h2 className="font-heading text-xl font-bold mb-1 text-center">Join NuVira Rewards</h2>
-            <p className="text-xs text-muted-foreground mb-4 text-center">Create your account and start earning points today</p>
-            {isPreorderMode() && (
-              <div className="mb-3 bg-primary/10 border border-primary/20 rounded-xl p-3 text-center">
-                <p className="text-xs font-bold text-primary">🎉 Bonus: Earn 250 points just for signing up!</p>
-              </div>
-            )}
-            <form onSubmit={handleSignupSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  placeholder="First Name"
-                  value={signupForm.first_name}
-                  onChange={(e) => setSignupForm({ ...signupForm, first_name: e.target.value })}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-                  required
-                />
-                <input
-                  type="text"
-                  placeholder="Last Name"
-                  value={signupForm.last_name}
-                  onChange={(e) => setSignupForm({ ...signupForm, last_name: e.target.value })}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-                  required
-                />
-              </div>
-              <input
-                type="email"
-                placeholder="Email"
-                value={signupForm.email}
-                onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-                required
-              />
-              <input
-                type="tel"
-                placeholder="Phone Number"
-                value={signupForm.phone}
-                onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-                required
-              />
-              <AddressAutocomplete
-                value={signupForm.address}
-                onChange={(addr) => setSignupForm({ ...signupForm, address: addr })}
-                placeholder="Street Address"
-                className="h-10 rounded-lg"
-              />
-              <input
-                type="date"
-                placeholder="Birthday"
-                value={signupForm.birthday}
-                onChange={(e) => setSignupForm({ ...signupForm, birthday: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-                required
-              />
-              <button
-                type="submit"
-                disabled={signupLoading}
-                className="w-full h-11 bg-primary text-primary-foreground rounded-xl font-semibold text-sm disabled:opacity-50"
-              >
-                {signupLoading ? 'Creating account...' : 'Create Account'}
-              </button>
-            </form>
+            <h2 className="font-heading text-xl font-bold mb-2">Unlock Your Rewards</h2>
+            <p className="text-xs text-muted-foreground mb-4">Sign in or create an account to start earning points on every order.</p>
+            <button
+              onClick={() => base44.auth.redirectToLogin(window.location.pathname)}
+              className="w-full h-11 bg-primary text-primary-foreground rounded-xl font-semibold text-sm"
+            >
+              Sign In / Create Account
+            </button>
           </div>
 
           {/* How it works */}
@@ -519,13 +407,6 @@ export default function Rewards() {
         onSelect={handleFreeProductSelect}
         title={pendingReward ? `Choose Your ${pendingReward.title}` : 'Choose Your Free Item'}
         category="juice"
-      />
-
-      <RewardsSuccessModal
-        open={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        email={successEmail}
-        name={successName || 'Friend'}
       />
     </div>
   );
