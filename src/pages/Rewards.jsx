@@ -113,11 +113,8 @@ export default function Rewards() {
   };
 
   const nextReward = rewards.find(r => r.points_required > totalPoints);
-  const { prev: prevMilestone, next: nextMilestone } = getProgressMilestones(totalPoints);
 
-  const progressPct = nextMilestone.points > prevMilestone.points
-    ? Math.min(100, ((totalPoints - prevMilestone.points) / (nextMilestone.points - prevMilestone.points)) * 100)
-    : 100;
+  const progressPct = Math.min(100, (totalPoints / 5000) * 100);
 
   if (!user) {
     return (
