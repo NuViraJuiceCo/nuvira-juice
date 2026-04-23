@@ -46,11 +46,13 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
-        setCalculatedDistance(res.data.distance);
-        setCalculatedZone(res.data.zone);
-      } catch {
-        setCalculatedZone(null);
+        const d = res.data;
+        setCalculatedDistance(d.distance);
+        setCalculatedZone(d.zone || null);
+      } catch (err) {
+        console.error('Distance calc error:', err);
         setCalculatedDistance(null);
+        setCalculatedZone(null);
       } finally {
         setCalculating(false);
       }
