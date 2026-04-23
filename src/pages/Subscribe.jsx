@@ -84,12 +84,25 @@ export default function Subscribe() {
       toast.error('Please enter your delivery address');
       return;
     }
-    if (!calculatedZone) {
-      // If still calculating, wait; otherwise address is out of area
-      if (calculating) {
-        toast.error('Please wait while we verify your address');
+    if (calculating) {
+      toast.error('Please wait while we verify your address');
+      return;
+    }
+    // Always do a fresh live check on subscribe click
+    setLoading(true);
+    try {
+      const zoneRes = await base44.functions.invoke('calculateDeliveryZone', { address: addressString });
+      setCalculatedDistance(zoneRes.data.distance);
+      setCalculatedZone(zoneRes.data.zone);
+      if (!zoneRes.data.zone) {
+        setShowOutOfArea(true);
+        setLoading(false);
         return;
       }
+    } catch (err) {
+      const data = err?.response?.data;
+      setCalculatedDistance(data?.distance ?? null);
+      setCalculatedZone(null);
       setShowOutOfArea(true);
       setLoading(false);
       return;
@@ -200,28 +213,7 @@ export default function Subscribe() {
           </div>
         </motion.div>
       )}
-      {/* Show out-of-area modal for unverifiable addresses too */}
-      {calculatedDistance === null && !calculating && address.street.trim() && address.city.trim() && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mx-4 mt-4 border border-destructive/30 bg-destructive/5 rounded-xl p-4"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <MapPin className="w-4 h-4 text-destructive" />
-            <span className="font-semibold text-sm">Address Not Verified</span>
-          </div>
-          <p className="text-xs text-muted-foreground mb-2">We couldn't verify this address. If you're outside our delivery area, join the waitlist and we'll notify you when we expand.</p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full border-destructive/40 text-destructive hover:bg-destructive/10"
-            onClick={() => setShowOutOfArea(true)}
-          >
-            Notify me when you deliver to my area
-          </Button>
-        </motion.div>
-      )}
+
       {calculating && (
         <div className="px-4 mt-4 text-xs text-muted-foreground text-center">
           Calculating distance...
