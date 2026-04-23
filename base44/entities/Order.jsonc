@@ -94,6 +94,10 @@
     "notes": {
       "type": "string"
     },
+    "referral_code": {
+      "type": "string",
+      "description": "Referral code used on this order"
+    },
     "delivery_photo_url": {
       "type": "string",
       "description": "Proof of delivery photo taken by driver"

@@ -29,6 +29,15 @@ Deno.serve(async (req) => {
 
     const preorder = force_preorder || isPreorderWindow();
 
+    // Validate referral code — one use per email
+    if (referral_discount > 0 && referral_code && customer_email) {
+      const prevOrders = await base44.asServiceRole.entities.Order.filter({ customer_email });
+      const alreadyUsed = prevOrders.some(o => o.referral_code === referral_code.toUpperCase());
+      if (alreadyUsed) {
+        return Response.json({ error: 'Referral code already used. Each code can only be used once per email.' }, { status: 400 });
+      }
+    }
+
     // --- Subscription perks: look up active subscription for this customer ---
     let subFreeDelivery = false;
     let subDiscountPct = 0;
@@ -84,7 +93,8 @@ Deno.serve(async (req) => {
       }],
       is_preorder: preorder,
       preorder_fulfillment_date: preorder ? FULFILLMENT_DATE : null,
-      payment_captured: !preorder, // regular orders are immediately captured
+      payment_captured: !preorder,
+      referral_code: (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null, // regular orders are immediately captured
     });
 
     // Link any pending BagReturns created during checkout to this order

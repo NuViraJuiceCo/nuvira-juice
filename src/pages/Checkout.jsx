@@ -236,7 +236,13 @@ export default function Checkout() {
     if (res.data?.url) {
       window.location.href = res.data.url;
     } else {
-      toast.error(res.data?.error || 'Failed to start checkout. Please try again.');
+      const errMsg = res.data?.error || 'Failed to start checkout. Please try again.';
+      toast.error(errMsg);
+      // If referral code was already used, clear it so user can proceed without it
+      if (errMsg.includes('Referral code already used')) {
+        setReferralApplied(false);
+        setReferralCode('');
+      }
       setIsSubmitting(false);
     }
   };
