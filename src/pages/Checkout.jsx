@@ -35,6 +35,8 @@ export default function Checkout() {
   const [useCredits, setUseCredits] = useState(false);
   const [referralCode, setReferralCode] = useState('');
   const [referralApplied, setReferralApplied] = useState(false);
+  const [addressValidated, setAddressValidated] = useState(false);
+  const [validatingAddress, setValidatingAddress] = useState(false);
   const REFERRAL_DISCOUNT = 5.00;
   const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
 
@@ -64,6 +66,39 @@ export default function Checkout() {
     if (userProfile?.sms_consent) setSmsConsent(true);
     setPrefilled(true);
   }, [userProfile, user, prefilled]);
+
+  // Validate address in real-time for delivery orders
+  const addressDebounceRef = React.useRef(null);
+  React.useEffect(() => {
+    if (fulfillmentType !== 'delivery') {
+      setAddressValidated(true);
+      return;
+    }
+
+    const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+    if (!addrString.trim() || addrString.length < 5) {
+      setAddressValidated(false);
+      return;
+    }
+
+    if (addressDebounceRef.current) clearTimeout(addressDebounceRef.current);
+    setValidatingAddress(true);
+
+    addressDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await base44.functions.invoke('calculateDeliveryZone', { address: addrString });
+        const zoneData = res.data;
+        setAddressValidated(!!zoneData?.zone);
+      } catch (err) {
+        console.error('Address validation error:', err);
+        setAddressValidated(false);
+      } finally {
+        setValidatingAddress(false);
+      }
+    }, 800);
+
+    return () => clearTimeout(addressDebounceRef.current);
+  }, [address, fulfillmentType]);
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
@@ -419,6 +454,18 @@ export default function Checkout() {
               placeholder="123 Main St"
               className="rounded-xl h-11"
             />
+            {validatingAddress && (
+              <p className="text-xs text-muted-foreground mt-1.5">Checking delivery area...</p>
+            )}
+            {!validatingAddress && [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ').length > 5 && !addressValidated && (
+              <div className="mt-1.5 p-2.5 bg-destructive/10 border border-destructive/30 rounded-lg">
+                <p className="text-xs font-medium text-destructive">Outside our delivery area</p>
+                <p className="text-[10px] text-destructive/80 mt-0.5">We deliver within 15 miles. Use the waitlist to be notified when we expand.</p>
+              </div>
+            )}
+            {!validatingAddress && addressValidated && (
+              <p className="text-xs text-primary font-medium mt-1.5">✓ Address validated</p>
+            )}
           </div>
         )}
       </div>
@@ -489,10 +536,10 @@ export default function Checkout() {
       <div className="px-4">
         <Button
           onClick={handlePlaceOrder}
-          disabled={isSubmitting}
+          disabled={isSubmitting || (fulfillmentType === 'delivery' && !addressValidated)}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {isSubmitting ? 'Redirecting to payment...' : isPreorderMode() ? `Pre-Order · $${total.toFixed(2)} — Charged May 1st` : `Pay · $${total.toFixed(2)}`}
+          {isSubmitting ? 'Redirecting to payment...' : fulfillmentType === 'delivery' && !addressValidated ? 'Enter a valid delivery address' : isPreorderMode() ? `Pre-Order · $${total.toFixed(2)} — Charged May 1st` : `Pay · $${total.toFixed(2)}`}
         </Button>
       </div>
     </div>
