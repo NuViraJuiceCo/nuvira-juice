@@ -82,11 +82,11 @@ Deno.serve(async (req) => {
     let fee = null;
     
     if (distanceMilesRounded <= 5) {
-      fee = allZones.find(z => z.data.max_miles === 5)?.data.delivery_fee || 3.99;
+      fee = allZones.find(z => z.max_miles === 5)?.delivery_fee || 3.99;
     } else if (distanceMilesRounded <= 10) {
-      fee = allZones.find(z => z.data.max_miles === 10)?.data.delivery_fee || 5.99;
+      fee = allZones.find(z => z.max_miles === 10)?.delivery_fee || 5.99;
     } else if (distanceMilesRounded <= 15) {
-      fee = allZones.find(z => z.data.max_miles === 15)?.data.delivery_fee || 7.99;
+      fee = allZones.find(z => z.max_miles === 15)?.delivery_fee || 7.99;
     }
 
     console.log(`Delivery zone resolved: ${zoneId} (${distanceMilesRounded} miles, $${fee}) for "${address}"`);
