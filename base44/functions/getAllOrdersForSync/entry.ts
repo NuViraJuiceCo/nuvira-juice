@@ -6,12 +6,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (user?.role !== 'admin') {
-      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    // Validate hub secret token
+    const authHeader = req.headers.get('authorization');
+    const hubSecret = Deno.env.get('HUB_SYNC_SECRET');
+    if (authHeader !== `Bearer ${hubSecret}`) {
+      return Response.json({ error: 'Invalid or missing authorization' }, { status: 401 });
     }
+
+    const base44 = createClientFromRequest(req);
 
     const { limit = 100, offset = 0 } = await req.json();
 
