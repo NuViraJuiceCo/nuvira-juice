@@ -18,21 +18,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update user profile
-    console.log(`Updating user profile for: ${email}`);
+    // Update or create user profile (check for existing first)
+    console.log(`Setting up user profile for: ${email}`);
     const existingProfiles = await base44.asServiceRole.entities.UserProfile.filter(
       { customer_email: email }
     );
 
     if (existingProfiles.length > 0) {
+      // Update existing profile
       await base44.asServiceRole.entities.UserProfile.update(existingProfiles[0].id, {
-        customer_email: email,
         contact_email: email,
         phone,
         address,
         onboarding_complete: true,
       });
     } else {
+      // Create new profile only if one doesn't exist
       await base44.asServiceRole.entities.UserProfile.create({
         customer_email: email,
         contact_email: email,
