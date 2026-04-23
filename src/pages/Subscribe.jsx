@@ -251,7 +251,7 @@ export default function Subscribe() {
           <p className="text-center text-xs text-amber-600 font-medium">⚠ Enter your delivery address above to continue</p>
         )}
         {address.street.trim() && calculating && (
-          <p className="text-center text-xs text-muted-foreground">Calculating your delivery zone...</p>
+          <p className="text-center text-xs text-muted-foreground">Verifying your address...</p>
         )}
         <Button
           onClick={handleJoin}
