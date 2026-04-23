@@ -14,12 +14,12 @@ Deno.serve(async (req) => {
 
     const base44 = createClientFromRequest(req);
     
-    // Fetch all UserPoints records from the app
-    const members = await base44.asServiceRole.entities.UserPoints.list('-created_date', 500);
+    // Fetch all LoyaltyMember records from the app
+    const members = await base44.asServiceRole.entities.LoyaltyMember.list('-created_date', 500);
 
     const formatted = {
       customers: members.map(m => ({
-        customer_email: m.customer_email,
+        email: m.email,
         total_points: m.total_points || 0,
         lifetime_points: m.lifetime_points || 0,
         redeemed_points: m.redeemed_points || 0,
