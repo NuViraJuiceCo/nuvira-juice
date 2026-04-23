@@ -58,6 +58,12 @@ export default function AccountSetup() {
     fetchProfile();
   }, [user?.email, isLoadingAuth]);
 
+  React.useEffect(() => {
+    if (!isLoadingAuth && !user) {
+      base44.auth.redirectToLogin(window.location.pathname);
+    }
+  }, [isLoadingAuth, user]);
+
   if (isLoadingAuth || !user) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background">
