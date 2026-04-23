@@ -92,9 +92,9 @@ export default function Checkout() {
       try {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addrString });
         const zoneData = res.data;
-        const isValid = !!zoneData?.zone;
+        const isValid = !!zoneData?.ok && !!zoneData?.zone;
         setAddressValidated(isValid);
-        setDeliveryZone(isValid ? zoneData : null);
+        setDeliveryZone(isValid ? { fee: zoneData.fee, distance: zoneData.distance } : null);
         
         // Show modal once when address goes out of range
         if (!isValid && !hasShownOutOfAreaModal) {
