@@ -105,7 +105,7 @@ export default function Cart() {
   }
 
   return (
-    <div className="pb-36">
+    <div className={isPreorderMode() || (isPreLaunch() && !isPreorderMode()) ? "pb-56" : "pb-44"}>
       <div className="px-4 pt-4 pb-3">
         <h1 className="font-heading text-xl font-bold">Your Cart</h1>
         <p className="text-xs text-muted-foreground">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
