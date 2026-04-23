@@ -18,15 +18,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Sync profile data to User entity
-    console.log(`Syncing profile to User entity for: ${email}`);
+    // Sync name to User entity
+    console.log(`Syncing name to User entity for: ${email}`);
     try {
       await base44.auth.updateMe({
         first_name,
         last_name,
-        phone,
-        address,
-        birthday,
       });
     } catch (err) {
       console.warn('Failed to update User entity:', err.message);

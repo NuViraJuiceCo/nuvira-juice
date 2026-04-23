@@ -133,7 +133,7 @@ export default function AccountSetup() {
         setIsComplete(true);
         sessionStorage.removeItem('ordersChecked');
         setTimeout(() => {
-          navigate('/');
+          navigate('/shop');
         }, 2000);
       } else {
         const errorMsg = response?.data?.error || 'Failed to complete setup';
