@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,7 @@ const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f794548115
 export default function AccountSetup() {
   const { user, isLoadingAuth } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [formData, setFormData] = useState({
@@ -143,6 +145,7 @@ export default function AccountSetup() {
         setIsComplete(true);
         sessionStorage.setItem('setupComplete', '1');
         sessionStorage.removeItem('ordersChecked');
+        queryClient.invalidateQueries({ queryKey: ['user-onboarding-check'] });
         setTimeout(() => {
           navigate('/shop');
         }, 1500);
