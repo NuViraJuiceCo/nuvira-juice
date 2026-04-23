@@ -238,8 +238,8 @@ export default function Subscribe() {
                                 {plan.name === 'Weekly Fresh' 
                                   ? '1 AURA, 1 RE-NU, 1 OASIS' 
                                   : plan.name === 'Monthly Ritual' 
-                                  ? '(1 of each flavor per week)' 
-                                  : '(2 of each flavor per week)'}
+                                  ? '1 of each flavor per week × 4' 
+                                  : '2 of each flavor per week × 4'}
                               </p>
                   </div>
                 </div>
