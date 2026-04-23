@@ -83,7 +83,7 @@ export default function Rewards() {
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
   });
   
-  const [signupForm, setSignupForm] = useState({ email: '', first_name: '', last_name: '', phone: '', address: '', birthday: '' });
+  const [signupForm, setSignupForm] = useState({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
   const [signupLoading, setSignupLoading] = useState(false);
 
   const handleApplyReward = (reward) => {
@@ -115,7 +115,8 @@ export default function Rewards() {
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
-    if (!signupForm.email || !signupForm.first_name || !signupForm.last_name || !signupForm.phone || !signupForm.address || !signupForm.birthday) {
+    const addrString = [signupForm.address.street, signupForm.address.city, signupForm.address.state, signupForm.address.zip].filter(Boolean).join(', ');
+    if (!signupForm.email || !signupForm.first_name || !signupForm.last_name || !signupForm.phone || !addrString || !signupForm.birthday) {
       toast.error('Please fill in all fields');
       return;
     }
@@ -126,7 +127,7 @@ export default function Rewards() {
          first_name: signupForm.first_name,
          last_name: signupForm.last_name,
          phone: signupForm.phone,
-         address: signupForm.address,
+         address: addrString,
          birthday: signupForm.birthday,
          signup_date: new Date().toISOString().split('T')[0],
        });
@@ -141,7 +142,7 @@ export default function Rewards() {
       setSuccessName(signupForm.first_name);
       setSuccessEmail(signupForm.email);
       setShowSuccessModal(true);
-      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '', birthday: '' });
+      setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
       setSignupLoading(false);
     } catch (err) {
       toast.error('Failed to sign up. Please try again.');
@@ -222,20 +223,8 @@ export default function Rewards() {
                 required
               />
               <AddressAutocomplete
-                value={
-                  signupForm.address 
-                    ? { 
-                        street: signupForm.address.split(',')[0]?.trim() || '',
-                        city: signupForm.address.split(',')[1]?.trim() || '',
-                        state: signupForm.address.split(',')[2]?.trim() || '',
-                        zip: signupForm.address.split(',')[3]?.trim() || ''
-                      }
-                    : { street: '', city: '', state: '', zip: '' }
-                }
-                onChange={(addr) => {
-                  const fullAddress = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
-                  setSignupForm({ ...signupForm, address: fullAddress });
-                }}
+                value={signupForm.address}
+                onChange={(addr) => setSignupForm({ ...signupForm, address: addr })}
                 placeholder="Street Address"
                 className="h-10 rounded-lg"
               />
