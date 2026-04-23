@@ -64,7 +64,7 @@ const AuthenticatedApp = () => {
   const navigate = useNavigate();
 
   // Fetch user profile for onboarding check (must be at top level)
-  const { data: userProfileForOnboarding } = useQuery({
+  const { data: userProfileForOnboarding, isLoading: isLoadingProfile } = useQuery({
     queryKey: ['user-onboarding-check', user?.email],
     queryFn: async () => {
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
@@ -107,8 +107,8 @@ const AuthenticatedApp = () => {
     checkOrders();
   }, [user?.email, location.pathname, navigate]);
 
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth || checkingOrders) {
+  // Show loading spinner while checking app public settings, auth, or profile
+  if (isLoadingPublicSettings || isLoadingAuth || checkingOrders || (user?.email && isLoadingProfile)) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
