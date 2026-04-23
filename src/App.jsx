@@ -47,6 +47,15 @@ import AccountSetup from '@/pages/AccountSetup';
 import { base44 } from '@/api/base44Client';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+// Protected route wrapper—redirect to login if not authenticated
+const ProtectedRoute = ({ element, user }) => {
+  if (!user) {
+    base44.auth.redirectToLogin(window.location.pathname);
+    return null;
+  }
+  return element;
+};
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user } = useAuth();
   const [showSplash, setShowSplash] = React.useState(() => !sessionStorage.getItem('splashShown'));
@@ -141,11 +150,11 @@ const AuthenticatedApp = () => {
           <Route path="/shop/:id" element={<ProductDetail />} />
           <Route path="/program/:key" element={<ProgramDetail />} />
           <Route path="/cart" element={<Cart />} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/account" element={<Account />} />
-          <Route path="/account/orders" element={<OrderHistory />} />
-          <Route path="/account/settings" element={<AccountSettings />} />
-          <Route path="/account/subscriptions" element={<SubscriptionManagement />} />
+          <Route path="/notifications" element={<ProtectedRoute element={<Notifications />} user={user} />} />
+          <Route path="/account" element={<ProtectedRoute element={<Account />} user={user} />} />
+          <Route path="/account/orders" element={<ProtectedRoute element={<OrderHistory />} user={user} />} />
+          <Route path="/account/settings" element={<ProtectedRoute element={<AccountSettings />} user={user} />} />
+          <Route path="/account/subscriptions" element={<ProtectedRoute element={<SubscriptionManagement />} user={user} />} />
           <Route path="/support" element={<Support />} />
           <Route path="/our-story" element={<OurStory />} />
           <Route path="/why-nuvira" element={<WhyNuVira />} />
@@ -153,17 +162,17 @@ const AuthenticatedApp = () => {
           <Route path="/merch" element={<Merch />} />
           <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/referral" element={<Referral />} />
-          <Route path="/rewards" element={<Rewards />} />
+          <Route path="/rewards" element={<ProtectedRoute element={<Rewards />} user={user} />} />
           <Route path="/legal" element={<Legal />} />
           <Route path="/connect" element={<Connect />} />
           <Route path="/partner" element={<Partner />} />
           <Route path="/book-event" element={<BookEvent />} />
-          <Route path="/admin/orders" element={<AdminOrders />} />
-          <Route path="/admin/shopify" element={<ShopifyDashboard />} />
-          <Route path="/admin/products" element={<AdminProducts />} />
-          <Route path="/admin/bag-returns" element={<BagReturnAdmin />} />
-          <Route path="/admin/loyalty-members" element={<LoyaltyMembers />} />
-          <Route path="/return-reward" element={<ReturnReward />} />
+          <Route path="/admin/orders" element={<ProtectedRoute element={<AdminOrders />} user={user} />} />
+          <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
+          <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
+          <Route path="/admin/bag-returns" element={<ProtectedRoute element={<BagReturnAdmin />} user={user} />} />
+          <Route path="/admin/loyalty-members" element={<ProtectedRoute element={<LoyaltyMembers />} user={user} />} />
+          <Route path="/return-reward" element={<ProtectedRoute element={<ReturnReward />} user={user} />} />
         </Route>
         {/* Driver portal — standalone, no customer nav */}
         <Route path="/driver" element={<DriverPortal />} />
