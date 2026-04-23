@@ -260,6 +260,7 @@ export default function Checkout() {
             address={[address.street, address.city, address.state, address.zip].filter(Boolean).join(', ')}
             zip={address.zip}
             onClose={() => setShowOutOfArea(false)}
+            cartItems={items}
           />
         )}
       </AnimatePresence>
