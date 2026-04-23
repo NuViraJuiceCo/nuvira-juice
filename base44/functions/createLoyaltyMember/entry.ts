@@ -16,6 +16,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'This email is already signed up for the rewards program', existing: true }, { status: 409 });
     }
 
+    // Invite user to the app (creates User account via public signup API)
+    try {
+      await base44.users.inviteUser(email, 'user');
+      console.log(`User invited: ${email}`);
+    } catch (inviteErr) {
+      // User may already exist, continue anyway
+      console.log(`User invite note: ${inviteErr.message}`);
+    }
+
     // Create loyalty member record
     const member = await base44.asServiceRole.entities.LoyaltyMember.create({
       email,

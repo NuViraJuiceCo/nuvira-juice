@@ -114,47 +114,35 @@ export default function Rewards() {
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
-    alert('Form submitted!');
-    if (!signupForm.email || !signupForm.first_name || !signupForm.last_name) {
-      alert('Missing fields!');
-      toast.error('Please fill in email, first name, and last name');
+    if (!signupForm.email || !signupForm.first_name || !signupForm.last_name || !signupForm.phone || !signupForm.address || !signupForm.birthday) {
+      toast.error('Please fill in all fields');
       return;
     }
-    alert('Calling API...');
     setSignupLoading(true);
     try {
       const res = await base44.functions.invoke('createLoyaltyMember', {
          email: signupForm.email,
          first_name: signupForm.first_name,
          last_name: signupForm.last_name,
-         phone: signupForm.phone || null,
-         address: signupForm.address || null,
-         birthday: signupForm.birthday || null,
+         phone: signupForm.phone,
+         address: signupForm.address,
+         birthday: signupForm.birthday,
          signup_date: new Date().toISOString().split('T')[0],
        });
 
-      console.log('Response:', res);
-      console.log('Response data:', res.data);
-
       if (!res.data?.success) {
-        const errMsg = res.data?.error || res.statusText || 'Failed to sign up. Please try again.';
-        console.error('Not successful:', errMsg);
-        toast.error(errMsg);
+        toast.error(res.data?.error || 'Failed to sign up. Please try again.');
         setSignupLoading(false);
         return;
       }
 
-      // Success: show popup notification + email toast
-      console.log('✅ Signup successful, opening modal with name:', signupForm.first_name, 'email:', signupForm.email);
+      // Success
       setSuccessName(signupForm.first_name);
       setSuccessEmail(signupForm.email);
       setShowSuccessModal(true);
       setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '', birthday: '' });
-      toast.success('🎉 Welcome to NuVira!');
-      queryClient.invalidateQueries({ queryKey: ['user-points'] });
       setSignupLoading(false);
     } catch (err) {
-      console.error('Signup error:', err);
       toast.error('Failed to sign up. Please try again.');
       setSignupLoading(false);
     }
@@ -187,14 +175,14 @@ export default function Rewards() {
         </div>
 
         <div className="mx-4 mt-5 space-y-3">
-          {/* Loyalty Signup Form */}
+          {/* Signup Form */}
           <div className="bg-card border border-primary/30 rounded-2xl p-5 shadow-sm">
-            <Trophy className="w-8 h-8 text-primary mx-auto mb-2" />
-            <h2 className="font-heading text-lg font-bold mb-1 text-center">Join NuVira Rewards</h2>
-            <p className="text-xs text-muted-foreground mb-4 text-center">Sign up for loyalty rewards and earn points with every order!</p>
+            <Trophy className="w-8 h-8 text-primary mx-auto mb-3" />
+            <h2 className="font-heading text-xl font-bold mb-1 text-center">Join NuVira Rewards</h2>
+            <p className="text-xs text-muted-foreground mb-4 text-center">Create your account and start earning points today</p>
             {isPreorderMode() && (
-              <div className="mb-3 bg-primary/10 border border-primary/20 rounded-xl p-2.5 text-center">
-                <p className="text-xs font-bold text-primary">🎉 Pre-Order Bonus: Get 250 points free just for joining now!</p>
+              <div className="mb-3 bg-primary/10 border border-primary/20 rounded-xl p-3 text-center">
+                <p className="text-xs font-bold text-primary">🎉 Bonus: Earn 250 points just for signing up!</p>
               </div>
             )}
             <form onSubmit={handleSignupSubmit} className="space-y-3">
@@ -230,40 +218,32 @@ export default function Rewards() {
                 value={signupForm.phone}
                 onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })}
                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+                required
               />
               <input
-                 type="text"
-                 placeholder="Address (optional)"
-                 value={signupForm.address}
-                 onChange={(e) => setSignupForm({ ...signupForm, address: e.target.value })}
-                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-               />
-               <input
-                 type="date"
-                 placeholder="Birthday (optional)"
-                 value={signupForm.birthday}
-                 onChange={(e) => setSignupForm({ ...signupForm, birthday: e.target.value })}
-                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
-               />
-               <button
+                type="text"
+                placeholder="Street Address"
+                value={signupForm.address}
+                onChange={(e) => setSignupForm({ ...signupForm, address: e.target.value })}
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+                required
+              />
+              <input
+                type="date"
+                placeholder="Birthday"
+                value={signupForm.birthday}
+                onChange={(e) => setSignupForm({ ...signupForm, birthday: e.target.value })}
+                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+                required
+              />
+              <button
                 type="submit"
                 disabled={signupLoading}
                 className="w-full h-11 bg-primary text-primary-foreground rounded-xl font-semibold text-sm disabled:opacity-50"
               >
-                {signupLoading ? 'Creating account...' : 'Create Account & Join Rewards'}
+                {signupLoading ? 'Creating account...' : 'Create Account'}
               </button>
             </form>
-          </div>
-
-          {/* Login CTA */}
-          <div className="bg-card border border-border/40 rounded-2xl p-5 text-center shadow-sm">
-            <h3 className="font-semibold text-sm mb-2">Already have an account?</h3>
-            <button
-              onClick={() => base44.auth.redirectToLogin()}
-              className="w-full h-11 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm"
-            >
-              Log In
-            </button>
           </div>
 
           {/* How it works */}
