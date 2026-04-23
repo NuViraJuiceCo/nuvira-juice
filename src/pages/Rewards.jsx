@@ -114,10 +114,13 @@ export default function Rewards() {
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
+    alert('Form submitted!');
     if (!signupForm.email || !signupForm.first_name || !signupForm.last_name) {
+      alert('Missing fields!');
       toast.error('Please fill in email, first name, and last name');
       return;
     }
+    alert('Calling API...');
     setSignupLoading(true);
     try {
       const res = await base44.functions.invoke('createLoyaltyMember', {
