@@ -115,23 +115,27 @@ export default function Rewards() {
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate before loading
     const addrString = [signupForm.address.street, signupForm.address.city, signupForm.address.state, signupForm.address.zip].filter(Boolean).join(', ');
-    if (!signupForm.email || !signupForm.first_name || !signupForm.last_name || !signupForm.phone || !addrString || !signupForm.birthday) {
+    if (!signupForm.email?.trim() || !signupForm.first_name?.trim() || !signupForm.last_name?.trim() || !signupForm.phone?.trim() || !addrString?.trim() || !signupForm.birthday?.trim()) {
       toast.error('Please fill in all fields');
       return;
     }
+    
     setSignupLoading(true);
     try {
       const res = await base44.functions.invoke('createLoyaltyMember', {
-         email: signupForm.email,
-         first_name: signupForm.first_name,
-         last_name: signupForm.last_name,
-         phone: signupForm.phone,
-         address: addrString,
+         email: signupForm.email.trim(),
+         first_name: signupForm.first_name.trim(),
+         last_name: signupForm.last_name.trim(),
+         phone: signupForm.phone.trim(),
+         address: addrString.trim(),
          birthday: signupForm.birthday,
          signup_date: new Date().toISOString().split('T')[0],
        });
 
+      console.log('Response:', res.data);
       if (!res.data?.success) {
         toast.error(res.data?.error || 'Failed to sign up. Please try again.');
         setSignupLoading(false);
@@ -139,12 +143,14 @@ export default function Rewards() {
       }
 
       // Success
+      console.log('Showing success modal for', signupForm.first_name);
       setSuccessName(signupForm.first_name);
       setSuccessEmail(signupForm.email);
       setShowSuccessModal(true);
       setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
       setSignupLoading(false);
     } catch (err) {
+      console.error('Signup error:', err.message);
       toast.error('Failed to sign up. Please try again.');
       setSignupLoading(false);
     }
