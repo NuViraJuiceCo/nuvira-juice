@@ -121,33 +121,38 @@ export default function Rewards() {
     setSignupLoading(true);
     try {
       const res = await base44.functions.invoke('createLoyaltyMember', {
-        email: signupForm.email,
-        first_name: signupForm.first_name,
-        last_name: signupForm.last_name,
-        phone: signupForm.phone || null,
-        address: signupForm.address || null,
-        birthday: signupForm.birthday || null,
-        signup_date: new Date().toISOString().split('T')[0],
-      });
+         email: signupForm.email,
+         first_name: signupForm.first_name,
+         last_name: signupForm.last_name,
+         phone: signupForm.phone || null,
+         address: signupForm.address || null,
+         birthday: signupForm.birthday || null,
+         signup_date: new Date().toISOString().split('T')[0],
+       });
+
+      console.log('Response:', res);
+      console.log('Response data:', res.data);
 
       if (!res.data?.success) {
         const errMsg = res.data?.error || res.statusText || 'Failed to sign up. Please try again.';
+        console.error('Not successful:', errMsg);
         toast.error(errMsg);
+        setSignupLoading(false);
         return;
       }
 
       // Success: show popup notification + email toast
-      console.log('✅ Signup successful, opening modal');
+      console.log('✅ Signup successful, opening modal with name:', signupForm.first_name, 'email:', signupForm.email);
       setSuccessName(signupForm.first_name);
       setSuccessEmail(signupForm.email);
       setShowSuccessModal(true);
       setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: '', birthday: '' });
       toast.success('🎉 Welcome to NuVira!');
       queryClient.invalidateQueries({ queryKey: ['user-points'] });
+      setSignupLoading(false);
     } catch (err) {
       console.error('Signup error:', err);
       toast.error('Failed to sign up. Please try again.');
-    } finally {
       setSignupLoading(false);
     }
   };
