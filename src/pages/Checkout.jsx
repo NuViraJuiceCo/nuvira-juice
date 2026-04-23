@@ -146,6 +146,12 @@ export default function Checkout() {
       toast.error('Please enter a delivery address');
       return;
     }
+    if (!phone.trim()) {
+      toast.error('Please enter your phone number');
+      return;
+    }
+
+    setIsSubmitting(true);
 
     // Check delivery zone via backend
     if (fulfillmentType === 'delivery') {
@@ -157,12 +163,6 @@ export default function Checkout() {
         return;
       }
     }
-    if (!phone.trim()) {
-      toast.error('Please enter your phone number');
-      return;
-    }
-
-    setIsSubmitting(true);
 
     // Save phone & address to profile so they persist to account settings
     if (user?.email) {
