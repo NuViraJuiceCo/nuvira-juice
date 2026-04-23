@@ -55,8 +55,7 @@ export default function Subscribe() {
       try {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
         setCalculatedDistance(res.data.distance);
-        setCalculatedZone(res.data.zone);
-        // Don't show modal during typing — only on subscribe click
+        setCalculatedZone(res.data.zone); // null if out of area
       } catch {
         setCalculatedZone(null);
         setCalculatedDistance(null);
@@ -160,25 +159,27 @@ export default function Subscribe() {
       </div>
 
       {/* Delivery Zone Result */}
-      {calculatedZone && (
+      {calculatedDistance !== null && !calculating && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="px-4 mt-4 bg-primary/5 border border-primary/20 rounded-xl p-4"
+          className={`mx-4 mt-4 border rounded-xl p-4 ${calculatedZone ? 'bg-primary/5 border-primary/20' : 'bg-destructive/5 border-destructive/30'}`}
         >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">Delivery Calculated</span>
-            </div>
+          <div className="flex items-center gap-2 mb-2">
+            <MapPin className={`w-4 h-4 ${calculatedZone ? 'text-primary' : 'text-destructive'}`} />
+            <span className="font-semibold text-sm">{calculatedZone ? 'Delivery Available' : 'Outside Delivery Area'}</span>
           </div>
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">{calculatedDistance?.toFixed(1)} miles from our location</p>
-            {(() => {
-              const zoneIndex = parseInt(calculatedZone?.replace('zone', '')) - 1;
-              const zone = deliveryZones[zoneIndex];
-              return zone ? <p className="text-sm font-semibold">{zone.name} — ${zone.delivery_fee?.toFixed(2)} delivery fee</p> : null;
-            })()}
+            <p className="text-xs text-muted-foreground">{calculatedDistance?.toFixed(1)} miles from our kitchen</p>
+            {calculatedZone ? (
+              (() => {
+                const zoneIndex = parseInt(calculatedZone.replace('zone', '')) - 1;
+                const zone = deliveryZones[zoneIndex];
+                return zone ? <p className="text-sm font-semibold">{zone.name} — ${zone.delivery_fee?.toFixed(2)} delivery fee</p> : null;
+              })()
+            ) : (
+              <p className="text-sm font-semibold text-destructive">We currently deliver within 20 miles of O'Fallon, MO</p>
+            )}
           </div>
         </motion.div>
       )}
