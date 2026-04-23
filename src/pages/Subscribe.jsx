@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Check, Zap, Crown, Leaf, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -26,6 +27,7 @@ export default function Subscribe() {
   const [calculatedDistance, setCalculatedDistance] = useState(null);
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [showOutOfArea, setShowOutOfArea] = useState(false);
   const debounceRef = useRef(null);
 
   const { data: plans = [] } = useQuery({
@@ -54,6 +56,9 @@ export default function Subscribe() {
         const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
         setCalculatedDistance(res.data.distance);
         setCalculatedZone(res.data.zone);
+        if (!res.data.zone && res.data.distance) {
+          setShowOutOfArea(true);
+        }
       } catch {
         setCalculatedZone(null);
         setCalculatedDistance(null);
@@ -105,8 +110,17 @@ export default function Subscribe() {
     }
   };
 
+  const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+
   return (
     <div className="min-h-screen bg-background pb-10">
+      {showOutOfArea && (
+        <OutOfAreaModal
+          address={addressString}
+          zip={address.zip}
+          onClose={() => setShowOutOfArea(false)}
+        />
+      )}
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/account">
