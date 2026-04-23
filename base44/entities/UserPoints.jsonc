@@ -41,9 +41,59 @@
           }
         }
       }
+    },
+    "claimed_rewards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reward_id": {
+            "type": "string"
+          },
+          "reward_title": {
+            "type": "string"
+          },
+          "reward_type": {
+            "type": "string"
+          },
+          "claimed_at": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
     }
   },
   "required": [
     "customer_email"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

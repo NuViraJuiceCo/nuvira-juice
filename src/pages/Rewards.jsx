@@ -85,12 +85,25 @@ export default function Rewards() {
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
   });
 
-  const handleApplyReward = (reward) => {
+  const handleApplyReward = async (reward) => {
     if (reward.reward_type === 'free_bottle') {
       setPendingReward(reward);
       setPickerOpen(true);
       return;
     }
+
+    // Sync to hub and save locally
+    try {
+      await base44.functions.invoke('claimReward', {
+        email: user.email,
+        reward_id: reward.id,
+        reward_title: reward.title,
+        reward_type: reward.reward_type,
+      });
+    } catch (err) {
+      console.warn('Failed to sync reward claim:', err.message);
+    }
+
     const r = { id: reward.id, title: reward.title, description: reward.description, reward_type: reward.reward_type, points_required: reward.points_required, icon: reward.icon };
     localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(r));
     setActiveReward(r);
