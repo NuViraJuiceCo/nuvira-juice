@@ -245,7 +245,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
               >
                 <Button
                   onClick={handleSubscribe}
-                  disabled={subscribing || !address.street.trim() || calculating || !calculatedZone}
+                  disabled={subscribing || !address.street.trim() || calculating || calculatedDistance === null}
                   className="w-full h-11 rounded-xl font-semibold text-sm mb-2"
                 >
                   {subscribing ? 'Redirecting to payment...' : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
