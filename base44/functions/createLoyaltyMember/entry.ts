@@ -3,6 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    console.log('Client created, checking loyalty member...');
     
     const { email, first_name, last_name, phone, address, birthday, signup_date } = await req.json();
 
@@ -11,8 +12,16 @@ Deno.serve(async (req) => {
     }
 
     // Check if loyalty member already exists
-    const existing = await base44.asServiceRole.entities.LoyaltyMember.filter({ email });
+    console.log('Checking for existing loyalty member:', email);
+    let existing = [];
+    try {
+      existing = await base44.asServiceRole.entities.LoyaltyMember.filter({ email });
+    } catch (filterErr) {
+      console.error('Filter error:', filterErr);
+      // If filter fails, we'll continue - could be first creation
+    }
     if (existing.length > 0) {
+      console.log('Loyalty member already exists:', email);
       return Response.json({ error: 'This email is already signed up for the rewards program', existing: true }, { status: 409 });
     }
 
