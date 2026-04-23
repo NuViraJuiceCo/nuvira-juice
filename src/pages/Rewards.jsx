@@ -147,16 +147,15 @@ export default function Rewards() {
         setSuccessEmail(signupForm.email);
         setShowSuccessModal(true);
         setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
-        setSignupLoading(false);
       } else {
-        const errorMsg = res.data?.error || res.response?.data?.error || 'Failed to sign up. Please try again.';
+        const errorMsg = res.data?.error || 'Failed to sign up. Please try again.';
         toast.error(errorMsg);
-        setSignupLoading(false);
       }
+      setSignupLoading(false);
     } catch (err) {
       clearTimeout(timeoutId);
-      const errorMsg = err.response?.data?.error || err.data?.error || err.error || err.message || 'Failed to sign up. Please try again.';
-      console.error('Full error:', err);
+      // Axios wraps response errors in err.response
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to sign up. Please try again.';
       toast.error(errorMsg === 'Request timeout' ? 'Request took too long. Please try again.' : errorMsg);
       setSignupLoading(false);
     }
