@@ -336,7 +336,7 @@ export default function Cart() {
           )}
           <Button
             onClick={() => {
-              if (isPreLaunch()) return;
+              if (isPreLaunch() && !isPreorderMode()) return;
               if (!meetsMinimum) return;
               if (!user) {
                 base44.auth.redirectToLogin('/checkout');
