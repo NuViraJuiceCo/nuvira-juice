@@ -71,6 +71,8 @@ const AuthenticatedApp = () => {
       return profiles[0] || null;
     },
     enabled: !!user?.email,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const handleSplashDone = () => {

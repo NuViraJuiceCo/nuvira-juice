@@ -143,7 +143,8 @@ export default function AccountSetup() {
 
       if (response?.data?.success) {
         setIsComplete(true);
-        queryClient.invalidateQueries({ queryKey: ['user-onboarding-check'] });
+        // Force refetch immediately
+        await queryClient.refetchQueries({ queryKey: ['user-onboarding-check'] });
         setTimeout(() => {
           navigate('/shop');
         }, 1500);
