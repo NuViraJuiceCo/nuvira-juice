@@ -44,36 +44,46 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Send confirmation email
-    await base44.asServiceRole.integrations.Core.SendEmail({
-      to: email,
-      subject: '🎉 Welcome to NuVira Rewards!',
-      body: `
-Hi ${full_name},
-
-Welcome to the NuVira Rewards program! 🌿
-
-You're officially signed up and earning points with every order. Here's what you get:
-
-🏆 **Earn Points**
-• 10 points per $1 spent on orders
-• 50 points for referring a friend
-• 250 points pre-order bonus (you have this now!)
-
-🎁 **Redeem Rewards**
-• 500 pts → Free wellness shot
-• 1,000 pts → Free delivery
-• 2,500 pts → Free 32oz juice
-• 5,000 pts → 6-pack bundle at 50% off
-
-Start earning today at: https://www.nuvirajuice.com/rewards
-
-Questions? Reach out to us at info@nuvirajuice.com
-
-Cheers,
-NuVira Juice Co. 🍊
-      `.trim(),
-    });
+    // Send confirmation email via Resend
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    if (resendApiKey) {
+      const resendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'nuvira@nuvirajuice.com',
+          to: email,
+          subject: '🎉 Welcome to NuVira Rewards!',
+          html: `
+<h2>Hi ${full_name},</h2>
+<p>Welcome to the NuVira Rewards program! 🌿</p>
+<p>You're officially signed up and earning points with every order. Here's what you get:</p>
+<h3>🏆 Earn Points</h3>
+<ul>
+  <li>10 points per \$1 spent on orders</li>
+  <li>50 points for referring a friend</li>
+  <li><strong>250 points pre-order bonus (you have this now!)</strong></li>
+</ul>
+<h3>🎁 Redeem Rewards</h3>
+<ul>
+  <li>500 pts → Free wellness shot</li>
+  <li>1,000 pts → Free delivery</li>
+  <li>2,500 pts → Free 32oz juice</li>
+  <li>5,000 pts → 6-pack bundle at 50% off</li>
+</ul>
+<p><a href="https://www.nuvirajuice.com/rewards">Start earning today</a></p>
+<p>Questions? Reach out to us at info@nuvirajuice.com</p>
+<p>Cheers,<br/>NuVira Juice Co. 🍊</p>
+          `.trim(),
+        }),
+      });
+      if (!resendRes.ok) {
+        console.warn('Failed to send Resend email:', await resendRes.text());
+      }
+    }
 
     // Create in-app notification
     await base44.asServiceRole.entities.Notification.create({
