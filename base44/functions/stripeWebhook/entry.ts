@@ -24,15 +24,15 @@ Deno.serve(async (req) => {
       const customerEmail = session.customer_email || session.metadata?.customer_email;
       const amountPaid = session.amount_total / 100; // convert cents to dollars
 
+      // Fetch checkout data from entity
+      let orderData = {};
+      const checkoutSessions = await base44.asServiceRole.entities.CheckoutSession.filter({ stripe_session_id: session.id });
+      if (checkoutSessions.length > 0) {
+        orderData = checkoutSessions[0].checkout_data || {};
+      }
+
       // For pre-orders: create the order NOW, after payment authorization succeeds
       if (session.metadata?.is_preorder === 'true') {
-        const checkoutDataJson = session.metadata?.checkout_data_json;
-        let orderData = {};
-        try {
-          orderData = checkoutDataJson ? JSON.parse(checkoutDataJson) : {};
-        } catch (e) {
-          console.error('Failed to parse checkout data:', e);
-        }
 
         const orderNumber = orderData.order_number || session.metadata?.order_number;
         const paymentIntentId = session.payment_intent;
@@ -170,14 +170,6 @@ Deno.serve(async (req) => {
 
       // For regular orders (non-pre-order): create the order NOW after payment succeeds
       if (session.metadata?.is_preorder !== 'true') {
-        const checkoutDataJson = session.metadata?.checkout_data_json;
-        let orderData = {};
-        try {
-          orderData = checkoutDataJson ? JSON.parse(checkoutDataJson) : {};
-        } catch (e) {
-          console.error('Failed to parse checkout data:', e);
-        }
-
         const orderNumber = orderData.order_number || session.metadata?.order_number;
 
         // Validate referral code if provided

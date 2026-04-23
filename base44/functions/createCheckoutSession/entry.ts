@@ -113,6 +113,42 @@ Deno.serve(async (req) => {
       discounts = [{ coupon: coupon.id }];
     }
 
+    // Store checkout session data for webhook to retrieve after payment
+    const checkoutData = {
+      order_number: orderNumber,
+      customer_email: customer_email || '',
+      items: items.map(i => ({
+        product_id: i.product_id,
+        title: i.title,
+        price: i.price,
+        quantity: i.quantity,
+        image_url: i.image_url,
+      })),
+      subtotal,
+      delivery_fee: effectiveDeliveryFee,
+      total: effectiveTotal,
+      fulfillment_type: fulfillment_type || 'delivery',
+      delivery_address: delivery_address || '',
+      contact_phone: contact_phone || '',
+      estimated_delivery_date: preorder ? DELIVERY_DATE : (estimated_delivery_date || null),
+      preorder_fulfillment_date: preorder ? FULFILLMENT_DATE : null,
+      referral_code: (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
+      points_used: points_used || 0,
+      points_discount: points_discount || 0,
+      active_reward: active_reward || null,
+      reward_discount: reward_discount || 0,
+      credits_discount: credits_discount || 0,
+      is_preorder: preorder,
+    };
+
+    // Pass minimal data in metadata for webhook (Stripe has 500 char limit per value)
+    const sessionMetadata = {
+      base44_app_id: Deno.env.get('BASE44_APP_ID'),
+      order_number: orderNumber,
+      is_preorder: preorder ? 'true' : 'false',
+      customer_email: customer_email || '',
+    };
+
     let session;
 
     if (preorder) {
@@ -149,42 +185,15 @@ Deno.serve(async (req) => {
       console.log(`Regular checkout session created: ${session.id} for order ${orderNumber}`);
     }
 
-    // Store checkout session data for webhook to retrieve after payment
-    const checkoutData = {
+    // Store checkout data for webhook retrieval (expires in 24 hours)
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await base44.asServiceRole.entities.CheckoutSession.create({
+      stripe_session_id: session.id,
       order_number: orderNumber,
       customer_email: customer_email || '',
-      items: items.map(i => ({
-        product_id: i.product_id,
-        title: i.title,
-        price: i.price,
-        quantity: i.quantity,
-        image_url: i.image_url,
-      })),
-      subtotal,
-      delivery_fee: effectiveDeliveryFee,
-      total: effectiveTotal,
-      fulfillment_type: fulfillment_type || 'delivery',
-      delivery_address: delivery_address || '',
-      contact_phone: contact_phone || '',
-      estimated_delivery_date: preorder ? DELIVERY_DATE : (estimated_delivery_date || null),
-      preorder_fulfillment_date: preorder ? FULFILLMENT_DATE : null,
-      referral_code: (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
-      points_used: points_used || 0,
-      points_discount: points_discount || 0,
-      active_reward: active_reward || null,
-      reward_discount: reward_discount || 0,
-      credits_discount: credits_discount || 0,
-      is_preorder: preorder,
-    };
-
-    // Pass minimal data in metadata for webhook
-    const sessionMetadata = {
-      base44_app_id: Deno.env.get('BASE44_APP_ID'),
-      order_number: orderNumber,
-      is_preorder: preorder ? 'true' : 'false',
-      customer_email: customer_email || '',
-      checkout_data_json: JSON.stringify(checkoutData),
-    };
+      checkout_data: checkoutData,
+      expires_at: expiresAt,
+    });
 
     return Response.json({
       url: session.url,
