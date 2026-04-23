@@ -35,6 +35,7 @@ Deno.serve(async (req) => {
         bundle_id,
         delivery_address: address || '',
         customer_email: customer_email || '',
+        is_preorder_subscription: 'true',
       },
       subscription_data: {
         metadata: {
@@ -42,6 +43,11 @@ Deno.serve(async (req) => {
           bundle_id,
           delivery_address: address || '',
           customer_email: customer_email || '',
+          is_preorder_subscription: 'true',
+        },
+        payment_settings: {
+          save_default_payment_method: 'on_subscription',
+          payment_method_types: ['card'],
         },
       },
     });
