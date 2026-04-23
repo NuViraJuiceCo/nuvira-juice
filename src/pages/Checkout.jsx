@@ -423,8 +423,8 @@ export default function Checkout() {
         )}
       </div>
 
-      {/* Bag Return — delivery only */}
-      {fulfillmentType === 'delivery' && (
+      {/* Bag Return — delivery only, not during pre-order */}
+      {fulfillmentType === 'delivery' && !isPreorderMode() && (
         <BagReturnSelector
           totalBottles={totalBottles}
           lastOrderBottles={lastOrderBottles || null}
