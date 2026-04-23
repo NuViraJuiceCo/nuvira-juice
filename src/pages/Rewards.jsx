@@ -154,7 +154,8 @@ export default function Rewards() {
       }
     } catch (err) {
       clearTimeout(timeoutId);
-      const errorMsg = err.response?.data?.error || err.message || 'Failed to sign up. Please try again.';
+      console.error('Signup error caught:', err);
+      const errorMsg = err?.response?.data?.error || err?.data?.error || err?.message || 'Failed to sign up. Please try again.';
       toast.error(errorMsg === 'Request timeout' ? 'Request took too long. Please try again.' : errorMsg);
       setSignupLoading(false);
     }
