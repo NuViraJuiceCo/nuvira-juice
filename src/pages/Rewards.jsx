@@ -115,51 +115,47 @@ export default function Rewards() {
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
-    console.log('Form submission started');
     
-    // Validate before loading
     const addrString = [signupForm.address.street, signupForm.address.city, signupForm.address.state, signupForm.address.zip].filter(Boolean).join(', ');
-    console.log('Validation:', { email: signupForm.email, firstName: signupForm.first_name, lastName: signupForm.last_name, phone: signupForm.phone, address: addrString, birthday: signupForm.birthday });
-    
     if (!signupForm.email?.trim() || !signupForm.first_name?.trim() || !signupForm.last_name?.trim() || !signupForm.phone?.trim() || !addrString?.trim() || !signupForm.birthday?.trim()) {
-      console.log('Validation failed');
       toast.error('Please fill in all fields');
       return;
     }
     
-    console.log('Validation passed, setting loading...');
     setSignupLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
     try {
-      console.log('Calling createLoyaltyMember function...');
-      const res = await base44.functions.invoke('createLoyaltyMember', {
-         email: signupForm.email.trim(),
-         first_name: signupForm.first_name.trim(),
-         last_name: signupForm.last_name.trim(),
-         phone: signupForm.phone.trim(),
-         address: addrString.trim(),
-         birthday: signupForm.birthday,
-         signup_date: new Date().toISOString().split('T')[0],
-       });
+      const res = await Promise.race([
+        base44.functions.invoke('createLoyaltyMember', {
+          email: signupForm.email.trim(),
+          first_name: signupForm.first_name.trim(),
+          last_name: signupForm.last_name.trim(),
+          phone: signupForm.phone.trim(),
+          address: addrString.trim(),
+          birthday: signupForm.birthday,
+          signup_date: new Date().toISOString().split('T')[0],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 10000))
+      ]);
 
-      console.log('Function response received:', res.data);
+      clearTimeout(timeoutId);
       
       if (res.data?.success) {
-        console.log('Success! Showing modal...');
         setSuccessName(signupForm.first_name);
         setSuccessEmail(signupForm.email);
         setShowSuccessModal(true);
         setSignupForm({ email: '', first_name: '', last_name: '', phone: '', address: { street: '', city: '', state: '', zip: '' }, birthday: '' });
         setSignupLoading(false);
-        toast.success('Account created! Check your email.');
       } else {
-        console.log('Function returned non-success:', res.data);
-        toast.error(res.data?.error || 'Failed to sign up. Please try again.');
+        toast.error(res.data?.error || 'Failed to sign up.');
         setSignupLoading(false);
       }
     } catch (err) {
-      console.error('Signup error:', err);
-      toast.error(err.message || 'Failed to sign up. Please try again.');
+      clearTimeout(timeoutId);
+      console.error('Signup error:', err.message);
+      toast.error(err.message === 'Request timeout' ? 'Request took too long. Please try again.' : (err.message || 'Failed to sign up. Please try again.'));
       setSignupLoading(false);
     }
   };

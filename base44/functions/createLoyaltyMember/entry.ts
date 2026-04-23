@@ -16,14 +16,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'This email is already signed up for the rewards program', existing: true }, { status: 409 });
     }
 
-    // Invite user to the app (creates User account via public signup API)
-    try {
-      await base44.users.inviteUser(email, 'user');
-      console.log(`User invited: ${email}`);
-    } catch (inviteErr) {
-      // User may already exist, continue anyway
-      console.log(`User invite note: ${inviteErr.message}`);
-    }
+    // Invite user to the app (non-blocking, with timeout)
+    base44.users.inviteUser(email, 'user')
+      .then(() => console.log(`User invited: ${email}`))
+      .catch(err => console.log(`User invite note: ${err.message}`));
 
     // Create loyalty member record
     const member = await base44.asServiceRole.entities.LoyaltyMember.create({
@@ -70,10 +66,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Send confirmation email via Resend
+    // Send confirmation email via Resend (non-blocking)
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (resendApiKey) {
-      const resendRes = await fetch('https://api.resend.com/emails', {
+      fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${resendApiKey}`,
@@ -109,21 +105,18 @@ ${address ? `<p>Address: ${address}</p>` : ''}
 <p>Cheers,<br/><strong>The NuVira Team</strong> 🍊</p>
           `.trim(),
         }),
-      });
-      if (!resendRes.ok) {
-        console.warn('Failed to send Resend email:', await resendRes.text());
-      }
+      }).catch(err => console.warn('Failed to send email:', err.message));
     }
 
-    // Create in-app notification
-    await base44.asServiceRole.entities.Notification.create({
+    // Create in-app notification (non-blocking)
+    base44.asServiceRole.entities.Notification.create({
       customer_email: email,
       title: '🎉 Welcome to NuVira Rewards!',
       message: `Your account is ready! You've earned 250 bonus points — start shopping and earn more.`,
       type: 'general',
       is_read: false,
       icon: '🏆',
-    });
+    }).catch(err => console.warn('Failed to create notification:', err.message));
 
     console.log(`New customer account created: ${email} (${first_name} ${last_name}), member ID: ${member.id}`);
 
