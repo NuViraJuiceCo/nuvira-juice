@@ -125,6 +125,7 @@ export default function AccountSetup() {
 
       if (response.data?.success) {
         setIsComplete(true);
+        sessionStorage.removeItem('ordersChecked');
         setTimeout(() => {
           navigate('/');
         }, 2000);
