@@ -33,6 +33,10 @@ export default function Checkout() {
   const [showOutOfArea, setShowOutOfArea] = useState(false);
   const [bagReturn, setBagReturn] = useState({ smallBags: 0, toteBags: 0 });
   const [useCredits, setUseCredits] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [referralApplied, setReferralApplied] = useState(false);
+  const REFERRAL_DISCOUNT = 5.00;
+  const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
 
   const activeReward = React.useMemo(() => {
     if (!user?.email) return null;
@@ -119,7 +123,7 @@ export default function Checkout() {
   const subDiscountAmt = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
   const availableCredits = userCreditsData?.balance || 0;
   const creditsDiscount = useCredits ? Math.min(availableCredits, subtotal) : 0;
-  const total = Math.max(0, subtotal - pointsDiscount - rewardDiscountAmt - subDiscountAmt - creditsDiscount + deliveryFee);
+  const total = Math.max(0, subtotal - pointsDiscount - rewardDiscountAmt - subDiscountAmt - creditsDiscount - referralDiscount + deliveryFee);
 
   // Last order bottle count for smart bag suggestion
   const lastOrderItems = lastOrderData[0]?.items || [];
@@ -222,6 +226,8 @@ export default function Checkout() {
       points_discount: pointsDiscount,
       points_used: pointsUsed,
       credits_discount: creditsDiscount,
+      referral_discount: referralDiscount,
+      referral_code: referralApplied ? referralCode : null,
       customer_email: user?.email || null,
       active_reward: activeReward || null,
       reward_discount: rewardDiscountAmt,
@@ -335,6 +341,41 @@ export default function Checkout() {
         </div>
       )}
 
+      {/* Referral Code */}
+      <div className="mx-4 mb-5">
+        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+          Referral Code
+        </Label>
+        <div className="flex gap-2">
+          <Input
+            value={referralCode}
+            onChange={e => { setReferralCode(e.target.value.trim()); setReferralApplied(false); }}
+            placeholder="Enter code (e.g. NuVira26)"
+            className="rounded-xl h-11 flex-1"
+            disabled={referralApplied}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-xl h-11 px-4 shrink-0"
+            disabled={referralApplied || !referralCode}
+            onClick={() => {
+              if (referralCode.toLowerCase() === 'nuvira26') {
+                setReferralApplied(true);
+                toast.success('Referral code applied! $5 off your order 🎉');
+              } else {
+                toast.error('Invalid referral code');
+              }
+            }}
+          >
+            {referralApplied ? '✓ Applied' : 'Apply'}
+          </Button>
+        </div>
+        {referralApplied && (
+          <p className="text-xs text-primary font-medium mt-1.5">✓ $5 referral discount applied</p>
+        )}
+      </div>
+
       {/* Contact */}
       <div className="px-4 space-y-4 mb-5">
         <div>
@@ -419,6 +460,11 @@ export default function Checkout() {
           {creditsDiscount > 0 && (
             <div className="flex justify-between text-xs text-primary mb-1 font-medium">
               <span>NuVira Credits</span><span>-${creditsDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {referralDiscount > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>Referral Code (NuVira26)</span><span>-${referralDiscount.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between text-xs text-muted-foreground mb-1">

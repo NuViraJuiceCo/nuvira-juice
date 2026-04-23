@@ -16,9 +16,9 @@ function generateCode(user) {
 }
 
 const steps = [
-  { step: '1', title: 'Share your code', desc: 'Send your unique referral code to friends and family.' },
-  { step: '2', title: 'They order', desc: 'Your friend gets $5 off their first NuVira order.' },
-  { step: '3', title: 'You earn', desc: 'You get a free bottle credit after their first delivery.' },
+  { step: '1', title: 'Share your code', desc: 'Send code NuVira26 to friends and family.' },
+  { step: '2', title: 'They order', desc: 'Your friend gets $5 off their first NuVira order at checkout.' },
+  { step: '3', title: 'You earn', desc: 'You earn rewards after their first purchase is confirmed.' },
 ];
 
 export default function Referral() {
@@ -177,10 +177,10 @@ export default function Referral() {
         </div>
         <div className="space-y-2">
           {[
-            { referrals: '1 referral', reward: '1 free bottle of your choice' },
-            { referrals: '3 referrals', reward: 'Free NuVira Trio bundle' },
-            { referrals: '5 referrals', reward: '1 month of Weekly Fresh subscription' },
-            { referrals: '10 referrals', reward: 'VIP Wellness status for a month' },
+            { referrals: '1 referral', reward: '$5 off their first order' },
+            { referrals: '5 referrals', reward: '1 free bottle — Aura, Re-Nu, or Oasis' },
+            { referrals: '10 referrals', reward: 'Free NuVira Trio bundle' },
+            { referrals: '20 referrals', reward: 'VIP Wellness status for a month' },
           ].map(({ referrals, reward }) => (
             <div key={referrals} className="flex items-center justify-between">
               <span className="text-xs font-medium text-primary">{referrals}</span>
@@ -189,7 +189,7 @@ export default function Referral() {
           ))}
         </div>
         <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
-          Rewards are applied manually after referral verification. Our team will reach out when you hit each milestone.
+          A referral counts when the person you referred completes a purchase. Rewards are applied manually after verification — our team will reach out when you hit each milestone.
         </p>
       </motion.div>
     </div>

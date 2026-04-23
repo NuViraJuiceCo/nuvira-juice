@@ -23,6 +23,7 @@ Deno.serve(async (req) => {
       fulfillment_type, delivery_address, contact_phone, estimated_delivery_date,
       customer_email, points_discount, points_used,
       active_reward, reward_discount, credits_discount,
+      referral_discount, referral_code,
       force_preorder,
     } = await req.json();
 
@@ -132,12 +133,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build discounts (points + credits + tier reward + subscription discount)
+    // Build discounts (points + credits + tier reward + subscription discount + referral)
     let discounts = [];
     const totalDiscountCents =
       Math.round((points_discount || 0) * 100) +
       Math.round((reward_discount || 0) * 100) +
       Math.round((credits_discount || 0) * 100) +
+      Math.round((referral_discount || 0) * 100) +
       Math.round(subDiscountAmt * 100);
 
     if (totalDiscountCents > 0) {
@@ -145,6 +147,7 @@ Deno.serve(async (req) => {
       if (points_used) discountParts.push(`${points_used} Loyalty Points`);
       if (active_reward?.title) discountParts.push(active_reward.title);
       if (credits_discount > 0) discountParts.push('NuVira Credits');
+      if (referral_discount > 0) discountParts.push(`Referral Code ${referral_code || 'NuVira26'}`);
       if (subDiscountAmt > 0) discountParts.push(`Subscriber ${subDiscountPct}% Discount`);
 
       const coupon = await stripe.coupons.create({
