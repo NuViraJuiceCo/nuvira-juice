@@ -12,16 +12,19 @@ function getZoneFromMiles(miles) {
 
 Deno.serve(async (req) => {
   try {
+    const { createClientFromRequest } = await import('npm:@base44/sdk@0.8.25');
+    const base44 = createClientFromRequest(req);
+    
     const body = await req.json();
     const { address } = body;
 
     if (!address) {
-      return Response.json({ ok: false, error: 'Address is required', distance: null, zone: null }, { status: 200 });
+      return Response.json({ ok: false, error: 'Address is required', distance: null, zone: null, fee: null }, { status: 200 });
     }
 
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     if (!apiKey) {
-      return Response.json({ ok: false, error: 'Google Maps API key not configured', distance: null, zone: null }, { status: 200 });
+      return Response.json({ ok: false, error: 'Google Maps API key not configured', distance: null, zone: null, fee: null }, { status: 200 });
     }
 
     const url = `https://maps.googleapis.com/maps/api/distancematrix/json?` +
@@ -41,6 +44,7 @@ Deno.serve(async (req) => {
         error: 'Could not look up this address. Please check and try again.',
         distance: null,
         zone: null,
+        fee: null,
       }, { status: 200 });
     }
 
@@ -51,6 +55,7 @@ Deno.serve(async (req) => {
         error: 'Address not found or unreachable. Please enter a full street address.',
         distance: null,
         zone: null,
+        fee: null,
       }, { status: 200 });
     }
 
@@ -59,29 +64,43 @@ Deno.serve(async (req) => {
     const distanceMiles = distanceMeters / 1609.344;
     const distanceMilesRounded = Math.round(distanceMiles * 10) / 10;
 
-    const zone = getZoneFromMiles(distanceMilesRounded);
+    const zoneId = getZoneFromMiles(distanceMilesRounded);
 
-    if (!zone) {
+    if (!zoneId) {
       console.log(`Out of area: ${distanceMilesRounded} miles for "${address}"`);
       return Response.json({
         ok: false,
         error: `This address is ${distanceMilesRounded} miles away, which is outside our current delivery range (${MAX_DELIVERY_MILES} miles).`,
         distance: distanceMilesRounded,
         zone: null,
+        fee: null,
       }, { status: 200 });
     }
 
-    console.log(`Delivery zone resolved: ${zone} (${distanceMilesRounded} miles) for "${address}"`);
+    // Fetch delivery zone record to get the fee
+    const allZones = await base44.asServiceRole.entities.DeliveryZone.filter({ is_active: true });
+    let fee = null;
+    
+    if (distanceMilesRounded <= 5) {
+      fee = allZones.find(z => z.data.max_miles === 5)?.data.delivery_fee || 3.99;
+    } else if (distanceMilesRounded <= 10) {
+      fee = allZones.find(z => z.data.max_miles === 10)?.data.delivery_fee || 5.99;
+    } else if (distanceMilesRounded <= 15) {
+      fee = allZones.find(z => z.data.max_miles === 15)?.data.delivery_fee || 7.99;
+    }
+
+    console.log(`Delivery zone resolved: ${zoneId} (${distanceMilesRounded} miles, $${fee}) for "${address}"`);
 
     return Response.json({
       ok: true,
       distance: distanceMilesRounded,
-      zone,
+      zone: zoneId,
+      fee,
       address_resolved: data.destination_addresses?.[0],
     }, { status: 200 });
 
   } catch (error) {
     console.error('calculateDeliveryZone error:', error);
-    return Response.json({ ok: false, error: error.message, distance: null, zone: null }, { status: 200 });
+    return Response.json({ ok: false, error: error.message, distance: null, zone: null, fee: null }, { status: 200 });
   }
 });
