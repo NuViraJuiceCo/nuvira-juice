@@ -79,14 +79,15 @@ export default function ProgramCards() {
               </div>
 
               <p className="text-xs text-gray-700 leading-relaxed mb-4">{program.description}</p>
+              <p className="text-xs text-gray-600 leading-relaxed mb-4">{program.composition}</p>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className={`w-3 h-3 rounded-full ${program.dot}`} />
-                  <p className="text-sm font-semibold text-gray-800">{program.composition}</p>
+                  <p className="text-xs text-gray-600 font-medium">{program.bottles} bottles · {program.days} days</p>
                 </div>
                 <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
-                  Start Program <ArrowRight className="w-3.5 h-3.5" />
+                  Build It <ArrowRight className="w-3.5 h-3.5" />
                 </div>
               </div>
             </div>

@@ -48,6 +48,9 @@ export default function SubscriptionManagement() {
     const sub = subscriptions.find(s => s.id === subId);
     if (!sub) return;
 
+    const confirmPause = window.confirm(`Pause your ${getPlanName(sub.plan_id)} subscription? You can resume anytime.`);
+    if (!confirmPause) return;
+
     setLoading(true);
     const resumeDate = calculateResumeDate(pauseDuration, customDate);
     
@@ -91,6 +94,23 @@ export default function SubscriptionManagement() {
       toast.success('Delivery skipped. Next delivery scheduled for next week.');
     } catch (error) {
       toast.error('Failed to skip delivery');
+    }
+    setLoading(false);
+  };
+
+  const handleCancel = async (subId) => {
+    const confirmCancel = window.confirm('Cancel subscription permanently? This action cannot be undone.');
+    if (!confirmCancel) return;
+
+    setLoading(true);
+    try {
+      await base44.entities.Subscription.update(subId, {
+        status: 'cancelled',
+      });
+      refetch();
+      toast.success('Subscription cancelled');
+    } catch (error) {
+      toast.error('Failed to cancel subscription');
     }
     setLoading(false);
   };
@@ -240,13 +260,23 @@ export default function SubscriptionManagement() {
                     </div>
                   </div>
 
-                  <Button
-                    onClick={() => handleResume(sub.id)}
-                    disabled={loading}
-                    className="w-full h-9 text-xs rounded-lg"
-                  >
-                    Resume Now
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handleResume(sub.id)}
+                      disabled={loading}
+                      className="flex-1 h-9 text-xs rounded-lg"
+                    >
+                      Resume
+                    </Button>
+                    <Button
+                      onClick={() => handleCancel(sub.id)}
+                      disabled={loading}
+                      variant="outline"
+                      className="flex-1 h-9 text-xs rounded-lg"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </motion.div>
               ))}
             </div>

@@ -44,17 +44,17 @@ export default function ProductCard({ product, compact = false }) {
             {/* Bottom gradient */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
             {/* Price badge */}
-            <div className="absolute bottom-2 left-2 bg-white/90 backdrop-blur-sm rounded-full px-2 py-0.5">
-              <span className="text-[11px] font-bold text-slate-900">${product.price?.toFixed(2)}</span>
+            <div className="absolute bottom-2 left-2 bg-white/95 backdrop-blur rounded-full px-2.5 py-1">
+              <span className="text-xs font-bold text-slate-900">${product.price?.toFixed(2)}</span>
             </div>
             {/* Add button */}
             <motion.button
               onClick={handleQuickAdd}
-              whileTap={{ scale: 0.85 }}
+              whileTap={{ scale: 0.88 }}
               aria-label={`Add ${product.title} to cart`}
-              className="absolute bottom-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg"
+              className="absolute bottom-2 right-2 w-9 h-9 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:opacity-90 transition-opacity"
             >
-              <Plus className="w-3 h-3" />
+              <Plus className="w-4 h-4" />
             </motion.button>
             {product.is_best_seller && (
               <div className="absolute top-2 left-2 bg-accent text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow">

@@ -547,7 +547,7 @@ export default function Checkout() {
           disabled={isSubmitting || (fulfillmentType === 'delivery' && !addressValidated)}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {isSubmitting ? 'Redirecting to payment...' : fulfillmentType === 'delivery' && !addressValidated ? 'Enter a valid delivery address' : isPreorderMode() ? `Pre-Order · $${total.toFixed(2)} — Charged May 1st` : `Pay · $${total.toFixed(2)}`}
+          {isSubmitting ? 'Processing...' : fulfillmentType === 'delivery' && !addressValidated ? 'Enter a valid delivery address' : isPreorderMode() ? `Secure Pre-Order · $${total.toFixed(2)}` : `Complete Payment · $${total.toFixed(2)}`}
         </Button>
       </div>
     </div>
