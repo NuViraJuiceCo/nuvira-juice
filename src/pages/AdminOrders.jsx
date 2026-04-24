@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { format } from 'date-fns';
-import { ChevronRight, ChevronDown, Package, Truck, ArrowLeft } from 'lucide-react';
+import { ChevronRight, ChevronDown, Package, Truck, ArrowLeft, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -156,6 +156,8 @@ export default function AdminOrders() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('active');
   const [advancingId, setAdvancingId] = useState(null);
+  const [syncEmail, setSyncEmail] = useState('');
+  const [showSyncForm, setShowSyncForm] = useState(false);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['admin-orders', filter],
@@ -182,6 +184,20 @@ export default function AdminOrders() {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
       toast.success(direction === 'back' ? `Reverted to "${stage.label}"` : `Advanced to "${stage.label}"`);
       setAdvancingId(null);
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => base44.functions.invoke('manualSyncSubscriptionOrders', { customer_email: syncEmail }),
+    onSuccess: (res) => {
+      const data = res.data;
+      toast.success(`Synced ${data.synced} orders for ${syncEmail}`);
+      setSyncEmail('');
+      setShowSyncForm(false);
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+    },
+    onError: (err) => {
+      toast.error(`Sync failed: ${err.message}`);
     },
   });
 
@@ -214,23 +230,72 @@ export default function AdminOrders() {
         <p className="text-primary-foreground/70 text-xs mt-0.5">Tap an order to update its status</p>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex gap-2 px-4 mt-4 mb-4">
-        {[
-          { key: 'active', label: 'Active' },
-          { key: 'completed', label: 'Completed' },
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-              filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Filter Tabs & Sync Button */}
+      <div className="flex gap-2 px-4 mt-4 mb-4 items-center">
+        <div className="flex gap-2">
+          {[
+            { key: 'active', label: 'Active' },
+            { key: 'completed', label: 'Completed' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowSyncForm(!showSyncForm)}
+          className="ml-auto px-3 py-1.5 bg-accent text-accent-foreground rounded-full text-xs font-semibold flex items-center gap-1.5"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Sync Hub Orders
+        </button>
       </div>
+
+      {/* Sync Form */}
+      <AnimatePresence>
+        {showSyncForm && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden px-4 mb-4"
+          >
+            <div className="bg-secondary/50 rounded-xl p-3 space-y-2">
+              <input
+                type="email"
+                placeholder="Customer email"
+                value={syncEmail}
+                onChange={(e) => setSyncEmail(e.target.value)}
+                className="w-full px-3 py-2 bg-card border border-border rounded-lg text-sm"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => syncMutation.mutate()}
+                  disabled={!syncEmail || syncMutation.isPending}
+                  className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50"
+                >
+                  {syncMutation.isPending ? 'Syncing...' : 'Sync'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSyncForm(false);
+                    setSyncEmail('');
+                  }}
+                  className="flex-1 py-2 bg-secondary text-secondary-foreground rounded-lg text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Orders List */}
       <div className="px-4 space-y-3">
