@@ -37,8 +37,8 @@ const PROGRAMS = [
   {
     key: 'reset',
     name: 'Reset',
-    tagline: 'Cleanse & restore',
-    description: 'Detox-forward blend to clear the body, reduce bloat, and reset your system from the inside out.',
+    tagline: 'Refresh & renew',
+    description: 'Nutrient-forward blend to support digestive wellness, reduce bloating, and help your body feel refreshed from the inside out.',
     composition: '9 Re-Nu · 3 Oasis',
     bottles: 12,
     days: 3,

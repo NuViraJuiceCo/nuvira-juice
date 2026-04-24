@@ -123,7 +123,7 @@ export default function WhyNuVira() {
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-2 left-3">
               <p className="text-white font-bold text-sm">RE-NU</p>
-              <p className="text-white/70 text-[10px]">Cleanse. Reset. Balance.</p>
+              <p className="text-white/70 text-[10px]">Restore. Refresh. Balance.</p>
             </div>
           </div>
         </motion.div>
