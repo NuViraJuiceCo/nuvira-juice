@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
  * Endpoint: Fetch subscription orders for hub sync.
+ * Called by: Hub's pullOrdersFromCustomerApp, or manual sync
  * Returns orders in the format expected by the hub.
  * Requires: customer_email in request body
  */
@@ -9,13 +10,19 @@ Deno.serve(async (req) => {
   try {
     // Validate hub secret token
     const authHeader = req.headers.get('authorization');
-    const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
-    if (authHeader !== `Bearer ${hubSecret}`) {
-      return Response.json({ error: 'Invalid or missing authorization' }, { status: 401 });
+    const syncSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return Response.json({ error: 'Missing authorization header' }, { status: 401 });
+    }
+    
+    const token = authHeader.substring(7);
+    if (token !== syncSecret) {
+      return Response.json({ error: 'Invalid authorization token' }, { status: 401 });
     }
 
     const base44 = createClientFromRequest(req);
-    const { customer_email } = await req.json();
+    const body = await req.json();
+    const { customer_email } = body;
 
     if (!customer_email) {
       return Response.json({ error: 'customer_email required' }, { status: 400 });
@@ -36,8 +43,16 @@ Deno.serve(async (req) => {
 
       const composition = plan.composition_template || getDefaultComposition(plan.name);
 
+      // Calculate next delivery date (start from next_delivery_date or today)
+      let deliveryDate = new Date(sub.next_delivery_date || new Date());
+      
       // Create an order for each delivery in this cycle
       for (let i = 0; i < composition.deliveries_per_cycle; i++) {
+        // Skip weekends
+        while (deliveryDate.getDay() === 0 || deliveryDate.getDay() === 6) {
+          deliveryDate.setDate(deliveryDate.getDate() + 1);
+        }
+
         const lineItems = composition.bottles_per_delivery.map(bottle => ({
           title: `${bottle.flavor} (${bottle.quantity}x)`,
           quantity: bottle.quantity,
@@ -53,10 +68,15 @@ Deno.serve(async (req) => {
           source_channel: 'subscription',
           line_items: lineItems,
           fulfillment_method: 'delivery',
-          total_price: plan.base_price,
+          delivery_address: sub.delivery_address,
+          requested_delivery_date: deliveryDate.toISOString().split('T')[0],
+          total_price: plan.base_price / composition.deliveries_per_cycle,
           payment_status: 'paid',
           created_date: sub.created_date || new Date().toISOString(),
         });
+
+        // Move to next delivery date (7 days later for weekly/monthly)
+        deliveryDate.setDate(deliveryDate.getDate() + 7);
       }
     }
 
