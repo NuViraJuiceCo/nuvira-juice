@@ -159,14 +159,7 @@ export default function AdminOrders() {
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['admin-orders', filter],
-    queryFn: async () => {
-      const response = await base44.functions.invoke('adminDashboardData', {
-        entity: 'Order',
-        limit: 100,
-        offset: 0,
-      });
-      return response.data?.data || [];
-    },
+    queryFn: () => base44.entities.Order.list('-created_date', 100),
     enabled: user?.role === 'admin',
   });
 
