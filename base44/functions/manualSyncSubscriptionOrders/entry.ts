@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Hub not configured' }, { status: 400 });
     }
 
-    const hubUrl = `${hubBase.replace(/\/$/, '')}/functions/getSubscriptionOrdersForSync`;
+    const hubUrl = hubBase.replace(/\/$/, '');
     console.log(`[Manual Sync] Fetching subscription orders for ${customer_email} from ${hubUrl}`);
 
     const response = await fetch(hubUrl, {
