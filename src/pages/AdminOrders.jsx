@@ -156,8 +156,7 @@ export default function AdminOrders() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('active');
   const [advancingId, setAdvancingId] = useState(null);
-  const [syncEmail, setSyncEmail] = useState('');
-  const [showSyncForm, setShowSyncForm] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['admin-orders', filter],
@@ -188,16 +187,16 @@ export default function AdminOrders() {
   });
 
   const syncMutation = useMutation({
-    mutationFn: () => base44.functions.invoke('manualSyncSubscriptionOrders', { customer_email: syncEmail }),
+    mutationFn: () => base44.functions.invoke('syncAllSubscriptionsFromHub', {}),
     onSuccess: (res) => {
       const data = res.data;
-      toast.success(`Synced ${data.synced} orders for ${syncEmail}`);
-      setSyncEmail('');
-      setShowSyncForm(false);
+      toast.success(`Synced ${data.subscriptions_created} subscriptions, ${data.orders_created} orders`);
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+      setIsSyncing(false);
     },
     onError: (err) => {
       toast.error(`Sync failed: ${err.message}`);
+      setIsSyncing(false);
     },
   });
 
@@ -249,53 +248,17 @@ export default function AdminOrders() {
           ))}
         </div>
         <button
-          onClick={() => setShowSyncForm(!showSyncForm)}
-          className="ml-auto px-3 py-1.5 bg-accent text-accent-foreground rounded-full text-xs font-semibold flex items-center gap-1.5"
+          onClick={() => {
+            setIsSyncing(true);
+            syncMutation.mutate();
+          }}
+          disabled={isSyncing}
+          className="ml-auto px-3 py-1.5 bg-accent text-accent-foreground rounded-full text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
         >
           <Download className="w-3.5 h-3.5" />
-          Sync Hub Orders
+          {isSyncing ? 'Syncing...' : 'Sync All'}
         </button>
       </div>
-
-      {/* Sync Form */}
-      <AnimatePresence>
-        {showSyncForm && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden px-4 mb-4"
-          >
-            <div className="bg-secondary/50 rounded-xl p-3 space-y-2">
-              <input
-                type="email"
-                placeholder="Customer email"
-                value={syncEmail}
-                onChange={(e) => setSyncEmail(e.target.value)}
-                className="w-full px-3 py-2 bg-card border border-border rounded-lg text-sm"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => syncMutation.mutate()}
-                  disabled={!syncEmail || syncMutation.isPending}
-                  className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50"
-                >
-                  {syncMutation.isPending ? 'Syncing...' : 'Sync'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowSyncForm(false);
-                    setSyncEmail('');
-                  }}
-                  className="flex-1 py-2 bg-secondary text-secondary-foreground rounded-lg text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Orders List */}
       <div className="px-4 space-y-3">
