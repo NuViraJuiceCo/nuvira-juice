@@ -19,15 +19,15 @@ Deno.serve(async (req) => {
     }
 
     const hubBase = Deno.env.get('HUB_API_URL');
-    const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+    const hubSecret = Deno.env.get('HUB_SYNC_SECRET');
     if (!hubBase || !hubSecret) {
       return Response.json({ error: 'Hub not configured' }, { status: 400 });
     }
 
-    const hubUrl = hubBase.replace(/\/$/, '');
-    console.log(`[Manual Sync] Fetching subscription orders for ${customer_email} from ${hubUrl}`);
+    const pullOrdersUrl = `${hubBase.replace(/\/$/, '')}/functions/pullOrdersFromCustomerApp`;
+    console.log(`[Manual Sync] Pulling orders from hub for ${customer_email} via ${pullOrdersUrl}`);
 
-    const response = await fetch(hubUrl, {
+    const response = await fetch(pullOrdersUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${hubSecret}`,
