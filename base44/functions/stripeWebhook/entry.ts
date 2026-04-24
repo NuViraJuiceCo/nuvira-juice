@@ -165,6 +165,12 @@ Deno.serve(async (req) => {
           });
           console.log(`Subscription record created for ${customerEmail}: ${subscription.id}`);
 
+          // Generate subscription orders immediately
+          base44.asServiceRole.functions.invoke('generateSubscriptionOrders', {
+            subscription_id: subscription.id,
+          })
+            .catch(err => console.error('Failed to generate subscription orders:', err.message));
+
           // Sync subscription to hub
           base44.asServiceRole.functions.invoke('syncCustomerToHub', {
             event: 'customer.subscription_created',
