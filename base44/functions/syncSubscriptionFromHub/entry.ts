@@ -24,13 +24,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Hub not configured' }, { status: 400 });
     }
 
-    // Fetch subscription data from hub
-    const response = await fetch(`${hubUrl}/subscriptions?email=${encodeURIComponent(customer_email)}`, {
-      method: 'GET',
+    // Fetch subscription orders from hub
+    const response = await fetch(`${hubUrl}/functions/getSubscriptionOrdersForSync`, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${hubSecret}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ customer_email }),
     });
 
     if (!response.ok) {
@@ -43,50 +44,43 @@ Deno.serve(async (req) => {
     }
 
     const hubData = await response.json();
-    const hubSub = hubData.subscription || hubData[0];
+    const orders = hubData.orders || [];
 
-    if (!hubSub) {
-      console.log(`No subscription found on hub for ${customer_email}`);
-      return Response.json({ error: 'Subscription not found on hub', customer_email }, { status: 404 });
+    if (orders.length === 0) {
+      console.log(`No subscription orders found on hub for ${customer_email}`);
+      return Response.json({ error: 'No subscription orders found', customer_email }, { status: 404 });
     }
 
-    // Create/update local subscription record
-    const existing = await base44.asServiceRole.entities.Subscription.filter({ customer_email });
-    let subscription;
-
-    if (existing.length > 0) {
-      // Update existing
-      subscription = existing[0];
-    } else {
-      // Create new subscription record from hub data
-      subscription = await base44.asServiceRole.entities.Subscription.create({
-        customer_email: hubSub.customer_email || customer_email,
-        plan_id: hubSub.plan_id || '',
-        bundle_id: hubSub.bundle_id || '',
-        delivery_zone_id: hubSub.delivery_zone_id || '',
-        delivery_address: hubSub.delivery_address || '',
-        status: hubSub.status || 'active',
-        started_date: hubSub.started_date,
-        next_delivery_date: hubSub.next_delivery_date,
-      });
-      console.log(`Created subscription record from hub: ${subscription.id}`);
-    }
-
-    // Generate orders if needed
-    const existingOrders = await base44.asServiceRole.entities.Order.filter({ customer_email });
-    if (existingOrders.length === 0) {
-      // Invoke order generation
-      await base44.asServiceRole.functions.invoke('generateSubscriptionOrders', {
-        subscription_id: subscription.id,
-      });
-      console.log(`Generated orders for subscription ${subscription.id}`);
+    // Upsert each order from hub
+    let synced = 0;
+    for (const hubOrder of orders) {
+      const existing = await base44.asServiceRole.entities.Order.filter({ order_number: hubOrder.order_number });
+      
+      if (existing.length === 0) {
+        await base44.asServiceRole.entities.Order.create({
+          order_number: hubOrder.order_number,
+          customer_email: hubOrder.customer_email,
+          items: hubOrder.items || [],
+          subtotal: hubOrder.subtotal || 0,
+          delivery_fee: hubOrder.delivery_fee || 0,
+          total: hubOrder.total || 0,
+          fulfillment_type: hubOrder.fulfillment_type || 'delivery',
+          delivery_address: hubOrder.delivery_address || '',
+          contact_phone: hubOrder.contact_phone || '',
+          estimated_delivery_date: hubOrder.estimated_delivery_date,
+          status: hubOrder.status || 'scheduled_for_juicing',
+          status_history: hubOrder.status_history || [],
+          notes: hubOrder.notes || '',
+        });
+        synced++;
+      }
     }
 
     return Response.json({
       success: true,
-      message: 'Subscription synced from hub',
+      message: `Synced ${synced} subscription orders from hub`,
       customer_email,
-      subscription_id: subscription.id,
+      orders_synced: synced,
     });
   } catch (error) {
     console.error('Sync subscription from hub error:', error);
