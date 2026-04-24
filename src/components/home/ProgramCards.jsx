@@ -74,7 +74,7 @@ export default function ProgramCards() {
                   <p className={`text-xs font-semibold ${program.accent}`}>{program.tagline}</p>
                 </div>
                 <div className="text-right shrink-0 ml-3">
-                  <p className="text-[10px] text-gray-600">{program.days}-day · {program.bottles} bottles</p>
+                  <p className="text-xs font-semibold text-gray-800">{program.days}-day · {program.bottles} bottles</p>
                 </div>
               </div>
 
