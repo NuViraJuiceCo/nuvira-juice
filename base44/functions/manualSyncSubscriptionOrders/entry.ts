@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * Admin function: Manually sync subscription orders for a specific customer
- * Fetches from local subscriptions and creates/updates orders
+ * Admin function: Manually sync subscriptions from hub for a specific customer
+ * Pulls from hub, creates/updates local Subscription and Order records
  * Payload: { customer_email: string }
  */
 Deno.serve(async (req) => {
@@ -19,93 +19,109 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'customer_email required' }, { status: 400 });
     }
 
-    // Fetch subscriptions and convert to orders
-    console.log(`[Manual Sync] Fetching subscriptions for ${customer_email}`);
-
-    const subscriptions = await base44.asServiceRole.entities.Subscription.filter({ customer_email });
-    const plans = await base44.asServiceRole.entities.SubscriptionPlan.list();
-    const userProfile = (await base44.asServiceRole.entities.UserProfile.filter({ customer_email }))[0];
-
-    const orders = [];
-
-    for (const sub of subscriptions) {
-      if (sub.status !== 'active') continue;
-
-      const plan = plans.find(p => p.id === sub.plan_id);
-      if (!plan) continue;
-
-      const composition = plan.composition_template || getDefaultComposition(plan.name);
-      let deliveryDate = new Date(sub.next_delivery_date || new Date());
-
-      for (let i = 0; i < composition.deliveries_per_cycle; i++) {
-        // Skip weekends
-        while (deliveryDate.getDay() === 0 || deliveryDate.getDay() === 6) {
-          deliveryDate.setDate(deliveryDate.getDate() + 1);
-        }
-
-        const lineItems = composition.bottles_per_delivery.map(bottle => ({
-          title: `${bottle.flavor} (${bottle.quantity}x)`,
-          quantity: bottle.quantity,
-          price: plan.base_price / composition.deliveries_per_cycle,
-        }));
-
-        orders.push({
-          order_number: `SUB-${sub.id.substring(0, 8).toUpperCase()}-${i + 1}`,
-          customer_email: sub.customer_email,
-          items: lineItems,
-          subtotal: plan.base_price / composition.deliveries_per_cycle,
-          delivery_fee: 0,
-          total: plan.base_price / composition.deliveries_per_cycle,
-          fulfillment_type: 'delivery',
-          delivery_address: sub.delivery_address,
-          contact_phone: userProfile?.phone || '',
-          estimated_delivery_date: deliveryDate.toISOString().split('T')[0],
-          status: 'scheduled_for_juicing',
-        });
-
-        deliveryDate.setDate(deliveryDate.getDate() + 7);
-      }
+    const hubBase = Deno.env.get('HUB_API_URL');
+    const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+    
+    if (!hubBase || !hubSecret) {
+      return Response.json({ error: 'Hub not configured' }, { status: 400 });
     }
 
-    console.log(`[Manual Sync] Generated ${orders.length} orders from subscriptions for ${customer_email}`);
+    // Call hub to fetch subscriptions for this customer
+    const hubUrl = `${hubBase.replace(/\/$/, '')}/functions/getCustomerSubscriptions`;
+    console.log(`[Manual Sync] Fetching subscriptions from hub for ${customer_email}`);
 
-    let synced = 0;
-    let skipped = 0;
+    const hubResponse = await fetch(hubUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${hubSecret}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ customer_email }),
+    });
+
+    if (!hubResponse.ok) {
+      const errText = await hubResponse.text();
+      console.error(`[Manual Sync] Hub fetch failed: ${hubResponse.status} ${errText}`);
+      return Response.json({
+        error: 'Failed to fetch subscriptions from hub',
+        status: hubResponse.status,
+      }, { status: hubResponse.status });
+    }
+
+    const hubData = await hubResponse.json();
+    const hubSubscriptions = hubData.subscriptions || [];
+
+    console.log(`[Manual Sync] Received ${hubSubscriptions.length} subscriptions from hub for ${customer_email}`);
+
+    let subscriptionsCreated = 0;
+    let ordersCreated = 0;
     const errors = [];
 
-    for (const order of orders) {
+    // Create/update subscriptions locally
+    for (const hubSub of hubSubscriptions) {
       try {
-        const existing = await base44.asServiceRole.entities.Order.filter({ 
-          order_number: order.order_number 
+        const existing = await base44.asServiceRole.entities.Subscription.filter({
+          customer_email: hubSub.customer_email,
+          plan_id: hubSub.plan_id,
         });
 
+        let subscription;
         if (existing.length === 0) {
-          await base44.asServiceRole.entities.Order.create({
-            order_number: order.order_number,
-            customer_email: order.customer_email,
-            items: order.items,
-            subtotal: order.subtotal,
-            delivery_fee: order.delivery_fee,
-            total: order.total,
-            fulfillment_type: order.fulfillment_type,
-            delivery_address: order.delivery_address,
-            contact_phone: order.contact_phone,
-            estimated_delivery_date: order.estimated_delivery_date,
-            status: order.status,
-            status_history: [{
-              status: order.status,
-              timestamp: new Date().toISOString(),
-              message: 'Subscription order manually synced',
-            }],
+          subscription = await base44.asServiceRole.entities.Subscription.create({
+            customer_email: hubSub.customer_email,
+            plan_id: hubSub.plan_id,
+            bundle_id: hubSub.bundle_id || null,
+            delivery_address: hubSub.delivery_address,
+            delivery_zone_id: hubSub.delivery_zone_id || '',
+            status: hubSub.status || 'active',
+            started_date: hubSub.started_date || new Date().toISOString().split('T')[0],
+            next_delivery_date: hubSub.next_delivery_date || new Date().toISOString().split('T')[0],
+            paused_until: hubSub.paused_until || null,
           });
-          synced++;
-          console.log(`[Manual Sync] Created order ${order.order_number}`);
+          subscriptionsCreated++;
+          console.log(`[Manual Sync] Created subscription ${subscription.id}`);
         } else {
-          skipped++;
-          console.log(`[Manual Sync] Order ${order.order_number} already exists, skipped`);
+          subscription = existing[0];
+          await base44.asServiceRole.entities.Subscription.update(subscription.id, {
+            status: hubSub.status || 'active',
+            next_delivery_date: hubSub.next_delivery_date,
+          });
+          console.log(`[Manual Sync] Updated subscription ${subscription.id}`);
+        }
+
+        // Generate orders for this subscription
+        if (hubSub.orders && hubSub.orders.length > 0) {
+          for (const hubOrder of hubSub.orders) {
+            const existingOrder = await base44.asServiceRole.entities.Order.filter({
+              order_number: hubOrder.order_number,
+            });
+
+            if (existingOrder.length === 0) {
+              await base44.asServiceRole.entities.Order.create({
+                order_number: hubOrder.order_number,
+                customer_email: hubOrder.customer_email,
+                items: hubOrder.items || [],
+                subtotal: hubOrder.subtotal || 0,
+                delivery_fee: hubOrder.delivery_fee || 0,
+                total: hubOrder.total || 0,
+                fulfillment_type: hubOrder.fulfillment_type || 'delivery',
+                delivery_address: hubOrder.delivery_address,
+                contact_phone: hubOrder.contact_phone || '',
+                estimated_delivery_date: hubOrder.estimated_delivery_date,
+                status: hubOrder.status || 'scheduled_for_juicing',
+                status_history: [{
+                  status: hubOrder.status || 'scheduled_for_juicing',
+                  timestamp: new Date().toISOString(),
+                  message: 'Subscription order synced from hub',
+                }],
+              });
+              ordersCreated++;
+              console.log(`[Manual Sync] Created order ${hubOrder.order_number}`);
+            }
+          }
         }
       } catch (err) {
-        const msg = `Failed to sync ${order.order_number}: ${err.message}`;
+        const msg = `Failed to sync subscription for ${hubSub.customer_email}: ${err.message}`;
         errors.push(msg);
         console.error(`[Manual Sync] ${msg}`);
       }
@@ -114,10 +130,9 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       customer_email,
-      subscriptions_found: subscriptions.length,
-      orders_generated: orders.length,
-      synced,
-      skipped,
+      subscriptions_from_hub: hubSubscriptions.length,
+      subscriptions_created: subscriptionsCreated,
+      orders_created: ordersCreated,
       errors: errors.length > 0 ? errors : null,
     });
   } catch (error) {
@@ -125,33 +140,3 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
-
-function getDefaultComposition(planName) {
-  const defaults = {
-    'Weekly Fresh': {
-      deliveries_per_cycle: 1,
-      bottles_per_delivery: [
-        { flavor: 'AURA', quantity: 1 },
-        { flavor: 'RE-NU', quantity: 1 },
-        { flavor: 'OASIS', quantity: 1 },
-      ],
-    },
-    'Monthly Ritual': {
-      deliveries_per_cycle: 4,
-      bottles_per_delivery: [
-        { flavor: 'AURA', quantity: 1 },
-        { flavor: 'RE-NU', quantity: 1 },
-        { flavor: 'OASIS', quantity: 1 },
-      ],
-    },
-    'VIP Wellness': {
-      deliveries_per_cycle: 4,
-      bottles_per_delivery: [
-        { flavor: 'AURA', quantity: 2 },
-        { flavor: 'RE-NU', quantity: 2 },
-        { flavor: 'OASIS', quantity: 2 },
-      ],
-    },
-  };
-  return defaults[planName] || defaults['Weekly Fresh'];
-}
