@@ -18,19 +18,19 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'customer_email required' }, { status: 400 });
     }
 
+    const hubUrl = Deno.env.get('HUB_API_URL');
     const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
-    if (!hubSecret) {
+    if (!hubUrl || !hubSecret) {
       return Response.json({ error: 'Hub not configured' }, { status: 400 });
     }
 
-    // Fetch subscription data from hub via hubSyncProxy
-    const response = await fetch('https://nuvira-flow-core.base44.app/functions/hubSyncProxy', {
-      method: 'POST',
+    // Fetch subscription data from hub
+    const response = await fetch(`${hubUrl}/subscriptions?email=${encodeURIComponent(customer_email)}`, {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${hubSecret}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ resource_type: 'subscriptions', customer_email }),
     });
 
     if (!response.ok) {
@@ -43,9 +43,10 @@ Deno.serve(async (req) => {
     }
 
     const hubData = await response.json();
-    const hubSub = hubData.subscription;
+    const hubSub = hubData.subscription || hubData[0];
 
     if (!hubSub) {
+      console.log(`No subscription found on hub for ${customer_email}`);
       return Response.json({ error: 'Subscription not found on hub', customer_email }, { status: 404 });
     }
 
