@@ -2,6 +2,14 @@
   "name": "UserProfile",
   "type": "object",
   "properties": {
+    "first_name": {
+      "type": "string",
+      "description": "User's first name"
+    },
+    "last_name": {
+      "type": "string",
+      "description": "User's last name"
+    },
     "customer_email": {
       "type": "string"
     },
