@@ -369,7 +369,7 @@ export default function Checkout() {
         )}
       </AnimatePresence>
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+      <div className="flex items-center gap-3 px-4 pt-12 pb-3">
         <button onClick={() => navigate('/cart')} className="w-11 h-11 bg-secondary rounded-full flex items-center justify-center shrink-0">
           <ArrowLeft className="w-5 h-5" />
         </button>
