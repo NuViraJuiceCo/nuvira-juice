@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
       await base44.auth.updateMe({
         first_name,
         last_name,
+        phone_number: phone,
       });
     } catch (err) {
       console.warn('Failed to update User entity:', err.message);
