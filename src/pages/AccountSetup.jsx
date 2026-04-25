@@ -19,12 +19,14 @@ export default function AccountSetup() {
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
+  const isAppleRelay = user?.email?.includes('privaterelay.appleid.com');
   const [formData, setFormData] = useState({
     first_name: user?.first_name || '',
     last_name: user?.last_name || '',
     phone: '',
     birthday: '',
     address: { street: '', city: '', state: '', zip: '' },
+    contact_email: '',
   });
 
   // Fetch existing profile if available
@@ -94,9 +96,13 @@ export default function AccountSetup() {
   };
 
   const validateForm = () => {
-    const { first_name, last_name, phone, birthday, address } = formData;
+    const { first_name, last_name, phone, birthday, address, contact_email } = formData;
     if (!first_name?.trim() || !last_name?.trim()) {
       toast.error('Please enter your full name');
+      return false;
+    }
+    if (isAppleRelay && (!contact_email?.trim() || !contact_email.includes('@'))) {
+      toast.error('Please enter your real email address');
       return false;
     }
     if (!phone?.trim()) {
@@ -134,6 +140,7 @@ export default function AccountSetup() {
 
       const response = await base44.functions.invoke('completeAccountSetup', {
         email: user.email,
+        contact_email: isAppleRelay ? formData.contact_email.trim() : user.email,
         first_name: formData.first_name,
         last_name: formData.last_name,
         phone: formData.phone,
@@ -235,6 +242,27 @@ export default function AccountSetup() {
               />
             </div>
           </div>
+
+          {/* Real email for Apple relay users */}
+          {isAppleRelay && (
+            <div>
+              <Label htmlFor="contact_email" className="text-xs font-semibold mb-1.5 block">
+                Your Email Address
+              </Label>
+              <Input
+                id="contact_email"
+                name="contact_email"
+                type="email"
+                value={formData.contact_email}
+                onChange={handleInputChange}
+                placeholder="you@example.com"
+                disabled={isLoading}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Since you signed in with Apple, please enter your real email so we can reach you.
+              </p>
+            </div>
+          )}
 
           {/* Phone */}
           <div>

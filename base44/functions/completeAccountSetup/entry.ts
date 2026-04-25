@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { email, first_name, last_name, phone, birthday, address } = await req.json();
+    const { email, contact_email, first_name, last_name, phone, birthday, address } = await req.json();
 
     if (!email || !first_name || !last_name || !phone || !birthday || !address) {
       return Response.json(
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     if (existingProfiles.length > 0) {
       // Update existing profile
       await base44.asServiceRole.entities.UserProfile.update(existingProfiles[0].id, {
-        contact_email: email,
+        contact_email: contact_email || email,
         phone,
         address,
         birthday,
@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       // Create new profile only if one doesn't exist
       await base44.asServiceRole.entities.UserProfile.create({
         customer_email: email,
-        contact_email: email,
+        contact_email: contact_email || email,
         phone,
         address,
         birthday,
