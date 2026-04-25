@@ -104,9 +104,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 5: Invite user + send welcome email + notification (non-blocking)
-    base44.users.inviteUser(email, 'user').catch(err => console.log(`Invite note: ${err.message}`));
-
+    // Step 5: Send welcome email + notification (non-blocking)
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (resendApiKey) {
       fetch('https://api.resend.com/emails', {
