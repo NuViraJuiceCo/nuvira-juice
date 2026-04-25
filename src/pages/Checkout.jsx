@@ -302,6 +302,60 @@ export default function Checkout() {
     return null;
   }
 
+  // Block checkout if not logged in
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+          <span className="text-3xl">🍃</span>
+        </div>
+        <h2 className="font-heading text-2xl font-bold mb-2">Sign In to Checkout</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed mb-6 max-w-xs">
+          Create a free account or sign in to place your order. It only takes a moment!
+        </p>
+        <Button
+          onClick={() => base44.auth.redirectToLogin('/checkout')}
+          className="w-full max-w-xs h-12 rounded-xl font-semibold"
+        >
+          Sign In / Create Account
+        </Button>
+        <button
+          onClick={() => navigate('/cart')}
+          className="mt-4 text-xs text-muted-foreground underline"
+        >
+          Go back to cart
+        </button>
+      </div>
+    );
+  }
+
+  // Block checkout if profile setup is incomplete
+  if (user && userProfile !== undefined && !userProfile?.onboarding_complete) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+          <span className="text-3xl">🌿</span>
+        </div>
+        <h2 className="font-heading text-2xl font-bold mb-2">One Quick Step First</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed mb-6 max-w-xs">
+          Before placing your order, we need a few details — your name, phone number, and delivery address — so we know exactly where to bring your juice.
+        </p>
+        <Button
+          onClick={() => navigate('/account-setup')}
+          className="w-full max-w-xs h-12 rounded-xl font-semibold"
+        >
+          Complete My Profile →
+        </Button>
+        <button
+          onClick={() => navigate('/cart')}
+          className="mt-4 text-xs text-muted-foreground underline"
+        >
+          Go back to cart
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="pb-8">
       <AnimatePresence>
