@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { format } from 'date-fns';
-import { ChevronRight, ChevronDown, Package, Truck, ArrowLeft, Download } from 'lucide-react';
+import { ChevronRight, ChevronDown, Package, Truck, ArrowLeft, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -41,7 +41,7 @@ const STATUS_COLORS = {
 
 const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
 
-function OrderCard({ order, onAdvance, onGoBack, isAdvancing }) {
+function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const [expanded, setExpanded] = useState(false);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
   const currentIndex = stages.findIndex(s => s.key === order.status);
@@ -65,7 +65,8 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing }) {
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">Delivery</span>
             )}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">{order.customer_email}</p>
+          {customerName && <p className="text-xs font-semibold text-foreground mt-0.5">{customerName}</p>}
+          <p className="text-xs text-muted-foreground">{order.customer_email}</p>
           <p className="text-xs text-muted-foreground">{format(new Date(order.created_date), 'MMM d, yyyy · h:mm a')}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -156,17 +157,50 @@ export default function AdminOrders() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('active');
   const [advancingId, setAdvancingId] = useState(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+
+  const [search, setSearch] = useState('');
 
   const { data: orders = [], isLoading } = useQuery({
-    queryKey: ['admin-orders', filter],
-    queryFn: () => base44.entities.Order.list('-created_date', 100),
+    queryKey: ['admin-orders'],
+    queryFn: () => base44.entities.Order.list('-created_date', 500),
+    enabled: user?.role === 'admin',
+    refetchInterval: 30000,
+  });
+
+  const { data: profiles = [] } = useQuery({
+    queryKey: ['admin-user-profiles'],
+    queryFn: () => base44.entities.UserProfile.list('-created_date', 500),
     enabled: user?.role === 'admin',
   });
 
-  const filtered = filter === 'active'
+  // Build email → name map from UserProfile
+  const nameMap = useMemo(() => {
+    const map = {};
+    profiles.forEach(p => {
+      if (p.customer_email) {
+        map[p.customer_email] = [p.first_name, p.last_name].filter(Boolean).join(' ') || null;
+      }
+    });
+    return map;
+  }, [profiles]);
+
+  const statusFiltered = filter === 'active'
     ? orders.filter(o => ACTIVE_STATUSES.includes(o.status))
     : orders.filter(o => ['delivered', 'picked_up'].includes(o.status));
+
+  const filtered = search
+    ? statusFiltered.filter(o => {
+        const q = search.toLowerCase();
+        const name = nameMap[o.customer_email] || '';
+        return (
+          o.customer_email?.toLowerCase().includes(q) ||
+          o.order_number?.toLowerCase().includes(q) ||
+          o.contact_phone?.includes(q) ||
+          name.toLowerCase().includes(q) ||
+          o.delivery_address?.toLowerCase().includes(q)
+        );
+      })
+    : statusFiltered;
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ order, stage }) => {
@@ -186,19 +220,7 @@ export default function AdminOrders() {
     },
   });
 
-  const syncMutation = useMutation({
-    mutationFn: () => base44.functions.invoke('syncAllSubscriptionsFromHub', {}),
-    onSuccess: (res) => {
-      const data = res.data;
-      toast.success(`Synced ${data.subscriptions_created} subscriptions, ${data.orders_created} orders`);
-      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
-      setIsSyncing(false);
-    },
-    onError: (err) => {
-      toast.error(`Sync failed: ${err.message}`);
-      setIsSyncing(false);
-    },
-  });
+
 
   const handleAdvance = (order, nextStage) => {
     setAdvancingId(order.id);
@@ -226,38 +248,38 @@ export default function AdminOrders() {
           <ArrowLeft className="w-4 h-4 text-white" />
         </button>
         <h1 className="font-heading text-2xl font-bold text-primary-foreground">Order Management</h1>
-        <p className="text-primary-foreground/70 text-xs mt-0.5">Tap an order to update its status</p>
+        <p className="text-primary-foreground/70 text-xs mt-0.5">{orders.length} total orders</p>
       </div>
 
-      {/* Filter Tabs & Sync Button */}
-      <div className="flex gap-2 px-4 mt-4 mb-4 items-center">
-        <div className="flex gap-2">
-          {[
-            { key: 'active', label: 'Active' },
-            { key: 'completed', label: 'Completed' },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {/* Search */}
+      <div className="px-4 mt-4 mb-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, email, phone, order #..."
+            className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
         </div>
-        <button
-          onClick={() => {
-            setIsSyncing(true);
-            syncMutation.mutate();
-          }}
-          disabled={isSyncing}
-          className="ml-auto px-3 py-1.5 bg-accent text-accent-foreground rounded-full text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
-        >
-          <Download className="w-3.5 h-3.5" />
-          {isSyncing ? 'Syncing...' : 'Sync All'}
-        </button>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex gap-2 px-4 mb-4">
+        {[
+          { key: 'active', label: `Active (${orders.filter(o => ACTIVE_STATUSES.includes(o.status)).length})` },
+          { key: 'completed', label: `Completed (${orders.filter(o => ['delivered', 'picked_up'].includes(o.status)).length})` },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setFilter(tab.key)}
+            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Orders List */}
@@ -268,7 +290,7 @@ export default function AdminOrders() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-muted-foreground text-sm">No {filter} orders</p>
+            <p className="text-muted-foreground text-sm">{search ? 'No orders match your search' : `No ${filter} orders`}</p>
           </div>
         ) : (
           filtered.map(order => (
@@ -278,6 +300,7 @@ export default function AdminOrders() {
               onAdvance={handleAdvance}
               onGoBack={handleGoBack}
               isAdvancing={advancingId === order.id}
+              customerName={nameMap[order.customer_email] || null}
             />
           ))
         )}
