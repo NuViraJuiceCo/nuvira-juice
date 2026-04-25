@@ -25,6 +25,8 @@ Deno.serve(async (req) => {
         first_name,
         last_name,
         phone_number: phone,
+        address,
+        birthday,
       });
     } catch (err) {
       console.warn('Failed to update User entity:', err.message);
