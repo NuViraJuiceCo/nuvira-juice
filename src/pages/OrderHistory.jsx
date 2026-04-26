@@ -35,11 +35,23 @@ export default function OrderHistory() {
 
   const { data: orders = [], isLoading, refetch } = useQuery({
     queryKey: ['my-orders-all'],
-    queryFn: () => base44.entities.Order.filter(
-      { customer_email: user?.email },
-      '-created_date',
-      50
-    ),
+    queryFn: async () => {
+      try {
+        // Fetch from backend function that merges local + Hub orders
+        const response = await base44.functions.invoke('getCustomerOrdersWithHub', {
+          customer_email: user?.email,
+        });
+        return response.data?.orders || [];
+      } catch (err) {
+        console.error('Failed to fetch merged orders:', err);
+        // Fallback to local orders only
+        return base44.entities.Order.filter(
+          { customer_email: user?.email },
+          '-created_date',
+          50
+        );
+      }
+    },
     enabled: !!user?.email,
   });
 
