@@ -17,6 +17,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
+    console.warn('⚠️ AUDIT: Admin invoked manualSyncSubscription — This syncs Stripe subscriptions to local database');
+
     const { customer_email } = await req.json();
     if (!customer_email) {
       return Response.json({ error: 'customer_email required' }, { status: 400 });

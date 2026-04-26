@@ -14,6 +14,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
+    console.warn('⚠️ AUDIT: Admin invoked manualSyncLoyaltyMember — This creates/syncs loyalty member records');
+
     const { email } = await req.json();
     if (!email) {
       return Response.json({ error: 'email required' }, { status: 400 });

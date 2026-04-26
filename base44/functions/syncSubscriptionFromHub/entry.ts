@@ -13,6 +13,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
+    console.warn('⚠️ AUDIT: Admin invoked syncSubscriptionFromHub — This rebuilds subscription/order data and may overwrite Hub records');
+
     const { customer_email } = await req.json();
     if (!customer_email) {
       return Response.json({ error: 'customer_email required' }, { status: 400 });

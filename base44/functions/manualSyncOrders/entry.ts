@@ -10,6 +10,14 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+
+    if (user?.role !== 'admin') {
+      console.warn('⚠️ AUDIT: Non-admin attempted to run manualSyncOrders');
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    console.warn('⚠️ AUDIT: Admin invoked manualSyncOrders — This rebuilds order data and may overwrite Hub records');
 
     if (!HUB_API_URL) {
       return Response.json({ success: true, skipped: true, message: 'HUB_API_URL not set' });

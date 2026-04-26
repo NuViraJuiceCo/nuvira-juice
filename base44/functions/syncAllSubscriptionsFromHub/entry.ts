@@ -13,6 +13,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
+    console.warn('⚠️ AUDIT: Admin invoked syncAllSubscriptionsFromHub — This is a BULK operation that rebuilds all subscription/order data and may overwrite Hub records');
+
     const hubBase = Deno.env.get('HUB_API_URL');
     const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
     

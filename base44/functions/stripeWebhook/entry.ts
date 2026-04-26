@@ -165,11 +165,8 @@ Deno.serve(async (req) => {
           });
           console.log(`Subscription record created for ${customerEmail}: ${subscription.id}`);
 
-          // Generate subscription orders immediately
-          base44.asServiceRole.functions.invoke('generateSubscriptionOrders', {
-            subscription_id: subscription.id,
-          })
-            .catch(err => console.error('Failed to generate subscription orders:', err.message));
+          // NOTE: generateSubscriptionOrders removed. Hub owns subscription delivery generation.
+          // Hub will generate 4 weekly delivery orders when subscription.created event is received.
 
           // Sync subscription to hub
           base44.asServiceRole.functions.invoke('syncCustomerToHub', {
