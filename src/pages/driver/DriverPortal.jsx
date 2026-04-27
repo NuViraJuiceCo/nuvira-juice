@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -527,9 +527,16 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
 
 // ─── Route Tab ──────────────────────────────────────────────────────────────
 
+// Get today's date in YYYY-MM-DD (local time)
+function todayStr() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
 function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
-  const [date, setDate] = useState('');
-  const [queuedOrders, setQueuedOrders] = useState(null);
+  const [date, setDate] = useState(todayStr());
+  const [allOrders, setAllOrders] = useState(null); // all queued orders (no date filter)
+  const [queuedOrders, setQueuedOrders] = useState(null); // filtered by selected date
   const [routeData, setRouteData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
@@ -539,8 +546,13 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
     setLoading(true);
     setRouteData(null);
     try {
-      const res = await base44.functions.invoke('optimizeDeliveryRoute', { date: date || undefined, optimize: false });
-      setQueuedOrders(res.data?.orders || []);
+      // Fetch all orders (no date filter) for multi-day overview
+      const [allRes, dateRes] = await Promise.all([
+        base44.functions.invoke('optimizeDeliveryRoute', { optimize: false }),
+        base44.functions.invoke('optimizeDeliveryRoute', { date, optimize: false }),
+      ]);
+      setAllOrders(allRes.data?.orders || []);
+      setQueuedOrders(dateRes.data?.orders || []);
     } catch {
       toast.error('Failed to load delivery queue');
     } finally {
@@ -552,7 +564,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
     if (!queuedOrders?.length) return;
     setOptimizing(true);
     try {
-      const res = await base44.functions.invoke('optimizeDeliveryRoute', { date: date || undefined, optimize: true });
+      const res = await base44.functions.invoke('optimizeDeliveryRoute', { date, optimize: true });
       setRouteData(res.data);
       toast.success(`Route optimized! ${queuedOrders.length} stops`);
     } catch {
@@ -561,6 +573,20 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
       setOptimizing(false);
     }
   };
+
+  // Group all orders by delivery date for the multi-day overview
+  const ordersByDate = useMemo(() => {
+    if (!allOrders) return [];
+    const map = {};
+    for (const o of allOrders) {
+      const d = o.estimated_delivery_date || o.assigned_delivery_date || 'unscheduled';
+      if (!map[d]) map[d] = [];
+      map[d].push(o);
+    }
+    return Object.entries(map)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([d, orders]) => ({ date: d, orders }));
+  }, [allOrders]);
 
   useEffect(() => { loadQueue(); }, [date]);
 
@@ -698,8 +724,45 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
 
   return (
     <div className="pb-10">
+      {/* Multi-day overview */}
+      {ordersByDate.length > 0 && (
+        <div className="px-4 pt-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Upcoming Deliveries</p>
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+            {ordersByDate.map(({ date: d, orders: dayOrders }) => {
+              const isSelected = d === date;
+              const delivered = dayOrders.filter(o => o.status === 'delivered').length;
+              const remaining = dayOrders.length - delivered;
+              const isToday = d === todayStr();
+              const label = d === 'unscheduled' ? 'Unscheduled' : (() => {
+                const [y, m, dy] = d.split('-').map(Number);
+                return new Date(y, m - 1, dy).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              })();
+              return (
+                <button
+                  key={d}
+                  onClick={() => { setDate(d === 'unscheduled' ? '' : d); setRouteData(null); }}
+                  className={`shrink-0 px-3 py-2 rounded-xl border text-left transition-colors ${
+                    isSelected
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card border-border/50 text-foreground'
+                  }`}
+                >
+                  <p className={`text-xs font-bold ${isSelected ? 'text-primary-foreground' : ''}`}>
+                    {label}{isToday ? ' · Today' : ''}
+                  </p>
+                  <p className={`text-[10px] mt-0.5 ${isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                    {remaining > 0 ? `${remaining} left` : `${delivered} done ✓`}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Date filter */}
-      <div className="px-4 pt-4 space-y-1">
+      <div className="px-4 pt-3 space-y-1">
         <div className="flex gap-2">
           <input type="date" value={date} onChange={e => { setDate(e.target.value); setRouteData(null); }}
             className="flex-1 bg-card border border-border text-sm px-3 py-2 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary" />
