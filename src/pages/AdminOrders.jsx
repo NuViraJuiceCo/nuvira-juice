@@ -67,7 +67,11 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
           </div>
           {customerName && <p className="text-xs font-semibold text-foreground mt-0.5">{customerName}</p>}
           <p className="text-xs text-muted-foreground">{order.customer_email}</p>
-          <p className="text-xs text-muted-foreground">{format(new Date(order.created_date), 'MMM d, yyyy · h:mm a')}</p>
+          <p className="text-xs text-muted-foreground">
+            {order.is_hub_order
+              ? (order.estimated_delivery_date ? `Delivery: ${format(new Date(order.estimated_delivery_date), 'MMM d, yyyy')}` : 'Hub Order')
+              : (order.created_date ? format(new Date(order.created_date), 'MMM d, yyyy · h:mm a') : '')}
+          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <p className="text-sm font-bold">${order.total?.toFixed(2)}</p>
@@ -89,13 +93,18 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Items</p>
                 <div className="space-y-1">
-                  {order.items?.map((item, i) => (
+                  {order.items?.length > 0 ? order.items.map((item, i) => (
                     <div key={i} className="flex justify-between text-xs">
                       <span className="text-foreground">{item.title} × {item.quantity}</span>
-                      <span className="font-medium">${(item.price * item.quantity).toFixed(2)}</span>
+                      {item.price > 0 && <span className="font-medium">${(item.price * item.quantity).toFixed(2)}</span>}
                     </div>
-                  ))}
+                  )) : (
+                    <p className="text-xs text-muted-foreground italic">No items</p>
+                  )}
                 </div>
+                {order.is_hub_order && order.notes && (
+                  <p className="text-[10px] text-primary mt-1">{order.notes}</p>
+                )}
               </div>
 
               {/* Contact / Address */}
@@ -119,30 +128,36 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               </div>
 
               {/* Advance / Go Back Buttons */}
-              <div className="flex gap-2">
-                {prevStage && (
-                  <button
-                    onClick={() => onGoBack(order, prevStage)}
-                    disabled={isAdvancing}
-                    className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                  >
-                    ← Back
-                  </button>
-                )}
-                {!isComplete ? (
-                  <button
-                    onClick={() => onAdvance(order, nextStage)}
-                    disabled={isAdvancing}
-                    className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                  >
-                    {isAdvancing ? 'Updating...' : `→ "${nextStage.label}"`}
-                  </button>
-                ) : (
-                  <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
-                    ✓ Complete
-                  </div>
-                )}
-              </div>
+              {order.is_read_only ? (
+                <div className="py-2.5 bg-secondary text-muted-foreground rounded-xl text-xs font-semibold text-center">
+                  Hub Managed — status updated from Hub
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  {prevStage && (
+                    <button
+                      onClick={() => onGoBack(order, prevStage)}
+                      disabled={isAdvancing}
+                      className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                    >
+                      ← Back
+                    </button>
+                  )}
+                  {!isComplete ? (
+                    <button
+                      onClick={() => onAdvance(order, nextStage)}
+                      disabled={isAdvancing}
+                      className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                    >
+                      {isAdvancing ? 'Updating...' : `→ "${nextStage.label}"`}
+                    </button>
+                  ) : (
+                    <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
+                      ✓ Complete
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -160,12 +175,16 @@ export default function AdminOrders() {
 
   const [search, setSearch] = useState('');
 
-  const { data: orders = [], isLoading } = useQuery({
+  const { data: ordersData = {}, isLoading } = useQuery({
     queryKey: ['admin-orders'],
-    queryFn: () => base44.entities.Order.list('-created_date', 500),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminOrdersWithHub', {});
+      return res.data || { orders: [], total: 0 };
+    },
     enabled: user?.role === 'admin',
     refetchInterval: 30000,
   });
+  const orders = ordersData.orders || [];
 
   const { data: profiles = [] } = useQuery({
     queryKey: ['admin-user-profiles'],
