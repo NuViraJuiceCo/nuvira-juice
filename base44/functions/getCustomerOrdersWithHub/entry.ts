@@ -100,15 +100,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. Merge: deduplicate by order_number — local wins over Hub
+    // 4. Merge: deduplicate by order_number
+    // Rules:
+    //   - Hub always wins for subscription orders (is_hub_order) or orders marked SUPERSEDED_BY_HUB
+    //   - Local wins only for true local-only orders that don't exist on Hub
     const mergedMap = new Map();
 
+    // Seed with Hub orders first
     for (const order of hubOrders) {
       if (order.order_number) mergedMap.set(order.order_number, order);
     }
 
+    // Local orders only win if:
+    //   1. No Hub record exists for this order_number, AND
+    //   2. The local record is not marked as superseded by Hub
     for (const order of localOrders) {
-      if (order.order_number) mergedMap.set(order.order_number, order);
+      if (!order.order_number) continue;
+      const isSuperseded = order.notes && order.notes.includes('SUPERSEDED_BY_HUB');
+      const hubAlreadyHasIt = mergedMap.has(order.order_number) && mergedMap.get(order.order_number).is_hub_order;
+      if (!isSuperseded && !hubAlreadyHasIt) {
+        mergedMap.set(order.order_number, order);
+      }
     }
 
     const mergedOrders = Array.from(mergedMap.values()).sort((a, b) => {
