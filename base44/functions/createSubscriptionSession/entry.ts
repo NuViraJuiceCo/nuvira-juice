@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
           customer_email: customer_email || '',
           is_preorder_subscription: 'true',
         },
-        billing_cycle_anchor: Math.floor(new Date('2026-05-02').getTime() / 1000),
+        billing_cycle_anchor: Math.floor(new Date('2026-05-01').getTime() / 1000),
+        proration_behavior: 'none',
       },
     });
 
