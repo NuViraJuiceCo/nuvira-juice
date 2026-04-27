@@ -2,8 +2,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
  * Fetch customer orders from both local Customer App and Hub.
- * Merges results, deduplicates by order_number, returns all tied to customer email.
- * Payload: { customer_email: string }
+ * - Looks up contact_email from UserProfile to handle Apple Sign In relay email mismatches
+ * - Calls the correct Hub endpoint: getOrderUpdatesForCustomerApp
+ * - Expands Hub subscription parent orders (with embedded fulfillments[]) into display records
+ * - Merges with local orders, deduplicates by order_number (local wins)
  */
 Deno.serve(async (req) => {
   try {
@@ -14,70 +16,111 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'customer_email required' }, { status: 400 });
     }
 
-    // 1. Fetch local Customer App orders
+    // 1. Fetch local Customer App orders (by auth email)
     const localOrders = await base44.asServiceRole.entities.Order.filter(
       { customer_email },
       '-created_date',
       50
     );
 
-    // 2. Fetch Hub orders via existing sync endpoint
+    // 2. Resolve contact_email from UserProfile (handles Apple Sign In relay email)
+    let hubQueryEmail = customer_email;
+    const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email });
+    if (profiles[0]?.contact_email && profiles[0].contact_email !== customer_email) {
+      hubQueryEmail = profiles[0].contact_email;
+      console.log(`[Fetch Orders] Apple Sign In detected — using contact_email ${hubQueryEmail} for Hub query`);
+    }
+
+    // 3. Fetch from Hub using correct endpoint: getOrderUpdatesForCustomerApp
     const hubApiUrl = Deno.env.get('HUB_API_URL');
     const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
     let hubOrders = [];
     if (hubApiUrl && hubSecret) {
       try {
-        const hubUrl = `${hubApiUrl.replace(/\/$/, '')}/functions/getCustomerOrders`;
+        const hubUrl = `${hubApiUrl.replace(/\/$/, '')}/functions/getOrderUpdatesForCustomerApp?customer_email=${encodeURIComponent(hubQueryEmail)}`;
         const hubResponse = await fetch(hubUrl, {
-          method: 'POST',
+          method: 'GET',
           headers: {
             'Authorization': `Bearer ${hubSecret}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ customer_email }),
         });
 
         if (hubResponse.ok) {
           const hubData = await hubResponse.json();
-          hubOrders = hubData.orders || [];
-          console.log(`[Fetch Orders] Hub returned ${hubOrders.length} orders for ${customer_email}`);
+          const rawOrders = hubData.orders || [];
+          console.log(`[Fetch Orders] Hub returned ${rawOrders.length} raw orders for ${hubQueryEmail}`);
+
+          // Expand subscription parent orders that have embedded fulfillments[]
+          for (const order of rawOrders) {
+            const fulfillments = order.fulfillments;
+            if (Array.isArray(fulfillments) && fulfillments.length > 0) {
+              // Expand each fulfillment into a display record
+              for (const f of fulfillments) {
+                hubOrders.push({
+                  id: `${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
+                  order_number: f.fulfillment_number === 1
+                    ? (order.shopify_order_number || order.order_number || '').replace('#', '')
+                    : `${(order.shopify_order_number || order.order_number || '').replace('#', '')}-${f.fulfillment_number}`,
+                  customer_email: order.customer_email || hubQueryEmail,
+                  status: mapHubStatus(f.status || order.status),
+                  total: order.total ? order.total / (fulfillments.length) : 0,
+                  subtotal: order.subtotal ? order.subtotal / (fulfillments.length) : 0,
+                  delivery_fee: 0,
+                  fulfillment_type: order.fulfillment_type || 'delivery',
+                  delivery_address: order.delivery_address || '',
+                  estimated_delivery_date: f.delivery_date || null,
+                  items: f.items || order.line_items || [],
+                  created_date: order.created_date || order.updated_date || null,
+                  notes: `Monthly Ritual — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
+                  is_hub_order: true,
+                });
+              }
+            } else {
+              // Regular order — normalize fields
+              hubOrders.push({
+                ...order,
+                order_number: (order.shopify_order_number || order.order_number || '').replace('#', ''),
+                status: mapHubStatus(order.status),
+                items: order.line_items || order.items || [],
+                is_hub_order: true,
+              });
+            }
+          }
+          console.log(`[Fetch Orders] Expanded to ${hubOrders.length} display orders`);
         } else {
-          console.warn(`[Fetch Orders] Hub call failed: ${hubResponse.status}`);
+          const errText = await hubResponse.text();
+          console.warn(`[Fetch Orders] Hub call failed: ${hubResponse.status} — ${errText}`);
         }
       } catch (hubErr) {
         console.warn(`[Fetch Orders] Hub fetch error: ${hubErr.message}`);
       }
     }
 
-    // 3. Merge: deduplicate by order_number, prefer local if both exist
+    // 4. Merge: deduplicate by order_number — local wins over Hub
     const mergedMap = new Map();
-    
-    // Add Hub orders first (so local overwrites if dups)
+
     for (const order of hubOrders) {
-      if (order.order_number) {
-        mergedMap.set(order.order_number, order);
-      }
+      if (order.order_number) mergedMap.set(order.order_number, order);
     }
 
-    // Overwrite with local orders (they are source of truth for this app)
     for (const order of localOrders) {
-      if (order.order_number) {
-        mergedMap.set(order.order_number, order);
-      }
+      if (order.order_number) mergedMap.set(order.order_number, order);
     }
 
     const mergedOrders = Array.from(mergedMap.values()).sort((a, b) => {
-      const aDate = new Date(a.created_date || a.createdAt || 0);
-      const bDate = new Date(b.created_date || b.createdAt || 0);
-      return bDate - aDate; // Newest first
+      const aDate = new Date(a.created_date || a.updated_date || 0);
+      const bDate = new Date(b.created_date || b.updated_date || 0);
+      return bDate - aDate;
     });
 
-    console.log(`[Fetch Orders] Merged ${mergedOrders.length} unique orders for ${customer_email}`);
+    console.log(`[Fetch Orders] Final merged count: ${mergedOrders.length} for ${customer_email} (hub email: ${hubQueryEmail})`);
 
     return Response.json({
       success: true,
       customer_email,
+      hub_query_email: hubQueryEmail,
       local_count: localOrders.length,
       hub_count: hubOrders.length,
       merged_count: mergedOrders.length,
@@ -88,3 +131,35 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
+
+/**
+ * Map Hub production_status values to Customer App status enum
+ */
+function mapHubStatus(hubStatus) {
+  const map = {
+    new: 'order_received',
+    awaiting_production: 'scheduled_for_juicing',
+    in_production: 'in_production',
+    bottled: 'bottled_packed',
+    labeled: 'bottled_packed',
+    qc_checked: 'bottled_packed',
+    packed: 'bottled_packed',
+    in_cold_storage: 'bottled_packed',
+    assigned_for_pickup: 'ready_for_pickup',
+    assigned_for_delivery: 'out_for_delivery',
+    fulfilled: 'delivered',
+    pending: 'scheduled_for_juicing',
+    production_scheduled: 'scheduled_for_juicing',
+    // pass-through if already a valid customer app status
+    order_received: 'order_received',
+    scheduled_for_juicing: 'scheduled_for_juicing',
+    in_production: 'in_production',
+    bottled_packed: 'bottled_packed',
+    out_for_delivery: 'out_for_delivery',
+    arriving_soon: 'arriving_soon',
+    delivered: 'delivered',
+    ready_for_pickup: 'ready_for_pickup',
+    picked_up: 'picked_up',
+  };
+  return map[hubStatus] || 'order_received';
+}
