@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 
 const DELIVERY_STAGES = [
   { key: 'order_received', label: 'Order Received' },
-  { key: 'scheduled_for_juicing', label: 'Scheduled for Juicing' },
+  { key: 'scheduled_for_juicing', label: 'Awaiting Production' },
   { key: 'in_production', label: 'In Production' },
   { key: 'bottled_packed', label: 'Bottled & Packed' },
   { key: 'out_for_delivery', label: 'Out for Delivery' },
@@ -20,7 +20,7 @@ const DELIVERY_STAGES = [
 
 const PICKUP_STAGES = [
   { key: 'order_received', label: 'Order Received' },
-  { key: 'scheduled_for_juicing', label: 'Scheduled for Juicing' },
+  { key: 'scheduled_for_juicing', label: 'Awaiting Production' },
   { key: 'in_production', label: 'In Production' },
   { key: 'bottled_packed', label: 'Bottled & Packed' },
   { key: 'ready_for_pickup', label: 'Ready for Pickup' },
@@ -40,6 +40,13 @@ const STATUS_COLORS = {
 };
 
 const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
+
+// Parse YYYY-MM-DD as local date (avoids UTC midnight → previous day in CDT)
+function parseLocalDate(str) {
+  if (!str) return new Date();
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
 
 function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const [expanded, setExpanded] = useState(false);
@@ -69,7 +76,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
           <p className="text-xs text-muted-foreground">{order.customer_email}</p>
           <p className="text-xs text-muted-foreground">
             {order.is_hub_order
-              ? (order.estimated_delivery_date ? `Delivery: ${format(new Date(order.estimated_delivery_date), 'MMM d, yyyy')}` : 'Hub Order')
+              ? (order.estimated_delivery_date ? `Delivery: ${format(parseLocalDate(order.estimated_delivery_date), 'MMM d, yyyy')}` : 'Hub Order')
               : (order.created_date ? format(new Date(order.created_date), 'MMM d, yyyy · h:mm a') : '')}
           </p>
         </div>
