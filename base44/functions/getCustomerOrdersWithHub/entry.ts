@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       try {
         // HUB_API_URL may already contain a path prefix — strip everything after the hostname
         const hubBase = hubApiUrl.replace(/\/$/, '').replace(/\/functions\/.*$/, '');
-        const hubUrl = `${hubBase}/functions/getOrderUpdatesForCustomerApp?customer_email=${encodeURIComponent(hubQueryEmail)}`;
+        const hubUrl = `${hubBase}/functions/getOrderUpdatesForCustomerApp?email=${encodeURIComponent(hubQueryEmail)}`;
         const hubResponse = await fetch(hubUrl, {
           method: 'GET',
           headers: {
