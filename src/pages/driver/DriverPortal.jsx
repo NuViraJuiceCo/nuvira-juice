@@ -48,7 +48,7 @@ const RETURN_STATUS_COLOR = {
 };
 
 const STATUS_LABEL = {
-  order_received: 'Received', scheduled_for_juicing: 'Scheduled',
+  order_received: 'Received', scheduled_for_juicing: 'Awaiting Production',
   in_production: 'In Production', bottled_packed: 'Packed',
   out_for_delivery: 'Out for Delivery', arriving_soon: 'Arriving Soon', delivered: 'Delivered',
 };
@@ -567,26 +567,37 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
   const handleMarkDelivered = async (order, proofPhotoUrl, dropLocation) => {
     setUpdatingId(order.id);
     const deliveredAt = new Date().toISOString();
-    const newHistory = [
-      ...(order.status_history || []),
-      { status: 'delivered', timestamp: deliveredAt, message: `Delivered · ${dropLocation}` },
-    ];
     try {
-      await base44.entities.Order.update(order.id, {
-        status: 'delivered',
-        status_history: newHistory,
-        delivery_photo_url: proofPhotoUrl,
-        delivery_drop_location: dropLocation,
-        delivered_by: user?.email,
-        delivered_at: deliveredAt,
-      });
+      if (order.is_hub_order) {
+        // Hub-managed: push status-only to Hub
+        await base44.functions.invoke('pushOrderStatusToHub', {
+          hub_order_id: order.hub_order_id || null,
+          order_number: order.order_number,
+          customer_email: order.hub_customer_email || order.customer_email,
+          new_status: 'delivered',
+          stage_label: 'Delivered',
+        });
+      } else {
+        const newHistory = [
+          ...(order.status_history || []),
+          { status: 'delivered', timestamp: deliveredAt, message: `Delivered · ${dropLocation}` },
+        ];
+        await base44.entities.Order.update(order.id, {
+          status: 'delivered',
+          status_history: newHistory,
+          delivery_photo_url: proofPhotoUrl,
+          delivery_drop_location: dropLocation,
+          delivered_by: user?.email,
+          delivered_at: deliveredAt,
+        });
+      }
       // Send proof-of-delivery email to customer
       const itemsList = order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ') || '';
       const deliveredTime = new Date(deliveredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
       await base44.integrations.Core.SendEmail({
         to: order.customer_email,
         subject: `Your NuVira order #${order.order_number} was delivered! 🌿`,
-        body: `Hi there!\n\nGreat news — your NuVira order has been delivered.\n\n📦 Order: #${order.order_number}\n🕒 Delivered at: ${deliveredTime}\n📍 Left at: ${dropLocation}\n🛍 Items: ${itemsList}\n\nA photo confirmation has been saved to your order. You can view it in your order history.\n\nIf you have any issues, please reach out through the Support section in the app.\n\nThanks for choosing NuVira — stay nourished! 🥤\n\nThe NuVira Team`,
+        body: `Hi there!\n\nGreat news — your NuVira order has been delivered.\n\n📦 Order: #${order.order_number}\n🕒 Delivered at: ${deliveredTime}\n📍 Left at: ${dropLocation}\n🛍 Items: ${itemsList}\n\nThanks for choosing NuVira — stay nourished! 🥤\n\nThe NuVira Team`,
       });
       toast.success('Delivery confirmed & customer notified');
       loadQueue();
@@ -634,15 +645,28 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
 
   const handleMarkStage = async (order, nextStage) => {
     setUpdatingId(order.id);
-    const newHistory = [...(order.status_history || []), { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label }];
     try {
-      await base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
-      // Update route display in-place without re-optimizing
+      if (order.is_hub_order) {
+        await base44.functions.invoke('pushOrderStatusToHub', {
+          hub_order_id: order.hub_order_id || null,
+          order_number: order.order_number,
+          customer_email: order.hub_customer_email || order.customer_email,
+          new_status: nextStage.key,
+          stage_label: nextStage.label,
+        });
+      } else {
+        const newHistory = [...(order.status_history || []), { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label }];
+        await base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
+      }
+      // Update local display in-place
       if (routeData?.optimized_orders) {
-        const updated = routeData.optimized_orders.map(o => 
-          o.id === order.id ? { ...o, status: nextStage.key, status_history: newHistory } : o
+        const updated = routeData.optimized_orders.map(o =>
+          o.id === order.id ? { ...o, status: nextStage.key } : o
         );
         setRouteData({ ...routeData, optimized_orders: updated });
+      }
+      if (queuedOrders) {
+        setQueuedOrders(queuedOrders.map(o => o.id === order.id ? { ...o, status: nextStage.key } : o));
       }
       toast.success(`Marked ${nextStage.label}`);
     } catch {
@@ -675,13 +699,16 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
   return (
     <div className="pb-10">
       {/* Date filter */}
-      <div className="px-4 pt-4 flex gap-2">
-        <input type="date" value={date} onChange={e => { setDate(e.target.value); setRouteData(null); }}
-          className="flex-1 bg-card border border-border text-sm px-3 py-2 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary" />
-        <button onClick={loadQueue} disabled={loading}
-          className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center shrink-0">
-          <RefreshCw className={`w-4 h-4 text-muted-foreground ${loading ? 'animate-spin' : ''}`} />
-        </button>
+      <div className="px-4 pt-4 space-y-1">
+        <div className="flex gap-2">
+          <input type="date" value={date} onChange={e => { setDate(e.target.value); setRouteData(null); }}
+            className="flex-1 bg-card border border-border text-sm px-3 py-2 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary" />
+          <button onClick={loadQueue} disabled={loading}
+            className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center shrink-0">
+            <RefreshCw className={`w-4 h-4 text-muted-foreground ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        {date && <p className="text-[11px] text-muted-foreground px-1">Showing deliveries for {date} — includes future Hub routes</p>}
       </div>
 
       {/* Stats */}
@@ -747,8 +774,8 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
         ) : displayOrders.length === 0 ? (
           <div className="text-center py-16">
             <CheckCircle2 className="w-10 h-10 text-primary mx-auto mb-3" />
-            <p className="text-sm font-semibold">No queued deliveries</p>
-            <p className="text-xs text-muted-foreground mt-1">All done or try clearing the date filter.</p>
+            <p className="text-sm font-semibold">No deliveries{date ? ` on ${date}` : ''}</p>
+            <p className="text-xs text-muted-foreground mt-1">{date ? 'No orders scheduled for this date.' : 'All done for today!'}</p>
           </div>
         ) : (
           <>
