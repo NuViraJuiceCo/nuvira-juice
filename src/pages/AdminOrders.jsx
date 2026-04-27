@@ -77,7 +77,9 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
           <p className="text-xs text-muted-foreground">
             {order.is_hub_order
               ? (order.estimated_delivery_date ? `Delivery: ${format(parseLocalDate(order.estimated_delivery_date), 'MMM d, yyyy')}` : 'Hub Order')
-              : (order.created_date ? format(new Date(order.created_date), 'MMM d, yyyy · h:mm a') : '')}
+              : (order.estimated_delivery_date
+                  ? `Delivery: ${format(parseLocalDate(order.estimated_delivery_date), 'MMM d, yyyy')}`
+                  : order.created_date ? format(new Date(order.created_date), 'MMM d, yyyy · h:mm a') : '')}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
