@@ -1,10 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * Admin order list: local orders (excluding superseded) + Hub orders for customers
- * who have subscription orders on the Hub.
- * Hub wins for any order_number that exists on both sides.
- * Superseded local records (notes contains SUPERSEDED_BY_HUB) are excluded.
+ * Admin order list:
+ * - Queries Hub for ALL customers (from UserProfiles), not just those with surviving local orders.
+ *   This ensures customers whose only local record is SUPERSEDED_BY_HUB still appear via Hub.
+ * - Merges with valid local orders (excluding SUPERSEDED_BY_HUB).
+ * - Hub wins when both sides have the same order_number.
+ * - Hub-managed orders keep is_hub_order=true so the frontend can route status updates correctly.
+ * - is_read_only is NOT set — admin can always update status.
  */
 Deno.serve(async (req) => {
   try {
@@ -20,12 +23,11 @@ Deno.serve(async (req) => {
       !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB'))
     );
 
-    // 2. Find unique customer emails that have local orders
-    const localEmailSet = new Set(localOrders.map(o => o.customer_email).filter(Boolean));
-
-    // 3. Also find contact_emails from UserProfiles (for Apple Sign In customers)
-    // Build map: auth_email -> contact_email
+    // 2. Fetch ALL UserProfiles to get every customer — including those whose only local
+    //    record was superseded and would otherwise be invisible.
     const profiles = await base44.asServiceRole.entities.UserProfile.list('-created_date', 500);
+
+    // Build bidirectional auth_email <-> contact_email maps
     const authToContact = {};
     const contactToAuth = {};
     for (const p of profiles) {
@@ -35,13 +37,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Resolve hub query emails for all customers with local orders
+    // Build the set of hub query emails from ALL profiles + surviving local orders
     const hubQueryEmails = new Set();
-    for (const email of localEmailSet) {
-      hubQueryEmails.add(authToContact[email] || email);
+    for (const p of profiles) {
+      if (p.customer_email) {
+        // Use contact_email for Hub query (real email, not Apple relay)
+        hubQueryEmails.add(p.contact_email || p.customer_email);
+      }
+    }
+    // Also include emails from local orders not covered by profiles
+    for (const o of localOrders) {
+      if (o.customer_email) {
+        hubQueryEmails.add(authToContact[o.customer_email] || o.customer_email);
+      }
     }
 
-    // 4. Fetch Hub orders for each unique hub email
+    // 3. Fetch Hub orders for each unique hub email
     const hubApiUrl = Deno.env.get('HUB_API_URL');
     const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
     const hubBase = hubApiUrl ? hubApiUrl.replace(/\/$/, '').replace(/\/functions\/.*$/, '') : null;
@@ -49,7 +60,6 @@ Deno.serve(async (req) => {
     let allHubOrders = [];
 
     if (hubBase && hubSecret) {
-      // Fetch in parallel for all hub emails
       const fetches = Array.from(hubQueryEmails).map(async (hubEmail) => {
         try {
           const url = `${hubBase}/functions/getOrderUpdatesForCustomerApp?email=${encodeURIComponent(hubEmail)}`;
@@ -62,8 +72,9 @@ Deno.serve(async (req) => {
           }
           const data = await res.json();
           const rawOrders = data.orders || [];
+          if (rawOrders.length === 0) return [];
 
-          // Resolve auth email for this hub email
+          // Resolve back to auth email for display
           const authEmail = contactToAuth[hubEmail] || hubEmail;
 
           const expanded = [];
@@ -71,16 +82,21 @@ Deno.serve(async (req) => {
             const fulfillments = order.fulfillments;
             if (Array.isArray(fulfillments) && fulfillments.length > 0) {
               for (const f of fulfillments) {
+                const baseOrderNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
                 expanded.push({
+                  // Use a stable id that the frontend can use as advancingId key
                   id: `hub_${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
+                  // Store Hub identifiers for status push
+                  hub_order_id: order.id || order.shopify_order_id || null,
+                  hub_fulfillment_number: f.fulfillment_number,
                   order_number: f.fulfillment_number === 1
-                    ? (order.shopify_order_number || order.order_number || '').replace('#', '')
-                    : `${(order.shopify_order_number || order.order_number || '').replace('#', '')}-${f.fulfillment_number}`,
+                    ? baseOrderNum
+                    : `${baseOrderNum}-${f.fulfillment_number}`,
                   customer_email: authEmail,
                   hub_customer_email: order.customer_email || hubEmail,
                   status: mapHubStatus(f.status || order.status),
-                  total: order.total ? order.total / fulfillments.length : 0,
-                  subtotal: order.subtotal ? order.subtotal / fulfillments.length : 0,
+                  total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
+                  subtotal: order.subtotal ? parseFloat((order.subtotal / fulfillments.length).toFixed(2)) : 0,
                   delivery_fee: 0,
                   fulfillment_type: order.fulfillment_type || 'delivery',
                   delivery_address: order.delivery_address || '',
@@ -90,21 +106,29 @@ Deno.serve(async (req) => {
                   items: f.items || order.line_items || [],
                   notes: `${order.subscription_plan || 'Subscription'} — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
                   is_hub_order: true,
-                  is_read_only: true, // Hub manages status for subscriptions
+                  // NOT is_read_only — admin can always update status
                 });
               }
             } else {
+              const baseOrderNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
               expanded.push({
-                ...order,
                 id: `hub_${order.id}`,
-                order_number: (order.shopify_order_number || order.order_number || '').replace('#', ''),
+                hub_order_id: order.id || order.shopify_order_id || null,
+                order_number: baseOrderNum,
                 customer_email: authEmail,
                 hub_customer_email: order.customer_email || hubEmail,
                 status: mapHubStatus(order.status),
-                items: order.line_items || order.items || [],
+                total: order.total || 0,
+                subtotal: order.subtotal || 0,
+                delivery_fee: order.delivery_fee || 0,
+                fulfillment_type: order.fulfillment_type || 'delivery',
+                delivery_address: order.delivery_address || '',
+                contact_phone: order.contact_phone || '',
+                estimated_delivery_date: order.estimated_delivery_date || null,
                 created_date: order.created_date || order.updated_date || null,
+                items: order.line_items || order.items || [],
+                notes: order.notes || null,
                 is_hub_order: true,
-                is_read_only: true,
               });
             }
           }
@@ -117,18 +141,18 @@ Deno.serve(async (req) => {
 
       const results = await Promise.all(fetches);
       allHubOrders = results.flat();
-      console.log(`[AdminOrders] Hub returned ${allHubOrders.length} total orders across ${hubQueryEmails.size} customers`);
+      console.log(`[AdminOrders] Hub returned ${allHubOrders.length} expanded orders across ${hubQueryEmails.size} customers`);
     }
 
-    // 5. Merge: Hub wins for any order_number it has; local wins otherwise
+    // 4. Merge: Hub wins for any order_number it has; local wins otherwise
     const mergedMap = new Map();
 
-    // Seed with Hub orders
+    // Seed with Hub orders first
     for (const order of allHubOrders) {
       if (order.order_number) mergedMap.set(order.order_number, order);
     }
 
-    // Local orders win only if Hub doesn't have that order_number
+    // Local orders fill in only where Hub has no record
     for (const order of localOrders) {
       if (!order.order_number) continue;
       const hubHasIt = mergedMap.has(order.order_number) && mergedMap.get(order.order_number).is_hub_order;
@@ -143,7 +167,7 @@ Deno.serve(async (req) => {
       return bDate - aDate;
     });
 
-    console.log(`[AdminOrders] Final merged: ${merged.length} orders (${localOrders.length} local, ${allHubOrders.length} hub)`);
+    console.log(`[AdminOrders] Final: ${merged.length} orders (${localOrders.length} local non-superseded, ${allHubOrders.length} hub expanded)`);
 
     return Response.json({
       success: true,
@@ -171,8 +195,10 @@ function mapHubStatus(hubStatus) {
     assigned_for_pickup: 'ready_for_pickup',
     assigned_for_delivery: 'out_for_delivery',
     fulfilled: 'delivered',
+    canceled: 'delivered', // treat canceled as terminal — won't normally appear in active
     pending: 'scheduled_for_juicing',
     production_scheduled: 'scheduled_for_juicing',
+    // pass-through valid customer app statuses
     order_received: 'order_received',
     scheduled_for_juicing: 'scheduled_for_juicing',
     bottled_packed: 'bottled_packed',

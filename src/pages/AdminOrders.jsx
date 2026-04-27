@@ -128,35 +128,32 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               </div>
 
               {/* Advance / Go Back Buttons */}
-              {order.is_read_only ? (
-                <div className="py-2.5 bg-secondary text-muted-foreground rounded-xl text-xs font-semibold text-center">
-                  Hub Managed — status updated from Hub
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  {prevStage && (
-                    <button
-                      onClick={() => onGoBack(order, prevStage)}
-                      disabled={isAdvancing}
-                      className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                    >
-                      ← Back
-                    </button>
-                  )}
-                  {!isComplete ? (
-                    <button
-                      onClick={() => onAdvance(order, nextStage)}
-                      disabled={isAdvancing}
-                      className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                    >
-                      {isAdvancing ? 'Updating...' : `→ "${nextStage.label}"`}
-                    </button>
-                  ) : (
-                    <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
-                      ✓ Complete
-                    </div>
-                  )}
-                </div>
+              <div className="flex gap-2">
+                {prevStage && (
+                  <button
+                    onClick={() => onGoBack(order, prevStage)}
+                    disabled={isAdvancing}
+                    className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                  >
+                    ← Back
+                  </button>
+                )}
+                {!isComplete ? (
+                  <button
+                    onClick={() => onAdvance(order, nextStage)}
+                    disabled={isAdvancing}
+                    className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                  >
+                    {isAdvancing ? 'Updating...' : `→ "${nextStage.label}"`}
+                  </button>
+                ) : (
+                  <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
+                    ✓ Complete
+                  </div>
+                )}
+              </div>
+              {order.is_hub_order && (
+                <p className="text-[10px] text-muted-foreground text-center">Status syncs to Hub</p>
               )}
             </div>
           </motion.div>
@@ -222,19 +219,35 @@ export default function AdminOrders() {
     : statusFiltered;
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ order, stage }) => {
-      const newHistory = [
-        ...(order.status_history || []),
-        { status: stage.key, timestamp: new Date().toISOString(), message: stage.label }
-      ];
-      return base44.entities.Order.update(order.id, {
-        status: stage.key,
-        status_history: newHistory,
-      });
+    mutationFn: async ({ order, stage }) => {
+      if (order.is_hub_order) {
+        // Hub-managed: send status-only update to Hub. Never touch local DB order structure.
+        return base44.functions.invoke('pushOrderStatusToHub', {
+          hub_order_id: order.hub_order_id || null,
+          order_number: order.order_number,
+          customer_email: order.hub_customer_email || order.customer_email,
+          new_status: stage.key,
+          stage_label: stage.label,
+        });
+      } else {
+        // Local-only order: update status + history in local DB only
+        const newHistory = [
+          ...(order.status_history || []),
+          { status: stage.key, timestamp: new Date().toISOString(), message: stage.label }
+        ];
+        return base44.entities.Order.update(order.id, {
+          status: stage.key,
+          status_history: newHistory,
+        });
+      }
     },
     onSuccess: (_, { stage, direction }) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
       toast.success(direction === 'back' ? `Reverted to "${stage.label}"` : `Advanced to "${stage.label}"`);
+      setAdvancingId(null);
+    },
+    onError: (err) => {
+      toast.error('Failed to update status');
       setAdvancingId(null);
     },
   });
