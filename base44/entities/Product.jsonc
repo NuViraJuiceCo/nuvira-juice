@@ -102,6 +102,27 @@
     "shopify_product_id": {
       "type": "string",
       "description": "Linked Shopify product ID (auto-populated after first sync)"
+    },
+    "consumption_instructions": {
+      "type": "array",
+      "description": "Daily consumption schedule for this bundle/program",
+      "items": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "description": "Time of day label (e.g. AM, Afternoon Boost)"
+          },
+          "label": {
+            "type": "string",
+            "description": "Drink name or description"
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional guidance note"
+          }
+        }
+      }
     }
   },
   "required": [

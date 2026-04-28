@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import SubscriptionUpsellModal from '@/components/program/SubscriptionUpsellModal';
+import ConsumptionSchedule from '@/components/program/ConsumptionSchedule';
 import { PROGRAMS } from '@/components/home/ProgramCards';
 
 const PERKS = [
@@ -173,6 +174,19 @@ export default function ProgramDetail() {
               </div>
             ))}
           </div>
+        </motion.div>
+
+        {/* Consumption Schedule */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <ConsumptionSchedule
+            programKey={program.key}
+            programColor={program.color}
+            programBorder={program.border}
+          />
         </motion.div>
 
         {/* Shots Add-On */}
