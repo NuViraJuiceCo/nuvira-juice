@@ -60,7 +60,7 @@ export default function SideNav() {
       {/* Footer */}
       <div className="px-6 py-4 border-t border-border space-y-1">
         <div className="flex gap-3 mb-2">
-          <Link to="/our-story" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
+          <Link to="/about" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">About</Link>
           <Link to="/contact" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
           <Link to="/support" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
         </div>

@@ -204,13 +204,13 @@ export default function Home() {
       {/* Site Footer — SEO & trust links */}
       <footer className="px-4 pt-6 pb-2 border-t border-border/30 mt-4">
         <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mb-3">
-          <Link to="/our-story" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
+          <Link to="/about" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
           <Link to="/contact" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
           <Link to="/support" className="text-xs text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
+          <Link to="/subscribe" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Subscribe</Link>
           <Link to="/legal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Legal</Link>
-          <Link to="/our-story" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Our Story</Link>
         </div>
-        <p className="text-center text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co. · Wentzville, MO · hello@nuvirajuice.com</p>
+        <p className="text-center text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co. · Wentzville, MO · <a href="mailto:hello@nuvirajuice.com" className="hover:text-foreground transition-colors">hello@nuvirajuice.com</a></p>
       </footer>
     </div>
     </PullToRefresh>
