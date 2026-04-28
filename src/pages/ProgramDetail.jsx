@@ -184,8 +184,7 @@ export default function ProgramDetail() {
         >
           <ConsumptionSchedule
             programKey={program.key}
-            programColor={program.color}
-            programBorder={program.border}
+            shotName={selectedShots.length > 0 ? shots.find(s => s.id === selectedShots[0])?.title : null}
           />
         </motion.div>
 
