@@ -21,7 +21,7 @@ export default function SideNav() {
     <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-border min-h-screen sticky top-0 h-screen">
       {/* Logo */}
       <Link to="/" className="px-6 border-b border-border block" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: '1.5rem' }}>
-        <img src={LOGO_URL} alt="NuVira" className="h-8" />
+        <img src={LOGO_URL} alt="NuVira Juice Co. — Cold-Pressed Juice Delivery" className="h-8" />
         <p className="text-[10px] text-muted-foreground mt-1">Real. Living. Nutrition.</p>
       </Link>
 

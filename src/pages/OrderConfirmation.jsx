@@ -1,4 +1,5 @@
 import React from 'react';
+import SEO from '@/components/SEO';
 import { Link, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
@@ -40,6 +41,7 @@ export default function OrderConfirmation() {
 
   return (
     <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8">
+      <SEO title="Order Confirmed" description="Your NuVira Juice order has been confirmed." noindex={true} />
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}

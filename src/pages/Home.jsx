@@ -1,5 +1,5 @@
 import React from 'react';
-import SEO from '@/components/SEO';
+import SEO, { LOCAL_BUSINESS_SCHEMA } from '@/components/SEO';
 import PullToRefresh from '@/components/PullToRefresh';
 import { motion } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
@@ -108,7 +108,10 @@ export default function Home() {
         title="Cold-Pressed Juice Delivery in Wentzville & St. Louis, MO"
         description="NuVira Juice Co. delivers fresh cold-pressed juices in Wentzville, O'Fallon, St. Charles, and the greater St. Louis area. Order online today — Real. Living. Nutrition."
         keywords="cold pressed juice Wentzville MO, juice delivery St. Louis, fresh juice O'Fallon, NuVira Juice Co, juice cleanse St. Charles, wellness shots Missouri, cold pressed juice delivery near me"
+        structuredData={LOCAL_BUSINESS_SCHEMA}
       />
+      {/* Visually hidden h1 for SEO — the logo serves as the visual brand mark */}
+      <h1 className="sr-only">NuVira Juice Co. — Cold-Pressed Juice Delivery in Wentzville &amp; St. Louis, MO</h1>
 
       {/* Header */}
       <motion.div
@@ -164,7 +167,7 @@ export default function Home() {
 
       {/* Programs — Primary Revenue Section */}
       <div className="mt-5 px-4 mb-2">
-        <p className="font-heading text-xl font-bold mb-0.5">Build Your Routine</p>
+        <h2 className="font-heading text-xl font-bold mb-0.5">Build Your Routine</h2>
         <p className="text-xs text-muted-foreground">Choose your goal. We'll handle the rest.</p>
       </div>
       <div className="mt-3">

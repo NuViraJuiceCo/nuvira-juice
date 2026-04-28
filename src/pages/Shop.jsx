@@ -146,12 +146,12 @@ export default function Shop() {
       {!search.trim() && category === 'all' && !filterParam && (
         <div className="mb-6">
           <div className="px-4 mb-3">
-            <p className="font-heading text-base font-bold">3-Day Programs</p>
+            <h2 className="font-heading text-base font-bold">3-Day Programs</h2>
             <p className="text-[11px] text-muted-foreground">Structured for results — 12 bottles delivered</p>
           </div>
           <ProgramCards />
           <div className="px-4 mt-5 mb-1">
-            <p className="font-heading text-base font-bold">Quick Options</p>
+            <h2 className="font-heading text-base font-bold">Quick Options</h2>
             <p className="text-[11px] text-muted-foreground">Single bottles & small orders</p>
           </div>
         </div>

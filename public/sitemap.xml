@@ -1,151 +1,93 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+  This is a static fallback sitemap.
+  A dynamic sitemap (including all live product URLs) is available at the backend function endpoint.
+  Submit the dynamic sitemap URL to Google Search Console for full coverage.
+-->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 
-  <!-- Core Pages -->
+  <!-- Core pages -->
   <url>
     <loc>https://www.nuvirajuice.com/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
-
   <url>
     <loc>https://www.nuvirajuice.com/shop</loc>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
 
+  <!-- Programs -->
+  <url>
+    <loc>https://www.nuvirajuice.com/program/radiance</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.nuvirajuice.com/program/hydration</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.nuvirajuice.com/program/reset</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Subscriptions & Wellness -->
   <url>
     <loc>https://www.nuvirajuice.com/subscribe</loc>
     <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-
-  <!-- Individual Product Pages -->
-
-  <!-- AURA -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69d490ce699b5f1ac4dde495</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
-  </url>
-
-  <!-- RE-NU -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69d490ce699b5f1ac4dde496</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
-  </url>
-
-  <!-- OASIS -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69d490ce699b5f1ac4dde497</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
-  </url>
-
-  <!-- Orange Juice -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69d5b9df48ee4ce27d9eb8fa</loc>
-    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
-
-  <!-- Pineapple Juice -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69d5b9df48ee4ce27d9eb8fb</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <!-- Watermelon Juice -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69d5b9df48ee4ce27d9eb8fc</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <!-- 2-Day Ritual Pack -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69deb45a1564dc5386afefa3</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <!-- 3-Day Ritual Pack -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69deb45a1564dc5386afefa4</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <!-- 4-Day Ritual Pack -->
-  <url>
-    <loc>https://www.nuvirajuice.com/shop/69deb45a1564dc5386afefa5</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <!-- Brand / Info Pages -->
-  <url>
-    <loc>https://www.nuvirajuice.com/our-story</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-
   <url>
     <loc>https://www.nuvirajuice.com/why-nuvira</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
 
+  <!-- Brand / Trust pages -->
+  <url>
+    <loc>https://www.nuvirajuice.com/our-story</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.nuvirajuice.com/contact</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.nuvirajuice.com/support</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://www.nuvirajuice.com/partner</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
   <url>
     <loc>https://www.nuvirajuice.com/events</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
-
   <url>
     <loc>https://www.nuvirajuice.com/merch</loc>
     <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.5</priority>
   </url>
-
-  <url>
-    <loc>https://www.nuvirajuice.com/rewards</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-
   <url>
     <loc>https://www.nuvirajuice.com/referral</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
-
   <url>
-    <loc>https://www.nuvirajuice.com/connect</loc>
+    <loc>https://www.nuvirajuice.com/rewards</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
-
-  <url>
-    <loc>https://www.nuvirajuice.com/partner</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-
-  <url>
-    <loc>https://www.nuvirajuice.com/book-event</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-
-  <url>
-    <loc>https://www.nuvirajuice.com/support</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
-  </url>
-
   <url>
     <loc>https://www.nuvirajuice.com/legal</loc>
     <changefreq>yearly</changefreq>

@@ -40,6 +40,7 @@ import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
 import DriverPortal from '@/pages/driver/DriverPortal';
 import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
+import LowercaseRedirect from '@/components/LowercaseRedirect';
 import Home from '@/pages/Home';
 import Shop from '@/pages/Shop';
 import Cart from '@/pages/Cart';
@@ -145,6 +146,7 @@ const AuthenticatedApp = () => {
   return (
     <CartProvider>
       <ScrollToTop />
+      <LowercaseRedirect />
       {showSplash && <SplashScreen onDone={handleSplashDone} />}
       <Routes>
         <Route element={<AppLayout />}>

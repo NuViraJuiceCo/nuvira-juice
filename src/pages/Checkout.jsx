@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SEO from '@/components/SEO';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -358,6 +359,7 @@ export default function Checkout() {
 
   return (
     <div className="pb-8">
+      <SEO title="Checkout" description="Complete your NuVira Juice order." noindex={true} />
       <AnimatePresence>
         {showOutOfArea && (
           <OutOfAreaModal
