@@ -11,6 +11,11 @@
     "message": {
       "type": "string"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional additional context or admin note for this notification (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "type": {
       "type": "string",
       "enum": [
@@ -36,5 +41,23 @@
     "customer_email",
     "title",
     "message"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "data.customer_email": "{{user.email}}"
+    },
+    "update": {
+      "data.customer_email": "{{user.email}}"
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }
