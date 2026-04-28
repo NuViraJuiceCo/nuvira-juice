@@ -29,6 +29,7 @@ import Referral from '@/pages/Referral';
 import Rewards from '@/pages/Rewards';
 import Legal from '@/pages/Legal';
 import Connect from '@/pages/Connect';
+import Contact from '@/pages/Contact';
 import Partner from '@/pages/Partner';
 import BookEvent from '@/pages/BookEvent';
 import AdminOrders from '@/pages/AdminOrders';
@@ -167,6 +168,7 @@ const AuthenticatedApp = () => {
           <Route path="/rewards" element={<ProtectedRoute element={<Rewards />} user={user} />} />
           <Route path="/legal" element={<Legal />} />
           <Route path="/connect" element={<Connect />} />
+          <Route path="/contact" element={<Contact />} />
           <Route path="/partner" element={<Partner />} />
           <Route path="/book-event" element={<BookEvent />} />
           <Route path="/admin/orders" element={<ProtectedRoute element={<AdminOrders />} user={user} />} />

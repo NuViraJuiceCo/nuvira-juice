@@ -52,6 +52,19 @@ const faqs = [
   },
 ];
 
+const FAQ_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": faqs.map(faq => ({
+    "@type": "Question",
+    "name": faq.q,
+    "acceptedAnswer": {
+      "@type": "Answer",
+      "text": faq.a,
+    },
+  })),
+};
+
 export default function Support() {
   const navigate = useNavigate();
   const [openIndex, setOpenIndex] = useState(null);
@@ -81,6 +94,10 @@ export default function Support() {
 
   return (
     <div className="pb-4">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_SCHEMA) }}
+      />
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />

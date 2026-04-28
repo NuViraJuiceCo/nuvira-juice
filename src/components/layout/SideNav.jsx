@@ -58,7 +58,12 @@ export default function SideNav() {
       </nav>
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-border">
+      <div className="px-6 py-4 border-t border-border space-y-1">
+        <div className="flex gap-3 mb-2">
+          <Link to="/our-story" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
+          <Link to="/contact" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
+          <Link to="/support" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
+        </div>
         <p className="text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co.</p>
         <p className="text-[10px] text-muted-foreground">Wentzville, MO</p>
       </div>
