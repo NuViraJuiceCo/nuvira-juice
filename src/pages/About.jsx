@@ -30,7 +30,7 @@ export default function About() {
             <ArrowLeft className="w-4 h-4" />
           </button>
         </Link>
-        <span className="font-heading text-base font-semibold">About Us</span>
+        <span className="font-heading text-base font-semibold">Our Story</span>
       </div>
 
       {/* Hero Image */}
