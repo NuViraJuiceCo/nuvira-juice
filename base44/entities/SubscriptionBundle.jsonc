@@ -1,7 +1,17 @@
 {
   "name": "SubscriptionBundle",
   "type": "object",
-  "properties": {},
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Bundle name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Customer-facing description of this subscription bundle (up to 1000 characters)",
+      "maxLength": 1000
+    }
+  },
   "required": [],
   "rls": {
     "create": {

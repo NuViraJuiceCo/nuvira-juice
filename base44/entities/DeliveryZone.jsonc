@@ -6,6 +6,11 @@
       "type": "string",
       "description": "Zone name (e.g., Zone 1)"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional notes about this delivery zone and the areas it covers (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "max_miles": {
       "type": "number",
       "description": "Maximum miles from store"

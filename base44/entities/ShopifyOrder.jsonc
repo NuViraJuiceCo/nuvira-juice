@@ -10,6 +10,11 @@
       "type": "string",
       "description": "e.g. #1001"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note or summary for this Shopify order (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "base44_order_id": {
       "type": "string",
       "description": "Linked Base44 Order record ID"

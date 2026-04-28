@@ -6,6 +6,11 @@
       "type": "string",
       "description": "Plan name (e.g., Weekly Fresh, Monthly Ritual)"
     },
+    "description": {
+      "type": "string",
+      "description": "Customer-facing description of this subscription plan (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "frequency": {
       "type": "string",
       "enum": [

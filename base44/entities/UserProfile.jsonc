@@ -30,6 +30,11 @@
       "format": "date",
       "description": "User's birthday (YYYY-MM-DD)"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note or profile summary for this customer (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "wellness_goals": {
       "type": "array",
       "items": {

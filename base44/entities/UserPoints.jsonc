@@ -5,6 +5,11 @@
     "customer_email": {
       "type": "string"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this loyalty points account (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "total_points": {
       "type": "number",
       "default": 0
@@ -44,6 +49,7 @@
     },
     "claimed_rewards": {
       "type": "array",
+      "default": [],
       "items": {
         "type": "object",
         "properties": {
@@ -60,8 +66,7 @@
             "type": "string"
           }
         }
-      },
-      "default": []
+      }
     }
   },
   "required": [

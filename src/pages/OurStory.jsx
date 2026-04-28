@@ -25,12 +25,12 @@ export default function OurStory() {
       />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
-        <Link to="/account">
+        <Link to="/">
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </button>
         </Link>
-        <span className="font-heading text-base font-semibold">Our Story</span>
+        <span className="font-heading text-base font-semibold">About Us</span>
       </div>
 
       {/* Hero */}
@@ -62,9 +62,9 @@ export default function OurStory() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <h2 className="font-heading text-2xl font-bold mb-4 text-foreground">
+          <h1 className="font-heading text-2xl font-bold mb-4 text-foreground">
             We Believe Wellness Starts<br />With What You Put In.
-          </h2>
+          </h1>
           <p className="text-muted-foreground text-sm leading-relaxed mb-3">
             NuVira Juice Company was built on a simple but powerful belief: true wellness begins with real, living nutrition. Not supplements. Not shortcuts. Real produce, cold-pressed fresh, and delivered to you at the peak of its nutritional power.
           </p>

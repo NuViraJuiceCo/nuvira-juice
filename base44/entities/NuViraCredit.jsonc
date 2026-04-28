@@ -6,6 +6,11 @@
       "type": "string",
       "description": "Customer email address"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this credit account (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "balance": {
       "type": "number",
       "default": 0,
@@ -23,6 +28,8 @@
     },
     "history": {
       "type": "array",
+      "default": [],
+      "description": "History of credit transactions",
       "items": {
         "type": "object",
         "properties": {
@@ -47,9 +54,7 @@
             "type": "string"
           }
         }
-      },
-      "default": [],
-      "description": "History of credit transactions"
+      }
     }
   },
   "required": [

@@ -6,6 +6,11 @@
       "type": "string",
       "description": "Customer email address"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this loyalty member (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "total_points": {
       "type": "number",
       "default": 0,
@@ -23,6 +28,8 @@
     },
     "points_history": {
       "type": "array",
+      "default": [],
+      "description": "History of point transactions",
       "items": {
         "type": "object",
         "properties": {
@@ -45,9 +52,7 @@
             "type": "string"
           }
         }
-      },
-      "default": [],
-      "description": "History of point transactions"
+      }
     }
   },
   "required": [

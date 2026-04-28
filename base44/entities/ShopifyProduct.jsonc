@@ -8,6 +8,11 @@
     "title": {
       "type": "string"
     },
+    "description": {
+      "type": "string",
+      "description": "Product description synced from or to Shopify (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "handle": {
       "type": "string"
     },

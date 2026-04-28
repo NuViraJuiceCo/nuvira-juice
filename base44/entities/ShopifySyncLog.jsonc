@@ -13,6 +13,11 @@
       ],
       "default": "webhook"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note or summary about this sync operation (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "status": {
       "type": "string",
       "enum": [

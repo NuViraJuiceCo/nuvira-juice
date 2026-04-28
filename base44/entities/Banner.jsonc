@@ -8,6 +8,11 @@
     "subtitle": {
       "type": "string"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional longer description or caption for this banner (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "image_url": {
       "type": "string"
     },

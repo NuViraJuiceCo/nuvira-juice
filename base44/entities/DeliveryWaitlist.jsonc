@@ -14,6 +14,11 @@
       "type": "string",
       "description": "ZIP code of the out-of-area address"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional notes about this waitlist entry (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "notified": {
       "type": "boolean",
       "default": false,

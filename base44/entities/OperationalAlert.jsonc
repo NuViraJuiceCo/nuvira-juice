@@ -22,6 +22,11 @@
     "message": {
       "type": "string"
     },
+    "description": {
+      "type": "string",
+      "description": "Additional context or admin notes for this alert (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "shopify_order_id": {
       "type": "string"
     },

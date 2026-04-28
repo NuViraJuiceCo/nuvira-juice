@@ -9,6 +9,11 @@
     "customer_email": {
       "type": "string"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this bag return record (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "small_bags_requested": {
       "type": "number",
       "default": 0

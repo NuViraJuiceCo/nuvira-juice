@@ -6,6 +6,11 @@
       "type": "string",
       "description": "Schedule name e.g. Default"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional notes about this delivery schedule (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "rules": {
       "type": "array",
       "description": "Array of order-day to delivery-day mappings",
@@ -54,5 +59,23 @@
   "required": [
     "name",
     "rules"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {},
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

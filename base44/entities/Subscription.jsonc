@@ -5,6 +5,11 @@
     "customer_email": {
       "type": "string"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this subscription (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "plan_id": {
       "type": "string",
       "description": "Reference to SubscriptionPlan"
@@ -66,5 +71,48 @@
     "bundle_id",
     "delivery_zone_id",
     "delivery_address"
-  ]
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

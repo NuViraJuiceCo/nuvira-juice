@@ -6,6 +6,11 @@
       "type": "string",
       "description": "Shopify webhook topic e.g. orders/create"
     },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this webhook log entry (up to 1000 characters)",
+      "maxLength": 1000
+    },
     "shopify_order_id": {
       "type": "string"
     },
