@@ -162,6 +162,7 @@ const AuthenticatedApp = () => {
           <Route path="/account/subscriptions" element={<ProtectedRoute element={<SubscriptionManagement />} user={user} />} />
           <Route path="/support" element={<Support />} />
           <Route path="/our-story" element={<OurStory />} />
+          <Route path="/about" element={<OurStory />} />
           <Route path="/why-nuvira" element={<WhyNuVira />} />
           <Route path="/events" element={<Events />} />
           <Route path="/merch" element={<Merch />} />
