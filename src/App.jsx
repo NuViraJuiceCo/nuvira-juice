@@ -21,6 +21,7 @@ import Support from '@/pages/Support';
 import AccountSettings from '@/pages/AccountSettings';
 import SubscriptionManagement from '@/pages/SubscriptionManagement';
 import OurStory from '@/pages/OurStory';
+import About from '@/pages/About';
 import WhyNuVira from '@/pages/WhyNuVira';
 import Events from '@/pages/Events';
 import Merch from '@/pages/Merch';
@@ -162,7 +163,7 @@ const AuthenticatedApp = () => {
           <Route path="/account/subscriptions" element={<ProtectedRoute element={<SubscriptionManagement />} user={user} />} />
           <Route path="/support" element={<Support />} />
           <Route path="/our-story" element={<OurStory />} />
-          <Route path="/about" element={<OurStory />} />
+          <Route path="/about" element={<About />} />
           <Route path="/why-nuvira" element={<WhyNuVira />} />
           <Route path="/events" element={<Events />} />
           <Route path="/merch" element={<Merch />} />
