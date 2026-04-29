@@ -33,12 +33,15 @@ Deno.serve(async (req) => {
 
     const formatted = filtered.map(o => ({
       id: o.id,
+      shopify_order_id: o.stripe_checkout_session_id || null,
+      stripe_checkout_session_id: o.stripe_checkout_session_id || null,
       order_number: o.order_number,
       customer_email: o.customer_email,
       status: o.status,
       total: o.total,
       fulfillment_type: o.fulfillment_type,
       estimated_delivery_date: o.estimated_delivery_date,
+      created_date: o.created_date,
       updated_date: o.updated_date,
     }));
 

@@ -23,6 +23,7 @@ Deno.serve(async (req) => {
 
     const ordersForSync = paginatedOrders.map(o => ({
       id: o.id,
+      shopify_order_id: o.stripe_checkout_session_id || null,
       order_number: o.order_number,
       customer_email: o.customer_email,
       items: o.items,
