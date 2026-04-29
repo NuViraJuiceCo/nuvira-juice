@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         from: 'NuVira Juice Co <info@nuvirajuice.com>',
-        to: 'info@nuvirajuice.com',
+        to: 'operations@nuvirajuice.com',
         subject: `Order #${order_number || order_id} Processed`,
         html,
       }),
