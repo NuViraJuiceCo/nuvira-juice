@@ -8,8 +8,8 @@ Deno.serve(async (req) => {
   try {
     // Validate hub secret token
     const authHeader = req.headers.get('authorization');
-    const hubSecret = Deno.env.get('HUB_SYNC_SECRET');
-    if (authHeader !== `Bearer ${hubSecret}`) {
+    const syncSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+    if (!authHeader || authHeader !== `Bearer ${syncSecret}`) {
       return Response.json({ error: 'Invalid or missing authorization' }, { status: 401 });
     }
 
