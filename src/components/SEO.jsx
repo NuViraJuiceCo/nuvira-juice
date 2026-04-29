@@ -56,51 +56,81 @@ export const LOCAL_BUSINESS_SCHEMA = {
       {
         "@type": "Product",
         "name": "AURA Cold-Pressed Juice",
+        "url": "https://www.nuvirajuice.com/shop",
         "offers": {
           "@type": "Offer",
+          "url": "https://www.nuvirajuice.com/shop",
           "priceCurrency": "USD",
           "price": "9.00",
-          "availability": "https://schema.org/InStock"
+          "availability": "https://schema.org/InStock",
+          "seller": {
+            "@type": "Organization",
+            "name": "NuVira Juice Co."
+          }
         }
       },
       {
         "@type": "Product",
         "name": "RE-NU Cold-Pressed Juice",
+        "url": "https://www.nuvirajuice.com/shop",
         "offers": {
           "@type": "Offer",
+          "url": "https://www.nuvirajuice.com/shop",
           "priceCurrency": "USD",
           "price": "9.00",
-          "availability": "https://schema.org/InStock"
+          "availability": "https://schema.org/InStock",
+          "seller": {
+            "@type": "Organization",
+            "name": "NuVira Juice Co."
+          }
         }
       },
       {
         "@type": "Product",
         "name": "OASIS Cold-Pressed Juice",
+        "url": "https://www.nuvirajuice.com/shop",
         "offers": {
           "@type": "Offer",
+          "url": "https://www.nuvirajuice.com/shop",
           "priceCurrency": "USD",
           "price": "9.00",
-          "availability": "https://schema.org/InStock"
+          "availability": "https://schema.org/InStock",
+          "seller": {
+            "@type": "Organization",
+            "name": "NuVira Juice Co."
+          }
         }
       },
       {
         "@type": "Product",
         "name": "Juice Bundles",
+        "url": "https://www.nuvirajuice.com/shop",
         "offers": {
           "@type": "Offer",
+          "url": "https://www.nuvirajuice.com/shop",
           "priceCurrency": "USD",
           "price": "25.00",
-          "availability": "https://schema.org/InStock"
+          "availability": "https://schema.org/InStock",
+          "seller": {
+            "@type": "Organization",
+            "name": "NuVira Juice Co."
+          }
         }
       },
       {
         "@type": "Product",
         "name": "Wellness Shots",
+        "url": "https://www.nuvirajuice.com/shop",
         "offers": {
           "@type": "Offer",
+          "url": "https://www.nuvirajuice.com/shop",
           "priceCurrency": "USD",
           "price": "5.00",
-          "availability": "https://schema.org/InStock"
+          "availability": "https://schema.org/InStock",
+          "seller": {
+            "@type": "Organization",
+            "name": "NuVira Juice Co."
+          }
         }
       }
     ]
