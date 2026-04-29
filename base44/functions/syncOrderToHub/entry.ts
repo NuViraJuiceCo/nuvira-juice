@@ -65,6 +65,13 @@ Deno.serve(async (req) => {
       body: JSON.stringify(payload),
     });
 
+    if (response.status === 410) {
+      // Hub deprecated the push endpoint — it now pulls orders on its own schedule via pullOrdersFromCustomerApp.
+      // This is expected behavior as of 2026-04-26. Orders are safe in Base44 DB and will be picked up by the hub pull.
+      console.log(`syncOrderToHub: hub push endpoint is deprecated (410). Order ${order.order_number} is in Base44 DB and will be pulled by hub on next sync cycle.`);
+      return Response.json({ success: true, note: 'Hub pull model — order will sync on next hub pull cycle' });
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`syncOrderToHub: hub returned ${response.status}:`, errorText);
