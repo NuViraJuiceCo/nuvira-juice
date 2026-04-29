@@ -52,7 +52,8 @@ const faqs = [
   },
 ];
 
-const FAQ_SCHEMA = {
+// Only render FAQPage schema on Support page, not anywhere else
+const FAQ_SCHEMA_SUPPORT = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": faqs.map(faq => ({
@@ -64,6 +65,8 @@ const FAQ_SCHEMA = {
     },
   })),
 };
+
+
 
 export default function Support() {
   const navigate = useNavigate();
@@ -96,7 +99,7 @@ export default function Support() {
     <div className="pb-4">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_SCHEMA) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_SCHEMA_SUPPORT) }}
       />
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
