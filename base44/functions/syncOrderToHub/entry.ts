@@ -36,6 +36,7 @@ Deno.serve(async (req) => {
       source: 'customer_app',
       order: {
         id: order.id,
+        shopify_order_id: order.stripe_checkout_session_id || null,
         order_number: order.order_number,
         customer_email: order.customer_email,
         items: order.items,
