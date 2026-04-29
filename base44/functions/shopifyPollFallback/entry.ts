@@ -65,12 +65,15 @@ Deno.serve(async (req) => {
     }
   }
 
-  await base44.asServiceRole.entities.ShopifySyncLog.create({
-    sync_type: 'orders', status: 'success',
-    records_synced: synced, records_failed: 0,
-    started_at: new Date().toISOString(), completed_at: new Date().toISOString(),
-    triggered_by: 'cron',
-  });
+  // Only log when something was actually synced — avoid writing 96 empty records/day
+  if (synced > 0) {
+    await base44.asServiceRole.entities.ShopifySyncLog.create({
+      sync_type: 'orders', status: 'success',
+      records_synced: synced, records_failed: 0,
+      started_at: new Date().toISOString(), completed_at: new Date().toISOString(),
+      triggered_by: 'cron',
+    });
+  }
 
   return Response.json({ ok: true, polled: orders.length, new_created: synced });
 });
