@@ -53,9 +53,54 @@ export const LOCAL_BUSINESS_SCHEMA = {
     "@type": "OfferCatalog",
     "name": "Cold-Pressed Juices",
     "itemListElement": [
-      { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "AURA Cold-Pressed Juice" } },
-      { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "RE-NU Cold-Pressed Juice" } },
-      { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "OASIS Cold-Pressed Juice" } }
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Product",
+          "name": "AURA Cold-Pressed Juice",
+          "offers": { "@type": "Offer", "priceCurrency": "USD", "price": "9.00", "availability": "https://schema.org/InStock" }
+        }
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Product",
+          "name": "RE-NU Cold-Pressed Juice",
+          "offers": { "@type": "Offer", "priceCurrency": "USD", "price": "9.00", "availability": "https://schema.org/InStock" }
+        }
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Product",
+          "name": "OASIS Cold-Pressed Juice",
+          "offers": { "@type": "Offer", "priceCurrency": "USD", "price": "9.00", "availability": "https://schema.org/InStock" }
+        }
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Product",
+          "name": "Juice Bundles",
+          "offers": { "@type": "Offer", "priceCurrency": "USD", "price": "25.00", "availability": "https://schema.org/InStock" }
+        }
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Product",
+          "name": "Wellness Shots",
+          "offers": { "@type": "Offer", "priceCurrency": "USD", "price": "5.00", "availability": "https://schema.org/InStock" }
+        }
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Product",
+          "name": "Cold-Pressed Juice",
+          "offers": { "@type": "Offer", "priceCurrency": "USD", "price": "9.00", "availability": "https://schema.org/InStock" }
+        }
+      }
     ]
   }
 };
