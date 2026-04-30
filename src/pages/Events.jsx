@@ -4,6 +4,45 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Calendar, Users, ExternalLink } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import SEO from '@/components/SEO';
+
+// Convert a "YYYY-MM-DD" date + optional "HH:MM" time string to ISO 8601
+function toISO(date, time) {
+  if (!date) return undefined;
+  const base = date.includes('T') ? date : `${date}T${time || '00:00'}:00`;
+  try { return new Date(base).toISOString(); } catch { return undefined; }
+}
+
+function buildEventSchema(events) {
+  if (!events.length) return null;
+  return events.map(e => ({
+    "@context": "https://schema.org",
+    "@type": "Event",
+    "name": e.title,
+    "description": e.description || undefined,
+    "image": e.image_url || undefined,
+    "startDate": toISO(e.date, e.time),
+    "endDate": toISO(e.end_date || e.date, e.end_time || e.time),
+    "eventStatus": "https://schema.org/EventScheduled",
+    "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+    "location": {
+      "@type": "Place",
+      "name": e.location || "Wentzville, MO",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Wentzville",
+        "addressRegion": "MO",
+        "addressCountry": "US"
+      }
+    },
+    "organizer": {
+      "@type": "Organization",
+      "name": "NuVira Juice Co.",
+      "url": "https://www.nuvirajuice.com"
+    },
+    ...(e.tickets_link ? { "offers": { "@type": "Offer", "url": e.tickets_link, "availability": "https://schema.org/InStock" } } : {}),
+  }));
+}
 
 const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
 
@@ -30,8 +69,15 @@ export default function Events() {
     ...hardcodedFiltered,
   ];
 
+  const eventSchema = buildEventSchema(events);
+
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Events & Community"
+        description="Join NuVira Juice Co. at pop-ups, community events, and wellness gatherings across the St. Louis area."
+        structuredData={eventSchema?.length === 1 ? eventSchema[0] : eventSchema?.length > 1 ? { "@context": "https://schema.org", "@graph": eventSchema } : undefined}
+      />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/account">
