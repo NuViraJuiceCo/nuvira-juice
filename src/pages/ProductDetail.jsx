@@ -68,8 +68,8 @@ export default function ProductDetail() {
     "@context": "https://schema.org",
     "@type": "Product",
     "name": product.title,
-    "description": product.short_description || product.description || '',
-    "image": product.image_url || '',
+    "description": product.description || product.short_description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co.`,
+    "image": product.image_url || "https://media.base44.com/images/public/69d48d0c39891f7945481152/421b89061_generated_image.png",
     "brand": { "@type": "Brand", "name": "NuVira Juice Co." },
     "offers": {
       "@type": "Offer",
@@ -77,7 +77,33 @@ export default function ProductDetail() {
       "priceCurrency": "USD",
       "price": product.price?.toFixed(2),
       "availability": product.is_available !== false ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-      "seller": { "@type": "Organization", "name": "NuVira Juice Co." }
+      "seller": { "@type": "Organization", "name": "NuVira Juice Co." },
+      "shippingDetails": {
+        "@type": "OfferShippingDetails",
+        "shippingRate": {
+          "@type": "MonetaryAmount",
+          "value": "0",
+          "currency": "USD"
+        },
+        "shippingDestination": {
+          "@type": "DefinedRegion",
+          "addressCountry": "US",
+          "addressRegion": ["MO"]
+        },
+        "deliveryTime": {
+          "@type": "ShippingDeliveryTime",
+          "handlingTime": { "@type": "QuantitativeValue", "minValue": 0, "maxValue": 1, "unitCode": "DAY" },
+          "transitTime": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 3, "unitCode": "DAY" }
+        }
+      },
+      "hasMerchantReturnPolicy": {
+        "@type": "MerchantReturnPolicy",
+        "applicableCountry": "US",
+        "returnPolicyCategory": "https://schema.org/MerchantReturnNotPermitted",
+        "merchantReturnDays": 0,
+        "returnMethod": "https://schema.org/ReturnByMail",
+        "returnFees": "https://schema.org/FreeReturn"
+      }
     },
     "additionalProperty": product.ingredients ? [{
       "@type": "PropertyValue",
