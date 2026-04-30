@@ -189,9 +189,11 @@ const AuthenticatedApp = () => {
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
         <Route path="/account-setup" element={<AccountSetup />} />
-        {/* Redirect common misspelled/singular routes */}
+        {/* Redirect old/invalid routes to correct pages */}
         <Route path="/event" element={<Navigate to="/events" replace />} />
         <Route path="/event/*" element={<Navigate to="/events" replace />} />
+        <Route path="/inavii_ig_media" element={<Navigate to="/" replace />} />
+        <Route path="/inavii_ig_media/*" element={<Navigate to="/" replace />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </CartProvider>
