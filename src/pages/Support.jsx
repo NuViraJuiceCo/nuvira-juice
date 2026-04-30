@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import SEO from '@/components/SEO';
 
 const faqs = [
   {
@@ -97,9 +98,10 @@ export default function Support() {
 
   return (
     <div className="pb-4">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_SCHEMA_SUPPORT) }}
+      <SEO
+        title="Help & Support — FAQ"
+        description="Frequently asked questions about NuVira Juice Co. — delivery, ingredients, subscriptions, and more."
+        structuredData={FAQ_SCHEMA_SUPPORT}
       />
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
