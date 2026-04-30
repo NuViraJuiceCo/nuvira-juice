@@ -49,10 +49,6 @@ export const LOCAL_BUSINESS_SCHEMA = {
     "https://www.instagram.com/nuvirajuice",
     "https://www.facebook.com/nuvirajuice"
   ],
-  "hasOfferCatalog": {
-    "@type": "OfferCatalog",
-    "name": "Cold-Pressed Juices & Wellness Products"
-  }
 };
 
 export default function SEO({ title, description, image, type = 'website', keywords, structuredData, noindex = false }) {
