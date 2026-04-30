@@ -3,7 +3,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -189,6 +189,9 @@ const AuthenticatedApp = () => {
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
         <Route path="/account-setup" element={<AccountSetup />} />
+        {/* Redirect common misspelled/singular routes */}
+        <Route path="/event" element={<Navigate to="/events" replace />} />
+        <Route path="/event/*" element={<Navigate to="/events" replace />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </CartProvider>
