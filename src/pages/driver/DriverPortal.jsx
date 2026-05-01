@@ -301,7 +301,7 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`bg-card border rounded-2xl overflow-hidden ${
+      className={`bg-card border rounded-2xl overflow-hidden w-full min-w-0 ${
         isDelivered ? 'border-green-200 opacity-75'
         : pendingReturn ? 'border-amber-300'
         : 'border-border/50'
@@ -848,16 +848,16 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
                 : `${displayOrders.length} stop${displayOrders.length > 1 ? 's' : ''} · tap to review bag returns`}
             </p>
             {displayOrders.map((order, idx) => (
-              <div key={order.id} className="flex gap-2">
+              <div key={order.id} className="flex gap-2 min-w-0">
                 {isOptimized && (
-                  <div className="flex flex-col items-center pt-4 shrink-0">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${order.status === 'delivered' ? 'bg-green-100 text-green-600' : 'bg-primary text-primary-foreground'}`}>
+                  <div className="flex flex-col items-center pt-3 shrink-0">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${order.status === 'delivered' ? 'bg-green-100 text-green-600' : 'bg-primary text-primary-foreground'}`}>
                       {order.status === 'delivered' ? '✓' : idx + 1}
                     </div>
                     {idx < displayOrders.length - 1 && <div className="w-0.5 flex-1 bg-border mt-1" />}
                   </div>
                 )}
-                <div className="flex-1 pb-2">
+                <div className="flex-1 min-w-0 pb-2">
                   {isOptimized ? (
                     <StopCard
                       order={order}
