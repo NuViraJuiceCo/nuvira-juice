@@ -308,28 +308,28 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
       }`}
     >
       {/* Header row */}
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center gap-3 p-4 text-left active:bg-secondary/30 transition-colors">
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isDelivered ? 'bg-green-100 text-green-600' : 'bg-primary/10 text-primary'}`}>
+      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left active:bg-secondary/30 transition-colors">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isDelivered ? 'bg-green-100 text-green-600' : 'bg-primary/10 text-primary'}`}>
           {isDelivered ? <CheckCircle2 className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-sm font-semibold">#{order.order_number}</p>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isDelivered ? 'bg-green-100 text-green-700' : 'bg-primary/10 text-primary'}`}>
-              {isDelivered ? 'Delivered ✓' : DELIVERY_STAGES.find(s => s.key === order.status)?.label || order.status}
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-1.5 mb-0.5 overflow-hidden">
+            <p className="text-sm font-bold shrink-0">#{order.order_number}</p>
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isDelivered ? 'bg-green-100 text-green-700' : 'bg-primary/10 text-primary'}`}>
+              {isDelivered ? 'Done ✓' : DELIVERY_STAGES.find(s => s.key === order.status)?.label || order.status}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">{order.delivery_address}</p>
+          <p className="text-xs text-muted-foreground truncate">{order.delivery_address}</p>
           {pendingReturn && (
-            <div className="flex items-center gap-1 mt-1">
-              <Recycle className="w-3 h-3 text-amber-600" />
-              <p className="text-[10px] font-semibold text-amber-600">
+            <div className="flex items-center gap-1 mt-0.5">
+              <Recycle className="w-3 h-3 text-amber-600 shrink-0" />
+              <p className="text-[10px] font-semibold text-amber-600 truncate">
                 {pendingReturn.verification_status === 'requested' ? 'Bag return to collect' : 'Return handled ✓'}
               </p>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 ml-1">
           {order.leg_duration_seconds && <span className="text-[10px] text-muted-foreground">{formatDuration(order.leg_duration_seconds)}</span>}
           {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
         </div>
@@ -338,12 +338,12 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
       <AnimatePresence>
         {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-3">
+            <div className="border-t border-border/40 px-3.5 pb-4 pt-3 space-y-3 overflow-hidden">
 
               {/* Customer info */}
               <div className="space-y-0.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Customer</p>
-                <p className="text-xs">{order.customer_email}</p>
+                <p className="text-xs break-all">{order.customer_email}</p>
                 {order.contact_phone && <p className="text-xs font-semibold">{order.contact_phone}</p>}
               </div>
 
@@ -828,7 +828,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
       )}
 
       {/* Order list */}
-      <div className="px-4 mt-4 space-y-3">
+      <div className="px-4 mt-4 space-y-3 overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -1123,7 +1123,7 @@ export default function DriverPortal() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <div className="bg-primary px-4 pb-4" style={{ paddingTop: 'max(2.5rem, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-2 mb-0.5">
           {user?.role === 'admin' && (
