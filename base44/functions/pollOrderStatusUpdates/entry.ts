@@ -4,11 +4,34 @@ const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
 /**
- * Polls hub for order status updates and syncs them to customer app orders
- * Called by: Scheduled automation every 5 minutes
- * Fetches: Order updates from hub and applies status changes locally
+ * ⚠️ DEPRECATED: Architecture Option B (Active)
+ * This function is NOT used in the current Customer App architecture.
+ * 
+ * REASON: Hub endpoint for polling status is no longer available (405 Method Not Allowed).
+ * CURRENT APPROACH: Customer App reads Hub-expanded data directly via getCustomerOrdersWithHub
+ * and getAdminOrdersWithHub. No polling or background sync needed.
+ * 
+ * DO NOT RE-ENABLE unless switching back to Option A (push/pull sync model).
+ * 
+ * Previous behavior: Polls hub for order status updates and syncs them to customer app orders
+ * Called by: Scheduled automation every 5 minutes (DISABLED)
+ * Fetches: Order updates from hub and applies status changes locally (NO LONGER SUPPORTED)
  */
 Deno.serve(async (req) => {
+  // ⚠️ DISABLED: Architecture Option B does not use polling.
+  // Hub endpoint no longer supports this path (returns 405).
+  // Contact backend team if Option A (push/pull) needs to be re-enabled.
+  console.log('pollOrderStatusUpdates: DISABLED - Not used in Option B architecture. Use getCustomerOrdersWithHub instead.');
+  return Response.json({ 
+    error: 'DEPRECATED_FUNCTION', 
+    message: 'pollOrderStatusUpdates is disabled. Use getCustomerOrdersWithHub for order display.' 
+  }, { status: 410 });
+  
+  // ────────────────────────────────────────────────────────────────────────
+  // The following code is preserved for historical reference only.
+  // DO NOT EXECUTE.
+  // ────────────────────────────────────────────────────────────────────────
+  
   try {
     const base44 = createClientFromRequest(req);
 

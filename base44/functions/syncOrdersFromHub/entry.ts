@@ -1,7 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * Admin function: Sync orders from the hub back to local Order entity
+ * ⚠️ LEGACY READ-ONLY CACHE FUNCTION (Not in active sync path)
+ * Architecture: Option B - Customer App reads Hub data via getCustomerOrdersWithHub
+ *
+ * This function is preserved as a manual admin tool but is NOT called in the active UI path.
+ * It does NOT overwrite Hub-verified data; it only reads local orders and returns them.
+ * 
+ * IMPORTANT: This function must NEVER create an operational sync loop or background cache.
+ * If you need to sync orders from Hub, use getCustomerOrdersWithHub (display query) instead.
+ * 
+ * Previous behavior: Admin-callable function to manually trigger a local order cache refresh
+ * Current use: MANUAL ADMIN TOOL ONLY (not automated)
  */
 Deno.serve(async (req) => {
   try {
@@ -12,15 +22,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    // Since hub doesn't expose pull API, we manually trigger a refresh from the hub
-    // by invoking the hub's order sync function
-    // For now, just sync all local orders to ensure consistency
-    console.log('syncOrdersFromHub: Refreshing order data from local cache');
+    // ⚠️ LEGACY: This function now only lists local orders. It does NOT sync from Hub.
+    // Hub orders are fetched at display time via getCustomerOrdersWithHub and getAdminOrdersWithHub.
+    // Local orders are displayed as-is (non-hub-managed).
+    // 
+    // This function is available as a manual admin inspection tool only.
+    console.log('syncOrdersFromHub: LEGACY - Returning local order cache only (not syncing from Hub)');
     
-    // In a production scenario, you'd fetch from hub's data endpoint
-    // For now, return success and let the webhook keep things in sync
     const allOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
-    const hubOrders = allOrders;
+    const hubOrders = allOrders;  // Local only, NOT Hub
 
     let synced = 0;
     let errors = 0;

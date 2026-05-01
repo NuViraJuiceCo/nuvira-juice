@@ -1,15 +1,31 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * Admin order list:
- * - Queries Hub for ALL customers (from UserProfiles), not just those with surviving local orders.
- *   This ensures customers whose only local record is SUPERSEDED_BY_HUB still appear via Hub.
- * - Expands Hub subscription orders (with embedded fulfillments[]) into display records
- * - Expands local subscription orders by fetching linked FulfillmentTask records
- * - Merges with valid local orders (excluding SUPERSEDED_BY_HUB).
- * - Hub wins when both sides have the same order_number.
- * - Hub-managed orders keep is_hub_order=true so the frontend can route status updates correctly.
- * - is_read_only is NOT set — admin can always update status.
+ * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
+ * 
+ * Role: Admin view of ALL orders (local + Hub-verified) with full merge and expansion.
+ * Source of Truth: Hub (for operational orders, subscriptions, deliveries)
+ * 
+ * PROCESS:
+ * 1. Fetch all local orders (excluding superseded, cancelled, ghost pre-orders)
+ * 2. Fetch ALL UserProfile records to get every customer's contact email
+ * 3. Query Hub for each customer's orders (include cancelled-only customers for visibility)
+ * 4. Expand Hub subscription orders into fulfillment-level display records
+ * 5. Expand local subscription orders via FulfillmentTask references
+ * 6. Merge: Hub wins on order_number; local fills missing contact info
+ * 7. Return merged list sorted by created_date (newest first)
+ * 
+ * FULFILLMENT EXPANSION:
+ * - Hub subscriptions: broken into individual fulfillments (e.g., 4 weekly deliveries)
+ * - Local subscriptions: expanded via FulfillmentTask if available
+ * - Result: Admins see individual deliveries, not parent "0-item" records
+ * 
+ * STATUS UPDATES:
+ * - Hub-managed orders (is_hub_order=true) send status updates via pushOrderStatusToHub
+ * - Local orders update directly via Order.update() (no Hub push)
+ * - Admin can always edit status; status history is tracked
+ * 
+ * Called by: pages/AdminOrders (admin order management)
  */
 Deno.serve(async (req) => {
   try {

@@ -1,7 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * Status-only bridge: push an admin status update for a Hub-managed order to Hub.
+ * STATUS-ONLY BRIDGE (Fire-and-Forget, Non-Authoritative)
+ * 
+ * Architecture: Option B - Customer App reads Hub-verified data
+ * 
+ * PURPOSE: Attempt to push admin status updates to Hub for Hub-managed orders.
+ * BEHAVIOR: Returns 200 on success, but fails silently if Hub endpoint not deployed.
+ * 
+ * ⚠️ IMPORTANT LIMITATIONS:
+ * - Hub is the source of truth for operational statuses.
+ * - This function does NOT guarantee Hub received the update.
+ * - Do NOT display to users as "synced to Hub" unless hub_synced=true.
+ * - Hub status will override Customer App local status on next refresh.
+ * - Use only for Hub-managed orders (order.is_hub_order=true).
+ * 
  * NEVER overwrites line items, pricing, customer data, or subscription structure.
  * Payload: { hub_order_id, order_number, customer_email, new_status, stage_label }
  */
@@ -54,7 +67,9 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      console.warn(`[pushOrderStatusToHub] Hub returned ${response.status}: ${errText}`);
+      console.warn(`[pushOrderStatusToHub] ⚠️ Hub returned ${response.status}: ${errText}`);
+      console.warn(`[pushOrderStatusToHub] Status update for ${order_number} was NOT sent to Hub. Hub status will not be updated.`);
+      console.warn(`[pushOrderStatusToHub] This is non-fatal in Option B: Hub will use its own source of truth on next refresh.`);
       // Non-fatal — log but don't fail the admin action
       return Response.json({ success: true, hub_synced: false, hub_error: errText });
     }

@@ -1,6 +1,23 @@
-// Optimizes delivery route using Google Maps Routes API
-// Origin/Destination: 619 N Main St Unit 3, O'Fallon, MO 63366
-// Hub orders are fetched by reusing the same logic as getAdminOrdersWithHub
+/**
+ * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
+ * 
+ * Optimizes delivery route using Google Maps Routes API
+ * Origin/Destination: 619 N Main St Unit 3, O'Fallon, MO 63366
+ * 
+ * PROCESS:
+ * 1. Fetch local delivery orders (queued status, non-superseded)
+ * 2. Expand local subscription orders via FulfillmentTask
+ * 3. Fetch Hub delivery orders for all customers (same expansion logic)
+ * 4. Merge: Hub wins on order_number; local fills missing address/phone
+ * 5. Filter by date (if specified)
+ * 6. Call Google Maps Routes API for optimization (if requested)
+ * 7. Return ordered stops with distance/duration metadata
+ * 
+ * FULFILLMENT EXPANSION: Subscription orders become individual stops per fulfillment.
+ * Example: Monthly subscription with 4 fulfillments → 4 separate delivery stops.
+ * 
+ * Called by: pages/driver/DriverPortal (route planning and optimization)
+ */
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 

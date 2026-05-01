@@ -1,12 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * Fetch customer orders from both local Customer App and Hub.
- * - Looks up contact_email from UserProfile to handle Apple Sign In relay email mismatches
- * - Calls the correct Hub endpoint: getOrderUpdatesForCustomerApp
- * - Expands Hub subscription parent orders (with embedded fulfillments[]) into display records
- * - Expands local subscription orders by fetching linked FulfillmentTask records
- * - Merges with local orders, deduplicates by order_number (Hub wins for subscriptions)
+ * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
+ * 
+ * Role: Fetch and merge customer's local + Hub-verified operational orders for display.
+ * Source of Truth: Hub (for operational order data, fulfillment tasks, delivery status)
+ * 
+ * PROCESS:
+ * 1. Resolve customer email (auth_email ↔ contact_email mapping via UserProfile)
+ * 2. Fetch local orders (non-superseded, non-cancelled)
+ * 3. Query Hub for same customer's orders via getOrderUpdatesForCustomerApp
+ * 4. Expand Hub subscription orders into individual fulfillment records
+ * 5. Expand local subscription orders via FulfillmentTask references
+ * 6. Merge: Hub wins on order_number collision; local fills missing address/phone
+ * 7. Return merged list sorted by creation date (newest first)
+ * 
+ * FULFILLMENT TASK EXPANSION: Subscription orders from Hub are expanded into individual
+ * fulfillment display records (one per weekly/monthly delivery). This ensures the customer
+ * sees "1 Oasis, 1 Aura, 1 Re-Nu" per delivery, not parent "0-item" records.
+ * 
+ * Called by: pages/OrderHistory (customer-facing order list)
+ * Hub Integration: Hub remains authoritative; Customer App displays and reads only.
  */
 Deno.serve(async (req) => {
   try {
