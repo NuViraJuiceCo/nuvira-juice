@@ -27,6 +27,21 @@ Deno.serve(async (req) => {
         .map(o => (o.order_number || '').toString().replace(/^#/, '').trim().toLowerCase())
         .filter(Boolean)
     );
+    // Also track customer emails that have ONLY cancelled orders (no live orders)
+    // so we can suppress ALL their Hub orders from showing up
+    const allEmailsWithLiveOrders = new Set(
+      allLocalOrders
+        .filter(o => o.status !== 'cancelled' && !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB')))
+        .map(o => o.customer_email?.toLowerCase())
+        .filter(Boolean)
+    );
+    const cancelledCustomerEmails = new Set(
+      allLocalOrders
+        .filter(o => o.status === 'cancelled')
+        .map(o => o.customer_email?.toLowerCase())
+        .filter(email => email && !allEmailsWithLiveOrders.has(email))
+    );
+    console.log(`[AdminOrders] Cancelled-only customers (suppress Hub): ${[...cancelledCustomerEmails].join(', ')}`);
     const localOrders = allLocalOrders.filter(o => {
       if (o.notes && o.notes.includes('SUPERSEDED_BY_HUB')) return false;
       if (o.status === 'cancelled') return false;
@@ -88,7 +103,17 @@ Deno.serve(async (req) => {
     let allHubOrders = [];
 
     if (hubBase && hubSecret) {
-      const fetches = Array.from(hubQueryEmails).map(async (hubEmail) => {
+      // Fetch in batches of 5 to avoid Hub rate limiting
+      const emailList = Array.from(hubQueryEmails);
+      const BATCH_SIZE = 5;
+
+      const fetchOne = async (hubEmail) => {
+        // Skip entirely for customers whose only local orders are cancelled
+        const authEmailForCheck = (contactToAuth[hubEmail] || hubEmail).toLowerCase();
+        if (cancelledCustomerEmails.has(authEmailForCheck) || cancelledCustomerEmails.has(hubEmail.toLowerCase())) {
+          console.log(`[AdminOrders] Skipping Hub fetch for cancelled customer: ${hubEmail}`);
+          return [];
+        }
         try {
           const url = `${hubBase}/functions/getOrderUpdatesForCustomerApp?email=${encodeURIComponent(hubEmail)}`;
           const res = await fetch(url, {
@@ -102,16 +127,12 @@ Deno.serve(async (req) => {
           const rawOrders = data.orders || [];
           if (rawOrders.length === 0) return [];
 
-          // Resolve back to auth email for display
           const authEmail = contactToAuth[hubEmail] || hubEmail;
-
-          // Helper: resolve best available value with profile fallback
           const resolveField = (hubVal, profileVal) => hubVal || profileVal || '';
           const authKey = authEmail.toLowerCase();
 
           const expanded = [];
           for (const order of rawOrders) {
-            // Hub customer name (may come as customer_name or full_name)
             const hubName = order.customer_name || order.full_name || '';
             const resolvedName = resolveField(hubName, emailToName[authKey]);
             const resolvedPhone = resolveField(order.contact_phone || order.phone, emailToPhone[authKey]);
@@ -121,16 +142,13 @@ Deno.serve(async (req) => {
             if (Array.isArray(fulfillments) && fulfillments.length > 0) {
               for (const f of fulfillments) {
                 const baseOrderNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
-                // Per-fulfillment address/phone may differ; fallback to order-level then profile
                 const fAddress = resolveField(f.delivery_address || order.delivery_address, emailToAddress[authKey]);
                 const fPhone = resolveField(f.contact_phone || order.contact_phone || order.phone, emailToPhone[authKey]);
                 expanded.push({
                   id: `hub_${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
                   hub_order_id: order.id || order.shopify_order_id || null,
                   hub_fulfillment_number: f.fulfillment_number,
-                  order_number: f.fulfillment_number === 1
-                    ? baseOrderNum
-                    : `${baseOrderNum}-${f.fulfillment_number}`,
+                  order_number: f.fulfillment_number === 1 ? baseOrderNum : `${baseOrderNum}-${f.fulfillment_number}`,
                   customer_email: authEmail,
                   customer_name: resolvedName,
                   hub_customer_email: order.customer_email || hubEmail,
@@ -177,10 +195,14 @@ Deno.serve(async (req) => {
           console.warn(`[AdminOrders] Hub error for ${hubEmail}: ${err.message}`);
           return [];
         }
-      });
+      };
 
-      const results = await Promise.all(fetches);
-      allHubOrders = results.flat();
+      // Process in batches of 5 to avoid Hub rate limiting
+      for (let i = 0; i < emailList.length; i += BATCH_SIZE) {
+        const batch = emailList.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(fetchOne));
+        allHubOrders.push(...batchResults.flat());
+      }
       console.log(`[AdminOrders] Hub returned ${allHubOrders.length} expanded orders across ${hubQueryEmails.size} customers`);
     }
 
