@@ -26,12 +26,45 @@ Deno.serve(async (req) => {
 
     // ── 1. Local orders ──────────────────────────────────────────────────────
     const allLocalOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
-    const localDelivery = allLocalOrders.filter(o =>
-      o.fulfillment_type === 'delivery' &&
-      QUEUED_STATUSES.includes(o.status) &&
-      !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB'))
-    );
-    console.log(`[Route] Local delivery orders: ${localDelivery.length}`);
+    
+    // Fetch FulfillmentTasks for expanding local subscription orders
+    let fulfillmentTasks = [];
+    if (allLocalOrders.length > 0) {
+      fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.list('-created_date', 500);
+    }
+    
+    // Filter + expand local orders: subscriptions become individual fulfillments, others stay as-is
+    let localDelivery = [];
+    for (const o of allLocalOrders) {
+      if (o.fulfillment_type !== 'delivery' || !QUEUED_STATUSES.includes(o.status) || (o.notes && o.notes.includes('SUPERSEDED_BY_HUB'))) {
+        continue;
+      }
+      
+      const tasksForOrder = fulfillmentTasks.filter(t => t.order_id === o.id);
+      if (tasksForOrder.length > 0) {
+        // Subscription: expand each fulfillment task
+        for (const task of tasksForOrder) {
+          localDelivery.push({
+            id: task.id,
+            order_number: o.order_number + (tasksForOrder.length > 1 ? `-${task.fulfillment_number || 1}` : ''),
+            customer_email: o.customer_email,
+            customer_name: o.customer_name || '',
+            status: o.status,
+            fulfillment_type: 'delivery',
+            delivery_address: o.delivery_address || '',
+            contact_phone: o.contact_phone || '',
+            estimated_delivery_date: task.delivery_date || o.estimated_delivery_date,
+            items: task.items || o.items || [],
+            notes: o.notes || '',
+            is_local_fulfillment_expansion: true,
+          });
+        }
+      } else {
+        // Regular order: use as-is
+        localDelivery.push(o);
+      }
+    }
+    console.log(`[Route] Local delivery orders (after expansion): ${localDelivery.length}`);
 
     // ── 2. Hub orders (same approach as getAdminOrdersWithHub) ───────────────
     const hubApiUrl = Deno.env.get('HUB_API_URL');
