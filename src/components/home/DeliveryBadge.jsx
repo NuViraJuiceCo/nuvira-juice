@@ -9,15 +9,6 @@ export default function DeliveryBadge({ scheduleRules }) {
   const text = getDeliveryShortText(scheduleRules);
   const productionInfo = getProductionInfo(scheduleRules);
 
-  if (isBeforeLaunch) {
-    return (
-      <div className="flex items-center gap-1.5 bg-secondary/70 rounded-full px-3 py-1.5">
-        <Clock className="w-3 h-3 text-muted-foreground" />
-        <span className="text-[10px] font-medium text-foreground">Coming May 1st</span>
-      </div>
-    );
-  }
-
   if (productionInfo) {
     return (
       <div className="flex items-center gap-1.5 bg-amber-100 rounded-full px-3 py-1.5">
