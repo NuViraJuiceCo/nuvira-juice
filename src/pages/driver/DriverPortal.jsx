@@ -312,10 +312,10 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isDelivered ? 'bg-green-100 text-green-600' : 'bg-primary/10 text-primary'}`}>
           {isDelivered ? <CheckCircle2 className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
         </div>
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <div className="flex items-center gap-1.5 mb-0.5 overflow-hidden">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
             <p className="text-sm font-bold shrink-0">#{order.order_number}</p>
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isDelivered ? 'bg-green-100 text-green-700' : 'bg-primary/10 text-primary'}`}>
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full truncate min-w-0 ${isDelivered ? 'bg-green-100 text-green-700' : 'bg-primary/10 text-primary'}`}>
               {isDelivered ? 'Done ✓' : DELIVERY_STAGES.find(s => s.key === order.status)?.label || order.status}
             </span>
           </div>
@@ -329,9 +329,9 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0 ml-1">
-          {order.leg_duration_seconds && <span className="text-[10px] text-muted-foreground">{formatDuration(order.leg_duration_seconds)}</span>}
-          {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+        <div className="flex items-center gap-1 shrink-0 ml-1">
+          {order.leg_duration_seconds && <span className="text-[10px] text-muted-foreground whitespace-nowrap">{formatDuration(order.leg_duration_seconds)}</span>}
+          {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
         </div>
       </button>
 
@@ -723,7 +723,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
   const routeReturnCount = todaysBagReturns.filter(r => r.verification_status === 'requested').length;
 
   return (
-    <div className="pb-10">
+    <div className="pb-10 overflow-x-hidden w-full">
       {/* Multi-day overview */}
       {ordersByDate.length > 0 && (
         <div className="px-4 pt-4">
