@@ -9,6 +9,50 @@ const PREORDER_END      = new Date('2026-04-30T23:59:59');
 const FULFILLMENT_DATE  = '2026-05-01'; // Production / payment capture day: May 1, 2026
 const DELIVERY_DATE     = '2026-05-02'; // First delivery date: May 2, 2026
 
+/**
+ * Calculate next delivery date using NuVira's exact rules
+ * Timezone: America/Chicago
+ */
+function calculateDeliveryDate(orderTime = new Date()) {
+  const chicagoFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const parts = chicagoFormatter.formatToParts(orderTime);
+  const partMap = {};
+  parts.forEach(part => {
+    partMap[part.type] = part.value;
+  });
+
+  const chicagoYear = parseInt(partMap.year);
+  const chicagoMonth = parseInt(partMap.month) - 1;
+  const chicagoDay = parseInt(partMap.day);
+  const chicagoHour = parseInt(partMap.hour);
+
+  const chicagoDate = new Date(chicagoYear, chicagoMonth, chicagoDay, chicagoHour, 0);
+  const dayOfWeek = chicagoDate.getDay();
+  const cutoffHour = 14; // 2 PM
+
+  let daysToAdd = 0;
+  if (dayOfWeek === 0) daysToAdd = 3;       // Sun → Wed
+  else if (dayOfWeek === 1) daysToAdd = 2;  // Mon → Wed
+  else if (dayOfWeek === 2) daysToAdd = chicagoHour < cutoffHour ? 1 : 4; // Tue
+  else if (dayOfWeek === 3) daysToAdd = 3;  // Wed → Sat
+  else if (dayOfWeek === 4) daysToAdd = 2;  // Thu → Sat
+  else if (dayOfWeek === 5) daysToAdd = chicagoHour < cutoffHour ? 1 : 2; // Fri
+  else if (dayOfWeek === 6) daysToAdd = 1;  // Sat → Sun
+
+  const deliveryDate = new Date(chicagoDate);
+  deliveryDate.setDate(deliveryDate.getDate() + daysToAdd);
+  return deliveryDate.toISOString().split('T')[0];
+}
+
 function isPreorderWindow() {
   const now = new Date();
   return now >= PREORDER_START && now <= PREORDER_END;
@@ -115,40 +159,43 @@ Deno.serve(async (req) => {
       discounts = [{ coupon: coupon.id }];
     }
 
+    // Calculate delivery date using NuVira's exact rules (backend source of truth)
+    const calculatedDeliveryDate = preorder ? DELIVERY_DATE : calculateDeliveryDate();
+
     // Store checkout session data for webhook to retrieve after payment
     const checkoutData = {
-      order_number: orderNumber,
-      customer_email: customer_email || '',
-      customer_name: customer_name || '',
-      // Structured address fields for Hub sync
-      address_line1: address_line1 || '',
-      address_line2: address_line2 || '',
-      address_city: address_city || '',
-      address_state: address_state || '',
-      address_postal_code: address_postal_code || '',
-      address_country: 'US',
-      items: items.map(i => ({
-        product_id: i.product_id,
-        title: i.title,
-        price: i.price,
-        quantity: i.quantity,
-        image_url: i.image_url,
-      })),
-      subtotal,
-      delivery_fee: effectiveDeliveryFee,
-      total: effectiveTotal,
-      fulfillment_type: fulfillment_type || 'delivery',
-      delivery_address: delivery_address || '',
-      contact_phone: contact_phone || '',
-      estimated_delivery_date: preorder ? DELIVERY_DATE : (estimated_delivery_date || null),
-      preorder_fulfillment_date: preorder ? FULFILLMENT_DATE : null,
-      referral_code: (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
-      points_used: points_used || 0,
-      points_discount: points_discount || 0,
-      active_reward: active_reward || null,
-      reward_discount: reward_discount || 0,
-      credits_discount: credits_discount || 0,
-      is_preorder: preorder,
+     order_number: orderNumber,
+     customer_email: customer_email || '',
+     customer_name: customer_name || '',
+     // Structured address fields for Hub sync
+     address_line1: address_line1 || '',
+     address_line2: address_line2 || '',
+     address_city: address_city || '',
+     address_state: address_state || '',
+     address_postal_code: address_postal_code || '',
+     address_country: 'US',
+     items: items.map(i => ({
+       product_id: i.product_id,
+       title: i.title,
+       price: i.price,
+       quantity: i.quantity,
+       image_url: i.image_url,
+     })),
+     subtotal,
+     delivery_fee: effectiveDeliveryFee,
+     total: effectiveTotal,
+     fulfillment_type: fulfillment_type || 'delivery',
+     delivery_address: delivery_address || '',
+     contact_phone: contact_phone || '',
+     estimated_delivery_date: calculatedDeliveryDate,
+     preorder_fulfillment_date: preorder ? FULFILLMENT_DATE : null,
+     referral_code: (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
+     points_used: points_used || 0,
+     points_discount: points_discount || 0,
+     active_reward: active_reward || null,
+     reward_discount: reward_discount || 0,
+     credits_discount: credits_discount || 0,
+     is_preorder: preorder,
     };
 
     // Pass minimal data in metadata for webhook (Stripe has 500 char limit per value)
