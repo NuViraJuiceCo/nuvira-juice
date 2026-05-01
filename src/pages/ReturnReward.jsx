@@ -35,8 +35,8 @@ const steps = [
 ];
 
 const credits = [
-  { type: 'Small Lunch Bag', amount: '$1', sub: 'Used for 3-bottle orders' },
-  { type: 'Tote Bag', amount: '$2', sub: 'Used for 4–12 bottle orders' },
+  { type: 'Small Lunch Bag', amount: '$1', sub: 'Up to 12 bottles' },
+  { type: 'Tote Bag', amount: '$2', sub: 'Large reusable tote' },
 ];
 
 const eligibility = [
