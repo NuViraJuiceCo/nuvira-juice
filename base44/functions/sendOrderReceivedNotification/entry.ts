@@ -26,6 +26,29 @@ Deno.serve(async (req) => {
       `<tr><td style="padding: 8px;">${item.title}</td><td style="padding: 8px;">x${item.quantity}</td><td style="padding: 8px;">$${(item.price * item.quantity).toFixed(2)}</td></tr>`
     ).join('') || '';
 
+    // Format delivery date safely
+    let deliveryDateHtml = '';
+    if (estimated_delivery_date) {
+      try {
+        const date = new Date(estimated_delivery_date + 'T00:00:00Z');
+        if (!isNaN(date.getTime())) {
+          const formatted = new Intl.DateTimeFormat('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+          }).format(date);
+          deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> ${formatted}</p>`;
+        } else {
+          deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Your delivery date is being confirmed and will be updated shortly.</p>`;
+        }
+      } catch {
+        deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Your delivery date is being confirmed and will be updated shortly.</p>`;
+      }
+    } else {
+      deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Your delivery date is being confirmed and will be updated shortly.</p>`;
+    }
+
     const html = `
 <!DOCTYPE html>
 <html>
@@ -59,7 +82,7 @@ Deno.serve(async (req) => {
       <div class="order-details">
         <h2>Order #${order_number || order_id}</h2>
         <p><strong>Status:</strong> Order Received — Scheduled for Juicing</p>
-        ${estimated_delivery_date ? `<p><strong>Estimated Delivery:</strong> ${new Date(estimated_delivery_date).toLocaleDateString()}</p>` : ''}
+        ${deliveryDateHtml}
         ${delivery_address ? `<p><strong>Delivery Address:</strong> ${delivery_address}</p>` : ''}
       </div>
 

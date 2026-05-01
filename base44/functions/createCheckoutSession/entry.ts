@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
           capture_method: 'manual', // authorize only — captured on May 1
           metadata: sessionMetadata,
         },
-        success_url: `${origin}/order-confirmation?session_id={CHECKOUT_SESSION_ID}&preorder=true`,
+        success_url: `${origin}/order-confirmation?order_number=${orderNumber}&preorder=true`,
         cancel_url: `${origin}/checkout`,
         customer_email: customer_email || undefined,
         ...(discounts.length > 0 ? { discounts } : {}),
@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
         payment_method_types: ['card'],
         line_items: lineItems,
         mode: 'payment',
-        success_url: `${origin}/order-confirmation?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${origin}/order-confirmation?order_number=${orderNumber}`,
         cancel_url: `${origin}/checkout`,
         customer_email: customer_email || undefined,
         ...(discounts.length > 0 ? { discounts } : {}),

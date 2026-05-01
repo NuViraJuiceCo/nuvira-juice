@@ -292,7 +292,12 @@ export default function Checkout() {
     });
 
     if (res.data?.url) {
-      window.location.href = res.data.url;
+      // Stripe returns to browser immediately, but don't navigate yet
+      // First, ensure we give the backend time to create the order
+      const checkoutUrl = res.data.url;
+      console.log('Redirecting to Stripe checkout:', checkoutUrl);
+      // Navigate to Stripe checkout
+      window.location.href = checkoutUrl;
     } else {
       const errMsg = res.data?.error || 'Failed to start checkout. Please try again.';
       toast.error(errMsg);

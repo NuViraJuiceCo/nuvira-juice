@@ -10,17 +10,35 @@ import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
 export default function OrderConfirmation() {
-  const orderId = window.location.pathname.split('/').pop();
   const navigate = useNavigate();
   const { user } = useAuth();
+  
+  // Support both old path-based and new query param-based lookups
+  const pathOrderId = window.location.pathname.split('/').pop();
+  const queryParams = new URLSearchParams(window.location.search);
+  const orderNumber = queryParams.get('order_number');
+  
+  const lookupKey = orderNumber || pathOrderId;
 
   const { data: order, isLoading } = useQuery({
-    queryKey: ['order', orderId],
+    queryKey: ['order-confirmation', lookupKey, user?.email],
     queryFn: async () => {
-      const orders = await base44.entities.Order.filter({ id: orderId });
-      return orders[0];
+      if (!lookupKey) return null;
+      
+      // Try by ID first (old path-based), then by order_number (new Stripe success URL)
+      let orders = [];
+      if (orderNumber) {
+        // New: query by order_number + customer_email
+        orders = await base44.entities.Order.filter({ order_number: orderNumber, customer_email: user?.email || '' });
+      } else {
+        // Old: query by ID
+        orders = await base44.entities.Order.filter({ id: lookupKey });
+      }
+      return orders[0] || null;
     },
-    enabled: !!orderId,
+    enabled: !!lookupKey && !!user?.email,
+    retry: 3, // Retry up to 3 times in case webhook is still processing
+    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 5000), // exponential backoff
   });
 
   if (isLoading) {
