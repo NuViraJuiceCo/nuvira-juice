@@ -1,0 +1,71 @@
+{
+  "name": "OrderSyncLog",
+  "type": "object",
+  "properties": {
+    "order_number": {
+      "type": "string",
+      "description": "Order number (e.g. NV-MONI2Z3R)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "error",
+        "recovery",
+        "pending"
+      ],
+      "default": "pending",
+      "description": "Sync status"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed sync log message (up to 1000 chars)",
+      "maxLength": 1000
+    },
+    "started_at": {
+      "type": "string",
+      "description": "ISO timestamp when sync started"
+    },
+    "completed_at": {
+      "type": "string",
+      "description": "ISO timestamp when sync completed"
+    },
+    "triggered_by": {
+      "type": "string",
+      "enum": [
+        "stripe_webhook",
+        "stripe_webhook_preorder",
+        "recovery_function",
+        "manual",
+        "cron_poll"
+      ],
+      "description": "What triggered this sync"
+    }
+  },
+  "required": [
+    "order_number",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
