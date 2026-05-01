@@ -41,7 +41,16 @@ export default function ProductDetail() {
     const extra = {};
     if (product.category === 'bundle') {
       extra.bottles_per_unit = product.bottle_count || 3;
-      extra.bundle_composition = [];
+      // NuVira Trio has fixed composition: 1 RE-NU, 1 OASIS, 1 AURA
+      if (product.title?.includes('Trio')) {
+        extra.bundle_composition = [
+          { product_id: 're-nu', product_name: 'RE-NU', quantity: 1 },
+          { product_id: 'oasis', product_name: 'OASIS', quantity: 1 },
+          { product_id: 'aura', product_name: 'AURA', quantity: 1 },
+        ];
+      } else {
+        extra.bundle_composition = [];
+      }
     }
     addItem(product, quantity, extra);
     toast.success(`${product.title} added to cart`);
