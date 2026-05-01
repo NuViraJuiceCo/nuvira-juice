@@ -51,6 +51,19 @@ Deno.serve(async (req) => {
       address_postal_code = stateZip[1] || '';
     }
 
+    // Infer order_type from order characteristics
+    let order_type = 'one_time'; // default
+    if (order.stripe_payment_intent_id && !order.stripe_checkout_session_id) {
+      // Subscription orders from createSubscriptionSession don't have checkout_session_id
+      order_type = 'subscription';
+    } else if (order.notes && order.notes.includes('Subscription')) {
+      // Hub subscription orders have "Subscription" in notes
+      order_type = 'subscription';
+    }
+
+    // Derive fulfillment_mode from order_type
+    const fulfillment_mode = order_type === 'subscription' ? 'multi_delivery' : 'single_delivery';
+
     const payload = {
       event: 'order.created',
       source: 'customer_app',
@@ -95,6 +108,9 @@ Deno.serve(async (req) => {
         stripe_checkout_session_id: order.stripe_checkout_session_id || null,
         stripe_payment_intent_id: order.stripe_payment_intent_id || null,
         created_date: order.created_date,
+        // New Hub order architecture fields (effective 2026-05-01)
+        order_type,
+        fulfillment_mode,
       },
     };
 
