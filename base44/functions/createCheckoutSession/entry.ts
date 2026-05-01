@@ -198,12 +198,29 @@ Deno.serve(async (req) => {
      is_preorder: preorder,
     };
 
-    // Pass minimal data in metadata for webhook (Stripe has 500 char limit per value)
+    // Pass customer profile, delivery, and order metadata to Stripe for recovery
+    // Stripe metadata has 500 char limit per value, so keep values concise
     const sessionMetadata = {
       base44_app_id: Deno.env.get('BASE44_APP_ID'),
       order_number: orderNumber,
       is_preorder: preorder ? 'true' : 'false',
+      // Customer profile recovery
       customer_email: customer_email || '',
+      customer_name: customer_name || '',
+      customer_phone: contact_phone || '',
+      // Delivery address recovery (use selected checkout address)
+      delivery_method: fulfillment_type || 'delivery',
+      delivery_address_line1: address_line1 || '',
+      delivery_address_line2: address_line2 || '',
+      delivery_city: address_city || '',
+      delivery_state: address_state || '',
+      delivery_postal_code: address_postal_code || '',
+      // Delivery dates
+      requested_delivery_date: calculatedDeliveryDate,
+      production_date: preorder ? FULFILLMENT_DATE : '',
+      // Order classification
+      source_app: 'customer_app',
+      checkout_version: '1.0',
     };
 
     let session;
@@ -214,6 +231,7 @@ Deno.serve(async (req) => {
         payment_method_types: ['card'],
         line_items: lineItems,
         mode: 'payment',
+        client_reference_id: orderNumber, // Reconciliation key
         payment_intent_data: {
           capture_method: 'manual', // authorize only — captured on May 1
           metadata: sessionMetadata,
@@ -225,13 +243,14 @@ Deno.serve(async (req) => {
         metadata: sessionMetadata,
       });
 
-      console.log(`Pre-order session created: ${session.id} for order ${orderNumber}`);
+      console.log(`Pre-order session created: ${session.id} for order ${orderNumber}, customer: ${customer_email}`);
     } else {
       // REGULAR ORDER: Immediate payment
       session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: lineItems,
         mode: 'payment',
+        client_reference_id: orderNumber, // Reconciliation key
         success_url: `${origin}/order-confirmation?order_number=${orderNumber}`,
         cancel_url: `${origin}/checkout`,
         customer_email: customer_email || undefined,
@@ -239,7 +258,7 @@ Deno.serve(async (req) => {
         metadata: sessionMetadata,
       });
 
-      console.log(`Regular checkout session created: ${session.id} for order ${orderNumber}`);
+      console.log(`Regular checkout session created: ${session.id} for order ${orderNumber}, customer: ${customer_email}`);
     }
 
     // Store checkout data for webhook retrieval (expires in 24 hours)
