@@ -191,6 +191,20 @@ export default function Checkout() {
       return;
     }
 
+    // Resolve customer_name with fallback priority
+    // 1. User's full_name from auth
+    // 2. Profile first_name + last_name
+    // 3. If still missing, block checkout
+    const resolvedName = (user?.full_name || '').trim() ||
+      ((userProfile?.first_name || '') + ' ' + (userProfile?.last_name || '')).trim() ||
+      '';
+
+    if (!resolvedName) {
+      toast.error('Please complete your profile with your full name before placing an order');
+      navigate('/account-setup');
+      return;
+    }
+
     const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
     if (fulfillmentType === 'delivery' && !address.street.trim()) {
       toast.error('Please enter a delivery address');
@@ -281,7 +295,7 @@ export default function Checkout() {
       contact_phone: phone.trim(),
       estimated_delivery_date: deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : null,
       customer_email: user?.email || null,
-      customer_name: user?.full_name || '',
+      customer_name: resolvedName,
       points_discount: pointsDiscount,
       points_used: pointsUsed,
       credits_discount: creditsDiscount,

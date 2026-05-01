@@ -75,7 +75,17 @@ Deno.serve(async (req) => {
 
     const preorder = force_preorder || isPreorderWindow();
 
+    // CRITICAL: Block checkout if customer_name is missing
+    if (!customer_name || !customer_name.trim()) {
+      console.error(`❌ CHECKOUT BLOCKED: customer_name is missing or empty. Email: ${customer_email}`);
+      return Response.json(
+        { error: 'Customer name is required. Please complete your profile before placing an order.' },
+        { status: 400 }
+      );
+    }
 
+    // Log metadata payload before Stripe session creation
+    console.log(`[Checkout] Starting for customer: ${customer_email}, name: ${customer_name}, order_type: ${preorder ? 'preorder' : 'one_time'}`);
 
     // --- Subscription perks: look up active subscription for this customer ---
     let subFreeDelivery = false;
@@ -228,6 +238,11 @@ Deno.serve(async (req) => {
     };
 
     let session;
+
+    // Log resolved metadata before creating Stripe session
+    console.log(`[Metadata] Resolved customer_name: "${customer_name}"`);
+    console.log(`[Metadata] Checkout metadata keys: ${Object.keys(sessionMetadata).join(', ')}`);
+    console.log(`[Metadata] customer_name in metadata: "${sessionMetadata.customer_name}"`);
 
     if (preorder) {
        // PRE-ORDER: Checkout session with manual capture

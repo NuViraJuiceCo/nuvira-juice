@@ -40,6 +40,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing plan_id or customer_email' }, { status: 400 });
     }
 
+    // CRITICAL: Block subscription checkout if customer_name is missing
+    if (!customer_name || !customer_name.trim()) {
+      console.error(`❌ SUBSCRIPTION CHECKOUT BLOCKED: customer_name is missing. Email: ${customer_email}`);
+      return Response.json(
+        { error: 'Customer name is required. Please complete your profile before subscribing.' },
+        { status: 400 }
+      );
+    }
+
     // Fetch plan details for metadata
     const plan = await base44.asServiceRole.entities.SubscriptionPlan.filter({ id: plan_id });
     if (plan.length === 0) {
