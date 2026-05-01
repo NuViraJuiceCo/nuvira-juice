@@ -21,22 +21,23 @@ export default function OrderConfirmation() {
   const lookupKey = orderNumber || pathOrderId;
 
   const { data: order, isLoading } = useQuery({
-    queryKey: ['order-confirmation', lookupKey, user?.email],
+    queryKey: ['order-confirmation', lookupKey],
     queryFn: async () => {
       if (!lookupKey) return null;
       
       // Try by ID first (old path-based), then by order_number (new Stripe success URL)
+      // NOTE: query by order_number only (don't filter by email) — order is public after checkout redirect
       let orders = [];
       if (orderNumber) {
-        // New: query by order_number + customer_email
-        orders = await base44.entities.Order.filter({ order_number: orderNumber, customer_email: user?.email || '' });
+        // New: query by order_number only (Stripe redirects immediately, before auth context reloads)
+        orders = await base44.entities.Order.filter({ order_number: orderNumber });
       } else {
         // Old: query by ID
         orders = await base44.entities.Order.filter({ id: lookupKey });
       }
       return orders[0] || null;
     },
-    enabled: !!lookupKey && !!user?.email,
+    enabled: !!lookupKey,
     retry: 3, // Retry up to 3 times in case webhook is still processing
     retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 5000), // exponential backoff
   });
@@ -75,7 +76,7 @@ export default function OrderConfirmation() {
         transition={{ delay: 0.2 }}
         className="text-center"
       >
-        <h1 className="font-heading text-2xl font-bold mb-1">{user?.full_name ? `Thanks, ${user.full_name}!` : 'Order Confirmed!'}</h1>
+        <h1 className="font-heading text-2xl font-bold mb-1">Your Order is Confirmed!</h1>
         <p className="text-sm text-muted-foreground mb-1">Order #{order.order_number}</p>
         <p className="text-xs text-muted-foreground">We've received your order</p>
       </motion.div>
