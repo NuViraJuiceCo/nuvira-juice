@@ -186,6 +186,7 @@ const AuthenticatedApp = () => {
         <Route path="/driver/returns" element={<DriverPortal />} />
         <Route path="/driver/route" element={<DriverPortal />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/order-confirmation" element={<OrderConfirmation />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
         <Route path="/account-setup" element={<AccountSetup />} />
