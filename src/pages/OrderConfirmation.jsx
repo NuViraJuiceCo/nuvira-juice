@@ -95,7 +95,7 @@ export default function OrderConfirmation() {
             </p>
             <p className="text-xs text-muted-foreground">
               {order.estimated_delivery_date
-                ? format(new Date(order.estimated_delivery_date), 'EEEE, MMMM d')
+                ? `${format(new Date(order.estimated_delivery_date + 'T00:00:00Z'), 'EEEE, MMMM d')} Central Time`
                 : 'Included in our next fresh batch'}
             </p>
           </div>

@@ -43,8 +43,8 @@ export function getDeliveryDisplayText(scheduleRules, fulfillmentType = 'deliver
   const date = getNextDeliveryDate(scheduleRules);
   if (!date) return 'Next available batch';
 
-  const dayName = format(date, 'EEEE');
-  const dateStr = format(date, 'MMM d');
+  const dayName = format(date, 'EEEE', { timeZone: 'America/Chicago' });
+  const dateStr = format(date, 'MMM d', { timeZone: 'America/Chicago' });
 
   if (fulfillmentType === 'pickup') {
     return `Ready for pickup ${dayName}, ${dateStr}`;
@@ -57,7 +57,7 @@ export function getDeliveryShortText(scheduleRules) {
 
   const date = getNextDeliveryDate(scheduleRules);
   if (!date) return 'Next batch';
-  return format(date, 'EEEE, MMM d');
+  return format(date, 'EEEE, MMM d', { timeZone: 'America/Chicago' });
 }
 
 // Returns production info if today is a production day (day before a delivery day)
@@ -80,6 +80,6 @@ export function getProductionInfo(scheduleRules, now = new Date()) {
   return {
     isProductionDay: true,
     deliveryDate,
-    label: `In production today · Delivered ${format(deliveryDate, 'EEEE, MMM d')}`,
+    label: `In production today · Delivered ${format(deliveryDate, 'EEEE, MMM d', { timeZone: 'America/Chicago' })}`,
   };
 }

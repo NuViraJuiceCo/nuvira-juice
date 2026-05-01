@@ -33,12 +33,13 @@ Deno.serve(async (req) => {
         const date = new Date(estimated_delivery_date + 'T00:00:00Z');
         if (!isNaN(date.getTime())) {
           const formatted = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Chicago',
             weekday: 'long',
             month: 'long',
             day: 'numeric',
             year: 'numeric',
           }).format(date);
-          deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> ${formatted}</p>`;
+          deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> ${formatted} Central Time</p>`;
         } else {
           deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Your delivery date is being confirmed and will be updated shortly.</p>`;
         }
