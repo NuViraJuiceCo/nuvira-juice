@@ -35,12 +35,20 @@ Deno.serve(async (req) => {
         .map(o => o.customer_email?.toLowerCase())
         .filter(Boolean)
     );
-    const cancelledCustomerEmails = new Set(
-      allLocalOrders
-        .filter(o => o.status === 'cancelled')
-        .map(o => o.customer_email?.toLowerCase())
-        .filter(email => email && !allEmailsWithLiveOrders.has(email))
-    );
+    // cancelledCustomerEmails = emails that appear ONLY in cancelled orders (no live orders at all)
+    // We suppress ALL Hub queries for these customers.
+    // We add BOTH the auth email AND any contact_email alias so the Hub-query skip fires regardless
+    // of which email variant we use to query the Hub.
+    const cancelledCustomerEmails = new Set();
+    for (const o of allLocalOrders) {
+      if (o.status !== 'cancelled') continue;
+      const email = o.customer_email?.toLowerCase();
+      if (!email || allEmailsWithLiveOrders.has(email)) continue;
+      cancelledCustomerEmails.add(email);
+      // Also add the contact_email alias used to query Hub
+      const contactAlias = authToContact[o.customer_email]?.toLowerCase();
+      if (contactAlias) cancelledCustomerEmails.add(contactAlias);
+    }
     console.log(`[AdminOrders] Cancelled-only customers (suppress Hub): ${[...cancelledCustomerEmails].join(', ')}`);
     const localOrders = allLocalOrders.filter(o => {
       if (o.notes && o.notes.includes('SUPERSEDED_BY_HUB')) return false;
@@ -109,8 +117,10 @@ Deno.serve(async (req) => {
 
       const fetchOne = async (hubEmail) => {
         // Skip entirely for customers whose only local orders are cancelled
-        const authEmailForCheck = (contactToAuth[hubEmail] || hubEmail).toLowerCase();
-        if (cancelledCustomerEmails.has(authEmailForCheck) || cancelledCustomerEmails.has(hubEmail.toLowerCase())) {
+        // Check both the hub email itself AND its resolved auth email
+        const normalizedHub = hubEmail.toLowerCase();
+        const resolvedAuth = (contactToAuth[normalizedHub] || normalizedHub);
+        if (cancelledCustomerEmails.has(normalizedHub) || cancelledCustomerEmails.has(resolvedAuth)) {
           console.log(`[AdminOrders] Skipping Hub fetch for cancelled customer: ${hubEmail}`);
           return [];
         }
