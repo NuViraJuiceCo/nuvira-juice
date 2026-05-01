@@ -255,14 +255,29 @@ Deno.serve(async (req) => {
       };
     });
 
+    // Add return-to-origin as final stop (for display only, not a customer delivery)
+    const returnToOrigin = {
+      id: 'return_to_origin',
+      order_number: 'RETURN',
+      customer_name: 'Return to NuVira Base',
+      delivery_address: ORIGIN,
+      contact_phone: '',
+      is_return_stop: true,
+      status: 'return_to_origin',
+      leg_distance_meters: null,
+      leg_duration_seconds: null,
+    };
+    const optimizedOrdersWithReturn = [...ordersWithLegs, returnToOrigin];
+
     const totalDistanceMeters = route.distanceMeters || 0;
     const totalDurationSeconds = route.duration ? parseInt(route.duration.replace('s', '')) : 0;
 
     return Response.json({
       orders: deliveryOrders,
-      optimized_orders: ordersWithLegs,
+      optimized_orders: optimizedOrdersWithReturn,
       total_distance_miles: Math.round((totalDistanceMeters / 1609.344) * 10) / 10,
       total_duration_minutes: Math.round(totalDurationSeconds / 60),
+      customer_delivery_count: optimizedOrders.length,
     });
 
   } catch (error) {
