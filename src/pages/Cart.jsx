@@ -266,11 +266,11 @@ export default function Cart() {
               </div>
 
               {/* Fixed Bundle Composition — programs and "The NuVira Trio" */}
-              {item.category === 'bundle' && (item.is_program || item.title?.includes('Trio') || item.bundle_composition?.length > 0) && (
+              {item.category === 'bundle' && (item.is_program || item.title?.includes('Trio')) && item.bundle_composition?.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-border/40">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Program Includes</p>
                   <div className="space-y-2">
-                    {item.bundle_composition && item.bundle_composition.map(comp => {
+                    {item.bundle_composition.map(comp => {
                       const juice = juices.find(j => j.id === comp.product_id || j.title?.toLowerCase().includes(comp.product_name?.toLowerCase()));
                       return (
                         <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
@@ -296,7 +296,7 @@ export default function Cart() {
               )}
 
               {/* Bundle Composer — custom bundles only (NOT programs or NuVira Trio) */}
-              {item.category === 'bundle' && !item.is_program && !item.title?.includes('Trio') && (!item.bundle_composition || item.bundle_composition.length === 0) && item.bottles_per_unit && (
+              {item.category === 'bundle' && !item.is_program && !item.title?.includes('Trio') && item.bundle_composition?.length === 0 && item.bottles_per_unit && (
                 <BundleComposer
                   bundleSize={item.bottles_per_unit * item.quantity}
                   composition={item.bundle_composition || []}
