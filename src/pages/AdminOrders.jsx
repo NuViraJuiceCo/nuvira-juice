@@ -341,7 +341,7 @@ export default function AdminOrders() {
               onAdvance={handleAdvance}
               onGoBack={handleGoBack}
               isAdvancing={advancingId === order.id}
-              customerName={nameMap[order.customer_email] || null}
+              customerName={nameMap[order.customer_email] || order.customer_name || null}
             />
           ))
         )}

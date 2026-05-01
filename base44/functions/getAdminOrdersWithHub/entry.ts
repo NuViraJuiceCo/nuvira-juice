@@ -40,13 +40,26 @@ Deno.serve(async (req) => {
     //    record was superseded and would otherwise be invisible.
     const profiles = await base44.asServiceRole.entities.UserProfile.list('-created_date', 500);
 
-    // Build bidirectional auth_email <-> contact_email maps
+    // Build bidirectional auth_email <-> contact_email maps, and a name lookup map
     const authToContact = {};
     const contactToAuth = {};
+    const emailToName = {};    // auth_email -> "First Last"
+    const emailToPhone = {};   // auth_email -> phone
+    const emailToAddress = {}; // auth_email -> address string
     for (const p of profiles) {
-      if (p.customer_email && p.contact_email && p.customer_email !== p.contact_email) {
-        authToContact[p.customer_email] = p.contact_email;
-        contactToAuth[p.contact_email] = p.customer_email;
+      if (p.customer_email) {
+        const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+        if (name) emailToName[p.customer_email.toLowerCase()] = name;
+        if (p.phone) emailToPhone[p.customer_email.toLowerCase()] = p.phone;
+        if (p.address) emailToAddress[p.customer_email.toLowerCase()] = p.address;
+        if (p.contact_email && p.contact_email !== p.customer_email) {
+          authToContact[p.customer_email] = p.contact_email;
+          contactToAuth[p.contact_email] = p.customer_email;
+          // Also index by contact_email so lookups work both ways
+          if (name) emailToName[p.contact_email.toLowerCase()] = name;
+          if (p.phone) emailToPhone[p.contact_email.toLowerCase()] = p.phone;
+          if (p.address) emailToAddress[p.contact_email.toLowerCase()] = p.address;
+        }
       }
     }
 
@@ -92,36 +105,47 @@ Deno.serve(async (req) => {
           // Resolve back to auth email for display
           const authEmail = contactToAuth[hubEmail] || hubEmail;
 
+          // Helper: resolve best available value with profile fallback
+          const resolveField = (hubVal, profileVal) => hubVal || profileVal || '';
+          const authKey = authEmail.toLowerCase();
+
           const expanded = [];
           for (const order of rawOrders) {
+            // Hub customer name (may come as customer_name or full_name)
+            const hubName = order.customer_name || order.full_name || '';
+            const resolvedName = resolveField(hubName, emailToName[authKey]);
+            const resolvedPhone = resolveField(order.contact_phone || order.phone, emailToPhone[authKey]);
+            const resolvedAddress = resolveField(order.delivery_address, emailToAddress[authKey]);
+
             const fulfillments = order.fulfillments;
             if (Array.isArray(fulfillments) && fulfillments.length > 0) {
               for (const f of fulfillments) {
                 const baseOrderNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
+                // Per-fulfillment address/phone may differ; fallback to order-level then profile
+                const fAddress = resolveField(f.delivery_address || order.delivery_address, emailToAddress[authKey]);
+                const fPhone = resolveField(f.contact_phone || order.contact_phone || order.phone, emailToPhone[authKey]);
                 expanded.push({
-                  // Use a stable id that the frontend can use as advancingId key
                   id: `hub_${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
-                  // Store Hub identifiers for status push
                   hub_order_id: order.id || order.shopify_order_id || null,
                   hub_fulfillment_number: f.fulfillment_number,
                   order_number: f.fulfillment_number === 1
                     ? baseOrderNum
                     : `${baseOrderNum}-${f.fulfillment_number}`,
                   customer_email: authEmail,
+                  customer_name: resolvedName,
                   hub_customer_email: order.customer_email || hubEmail,
                   status: mapHubStatus(f.status || order.status),
                   total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
                   subtotal: order.subtotal ? parseFloat((order.subtotal / fulfillments.length).toFixed(2)) : 0,
                   delivery_fee: 0,
                   fulfillment_type: order.fulfillment_type || 'delivery',
-                  delivery_address: order.delivery_address || '',
-                  contact_phone: order.contact_phone || '',
+                  delivery_address: fAddress,
+                  contact_phone: fPhone,
                   estimated_delivery_date: f.delivery_date || null,
                   created_date: f.delivery_date || order.created_date || order.updated_date || null,
                   items: f.items || order.line_items || [],
                   notes: `${order.subscription_plan || 'Subscription'} — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
                   is_hub_order: true,
-                  // NOT is_read_only — admin can always update status
                 });
               }
             } else {
@@ -131,14 +155,15 @@ Deno.serve(async (req) => {
                 hub_order_id: order.id || order.shopify_order_id || null,
                 order_number: baseOrderNum,
                 customer_email: authEmail,
+                customer_name: resolvedName,
                 hub_customer_email: order.customer_email || hubEmail,
                 status: mapHubStatus(order.status),
                 total: order.total || 0,
                 subtotal: order.subtotal || 0,
                 delivery_fee: order.delivery_fee || 0,
                 fulfillment_type: order.fulfillment_type || 'delivery',
-                delivery_address: order.delivery_address || '',
-                contact_phone: order.contact_phone || '',
+                delivery_address: resolvedAddress,
+                contact_phone: resolvedPhone,
                 estimated_delivery_date: order.estimated_delivery_date || null,
                 created_date: order.created_date || order.updated_date || null,
                 items: order.line_items || order.items || [],
