@@ -26,12 +26,17 @@ Deno.serve(async (req) => {
 
     // Fetch all FulfillmentTasks for this customer (used to expand local subscription orders)
     let fulfillmentTasks = [];
-    if (localOrders.length > 0) {
-      fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.filter(
-        { customer_email },
-        '-created_date',
-        200
-      );
+    try {
+      if (localOrders.length > 0) {
+        fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.filter(
+          { customer_email },
+          '-created_date',
+          200
+        );
+      }
+    } catch (err) {
+      // FulfillmentTask may not exist yet — skip expansion
+      console.warn('[Fetch Orders] FulfillmentTask not available, skipping expansion:', err.message);
     }
 
     // 2. Resolve contact_email from UserProfile (handles Apple Sign In relay email)

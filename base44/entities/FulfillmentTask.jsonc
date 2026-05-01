@@ -1,0 +1,112 @@
+{
+  "name": "FulfillmentTask",
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "description": "Reference to the parent Order entity (for subscription orders)"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "fulfillment_number": {
+      "type": "number",
+      "description": "Which delivery in the cycle (1, 2, 3, 4 for monthly)"
+    },
+    "delivery_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Scheduled delivery date for this specific fulfillment"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "image_url": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Line items for this specific fulfillment"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_production",
+        "bottled_packed",
+        "out_for_delivery",
+        "delivered",
+        "cancelled"
+      ],
+      "default": "pending",
+      "description": "Fulfillment-specific status"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes for this fulfillment"
+    }
+  },
+  "required": [
+    "order_id",
+    "customer_email",
+    "fulfillment_number",
+    "delivery_date"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "driver"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "driver"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -29,8 +29,11 @@ Deno.serve(async (req) => {
     
     // Fetch FulfillmentTasks for expanding local subscription orders
     let fulfillmentTasks = [];
-    if (allLocalOrders.length > 0) {
+    try {
       fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.list('-created_date', 500);
+    } catch (err) {
+      // FulfillmentTask may not exist yet — skip expansion
+      console.warn('[Route] FulfillmentTask not available, skipping expansion:', err.message);
     }
     
     // Filter + expand local orders: subscriptions become individual fulfillments, others stay as-is
@@ -40,7 +43,7 @@ Deno.serve(async (req) => {
         continue;
       }
       
-      const tasksForOrder = fulfillmentTasks.filter(t => t.order_id === o.id);
+      const tasksForOrder = fulfillmentTasks.length > 0 ? fulfillmentTasks.filter(t => t.order_id === o.id) : [];
       if (tasksForOrder.length > 0) {
         // Subscription: expand each fulfillment task
         for (const task of tasksForOrder) {

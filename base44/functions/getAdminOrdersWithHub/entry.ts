@@ -26,8 +26,13 @@ Deno.serve(async (req) => {
     
     // Fetch all FulfillmentTasks for expanding local subscription orders
     let fulfillmentTasks = [];
-    if (allLocalOrders.length > 0) {
-      fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.list('-created_date', 500);
+    try {
+      if (allLocalOrders.length > 0) {
+        fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.list('-created_date', 500);
+      }
+    } catch (err) {
+      // FulfillmentTask may not exist yet — skip expansion
+      console.warn('[AdminOrders] FulfillmentTask not available, skipping expansion:', err.message);
     }
     const cancelledOrderNumbers = new Set(
       allLocalOrders
