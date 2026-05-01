@@ -262,14 +262,22 @@ Deno.serve(async (req) => {
     }
 
     // Store checkout data for webhook retrieval (expires in 24 hours)
+    // CRITICAL: This is the recovery layer for webhook — must always succeed
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    await base44.asServiceRole.entities.CheckoutSession.create({
-      stripe_session_id: session.id,
-      order_number: orderNumber,
-      customer_email: customer_email || '',
-      checkout_data: checkoutData,
-      expires_at: expiresAt,
-    });
+    try {
+      await base44.asServiceRole.entities.CheckoutSession.create({
+        stripe_session_id: session.id,
+        order_number: orderNumber,
+        customer_email: customer_email || '',
+        checkout_data: checkoutData,
+        expires_at: expiresAt,
+      });
+      console.log(`CheckoutSession stored: ${session.id} → order ${orderNumber}`);
+    } catch (checkoutErr) {
+      // If CheckoutSession creation fails, webhook will still have order_number in client_reference_id and metadata
+      // This is a safety fallback, not a blocker
+      console.error(`Failed to store CheckoutSession ${session.id}: ${checkoutErr.message} — webhook will use metadata fallback`);
+    }
 
     return Response.json({
       url: session.url,

@@ -24,11 +24,43 @@ Deno.serve(async (req) => {
       const customerEmail = session.customer_email || session.metadata?.customer_email;
       const amountPaid = session.amount_total / 100; // convert cents to dollars
 
-      // Fetch checkout data from entity
+      // Fetch checkout data from entity (recovery layer)
       let orderData = {};
-      const checkoutSessions = await base44.asServiceRole.entities.CheckoutSession.filter({ stripe_session_id: session.id });
-      if (checkoutSessions.length > 0) {
-        orderData = checkoutSessions[0].checkout_data || {};
+      try {
+        const checkoutSessions = await base44.asServiceRole.entities.CheckoutSession.filter({ stripe_session_id: session.id });
+        if (checkoutSessions.length > 0) {
+          orderData = checkoutSessions[0].checkout_data || {};
+          console.log(`CheckoutSession found for ${session.id}, checkout_data loaded`);
+        } else {
+          console.warn(`CheckoutSession not found for ${session.id} — will use metadata fallback`);
+        }
+      } catch (err) {
+        console.error(`Failed to fetch CheckoutSession for ${session.id}: ${err.message} — using metadata fallback`);
+      }
+
+      // Build fallback orderData from Stripe metadata if CheckoutSession is missing
+      // This ensures orders are NEVER lost due to CheckoutSession lookup failures
+      if (!orderData.order_number && session.metadata?.order_number) {
+        console.log(`Reconstructing orderData from Stripe metadata for order ${session.metadata.order_number}`);
+        orderData = {
+          order_number: session.metadata.order_number,
+          customer_email: customerEmail || '',
+          customer_name: session.metadata?.customer_name || '',
+          address_line1: session.metadata?.delivery_address_line1 || '',
+          address_line2: session.metadata?.delivery_address_line2 || '',
+          address_city: session.metadata?.delivery_city || '',
+          address_state: session.metadata?.delivery_state || '',
+          address_postal_code: session.metadata?.delivery_postal_code || '',
+          address_country: 'US',
+          contact_phone: session.metadata?.customer_phone || '',
+          items: [], // Metadata cannot store full items array, will be reconstructed from line_items
+          subtotal: Math.round((session.amount_total || 0) / 100),
+          delivery_fee: 0, // Cannot fully recover from metadata
+          total: Math.round((session.amount_total || 0) / 100),
+          fulfillment_type: session.metadata?.delivery_method || 'delivery',
+          estimated_delivery_date: session.metadata?.requested_delivery_date || null,
+          preorder_fulfillment_date: session.metadata?.production_date || null,
+        };
       }
 
       // For pre-orders: create the order NOW, after payment authorization succeeds
@@ -36,6 +68,20 @@ Deno.serve(async (req) => {
 
         const orderNumber = orderData.order_number || session.metadata?.order_number;
         const paymentIntentId = session.payment_intent;
+
+        // IDEMPOTENCY: Check if pre-order already exists by stripe_payment_intent_id (more reliable for manual capture)
+        const existingPreorders = await base44.asServiceRole.entities.Order.filter({ 
+          stripe_payment_intent_id: paymentIntentId 
+        });
+        if (existingPreorders.length > 0) {
+          console.log(`Pre-order already created for PaymentIntent ${paymentIntentId}: ${existingPreorders[0].order_number}, skipping`);
+          return Response.json({ received: true }); // Idempotent: return success without re-creating
+        }
+
+        // Fallback: if CheckoutSession lookup failed, log warning but continue with metadata
+        if (!orderData.order_number) {
+          console.warn(`CheckoutSession not found for session ${session.id}, using metadata fallback`);
+        }
 
         // Validate referral code if provided
         if (orderData.referral_code && customerEmail) {
@@ -197,6 +243,21 @@ Deno.serve(async (req) => {
       // For regular orders (non-pre-order): create the order NOW after payment succeeds
       if (session.metadata?.is_preorder !== 'true') {
         const orderNumber = orderData.order_number || session.metadata?.order_number;
+
+        // IDEMPOTENCY: Check if order already exists by stripe_checkout_session_id or order_number
+        // This prevents duplicate orders if webhook retries or fires multiple times
+        const existingOrders = await base44.asServiceRole.entities.Order.filter({ 
+          stripe_checkout_session_id: session.id 
+        });
+        if (existingOrders.length > 0) {
+          console.log(`Order already created for session ${session.id}: ${existingOrders[0].order_number}, skipping`);
+          return Response.json({ received: true }); // Idempotent: return success without re-creating
+        }
+
+        // Fallback: if CheckoutSession lookup failed, log warning but continue with metadata
+        if (!orderData.order_number) {
+          console.warn(`CheckoutSession not found for session ${session.id}, using metadata fallback`);
+        }
 
         // Validate referral code if provided
         if (orderData.referral_code && customerEmail) {
