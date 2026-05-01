@@ -41,9 +41,12 @@ Deno.serve(async (req) => {
     if (hubApiUrl && hubSecret) {
       const hubBase = hubApiUrl.replace(/\/$/, '').replace(/\/functions\/.*$/, '');
 
-      // Build email set from all UserProfiles
+      // Build email set from all UserProfiles + name/phone/address lookup maps
       const profiles = await base44.asServiceRole.entities.UserProfile.list('-created_date', 500);
       const contactToAuth = {};
+      const emailToName = {};
+      const emailToPhone = {};
+      const emailToAddress = {};
       const hubEmails = new Set();
       for (const p of profiles) {
         const hubEmail = p.contact_email || p.customer_email;
@@ -51,6 +54,12 @@ Deno.serve(async (req) => {
         if (p.contact_email && p.customer_email !== p.contact_email) {
           contactToAuth[p.contact_email] = p.customer_email;
         }
+        const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+        const authKey = (p.customer_email || '').toLowerCase();
+        const contactKey = (p.contact_email || '').toLowerCase();
+        if (name) { emailToName[authKey] = name; if (contactKey) emailToName[contactKey] = name; }
+        if (p.phone) { emailToPhone[authKey] = p.phone; if (contactKey) emailToPhone[contactKey] = p.phone; }
+        if (p.address) { emailToAddress[authKey] = p.address; if (contactKey) emailToAddress[contactKey] = p.address; }
       }
       // Also add emails from local orders not in profiles
       for (const o of localDelivery) {
@@ -73,17 +82,23 @@ Deno.serve(async (req) => {
             console.log(`[Route] Hub ${hubEmail}: ${rawOrders.length} orders`);
           }
           const authEmail = contactToAuth[hubEmail] || hubEmail;
+          const authKey = authEmail.toLowerCase();
           const expanded = [];
 
           for (const order of rawOrders) {
+            const hubName = order.customer_name || order.full_name || '';
+            const resolvedName = hubName || emailToName[authKey] || emailToName[hubEmail.toLowerCase()] || '';
+            const resolvedPhone = order.contact_phone || order.phone || emailToPhone[authKey] || emailToPhone[hubEmail.toLowerCase()] || '';
+            const resolvedAddress = order.delivery_address || emailToAddress[authKey] || emailToAddress[hubEmail.toLowerCase()] || '';
+
             const fulfillments = order.fulfillments;
             if (Array.isArray(fulfillments) && fulfillments.length > 0) {
               for (const f of fulfillments) {
                 const mappedStatus = mapHubStatus(f.status || order.status);
                 if (!QUEUED_STATUSES.includes(mappedStatus)) continue;
                 if (order.fulfillment_type === 'pickup') continue;
-                const addr = order.delivery_address || '';
-                // Include even if no address — driver still needs to see the order
+                const fAddress = f.delivery_address || resolvedAddress;
+                const fPhone = f.contact_phone || resolvedPhone;
                 const baseNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
                 expanded.push({
                   id: `hub_${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
@@ -91,12 +106,13 @@ Deno.serve(async (req) => {
                   hub_fulfillment_number: f.fulfillment_number,
                   order_number: f.fulfillment_number === 1 ? baseNum : `${baseNum}-${f.fulfillment_number}`,
                   customer_email: authEmail,
+                  customer_name: resolvedName,
                   hub_customer_email: order.customer_email || hubEmail,
                   status: mappedStatus,
                   total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
                   fulfillment_type: 'delivery',
-                  delivery_address: addr,
-                  contact_phone: order.contact_phone || '',
+                  delivery_address: fAddress,
+                  contact_phone: fPhone,
                   estimated_delivery_date: f.delivery_date || null,
                   items: f.items || order.line_items || [],
                   notes: `${order.subscription_plan || 'Subscription'} — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
@@ -107,19 +123,18 @@ Deno.serve(async (req) => {
               const mappedStatus = mapHubStatus(order.status);
               if (!QUEUED_STATUSES.includes(mappedStatus)) continue;
               if (order.fulfillment_type === 'pickup') continue;
-              const addr = order.delivery_address || '';
-              // Include even if no address — driver still needs to see the order
               expanded.push({
                 id: `hub_${order.id}`,
                 hub_order_id: order.id || order.shopify_order_id || null,
                 order_number: (order.shopify_order_number || order.order_number || '').replace('#', ''),
                 customer_email: authEmail,
+                customer_name: resolvedName,
                 hub_customer_email: order.customer_email || hubEmail,
                 status: mappedStatus,
                 total: order.total || 0,
                 fulfillment_type: 'delivery',
-                delivery_address: addr,
-                contact_phone: order.contact_phone || '',
+                delivery_address: resolvedAddress,
+                contact_phone: resolvedPhone,
                 estimated_delivery_date: order.estimated_delivery_date || null,
                 items: order.line_items || order.items || [],
                 notes: order.notes || null,
@@ -149,9 +164,10 @@ Deno.serve(async (req) => {
     for (const o of hubOrders) {
       if (!o.order_number) continue;
       const local = localByOrderNumber.get(o.order_number);
-      // Patch missing address/phone from local order if Hub doesn't have them
+      // Patch missing fields from local order if Hub doesn't have them
       mergedMap.set(o.order_number, {
         ...o,
+        customer_name: o.customer_name || local?.customer_name || '',
         delivery_address: o.delivery_address || local?.delivery_address || '',
         contact_phone: o.contact_phone || local?.contact_phone || '',
       });

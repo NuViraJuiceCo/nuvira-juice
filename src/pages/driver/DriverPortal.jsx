@@ -319,7 +319,11 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
               {isDelivered ? 'Done ✓' : DELIVERY_STAGES.find(s => s.key === order.status)?.label || order.status}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground truncate">{order.delivery_address}</p>
+          {order.customer_name && <p className="text-xs font-semibold text-foreground truncate">{order.customer_name}</p>}
+          <p className="text-xs text-muted-foreground truncate">{order.delivery_address || <span className="italic">No address</span>}</p>
+          {order.estimated_delivery_date && !isDelivered && (
+            <p className="text-[10px] text-primary font-medium">📅 {order.estimated_delivery_date}</p>
+          )}
           {pendingReturn && (
             <div className="flex items-center gap-1 mt-0.5">
               <Recycle className="w-3 h-3 text-amber-600 shrink-0" />
@@ -341,18 +345,24 @@ function StopCard({ order, pendingReturn, onMarkDelivered, onMarkUnableToDeliver
             <div className="border-t border-border/40 px-3.5 pb-4 pt-3 space-y-3 overflow-hidden">
 
               {/* Customer info */}
-              <div className="space-y-0.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Customer</p>
-                <p className="text-xs break-all">{order.customer_email}</p>
-                {order.contact_phone && <p className="text-xs font-semibold">{order.contact_phone}</p>}
+              <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Customer</p>
+                {order.customer_name && <p className="text-xs font-semibold text-foreground">{order.customer_name}</p>}
+                <p className="text-xs text-muted-foreground break-all">{order.customer_email}</p>
+                <p className="text-xs font-semibold">{order.contact_phone || <span className="text-muted-foreground font-normal italic">No phone on file</span>}</p>
+                <p className="text-xs text-muted-foreground">{order.delivery_address || <span className="italic">No address on file</span>}</p>
+                {order.estimated_delivery_date && (
+                  <p className="text-xs text-primary font-medium">📅 Delivery: {order.estimated_delivery_date}</p>
+                )}
               </div>
 
               {/* Items */}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Items</p>
-                {order.items?.map((item, i) => (
+              <div className="bg-secondary/40 rounded-xl p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Items</p>
+                {order.items?.length > 0 ? order.items.map((item, i) => (
                   <p key={i} className="text-xs">{item.title} × {item.quantity}</p>
-                ))}
+                )) : <p className="text-xs text-muted-foreground italic">No items listed</p>}
+                {order.notes && <p className="text-[10px] text-primary mt-2 pt-2 border-t border-border/30">{order.notes}</p>}
               </div>
 
               {/* Inline bag return verifier — only if pending */}

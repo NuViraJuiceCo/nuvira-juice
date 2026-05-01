@@ -108,7 +108,11 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
                 </span>
               )}
             </div>
-            <p className="text-xs font-semibold truncate leading-tight max-w-[180px]">{order.delivery_address?.split(',').slice(0, 2).join(',')}</p>
+            {order.customer_name && <p className="text-xs font-semibold text-foreground truncate leading-tight">{order.customer_name}</p>}
+            <p className="text-xs text-muted-foreground truncate leading-tight max-w-[180px]">{order.delivery_address?.split(',').slice(0, 2).join(',') || <span className="italic">No address</span>}</p>
+            {order.estimated_delivery_date && (
+              <p className="text-[10px] text-primary font-medium">📅 {order.estimated_delivery_date}</p>
+            )}
             <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight truncate max-w-[180px]">{order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ')}</p>
           </div>
         </button>
@@ -133,18 +137,24 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-3">
               {/* Customer info */}
-              <div className="space-y-0.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Customer</p>
-                <p className="text-xs">{order.customer_email}</p>
-                {order.contact_phone && <p className="text-xs font-semibold">{order.contact_phone}</p>}
+              <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Customer</p>
+                {order.customer_name && <p className="text-xs font-semibold text-foreground">{order.customer_name}</p>}
+                <p className="text-xs text-muted-foreground break-all">{order.customer_email}</p>
+                <p className="text-xs font-semibold">{order.contact_phone || <span className="text-muted-foreground font-normal italic">No phone on file</span>}</p>
+                <p className="text-xs text-muted-foreground">{order.delivery_address || <span className="italic">No address on file</span>}</p>
+                {order.estimated_delivery_date && (
+                  <p className="text-xs text-primary font-medium">📅 Delivery: {order.estimated_delivery_date}</p>
+                )}
               </div>
 
               {/* Items */}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Items</p>
-                {order.items?.map((item, i) => (
+              <div className="bg-secondary/40 rounded-xl p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Items</p>
+                {order.items?.length > 0 ? order.items.map((item, i) => (
                   <p key={i} className="text-xs">{item.title} × {item.quantity}</p>
-                ))}
+                )) : <p className="text-xs text-muted-foreground italic">No items listed</p>}
+                {order.notes && <p className="text-[10px] text-primary mt-2 pt-2 border-t border-border/30">{order.notes}</p>}
               </div>
 
               {/* Bag Return Form */}
