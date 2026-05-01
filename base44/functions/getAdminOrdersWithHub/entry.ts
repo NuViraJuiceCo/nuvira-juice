@@ -17,10 +17,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // 1. Fetch all local orders, exclude superseded
+    // 1. Fetch all local orders, exclude superseded and cancelled
     const allLocalOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
     const localOrders = allLocalOrders.filter(o =>
-      !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB'))
+      !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB')) &&
+      o.status !== 'cancelled'
     );
 
     // 2. Fetch ALL UserProfiles to get every customer — including those whose only local
@@ -146,6 +147,10 @@ Deno.serve(async (req) => {
       console.log(`[AdminOrders] Hub returned ${allHubOrders.length} expanded orders across ${hubQueryEmails.size} customers`);
     }
 
+    // Filter out cancelled hub orders before merging
+    const filteredHubOrders = allHubOrders.filter(o => o.status !== 'cancelled');
+    console.log(`[AdminOrders] After cancel filter: ${filteredHubOrders.length} hub orders (removed ${allHubOrders.length - filteredHubOrders.length} cancelled)`);
+
     // 4. Merge: Hub wins for any order_number it has; local wins otherwise
     // Normalize order numbers for comparison: strip leading #, lowercase, trim
     function normalizeOrderNum(num) {
@@ -155,7 +160,7 @@ Deno.serve(async (req) => {
     const mergedMap = new Map();
 
     // Seed with Hub orders first — deduplicate Hub side too (same order fetched via contact+auth email)
-    for (const order of allHubOrders) {
+    for (const order of filteredHubOrders) {
       const key = normalizeOrderNum(order.order_number);
       if (!key) continue;
       if (!mergedMap.has(key)) {
@@ -207,7 +212,9 @@ function mapHubStatus(hubStatus) {
     assigned_for_pickup: 'ready_for_pickup',
     assigned_for_delivery: 'out_for_delivery',
     fulfilled: 'delivered',
-    canceled: 'delivered', // treat canceled as terminal — won't normally appear in active
+    canceled: 'cancelled', // explicit cancelled status — filtered out below
+    cancelled: 'cancelled',
+    refunded: 'cancelled',
     pending: 'scheduled_for_juicing',
     production_scheduled: 'scheduled_for_juicing',
     // pass-through valid customer app statuses
