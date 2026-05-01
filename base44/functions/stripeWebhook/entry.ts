@@ -176,9 +176,24 @@ Deno.serve(async (req) => {
         })
           .catch(err => console.error('Failed to send pre-order confirmation email:', err.message));
 
-        // Sync to hub
-        base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id })
-          .catch(err => console.error('Failed to sync pre-order to hub:', err.message));
+        // Sync to hub — CRITICAL: Do not silently fail
+        try {
+          await base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id });
+          console.log(`✅ Pre-order ${orderNumber} synced to Hub successfully`);
+        } catch (syncErr) {
+          console.error(`❌ CRITICAL: Pre-order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
+          try {
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: orderNumber,
+              status: 'error',
+              description: `Failed to sync pre-order to Hub after authorization: ${syncErr.message}`,
+              triggered_by: 'stripe_webhook_preorder',
+            });
+          } catch (logErr) {
+            console.error(`Failed to log pre-order sync failure: ${logErr.message}`);
+          }
+          throw new Error(`Hub sync failed for pre-order ${orderNumber}: ${syncErr.message}`);
+        }
       }
 
       // Handle subscription checkout — create Subscription record
@@ -350,9 +365,26 @@ Deno.serve(async (req) => {
         base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: order.id })
           .catch(err => console.error('Failed to push order to Shopify:', err.message));
 
-        // Sync to hub
-        base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id })
-          .catch(err => console.error('Failed to sync order to hub:', err.message));
+        // Sync to hub — CRITICAL: Do not silently fail
+        try {
+          await base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id });
+          console.log(`✅ Order ${orderNumber} synced to Hub successfully`);
+        } catch (syncErr) {
+          // Log failure in OrderSyncLog so it's visible for recovery
+          console.error(`❌ CRITICAL: Order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
+          try {
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: orderNumber,
+              status: 'error',
+              description: `Failed to sync to Hub immediately after webhook: ${syncErr.message}`,
+              triggered_by: 'stripe_webhook',
+            });
+          } catch (logErr) {
+            console.error(`Failed to log sync failure: ${logErr.message}`);
+          }
+          // Re-throw to alert about sync failure
+          throw new Error(`Hub sync failed for order ${orderNumber}: ${syncErr.message}`);
+        }
 
         // Send order confirmation email
         base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
