@@ -8,6 +8,10 @@
     "customer_email": {
       "type": "string"
     },
+    "customer_name": {
+      "type": "string",
+      "description": "Customer's full name"
+    },
     "items": {
       "type": "array",
       "items": {
@@ -50,7 +54,29 @@
       "default": "delivery"
     },
     "delivery_address": {
+      "type": "string",
+      "description": "Full address string (legacy / display)"
+    },
+    "address_line1": {
+      "type": "string",
+      "description": "Street address line 1"
+    },
+    "address_line2": {
+      "type": "string",
+      "description": "Apt, suite, unit, etc."
+    },
+    "address_city": {
       "type": "string"
+    },
+    "address_state": {
+      "type": "string"
+    },
+    "address_postal_code": {
+      "type": "string"
+    },
+    "address_country": {
+      "type": "string",
+      "default": "US"
     },
     "contact_phone": {
       "type": "string"

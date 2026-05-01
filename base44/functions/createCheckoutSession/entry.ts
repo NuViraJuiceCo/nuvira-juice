@@ -21,7 +21,9 @@ Deno.serve(async (req) => {
     const {
       items, subtotal, delivery_fee, total,
       fulfillment_type, delivery_address, contact_phone, estimated_delivery_date,
-      customer_email, points_discount, points_used,
+      customer_email, customer_name,
+      address_line1, address_line2, address_city, address_state, address_postal_code,
+      points_discount, points_used,
       active_reward, reward_discount, credits_discount,
       referral_discount, referral_code,
       force_preorder,
@@ -117,6 +119,14 @@ Deno.serve(async (req) => {
     const checkoutData = {
       order_number: orderNumber,
       customer_email: customer_email || '',
+      customer_name: customer_name || '',
+      // Structured address fields for Hub sync
+      address_line1: address_line1 || '',
+      address_line2: address_line2 || '',
+      address_city: address_city || '',
+      address_state: address_state || '',
+      address_postal_code: address_postal_code || '',
+      address_country: 'US',
       items: items.map(i => ({
         product_id: i.product_id,
         title: i.title,

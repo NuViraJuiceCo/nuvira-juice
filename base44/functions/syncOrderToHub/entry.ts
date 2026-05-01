@@ -31,26 +31,69 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true });
     }
 
+    // Parse structured address fields from the stored delivery_address string or structured object
+    const addr = order.delivery_address || '';
+    let address_line1 = '', address_city = '', address_state = '', address_postal_code = '', address_country = 'US';
+    if (order.address_line1) {
+      // Structured fields stored on order (future-proof)
+      address_line1 = order.address_line1 || '';
+      address_city = order.address_city || '';
+      address_state = order.address_state || '';
+      address_postal_code = order.address_postal_code || '';
+      address_country = order.address_country || 'US';
+    } else if (typeof addr === 'string' && addr.includes(',')) {
+      // Parse from "street, city, state zip" string format
+      const parts = addr.split(',').map(s => s.trim());
+      address_line1 = parts[0] || '';
+      address_city = parts[1] || '';
+      const stateZip = (parts[2] || '').trim().split(' ');
+      address_state = stateZip[0] || '';
+      address_postal_code = stateZip[1] || '';
+    }
+
     const payload = {
       event: 'order.created',
       source: 'customer_app',
       order: {
         id: order.id,
-        shopify_order_id: order.stripe_checkout_session_id || null,
         order_number: order.order_number,
         customer_email: order.customer_email,
+        customer_name: order.customer_name || '',
+        customer_phone: order.contact_phone || '',
+        // Structured address fields (required by Hub)
+        address_line1,
+        address_line2: order.address_line2 || '',
+        address_city,
+        address_state,
+        address_postal_code,
+        address_country,
+        delivery_address: addr, // keep full string for backward-compat
+        // Line items
+        line_items: (order.items || []).map(i => ({
+          title: i.title,
+          quantity: i.quantity,
+          price: i.price,
+          product_id: i.product_id,
+          image_url: i.image_url || null,
+        })),
         items: order.items,
         subtotal: order.subtotal,
         delivery_fee: order.delivery_fee,
+        total_price: order.total,
         total: order.total,
+        fulfillment_method: order.fulfillment_type || 'delivery',
         fulfillment_type: order.fulfillment_type,
-        delivery_address: order.delivery_address,
-        contact_phone: order.contact_phone,
+        requested_delivery_date: order.estimated_delivery_date || null,
         estimated_delivery_date: order.estimated_delivery_date,
         status: order.status,
+        production_status: order.status === 'order_received' ? 'new' : order.status,
         is_preorder: order.is_preorder,
         preorder_fulfillment_date: order.preorder_fulfillment_date,
+        customer_notes: order.notes || '',
         notes: order.notes,
+        // Stripe cross-reference IDs
+        stripe_checkout_session_id: order.stripe_checkout_session_id || null,
+        stripe_payment_intent_id: order.stripe_payment_intent_id || null,
         created_date: order.created_date,
       },
     };
