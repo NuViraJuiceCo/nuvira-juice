@@ -38,17 +38,19 @@ Deno.serve(async (req) => {
     }
 
     // Build the set of hub query emails from ALL profiles + surviving local orders
+    // Use contact_email if available (real email, not Apple relay) — never add both variants
     const hubQueryEmails = new Set();
     for (const p of profiles) {
       if (p.customer_email) {
-        // Use contact_email for Hub query (real email, not Apple relay)
-        hubQueryEmails.add(p.contact_email || p.customer_email);
+        const queryEmail = p.contact_email || p.customer_email;
+        hubQueryEmails.add(queryEmail.toLowerCase().trim());
       }
     }
     // Also include emails from local orders not covered by profiles
     for (const o of localOrders) {
       if (o.customer_email) {
-        hubQueryEmails.add(authToContact[o.customer_email] || o.customer_email);
+        const queryEmail = authToContact[o.customer_email] || o.customer_email;
+        hubQueryEmails.add(queryEmail.toLowerCase().trim());
       }
     }
 
@@ -145,19 +147,29 @@ Deno.serve(async (req) => {
     }
 
     // 4. Merge: Hub wins for any order_number it has; local wins otherwise
+    // Normalize order numbers for comparison: strip leading #, lowercase, trim
+    function normalizeOrderNum(num) {
+      return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
+    }
+
     const mergedMap = new Map();
 
-    // Seed with Hub orders first
+    // Seed with Hub orders first — deduplicate Hub side too (same order fetched via contact+auth email)
     for (const order of allHubOrders) {
-      if (order.order_number) mergedMap.set(order.order_number, order);
+      const key = normalizeOrderNum(order.order_number);
+      if (!key) continue;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, order);
+      }
     }
 
     // Local orders fill in only where Hub has no record
     for (const order of localOrders) {
-      if (!order.order_number) continue;
-      const hubHasIt = mergedMap.has(order.order_number) && mergedMap.get(order.order_number).is_hub_order;
+      const key = normalizeOrderNum(order.order_number);
+      if (!key) continue; // skip orders with no order_number entirely
+      const hubHasIt = mergedMap.has(key) && mergedMap.get(key).is_hub_order;
       if (!hubHasIt) {
-        mergedMap.set(order.order_number, order);
+        mergedMap.set(key, order);
       }
     }
 
