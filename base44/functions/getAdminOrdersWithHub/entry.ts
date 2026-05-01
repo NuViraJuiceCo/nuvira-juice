@@ -17,12 +17,24 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // 1. Fetch all local orders, exclude superseded and cancelled
+    // 1. Fetch all local orders, exclude superseded, cancelled, and ghost pre-orders
+    // A "ghost" pre-order is one that was authorized but never completed payment capture
+    // (payment_captured=false AND no stripe_payment_intent_id means it's an abandoned/admin-created stub)
     const allLocalOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
-    const localOrders = allLocalOrders.filter(o =>
-      !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB')) &&
-      o.status !== 'cancelled'
+    const cancelledOrderNumbers = new Set(
+      allLocalOrders
+        .filter(o => o.status === 'cancelled')
+        .map(o => (o.order_number || '').toString().replace(/^#/, '').trim().toLowerCase())
+        .filter(Boolean)
     );
+    const localOrders = allLocalOrders.filter(o => {
+      if (o.notes && o.notes.includes('SUPERSEDED_BY_HUB')) return false;
+      if (o.status === 'cancelled') return false;
+      // Filter ghost pre-orders: is_preorder=true, payment_captured=false, no stripe_payment_intent_id
+      if (o.is_preorder && !o.payment_captured && !o.stripe_payment_intent_id) return false;
+      return true;
+    });
+    console.log(`[AdminOrders] Local: ${allLocalOrders.length} total, ${localOrders.length} after filtering. Cancelled order numbers: ${[...cancelledOrderNumbers].join(', ')}`);
 
     // 2. Fetch ALL UserProfiles to get every customer — including those whose only local
     //    record was superseded and would otherwise be invisible.
@@ -147,8 +159,13 @@ Deno.serve(async (req) => {
       console.log(`[AdminOrders] Hub returned ${allHubOrders.length} expanded orders across ${hubQueryEmails.size} customers`);
     }
 
-    // Filter out cancelled hub orders before merging
-    const filteredHubOrders = allHubOrders.filter(o => o.status !== 'cancelled');
+    // Filter out cancelled hub orders AND hub orders whose order_number is locally cancelled
+    const filteredHubOrders = allHubOrders.filter(o => {
+      if (o.status === 'cancelled') return false;
+      const normNum = normalizeOrderNum(o.order_number);
+      if (normNum && cancelledOrderNumbers.has(normNum)) return false;
+      return true;
+    });
     console.log(`[AdminOrders] After cancel filter: ${filteredHubOrders.length} hub orders (removed ${allHubOrders.length - filteredHubOrders.length} cancelled)`);
 
     // 4. Merge: Hub wins for any order_number it has; local wins otherwise
