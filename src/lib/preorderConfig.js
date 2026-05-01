@@ -13,8 +13,7 @@ export const FIRST_DELIVERY_DATE  = '2026-05-02';                    // All pre-
  * Returns true if the current date/time falls within the pre-order window.
  */
 export function isPreorderMode() {
-  const now = new Date();
-  return now >= PREORDER_START && now <= PREORDER_END;
+  return false;
 }
 
 /**
