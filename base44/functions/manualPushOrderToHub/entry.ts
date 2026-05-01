@@ -4,11 +4,14 @@ const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const HUB_SYNC_SECRET = Deno.env.get('HUB_SYNC_SECRET');
 
 /**
- * Manually push a lost/stuck order directly to Hub via the new pull endpoint.
- * Used for recovery when the old push endpoint (405) is deprecated.
+ * Manually push a lost/stuck order to Hub via ingestCustomerAppOrder endpoint.
  * 
- * This directly invokes the Hub's internal pullOrdersFromCustomerApp logic
- * to fetch and ingest orders that are stuck in Customer App but missing from Hub.
+ * Tests the full recovery path:
+ * 1. Fetch stuck order from Customer App
+ * 2. Send to Hub's ingestCustomerAppOrder endpoint
+ * 3. Verify auth (CUSTOMER_APP_SYNC_SECRET)
+ * 4. Log result in OrderSyncLog
+ * 5. Return response (success or idempotent skip)
  */
 Deno.serve(async (req) => {
   try {
@@ -19,62 +22,125 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'order_number and customer_email required' }, { status: 400 });
     }
 
-    // Fetch the stuck order from Customer App
+    const startTime = new Date().toISOString();
+
+    // Step 1: Fetch the stuck order from Customer App
     const orders = await base44.asServiceRole.entities.Order.filter({ order_number });
     if (!orders.length) {
       return Response.json({ error: `Order ${order_number} not found in Customer App` }, { status: 404 });
     }
 
     const order = orders[0];
-    console.log(`[ManualPush] Found order ${order_number} in Customer App, triggering Hub pull...`);
+    console.log(`[ManualPush] Step 1 ✓ Found order ${order_number} in Customer App (id: ${order.id})`);
 
-    // Call Hub's direct pull endpoint to sync this specific customer's orders
-    // Format: POST HUB_API_URL/pullOrdersFromCustomerApp
-    // Body: { customer_email: "..." }
-    const pullUrl = HUB_API_URL.replace(/\/$/, '') + '/pullOrdersFromCustomerApp';
+    // Step 2: Prepare order payload for Hub ingestion
+    const orderPayload = {
+      order_number: order.order_number,
+      customer_email: order.customer_email,
+      customer_name: order.customer_name,
+      items: order.items || [],
+      subtotal: order.subtotal || 0,
+      delivery_fee: order.delivery_fee || 0,
+      total: order.total || 0,
+      fulfillment_type: order.fulfillment_type || 'delivery',
+      delivery_address: order.delivery_address || '',
+      address_line1: order.address_line1 || '',
+      address_line2: order.address_line2 || '',
+      address_city: order.address_city || '',
+      address_state: order.address_state || '',
+      address_postal_code: order.address_postal_code || '',
+      address_country: order.address_country || 'US',
+      contact_phone: order.contact_phone || '',
+      estimated_delivery_date: order.estimated_delivery_date,
+      status: order.status,
+      is_preorder: order.is_preorder || false,
+      payment_captured: order.payment_captured || false,
+      stripe_checkout_session_id: order.stripe_checkout_session_id,
+      stripe_payment_intent_id: order.stripe_payment_intent_id,
+    };
 
-    const hubResponse = await fetch(pullUrl, {
+    // Step 3: Call Hub's ingestCustomerAppOrder endpoint with CUSTOMER_APP_SYNC_SECRET
+    const hubUrl = HUB_API_URL.replace(/\/$/, '') + '/ingestCustomerAppOrder';
+    const syncSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+
+    if (!syncSecret) {
+      console.error('[ManualPush] CUSTOMER_APP_SYNC_SECRET not configured');
+      return Response.json({ error: 'CUSTOMER_APP_SYNC_SECRET not configured' }, { status: 500 });
+    }
+
+    console.log(`[ManualPush] Step 2 ✓ Prepared payload, calling Hub at ${hubUrl}...`);
+
+    const hubResponse = await fetch(hubUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${HUB_SYNC_SECRET}`,
+        'Authorization': `Bearer ${syncSecret}`,
       },
-      body: JSON.stringify({ customer_email }),
+      body: JSON.stringify(orderPayload),
     });
 
+    const hubResponseText = await hubResponse.text();
+    const hubData = hubResponseText ? JSON.parse(hubResponseText) : {};
+
     if (!hubResponse.ok) {
-      const errText = await hubResponse.text();
-      console.error(`[ManualPush] Hub pull failed: ${hubResponse.status} — ${errText}`);
+      console.error(`[ManualPush] Hub ingestion failed: ${hubResponse.status} — ${hubResponseText}`);
+
+      // Log failure
+      try {
+        await base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number,
+          status: 'error',
+          description: `Manual push to ingestCustomerAppOrder failed: ${hubResponse.status} — ${hubResponseText.substring(0, 500)}`,
+          started_at: startTime,
+          completed_at: new Date().toISOString(),
+          triggered_by: 'manual',
+        });
+      } catch (logErr) {
+        console.warn(`[ManualPush] Failed to log error: ${logErr.message}`);
+      }
+
       return Response.json({
-        error: `Hub pull endpoint failed: ${hubResponse.status}`,
-        details: errText,
-        note: 'Order exists in Customer App but Hub pull failed. Manual sync or retry needed.'
+        success: false,
+        error: `Hub ingestion failed: ${hubResponse.status}`,
+        details: hubData,
+        order_number,
       }, { status: hubResponse.status });
     }
 
-    const result = await hubResponse.json();
-    console.log(`[ManualPush] Hub pull succeeded for ${customer_email}:`, result);
+    console.log(`[ManualPush] Step 3 ✓ Hub responded with ${hubResponse.status}:`, hubData);
 
-    // Log recovery in OrderSyncLog
+    // Step 4: Determine if this was a success or idempotent skip
+    const logStatus = hubData.status === 'duplicate_event' ? 'recovery' : 'success';
+    const logDescription = hubData.status === 'duplicate_event'
+      ? `Idempotent re-sync: Hub already has this order (${hubData.hub_order_id}), skipped duplicate.`
+      : `Successfully ingested order ${order_number} to Hub (${hubData.hub_order_id || 'new'}).`;
+
+    // Log result in OrderSyncLog
     try {
       await base44.asServiceRole.entities.OrderSyncLog.create({
         order_number,
-        status: 'success',
-        description: `Manual push via Hub's pullOrdersFromCustomerApp endpoint succeeded`,
-        started_at: new Date().toISOString(),
+        status: logStatus,
+        description: logDescription,
+        started_at: startTime,
         completed_at: new Date().toISOString(),
-        triggered_by: 'manual'
+        triggered_by: 'manual',
       });
+      console.log(`[ManualPush] Step 4 ✓ Logged sync result in OrderSyncLog (status: ${logStatus})`);
     } catch (logErr) {
-      console.warn(`Failed to log in OrderSyncLog: ${logErr.message}`);
+      console.warn(`[ManualPush] Failed to log sync result: ${logErr.message}`);
     }
 
+    // Step 5: Return success response
     return Response.json({
       success: true,
       order_number,
       customer_email,
-      message: `Order ${order_number} pushed to Hub successfully via pull endpoint`,
-      hub_response: result
+      hub_response_status: hubData.status,
+      hub_order_id: hubData.hub_order_id,
+      message: hubData.status === 'duplicate_event'
+        ? `Order ${order_number} already exists in Hub (idempotent). Re-sync skipped.`
+        : `Order ${order_number} successfully pushed to Hub for ingestion.`,
+      hub_full_response: hubData,
     });
   } catch (error) {
     console.error('[ManualPush] Error:', error.message);
