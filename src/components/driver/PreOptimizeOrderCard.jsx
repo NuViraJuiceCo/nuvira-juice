@@ -93,31 +93,40 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
       animate={{ opacity: 1, y: 0 }}
       className="bg-card border border-border/50 rounded-2xl overflow-hidden"
     >
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center gap-3 p-4 text-left active:bg-secondary/30 transition-colors">
-        <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center shrink-0">
-          <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-sm font-semibold">#{order.order_number}</p>
-            {pendingReturn && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                <Recycle className="w-2.5 h-2.5 inline mr-0.5" />
-                {pendingReturn.small_bags_requested || 0} small + {pendingReturn.tote_bags_requested || 0} tote
-              </span>
-            )}
+      <div className="w-full flex items-center gap-3 p-3.5 text-left">
+        <button onClick={() => setExpanded(!expanded)} className="flex-1 flex items-center gap-3 min-w-0 active:opacity-70 transition-opacity">
+          <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center shrink-0">
+            <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
           </div>
-          <p className="text-xs font-medium mt-0.5 truncate">{order.delivery_address}</p>
-          <p className="text-[10px] text-muted-foreground">{order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ')}</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.delivery_address)}&travelmode=driving`} target="_blank" rel="noopener noreferrer"
-            className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-            <Navigation className="w-3.5 h-3.5 text-white" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+              <p className="text-sm font-bold">#{order.order_number}</p>
+              {pendingReturn && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-0.5">
+                  <Recycle className="w-2.5 h-2.5" />
+                  Return
+                </span>
+              )}
+            </div>
+            <p className="text-xs font-semibold truncate leading-tight">{order.delivery_address?.split(',').slice(0, 2).join(',')}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight line-clamp-1">{order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ')}</p>
+          </div>
+        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.delivery_address)}&travelmode=driving`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-9 h-9 bg-blue-500 rounded-xl flex items-center justify-center active:scale-95 transition-transform"
+            onClick={e => e.stopPropagation()}
+          >
+            <Navigation className="w-4 h-4 text-white" />
           </a>
-          {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          <button onClick={() => setExpanded(!expanded)} className="w-7 h-7 flex items-center justify-center">
+            {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          </button>
         </div>
-      </button>
+      </div>
 
       <AnimatePresence>
         {expanded && (
