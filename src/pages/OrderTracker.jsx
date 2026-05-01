@@ -1,8 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Truck, Package, Check } from 'lucide-react';
+import { ArrowLeft, Truck, Package, Check, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
@@ -28,15 +29,41 @@ const PICKUP_STAGES = [
 export default function OrderTracker() {
   const orderId = window.location.pathname.split('/').pop();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const { data: order, isLoading } = useQuery({
-    queryKey: ['order', orderId],
+  const { data: order, isLoading, error } = useQuery({
+    queryKey: ['order', orderId, user?.email],
     queryFn: async () => {
-      const orders = await base44.entities.Order.filter({ id: orderId });
-      return orders[0];
+      // Try local lookup first
+      try {
+        const localOrders = await base44.entities.Order.filter({ id: orderId });
+        if (localOrders[0]) return localOrders[0];
+      } catch (err) {
+        console.warn('Local order lookup failed:', err.message);
+      }
+
+      // Try merged data via backend function (handles Hub + local + fulfillment expansions)
+      if (user?.email) {
+        try {
+          const res = await base44.functions.invoke('getCustomerOrdersWithHub', { customer_email: user.email });
+          const orders = res.data?.orders || [];
+          
+          // Search by multiple ID types
+          let found = orders.find(o => o.id === orderId) ||
+                     orders.find(o => o.order_number && 
+                       (o.order_number === orderId || o.order_number.replace('#', '') === orderId));
+          
+          if (found) return found;
+        } catch (err) {
+          console.warn('Merged order lookup failed:', err.message);
+        }
+      }
+
+      return null;
     },
-    enabled: !!orderId,
+    enabled: !!orderId && !!user?.email,
     refetchInterval: 30000,
+    retry: 2,
   });
 
   const isOnRoute = ['out_for_delivery', 'arriving_soon'].includes(order?.status)
@@ -62,8 +89,20 @@ export default function OrderTracker() {
 
   if (!order) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Order not found</p>
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+          <AlertCircle className="w-8 h-8 text-muted-foreground" />
+        </div>
+        <h2 className="font-heading text-lg font-bold mb-1">Order Not Found</h2>
+        <p className="text-sm text-muted-foreground mb-6 max-w-xs leading-relaxed">
+          We couldn't load this order right now. It may still be syncing or the order ID may be invalid.
+        </p>
+        <button
+          onClick={() => navigate('/account/orders')}
+          className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm active:scale-95 transition-transform"
+        >
+          Back to Orders
+        </button>
       </div>
     );
   }
