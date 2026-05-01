@@ -4,6 +4,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Admin order list:
  * - Queries Hub for ALL customers (from UserProfiles), not just those with surviving local orders.
  *   This ensures customers whose only local record is SUPERSEDED_BY_HUB still appear via Hub.
+ * - Expands Hub subscription orders (with embedded fulfillments[]) into display records
+ * - Expands local subscription orders by fetching linked FulfillmentTask records
  * - Merges with valid local orders (excluding SUPERSEDED_BY_HUB).
  * - Hub wins when both sides have the same order_number.
  * - Hub-managed orders keep is_hub_order=true so the frontend can route status updates correctly.
@@ -21,6 +23,12 @@ Deno.serve(async (req) => {
     // A "ghost" pre-order is one that was authorized but never completed payment capture
     // (payment_captured=false AND no stripe_payment_intent_id means it's an abandoned/admin-created stub)
     const allLocalOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
+    
+    // Fetch all FulfillmentTasks for expanding local subscription orders
+    let fulfillmentTasks = [];
+    if (allLocalOrders.length > 0) {
+      fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.list('-created_date', 500);
+    }
     const cancelledOrderNumbers = new Set(
       allLocalOrders
         .filter(o => o.status === 'cancelled')
@@ -226,6 +234,38 @@ Deno.serve(async (req) => {
     });
     console.log(`[AdminOrders] After cancel filter: ${filteredHubOrders.length} hub orders (removed ${allHubOrders.length - filteredHubOrders.length} cancelled)`);
 
+    // 3b. Expand local subscription orders that reference FulfillmentTasks
+    const expandedLocalOrders = [];
+    for (const order of localOrders) {
+      const tasksForOrder = fulfillmentTasks.filter(t => t.order_id === order.id);
+      
+      if (tasksForOrder.length > 0) {
+        // Subscription order — expand each fulfillment task into a display record
+        for (const task of tasksForOrder) {
+          expandedLocalOrders.push({
+            id: task.id,
+            order_number: order.order_number + (tasksForOrder.length > 1 ? `-${task.fulfillment_number || 1}` : ''),
+            customer_email: order.customer_email,
+            customer_name: order.customer_name || '',
+            status: order.status,
+            total: order.total ? order.total / tasksForOrder.length : 0,
+            subtotal: order.subtotal ? order.subtotal / tasksForOrder.length : 0,
+            delivery_fee: order.delivery_fee || 0,
+            fulfillment_type: order.fulfillment_type || 'delivery',
+            delivery_address: order.delivery_address || '',
+            contact_phone: order.contact_phone || '',
+            estimated_delivery_date: task.delivery_date || order.estimated_delivery_date || null,
+            created_date: order.created_date || null,
+            items: task.items || order.items || [],
+            notes: order.notes || '',
+            is_local_fulfillment_expansion: true,
+          });
+        }
+      } else {
+        expandedLocalOrders.push(order);
+      }
+    }
+
     // 4. Merge: Hub wins for any order_number it has; local wins otherwise
     // Normalize order numbers for comparison: strip leading #, lowercase, trim
     function normalizeOrderNum(num) {
@@ -244,7 +284,7 @@ Deno.serve(async (req) => {
     }
 
     // Local orders fill in only where Hub has no record
-    for (const order of localOrders) {
+    for (const order of expandedLocalOrders) {
       const key = normalizeOrderNum(order.order_number);
       if (!key) continue; // skip orders with no order_number entirely
       const hubHasIt = mergedMap.has(key) && mergedMap.get(key).is_hub_order;
@@ -259,7 +299,7 @@ Deno.serve(async (req) => {
       return bDate - aDate;
     });
 
-    console.log(`[AdminOrders] Final: ${merged.length} orders (${localOrders.length} local non-superseded, ${allHubOrders.length} hub expanded)`);
+    console.log(`[AdminOrders] Final: ${merged.length} orders (${expandedLocalOrders.length} local expanded including fulfillments, ${filteredHubOrders.length} hub expanded)`);
 
     return Response.json({
       success: true,

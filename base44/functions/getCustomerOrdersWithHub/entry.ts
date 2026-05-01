@@ -5,7 +5,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * - Looks up contact_email from UserProfile to handle Apple Sign In relay email mismatches
  * - Calls the correct Hub endpoint: getOrderUpdatesForCustomerApp
  * - Expands Hub subscription parent orders (with embedded fulfillments[]) into display records
- * - Merges with local orders, deduplicates by order_number (local wins)
+ * - Expands local subscription orders by fetching linked FulfillmentTask records
+ * - Merges with local orders, deduplicates by order_number (Hub wins for subscriptions)
  */
 Deno.serve(async (req) => {
   try {
@@ -22,6 +23,16 @@ Deno.serve(async (req) => {
       '-created_date',
       50
     );
+
+    // Fetch all FulfillmentTasks for this customer (used to expand local subscription orders)
+    let fulfillmentTasks = [];
+    if (localOrders.length > 0) {
+      fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.filter(
+        { customer_email },
+        '-created_date',
+        200
+      );
+    }
 
     // 2. Resolve contact_email from UserProfile (handles Apple Sign In relay email)
     let hubQueryEmail = customer_email;
@@ -100,7 +111,40 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. Merge: deduplicate by order_number
+    // 4. Expand local subscription orders that reference FulfillmentTasks
+    // For each local order, check if it has fulfillment tasks that should be displayed separately
+    const expandedLocalOrders = [];
+    for (const order of localOrders) {
+      // Check if this order has FulfillmentTasks
+      const tasksForOrder = fulfillmentTasks.filter(t => t.order_id === order.id);
+      
+      if (tasksForOrder.length > 0) {
+        // Subscription order — expand each fulfillment task into a display record
+        for (const task of tasksForOrder) {
+          expandedLocalOrders.push({
+            id: task.id, // Use task ID for expanded records
+            order_number: order.order_number + (tasksForOrder.length > 1 ? `-${task.fulfillment_number || 1}` : ''),
+            customer_email,
+            status: order.status,
+            total: order.total ? order.total / tasksForOrder.length : 0,
+            subtotal: order.subtotal ? order.subtotal / tasksForOrder.length : 0,
+            delivery_fee: order.delivery_fee || 0,
+            fulfillment_type: order.fulfillment_type || 'delivery',
+            delivery_address: order.delivery_address || '',
+            estimated_delivery_date: task.delivery_date || order.estimated_delivery_date || null,
+            items: task.items || order.items || [],
+            created_date: order.created_date || null,
+            notes: order.notes || '',
+            is_local_fulfillment_expansion: true, // Flag to indicate this is an expanded fulfillment
+          });
+        }
+      } else {
+        // Regular order with no fulfillment tasks — use as-is
+        expandedLocalOrders.push(order);
+      }
+    }
+
+    // 5. Merge: deduplicate by order_number
     // Rules:
     //   - Hub always wins for subscription orders (is_hub_order) or orders marked SUPERSEDED_BY_HUB
     //   - Local wins only for true local-only orders that don't exist on Hub
@@ -114,7 +158,7 @@ Deno.serve(async (req) => {
     // Local orders only win if:
     //   1. No Hub record exists for this order_number, AND
     //   2. The local record is not marked as superseded by Hub
-    for (const order of localOrders) {
+    for (const order of expandedLocalOrders) {
       if (!order.order_number) continue;
       const isSuperseded = order.notes && order.notes.includes('SUPERSEDED_BY_HUB');
       const hubAlreadyHasIt = mergedMap.has(order.order_number) && mergedMap.get(order.order_number).is_hub_order;
