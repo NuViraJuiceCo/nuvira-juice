@@ -105,7 +105,7 @@ export default function Cart() {
   }
 
   return (
-    <div className={isPreorderMode() || (isPreLaunch() && !isPreorderMode()) ? "pb-56" : "pb-44"}>
+    <div className="pb-44">
       <div className="px-4 pt-4 pb-3">
         <h1 className="font-heading text-xl font-bold">Your Cart</h1>
         <p className="text-xs text-muted-foreground">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
@@ -324,19 +324,8 @@ export default function Cart() {
             <span>Total</span>
             <span>${(subtotal + effectiveDeliveryFee).toFixed(2)}</span>
           </div>
-          {isPreLaunch() && !isPreorderMode() && (
-            <div className="mb-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-center">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">🚀 Pre-orders open April 23rd — full ordering opens May 1st!</p>
-            </div>
-          )}
-          {isPreorderMode() && (
-            <div className="mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3 text-center">
-              <p className="text-xs font-semibold text-primary">✦ Pre-Order — Card authorized today, charged May 1st, 2026 · Delivered May 2nd, 2026</p>
-            </div>
-          )}
           <Button
             onClick={() => {
-              if (isPreLaunch() && !isPreorderMode()) return;
               if (!meetsMinimum) return;
               if (!user) {
                 base44.auth.redirectToLogin('/checkout');
@@ -344,11 +333,11 @@ export default function Cart() {
               }
               navigate('/checkout');
             }}
-            disabled={!meetsMinimum || (isPreLaunch() && !isPreorderMode())}
+            disabled={!meetsMinimum}
             className="w-full h-12 rounded-xl font-semibold text-sm disabled:opacity-50"
           >
-            {(isPreLaunch() && !isPreorderMode()) ? 'Pre-orders open April 23rd' : isPreorderMode() ? 'Pre-Order Checkout' : meetsMinimum ? 'Checkout' : 'Add more to checkout'}
-            {!isPreLaunch() && meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
+            {meetsMinimum ? 'Checkout' : 'Add more to checkout'}
+            {meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
         </div>
       </div>
