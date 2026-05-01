@@ -38,14 +38,8 @@ export default function BagReturnSelector({ totalBottles, lastOrderBottles, onCh
   const [smallCount, setSmallCount] = useState(1);
   const [toteCount, setToteCount] = useState(1);
 
-  const suggestion = lastOrderBottles
-    ? lastOrderBottles <= 3 ? 'small' : 'tote'
-    : null;
-
-  const suggestText = suggestion === 'small'
-    ? 'Based on your previous order, you likely have a Small Lunch Bag.'
-    : suggestion === 'tote'
-    ? 'Based on your previous order, you likely have a Tote Bag.'
+  const suggestText = lastOrderBottles
+    ? 'Based on your previous order, you likely have a NuVira bag to return.'
     : null;
 
   const handleSelect = (key) => {
@@ -85,11 +79,11 @@ export default function BagReturnSelector({ totalBottles, lastOrderBottles, onCh
           <div className="mt-3 flex gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 text-[11px] bg-muted/60 text-muted-foreground rounded-lg px-3 py-1.5 font-medium">
               <span className="w-1.5 h-1.5 bg-primary/60 rounded-full shrink-0" />
-              3 Bottles — Small Lunch Bag
+              Small Lunch Bag
             </span>
             <span className="inline-flex items-center gap-1.5 text-[11px] bg-muted/60 text-muted-foreground rounded-lg px-3 py-1.5 font-medium">
               <span className="w-1.5 h-1.5 bg-primary/60 rounded-full shrink-0" />
-              4–12 Bottles — Tote Bag
+              Tote Bag
             </span>
           </div>
         </div>
