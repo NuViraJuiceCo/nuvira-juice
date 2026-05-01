@@ -124,9 +124,8 @@ Deno.serve(async (req) => {
       cancel_url: `${origin}/subscribe`,
     });
 
-    console.log(
-      `Subscription session created: ${session.id} for ${customer_email}, plan: ${subscriptionPlan.name}`
-    );
+    console.log(`✅ Subscription session ${session.id} created with complete metadata for ${customer_email}, plan: ${subscriptionPlan.name}`);
+    console.log(`Metadata keys: ${Object.keys(subscriptionMetadata).join(', ')}`);
 
     return Response.json({
       url: session.url,
