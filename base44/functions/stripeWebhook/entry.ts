@@ -359,6 +359,10 @@ Deno.serve(async (req) => {
           order_id: order.id,
           customer_email: customerEmail,
           order_number: orderNumber,
+          items: orderData.items || [],
+          total: orderData.total || 0,
+          delivery_address: orderData.delivery_address || '',
+          estimated_delivery_date: orderData.estimated_delivery_date,
         })
           .catch(err => console.error('Failed to send order confirmation email:', err.message));
 
