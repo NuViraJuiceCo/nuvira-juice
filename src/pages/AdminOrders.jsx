@@ -48,6 +48,16 @@ function parseLocalDate(str) {
   return new Date(y, m - 1, d);
 }
 
+function InfoRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="flex gap-2">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-16 shrink-0 pt-0.5">{label}</span>
+      <span className="text-xs text-foreground flex-1">{value}</span>
+    </div>
+  );
+}
+
 function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const [expanded, setExpanded] = useState(false);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
@@ -56,34 +66,55 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const prevStage = stages[currentIndex - 1];
   const isComplete = !nextStage;
 
+  const deliveryDateStr = order.estimated_delivery_date
+    ? format(parseLocalDate(order.estimated_delivery_date), 'MMM d, yyyy')
+    : null;
+  const orderedDateStr = order.created_date
+    ? format(new Date(order.created_date), 'MMM d, yyyy · h:mm a')
+    : null;
+  const itemsSummary = order.items?.length > 0
+    ? order.items.map(i => `${i.title} ×${i.quantity}`).join(', ')
+    : null;
+
   return (
     <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
-      {/* Header */}
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center gap-3 p-4 text-left">
-        <div className="flex-1 min-w-0">
+      {/* Collapsed header — always shows complete at-a-glance info */}
+      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-start gap-3 p-4 text-left">
+        <div className="flex-1 min-w-0 space-y-1">
+          {/* Row 1: order # + status badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-bold">#{order.order_number}</p>
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[order.status] || 'bg-muted text-muted-foreground'}`}>
               {stages.find(s => s.key === order.status)?.label || order.status}
             </span>
-            {order.fulfillment_type === 'pickup' ? (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">Pickup</span>
-            ) : (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">Delivery</span>
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+              {order.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'}
+            </span>
+            {order.is_hub_order && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Hub</span>
             )}
           </div>
-          {customerName && <p className="text-xs font-semibold text-foreground mt-0.5">{customerName}</p>}
-          <p className="text-xs text-muted-foreground">{order.customer_email}</p>
-          <p className="text-xs text-muted-foreground">
-            {order.is_hub_order
-              ? (order.estimated_delivery_date ? `Delivery: ${format(parseLocalDate(order.estimated_delivery_date), 'MMM d, yyyy')}` : 'Hub Order')
-              : (order.estimated_delivery_date
-                  ? `Delivery: ${format(parseLocalDate(order.estimated_delivery_date), 'MMM d, yyyy')}`
-                  : order.created_date ? format(new Date(order.created_date), 'MMM d, yyyy · h:mm a') : '')}
+          {/* Row 2: customer name (always shown if available) */}
+          <p className="text-sm font-semibold text-foreground">
+            {customerName || <span className="text-muted-foreground italic font-normal">Unknown Customer</span>}
           </p>
+          {/* Row 3: email */}
+          <p className="text-xs text-muted-foreground truncate">{order.customer_email}</p>
+          {/* Row 4: delivery date + items summary */}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {deliveryDateStr && (
+              <p className="text-xs text-primary font-medium">📅 {deliveryDateStr}</p>
+            )}
+            {!deliveryDateStr && orderedDateStr && (
+              <p className="text-xs text-muted-foreground">Ordered {orderedDateStr}</p>
+            )}
+            {itemsSummary && (
+              <p className="text-xs text-muted-foreground truncate max-w-[180px]">{itemsSummary}</p>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <p className="text-sm font-bold">${order.total?.toFixed(2)}</p>
+        <div className="flex items-center gap-2 shrink-0 pt-0.5">
+          <p className="text-sm font-bold">${(order.total || 0).toFixed(2)}</p>
           {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
         </div>
       </button>
@@ -97,46 +128,53 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-3">
-              {/* Items */}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Items</p>
+            <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-4">
+
+              {/* Customer info block */}
+              <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Customer</p>
+                <InfoRow label="Name" value={customerName || '—'} />
+                <InfoRow label="Email" value={order.customer_email} />
+                <InfoRow label="Phone" value={order.contact_phone || '—'} />
+                <InfoRow label="Address" value={order.delivery_address || (order.fulfillment_type === 'pickup' ? 'In-store pickup' : '—')} />
+                {deliveryDateStr && <InfoRow label="Delivery" value={deliveryDateStr} />}
+                {orderedDateStr && <InfoRow label="Ordered" value={orderedDateStr} />}
+              </div>
+
+              {/* Items block */}
+              <div className="bg-secondary/40 rounded-xl p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Items</p>
                 <div className="space-y-1">
                   {order.items?.length > 0 ? order.items.map((item, i) => (
                     <div key={i} className="flex justify-between text-xs">
                       <span className="text-foreground">{item.title} × {item.quantity}</span>
-                      {item.price > 0 && <span className="font-medium">${(item.price * item.quantity).toFixed(2)}</span>}
+                      {item.price > 0 && <span className="font-medium text-foreground">${(item.price * item.quantity).toFixed(2)}</span>}
                     </div>
                   )) : (
-                    <p className="text-xs text-muted-foreground italic">No items</p>
+                    <p className="text-xs text-muted-foreground italic">No items listed</p>
                   )}
                 </div>
-                {order.is_hub_order && order.notes && (
-                  <p className="text-[10px] text-primary mt-1">{order.notes}</p>
+                {order.notes && (
+                  <p className="text-[10px] text-primary mt-2 pt-2 border-t border-border/40">{order.notes}</p>
                 )}
+                <div className="flex justify-between text-xs font-semibold mt-2 pt-2 border-t border-border/40">
+                  <span>Total</span>
+                  <span>${(order.total || 0).toFixed(2)}</span>
+                </div>
               </div>
 
-              {/* Contact / Address */}
-              {(order.contact_phone || order.delivery_address) && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Details</p>
-                  {order.contact_phone && <p className="text-xs">{order.contact_phone}</p>}
-                  {order.delivery_address && <p className="text-xs text-muted-foreground">{order.delivery_address}</p>}
-                </div>
-              )}
-
-              {/* Stage Progress */}
+              {/* Progress */}
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Progress</p>
-                <div className="flex gap-1 flex-wrap">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Progress — Step {currentIndex + 1} of {stages.length}</p>
+                <div className="flex gap-1">
                   {stages.map((stage, i) => (
                     <div key={stage.key} className={`h-1.5 flex-1 rounded-full ${i <= currentIndex ? 'bg-primary' : 'bg-border'}`} />
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Step {currentIndex + 1} of {stages.length}</p>
+                <p className="text-xs text-muted-foreground mt-1">{stages[currentIndex]?.label}</p>
               </div>
 
-              {/* Advance / Go Back Buttons */}
+              {/* Action buttons */}
               <div className="flex gap-2">
                 {prevStage && (
                   <button
@@ -153,7 +191,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                     disabled={isAdvancing}
                     className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
                   >
-                    {isAdvancing ? 'Updating...' : `→ "${nextStage.label}"`}
+                    {isAdvancing ? 'Updating...' : `→ ${nextStage.label}`}
                   </button>
                 ) : (
                   <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
