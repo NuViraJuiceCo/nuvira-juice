@@ -180,6 +180,19 @@ Deno.serve(async (req) => {
         try {
           await base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id });
           console.log(`✅ Pre-order ${orderNumber} synced to Hub successfully`);
+          // Log successful sync for audit trail
+          try {
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: orderNumber,
+              status: 'success',
+              description: `Successfully synced pre-order to Hub after payment authorization`,
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+              triggered_by: 'stripe_webhook_preorder',
+            });
+          } catch (logErr) {
+            console.warn(`Failed to log successful pre-order sync: ${logErr.message}`);
+          }
         } catch (syncErr) {
           console.error(`❌ CRITICAL: Pre-order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
           try {
@@ -187,6 +200,8 @@ Deno.serve(async (req) => {
               order_number: orderNumber,
               status: 'error',
               description: `Failed to sync pre-order to Hub after authorization: ${syncErr.message}`,
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
               triggered_by: 'stripe_webhook_preorder',
             });
           } catch (logErr) {
@@ -369,6 +384,19 @@ Deno.serve(async (req) => {
         try {
           await base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id });
           console.log(`✅ Order ${orderNumber} synced to Hub successfully`);
+          // Log successful sync for audit trail
+          try {
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: orderNumber,
+              status: 'success',
+              description: `Successfully synced to Hub via Stripe webhook`,
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+              triggered_by: 'stripe_webhook',
+            });
+          } catch (logErr) {
+            console.warn(`Failed to log successful sync: ${logErr.message}`);
+          }
         } catch (syncErr) {
           // Log failure in OrderSyncLog so it's visible for recovery
           console.error(`❌ CRITICAL: Order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
@@ -377,6 +405,8 @@ Deno.serve(async (req) => {
               order_number: orderNumber,
               status: 'error',
               description: `Failed to sync to Hub immediately after webhook: ${syncErr.message}`,
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
               triggered_by: 'stripe_webhook',
             });
           } catch (logErr) {
