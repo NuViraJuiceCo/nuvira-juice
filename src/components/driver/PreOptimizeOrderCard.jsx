@@ -108,8 +108,8 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
                 </span>
               )}
             </div>
-            <p className="text-xs font-semibold truncate leading-tight">{order.delivery_address?.split(',').slice(0, 2).join(',')}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight line-clamp-1">{order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ')}</p>
+            <p className="text-xs font-semibold truncate leading-tight max-w-[180px]">{order.delivery_address?.split(',').slice(0, 2).join(',')}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight truncate max-w-[180px]">{order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ')}</p>
           </div>
         </button>
         <div className="flex items-center gap-1.5 shrink-0">
