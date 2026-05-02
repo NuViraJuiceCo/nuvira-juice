@@ -176,23 +176,17 @@ Deno.serve(async (req) => {
         })
           .catch(err => console.error('Failed to send pre-order confirmation email:', err.message));
 
-        // Sync to hub — CRITICAL: Do not silently fail
+        // Sync to hub — pass stripe session for correct payment_status mapping
         try {
-          await base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id });
+          await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+            order_id: order.id,
+            stripe_session: {
+              payment_status: 'authorized', // pre-orders are authorized, not yet captured
+              id: session.id,
+            },
+            triggered_by: 'stripe_webhook_preorder',
+          });
           console.log(`✅ Pre-order ${orderNumber} synced to Hub successfully`);
-          // Log successful sync for audit trail
-          try {
-            await base44.asServiceRole.entities.OrderSyncLog.create({
-              order_number: orderNumber,
-              status: 'success',
-              description: `Successfully synced pre-order to Hub after payment authorization`,
-              started_at: new Date().toISOString(),
-              completed_at: new Date().toISOString(),
-              triggered_by: 'stripe_webhook_preorder',
-            });
-          } catch (logErr) {
-            console.warn(`Failed to log successful pre-order sync: ${logErr.message}`);
-          }
         } catch (syncErr) {
           console.error(`❌ CRITICAL: Pre-order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
           try {
@@ -380,25 +374,18 @@ Deno.serve(async (req) => {
         base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: order.id })
           .catch(err => console.error('Failed to push order to Shopify:', err.message));
 
-        // Sync to hub — CRITICAL: Do not silently fail
+        // Sync to hub — pass stripe session for correct payment_status mapping
         try {
-          await base44.asServiceRole.functions.invoke('syncOrderToHub', { order_id: order.id });
+          await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+            order_id: order.id,
+            stripe_session: {
+              payment_status: session.payment_status, // 'paid' from Stripe
+              id: session.id,
+            },
+            triggered_by: 'stripe_webhook',
+          });
           console.log(`✅ Order ${orderNumber} synced to Hub successfully`);
-          // Log successful sync for audit trail
-          try {
-            await base44.asServiceRole.entities.OrderSyncLog.create({
-              order_number: orderNumber,
-              status: 'success',
-              description: `Successfully synced to Hub via Stripe webhook`,
-              started_at: new Date().toISOString(),
-              completed_at: new Date().toISOString(),
-              triggered_by: 'stripe_webhook',
-            });
-          } catch (logErr) {
-            console.warn(`Failed to log successful sync: ${logErr.message}`);
-          }
         } catch (syncErr) {
-          // Log failure in OrderSyncLog so it's visible for recovery
           console.error(`❌ CRITICAL: Order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
           try {
             await base44.asServiceRole.entities.OrderSyncLog.create({
@@ -412,7 +399,6 @@ Deno.serve(async (req) => {
           } catch (logErr) {
             console.error(`Failed to log sync failure: ${logErr.message}`);
           }
-          // Re-throw to alert about sync failure
           throw new Error(`Hub sync failed for order ${orderNumber}: ${syncErr.message}`);
         }
 

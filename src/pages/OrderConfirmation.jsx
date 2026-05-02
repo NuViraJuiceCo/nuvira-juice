@@ -1,62 +1,115 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import SEO from '@/components/SEO';
 import { Link, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
-import { CheckCircle, Truck, ArrowRight, Home } from 'lucide-react';
+import { CheckCircle, Truck, ArrowRight, Home, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
+// Max time to poll for order before showing "received" fallback (60 seconds)
+const PROCESSING_TIMEOUT_MS = 60000;
+const RETRY_COUNT = 15;
+
 export default function OrderConfirmation() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
-  // Support both old path-based and new query param-based lookups
+  const [startTime] = React.useState(() => Date.now());
+  const [timedOut, setTimedOut] = React.useState(false);
+
   const pathOrderId = window.location.pathname.split('/').pop();
   const queryParams = new URLSearchParams(window.location.search);
   const orderNumber = queryParams.get('order_number');
-  
   const lookupKey = orderNumber || pathOrderId;
 
-  const { data: order, isLoading } = useQuery({
+  const { data: order, isLoading, failureCount } = useQuery({
     queryKey: ['order-confirmation', lookupKey],
     queryFn: async () => {
       if (!lookupKey) return null;
-      
-      // Try by ID first (old path-based), then by order_number (new Stripe success URL)
-      // NOTE: query by order_number only (don't filter by email) — order is public after checkout redirect
       let orders = [];
       if (orderNumber) {
-        // New: query by order_number only (Stripe redirects immediately, before auth context reloads)
         orders = await base44.entities.Order.filter({ order_number: orderNumber });
       } else {
-        // Old: query by ID
         orders = await base44.entities.Order.filter({ id: lookupKey });
       }
-      return orders[0] || null;
+      // Throw so react-query retries — do NOT return null on empty
+      if (!orders || orders.length === 0) throw new Error('Order not yet available');
+      return orders[0];
     },
     enabled: !!lookupKey,
-    retry: 3, // Retry up to 3 times in case webhook is still processing
-    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 5000), // exponential backoff
+    retry: RETRY_COUNT,
+    retryDelay: (attemptIndex) => {
+      // Aggressive early retries: 1s, 2s, 3s, 4s, then 5s for remaining
+      return Math.min(1000 * (attemptIndex + 1), 5000);
+    },
   });
 
-  if (isLoading) {
+  // After 60s of polling with no result, show graceful fallback instead of navigating away
+  React.useEffect(() => {
+    if (order || !lookupKey) return;
+    const timer = setTimeout(() => setTimedOut(true), PROCESSING_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [order, lookupKey]);
+
+  // Still polling — show processing state
+  if (isLoading && !timedOut) {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
+        <SEO title="Order Processing" noindex={true} />
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+          className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full mb-6"
+        />
+        <h2 className="font-heading text-xl font-bold mb-2">Processing your order…</h2>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          Your payment was received. We're confirming your order details — this usually takes a few seconds.
+        </p>
+        {elapsed > 10 && (
+          <p className="text-xs text-muted-foreground mt-3 opacity-60">Still working… ({elapsed}s)</p>
+        )}
       </div>
     );
   }
 
-  if (!order) {
+  // Timed out — order not found after 60s but payment succeeded; show graceful fallback
+  if (timedOut && !order) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <p className="text-muted-foreground">Order not found</p>
+      <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center">
+        <SEO title="Order Received" noindex={true} />
+        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-5">
+          <Clock className="w-10 h-10 text-primary" />
+        </div>
+        <h1 className="font-heading text-2xl font-bold mb-2">Order Received!</h1>
+        {orderNumber && (
+          <p className="text-sm text-muted-foreground mb-1">Order #{orderNumber}</p>
+        )}
+        <p className="text-sm text-muted-foreground max-w-xs mb-6 leading-relaxed">
+          Your payment was confirmed. We're finalizing your order — you'll receive a confirmation email shortly and can track your order from your account.
+        </p>
+        <div className="space-y-2.5 w-full max-w-sm">
+          <Link to="/account/orders" className="block">
+            <Button className="w-full h-11 rounded-xl font-semibold text-sm">
+              View My Orders
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Link>
+          <Link to="/" className="block">
+            <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm">
+              <Home className="w-4 h-4 mr-2" />
+              Back to Home
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }
+
+  // Should not reach here if still loading and not timed out
+  if (!order) return null;
 
   return (
     <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8">
