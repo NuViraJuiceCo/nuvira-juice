@@ -85,6 +85,28 @@
       "type": "string",
       "format": "date"
     },
+    "assigned_delivery_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Scheduled delivery date after production is verified"
+    },
+    "assigned_delivery_window_start": {
+      "type": "string",
+      "description": "Delivery window start time, e.g. 17:00 for 5:00 PM"
+    },
+    "assigned_delivery_window_end": {
+      "type": "string",
+      "description": "Delivery window end time, e.g. 20:00 for 8:00 PM"
+    },
+    "delivery_window_label": {
+      "type": "string",
+      "description": "Customer-facing window label, e.g. '5:00 PM - 8:00 PM'"
+    },
+    "delivery_window_timezone": {
+      "type": "string",
+      "default": "America/Chicago",
+      "description": "Timezone for delivery window"
+    },
     "status": {
       "type": "string",
       "enum": [
@@ -157,6 +179,105 @@
     "payment_captured": {
       "type": "boolean",
       "default": false
+    },
+    "assigned_production_day": {
+      "type": "string",
+      "description": "Tuesday, Friday, or Saturday (from production window)"
+    },
+    "assigned_delivery_day": {
+      "type": "string",
+      "description": "Wednesday, Saturday, or Sunday (from production window)"
+    },
+    "production_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "scheduled_for_production",
+        "in_production",
+        "completed",
+        "cancelled"
+      ]
+    },
+    "fulfillment_status": {
+      "type": "string",
+      "enum": [
+        "pending_production",
+        "ready_for_delivery",
+        "in_transit",
+        "delivered",
+        "cancelled"
+      ]
+    },
+    "delivery_status": {
+      "type": "string",
+      "enum": [
+        "not_ready",
+        "ready",
+        "in_transit",
+        "delivered"
+      ]
+    },
+    "ready_for_driver": {
+      "type": "boolean",
+      "default": false,
+      "description": "Only true when batch verified AND fulfillment_status = ready_for_delivery"
+    },
+    "batch_trigger": {
+      "type": "string",
+      "description": "What triggered batch assignment (e.g. window_1_default, saturday_threshold_met)"
+    },
+    "scheduling_reason": {
+      "type": "string",
+      "description": "Why order was assigned to this production window"
+    },
+    "financial_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid",
+        "refunded",
+        "failed"
+      ]
+    },
+    "payment_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid",
+        "refunded",
+        "failed"
+      ]
+    },
+    "do_not_recover": {
+      "type": "boolean",
+      "default": false,
+      "description": "Flag to prevent order re-entry into production if refunded/cancelled"
+    },
+    "canceled_at": {
+      "type": "string",
+      "description": "ISO timestamp when order was cancelled"
+    },
+    "deleted_at": {
+      "type": "string",
+      "description": "ISO timestamp when order was deleted"
+    },
+    "is_test_order": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test orders excluded from production scheduling"
+    },
+    "saturday_threshold_decision": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected_rolled_to_tuesday"
+      ],
+      "description": "Window 3 threshold decision status"
+    },
+    "saturday_threshold_decided_at": {
+      "type": "string",
+      "description": "ISO timestamp when Saturday threshold was evaluated"
     }
   },
   "required": [

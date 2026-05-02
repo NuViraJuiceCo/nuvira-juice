@@ -108,6 +108,10 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.Order.update(order.id, {
             assigned_production_day: 'Saturday',
             assigned_delivery_day: 'Sunday',
+            assigned_delivery_window_start: null,
+            assigned_delivery_window_end: null,
+            delivery_window_label: 'Manual scheduling',
+            delivery_window_timezone: 'America/Chicago',
             batch_trigger: 'saturday_threshold_met',
             production_status: 'scheduled_for_production',
             fulfillment_status: 'pending_production',
@@ -137,6 +141,10 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.Order.update(order.id, {
             assigned_production_day: 'Tuesday',
             assigned_delivery_day: 'Wednesday',
+            assigned_delivery_window_start: '17:00',
+            assigned_delivery_window_end: '20:00',
+            delivery_window_label: '5:00 PM - 8:00 PM',
+            delivery_window_timezone: 'America/Chicago',
             batch_trigger: 'saturday_threshold_not_met',
             production_status: 'scheduled_for_production',
             fulfillment_status: 'pending_production',

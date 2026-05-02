@@ -120,11 +120,26 @@ Deno.serve(async (req) => {
     }
     
     const assignment = getWindowAssignment(order_created_at);
+
+    // Add delivery window based on assigned delivery day
+    const deliveryWindows = {
+      'Wednesday': { start: '17:00', end: '20:00', label: '5:00 PM - 8:00 PM' },
+      'Saturday': { start: '17:00', end: '20:00', label: '5:00 PM - 8:00 PM' },
+      'Sunday': { start: null, end: null, label: 'Manual scheduling' },
+    };
+
+    const window = deliveryWindows[assignment.assigned_delivery_day];
     
     return Response.json({
       success: true,
       order_id,
-      assignment,
+      assignment: {
+        ...assignment,
+        assigned_delivery_window_start: window.start,
+        assigned_delivery_window_end: window.end,
+        delivery_window_label: window.label,
+        delivery_window_timezone: 'America/Chicago',
+      },
     });
   } catch (error) {
     console.error('[assignProductionWindow] Error:', error.message);
