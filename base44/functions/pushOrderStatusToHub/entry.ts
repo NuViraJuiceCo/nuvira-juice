@@ -1,22 +1,29 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * STATUS-ONLY BRIDGE (Fire-and-Forget, Non-Authoritative)
+ * DRIVER STATUS SYNC — receiveDriverStatusUpdate
  * 
- * Architecture: Option B - Customer App reads Hub-verified data
+ * Architecture: Option B - Customer App is recovery source for driver actions
  * 
- * PURPOSE: Attempt to push admin status updates to Hub for Hub-managed orders.
- * BEHAVIOR: Returns 200 on success, but fails silently if Hub endpoint not deployed.
+ * PURPOSE: Push driver delivery actions (delivered, unable_to_deliver, etc.) to Hub.
+ * BEHAVIOR: Awaits Hub response, updates DriverActionLog sync status, retries on failure.
  * 
- * ⚠️ IMPORTANT LIMITATIONS:
- * - Hub is the source of truth for operational statuses.
- * - This function does NOT guarantee Hub received the update.
- * - Do NOT display to users as "synced to Hub" unless hub_synced=true.
- * - Hub status will override Customer App local status on next refresh.
- * - Use only for Hub-managed orders (order.is_hub_order=true).
+ * PAYLOAD STRUCTURE:
+ * - order_number, customer_email (lookup keys)
+ * - local_order_id (Customer App Order.id)
+ * - hub_order_id (if available from Order.is_hub_order context)
+ * - action_type: delivered | unable_to_deliver | out_for_delivery | bag_return_verified
+ * - delivery_status, fulfillment_status (operational states)
+ * - delivered_at, attempted_delivery_at, performed_at (timestamps)
+ * - delivery_drop_location, delivery_notes, delivery_photo_url
+ * - performed_by (driver email)
+ * - source: customer_app_driver
+ * - idempotency_key (for deduplication)
  * 
- * NEVER overwrites line items, pricing, customer data, or subscription structure.
- * Payload: { hub_order_id, order_number, customer_email, new_status, stage_label }
+ * SYNC TRACKING:
+ * - Updates DriverActionLog.hub_sync_status = success | failed | pending
+ * - Logs sync errors to enable retry
+ * - Does NOT overwrite local delivered status during sync
  */
 Deno.serve(async (req) => {
   try {
@@ -26,10 +33,24 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { hub_order_id, order_number, customer_email, new_status, stage_label } = await req.json();
+    const {
+      order_number,
+      customer_email,
+      local_order_id,
+      hub_order_id,
+      action_type,
+      delivery_status,
+      delivered_at,
+      delivery_drop_location,
+      delivery_notes,
+      delivery_photo_url,
+      performed_by,
+      performed_at,
+      driver_action_log_id,
+    } = await req.json();
 
-    if (!order_number || !new_status) {
-      return Response.json({ error: 'order_number and new_status required' }, { status: 400 });
+    if (!order_number || !action_type) {
+      return Response.json({ error: 'order_number and action_type required' }, { status: 400 });
     }
 
     const hubApiUrl = Deno.env.get('HUB_API_URL');
@@ -40,23 +61,32 @@ Deno.serve(async (req) => {
     }
 
     const hubBase = hubApiUrl.replace(/\/$/, '').replace(/\/functions\/.*$/, '');
+    const idempotencyKey = `${order_number}:${action_type}:${performed_at}`;
 
-    // Send status-only update to Hub
+    // Build Hub payload matching receiveDriverStatusUpdate contract
+    // Hub may expect: action (not action_type), status (not delivery_status)
     const payload = {
-      event: 'order.status_updated',
-      source: 'customer_app_admin',
       order_number,
+      customer_email,
+      local_order_id: local_order_id || null,
       hub_order_id: hub_order_id || null,
-      customer_email: customer_email || null,
-      new_status,
-      stage_label: stage_label || new_status,
-      updated_by: user.email,
-      updated_at: new Date().toISOString(),
+      action: action_type, // Hub may use 'action' instead of 'action_type'
+      action_type, // Include both for compatibility
+      status: delivery_status || (action_type === 'delivered' ? 'delivered' : null),
+      delivery_status,
+      delivered_at: action_type === 'delivered' ? delivered_at : null,
+      delivery_drop_location: action_type === 'delivered' ? delivery_drop_location : null,
+      delivery_notes: delivery_notes || '',
+      delivery_photo_url: delivery_photo_url || null,
+      performed_by,
+      performed_at,
+      source: 'customer_app_driver',
+      idempotency_key: idempotencyKey,
     };
 
-    console.log(`[pushOrderStatusToHub] Admin ${user.email} updating order ${order_number} → ${new_status}`);
+    console.log(`[pushOrderStatusToHub] Syncing ${action_type} for ${order_number} to Hub via receiveDriverStatusUpdate`);
 
-    const response = await fetch(`${hubBase}/functions/receiveSyncedEvent`, {
+    const response = await fetch(`${hubBase}/functions/receiveDriverStatusUpdate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -65,17 +95,37 @@ Deno.serve(async (req) => {
       body: JSON.stringify(payload),
     });
 
+    const responseText = await response.text();
+    let hubResult = null;
+    try {
+      hubResult = JSON.parse(responseText);
+    } catch {
+      hubResult = { raw: responseText };
+    }
+
     if (!response.ok) {
-      const errText = await response.text();
-      console.error(`[pushOrderStatusToHub] ❌ Hub returned ${response.status}: ${errText}`);
-      console.error(`[pushOrderStatusToHub] CRITICAL: Status update for ${order_number} failed to sync to Hub`);
-      
-      // Create sync recovery record for manual recovery later
+      console.error(`[pushOrderStatusToHub] ❌ Hub returned ${response.status}: ${responseText}`);
+      console.error(`[pushOrderStatusToHub] CRITICAL: ${action_type} sync for ${order_number} failed`);
+
+      // Update DriverActionLog sync status to failed
+      if (driver_action_log_id) {
+        try {
+          await base44.asServiceRole.entities.DriverActionLog.update(driver_action_log_id, {
+            hub_synced: false,
+            hub_sync_status: 'failed',
+            hub_sync_error: `${response.status}: ${responseText}`,
+          });
+        } catch (logErr) {
+          console.warn('[pushOrderStatusToHub] Failed to update DriverActionLog:', logErr.message);
+        }
+      }
+
+      // Log for recovery
       try {
         await base44.asServiceRole.entities.OrderSyncLog.create({
           order_number,
           status: 'error',
-          description: `Failed to sync status "${new_status}" to Hub: ${response.status} — ${errText}. Saved locally only. Manual recovery required.`,
+          description: `Driver action ${action_type} failed to sync to Hub: ${response.status} — ${responseText}. Local record persisted. Will retry.`,
           started_at: new Date().toISOString(),
           completed_at: new Date().toISOString(),
           triggered_by: 'admin_push',
@@ -83,26 +133,37 @@ Deno.serve(async (req) => {
       } catch (logErr) {
         console.error('[pushOrderStatusToHub] Failed to create recovery log:', logErr.message);
       }
-      
-      // Return error but with local status persisted
-      return Response.json({ 
-        success: false, 
-        hub_synced: false, 
-        hub_error: `${response.status}: ${errText}`,
+
+      return Response.json({
+        success: false,
+        hub_synced: false,
+        hub_error: `${response.status}: ${responseText}`,
         local_persisted: true,
-        message: 'Status saved locally but Hub sync failed. Will retry on next admin action.'
-      }, { status: response.status === 405 ? 500 : response.status });
+        message: `Action saved locally — Hub sync failed. Marked for retry.`,
+      }, { status: 500 });
     }
 
-    const result = await response.json();
-    console.log(`[pushOrderStatusToHub] ✅ Order ${order_number} status synced to Hub successfully`);
-    
-    // Create success log
+    console.log(`[pushOrderStatusToHub] ✅ ${action_type} for ${order_number} synced to Hub`);
+
+    // Update DriverActionLog sync status to success
+    if (driver_action_log_id) {
+      try {
+        await base44.asServiceRole.entities.DriverActionLog.update(driver_action_log_id, {
+          hub_synced: true,
+          hub_sync_status: 'success',
+          hub_sync_error: null,
+        });
+      } catch (logErr) {
+        console.warn('[pushOrderStatusToHub] Failed to update DriverActionLog on success:', logErr.message);
+      }
+    }
+
+    // Log success
     try {
       await base44.asServiceRole.entities.OrderSyncLog.create({
         order_number,
         status: 'success',
-        description: `Status "${new_status}" successfully synced to Hub`,
+        description: `Driver action ${action_type} successfully synced to Hub`,
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString(),
         triggered_by: 'admin_push',
@@ -110,8 +171,14 @@ Deno.serve(async (req) => {
     } catch (logErr) {
       console.warn('[pushOrderStatusToHub] Failed to log success:', logErr.message);
     }
-    
-    return Response.json({ success: true, hub_synced: true, hub_response: result });
+
+    return Response.json({
+      success: true,
+      hub_synced: true,
+      hub_response: hubResult,
+      endpoint: `${hubBase}/functions/receiveDriverStatusUpdate`,
+      payload_sent: payload,
+    });
   } catch (error) {
     console.error('[pushOrderStatusToHub] Error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });

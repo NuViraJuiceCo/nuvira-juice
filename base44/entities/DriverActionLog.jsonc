@@ -82,9 +82,18 @@
   ],
   "rls": {
     "create": {
-      "user_condition": {
-        "role": "driver"
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "role": "driver"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
     },
     "read": {
       "$or": [
