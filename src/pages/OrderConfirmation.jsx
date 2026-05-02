@@ -214,7 +214,7 @@ export default function OrderConfirmation() {
 
         {/* Actions — no back-to-checkout link */}
         <div className="space-y-2.5">
-          <Link to={`/order-tracker/${order.id}`} className="block">
+          <Link to={`/order-tracker/${order.order_number || order.id}`} className="block">
             <Button className="w-full h-11 rounded-xl font-semibold text-sm">
               Track Your Order
               <ArrowRight className="w-4 h-4 ml-2" />

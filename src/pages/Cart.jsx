@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PROGRAMS } from '@/components/home/ProgramCards';
-import { isPreLaunch, launchDateFormatted } from '@/lib/launchConfig';
-import { isPreorderMode } from '@/lib/preorderConfig';
+import { isPreLaunch } from '@/lib/launchConfig';
+
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle, Zap, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
@@ -171,34 +171,18 @@ export default function Cart() {
       </div>
       )}
 
-      {/* Production Day Banner — hide during pre-launch / pre-order since dates would be inaccurate */}
-      {productionInfo && !isPreLaunch() && !isPreorderMode() && (
+      {productionInfo && (
         <div className="mx-4 mb-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-center gap-2">
           <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
           <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">{productionInfo.label}</p>
         </div>
       )}
 
-      {/* Pre-order window banner */}
-      {isPreorderMode() && (
-        <div className="mx-4 mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3 flex items-center gap-2">
-          <span className="text-base shrink-0">✦</span>
-          <div>
-            <p className="text-xs font-semibold text-primary">Pre-Order Window: April 23–30, 2026</p>
-            <p className="text-[10px] text-muted-foreground">Card authorized now · charged May 1st, 2026 when production begins · delivered May 2nd, 2026</p>
-          </div>
-        </div>
-      )}
-
-      {/* Delivery Estimate — only show accurate dates once live */}
-      {(!isPreLaunch() || isPreorderMode()) && (
-        <div className="mx-4 mb-4 bg-primary/5 rounded-xl p-3 flex items-center gap-2">
-          <Truck className="w-4 h-4 text-primary shrink-0" />
-          <p className="text-xs font-medium text-primary">
-            {isPreorderMode() ? 'Delivered Friday, May 2nd' : deliveryText}
-          </p>
-        </div>
-      )}
+      {/* Delivery Estimate */}
+      <div className="mx-4 mb-4 bg-primary/5 rounded-xl p-3 flex items-center gap-2">
+        <Truck className="w-4 h-4 text-primary shrink-0" />
+        <p className="text-xs font-medium text-primary">{deliveryText}</p>
+      </div>
 
       {/* AOV Upsell — Complete Your Routine */}
       {subtotal > 0 && subtotal < 144 && (

@@ -1,11 +1,7 @@
 import React from 'react';
 import { Truck, Zap, Clock } from 'lucide-react';
 import { getDeliveryShortText, getProductionInfo } from '@/lib/deliveryUtils';
-import { LAUNCH_DATE } from '@/lib/preorderConfig';
-
 export default function DeliveryBadge({ scheduleRules }) {
-  const now = new Date();
-  const isBeforeLaunch = now < LAUNCH_DATE;
   const text = getDeliveryShortText(scheduleRules);
   const productionInfo = getProductionInfo(scheduleRules);
 

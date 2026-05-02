@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
 import { Star, Lock, Gift, Zap, ShoppingBag, Users, Trophy, Cake } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
-import { isPreorderMode } from '@/lib/preorderConfig';
+
 import { Link, useNavigate } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
 import { useCart } from '@/lib/cartContext';
@@ -42,7 +42,6 @@ const HOW_TO_EARN = [
   { icon: Zap, label: 'First Order Bonus', pts: '+100 pts' },
 ];
 
-const PREORDER_EARN = { icon: Star, label: 'Pre-Order Launch Bonus', pts: '+250 pts' };
 
 export default function Rewards() {
   const { user } = useAuth();
@@ -166,7 +165,7 @@ export default function Rewards() {
             <div className="px-4 py-3 bg-muted/40">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">How to Earn</p>
             </div>
-            {[...HOW_TO_EARN, ...(isPreorderMode() ? [PREORDER_EARN] : [])].map(({ icon: Icon, label, pts }) => (
+            {HOW_TO_EARN.map(({ icon: Icon, label, pts }) => (
               <div key={label} className="flex items-center justify-between px-4 py-3.5">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-primary/8 rounded-lg flex items-center justify-center">
@@ -381,7 +380,7 @@ export default function Rewards() {
       <div className="mx-4 mt-6">
         <h2 className="font-heading text-base font-bold mb-3">How to Earn Points</h2>
         <div className="bg-card rounded-2xl border border-border/40 overflow-hidden divide-y divide-border/40">
-          {[...HOW_TO_EARN, ...(isPreorderMode() ? [PREORDER_EARN] : [])].map(({ icon: Icon, label, pts }) => (
+          {HOW_TO_EARN.map(({ icon: Icon, label, pts }) => (
             <div key={label} className="flex items-center justify-between px-4 py-3.5">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-primary/8 rounded-lg flex items-center justify-center">

@@ -17,8 +17,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
-import PreorderBanner from '@/components/PreorderBanner';
-import { isPreorderMode } from '@/lib/preorderConfig';
+
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -404,19 +403,14 @@ export default function Checkout() {
         <h1 className="font-heading text-xl font-bold">Checkout</h1>
       </div>
 
-      {/* Pre-order Banner (shown during pre-order window) */}
-      <PreorderBanner />
+
 
       {/* Delivery Estimate */}
       <div className="mx-4 mb-5 bg-primary/5 rounded-xl p-3.5 flex items-center gap-2.5">
         <Truck className="w-5 h-5 text-primary shrink-0" />
         <div>
-          <p className="text-sm font-semibold text-primary">
-            {isPreorderMode() ? 'Delivery: May 2nd, 2026' : deliveryText}
-          </p>
-          <p className="text-[10px] text-muted-foreground">
-            {isPreorderMode() ? 'Pre-orders produced May 1st · delivered May 2nd' : 'Included in our next fresh batch'}
-          </p>
+          <p className="text-sm font-semibold text-primary">{deliveryText}</p>
+          <p className="text-[10px] text-muted-foreground">Included in our next fresh batch</p>
         </div>
       </div>
 
@@ -561,7 +555,7 @@ export default function Checkout() {
       </div>
 
       {/* Bag Return — delivery only, only if customer has a previous order */}
-      {fulfillmentType === 'delivery' && !isPreorderMode() && lastOrderData.length > 0 && (
+      {fulfillmentType === 'delivery' && lastOrderData.length > 0 && (
         <BagReturnSelector
           totalBottles={totalBottles}
           lastOrderBottles={lastOrderBottles || null}
@@ -629,7 +623,7 @@ export default function Checkout() {
           disabled={isSubmitting || (fulfillmentType === 'delivery' && !addressValidated)}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {isSubmitting ? 'Processing...' : fulfillmentType === 'delivery' && !addressValidated ? 'Enter a valid delivery address' : isPreorderMode() ? `Secure Pre-Order · $${total.toFixed(2)}` : `Complete Payment · $${total.toFixed(2)}`}
+          {isSubmitting ? 'Processing...' : fulfillmentType === 'delivery' && !addressValidated ? 'Enter a valid delivery address' : `Complete Payment · $${total.toFixed(2)}`}
         </Button>
       </div>
     </div>

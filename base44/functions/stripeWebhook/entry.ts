@@ -59,150 +59,8 @@ Deno.serve(async (req) => {
           total: Math.round((session.amount_total || 0) / 100),
           fulfillment_type: session.metadata?.delivery_method || 'delivery',
           estimated_delivery_date: session.metadata?.requested_delivery_date || null,
-          preorder_fulfillment_date: session.metadata?.production_date || null,
+          preorder_fulfillment_date: null,
         };
-      }
-
-      // For pre-orders: create the order NOW, after payment authorization succeeds
-      if (session.metadata?.is_preorder === 'true') {
-
-        const orderNumber = orderData.order_number || session.metadata?.order_number;
-        const paymentIntentId = session.payment_intent;
-
-        // IDEMPOTENCY: Check if pre-order already exists by stripe_payment_intent_id (more reliable for manual capture)
-        const existingPreorders = await base44.asServiceRole.entities.Order.filter({ 
-          stripe_payment_intent_id: paymentIntentId 
-        });
-        if (existingPreorders.length > 0) {
-          console.log(`Pre-order already created for PaymentIntent ${paymentIntentId}: ${existingPreorders[0].order_number}, skipping`);
-          return Response.json({ received: true }); // Idempotent: return success without re-creating
-        }
-
-        // Fallback: if CheckoutSession lookup failed, log warning but continue with metadata
-        if (!orderData.order_number) {
-          console.warn(`CheckoutSession not found for session ${session.id}, using metadata fallback`);
-        }
-
-        // Validate referral code if provided
-        if (orderData.referral_code && customerEmail) {
-          const prevOrders = await base44.asServiceRole.entities.Order.filter({ customer_email: customerEmail });
-          const alreadyUsed = prevOrders.some(o => o.referral_code === orderData.referral_code);
-          if (alreadyUsed) {
-            console.warn(`Referral code ${orderData.referral_code} already used by ${customerEmail}, ignoring`);
-            orderData.referral_code = null;
-          }
-        }
-
-        // Create the order in the database
-        const order = await base44.asServiceRole.entities.Order.create({
-          order_number: orderNumber,
-          customer_email: customerEmail || '',
-          customer_name: orderData.customer_name || '',
-          items: orderData.items || [],
-          subtotal: orderData.subtotal || 0,
-          delivery_fee: orderData.delivery_fee || 0,
-          total: orderData.total || 0,
-          fulfillment_type: orderData.fulfillment_type || 'delivery',
-          delivery_address: orderData.delivery_address || '',
-          address_line1: orderData.address_line1 || '',
-          address_line2: orderData.address_line2 || '',
-          address_city: orderData.address_city || '',
-          address_state: orderData.address_state || '',
-          address_postal_code: orderData.address_postal_code || '',
-          address_country: orderData.address_country || 'US',
-          contact_phone: orderData.contact_phone || '',
-          estimated_delivery_date: orderData.estimated_delivery_date,
-          status: 'order_received',
-          status_history: [{
-            status: 'order_received',
-            timestamp: new Date().toISOString(),
-            message: "Pre-order authorized! Payment will be captured on May 1st when production begins. Delivery: May 2nd.",
-          }],
-          is_preorder: true,
-          preorder_fulfillment_date: orderData.preorder_fulfillment_date,
-          payment_captured: false,
-          stripe_payment_intent_id: paymentIntentId,
-          stripe_checkout_session_id: session.id,
-          referral_code: orderData.referral_code || null,
-        });
-
-        console.log(`Pre-order ${order.id} (${orderNumber}) created after payment authorization. PaymentIntent: ${paymentIntentId}`);
-
-        // Deduct points and credits after order is confirmed
-        if (customerEmail && (orderData.points_used || orderData.active_reward?.points_required)) {
-          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-          if (existing[0]) {
-            const deductPoints = (orderData.points_used || 0) + (orderData.active_reward?.points_required || 0);
-            const historyEntries = [];
-            if (orderData.points_used) {
-              historyEntries.push({ amount: -orderData.points_used, type: 'redeemed', description: 'Redeemed at checkout', timestamp: new Date().toISOString() });
-            }
-            if (orderData.active_reward?.points_required) {
-              historyEntries.push({ amount: -orderData.active_reward.points_required, type: 'redeemed', description: `Redeemed: ${orderData.active_reward.title}`, timestamp: new Date().toISOString() });
-            }
-            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-              total_points: Math.max(0, (existing[0].total_points || 0) - deductPoints),
-              redeemed_points: (existing[0].redeemed_points || 0) + deductPoints,
-              points_history: [...(existing[0].points_history || []), ...historyEntries],
-            });
-          }
-        }
-
-        if (customerEmail && orderData.credits_discount > 0) {
-          const creditRecs = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: customerEmail });
-          if (creditRecs[0]) {
-            const rec = creditRecs[0];
-            const entry = {
-              amount: orderData.credits_discount,
-              type: 'used',
-              description: `Applied to order ${orderNumber}`,
-              order_id: order.id,
-              timestamp: new Date().toISOString(),
-            };
-            await base44.asServiceRole.entities.NuViraCredit.update(rec.id, {
-              balance: Math.max(0, (rec.balance || 0) - orderData.credits_discount),
-              lifetime_used: (rec.lifetime_used || 0) + orderData.credits_discount,
-              history: [...(rec.history || []), entry],
-            });
-          }
-        }
-
-        // Send pre-order confirmation email
-        base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
-          order_id: order.id,
-          customer_email: customerEmail,
-          order_number: orderNumber,
-          is_preorder: true,
-        })
-          .catch(err => console.error('Failed to send pre-order confirmation email:', err.message));
-
-        // Sync to hub — pass stripe session for correct payment_status mapping
-        try {
-          await base44.asServiceRole.functions.invoke('syncOrderToHub', {
-            order_id: order.id,
-            stripe_session: {
-              payment_status: 'authorized', // pre-orders are authorized, not yet captured
-              id: session.id,
-            },
-            triggered_by: 'stripe_webhook_preorder',
-          });
-          console.log(`✅ Pre-order ${orderNumber} synced to Hub successfully`);
-        } catch (syncErr) {
-          console.error(`❌ CRITICAL: Pre-order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
-          try {
-            await base44.asServiceRole.entities.OrderSyncLog.create({
-              order_number: orderNumber,
-              status: 'error',
-              description: `Failed to sync pre-order to Hub after authorization: ${syncErr.message}`,
-              started_at: new Date().toISOString(),
-              completed_at: new Date().toISOString(),
-              triggered_by: 'stripe_webhook_preorder',
-            });
-          } catch (logErr) {
-            console.error(`Failed to log pre-order sync failure: ${logErr.message}`);
-          }
-          throw new Error(`Hub sync failed for pre-order ${orderNumber}: ${syncErr.message}`);
-        }
       }
 
       // Handle subscription checkout — create Subscription record
@@ -264,8 +122,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // For regular orders (non-pre-order): create the order NOW after payment succeeds
-      if (session.metadata?.is_preorder !== 'true') {
+      // For regular orders: create the order NOW after payment succeeds
+      if (true) {
         const orderNumber = orderData.order_number || session.metadata?.order_number;
 
         // IDEMPOTENCY: Check if order already exists by stripe_checkout_session_id or order_number
@@ -322,7 +180,7 @@ Deno.serve(async (req) => {
             timestamp: new Date().toISOString(),
             message: 'Payment confirmed — your order is scheduled for juicing!',
           }],
-          is_preorder: false,
+          is_preorder: orderData.is_preorder || false,
           payment_captured: true,
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id: session.payment_intent || null,

@@ -3,15 +3,18 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
-// Pre-orders: Apr 23 – Apr 30. Production (capture) day: May 1. First delivery: May 2.
-const PREORDER_START    = new Date('2026-04-23T00:00:00');
-const PREORDER_END      = new Date('2026-04-30T23:59:59');
-const FULFILLMENT_DATE  = '2026-05-01'; // Production / payment capture day: May 1, 2026
-const DELIVERY_DATE     = '2026-05-02'; // First delivery date: May 2, 2026
-
 /**
- * Calculate next delivery date using NuVira's exact rules
+ * Calculate next delivery date using NuVira's exact rules.
  * Timezone: America/Chicago
+ * Cutoff: 2 PM. Orders after cutoff shift forward one extra day.
+ *
+ * Sun → Wed (+3)
+ * Mon → Wed (+2)
+ * Tue before 2pm → Wed (+1), after 2pm → Sat (+4)
+ * Wed → Sat (+3)
+ * Thu → Sat (+2)
+ * Fri before 2pm → Sat (+1), after 2pm → Sun (+2)
+ * Sat → Sun (+1)
  */
 function calculateDeliveryDate(orderTime = new Date()) {
   const chicagoFormatter = new Intl.DateTimeFormat('en-US', {
@@ -26,36 +29,29 @@ function calculateDeliveryDate(orderTime = new Date()) {
 
   const parts = chicagoFormatter.formatToParts(orderTime);
   const partMap = {};
-  parts.forEach(part => {
-    partMap[part.type] = part.value;
-  });
+  parts.forEach(part => { partMap[part.type] = part.value; });
 
-  const chicagoYear = parseInt(partMap.year);
+  const chicagoYear  = parseInt(partMap.year);
   const chicagoMonth = parseInt(partMap.month) - 1;
-  const chicagoDay = parseInt(partMap.day);
-  const chicagoHour = parseInt(partMap.hour);
+  const chicagoDay   = parseInt(partMap.day);
+  const chicagoHour  = parseInt(partMap.hour);
 
   const chicagoDate = new Date(chicagoYear, chicagoMonth, chicagoDay, chicagoHour, 0);
-  const dayOfWeek = chicagoDate.getDay();
-  const cutoffHour = 14; // 2 PM
+  const dayOfWeek   = chicagoDate.getDay();
+  const cutoffHour  = 14; // 2 PM
 
   let daysToAdd = 0;
-  if (dayOfWeek === 0) daysToAdd = 3;       // Sun → Wed
-  else if (dayOfWeek === 1) daysToAdd = 2;  // Mon → Wed
-  else if (dayOfWeek === 2) daysToAdd = chicagoHour < cutoffHour ? 1 : 4; // Tue
-  else if (dayOfWeek === 3) daysToAdd = 3;  // Wed → Sat
-  else if (dayOfWeek === 4) daysToAdd = 2;  // Thu → Sat
-  else if (dayOfWeek === 5) daysToAdd = chicagoHour < cutoffHour ? 1 : 2; // Fri
-  else if (dayOfWeek === 6) daysToAdd = 1;  // Sat → Sun
+  if      (dayOfWeek === 0) daysToAdd = 3;
+  else if (dayOfWeek === 1) daysToAdd = 2;
+  else if (dayOfWeek === 2) daysToAdd = chicagoHour < cutoffHour ? 1 : 4;
+  else if (dayOfWeek === 3) daysToAdd = 3;
+  else if (dayOfWeek === 4) daysToAdd = 2;
+  else if (dayOfWeek === 5) daysToAdd = chicagoHour < cutoffHour ? 1 : 2;
+  else if (dayOfWeek === 6) daysToAdd = 1;
 
   const deliveryDate = new Date(chicagoDate);
   deliveryDate.setDate(deliveryDate.getDate() + daysToAdd);
   return deliveryDate.toISOString().split('T')[0];
-}
-
-function isPreorderWindow() {
-  const now = new Date();
-  return now >= PREORDER_START && now <= PREORDER_END;
 }
 
 Deno.serve(async (req) => {
@@ -70,52 +66,43 @@ Deno.serve(async (req) => {
       points_discount, points_used,
       active_reward, reward_discount, credits_discount,
       referral_discount, referral_code,
-      force_preorder,
     } = await req.json();
-
-    const preorder = force_preorder || isPreorderWindow();
 
     // CRITICAL: Block checkout if customer_name is missing
     if (!customer_name || !customer_name.trim()) {
-      console.error(`❌ CHECKOUT BLOCKED: customer_name is missing or empty. Email: ${customer_email}`);
+      console.error(`❌ CHECKOUT BLOCKED: customer_name is missing. Email: ${customer_email}`);
       return Response.json(
         { error: 'Customer name is required. Please complete your profile before placing an order.' },
         { status: 400 }
       );
     }
 
-    // Log metadata payload before Stripe session creation
-    console.log(`[Checkout] Starting for customer: ${customer_email}, name: ${customer_name}, order_type: ${preorder ? 'preorder' : 'one_time'}`);
+    console.log(`[Checkout] Starting for customer: ${customer_email}, name: ${customer_name}, order_type: one_time`);
 
     // --- Subscription perks: look up active subscription for this customer ---
     let subFreeDelivery = false;
-    let subDiscountPct = 0;
-    let activeSub = null;
+    let subDiscountPct  = 0;
     if (customer_email) {
       const subs = await base44.asServiceRole.entities.Subscription.filter({ customer_email, status: 'active' });
       if (subs.length > 0) {
-        activeSub = subs[0];
         const allPlans = await base44.asServiceRole.entities.SubscriptionPlan.list();
-        const plan = allPlans.find(p => p.id === activeSub.plan_id);
-        if (plan) {
-          // Monthly Ritual (8%) and VIP Wellness (15%) get free delivery + discount
-          if (plan.discount_percent > 0) {
-            subDiscountPct = plan.discount_percent;
-            subFreeDelivery = true; // any plan with a discount also gets free delivery
-          }
-          console.log(`Subscription perks for ${customer_email}: plan=${plan.name}, freeDelivery=${subFreeDelivery}, discount=${subDiscountPct}%`);
+        const plan = allPlans.find(p => p.id === subs[0].plan_id);
+        if (plan && plan.discount_percent > 0) {
+          subDiscountPct  = plan.discount_percent;
+          subFreeDelivery = true;
+          console.log(`Subscription perks for ${customer_email}: plan=${plan.name}, freeDelivery=true, discount=${subDiscountPct}%`);
         }
       }
     }
 
-    // Apply subscription perks on top of what frontend sent
+    // Apply subscription perks
     const effectiveDeliveryFee = subFreeDelivery ? 0 : (delivery_fee || 0);
-    const subDiscountAmt = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
-    const effectiveTotal = Math.max(0, total - (delivery_fee - effectiveDeliveryFee) - subDiscountAmt);
+    const subDiscountAmt       = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
+    const effectiveTotal       = Math.max(0, total - (delivery_fee - effectiveDeliveryFee) - subDiscountAmt);
 
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
 
-    // Build Stripe line items (before storing checkout data)
+    // Build Stripe line items
     const lineItems = items
       .filter(item => item.product_id !== '__birthday_reward__' && item.price > 0)
       .map(item => ({
@@ -143,176 +130,134 @@ Deno.serve(async (req) => {
 
     const origin = req.headers.get('origin') || 'https://app.base44.com';
 
-    // Build discounts (points + credits + tier reward + subscription discount + referral)
+    // Build discounts coupon
     let discounts = [];
     const totalDiscountCents =
-      Math.round((points_discount || 0) * 100) +
-      Math.round((reward_discount || 0) * 100) +
+      Math.round((points_discount  || 0) * 100) +
+      Math.round((reward_discount  || 0) * 100) +
       Math.round((credits_discount || 0) * 100) +
-      Math.round((referral_discount || 0) * 100) +
-      Math.round(subDiscountAmt * 100);
+      Math.round((referral_discount|| 0) * 100) +
+      Math.round(subDiscountAmt         * 100);
 
     if (totalDiscountCents > 0) {
       const discountParts = [];
-      if (points_used) discountParts.push(`${points_used} Loyalty Points`);
-      if (active_reward?.title) discountParts.push(active_reward.title);
-      if (credits_discount > 0) discountParts.push('NuVira Credits');
+      if (points_used)           discountParts.push(`${points_used} Loyalty Points`);
+      if (active_reward?.title)  discountParts.push(active_reward.title);
+      if (credits_discount > 0)  discountParts.push('NuVira Credits');
       if (referral_discount > 0) discountParts.push(`Referral Code ${referral_code || 'NuVira26'}`);
-      if (subDiscountAmt > 0) discountParts.push(`Subscriber ${subDiscountPct}% Discount`);
+      if (subDiscountAmt > 0)    discountParts.push(`Subscriber ${subDiscountPct}% Discount`);
 
       const coupon = await stripe.coupons.create({
         amount_off: totalDiscountCents,
-        currency: 'usd',
-        duration: 'once',
-        name: discountParts.join(' + ') || 'Discount',
+        currency:   'usd',
+        duration:   'once',
+        name:       discountParts.join(' + ') || 'Discount',
       });
       discounts = [{ coupon: coupon.id }];
     }
 
-    // Calculate delivery date using NuVira's exact rules (backend source of truth)
-    const calculatedDeliveryDate = preorder ? DELIVERY_DATE : calculateDeliveryDate();
+    // Delivery date: always use the backend calculation as source of truth
+    const deliveryDate = calculateDeliveryDate();
 
-    // Store checkout session data for webhook to retrieve after payment
-    const checkoutData = {
-     order_number: orderNumber,
-     customer_email: customer_email || '',
-     customer_name: customer_name || '',
-     // Structured address fields for Hub sync
-     address_line1: address_line1 || '',
-     address_line2: address_line2 || '',
-     address_city: address_city || '',
-     address_state: address_state || '',
-     address_postal_code: address_postal_code || '',
-     address_country: 'US',
-     items: items.map(i => ({
-       product_id: i.product_id,
-       title: i.title,
-       price: i.price,
-       quantity: i.quantity,
-       image_url: i.image_url,
-     })),
-     subtotal,
-     delivery_fee: effectiveDeliveryFee,
-     total: effectiveTotal,
-     fulfillment_type: fulfillment_type || 'delivery',
-     delivery_address: delivery_address || '',
-     contact_phone: contact_phone || '',
-     estimated_delivery_date: calculatedDeliveryDate,
-     preorder_fulfillment_date: preorder ? FULFILLMENT_DATE : null,
-     referral_code: (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
-     points_used: points_used || 0,
-     points_discount: points_discount || 0,
-     active_reward: active_reward || null,
-     reward_discount: reward_discount || 0,
-     credits_discount: credits_discount || 0,
-     is_preorder: preorder,
-    };
-
-    // Pass customer profile, delivery, and order metadata to Stripe for recovery
-    // Stripe metadata has 500 char limit per value, so keep values concise
-    // This is the tertiary recovery layer if CheckoutSession lookup fails
+    // Stripe metadata — clean, no preorder fields
     const sessionMetadata = {
-      // App and Checkout Context
-      base44_app_id: Deno.env.get('BASE44_APP_ID'),
-      source_app: 'customer_app',
-      checkout_version: '1.0',
-      // Order Identification
-      order_number: orderNumber,
-      order_type: 'one_time',
-      fulfillment_mode: 'single_delivery',
-      is_preorder: preorder ? 'true' : 'false',
-      // Customer Profile Recovery
-      customer_email: customer_email || '',
-      customer_name: customer_name || '',
-      customer_phone: contact_phone || '',
-      // Delivery Address Recovery (use selected checkout address)
-      delivery_method: fulfillment_type || 'delivery',
-      delivery_address_line1: address_line1 || '',
-      delivery_address_line2: address_line2 || '',
-      delivery_city: address_city || '',
-      delivery_state: address_state || '',
-      delivery_postal_code: address_postal_code || '',
-      // Delivery Dates
-      requested_delivery_date: calculatedDeliveryDate,
-      production_date: preorder ? FULFILLMENT_DATE : '',
+      base44_app_id:          Deno.env.get('BASE44_APP_ID'),
+      source_app:             'customer_app',
+      checkout_version:       '2.0',
+      order_number:           orderNumber,
+      order_type:             'one_time',
+      fulfillment_mode:       'single_delivery',
+      is_preorder:            'false',
+      customer_email:         customer_email || '',
+      customer_name:          customer_name  || '',
+      customer_phone:         contact_phone  || '',
+      delivery_method:        fulfillment_type || 'delivery',
+      delivery_address_line1: address_line1  || '',
+      delivery_address_line2: address_line2  || '',
+      delivery_city:          address_city   || '',
+      delivery_state:         address_state  || '',
+      delivery_postal_code:   address_postal_code || '',
+      requested_delivery_date: deliveryDate,
     };
 
-    let session;
+    // Store checkout data for webhook recovery (expires 24h)
+    const checkoutData = {
+      order_number:           orderNumber,
+      customer_email:         customer_email || '',
+      customer_name:          customer_name  || '',
+      address_line1:          address_line1  || '',
+      address_line2:          address_line2  || '',
+      address_city:           address_city   || '',
+      address_state:          address_state  || '',
+      address_postal_code:    address_postal_code || '',
+      address_country:        'US',
+      items: items.map(i => ({
+        product_id: i.product_id,
+        title:      i.title,
+        price:      i.price,
+        quantity:   i.quantity,
+        image_url:  i.image_url,
+      })),
+      subtotal,
+      delivery_fee:              effectiveDeliveryFee,
+      total:                     effectiveTotal,
+      fulfillment_type:          fulfillment_type || 'delivery',
+      delivery_address:          delivery_address || '',
+      contact_phone:             contact_phone    || '',
+      estimated_delivery_date:   deliveryDate,
+      is_preorder:               false,
+      referral_code:  (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
+      points_used:    points_used    || 0,
+      points_discount:points_discount|| 0,
+      active_reward:  active_reward  || null,
+      reward_discount:reward_discount|| 0,
+      credits_discount:credits_discount || 0,
+    };
 
-    // Log resolved metadata before creating Stripe session
-    console.log(`[Metadata] Resolved customer_name: "${customer_name}"`);
-    console.log(`[Metadata] Checkout metadata keys: ${Object.keys(sessionMetadata).join(', ')}`);
-    console.log(`[Metadata] customer_name in metadata: "${sessionMetadata.customer_name}"`);
+    console.log(`[Metadata] customer_name="${customer_name}", delivery_date="${deliveryDate}"`);
 
-    if (preorder) {
-       // PRE-ORDER: Checkout session with manual capture
-       session = await stripe.checkout.sessions.create({
-         payment_method_types: ['card'],
-         line_items: lineItems,
-         mode: 'payment',
-         client_reference_id: orderNumber, // Reconciliation key
-         payment_intent_data: {
-           capture_method: 'manual', // authorize only — captured on May 1
-           metadata: sessionMetadata,
-         },
-         success_url: `${origin}/order-confirmation?order_number=${orderNumber}&preorder=true`,
-         cancel_url: `${origin}/checkout`,
-         customer_email: customer_email || undefined,
-         ...(discounts.length > 0 ? { discounts } : {}),
-         metadata: sessionMetadata,
-       });
+    // All new orders: immediate payment capture
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items:           lineItems,
+      mode:                 'payment',
+      client_reference_id:  orderNumber,
+      payment_intent_data:  { metadata: sessionMetadata },
+      success_url: `${origin}/order-confirmation?order_number=${orderNumber}`,
+      cancel_url:  `${origin}/checkout`,
+      customer_email: customer_email || undefined,
+      ...(discounts.length > 0 ? { discounts } : {}),
+      metadata: sessionMetadata,
+    });
 
-       console.log(`✅ Pre-order session ${session.id} created with complete metadata for order ${orderNumber}, customer: ${customer_email}`);
-       console.log(`Metadata keys: ${Object.keys(sessionMetadata).join(', ')}`);
-    } else {
-      // REGULAR ORDER: Immediate payment — attach complete metadata to both session and payment intent
-      session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: lineItems,
-        mode: 'payment',
-        client_reference_id: orderNumber, // Reconciliation key
-        payment_intent_data: {
-          metadata: sessionMetadata, // Attach metadata to PaymentIntent as well
-        },
-        success_url: `${origin}/order-confirmation?order_number=${orderNumber}`,
-        cancel_url: `${origin}/checkout`,
-        customer_email: customer_email || undefined,
-        ...(discounts.length > 0 ? { discounts } : {}),
-        metadata: sessionMetadata,
-      });
+    console.log(`✅ Checkout session ${session.id} created for order ${orderNumber}, customer: ${customer_email}, delivery: ${deliveryDate}`);
 
-      console.log(`✅ Regular checkout session ${session.id} created with complete metadata for order ${orderNumber}, customer: ${customer_email}`);
-      console.log(`Metadata keys: ${Object.keys(sessionMetadata).join(', ')}`);
-    }
-
-    // Store checkout data for webhook retrieval (expires in 24 hours)
-    // CRITICAL: This is the recovery layer for webhook — must always succeed
+    // Store CheckoutSession for webhook recovery
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     try {
       await base44.asServiceRole.entities.CheckoutSession.create({
         stripe_session_id: session.id,
-        order_number: orderNumber,
-        customer_email: customer_email || '',
-        checkout_data: checkoutData,
-        expires_at: expiresAt,
+        order_number:      orderNumber,
+        customer_email:    customer_email || '',
+        checkout_data:     checkoutData,
+        expires_at:        expiresAt,
       });
       console.log(`CheckoutSession stored: ${session.id} → order ${orderNumber}`);
     } catch (checkoutErr) {
-      // If CheckoutSession creation fails, webhook will still have order_number in client_reference_id and metadata
-      // This is a safety fallback, not a blocker
       console.error(`Failed to store CheckoutSession ${session.id}: ${checkoutErr.message} — webhook will use metadata fallback`);
     }
 
     return Response.json({
-      url: session.url,
-      order_number: orderNumber,
-      is_preorder: preorder,
-      sub_free_delivery: subFreeDelivery,
-      sub_discount_pct: subDiscountPct,
-      sub_discount_amt: subDiscountAmt,
+      url:                  session.url,
+      order_number:         orderNumber,
+      is_preorder:          false,
+      sub_free_delivery:    subFreeDelivery,
+      sub_discount_pct:     subDiscountPct,
+      sub_discount_amt:     subDiscountAmt,
       effective_delivery_fee: effectiveDeliveryFee,
-      effective_total: effectiveTotal,
+      effective_total:      effectiveTotal,
     });
+
   } catch (error) {
     console.error('Stripe checkout error:', error);
     return Response.json({ error: error.message }, { status: 500 });
