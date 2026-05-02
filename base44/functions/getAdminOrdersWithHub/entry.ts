@@ -179,7 +179,10 @@ Deno.serve(async (req) => {
             const resolvedAddress = resolveField(order.delivery_address, emailToAddress[authKey]);
 
             const fulfillments = order.fulfillments;
-            if (Array.isArray(fulfillments) && fulfillments.length > 0) {
+            const isSubscription = order.order_type === 'subscription' || order.fulfillment_mode === 'multi_delivery';
+
+            // Only expand subscriptions. One-time orders use line_items (main product display)
+            if (isSubscription && Array.isArray(fulfillments) && fulfillments.length > 0) {
               for (const f of fulfillments) {
                 const baseOrderNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
                 const fAddress = resolveField(f.delivery_address || order.delivery_address, emailToAddress[authKey]);
@@ -195,7 +198,7 @@ Deno.serve(async (req) => {
                   status: mapHubStatus(f.status || order.status),
                   total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
                   subtotal: order.subtotal ? parseFloat((order.subtotal / fulfillments.length).toFixed(2)) : 0,
-                  delivery_fee: 0,
+                  delivery_fee: order.delivery_fee || 0,
                   fulfillment_type: order.fulfillment_type || 'delivery',
                   delivery_address: fAddress,
                   contact_phone: fPhone,

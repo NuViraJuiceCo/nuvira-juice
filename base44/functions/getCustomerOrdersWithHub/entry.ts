@@ -84,42 +84,45 @@ Deno.serve(async (req) => {
           const rawOrders = hubData.orders || [];
           console.log(`[Fetch Orders] Hub returned ${rawOrders.length} raw orders for ${hubQueryEmail}`);
 
-          // Expand subscription parent orders that have embedded fulfillments[]
-          for (const order of rawOrders) {
-            const fulfillments = order.fulfillments;
-            if (Array.isArray(fulfillments) && fulfillments.length > 0) {
-              // Expand each fulfillment into a display record
-              for (const f of fulfillments) {
-                hubOrders.push({
-                  id: `${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
-                  order_number: f.fulfillment_number === 1
-                    ? (order.shopify_order_number || order.order_number || '').replace('#', '')
-                    : `${(order.shopify_order_number || order.order_number || '').replace('#', '')}-${f.fulfillment_number}`,
-                  customer_email: order.customer_email || hubQueryEmail,
-                  status: mapHubStatus(f.status || order.status),
-                  total: order.total ? order.total / (fulfillments.length) : 0,
-                  subtotal: order.subtotal ? order.subtotal / (fulfillments.length) : 0,
-                  delivery_fee: 0,
-                  fulfillment_type: order.fulfillment_type || 'delivery',
-                  delivery_address: order.delivery_address || '',
-                  estimated_delivery_date: f.delivery_date || null,
-                  items: f.items || order.line_items || [],
-                  created_date: order.created_date || order.updated_date || null,
-                  notes: `Monthly Ritual — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
-                  is_hub_order: true,
-                });
-              }
-            } else {
-              // Regular order — normalize fields
-              hubOrders.push({
-                ...order,
-                order_number: (order.shopify_order_number || order.order_number || '').replace('#', ''),
-                status: mapHubStatus(order.status),
-                items: order.line_items || order.items || [],
-                is_hub_order: true,
-              });
-            }
-          }
+          // Process Hub orders: expand subscriptions, but keep one-time orders as-is
+           for (const order of rawOrders) {
+             const fulfillments = order.fulfillments;
+             const isSubscription = order.order_type === 'subscription' || order.fulfillment_mode === 'multi_delivery';
+
+             // Only expand subscriptions. One-time orders use line_items (main product display)
+             if (isSubscription && Array.isArray(fulfillments) && fulfillments.length > 0) {
+               // Expand each fulfillment into a display record (subscription only)
+               for (const f of fulfillments) {
+                 hubOrders.push({
+                   id: `${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
+                   order_number: f.fulfillment_number === 1
+                     ? (order.shopify_order_number || order.order_number || '').replace('#', '')
+                     : `${(order.shopify_order_number || order.order_number || '').replace('#', '')}-${f.fulfillment_number}`,
+                   customer_email: order.customer_email || hubQueryEmail,
+                   status: mapHubStatus(f.status || order.status),
+                   total: order.total ? order.total / (fulfillments.length) : 0,
+                   subtotal: order.subtotal ? order.subtotal / (fulfillments.length) : 0,
+                   delivery_fee: order.delivery_fee || 0,
+                   fulfillment_type: order.fulfillment_type || 'delivery',
+                   delivery_address: order.delivery_address || '',
+                   estimated_delivery_date: f.delivery_date || null,
+                   items: f.items || order.line_items || [],
+                   created_date: order.created_date || order.updated_date || null,
+                   notes: `Monthly Ritual — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
+                   is_hub_order: true,
+                 });
+               }
+             } else {
+               // One-time order or subscription without expanded fulfillments: use line_items for display
+               hubOrders.push({
+                 ...order,
+                 order_number: (order.shopify_order_number || order.order_number || '').replace('#', ''),
+                 status: mapHubStatus(order.status),
+                 items: order.line_items || order.items || [],
+                 is_hub_order: true,
+               });
+             }
+           }
           console.log(`[Fetch Orders] Expanded to ${hubOrders.length} display orders`);
         } else {
           const errText = await hubResponse.text();
