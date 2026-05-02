@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
     let deliveryOrders = Array.from(mergedMap.values());
     console.log(`[Route] Merged total: ${deliveryOrders.length} orders`);
 
-    // ── 4. Date filter ───────────────────────────────────────────────────────
+    // ── 4. Date filter & exclude already delivered ───────────────────────────────────────────────────────
     if (date) {
       deliveryOrders = deliveryOrders.filter(o =>
         o.estimated_delivery_date === date || o.assigned_delivery_date === date
@@ -240,9 +240,24 @@ Deno.serve(async (req) => {
       console.log(`[Route] After date filter (${date}): ${deliveryOrders.length} orders`);
     }
 
-    if (deliveryOrders.length === 0) {
-      return Response.json({ orders: [], optimized_orders: null });
+    // CRITICAL: Exclude already delivered orders — they must NOT be re-optimized or reverted to queued status
+    const deliveredOrders = deliveryOrders.filter(o => o.status === 'delivered' || o.delivered_at);
+    const queuedForOptimization = deliveryOrders.filter(o => o.status !== 'delivered' && !o.delivered_at);
+    
+    if (deliveredOrders.length > 0) {
+      console.log(`[Route] Excluding ${deliveredOrders.length} already-delivered orders from optimization`);
     }
+
+    if (queuedForOptimization.length === 0) {
+      return Response.json({ 
+        orders: deliveryOrders, 
+        optimized_orders: deliveredOrders.length > 0 ? deliveredOrders : null,
+        completed_orders: deliveredOrders
+      });
+    }
+    
+    // Continue optimization only for queued orders
+    deliveryOrders = queuedForOptimization;
 
     // If not optimizing, just return the raw queued orders
     if (!optimize) {

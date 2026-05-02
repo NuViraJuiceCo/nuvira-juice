@@ -67,15 +67,50 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      console.warn(`[pushOrderStatusToHub] ⚠️ Hub returned ${response.status}: ${errText}`);
-      console.warn(`[pushOrderStatusToHub] Status update for ${order_number} was NOT sent to Hub. Hub status will not be updated.`);
-      console.warn(`[pushOrderStatusToHub] This is non-fatal in Option B: Hub will use its own source of truth on next refresh.`);
-      // Non-fatal — log but don't fail the admin action
-      return Response.json({ success: true, hub_synced: false, hub_error: errText });
+      console.error(`[pushOrderStatusToHub] ❌ Hub returned ${response.status}: ${errText}`);
+      console.error(`[pushOrderStatusToHub] CRITICAL: Status update for ${order_number} failed to sync to Hub`);
+      
+      // Create sync recovery record for manual recovery later
+      try {
+        await base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number,
+          status: 'error',
+          description: `Failed to sync status "${new_status}" to Hub: ${response.status} — ${errText}. Saved locally only. Manual recovery required.`,
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          triggered_by: 'admin_push',
+        });
+      } catch (logErr) {
+        console.error('[pushOrderStatusToHub] Failed to create recovery log:', logErr.message);
+      }
+      
+      // Return error but with local status persisted
+      return Response.json({ 
+        success: false, 
+        hub_synced: false, 
+        hub_error: `${response.status}: ${errText}`,
+        local_persisted: true,
+        message: 'Status saved locally but Hub sync failed. Will retry on next admin action.'
+      }, { status: response.status === 405 ? 500 : response.status });
     }
 
     const result = await response.json();
-    console.log(`[pushOrderStatusToHub] Order ${order_number} status synced to Hub`);
+    console.log(`[pushOrderStatusToHub] ✅ Order ${order_number} status synced to Hub successfully`);
+    
+    // Create success log
+    try {
+      await base44.asServiceRole.entities.OrderSyncLog.create({
+        order_number,
+        status: 'success',
+        description: `Status "${new_status}" successfully synced to Hub`,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        triggered_by: 'admin_push',
+      });
+    } catch (logErr) {
+      console.warn('[pushOrderStatusToHub] Failed to log success:', logErr.message);
+    }
+    
     return Response.json({ success: true, hub_synced: true, hub_response: result });
   } catch (error) {
     console.error('[pushOrderStatusToHub] Error:', error.message);
