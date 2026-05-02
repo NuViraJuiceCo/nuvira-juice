@@ -27,32 +27,48 @@ const PICKUP_STAGES = [
 ];
 
 export default function OrderTracker() {
-  const orderId = window.location.pathname.split('/').pop();
+  // Supports both /order-tracker/<entity-id> and /order-tracker/<order_number> (NV-XXXX)
+  const rawParam = window.location.pathname.split('/').pop();
+  const isOrderNumber = rawParam && rawParam.startsWith('NV-');
+  const orderId = isOrderNumber ? null : rawParam;
+  const orderNumberParam = isOrderNumber ? rawParam : null;
   const navigate = useNavigate();
   const { user } = useAuth();
 
   const { data: order, isLoading, error } = useQuery({
-    queryKey: ['order', orderId, user?.email],
+    queryKey: ['order', orderId || orderNumberParam, user?.email],
     queryFn: async () => {
-      // Try local lookup first
-      try {
-        const localOrders = await base44.entities.Order.filter({ id: orderId });
-        if (localOrders[0]) return localOrders[0];
-      } catch (err) {
-        console.warn('Local order lookup failed:', err.message);
+      // 1. Try by order_number (NV-XXXX) — most reliable for Hub-sourced orders
+      if (orderNumberParam) {
+        try {
+          const localOrders = await base44.entities.Order.filter({ order_number: orderNumberParam });
+          if (localOrders[0]) return localOrders[0];
+        } catch (err) {
+          console.warn('Order number lookup failed:', err.message);
+        }
       }
 
-      // Try merged data via backend function (handles Hub + local + fulfillment expansions)
+      // 2. Try by local entity ID
+      if (orderId) {
+        try {
+          const localOrders = await base44.entities.Order.filter({ id: orderId });
+          if (localOrders[0]) return localOrders[0];
+        } catch (err) {
+          console.warn('Local order lookup failed:', err.message);
+        }
+      }
+
+      // 3. Fallback: search merged Hub+local orders
       if (user?.email) {
         try {
           const res = await base44.functions.invoke('getCustomerOrdersWithHub', { customer_email: user.email });
           const orders = res.data?.orders || [];
-          
-          // Search by multiple ID types
-          let found = orders.find(o => o.id === orderId) ||
-                     orders.find(o => o.order_number && 
-                       (o.order_number === orderId || o.order_number.replace('#', '') === orderId));
-          
+          const searchKey = orderNumberParam || orderId;
+          const found = orders.find(o =>
+            o.id === searchKey ||
+            o.order_number === searchKey ||
+            o.order_number?.replace('#', '') === searchKey
+          );
           if (found) return found;
         } catch (err) {
           console.warn('Merged order lookup failed:', err.message);
@@ -61,7 +77,7 @@ export default function OrderTracker() {
 
       return null;
     },
-    enabled: !!orderId && !!user?.email,
+    enabled: !!(orderId || orderNumberParam) && !!user?.email,
     refetchInterval: 30000,
     retry: 2,
   });
@@ -70,12 +86,12 @@ export default function OrderTracker() {
     && order?.fulfillment_type === 'delivery';
 
   const { data: etaData } = useQuery({
-    queryKey: ['delivery-eta', orderId],
+    queryKey: ['delivery-eta', order?.id],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getDeliveryEta', { order_id: orderId });
+      const res = await base44.functions.invoke('getDeliveryEta', { order_id: order.id });
       return res.data;
     },
-    enabled: !!orderId && !!order && isOnRoute,
+    enabled: !!order?.id && isOnRoute,
     refetchInterval: 3 * 60 * 1000, // refresh every 3 min for live accuracy
   });
 

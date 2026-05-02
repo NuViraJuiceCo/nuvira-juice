@@ -1,94 +1,78 @@
 import React, { useState, useEffect } from 'react';
 import SEO from '@/components/SEO';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/lib/AuthContext';
-import { CheckCircle, Truck, ArrowRight, Home, Clock } from 'lucide-react';
+import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
-// Max time to poll for order before showing "received" fallback (60 seconds)
-const PROCESSING_TIMEOUT_MS = 60000;
+// Max polling time before showing graceful fallback (60 seconds, 15 retries)
+const POLLING_TIMEOUT_MS = 60000;
 const RETRY_COUNT = 15;
 
+/**
+ * OrderConfirmation — source of truth for lookup priority:
+ * 1. ?order_number=NV-XXXX  (primary — most reliable, set by createCheckoutSession)
+ * 2. /order-confirmation/:id  (legacy path param — local entity ID only)
+ * 3. No params  → show friendly "check your orders" fallback immediately
+ *
+ * NEVER navigates back to /checkout after a successful payment.
+ * NEVER uses the literal path segment "order-confirmation" as a lookup key.
+ */
 export default function OrderConfirmation() {
-  const navigate = useNavigate();
-  const { user } = useAuth();
+  const queryParams = new URLSearchParams(window.location.search);
+  const orderNumber = queryParams.get('order_number');
+
+  // Path param: /order-confirmation/:id — only valid if it looks like a real ID (not the route segment itself)
+  const rawPathParam = window.location.pathname.split('/').pop();
+  const pathId = rawPathParam && rawPathParam !== 'order-confirmation' ? rawPathParam : null;
+
+  // Determine lookup mode
+  const lookupMode = orderNumber ? 'order_number' : pathId ? 'path_id' : 'none';
+
   const [startTime] = React.useState(() => Date.now());
   const [timedOut, setTimedOut] = React.useState(false);
 
-  const pathOrderId = window.location.pathname.split('/').pop();
-  const queryParams = new URLSearchParams(window.location.search);
-  const orderNumber = queryParams.get('order_number');
-  const lookupKey = orderNumber || pathOrderId;
-
-  const { data: order, isLoading, failureCount } = useQuery({
-    queryKey: ['order-confirmation', lookupKey],
+  const { data: order, isLoading } = useQuery({
+    queryKey: ['order-confirmation', lookupMode, orderNumber || pathId],
     queryFn: async () => {
-      if (!lookupKey) return null;
-      let orders = [];
-      if (orderNumber) {
-        orders = await base44.entities.Order.filter({ order_number: orderNumber });
-      } else {
-        orders = await base44.entities.Order.filter({ id: lookupKey });
+      if (lookupMode === 'order_number') {
+        const orders = await base44.entities.Order.filter({ order_number: orderNumber });
+        if (!orders || orders.length === 0) throw new Error('Order not yet available');
+        return orders[0];
       }
-      // Throw so react-query retries — do NOT return null on empty
-      if (!orders || orders.length === 0) throw new Error('Order not yet available');
-      return orders[0];
+      if (lookupMode === 'path_id') {
+        const orders = await base44.entities.Order.filter({ id: pathId });
+        if (!orders || orders.length === 0) throw new Error('Order not yet available');
+        return orders[0];
+      }
+      return null; // no params — don't query
     },
-    enabled: !!lookupKey,
+    enabled: lookupMode !== 'none',
     retry: RETRY_COUNT,
-    retryDelay: (attemptIndex) => {
-      // Aggressive early retries: 1s, 2s, 3s, 4s, then 5s for remaining
-      return Math.min(1000 * (attemptIndex + 1), 5000);
-    },
+    retryDelay: (attemptIndex) => Math.min(1000 * (attemptIndex + 1), 5000),
   });
 
-  // After 60s of polling with no result, show graceful fallback instead of navigating away
+  // After 60s of polling with no result, show graceful fallback
   React.useEffect(() => {
-    if (order || !lookupKey) return;
-    const timer = setTimeout(() => setTimedOut(true), PROCESSING_TIMEOUT_MS);
+    if (order || lookupMode === 'none') return;
+    const timer = setTimeout(() => setTimedOut(true), POLLING_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [order, lookupKey]);
+  }, [order, lookupMode]);
 
-  // Still polling — show processing state
-  if (isLoading && !timedOut) {
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
-        <SEO title="Order Processing" noindex={true} />
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
-          className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full mb-6"
-        />
-        <h2 className="font-heading text-xl font-bold mb-2">Processing your order…</h2>
-        <p className="text-sm text-muted-foreground max-w-xs">
-          Your payment was received. We're confirming your order details — this usually takes a few seconds.
-        </p>
-        {elapsed > 10 && (
-          <p className="text-xs text-muted-foreground mt-3 opacity-60">Still working… ({elapsed}s)</p>
-        )}
-      </div>
-    );
-  }
-
-  // Timed out — order not found after 60s but payment succeeded; show graceful fallback
-  if (timedOut && !order) {
+  // ── Case 1: No params at all ──────────────────────────────────────────────
+  if (lookupMode === 'none') {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center">
-        <SEO title="Order Received" noindex={true} />
+        <SEO title="Order Processing" noindex={true} />
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-5">
-          <Clock className="w-10 h-10 text-primary" />
+          <Mail className="w-10 h-10 text-primary" />
         </div>
-        <h1 className="font-heading text-2xl font-bold mb-2">Order Received!</h1>
-        {orderNumber && (
-          <p className="text-sm text-muted-foreground mb-1">Order #{orderNumber}</p>
-        )}
+        <h1 className="font-heading text-2xl font-bold mb-2">Check Your Orders</h1>
         <p className="text-sm text-muted-foreground max-w-xs mb-6 leading-relaxed">
-          Your payment was confirmed. We're finalizing your order — you'll receive a confirmation email shortly and can track your order from your account.
+          We're processing your order. Please check your account orders — your order will appear there shortly. If you don't see it within a few minutes, contact us.
         </p>
         <div className="space-y-2.5 w-full max-w-sm">
           <Link to="/account/orders" className="block">
@@ -108,9 +92,65 @@ export default function OrderConfirmation() {
     );
   }
 
-  // Should not reach here if still loading and not timed out
+  // ── Case 2: Still polling (not timed out) ─────────────────────────────────
+  if (isLoading && !timedOut) {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
+        <SEO title="Order Processing" noindex={true} />
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+          className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full mb-6"
+        />
+        <h2 className="font-heading text-xl font-bold mb-2">Processing your order…</h2>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          Your payment was received. Confirming your order details — this usually takes a few seconds.
+        </p>
+        {elapsed > 10 && (
+          <p className="text-xs text-muted-foreground mt-3 opacity-60">Still working… ({elapsed}s)</p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Case 3: Timed out — payment succeeded but order not found in 60s ──────
+  if (timedOut && !order) {
+    return (
+      <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center">
+        <SEO title="Order Received" noindex={true} />
+        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-5">
+          <Clock className="w-10 h-10 text-primary" />
+        </div>
+        <h1 className="font-heading text-2xl font-bold mb-2">Order Received!</h1>
+        {orderNumber && (
+          <p className="text-sm text-muted-foreground mb-1">Order #{orderNumber}</p>
+        )}
+        <p className="text-sm text-muted-foreground max-w-xs mb-6 leading-relaxed">
+          Your payment was confirmed. We're finalizing your order — you'll receive a confirmation email shortly. You can also check your account orders page.
+        </p>
+        <div className="space-y-2.5 w-full max-w-sm">
+          <Link to="/account/orders" className="block">
+            <Button className="w-full h-11 rounded-xl font-semibold text-sm">
+              View My Orders
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Link>
+          <Link to="/" className="block">
+            <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm">
+              <Home className="w-4 h-4 mr-2" />
+              Back to Home
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Case 4: Order not resolved yet (shouldn't normally render) ─────────────
   if (!order) return null;
 
+  // ── Case 5: Order confirmed ────────────────────────────────────────────────
   return (
     <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8">
       <SEO title="Order Confirmed" description="Your NuVira Juice order has been confirmed." noindex={true} />
@@ -149,7 +189,7 @@ export default function OrderConfirmation() {
             </p>
             <p className="text-xs text-muted-foreground">
               {order.estimated_delivery_date
-                ? `${format(new Date(order.estimated_delivery_date + 'T00:00:00Z'), 'EEEE, MMMM d')} Central Time`
+                ? `${format(new Date(order.estimated_delivery_date + 'T00:00:00'), 'EEEE, MMMM d')}`
                 : 'Included in our next fresh batch'}
             </p>
           </div>
@@ -172,7 +212,7 @@ export default function OrderConfirmation() {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions — no back-to-checkout link */}
         <div className="space-y-2.5">
           <Link to={`/order-tracker/${order.id}`} className="block">
             <Button className="w-full h-11 rounded-xl font-semibold text-sm">
@@ -180,8 +220,13 @@ export default function OrderConfirmation() {
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </Link>
-          <Link to="/" className="block">
+          <Link to="/account/orders" className="block">
             <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm">
+              View All Orders
+            </Button>
+          </Link>
+          <Link to="/" className="block">
+            <Button variant="ghost" className="w-full h-11 rounded-xl font-semibold text-sm">
               <Home className="w-4 h-4 mr-2" />
               Back to Home
             </Button>
