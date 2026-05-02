@@ -116,11 +116,15 @@ Deno.serve(async (req) => {
     }
     console.log(`[AdminOrders] Cancelled-only customers (suppress Hub): ${[...cancelledCustomerEmails].join(', ')}`);
 
-    // Build the set of hub query emails from ALL profiles + surviving local orders
+    // Build the set of hub query emails from surviving local orders + profiles of customers with live orders
     // Use contact_email if available (real email, not Apple relay) — never add both variants
+    // EXCLUDE cancelled-only customers entirely
     const hubQueryEmails = new Set();
     for (const p of profiles) {
       if (p.customer_email) {
+        const authEmail = p.customer_email.toLowerCase();
+        // Skip if this customer has ONLY cancelled orders
+        if (cancelledCustomerEmails.has(authEmail)) continue;
         const queryEmail = p.contact_email || p.customer_email;
         hubQueryEmails.add(queryEmail.toLowerCase().trim());
       }
