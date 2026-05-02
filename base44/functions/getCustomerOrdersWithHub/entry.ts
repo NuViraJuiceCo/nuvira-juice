@@ -163,7 +163,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Merge: deduplicate by order_number
+    // 5. Fetch CheckoutSession records for address/pricing recovery
+    let checkoutSessions = {};
+    try {
+      const allCheckouts = await base44.asServiceRole.entities.CheckoutSession.list('-created_date', 200);
+      for (const cs of allCheckouts) {
+        const orderNum = cs.order_number;
+        if (orderNum) checkoutSessions[orderNum] = cs.checkout_data;
+      }
+      console.log(`[Fetch Orders] Loaded ${Object.keys(checkoutSessions).length} CheckoutSession records`);
+    } catch (err) {
+      console.warn(`[Fetch Orders] Failed to load CheckoutSession: ${err.message}`);
+    }
+
+    // 6. Merge: deduplicate by order_number
     // Rules:
     //   - Hub always wins for subscription orders (is_hub_order) or orders marked SUPERSEDED_BY_HUB
     //   - Local wins only for true local-only orders that don't exist on Hub
@@ -171,7 +184,18 @@ Deno.serve(async (req) => {
 
     // Seed with Hub orders first
     for (const order of hubOrders) {
-      if (order.order_number) mergedMap.set(order.order_number, order);
+      if (order.order_number) {
+        // Patch missing address/prices from CheckoutSession
+        const checkout = checkoutSessions[order.order_number];
+        if (checkout) {
+          if (!order.delivery_address && checkout.delivery_address) order.delivery_address = checkout.delivery_address;
+          if ((!order.items || order.items.length === 0) && checkout.items) order.items = checkout.items;
+          if ((order.total === 0 || !order.total) && checkout.total) order.total = checkout.total;
+          if ((order.subtotal === 0 || !order.subtotal) && checkout.subtotal) order.subtotal = checkout.subtotal;
+          if (!order.customer_name && checkout.customer_name) order.customer_name = checkout.customer_name;
+        }
+        mergedMap.set(order.order_number, order);
+      }
     }
 
     // Local orders only win if:

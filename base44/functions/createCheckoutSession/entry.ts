@@ -61,14 +61,36 @@ Deno.serve(async (req) => {
     const {
       items, subtotal, delivery_fee, total,
       fulfillment_type, delivery_address, contact_phone, estimated_delivery_date,
-      customer_email, customer_name,
+      customer_email, customer_name: checkoutCustomerName,
       address_line1, address_line2, address_city, address_state, address_postal_code,
       points_discount, points_used,
       active_reward, reward_discount, credits_discount,
       referral_discount, referral_code,
     } = await req.json();
 
-    // CRITICAL: Block checkout if customer_name is missing
+    // Resolve customer_name from best available source: UserProfile > checkout > fallback
+    let customer_name = checkoutCustomerName?.trim() || '';
+    
+    if (!customer_name && customer_email) {
+      // Try to fetch UserProfile and extract proper name
+      try {
+        const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email });
+        if (profiles[0]) {
+          const { first_name, last_name } = profiles[0];
+          if (first_name && last_name) {
+            customer_name = `${first_name} ${last_name}`;
+            console.log(`[Checkout] Resolved name from UserProfile: ${customer_name}`);
+          } else if (first_name) {
+            customer_name = first_name;
+            console.log(`[Checkout] Resolved name from UserProfile (first only): ${customer_name}`);
+          }
+        }
+      } catch (err) {
+        console.warn(`[Checkout] Failed to fetch UserProfile for ${customer_email}: ${err.message}`);
+      }
+    }
+
+    // CRITICAL: Block checkout if customer_name is still missing
     if (!customer_name || !customer_name.trim()) {
       console.error(`❌ CHECKOUT BLOCKED: customer_name is missing. Email: ${customer_email}`);
       return Response.json(

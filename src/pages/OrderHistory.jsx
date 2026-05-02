@@ -120,6 +120,27 @@ function OrderCard({ order, index, bagReturn }) {
   const isActive = !['delivered', 'picked_up'].includes(order.status);
   const { addItem } = useCart();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const { data: userProfile } = useQuery({
+    queryKey: ['order-history-profile', user?.email],
+    queryFn: async () => {
+      if (!user?.email) return null;
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
+      return profiles[0] || null;
+    },
+    enabled: !!user?.email,
+  });
+
+  // Resolve customer name with fallback chain
+  const getDisplayName = () => {
+    if (order.customer_name) return order.customer_name;
+    if (userProfile?.first_name && userProfile?.last_name) {
+      return `${userProfile.first_name} ${userProfile.last_name}`;
+    }
+    if (userProfile?.first_name) return userProfile.first_name;
+    return order.customer_email || 'Order';
+  };
 
   const handleReorder = (e) => {
     e.preventDefault();
@@ -141,7 +162,7 @@ function OrderCard({ order, index, bagReturn }) {
         <div className="bg-card rounded-xl border border-border/50 p-3.5 active:bg-secondary/50 transition-colors">
           <div className="flex items-start justify-between mb-2">
             <div>
-              <p className="text-sm font-medium">#{order.order_number}</p>
+              <p className="text-sm font-medium">#{order.order_number} • {getDisplayName()}</p>
               <p className="text-[10px] text-muted-foreground">
                 {order.created_date ? format(new Date(order.created_date), 'MMM d, yyyy') : ''}
               </p>

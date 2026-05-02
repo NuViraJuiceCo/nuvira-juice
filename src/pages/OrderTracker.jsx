@@ -35,6 +35,16 @@ export default function OrderTracker() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const { data: userProfile } = useQuery({
+    queryKey: ['order-tracker-profile', user?.email],
+    queryFn: async () => {
+      if (!user?.email) return null;
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
+      return profiles[0] || null;
+    },
+    enabled: !!user?.email,
+  });
+
   const { data: order, isLoading, error } = useQuery({
     queryKey: ['order', orderId || orderNumberParam, user?.email],
     queryFn: async () => {
@@ -81,6 +91,16 @@ export default function OrderTracker() {
     refetchInterval: 30000,
     retry: 2,
   });
+
+  // Resolve customer name with fallback chain
+  const resolveCustomerName = () => {
+    if (order?.customer_name) return order.customer_name;
+    if (userProfile?.first_name && userProfile?.last_name) {
+      return `${userProfile.first_name} ${userProfile.last_name}`;
+    }
+    if (userProfile?.first_name) return userProfile.first_name;
+    return order?.customer_email || 'Customer';
+  };
 
   const isOnRoute = ['out_for_delivery', 'arriving_soon'].includes(order?.status)
     && order?.fulfillment_type === 'delivery';
@@ -134,7 +154,7 @@ export default function OrderTracker() {
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4">
           <ArrowLeft className="w-4 h-4 text-white" />
         </button>
-        <p className="text-primary-foreground/70 text-xs font-medium uppercase tracking-wider">Order #{order.order_number}</p>
+        <p className="text-primary-foreground/70 text-xs font-medium uppercase tracking-wider">Order #{order.order_number} • {resolveCustomerName()}</p>
         <h1 className="font-heading text-2xl font-bold text-primary-foreground mt-0.5">Track Your Order</h1>
 
         {/* ETA / Date Card */}
