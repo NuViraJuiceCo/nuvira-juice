@@ -42,14 +42,15 @@ Deno.serve(async (req) => {
     const chicagoNow = new Date(y, m, d, h, min);
     const dow = chicagoNow.getDay();
     const hourMinutes = h * 60 + min;
+    const currentTimeChicago = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 
-    // Only evaluate at Saturday 2:00 PM (or after)
+    // Auto-evaluate at/after Saturday 2:00 PM
     if (!(dow === 6 && hourMinutes >= 14 * 60)) {
       return Response.json({
         success: false,
         reason: 'not_saturday_2pm',
-        current_time_chicago: chicagoNow.toISOString(),
-        message: 'Threshold evaluation only runs on Saturday at 2:00 PM Chicago time',
+        current_time_chicago: currentTimeChicago,
+        message: 'Threshold evaluation only runs on Saturday at 2:00 PM or later Chicago time',
       });
     }
 
@@ -133,12 +134,14 @@ Deno.serve(async (req) => {
 
     return Response.json({
       success: true,
+      current_time_chicago: currentTimeChicago,
       evaluation_time: new Date().toISOString(),
       window_start: fridayDate.toISOString(),
       window_end: saturdayDate.toISOString(),
       eligible_orders_count: eligibleCount,
       threshold_required: 11,
       threshold_met: thresholdMet,
+      threshold_status: thresholdMet ? 'threshold_met' : 'threshold_not_met',
       final_decision: thresholdMet ? 'create_saturday_batch' : 'roll_to_tuesday',
       orders_updated: updates.length,
       updates,
