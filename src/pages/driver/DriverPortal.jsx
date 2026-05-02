@@ -627,6 +627,19 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
           delivered_at: deliveredAt,
         });
       }
+      // Log action for audit trail
+      base44.functions.invoke('logDriverAction', {
+        order_id: order.id,
+        order_number: order.order_number,
+        customer_email: order.customer_email,
+        action_type: 'delivered',
+        old_status: order.status,
+        new_status: 'delivered',
+        delivery_photo_url: proofPhotoUrl,
+        delivery_drop_location: dropLocation,
+        driver_notes: '',
+      }).catch(err => console.warn('Failed to log driver action:', err));
+      
       // Send proof-of-delivery email to customer
       const itemsList = order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ') || '';
       const deliveredTime = new Date(deliveredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
@@ -647,9 +660,10 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
 
   const handleMarkUnableToDeliver = async (order, reason, notes) => {
     setUpdatingId(order.id);
+    const timestamp = new Date().toISOString();
     const newHistory = [
       ...(order.status_history || []),
-      { status: 'order_received', timestamp: new Date().toISOString(), message: `Unable to deliver: ${reason}${notes ? ` — ${notes}` : ''}` },
+      { status: 'order_received', timestamp, message: `Unable to deliver: ${reason}${notes ? ` — ${notes}` : ''}` },
     ];
     try {
       // Revert to order_received so admin can reschedule
@@ -658,6 +672,18 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
         status_history: newHistory,
         notes: `Unable to deliver on ${new Date().toLocaleDateString()} — Reason: ${reason}${notes ? `. ${notes}` : ''}`,
       });
+      // Log action for audit trail
+      base44.functions.invoke('logDriverAction', {
+        order_id: order.id,
+        order_number: order.order_number,
+        customer_email: order.customer_email,
+        action_type: 'unable_to_deliver',
+        old_status: order.status,
+        new_status: 'order_received',
+        unable_to_deliver_reason: reason,
+        driver_notes: notes,
+      }).catch(err => console.warn('Failed to log driver action:', err));
+      
       // If there's a bag return tied to this order, mark it unable_to_collect
       const linkedReturn = bagReturns.find(r => r.customer_email === order.customer_email && r.verification_status === 'requested');
       if (linkedReturn) {
@@ -666,7 +692,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
           rejection_reason: reason === 'customer_not_home' ? 'customer_not_home' : 'other',
           driver_notes: `Unable to deliver — ${reason}${notes ? `. ${notes}` : ''}`,
           verified_by: user?.email,
-          verified_at: new Date().toISOString(),
+          verified_at: timestamp,
         });
       }
       toast.success('Stop marked — admin notified');
@@ -681,6 +707,7 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
 
   const handleMarkStage = async (order, nextStage) => {
     setUpdatingId(order.id);
+    const timestamp = new Date().toISOString();
     try {
       if (order.is_hub_order) {
         await base44.functions.invoke('pushOrderStatusToHub', {
@@ -691,9 +718,20 @@ function RouteTab({ bagReturns, allCredits, user, onBagReturnVerified }) {
           stage_label: nextStage.label,
         });
       } else {
-        const newHistory = [...(order.status_history || []), { status: nextStage.key, timestamp: new Date().toISOString(), message: nextStage.label }];
+        const newHistory = [...(order.status_history || []), { status: nextStage.key, timestamp, message: nextStage.label }];
         await base44.entities.Order.update(order.id, { status: nextStage.key, status_history: newHistory });
       }
+      // Log action for audit trail
+      base44.functions.invoke('logDriverAction', {
+        order_id: order.id,
+        order_number: order.order_number,
+        customer_email: order.customer_email,
+        action_type: 'stage_marked',
+        old_status: order.status,
+        new_status: nextStage.key,
+        driver_notes: nextStage.label,
+      }).catch(err => console.warn('Failed to log driver action:', err));
+      
       // Update local display in-place
       if (routeData?.optimized_orders) {
         const updated = routeData.optimized_orders.map(o =>
