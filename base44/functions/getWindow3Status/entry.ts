@@ -45,36 +45,58 @@ Deno.serve(async (req) => {
     const nowChicago = convertToChicago(nowUtc);
     const saturdayPassed = nowChicago.dow_num === 6 && (nowChicago.h * 60 + nowChicago.mi) >= 14 * 60;
 
-    // Get orders for NV-MONL4I2M, NV-MOOPFCUS, NV-MON367R7
-    const targetOrders = ['NV-MONL4I2M', 'NV-MOOPFCUS', 'NV-MON367R7'];
+    // Get all orders and filter out refunded/deleted/test orders
     const allOrders = await base44.asServiceRole.entities.Order.list();
-    const window3Orders = allOrders.filter(o => targetOrders.includes(o.order_number));
+    
+    // Guardrail: exclude refunded, deleted, or marked do_not_recover
+    const isOrderExcluded = (o) => {
+      return o.financial_status === 'refunded' ||
+             o.payment_status === 'refunded' ||
+             o.canceled_at ||
+             o.deleted_at ||
+             o.do_not_recover === true ||
+             o.is_test_order === true;
+    };
+
+    const window3Orders = allOrders.filter(o => 
+      !isOrderExcluded(o)
+    );
 
     const results = [];
-    for (const order of window3Orders) {
+    for (const order of allOrders) {
       const createdChicago = convertToChicago(order.created_date);
+      const isExcluded = isOrderExcluded(order);
+      
       results.push({
         order_number: order.order_number,
         customer_name: order.customer_name,
-        created_at_utc: order.created_date,
+        is_refunded: order.financial_status === 'refunded' || order.payment_status === 'refunded',
+        is_deleted: !!order.deleted_at,
+        is_active: !isExcluded,
+        included_in_threshold_count: !isExcluded ? 'yes' : 'no',
+        reason: isExcluded ? (order.payment_status === 'refunded' ? 'refunded' : order.deleted_at ? 'deleted' : order.do_not_recover ? 'do_not_recover' : 'excluded') : 'active',
         created_at_chicago: createdChicago.time,
         created_day_of_week: createdChicago.dow_name,
         assigned_production_day: order.assigned_production_day || 'Not yet assigned',
         assigned_delivery_day: order.assigned_delivery_day || 'Not yet assigned',
-        batch_trigger: order.batch_trigger,
         production_status: order.production_status,
         fulfillment_status: order.fulfillment_status,
         delivery_status: order.delivery_status,
         ready_for_driver: order.ready_for_driver,
+        appears_in_driver_portal: !isExcluded && order.ready_for_driver,
       });
     }
 
     return Response.json({
       success: true,
-      current_time_chicago: nowChicago.time,
+      mode: 'live',
+      now_utc: nowUtc,
+      now_chicago: nowChicago.time,
+      chicago_day_of_week: nowChicago.dow_name,
+      using_mock_time: false,
       timezone: 'America/Chicago',
       saturday_2pm_passed: saturdayPassed,
-      window_3_eligible_count: window3Orders.length,
+      window_3_active_eligible_count: window3Orders.length,
       threshold_required: 11,
       threshold_decision: saturdayPassed 
         ? (window3Orders.length > 10 ? 'APPROVED: Saturday production' : 'REJECTED: Rolled to Tuesday')

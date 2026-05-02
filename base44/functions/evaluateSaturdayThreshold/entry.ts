@@ -4,10 +4,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * SATURDAY THRESHOLD EVALUATOR
  * 
  * At Saturday 2:00 PM (America/Chicago):
- * - Count eligible orders from Friday 2:00 PM through Saturday 2:00 PM
+ * - Count eligible active orders from Friday 2:00 PM through Saturday 2:00 PM
+ * - Excludes refunded, deleted, and marked do_not_recover orders
  * - If count > 10: create Saturday batch, deliver Sunday
  * - If count <= 10: roll to Tuesday batch, deliver Wednesday
  */
+
+const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 Deno.serve(async (req) => {
   try {
@@ -60,12 +63,24 @@ Deno.serve(async (req) => {
 
     console.log(`[evaluateSaturdayThreshold] Evaluating window: ${fridayDate.toISOString()} to ${saturdayDate.toISOString()}`);
 
-    // Fetch all orders created in this window with status 'pending_production' and batch_trigger 'saturday_window_pending'
+    // Fetch all orders created in this window, excluding refunded/deleted/test orders
     let eligibleOrders = [];
     try {
       const allOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
+      
+      // Guardrail: exclude refunded, deleted, test orders
+      const isOrderExcluded = (o) => {
+        return o.financial_status === 'refunded' ||
+               o.payment_status === 'refunded' ||
+               o.canceled_at ||
+               o.deleted_at ||
+               o.do_not_recover === true ||
+               o.is_test_order === true;
+      };
+      
       eligibleOrders = allOrders.filter(o => {
         if (!o.created_date) return false;
+        if (isOrderExcluded(o)) return false;
         const oCreated = new Date(o.created_date);
         return oCreated >= fridayDate && oCreated <= saturdayDate;
       });
@@ -84,6 +99,11 @@ Deno.serve(async (req) => {
     if (thresholdMet) {
       // Saturday batch is approved — set production for Saturday, delivery for Sunday
       for (const order of eligibleOrders) {
+        // Double-check order is not refunded before updating
+        if (order.financial_status === 'refunded' || order.payment_status === 'refunded' || order.do_not_recover) {
+          console.warn(`[evaluateSaturdayThreshold] Skipping refunded order ${order.order_number}`);
+          continue;
+        }
         try {
           await base44.asServiceRole.entities.Order.update(order.id, {
             assigned_production_day: 'Saturday',
@@ -108,6 +128,11 @@ Deno.serve(async (req) => {
     } else {
       // Threshold not met — roll to Tuesday batch
       for (const order of eligibleOrders) {
+        // Double-check order is not refunded before updating
+        if (order.financial_status === 'refunded' || order.payment_status === 'refunded' || order.do_not_recover) {
+          console.warn(`[evaluateSaturdayThreshold] Skipping refunded order ${order.order_number}`);
+          continue;
+        }
         try {
           await base44.asServiceRole.entities.Order.update(order.id, {
             assigned_production_day: 'Tuesday',
@@ -134,11 +159,16 @@ Deno.serve(async (req) => {
 
     return Response.json({
       success: true,
-      current_time_chicago: currentTimeChicago,
+      mode: 'live',
+      now_utc: now.toISOString(),
+      now_chicago: currentTimeChicago,
+      chicago_day_of_week: DOW_NAMES[dow],
+      using_mock_time: false,
+      timezone: 'America/Chicago',
       evaluation_time: new Date().toISOString(),
       window_start: fridayDate.toISOString(),
       window_end: saturdayDate.toISOString(),
-      eligible_orders_count: eligibleCount,
+      window_3_active_eligible_count: eligibleCount,
       threshold_required: 11,
       threshold_met: thresholdMet,
       threshold_status: thresholdMet ? 'threshold_met' : 'threshold_not_met',
