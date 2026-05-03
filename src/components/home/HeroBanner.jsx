@@ -42,9 +42,8 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           width="800"
           height="576"
         />
-        {/* Bright & fresh overlay — light on right, soft white fade on left */}
-        <div className="absolute inset-0 bg-gradient-to-r from-white/80 via-white/40 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-white/10" />
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
       </div>
 
       {/* Animated layer for multi-banner transitions only */}
@@ -66,8 +65,8 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
               width="800"
               height="576"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-white/80 via-white/40 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-white/10" />
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
           </motion.div>
         </AnimatePresence>
       )}
@@ -78,7 +77,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="absolute top-3 right-3 bg-primary/90 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1 shadow-sm"
+          className="absolute top-3 right-3 bg-white/15 backdrop-blur-sm border border-white/25 rounded-full px-2.5 py-1 flex items-center gap-1"
         >
           <Zap className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300" />
           <span className="text-white text-[9px] font-semibold">{deliveryText}</span>
@@ -90,24 +89,23 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
         <img
           src={LOGO_URL}
           alt="NuVira"
-          className="w-24 drop-shadow"
+          className="w-24 drop-shadow-lg brightness-0 invert opacity-90"
           width="96"
           height="32"
         />
-        <div className="flex-1 flex flex-col justify-center pb-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Cold-Pressed · Made Fresh</p>
+        <div className="flex-1 flex flex-col justify-center pb-6">
           <p
-            className="text-foreground font-heading text-xl sm:text-2xl font-bold leading-tight mb-1.5"
+            className="text-white font-heading text-lg sm:text-2xl font-bold leading-tight mb-1.5 drop-shadow-lg"
             style={{ whiteSpace: 'pre-line' }}
           >
             {banner.title}
           </p>
-          <p className="text-muted-foreground text-xs mb-4 line-clamp-2">
+          <p className="text-white/80 text-xs mb-4 drop-shadow line-clamp-2">
             {banner.subtitle}
           </p>
           <div className="flex items-center gap-3">
             <Link to={banner.link_to || '/shop'}>
-              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold rounded-full px-6 h-9 text-xs shadow-md">
+              <Button size="sm" className="bg-white text-primary hover:bg-white/90 font-bold rounded-full px-6 h-9 text-xs shadow-lg shadow-black/20">
                 Order Now <ArrowRight className="w-3.5 h-3.5 ml-1" />
               </Button>
             </Link>
@@ -118,7 +116,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
                     key={i}
                     onClick={() => setCurrent(i)}
                     aria-label={`Go to slide ${i + 1}`}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${i === current ? 'bg-primary w-5' : 'bg-primary/25 w-1.5'}`}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${i === current ? 'bg-white w-5' : 'bg-white/40 w-1.5'}`}
                   />
                 ))}
               </div>
