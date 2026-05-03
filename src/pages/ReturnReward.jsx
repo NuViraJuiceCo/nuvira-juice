@@ -127,6 +127,24 @@ export default function ReturnReward() {
         </div>
       </div>
 
+      {/* Bag Photo Strip */}
+      <div className="px-5 mt-6 grid grid-cols-2 gap-3">
+        <div className="rounded-2xl overflow-hidden h-40">
+          <img
+            src="https://media.base44.com/images/public/69d48d0c39891f7945481152/b070984a9_DSC02698.jpg"
+            alt="NuVira delivery bag"
+            className="w-full h-full object-cover object-[center_30%]"
+          />
+        </div>
+        <div className="rounded-2xl overflow-hidden h-40">
+          <img
+            src="https://media.base44.com/images/public/69d48d0c39891f7945481152/9009cffcd_DSC02696.jpg"
+            alt="NuVira bag with juices"
+            className="w-full h-full object-cover object-[center_40%]"
+          />
+        </div>
+      </div>
+
       {/* How it works */}
       <div className="px-5 mt-8">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">How It Works</p>
