@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const origin = req.headers.get('origin') || 'https://app.base44.com';
+    const origin = req.headers.get('origin') || 'https://www.nuvirajuice.com';
 
     // Build discounts coupon
     let discounts = [];
