@@ -52,7 +52,7 @@ const PROGRAMS = [
     border: 'border-green-300',
     dot: 'bg-green-500',
     emoji: '🌿',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b070984a9_DSC02698.jpg',
+    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
     imagePosition: 'object-[center_40%]',
   },
 ];
@@ -86,9 +86,6 @@ export default function ProgramCards() {
                     <div className="absolute bottom-3 left-4">
                       <p className="font-heading text-xl font-bold text-white drop-shadow">{program.name} <span className="text-base">{program.emoji}</span></p>
                       <p className="text-white/80 text-xs font-semibold">{program.tagline}</p>
-                    </div>
-                    <div className="absolute top-3 right-3 bg-white/90 rounded-full px-2.5 py-0.5">
-                      <p className="text-xs font-bold text-gray-800">${program.price}</p>
                     </div>
                   </div>
                 )}
@@ -133,9 +130,6 @@ export default function ProgramCards() {
                     <div className="absolute bottom-3 left-4">
                       <p className="font-heading text-xl font-bold text-white drop-shadow">{program.name} <span className="text-base">{program.emoji}</span></p>
                       <p className="text-white/80 text-xs font-semibold">{program.tagline}</p>
-                    </div>
-                    <div className="absolute top-3 right-3 bg-white/90 rounded-full px-2.5 py-0.5">
-                      <p className="text-xs font-bold text-gray-800">${program.price}</p>
                     </div>
                   </div>
                 )}
