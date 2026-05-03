@@ -133,14 +133,14 @@ export default function ReturnReward() {
           <img
             src="https://media.base44.com/images/public/69d48d0c39891f7945481152/801123d05_DSC02744.jpg"
             alt="NuVira delivery bag"
-            className="w-full h-full object-cover object-[center_70%]"
+            className="w-full h-full object-cover object-[center_50%]"
           />
         </div>
         <div className="rounded-2xl overflow-hidden h-40">
           <img
             src="https://media.base44.com/images/public/69d48d0c39891f7945481152/9a762c75e_DSC02687.jpg"
             alt="NuVira bag with juices"
-            className="w-full h-full object-cover object-[center_65%]"
+            className="w-full h-full object-cover object-[center_45%]"
           />
         </div>
       </div>
