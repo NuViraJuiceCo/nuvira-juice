@@ -29,7 +29,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
   const banner = activeBanners[current];
 
   return (
-    <div className="relative mt-3 mx-3 overflow-hidden rounded-3xl" style={{ height: '72vw', maxHeight: '300px', minHeight: '220px' }}>
+    <div className="relative mt-3 md:mx-3 md:rounded-3xl overflow-hidden" style={{ height: '72vw', maxHeight: '300px', minHeight: '220px' }}>
 
       {/* LCP image */}
       <div className="absolute inset-0">
