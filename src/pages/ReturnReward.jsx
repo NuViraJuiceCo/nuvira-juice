@@ -131,16 +131,16 @@ export default function ReturnReward() {
       <div className="px-5 mt-6 grid grid-cols-2 gap-3">
         <div className="rounded-2xl overflow-hidden h-40">
           <img
-            src="https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg"
+            src="https://media.base44.com/images/public/69d48d0c39891f7945481152/801123d05_DSC02744.jpg"
             alt="NuVira delivery bag"
-            className="w-full h-full object-cover object-[center_60%]"
+            className="w-full h-full object-cover object-[center_70%]"
           />
         </div>
         <div className="rounded-2xl overflow-hidden h-40">
           <img
-            src="https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg"
+            src="https://media.base44.com/images/public/69d48d0c39891f7945481152/9a762c75e_DSC02687.jpg"
             alt="NuVira bag with juices"
-            className="w-full h-full object-cover object-[center_55%]"
+            className="w-full h-full object-cover object-[center_65%]"
           />
         </div>
       </div>
