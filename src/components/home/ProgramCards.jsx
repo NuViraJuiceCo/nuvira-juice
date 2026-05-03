@@ -52,8 +52,8 @@ const PROGRAMS = [
     border: 'border-green-300',
     dot: 'bg-green-500',
     emoji: '🌿',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/9a762c75e_DSC02687.jpg',
-    imagePosition: 'object-[center_45%]',
+    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b070984a9_DSC02698.jpg',
+    imagePosition: 'object-[center_40%]',
   },
 ];
 
