@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const HERO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg";
-const AURA_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg";
-const RENU_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/9009cffcd_DSC02696.jpg";
+const HERO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b070984a9_DSC02698.jpg";
+const AURA_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99a63a91c_DSC02712.jpg";
+const RENU_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg";
 
 const sections = [
   {
@@ -85,7 +85,7 @@ export default function WhyNuVira() {
         animate={{ opacity: 1 }}
         className="relative h-52 overflow-hidden"
       >
-        <img src={HERO_URL} alt="NuVira juices" className="w-full h-full object-cover object-[center_35%]" />
+        <img src={HERO_URL} alt="NuVira juices" className="w-full h-full object-cover object-[center_25%]" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background/95" />
         <div className="absolute bottom-4 left-5">
           <p className="font-heading text-2xl font-bold text-foreground">Why NuVira?</p>
@@ -112,7 +112,7 @@ export default function WhyNuVira() {
           className="grid grid-cols-2 gap-3"
         >
           <div className="rounded-2xl overflow-hidden relative h-40">
-            <img src={AURA_URL} alt="AURA" className="w-full h-full object-cover object-[center_40%]" />
+            <img src={AURA_URL} alt="AURA" className="w-full h-full object-cover object-[center_50%]" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-2 left-3">
               <p className="text-white font-bold text-sm">Radiance</p>
@@ -120,7 +120,7 @@ export default function WhyNuVira() {
             </div>
           </div>
           <div className="rounded-2xl overflow-hidden relative h-40">
-            <img src={RENU_URL} alt="RE-NU" className="w-full h-full object-cover object-[center_40%]" />
+            <img src={RENU_URL} alt="RE-NU" className="w-full h-full object-cover object-[center_50%]" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-2 left-3">
               <p className="text-white font-bold text-sm">Reset</p>
