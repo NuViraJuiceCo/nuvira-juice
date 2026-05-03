@@ -13,6 +13,7 @@ import SplashScreen from '@/components/SplashScreen';
 import ProductDetail from '@/pages/ProductDetail';
 import Checkout from '@/pages/Checkout';
 import OrderConfirmation from '@/pages/OrderConfirmation';
+import OrderIncomplete from '@/pages/OrderIncomplete';
 import OrderTracker from '@/pages/OrderTracker';
 import Account from '@/pages/Account';
 import OrderHistory from '@/pages/OrderHistory';
@@ -192,6 +193,7 @@ const AuthenticatedApp = () => {
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation" element={<OrderConfirmation />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
+        <Route path="/order-incomplete" element={<OrderIncomplete />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
         <Route path="/account-setup" element={<AccountSetup />} />
         {/* Redirect old/invalid routes to correct pages */}
