@@ -61,52 +61,101 @@ export { PROGRAMS };
 
 export default function ProgramCards() {
   return (
-    <div className="px-4 space-y-3">
-      {PROGRAMS.map((program, i) => (
-        <motion.div
-          key={program.key}
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.08 }}
-        >
-          <Link to={`/program/${program.key}`}>
-            <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform`}>
-              {/* Photo strip */}
-              {program.image && (
-                <div className="relative h-28 overflow-hidden">
-                  <img
-                    src={program.image}
-                    alt={program.name}
-                    className={`w-full h-full object-cover ${program.imagePosition || 'object-center'}`}
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
-                  <div className="absolute bottom-3 left-4">
-                    <p className="font-heading text-xl font-bold text-white drop-shadow">{program.name} <span className="text-base">{program.emoji}</span></p>
-                    <p className="text-white/80 text-xs font-semibold">{program.tagline}</p>
+    <>
+      {/* Mobile: horizontal scroll, peek next card */}
+      <div className="md:hidden flex gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-none" style={{ scrollbarWidth: 'none' }}>
+        {PROGRAMS.map((program, i) => (
+          <motion.div
+            key={program.key}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.08 }}
+            className="shrink-0 w-[78vw] snap-start"
+          >
+            <Link to={`/program/${program.key}`}>
+              <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform`}>
+                {program.image && (
+                  <div className="relative h-44 overflow-hidden">
+                    <img
+                      src={program.image}
+                      alt={program.name}
+                      className={`w-full h-full object-cover ${program.imagePosition || 'object-center'}`}
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
+                    <div className="absolute bottom-3 left-4">
+                      <p className="font-heading text-xl font-bold text-white drop-shadow">{program.name} <span className="text-base">{program.emoji}</span></p>
+                      <p className="text-white/80 text-xs font-semibold">{program.tagline}</p>
+                    </div>
+                    <div className="absolute top-3 right-3 bg-white/90 rounded-full px-2.5 py-0.5">
+                      <p className="text-xs font-bold text-gray-800">${program.price}</p>
+                    </div>
                   </div>
-                  <div className="absolute top-3 right-3 bg-white/90 rounded-full px-2.5 py-0.5">
-                    <p className="text-xs font-bold text-gray-800">${program.price}</p>
-                  </div>
-                </div>
-              )}
-              {/* Content */}
-              <div className={`bg-gradient-to-br ${program.color} p-4`}>
-                <p className="text-xs text-gray-700 leading-relaxed mb-3">{program.description}</p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${program.dot}`} />
-                    <p className="text-xs text-gray-600 font-medium">{program.bottles} bottles · {program.days} days</p>
-                  </div>
-                  <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
-                    Build It <ArrowRight className="w-3.5 h-3.5" />
+                )}
+                <div className={`bg-gradient-to-br ${program.color} p-3.5`}>
+                  <p className="text-xs text-gray-700 leading-relaxed mb-3 line-clamp-2">{program.description}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2.5 h-2.5 rounded-full ${program.dot}`} />
+                      <p className="text-xs text-gray-600 font-medium">{program.bottles} bottles · {program.days} days</p>
+                    </div>
+                    <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
+                      Build It <ArrowRight className="w-3.5 h-3.5" />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </Link>
-        </motion.div>
-      ))}
-    </div>
+            </Link>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Desktop: 3 columns side by side */}
+      <div className="hidden md:grid md:grid-cols-3 gap-4 px-4">
+        {PROGRAMS.map((program, i) => (
+          <motion.div
+            key={program.key}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.08 }}
+          >
+            <Link to={`/program/${program.key}`}>
+              <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] hover:scale-[1.01] transition-transform h-full flex flex-col`}>
+                {program.image && (
+                  <div className="relative h-52 overflow-hidden">
+                    <img
+                      src={program.image}
+                      alt={program.name}
+                      className={`w-full h-full object-cover ${program.imagePosition || 'object-center'}`}
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
+                    <div className="absolute bottom-3 left-4">
+                      <p className="font-heading text-xl font-bold text-white drop-shadow">{program.name} <span className="text-base">{program.emoji}</span></p>
+                      <p className="text-white/80 text-xs font-semibold">{program.tagline}</p>
+                    </div>
+                    <div className="absolute top-3 right-3 bg-white/90 rounded-full px-2.5 py-0.5">
+                      <p className="text-xs font-bold text-gray-800">${program.price}</p>
+                    </div>
+                  </div>
+                )}
+                <div className={`bg-gradient-to-br ${program.color} p-4 flex-1 flex flex-col justify-between`}>
+                  <p className="text-xs text-gray-700 leading-relaxed mb-3">{program.description}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2.5 h-2.5 rounded-full ${program.dot}`} />
+                      <p className="text-xs text-gray-600 font-medium">{program.bottles} bottles · {program.days} days</p>
+                    </div>
+                    <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
+                      Build It <ArrowRight className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </motion.div>
+        ))}
+      </div>
+    </>
   );
 }
