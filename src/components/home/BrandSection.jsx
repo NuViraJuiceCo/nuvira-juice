@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Leaf, Heart, Sparkles, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
+const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/801123d05_DSC02744.jpg";
 
 const values = [
   { icon: Leaf, title: 'Cold-Pressed', desc: '100% raw, never heated' },

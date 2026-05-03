@@ -5,7 +5,7 @@ import SEO from '@/components/SEO';
 import { motion } from 'framer-motion';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
-const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
+const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg";
 
 const values = [
   { icon: Leaf, title: 'Cold-Pressed Purity', body: 'We never heat, dilute, or compromise our juice. Every bottle is cold-pressed to preserve the living nutrients your body craves.' },
@@ -79,6 +79,24 @@ export default function About() {
           </div>
         </motion.section>
 
+        {/* Lifestyle Photo Strip */}
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+          className="grid grid-cols-3 gap-2 rounded-2xl overflow-hidden"
+        >
+          {[
+            'https://media.base44.com/images/public/69d48d0c39891f7945481152/9a762c75e_DSC02687.jpg',
+            'https://media.base44.com/images/public/69d48d0c39891f7945481152/b070984a9_DSC02698.jpg',
+            'https://media.base44.com/images/public/69d48d0c39891f7945481152/80af61b53_DSC02560.jpg',
+          ].map((url, i) => (
+            <div key={i} className="aspect-square overflow-hidden rounded-xl">
+              <img src={url} alt="NuVira lifestyle" className="w-full h-full object-cover" loading="lazy" />
+            </div>
+          ))}
+        </motion.section>
+
         {/* Brand Promise */}
         <motion.section
           initial={{ opacity: 0, y: 16 }}
@@ -86,6 +104,14 @@ export default function About() {
           transition={{ delay: 0.15 }}
           className="bg-gradient-to-br from-primary to-primary/80 rounded-2xl p-6 text-center"
         >
+          <div className="relative rounded-xl overflow-hidden mb-4" style={{ height: '180px' }}>
+            <img
+              src="https://media.base44.com/images/public/69d48d0c39891f7945481152/19cc41d64_DSC02565.jpg"
+              alt="NuVira community lifestyle"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-primary/60" />
+          </div>
           <p className="font-heading text-xl font-bold text-primary-foreground mb-2">More Than Juice.</p>
           <p className="text-primary-foreground/80 text-sm leading-relaxed">
             NuVira is a lifestyle and a movement. We're building a community of people committed to elevating everyday wellness — one intentional choice at a time.

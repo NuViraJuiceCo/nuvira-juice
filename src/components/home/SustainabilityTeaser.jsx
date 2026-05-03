@@ -12,10 +12,13 @@ export default function SustainabilityTeaser() {
       className="mx-4 my-5"
     >
       <Link to="/return-reward">
-        <div className="relative overflow-hidden bg-primary rounded-2xl p-5">
-          {/* Decorative circles */}
-          <div className="absolute -top-6 -right-6 w-28 h-28 bg-white/5 rounded-full" />
-          <div className="absolute -bottom-4 -right-2 w-16 h-16 bg-white/5 rounded-full" />
+        <div className="relative overflow-hidden rounded-2xl" style={{ minHeight: '120px' }}>
+          <img
+            src="https://media.base44.com/images/public/69d48d0c39891f7945481152/35783d2fc_DSC02706.jpg"
+            alt="NuVira delivery bag"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-primary/80" />
 
           <div className="flex items-start gap-4 relative">
             <div className="w-11 h-11 bg-white/15 rounded-xl flex items-center justify-center shrink-0">

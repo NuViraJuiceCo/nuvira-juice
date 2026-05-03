@@ -18,6 +18,7 @@ const PROGRAMS = [
     border: 'border-orange-300',
     dot: 'bg-orange-500',
     emoji: '✨',
+    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/99a63a91c_DSC02712.jpg',
   },
   {
     key: 'hydration',
@@ -33,6 +34,7 @@ const PROGRAMS = [
     border: 'border-red-300',
     dot: 'bg-red-500',
     emoji: '💧',
+    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
   },
   {
     key: 'reset',
@@ -48,6 +50,7 @@ const PROGRAMS = [
     border: 'border-green-300',
     dot: 'bg-green-500',
     emoji: '🌿',
+    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/9753b412a_DSC02715.jpg',
   },
 ];
 
@@ -64,30 +67,37 @@ export default function ProgramCards() {
           transition={{ delay: i * 0.08 }}
         >
           <Link to={`/program/${program.key}`}>
-            <div className={`bg-gradient-to-br ${program.color} border ${program.border} rounded-2xl p-5 active:scale-[0.98] transition-transform`}>
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-heading text-xl font-bold text-gray-900">{program.name}</p>
-                    <span className="text-lg">{program.emoji}</span>
+            <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform`}>
+              {/* Photo strip */}
+              {program.image && (
+                <div className="relative h-28 overflow-hidden">
+                  <img
+                    src={program.image}
+                    alt={program.name}
+                    className="w-full h-full object-cover object-center"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
+                  <div className="absolute bottom-3 left-4">
+                    <p className="font-heading text-xl font-bold text-white drop-shadow">{program.name} <span className="text-base">{program.emoji}</span></p>
+                    <p className="text-white/80 text-xs font-semibold">{program.tagline}</p>
                   </div>
-                  <p className={`text-xs font-semibold ${program.accent}`}>{program.tagline}</p>
+                  <div className="absolute top-3 right-3 bg-white/90 rounded-full px-2.5 py-0.5">
+                    <p className="text-xs font-bold text-gray-800">${program.price}</p>
+                  </div>
                 </div>
-                <div className="text-right shrink-0 ml-3">
-                  <p className="text-xs font-semibold text-gray-800">{program.days}-day · {program.bottles} bottles</p>
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-700 leading-relaxed mb-4">{program.description}</p>
-              <p className="text-xs text-gray-600 leading-relaxed mb-4">{program.composition}</p>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${program.dot}`} />
-                  <p className="text-xs text-gray-600 font-medium">{program.bottles} bottles · {program.days} days</p>
-                </div>
-                <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
-                  Build It <ArrowRight className="w-3.5 h-3.5" />
+              )}
+              {/* Content */}
+              <div className={`bg-gradient-to-br ${program.color} p-4`}>
+                <p className="text-xs text-gray-700 leading-relaxed mb-3">{program.description}</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${program.dot}`} />
+                    <p className="text-xs text-gray-600 font-medium">{program.bottles} bottles · {program.days} days</p>
+                  </div>
+                  <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
+                    Build It <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
                 </div>
               </div>
             </div>

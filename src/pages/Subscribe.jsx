@@ -142,12 +142,20 @@ export default function Subscribe() {
       </div>
 
       {/* Hero */}
-      <div className="bg-gradient-to-b from-primary/15 to-transparent px-5 pt-6 pb-4 text-center">
-        <img src={LOGO_URL} alt="NuVira" className="h-10 mx-auto mb-3" />
-        <h1 className="font-heading text-2xl font-bold mb-1">Wellness on Autopilot</h1>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Subscribe and never run out of the nutrition your body needs. Cancel or adjust anytime.
-        </p>
+      <div className="relative overflow-hidden" style={{ height: '200px' }}>
+        <img
+          src="https://media.base44.com/images/public/69d48d0c39891f7945481152/9009cffcd_DSC02696.jpg"
+          alt="NuVira subscription delivery"
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/60 to-primary/20" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
+          <img src={LOGO_URL} alt="NuVira" className="h-9 mb-2 brightness-0 invert opacity-90" />
+          <h1 className="font-heading text-2xl font-bold text-white mb-1">Wellness on Autopilot</h1>
+          <p className="text-white/80 text-sm leading-relaxed">
+            Subscribe and never run out of the nutrition your body needs.
+          </p>
+        </div>
       </div>
 
       {/* Address Section & Zone Calculation */}

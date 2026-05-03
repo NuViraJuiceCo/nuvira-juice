@@ -15,7 +15,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
     {
       title: 'Cold-Pressed.\nNever Compromised.',
       subtitle: 'Real ingredients. Made fresh for you.',
-      image_url: "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg",
+      image_url: "https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg",
       link_to: '/shop',
     }
   ];
