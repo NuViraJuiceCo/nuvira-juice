@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
       source_app: 'customer_app',
     };
 
-    const origin = req.headers.get('origin') || 'https://app.base44.com';
+    const origin = req.headers.get('origin') || 'https://www.nuvirajuice.com';
 
     // Get or create Stripe Customer for subscription linking
     let stripeCustomer = null;
