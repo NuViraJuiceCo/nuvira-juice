@@ -59,11 +59,17 @@ Deno.serve(async (req) => {
     // Also track customer emails that have ONLY cancelled orders (no live orders)
     // so we can suppress ALL their Hub orders from showing up
     const allEmailsWithLiveOrders = new Set(
-      allLocalOrders
-        .filter(o => o.status !== 'cancelled' && !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB')))
-        .map(o => o.customer_email?.toLowerCase())
-        .filter(Boolean)
-    );
+       allLocalOrders
+         .filter(o =>
+           o.status !== 'cancelled' &&
+           o.financial_status !== 'refunded' &&
+           o.payment_status !== 'refunded' &&
+           o.do_not_recover !== true &&
+           !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB'))
+         )
+         .map(o => o.customer_email?.toLowerCase())
+         .filter(Boolean)
+     );
     const localOrders = allLocalOrders.filter(o => {
       if (o.notes && o.notes.includes('SUPERSEDED_BY_HUB')) return false;
       if (o.status === 'cancelled') return false;
@@ -105,16 +111,17 @@ Deno.serve(async (req) => {
     // We add BOTH the auth email AND any contact_email alias so the Hub-query skip fires regardless
     // of which email variant we use to query the Hub.
     const cancelledCustomerEmails = new Set();
-    for (const o of allLocalOrders) {
-      if (o.status !== 'cancelled') continue;
-      const email = o.customer_email?.toLowerCase();
-      if (!email || allEmailsWithLiveOrders.has(email)) continue;
-      cancelledCustomerEmails.add(email);
-      // Also add the contact_email alias used to query Hub
-      const contactAlias = authToContact[o.customer_email]?.toLowerCase();
-      if (contactAlias) cancelledCustomerEmails.add(contactAlias);
-    }
-    console.log(`[AdminOrders] Cancelled-only customers (suppress Hub): ${[...cancelledCustomerEmails].join(', ')}`);
+     for (const o of allLocalOrders) {
+       const isCancelledOrRefunded = o.status === 'cancelled' || o.financial_status === 'refunded' || o.payment_status === 'refunded' || o.do_not_recover === true;
+       if (!isCancelledOrRefunded) continue;
+       const email = o.customer_email?.toLowerCase();
+       if (!email || allEmailsWithLiveOrders.has(email)) continue;
+       cancelledCustomerEmails.add(email);
+       // Also add the contact_email alias used to query Hub
+       const contactAlias = authToContact[o.customer_email]?.toLowerCase();
+       if (contactAlias) cancelledCustomerEmails.add(contactAlias);
+     }
+    console.log(`[AdminOrders] Cancelled-only customers (suppress Hub): ${[...cancelledCustomerEmails].join(', ')} | Live order emails: ${[...allEmailsWithLiveOrders].join(', ')}`);
 
     // Build the set of hub query emails from surviving local orders + profiles of customers with live orders
     // Use contact_email if available (real email, not Apple relay) — never add both variants
