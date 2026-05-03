@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const HERO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b070984a9_DSC02698.jpg";
+const HERO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/80af61b53_DSC02560.jpg";
 const AURA_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99a63a91c_DSC02712.jpg";
 const RENU_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg";
 
