@@ -5,7 +5,7 @@ const TICKER_ITEMS = ['Cold-Pressed', 'No Additives', 'Made in STL', 'Small-Batc
 
 export default function TickerBanner() {
   return (
-    <div className="overflow-hidden bg-primary py-2.5">
+    <div className="overflow-hidden bg-primary py-2.5 mt-3">
       <motion.div
         animate={{ x: ['0%', '-50%'] }}
         transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
