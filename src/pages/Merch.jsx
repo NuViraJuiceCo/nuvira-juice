@@ -49,17 +49,13 @@ export default function Merch() {
       </div>
 
       {/* Hero */}
-      <div className="relative mx-4 mt-4 rounded-2xl overflow-hidden h-48">
-        <img src={TRIO_URL} alt="NuVira Merch" className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/90 to-primary/60" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-          <img src={LOGO_URL} alt="NuVira" className="w-32 mb-2 drop-shadow" />
-          <span className="bg-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase">
-            Gear for the lifestyle
-          </span>
-          <p className="text-primary-foreground/80 text-xs mt-2">
-            Minimal. Intentional. STL-rooted.
-          </p>
+      <div className="relative mx-4 mt-4 rounded-2xl overflow-hidden h-56">
+        <img src={TRIO_URL} alt="NuVira Merch" className="w-full h-full object-cover object-[center_30%]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/70" />
+        <div className="absolute bottom-0 left-0 right-0 p-5">
+          <span className="text-white/70 text-[9px] font-bold uppercase tracking-widest">Coming Soon</span>
+          <h1 className="font-heading text-2xl font-bold text-white mt-0.5">NuVira Merch</h1>
+          <p className="text-white/80 text-xs mt-1">Minimal. Intentional. STL-rooted.</p>
         </div>
       </div>
 

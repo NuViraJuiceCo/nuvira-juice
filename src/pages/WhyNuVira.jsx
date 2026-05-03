@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const AURA_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/73b112d86_DSC02432-Edit-2.jpg";
-const RENU_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/d236530da_DSC02429-Edit-2.jpg";
+const HERO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg";
+const AURA_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg";
+const RENU_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/9009cffcd_DSC02696.jpg";
 
 const sections = [
   {
@@ -84,7 +85,7 @@ export default function WhyNuVira() {
         animate={{ opacity: 1 }}
         className="relative h-52 overflow-hidden"
       >
-        <img src={AURA_URL} alt="AURA" className="w-full h-full object-cover" />
+        <img src={HERO_URL} alt="NuVira juices" className="w-full h-full object-cover object-[center_35%]" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background/95" />
         <div className="absolute bottom-4 left-5">
           <p className="font-heading text-2xl font-bold text-foreground">Why NuVira?</p>
@@ -110,20 +111,20 @@ export default function WhyNuVira() {
           transition={{ delay: 0.15 }}
           className="grid grid-cols-2 gap-3"
         >
-          <div className="rounded-2xl overflow-hidden relative h-36">
-            <img src={AURA_URL} alt="AURA" className="w-full h-full object-cover" />
+          <div className="rounded-2xl overflow-hidden relative h-40">
+            <img src={AURA_URL} alt="AURA" className="w-full h-full object-cover object-[center_40%]" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-2 left-3">
-              <p className="text-white font-bold text-sm">AURA</p>
-              <p className="text-white/70 text-[10px]">Nourish. Radiate. Glow.</p>
+              <p className="text-white font-bold text-sm">Radiance</p>
+              <p className="text-white/70 text-[10px]">Glow from within.</p>
             </div>
           </div>
-          <div className="rounded-2xl overflow-hidden relative h-36">
-            <img src={RENU_URL} alt="RE-NU" className="w-full h-full object-cover" />
+          <div className="rounded-2xl overflow-hidden relative h-40">
+            <img src={RENU_URL} alt="RE-NU" className="w-full h-full object-cover object-[center_40%]" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-2 left-3">
-              <p className="text-white font-bold text-sm">RE-NU</p>
-              <p className="text-white/70 text-[10px]">Restore. Refresh. Balance.</p>
+              <p className="text-white font-bold text-sm">Reset</p>
+              <p className="text-white/70 text-[10px]">Refresh & renew.</p>
             </div>
           </div>
         </motion.div>

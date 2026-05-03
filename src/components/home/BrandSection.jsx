@@ -26,36 +26,28 @@ export default function BrandSection() {
       transition={{ duration: 0.5 }}
       className="mt-8 mb-4 space-y-5"
     >
-      {/* NuVira Difference */}
+      {/* NuVira Difference — values only, no photo bg */}
       <div className="mx-4">
-        <div className="relative rounded-2xl overflow-hidden">
-          <img src={TRIO_URL} alt="NuVira Juices" className="w-full h-48 object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/90 via-primary/75 to-primary/50" />
-          <div className="absolute inset-0 p-4 flex flex-col justify-between">
-            <div>
-              <p className="font-heading text-white font-bold text-lg leading-tight">
-                The NuVira Difference
-              </p>
-              <p className="text-white/75 text-[10px] mt-0.5">No fillers. No compromises.</p>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {values.map(({ icon: Icon, title, desc }, i) => (
-                <motion.div
-                  key={title}
-                  initial={{ opacity: 0, y: 10 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  className="text-center"
-                >
-                  <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-1.5 backdrop-blur-sm">
-                    <Icon className="w-4 h-4 text-white" />
-                  </div>
-                  <p className="text-white text-[10px] font-bold">{title}</p>
-                  <p className="text-white/70 text-[9px] leading-tight">{desc}</p>
-                </motion.div>
-              ))}
-            </div>
+        <div className="bg-card border border-border/40 rounded-2xl p-4">
+          <p className="font-heading font-bold text-base mb-0.5">The NuVira Difference</p>
+          <p className="text-[10px] text-muted-foreground mb-4">No fillers. No compromises.</p>
+          <div className="grid grid-cols-3 gap-3">
+            {values.map(({ icon: Icon, title, desc }, i) => (
+              <motion.div
+                key={title}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="text-center"
+              >
+                <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center mx-auto mb-1.5">
+                  <Icon className="w-4 h-4 text-primary" />
+                </div>
+                <p className="text-foreground text-[10px] font-bold">{title}</p>
+                <p className="text-muted-foreground text-[9px] leading-tight">{desc}</p>
+              </motion.div>
+            ))}
           </div>
         </div>
       </div>

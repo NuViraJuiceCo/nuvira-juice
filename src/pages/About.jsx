@@ -5,7 +5,7 @@ import SEO from '@/components/SEO';
 import { motion } from 'framer-motion';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
-const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg";
+const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/801123d05_DSC02744.jpg";
 
 const values = [
   { icon: Leaf, title: 'Cold-Pressed Purity', body: 'We never heat, dilute, or compromise our juice. Every bottle is cold-pressed to preserve the living nutrients your body craves.' },
@@ -110,7 +110,6 @@ export default function About() {
               alt="NuVira community lifestyle"
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-primary/60" />
           </div>
           <p className="font-heading text-xl font-bold text-primary-foreground mb-2">More Than Juice.</p>
           <p className="text-primary-foreground/80 text-sm leading-relaxed">
