@@ -18,7 +18,8 @@ const PROGRAMS = [
     border: 'border-orange-300',
     dot: 'bg-orange-500',
     emoji: '✨',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/99a63a91c_DSC02712.jpg',
+    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg',
+    imagePosition: 'object-[center_40%]',
   },
   {
     key: 'hydration',
@@ -34,7 +35,8 @@ const PROGRAMS = [
     border: 'border-red-300',
     dot: 'bg-red-500',
     emoji: '💧',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
+    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg',
+    imagePosition: 'object-[center_35%]',
   },
   {
     key: 'reset',
@@ -50,7 +52,8 @@ const PROGRAMS = [
     border: 'border-green-300',
     dot: 'bg-green-500',
     emoji: '🌿',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/9753b412a_DSC02715.jpg',
+    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/9009cffcd_DSC02696.jpg',
+    imagePosition: 'object-[center_40%]',
   },
 ];
 
@@ -74,7 +77,7 @@ export default function ProgramCards() {
                   <img
                     src={program.image}
                     alt={program.name}
-                    className="w-full h-full object-cover object-center"
+                    className={`w-full h-full object-cover ${program.imagePosition || 'object-center'}`}
                     loading="lazy"
                   />
                   <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />

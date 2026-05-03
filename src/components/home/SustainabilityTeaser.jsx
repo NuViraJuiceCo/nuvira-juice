@@ -18,7 +18,7 @@ export default function SustainabilityTeaser() {
             alt="NuVira delivery bag"
             className="absolute inset-0 w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-primary/80" />
+          <div className="absolute inset-0 bg-primary/60" />
 
           <div className="flex items-start gap-4 relative">
             <div className="w-11 h-11 bg-white/15 rounded-xl flex items-center justify-center shrink-0">
