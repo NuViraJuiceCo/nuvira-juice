@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
       }
     });
 
-    // ===== IDENTIFY APPLE PRIVATE RELAY EMAILS =====
+    // ===== IDENTIFY APPLE PRIVATE RELAY EMAILS (for reporting only) =====
 
     const appleRelayEmails = new Set();
     existingMembers.forEach(m => {
@@ -146,15 +146,8 @@ Deno.serve(async (req) => {
         return;
       }
 
-      // Check for Apple Private Relay
-      if (appleRelayEmails.has(email)) {
-        memberAnalysis.proposed_skips.push({
-          email,
-          reason: 'APPLE_PRIVATE_RELAY_PRESERVED',
-          hub_id: hubMember.hub_id,
-        });
-        return;
-      }
+      // Apple Private Relay emails are treated like any other customer — exact email match
+      // They should NOT be skipped; preserve them as separate identities
 
       if (existing.length === 0) {
         // Create
@@ -166,6 +159,7 @@ Deno.serve(async (req) => {
           points_history: hubMember.points_history || [],
           hub_id: hubMember.hub_id,
           source: 'hub_phase1',
+          apple_private_relay: email.includes('@privaterelay.appleid.com'),
         });
       } else if (existing.length === 1) {
         // Update
@@ -176,6 +170,7 @@ Deno.serve(async (req) => {
           hub_lifetime: hubMember.lifetime_points || 0,
           action: 'MERGE_POINTS',
           hub_id: hubMember.hub_id,
+          apple_private_relay: email.includes('@privaterelay.appleid.com'),
         });
       } else {
         // Duplicate in Customer App
@@ -205,22 +200,15 @@ Deno.serve(async (req) => {
       // Check if held
       if (HELD_CUSTOMERS.includes(email)) {
         pointsAnalysis.proposed_skips.push({
-          email,
+          customer_email: email,
           reason: 'HELD_CUSTOMER',
           hub_id: hubPoint.hub_id,
         });
         return;
       }
 
-      // Check for Apple Private Relay
-      if (appleRelayEmails.has(email)) {
-        pointsAnalysis.proposed_skips.push({
-          email,
-          reason: 'APPLE_PRIVATE_RELAY_PRESERVED',
-          hub_id: hubPoint.hub_id,
-        });
-        return;
-      }
+      // Apple Private Relay emails are treated like any other customer — exact email match
+      // They should NOT be skipped; preserve them as separate identities
 
       if (existing.length === 0) {
         // Create
@@ -233,6 +221,7 @@ Deno.serve(async (req) => {
           claimed_rewards: hubPoint.claimed_rewards || [],
           hub_id: hubPoint.hub_id,
           source: 'hub_phase1',
+          apple_private_relay: email.includes('@privaterelay.appleid.com'),
         });
       } else if (existing.length === 1) {
         // Update
@@ -243,6 +232,7 @@ Deno.serve(async (req) => {
           hub_lifetime: hubPoint.lifetime_points || 0,
           action: 'MERGE_POINTS',
           hub_id: hubPoint.hub_id,
+          apple_private_relay: email.includes('@privaterelay.appleid.com'),
         });
       } else {
         // Duplicate in Customer App
@@ -309,15 +299,15 @@ Deno.serve(async (req) => {
         ready_for_live_run: safetyFlags.length === 0 && memberAnalysis.duplicates.length === 0 && pointsAnalysis.duplicates.length === 0,
         errors: readErrors,
         member_details: {
-          proposed_creates: memberAnalysis.proposed_creates.slice(0, 5),
-          proposed_updates: memberAnalysis.proposed_updates.slice(0, 5),
-          proposed_skips: memberAnalysis.proposed_skips.slice(0, 5),
+          proposed_creates: memberAnalysis.proposed_creates,
+          proposed_updates: memberAnalysis.proposed_updates,
+          proposed_skips: memberAnalysis.proposed_skips,
           duplicates: memberAnalysis.duplicates,
         },
         points_details: {
-          proposed_creates: pointsAnalysis.proposed_creates.slice(0, 5),
-          proposed_updates: pointsAnalysis.proposed_updates.slice(0, 5),
-          proposed_skips: pointsAnalysis.proposed_skips.slice(0, 5),
+          proposed_creates: pointsAnalysis.proposed_creates,
+          proposed_updates: pointsAnalysis.proposed_updates,
+          proposed_skips: pointsAnalysis.proposed_skips,
           duplicates: pointsAnalysis.duplicates,
         },
       };
