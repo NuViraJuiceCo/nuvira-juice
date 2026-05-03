@@ -109,13 +109,6 @@ export default function ProgramDetail() {
     }
   };
 
-  // Per-program detail photos
-  const programDetailPhoto = {
-    radiance: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3ff49bf62_DSC02484-Edit.jpg',
-    hydration: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/9a8f0e932_DSC02491-Edit.jpg',
-    reset: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/4e7bec534_DSC02480-Edit.jpg',
-  };
-
   return (
     <div className="min-h-screen bg-background pb-36">
       {/* Header */}
@@ -134,25 +127,12 @@ export default function ProgramDetail() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`border ${program.border} rounded-2xl overflow-hidden mb-6`}
+          className={`bg-gradient-to-br ${program.color} border ${program.border} rounded-2xl p-6 mb-6`}
         >
-          {programDetailPhoto[program.key] && (
-            <div className="relative h-52 overflow-hidden">
-              <img
-                src={programDetailPhoto[program.key]}
-                alt={`${program.name} program`}
-                className="w-full h-full object-cover object-center"
-              />
-              <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
-              <div className="absolute bottom-4 left-5">
-                <p className="font-heading text-3xl font-bold text-white drop-shadow">{program.name} <span className="text-2xl">{program.emoji}</span></p>
-                <p className="text-white/80 text-sm font-semibold">{program.tagline}</p>
-              </div>
-            </div>
-          )}
-          <div className={`bg-gradient-to-br ${program.color} p-4`}>
-            <p className="text-sm text-gray-700 leading-relaxed">{program.description}</p>
-          </div>
+          <div className="text-4xl mb-3">{program.emoji}</div>
+          <h1 className="font-heading text-3xl font-bold mb-1 text-gray-900">{program.name}</h1>
+          <p className={`text-sm font-semibold ${program.accent} mb-3`}>{program.tagline}</p>
+          <p className="text-sm text-gray-700 leading-relaxed">{program.description}</p>
         </motion.div>
 
         {/* Program Details */}
