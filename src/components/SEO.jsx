@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet-async';
 
 const SITE_NAME = 'NuVira Juice Co.';
 const SITE_URL = 'https://www.nuvirajuice.com';
-const DEFAULT_IMAGE = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/421b89061_generated_image.png';
+const DEFAULT_IMAGE = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/6200af615_generated_image.png';
 const DEFAULT_DESCRIPTION = "NuVira Juice Co. delivers fresh cold-pressed juices, wellness shots, and 3-day juice programs to your door in Wentzville, O'Fallon, St. Charles, and the greater St. Louis, MO area. Small-batch, made to order — Real. Living. Nutrition.";
 const DEFAULT_KEYWORDS = "cold pressed juice Wentzville MO, juice delivery St. Louis, fresh juice O'Fallon, NuVira Juice, juice cleanse St. Charles, wellness juice Missouri";
 
