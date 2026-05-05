@@ -153,7 +153,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const origin = req.headers.get('origin') || 'https://www.nuvirajuice.com';
+    // Always use the canonical production domain for success/cancel URLs.
+    // Do NOT use req.headers.get('origin') — it resolves to the Base44 platform
+    // domain in PWA/mobile contexts, causing the redirect to miss the app router.
+    const origin = 'https://www.nuvirajuice.com';
 
     // Build discounts coupon
     let discounts = [];

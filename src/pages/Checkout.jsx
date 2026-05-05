@@ -423,8 +423,16 @@ export default function Checkout() {
       <div className="mx-4 mb-5 bg-primary/5 rounded-xl p-3.5 flex items-center gap-2.5">
         <Truck className="w-5 h-5 text-primary shrink-0" />
         <div>
-          <p className="text-sm font-semibold text-primary">{deliveryText}</p>
-          <p className="text-[10px] text-muted-foreground">Included in our next fresh batch</p>
+          <p className="text-sm font-semibold text-primary">
+            {selectedDeliveryOption?.label
+              ? `Delivered ${selectedDeliveryOption.label}`
+              : deliveryText}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {selectedDeliveryOption?.delivery_window_label
+              ? `${selectedDeliveryOption.delivery_window_label} · Included in our next fresh batch`
+              : 'Included in our next fresh batch'}
+          </p>
         </div>
       </div>
 
