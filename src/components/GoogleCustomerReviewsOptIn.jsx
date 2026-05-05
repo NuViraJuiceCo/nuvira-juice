@@ -12,6 +12,8 @@ export default function GoogleCustomerReviewsOptIn({ order }) {
   useEffect(() => {
     if (!order) return;
 
+    // Delay 4 seconds so the confirmation page is the hero moment first
+    const delay = setTimeout(() => {
     const orderId = order.order_number || order.id;
     const email = order.customer_email;
 
@@ -62,6 +64,9 @@ export default function GoogleCustomerReviewsOptIn({ order }) {
         window.renderOptIn();
       }
     }
+    }, 4000); // 4-second delay: let confirmation be the hero moment first
+
+    return () => clearTimeout(delay);
   }, [order?.id, order?.order_number]);
 
   return null; // Google manages the widget rendering

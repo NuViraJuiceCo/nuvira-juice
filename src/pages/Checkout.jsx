@@ -23,7 +23,7 @@ import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 export default function Checkout() {
   const navigate = useNavigate();
 
-  // Safety net: if Stripe redirected back to /checkout with session_id, bounce to order confirmation
+  // Safety net 1: if Stripe redirected back to /checkout with session_id in URL
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session_id');
@@ -31,6 +31,24 @@ export default function Checkout() {
     if (sessionId) {
       const dest = `/order-confirmation?session_id=${sessionId}${orderNumber ? `&order_number=${orderNumber}` : ''}`;
       navigate(dest, { replace: true });
+      return;
+    }
+    // Safety net 2: detect pending session stored before Stripe redirect (PWA resume case)
+    const pending = localStorage.getItem('nuvira_pending_checkout_session');
+    if (pending) {
+      try {
+        const { session_id: sid, order_number: onum, timestamp } = JSON.parse(pending);
+        // Only act on sessions < 30 minutes old
+        if (sid && Date.now() - timestamp < 30 * 60 * 1000) {
+          localStorage.removeItem('nuvira_pending_checkout_session');
+          const dest = `/order-confirmation?session_id=${sid}${onum ? `&order_number=${onum}` : ''}`;
+          navigate(dest, { replace: true });
+        } else {
+          localStorage.removeItem('nuvira_pending_checkout_session');
+        }
+      } catch {
+        localStorage.removeItem('nuvira_pending_checkout_session');
+      }
     }
   }, []);
 
@@ -331,11 +349,19 @@ export default function Checkout() {
     });
 
     if (res.data?.url) {
-      // Stripe returns to browser immediately, but don't navigate yet
-      // First, ensure we give the backend time to create the order
       const checkoutUrl = res.data.url;
+      const sessionIdMatch = checkoutUrl.match(/[?&]session_id=([^&]+)/) || [];
+      const pendingSessionId = res.data.session_id || sessionIdMatch[1] || null;
+      const pendingOrderNumber = res.data.order_number || null;
+      // Store pending session so PWA resume can detect completed payment
+      if (pendingSessionId) {
+        localStorage.setItem('nuvira_pending_checkout_session', JSON.stringify({
+          session_id: pendingSessionId,
+          order_number: pendingOrderNumber,
+          timestamp: Date.now(),
+        }));
+      }
       console.log('Redirecting to Stripe checkout:', checkoutUrl);
-      // Navigate to Stripe checkout
       window.location.href = checkoutUrl;
     } else {
       const errMsg = res.data?.error || 'Failed to start checkout. Please try again.';

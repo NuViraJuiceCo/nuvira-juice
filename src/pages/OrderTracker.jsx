@@ -48,7 +48,9 @@ export default function OrderTracker() {
   const { data: order, isLoading, error } = useQuery({
     queryKey: ['order', orderId || orderNumberParam, user?.email],
     queryFn: async () => {
-      // 1. Try by order_number (NV-XXXX) — most reliable for Hub-sourced orders
+      const searchKey = orderNumberParam || orderId;
+
+      // 1. Try by order_number (NV-XXXX) directly — fastest local path
       if (orderNumberParam) {
         try {
           const localOrders = await base44.entities.Order.filter({ order_number: orderNumberParam });
@@ -68,16 +70,16 @@ export default function OrderTracker() {
         }
       }
 
-      // 3. Fallback: search merged Hub+local orders
+      // 3. Fallback: search merged Hub+local orders (catches Hub-only or recently synced orders)
       if (user?.email) {
         try {
           const res = await base44.functions.invoke('getCustomerOrdersWithHub', { customer_email: user.email });
-          const orders = res.data?.orders || [];
-          const searchKey = orderNumberParam || orderId;
-          const found = orders.find(o =>
+          const allOrders = res.data?.orders || [];
+          const found = allOrders.find(o =>
             o.id === searchKey ||
             o.order_number === searchKey ||
-            o.order_number?.replace('#', '') === searchKey
+            o.order_number?.replace('#', '') === searchKey ||
+            o.stripe_checkout_session_id === searchKey
           );
           if (found) return found;
         } catch (err) {
@@ -85,9 +87,25 @@ export default function OrderTracker() {
         }
       }
 
+      // 4. Last resort: scan local orders for this customer (catches new orders not yet in Hub)
+      if (user?.email) {
+        try {
+          const localAll = await base44.entities.Order.filter({ customer_email: user.email }, '-created_date', 20);
+          const found = localAll.find(o =>
+            o.id === searchKey ||
+            o.order_number === searchKey
+          );
+          if (found) return found;
+        } catch (err) {
+          console.warn('Local scan failed:', err.message);
+        }
+      }
+
       return null;
     },
-    enabled: !!(orderId || orderNumberParam) && !!user?.email,
+    // Fire as soon as we have a param — user?.email not required for step 1+2
+    enabled: !!(orderId || orderNumberParam),
+    staleTime: 0,
     refetchInterval: 30000,
     retry: 2,
   });
@@ -124,21 +142,37 @@ export default function OrderTracker() {
   }
 
   if (!order) {
+    // For NV- order numbers, the order almost certainly exists — it's still syncing
+    const looksLikeValidOrder = orderNumberParam?.startsWith('NV-') || orderId;
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
         <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
           <AlertCircle className="w-8 h-8 text-muted-foreground" />
         </div>
-        <h2 className="font-heading text-lg font-bold mb-1">Order Not Found</h2>
+        <h2 className="font-heading text-lg font-bold mb-1">
+          {looksLikeValidOrder ? 'Finalizing Your Order…' : 'Order Not Found'}
+        </h2>
         <p className="text-sm text-muted-foreground mb-6 max-w-xs leading-relaxed">
-          We couldn't load this order right now. It may still be syncing or the order ID may be invalid.
+          {looksLikeValidOrder
+            ? 'Your order was placed successfully. Details are still syncing — please check back in a moment.'
+            : 'We couldn\'t find this order. It may have been placed under a different account.'}
         </p>
-        <button
-          onClick={() => navigate('/account/orders')}
-          className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm active:scale-95 transition-transform"
-        >
-          Back to Orders
-        </button>
+        <div className="space-y-2.5 w-full max-w-xs">
+          {looksLikeValidOrder && (
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm active:scale-95 transition-transform"
+            >
+              Try Again
+            </button>
+          )}
+          <button
+            onClick={() => navigate('/account/orders')}
+            className="w-full px-6 py-2.5 bg-secondary text-foreground rounded-xl font-medium text-sm active:scale-95 transition-transform"
+          >
+            Back to Orders
+          </button>
+        </div>
       </div>
     );
   }
