@@ -37,12 +37,23 @@ function statusConfig(status) {
 
 // ─── Task Card ───────────────────────────────────────────────────────────────
 
+// A task_id is valid only if it's a non-empty 24-char hex string (MongoDB ObjectId format)
+// and does NOT look like a synthetic composite (no underscore suffix like _f2)
+function isValidHubTaskId(id) {
+  if (!id || typeof id !== 'string') return false;
+  return /^[a-f0-9]{24}$/.test(id.trim());
+}
+
 function TaskCard({ task, onAction, isActing }) {
   const [expanded, setExpanded] = useState(false);
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [showUnableForm, setShowUnableForm] = useState(false);
   const [note, setNote] = useState('');
   const [failureReason, setFailureReason] = useState('customer_not_home');
+
+  // Real Hub FulfillmentTask.id — ONLY field sent to hubDriverAction
+  const hubTaskId = task.task_id;
+  const hasValidTaskId = isValidHubTaskId(hubTaskId);
 
   const isDelivered = task.status === 'delivered';
   const isUnable = task.status === 'unable_to_deliver';
@@ -58,7 +69,8 @@ function TaskCard({ task, onAction, isActing }) {
   ];
 
   const handleAction = (action, extra = {}) => {
-    onAction(task.id, action, extra);
+    if (!hasValidTaskId) return; // safety guard — never call with invalid ID
+    onAction(hubTaskId, action, extra);
     setShowNoteForm(false);
     setShowUnableForm(false);
     setNote('');
@@ -154,37 +166,45 @@ function TaskCard({ task, onAction, isActing }) {
               {/* Action buttons */}
               {!isDone && !showNoteForm && !showUnableForm && (
                 <div className="space-y-2">
-                  {task.status !== 'out_for_delivery' && (
-                    <button
-                      onClick={() => handleAction('mark_out_for_delivery')}
-                      disabled={isActing}
-                      className="w-full py-3 border border-primary text-primary rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2"
-                    >
-                      <Truck className="w-4 h-4" /> Start Delivery
-                    </button>
+                  {!hasValidTaskId ? (
+                    <div className="w-full py-3 px-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 text-center">
+                      ⚠️ Missing Hub fulfillment task ID — cannot update delivery.
+                    </div>
+                  ) : (
+                    <>
+                      {task.status !== 'out_for_delivery' && (
+                        <button
+                          onClick={() => handleAction('mark_out_for_delivery')}
+                          disabled={isActing}
+                          className="w-full py-3 border border-primary text-primary rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2"
+                        >
+                          <Truck className="w-4 h-4" /> Start Delivery
+                        </button>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleAction('mark_delivered')}
+                          disabled={isActing}
+                          className="py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5"
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Delivered
+                        </button>
+                        <button
+                          onClick={() => setShowUnableForm(true)}
+                          disabled={isActing}
+                          className="py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5"
+                        >
+                          <AlertTriangle className="w-4 h-4" /> Unable
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setShowNoteForm(true)}
+                        className="w-full py-2 text-xs text-muted-foreground border border-border rounded-xl flex items-center justify-center gap-1.5"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" /> Add Note
+                      </button>
+                    </>
                   )}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => handleAction('mark_delivered')}
-                      disabled={isActing}
-                      className="py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5"
-                    >
-                      <CheckCircle2 className="w-4 h-4" /> Delivered
-                    </button>
-                    <button
-                      onClick={() => setShowUnableForm(true)}
-                      disabled={isActing}
-                      className="py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-1.5"
-                    >
-                      <AlertTriangle className="w-4 h-4" /> Unable
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => setShowNoteForm(true)}
-                    className="w-full py-2 text-xs text-muted-foreground border border-border rounded-xl flex items-center justify-center gap-1.5"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" /> Add Note
-                  </button>
                 </div>
               )}
 
@@ -208,7 +228,7 @@ function TaskCard({ task, onAction, isActing }) {
                     className="w-full text-xs border border-red-200 rounded-xl px-3 py-2.5 bg-white resize-none focus:outline-none focus:ring-1 focus:ring-red-300 placeholder:text-red-300" />
                   <button
                     onClick={() => handleAction('mark_unable_to_deliver', { failure_reason: failureReason, note: note || undefined })}
-                    disabled={isActing}
+                    disabled={isActing || !hasValidTaskId}
                     className="w-full py-3 bg-red-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
                   >
                     {isActing ? 'Submitting...' : 'Confirm Unable to Deliver'}
@@ -228,7 +248,7 @@ function TaskCard({ task, onAction, isActing }) {
                     className="w-full text-xs border border-border rounded-xl px-3 py-2.5 bg-card resize-none focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50" />
                   <button
                     onClick={() => handleAction('add_note', { note })}
-                    disabled={isActing || !note.trim()}
+                    disabled={isActing || !note.trim() || !hasValidTaskId}
                     className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
                   >
                     {isActing ? 'Saving...' : 'Save Note'}
@@ -286,7 +306,7 @@ export default function DriverPortal() {
     setActingTaskId(taskId);
     try {
       await base44.functions.invoke('hubDriverAction', {
-        task_id: taskId,
+        task_id: taskId,  // always the real Hub FulfillmentTask.id (task.task_id)
         action,
         ...extra,
       });
