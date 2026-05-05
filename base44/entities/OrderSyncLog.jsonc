@@ -12,10 +12,26 @@
         "success",
         "error",
         "recovery",
-        "pending"
+        "pending",
+        "deduped",
+        "skipped",
+        "queued_for_review",
+        "rejected"
       ],
       "default": "pending",
-      "description": "Sync status"
+      "description": "Sync status. 'success'=Hub confirmed created/updated with hub_order_id. 'deduped'=Hub matched exact duplicate, no new record needed. 'skipped'=Hub returned no-op without confirmed action (retry eligible). 'queued_for_review'/'rejected'=Hub explicit states. 'error'=network/HTTP failure (retry eligible)."
+    },
+    "hub_order_id": {
+      "type": "string",
+      "description": "Hub-assigned order ID returned on action=created or action=updated"
+    },
+    "matched_hub_order_id": {
+      "type": "string",
+      "description": "Hub order ID returned on action=dedupe_exact_match"
+    },
+    "hub_action": {
+      "type": "string",
+      "description": "Raw action field returned by Hub (created, updated, dedupe_exact_match, queued_for_review, rejected, acknowledged, etc.)"
     },
     "description": {
       "type": "string",

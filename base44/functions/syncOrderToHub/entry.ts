@@ -174,25 +174,79 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       console.error(`syncOrderToHub: hub returned ${response.status} for ${order.order_number}:`, responseText);
+      // Log as error — eligible for retry by retryFailedHubSyncs
+      try {
+        await base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number: order.order_number,
+          status:       'error',
+          hub_action:   null,
+          description:  `Hub HTTP ${response.status}. Retry eligible. ${payloadSummary}. Response: ${responseText.substring(0, 300)}`,
+          started_at:   new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          triggered_by: body.triggered_by || 'stripe_webhook',
+        });
+      } catch (logErr) {
+        console.warn(`syncOrderToHub: failed to write error log: ${logErr.message}`);
+      }
       return Response.json({ error: `Hub returned ${response.status}`, details: responseText }, { status: response.status });
     }
 
-    console.log(`syncOrderToHub: ✅ order ${order.order_number} accepted by Hub.`, JSON.stringify(hubResponse));
+    // --- Interpret Hub response contract ---
+    // Hub should return: { action, hub_order_id?, matched_hub_order_id?, status?, note? }
+    const hubAction = typeof hubResponse === 'object' ? (hubResponse?.action || hubResponse?.status || null) : null;
+    const hubOrderId = typeof hubResponse === 'object' ? (hubResponse?.hub_order_id || hubResponse?.order_id || null) : null;
+    const matchedHubOrderId = typeof hubResponse === 'object' ? (hubResponse?.matched_hub_order_id || null) : null;
+
+    let logStatus;
+    let logLabel;
+
+    if (hubAction === 'created' || hubAction === 'updated') {
+      // Confirmed operational sync — Hub created or updated a record
+      logStatus = 'success';
+      logLabel  = `✅ Hub ${hubAction} order. hub_order_id=${hubOrderId}`;
+      console.log(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
+
+    } else if (hubAction === 'dedupe_exact_match') {
+      // Hub matched an identical existing order — no new record created but order IS in Hub
+      logStatus = 'deduped';
+      logLabel  = `🔁 Hub dedupe_exact_match. matched_hub_order_id=${matchedHubOrderId}`;
+      console.log(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
+
+    } else if (hubAction === 'queued_for_review') {
+      logStatus = 'queued_for_review';
+      logLabel  = `⏳ Hub queued_for_review. No operational record yet.`;
+      console.warn(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
+
+    } else if (hubAction === 'rejected') {
+      logStatus = 'rejected';
+      logLabel  = `🚫 Hub rejected order. Response: ${JSON.stringify(hubResponse).substring(0, 200)}`;
+      console.error(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
+
+    } else {
+      // Catch-all: Hub returned 200 but no confirmed action (e.g. "acknowledged / no action required")
+      // This is NOT a successful operational sync — mark skipped and keep retry eligible
+      logStatus = 'skipped';
+      logLabel  = `⚠️ Hub returned 200 with no confirmed action (hub_action="${hubAction}"). Retry eligible. Response: ${JSON.stringify(hubResponse).substring(0, 200)}`;
+      console.warn(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
+    }
 
     try {
       await base44.asServiceRole.entities.OrderSyncLog.create({
-        order_number:  order.order_number,
-        status:        'success',
-        description:   `Hub accepted. ${payloadSummary}. Response: ${JSON.stringify(hubResponse).substring(0, 300)}`,
-        started_at:    new Date().toISOString(),
-        completed_at:  new Date().toISOString(),
-        triggered_by:  body.triggered_by || 'stripe_webhook',
+        order_number:       order.order_number,
+        status:             logStatus,
+        hub_action:         hubAction || 'unknown',
+        hub_order_id:       hubOrderId || undefined,
+        matched_hub_order_id: matchedHubOrderId || undefined,
+        description:        `${logLabel}. ${payloadSummary}`.substring(0, 1000),
+        started_at:         new Date().toISOString(),
+        completed_at:       new Date().toISOString(),
+        triggered_by:       body.triggered_by || 'stripe_webhook',
       });
     } catch (logErr) {
-      console.warn(`syncOrderToHub: failed to write success log: ${logErr.message}`);
+      console.warn(`syncOrderToHub: failed to write log: ${logErr.message}`);
     }
 
-    return Response.json({ success: true, hub_response: hubResponse });
+    return Response.json({ success: logStatus === 'success' || logStatus === 'deduped', log_status: logStatus, hub_action: hubAction, hub_response: hubResponse });
 
   } catch (fetchErr) {
     console.error(`syncOrderToHub: fetch error for ${order.order_number}: ${fetchErr.message}`);

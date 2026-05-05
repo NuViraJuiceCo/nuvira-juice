@@ -16,12 +16,18 @@ Deno.serve(async (req) => {
   const startTime = new Date().toISOString();
   console.log(`[RetryHubSyncs] Starting retry sweep at ${startTime}`);
 
-  // Find all error sync logs from the last 24 hours
-  const allLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
+  // Find all retry-eligible sync logs: status=error (HTTP failures) or status=skipped (Hub no-op, unconfirmed)
+  const errorLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
     { status: 'error' },
     '-created_date',
     50
   );
+  const skippedLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
+    { status: 'skipped' },
+    '-created_date',
+    50
+  );
+  const allLogs = [...errorLogs, ...skippedLogs];
 
   // Deduplicate by order_number — only retry the most recent error per order
   const seen = new Set();
@@ -47,7 +53,15 @@ Deno.serve(async (req) => {
   );
   const recoveredOrders = new Set(recoveryLogs.map(l => l.order_number));
 
-  const pendingRetry = toRetry.filter(on => !succeededOrders.has(on) && !recoveredOrders.has(on));
+  const dedupedLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
+    { status: 'deduped' },
+    '-created_date',
+    200
+  );
+  const dedupedOrders = new Set(dedupedLogs.map(l => l.order_number));
+
+  // Skip retry if already: success, recovery, or deduped (all are terminal resolved states)
+  const pendingRetry = toRetry.filter(on => !succeededOrders.has(on) && !recoveredOrders.has(on) && !dedupedOrders.has(on));
 
   console.log(`[RetryHubSyncs] ${toRetry.length} error logs found, ${pendingRetry.length} need retry`);
 
