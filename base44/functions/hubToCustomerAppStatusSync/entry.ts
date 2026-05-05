@@ -13,6 +13,22 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * - dry_run=true (default) returns full diff without any writes
  */
 
+// Explicit approved patches — applied verbatim regardless of Hub field availability
+const APPROVED_PATCHES: Record<string, Record<string, any>> = {
+  'NV-MOOV82PT': {
+    status: 'scheduled_for_production',
+    tracker_step: 'Scheduled For Production',
+    payment_status: 'paid',
+    assigned_delivery_date: '2026-05-06',
+  },
+  'NV-MOOPFCUS': {
+    status: 'scheduled_for_production',
+    tracker_step: 'Scheduled For Production',
+    payment_status: 'paid',
+    assigned_delivery_date: '2026-05-06',
+  },
+};
+
 // Orders that must NEVER be touched
 const DO_NOT_TOUCH = new Set([
   'NV-MON367R7',        // R1 — repaired delivered
@@ -154,6 +170,34 @@ Deno.serve(async (req) => {
 
     for (const caOrder of activeCAOrders) {
       const orderNum = caOrder.order_number;
+
+      // Use explicit approved patch if present (overrides Hub-derived diff)
+      if (APPROVED_PATCHES[orderNum]) {
+        const approvedPatch = APPROVED_PATCHES[orderNum];
+        // Only include fields that actually differ
+        const patch: Record<string, any> = {};
+        for (const [k, v] of Object.entries(approvedPatch)) {
+          if (caOrder[k] !== v) patch[k] = v;
+        }
+        if (Object.keys(patch).length === 0) {
+          in_sync.push(orderNum);
+        } else {
+          would_update.push({
+            order_number: orderNum,
+            ca_id: caOrder.id,
+            before: {
+              status: caOrder.status,
+              payment_status: caOrder.payment_status,
+              assigned_delivery_date: caOrder.assigned_delivery_date,
+              tracker_step: caOrder.tracker_step,
+            },
+            patch,
+            source: 'approved_patch',
+          });
+        }
+        continue;
+      }
+
       const hubOrder = hubByOrderNum.get(orderNum);
 
       if (!hubOrder) {
@@ -198,6 +242,7 @@ Deno.serve(async (req) => {
           tracker_step: caOrder.tracker_step,
         },
         patch,
+        source: 'hub_derived',
       });
     }
 
