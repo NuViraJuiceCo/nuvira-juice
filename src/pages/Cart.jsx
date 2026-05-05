@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { getDeliveryDisplayText, getProductionInfo } from '@/lib/deliveryUtils';
+import { getProductionInfo, getEligibleDeliveryOptions } from '@/lib/deliveryUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import BundleComposer from '@/components/cart/BundleComposer';
 import { useAuth } from '@/lib/AuthContext';
@@ -77,8 +77,13 @@ export default function Cart() {
   };
 
   const scheduleRules = schedules[0]?.rules || [];
-  const deliveryText = getDeliveryDisplayText(scheduleRules);
   const productionInfo = getProductionInfo(scheduleRules);
+  // Use getEligibleDeliveryOptions for correct post-2PM cutoff behavior (matches Checkout picker)
+  const deliveryOptions = getEligibleDeliveryOptions(new Date(), false);
+  const earliestOption = deliveryOptions[0] || null;
+  const deliveryText = earliestOption
+    ? `Delivered ${earliestOption.delivery_day_name}, ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' }).format(new Date(earliestOption.delivery_date + 'T12:00:00'))}`
+    : 'Next available batch';
   // Shots are 2oz so require 6 minimum; juices/bundles require 3 minimum.
   // Normalize: each shot counts as 0.5 toward the minimum (so 6 shots = 3 units).
   const juiceCount = items.reduce((sum, item) => {

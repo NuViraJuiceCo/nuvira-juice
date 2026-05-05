@@ -10,7 +10,7 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { order_id, customer_email, order_number, items, total, delivery_address, estimated_delivery_date } = await req.json();
+    const { order_id, customer_email, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label } = await req.json();
 
     if (!customer_email) {
       return Response.json({ error: 'Missing customer_email' }, { status: 400 });
@@ -26,11 +26,13 @@ Deno.serve(async (req) => {
       `<tr><td style="padding: 8px;">${item.title}</td><td style="padding: 8px;">x${item.quantity}</td><td style="padding: 8px;">$${(item.price * item.quantity).toFixed(2)}</td></tr>`
     ).join('') || '';
 
-    // Format delivery date safely
+    // Format delivery date safely — prefer assigned_delivery_date, fall back to estimated_delivery_date
+    const deliveryDateStr = assigned_delivery_date || estimated_delivery_date || null;
+    const windowLabel = delivery_window_label || '5 PM – 8 PM';
     let deliveryDateHtml = '';
-    if (estimated_delivery_date) {
+    if (deliveryDateStr) {
       try {
-        const date = new Date(estimated_delivery_date + 'T00:00:00Z');
+        const date = new Date(deliveryDateStr + 'T12:00:00');
         if (!isNaN(date.getTime())) {
           const formatted = new Intl.DateTimeFormat('en-US', {
             timeZone: 'America/Chicago',
@@ -39,15 +41,15 @@ Deno.serve(async (req) => {
             day: 'numeric',
             year: 'numeric',
           }).format(date);
-          deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> ${formatted} Central Time</p>`;
+          deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> ${formatted}, ${windowLabel} Central Time</p>`;
         } else {
-          deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Your delivery date is being confirmed and will be updated shortly.</p>`;
+          deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Delivery date pending confirmation.</p>`;
         }
       } catch {
-        deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Your delivery date is being confirmed and will be updated shortly.</p>`;
+        deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Delivery date pending confirmation.</p>`;
       }
     } else {
-      deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Your delivery date is being confirmed and will be updated shortly.</p>`;
+      deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Delivery date pending confirmation.</p>`;
     }
 
     const html = `

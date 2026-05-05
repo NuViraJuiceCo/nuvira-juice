@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   const startTime = new Date().toISOString();
   console.log(`[RetryHubSyncs] Starting retry sweep at ${startTime}`);
 
-  // Find all retry-eligible sync logs: status=error (HTTP failures) or status=skipped (Hub no-op, unconfirmed)
+  // Find all retry-eligible sync logs: error, skipped, or false-success (success with no hub_order_id)
   const errorLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
     { status: 'error' },
     '-created_date',
@@ -27,7 +27,14 @@ Deno.serve(async (req) => {
     '-created_date',
     50
   );
-  const allLogs = [...errorLogs, ...skippedLogs];
+  // Also catch old "success" logs that were logged without a real hub_order_id (pre-fix false successes)
+  const unconfirmedSuccessLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
+    { status: 'success' },
+    '-created_date',
+    100
+  );
+  const falseSuccessLogs = unconfirmedSuccessLogs.filter(l => !l.hub_order_id && !l.matched_hub_order_id);
+  const allLogs = [...errorLogs, ...skippedLogs, ...falseSuccessLogs];
 
   // Deduplicate by order_number — only retry the most recent error per order
   const seen = new Set();
@@ -39,13 +46,17 @@ Deno.serve(async (req) => {
     toRetry.push(log.order_number);
   }
 
-  // Filter out any that already have a success log
+  // Filter out orders that are truly resolved — success requires a real hub_order_id
   const successLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
     { status: 'success' },
     '-created_date',
     200
   );
-  const succeededOrders = new Set(successLogs.map(l => l.order_number));
+  // Only treat success as terminal if Hub confirmed with a real hub_order_id or matched_hub_order_id
+  const succeededOrders = new Set(
+    successLogs.filter(l => l.hub_order_id || l.matched_hub_order_id).map(l => l.order_number)
+  );
+
   const recoveryLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
     { status: 'recovery' },
     '-created_date',
@@ -60,7 +71,7 @@ Deno.serve(async (req) => {
   );
   const dedupedOrders = new Set(dedupedLogs.map(l => l.order_number));
 
-  // Skip retry if already: success, recovery, or deduped (all are terminal resolved states)
+  // Skip retry only if truly resolved (confirmed hub_order_id, recovery, or dedupe match)
   const pendingRetry = toRetry.filter(on => !succeededOrders.has(on) && !recoveredOrders.has(on) && !dedupedOrders.has(on));
 
   console.log(`[RetryHubSyncs] ${toRetry.length} error logs found, ${pendingRetry.length} need retry`);
@@ -147,16 +158,45 @@ Deno.serve(async (req) => {
       try { hubResponse = JSON.parse(responseText); } catch { hubResponse = responseText; }
 
       if (response.ok) {
-        console.log(`[RetryHubSyncs] ✅ ${orderNumber} retry succeeded`);
+        // Apply same response contract as syncOrderToHub — only log success if Hub confirms action
+        const hubAction = typeof hubResponse === 'object' ? (hubResponse?.action || hubResponse?.status || null) : null;
+        const hubOrderId = typeof hubResponse === 'object' ? (hubResponse?.hub_order_id || hubResponse?.order_id || null) : null;
+        const matchedHubOrderId = typeof hubResponse === 'object' ? (hubResponse?.matched_hub_order_id || null) : null;
+
+        let logStatus;
+        let logLabel;
+
+        if (hubAction === 'created' || hubAction === 'updated') {
+          logStatus = 'success';
+          logLabel = `✅ Hub ${hubAction}. hub_order_id=${hubOrderId}`;
+        } else if (hubAction === 'dedupe_exact_match') {
+          logStatus = 'deduped';
+          logLabel = `🔁 Hub dedupe_exact_match. matched_hub_order_id=${matchedHubOrderId}`;
+        } else if (hubAction === 'queued_for_review') {
+          logStatus = 'queued_for_review';
+          logLabel = `⏳ Hub queued_for_review.`;
+        } else if (hubAction === 'rejected') {
+          logStatus = 'rejected';
+          logLabel = `🚫 Hub rejected.`;
+        } else {
+          // Generic acknowledged/no action — still unconfirmed, keep retry eligible
+          logStatus = 'skipped';
+          logLabel = `⚠️ Hub returned 200 with no confirmed action (hub_action="${hubAction}"). Retry eligible. Response: ${JSON.stringify(hubResponse).substring(0, 200)}`;
+        }
+
+        console.log(`[RetryHubSyncs] ${logLabel} for ${orderNumber}`);
         await base44.asServiceRole.entities.OrderSyncLog.create({
           order_number: orderNumber,
-          status: 'success',
-          description: `Retry succeeded. Hub: ${JSON.stringify(hubResponse).substring(0, 300)}`,
+          status: logStatus,
+          hub_action: hubAction || 'unknown',
+          hub_order_id: hubOrderId || undefined,
+          matched_hub_order_id: matchedHubOrderId || undefined,
+          description: logLabel.substring(0, 1000),
           started_at: startTime,
           completed_at: new Date().toISOString(),
           triggered_by: 'recovery_function',
         });
-        results.push({ order_number: orderNumber, result: 'success' });
+        results.push({ order_number: orderNumber, result: logStatus });
       } else {
         console.error(`[RetryHubSyncs] ❌ ${orderNumber} retry failed: ${response.status}`);
         results.push({ order_number: orderNumber, result: 'failed', status: response.status, details: responseText.substring(0, 200) });

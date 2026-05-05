@@ -307,10 +307,12 @@ Deno.serve(async (req) => {
           order_id: order.id,
           customer_email: customerEmail,
           order_number: orderNumber,
-          items: orderData.items || [],
-          total: orderData.total || 0,
-          delivery_address: orderData.delivery_address || '',
-          estimated_delivery_date: orderData.estimated_delivery_date,
+          items: resolvedItems,
+          total: order.total || orderData.total || 0,
+          delivery_address: resolvedDeliveryAddress,
+          estimated_delivery_date: resolvedDeliveryDate,
+          assigned_delivery_date: resolvedDeliveryDate,
+          delivery_window_label: resolvedWindowLabel,
         })
           .catch(err => console.error('Failed to send order confirmation email:', err.message));
 
@@ -323,10 +325,14 @@ Deno.serve(async (req) => {
           .catch(err => console.error('Failed to send operations notification:', err.message));
 
         // Send SMS if phone provided
-        if (orderData.contact_phone) {
+        if (resolvedPhone) {
           base44.asServiceRole.functions.invoke('sendOrderSms', {
-            phone_number: orderData.contact_phone,
+            phone_number: resolvedPhone,
             order_number: orderNumber,
+            items: resolvedItems,
+            total: order.total || orderData.total || 0,
+            assigned_delivery_date: resolvedDeliveryDate,
+            delivery_window_label: resolvedWindowLabel,
           })
             .catch(err => console.error('Failed to send order confirmation SMS:', err.message));
         }

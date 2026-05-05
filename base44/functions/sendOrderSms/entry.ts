@@ -11,7 +11,7 @@ const SENDBLUE_PHONE_NUMBER = Deno.env.get('SENDBLUE_PHONE_NUMBER');
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { phone_number, order_number, items, total, estimated_delivery_date } = await req.json();
+    const { phone_number, order_number, items, total, estimated_delivery_date, assigned_delivery_date, delivery_window_label } = await req.json();
 
     if (!phone_number) {
       return Response.json({ error: 'Missing phone_number' }, { status: 400 });
@@ -25,11 +25,25 @@ Deno.serve(async (req) => {
     // Format item list
     const itemList = items?.map(i => `• ${i.title} x${i.quantity}`).join('\n') || '';
 
-    const deliveryLine = estimated_delivery_date
-      ? `\n📅 Est. delivery: ${new Date(estimated_delivery_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
-      : '';
+    // Resolve total safely — never render NaN
+    const resolvedTotal = typeof total === 'number' && !isNaN(total) ? total : null;
+    const totalLine = resolvedTotal !== null ? `\nTotal: $${resolvedTotal.toFixed(2)}` : '';
 
-    const message = `🌿 NuVira Order Confirmed!\n\nOrder #${order_number}\n\n${itemList}\n\nTotal: $${Number(total).toFixed(2)}${deliveryLine}\n\nWe'll keep you updated as your juice is freshly pressed. Questions? Reply here or email info@nuvirajuice.com 💚`;
+    // Resolve delivery date — prefer assigned_delivery_date
+    const deliveryDateStr = assigned_delivery_date || estimated_delivery_date || null;
+    const windowLabel = delivery_window_label || '5 PM – 8 PM';
+    let deliveryLine = '';
+    if (deliveryDateStr) {
+      try {
+        const date = new Date(deliveryDateStr + 'T12:00:00');
+        if (!isNaN(date.getTime())) {
+          const formatted = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Chicago' });
+          deliveryLine = `\n📅 Delivery: ${formatted}, ${windowLabel}`;
+        }
+      } catch { /* omit if invalid */ }
+    }
+
+    const message = `🌿 NuVira Order Confirmed!\n\nOrder #${order_number}\n\n${itemList}${totalLine}${deliveryLine}\n\nWe'll keep you updated as your juice is freshly pressed. Questions? Reply here or email info@nuvirajuice.com 💚`;
 
     const response = await fetch('https://api.sendblue.com/api/send-message', {
       method: 'POST',
