@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 
-const HUB_DRIVER_PORTAL_URL = 'https://hub.nuvirajuice.com/driver';
+const HUB_DRIVER_PORTAL_URL = 'https://nuvira-flow-core.base44.app/driver-portal';
 
 export default function DriverPortal() {
   const { user } = useAuth();
