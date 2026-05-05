@@ -436,13 +436,13 @@ export default function Checkout() {
         <Truck className="w-5 h-5 text-primary shrink-0" />
         <div>
           <p className="text-sm font-semibold text-primary">
-            {selectedDeliveryOption?.label
-              ? `Delivered ${selectedDeliveryOption.label}`
+            {selectedDeliveryOption
+              ? `Delivered ${selectedDeliveryOption.delivery_day_name}, ${format(new Date(selectedDeliveryOption.delivery_date + 'T12:00:00'), 'MMMM d')}`
               : deliveryText}
           </p>
           <p className="text-[10px] text-muted-foreground">
             {selectedDeliveryOption?.delivery_window_label
-              ? `${selectedDeliveryOption.delivery_window_label} · Included in our next fresh batch`
+              ? `${selectedDeliveryOption.delivery_window_label} · Fresh made the day before`
               : 'Included in our next fresh batch'}
           </p>
         </div>
