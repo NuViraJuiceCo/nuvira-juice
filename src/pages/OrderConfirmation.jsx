@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SEO from '@/components/SEO';
+import GoogleCustomerReviewsOptIn from '@/components/GoogleCustomerReviewsOptIn';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail } from 'lucide-react';
@@ -198,6 +199,8 @@ export default function OrderConfirmation() {
 
   // ── Case 4: Order confirmed ────────────────────────────────────────────────
   return (
+    <>
+    <GoogleCustomerReviewsOptIn order={order} />
     <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8">
       <SEO title="Order Confirmed" description="Your NuVira Juice order has been confirmed." noindex={true} />
       <motion.div
@@ -278,5 +281,6 @@ export default function OrderConfirmation() {
         </div>
       </motion.div>
     </div>
+    </>
   );
 }
