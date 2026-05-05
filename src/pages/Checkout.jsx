@@ -22,6 +22,18 @@ import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 
 export default function Checkout() {
   const navigate = useNavigate();
+
+  // Safety net: if Stripe redirected back to /checkout with session_id, bounce to order confirmation
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+    const orderNumber = params.get('order_number');
+    if (sessionId) {
+      const dest = `/order-confirmation?session_id=${sessionId}${orderNumber ? `&order_number=${orderNumber}` : ''}`;
+      navigate(dest, { replace: true });
+    }
+  }, []);
+
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
   const fulfillmentType = 'delivery';

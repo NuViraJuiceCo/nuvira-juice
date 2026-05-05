@@ -151,25 +151,67 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Hydrate items from Stripe line_items if orderData.items is empty (metadata fallback path)
+        let resolvedItems = orderData.items || [];
+        if (resolvedItems.length === 0) {
+          try {
+            const stripeLineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 20 });
+            resolvedItems = (stripeLineItems.data || [])
+              .filter(li => li.description !== 'Delivery Fee')
+              .map(li => ({
+                title: li.description || li.price?.product?.name || 'Item',
+                quantity: li.quantity || 1,
+                price: (li.price?.unit_amount || 0) / 100,
+                product_id: li.price?.product || '',
+              }));
+            console.log(`[stripeWebhook] Hydrated ${resolvedItems.length} items from Stripe line_items for ${orderNumber}`);
+          } catch (liErr) {
+            console.warn(`[stripeWebhook] Could not fetch line_items for ${session.id}: ${liErr.message}`);
+          }
+        }
+
+        // Hydrate delivery fields from Stripe metadata if missing from CheckoutSession
+        const resolvedAddressLine1   = orderData.address_line1   || session.metadata?.delivery_address_line1 || '';
+        const resolvedAddressCity    = orderData.address_city    || session.metadata?.delivery_city    || '';
+        const resolvedAddressState   = orderData.address_state   || session.metadata?.delivery_state   || '';
+        const resolvedAddressZip     = orderData.address_postal_code || session.metadata?.delivery_postal_code || '';
+        const resolvedPhone          = orderData.contact_phone   || session.metadata?.customer_phone   || '';
+        const resolvedCustomerName   = orderData.customer_name   || session.metadata?.customer_name    || '';
+        const resolvedDeliveryDate   = orderData.estimated_delivery_date || session.metadata?.selected_delivery_date || session.metadata?.requested_delivery_date || null;
+        const resolvedProductionDate = orderData.production_date || session.metadata?.production_date  || null;
+        const resolvedWindowLabel    = orderData.delivery_window_label || session.metadata?.delivery_window_label || '5 PM – 8 PM';
+        const resolvedWindowStart    = orderData.delivery_window_start || session.metadata?.delivery_window_start || '17:00';
+        const resolvedWindowEnd      = orderData.delivery_window_end   || session.metadata?.delivery_window_end   || '20:00';
+        const resolvedDeliveryAddress = orderData.delivery_address || [resolvedAddressLine1, resolvedAddressCity, resolvedAddressState, resolvedAddressZip].filter(Boolean).join(', ');
+
+        console.log(`[stripeWebhook] Resolved order fields: name="${resolvedCustomerName}" addr="${resolvedAddressLine1}, ${resolvedAddressCity}" delivery="${resolvedDeliveryDate}" window="${resolvedWindowLabel}" items=${resolvedItems.length}`);
+
         // Create the order
         const order = await base44.asServiceRole.entities.Order.create({
           order_number: orderNumber,
           customer_email: customerEmail || '',
-          customer_name: orderData.customer_name || '',
-          items: orderData.items || [],
+          customer_name: resolvedCustomerName,
+          items: resolvedItems,
           subtotal: orderData.subtotal || 0,
           delivery_fee: orderData.delivery_fee || 0,
           total: orderData.total || 0,
           fulfillment_type: orderData.fulfillment_type || 'delivery',
-          delivery_address: orderData.delivery_address || '',
-          address_line1: orderData.address_line1 || '',
-          address_line2: orderData.address_line2 || '',
-          address_city: orderData.address_city || '',
-          address_state: orderData.address_state || '',
-          address_postal_code: orderData.address_postal_code || '',
+          delivery_address: resolvedDeliveryAddress,
+          address_line1: resolvedAddressLine1,
+          address_line2: orderData.address_line2 || session.metadata?.delivery_address_line2 || '',
+          address_city: resolvedAddressCity,
+          address_state: resolvedAddressState,
+          address_postal_code: resolvedAddressZip,
           address_country: orderData.address_country || 'US',
-          contact_phone: orderData.contact_phone || '',
-          estimated_delivery_date: orderData.estimated_delivery_date,
+          contact_phone: resolvedPhone,
+          estimated_delivery_date: resolvedDeliveryDate,
+          assigned_delivery_date: resolvedDeliveryDate,
+          production_date: resolvedProductionDate,
+          delivery_window_label: resolvedWindowLabel,
+          assigned_delivery_window_start: resolvedWindowStart,
+          assigned_delivery_window_end: resolvedWindowEnd,
+          payment_status: 'paid',
+          financial_status: 'paid',
           status: 'scheduled_for_juicing',
           status_history: [{
             status: 'order_received',
