@@ -66,6 +66,9 @@ Deno.serve(async (req) => {
       points_discount, points_used,
       active_reward, reward_discount, credits_discount,
       referral_discount, referral_code,
+      selected_delivery_date, assigned_delivery_date, production_date,
+      delivery_window_label, delivery_window_start, delivery_window_end,
+      delivery_schedule_source,
     } = await req.json();
 
     // Resolve customer_name from best available source: UserProfile > checkout > fallback
@@ -178,8 +181,13 @@ Deno.serve(async (req) => {
       discounts = [{ coupon: coupon.id }];
     }
 
-    // Delivery date: always use the backend calculation as source of truth
-    const deliveryDate = calculateDeliveryDate();
+    // Delivery date: prefer customer-selected date (validated on frontend), fall back to backend calc
+    const deliveryDate = selected_delivery_date || calculateDeliveryDate();
+    const resolvedProductionDate = production_date || null;
+    const resolvedWindowLabel = delivery_window_label || '5 PM – 8 PM';
+    const resolvedWindowStart = delivery_window_start || '17:00';
+    const resolvedWindowEnd   = delivery_window_end   || '20:00';
+    const resolvedScheduleSource = delivery_schedule_source || 'system_default';
 
     // Stripe metadata — clean, no preorder fields
     const sessionMetadata = {
@@ -200,6 +208,12 @@ Deno.serve(async (req) => {
       delivery_state:         address_state  || '',
       delivery_postal_code:   address_postal_code || '',
       requested_delivery_date: deliveryDate,
+      selected_delivery_date:  deliveryDate,
+      production_date:         resolvedProductionDate || '',
+      delivery_window_label:   resolvedWindowLabel,
+      delivery_window_start:   resolvedWindowStart,
+      delivery_window_end:     resolvedWindowEnd,
+      delivery_schedule_source: resolvedScheduleSource,
     };
 
     // Store checkout data for webhook recovery (expires 24h)
@@ -226,8 +240,14 @@ Deno.serve(async (req) => {
       fulfillment_type:          fulfillment_type || 'delivery',
       delivery_address:          delivery_address || '',
       contact_phone:             contact_phone    || '',
-      estimated_delivery_date:   deliveryDate,
-      is_preorder:               false,
+      estimated_delivery_date:    deliveryDate,
+      assigned_delivery_date:     deliveryDate,
+      production_date:            resolvedProductionDate || null,
+      delivery_window_label:      resolvedWindowLabel,
+      delivery_window_start:      resolvedWindowStart,
+      delivery_window_end:        resolvedWindowEnd,
+      delivery_schedule_source:   resolvedScheduleSource,
+      is_preorder:                false,
       referral_code:  (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
       points_used:    points_used    || 0,
       points_discount:points_discount|| 0,

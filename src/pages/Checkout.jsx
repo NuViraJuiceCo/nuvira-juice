@@ -12,7 +12,8 @@ import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { base44 } from '@/api/base44Client';
-import { getDeliveryDisplayText, getNextDeliveryDate } from '@/lib/deliveryUtils';
+import { getDeliveryDisplayText, getNextDeliveryDate, getEligibleDeliveryOptions } from '@/lib/deliveryUtils';
+import DeliveryDatePicker from '@/components/checkout/DeliveryDatePicker';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
@@ -164,6 +165,12 @@ export default function Checkout() {
   const scheduleRules = schedules[0]?.rules || [];
   const deliveryDate = getNextDeliveryDate(scheduleRules);
   const deliveryText = getDeliveryDisplayText(scheduleRules, fulfillmentType);
+
+  // Eligible delivery options for customer selection
+  const deliveryOptions = React.useMemo(() => getEligibleDeliveryOptions(new Date(), false), []);
+  const [selectedDeliveryOption, setSelectedDeliveryOption] = useState(
+    () => deliveryOptions[0] || null
+  );
   const rewardFreeDelivery = activeReward?.reward_type === 'free_delivery';
   const rewardDiscountPct = activeReward?.reward_type === 'discount' ? 10 : 0;
   const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
@@ -292,7 +299,14 @@ export default function Checkout() {
       address_state: address.state || '',
       address_postal_code: address.zip || '',
       contact_phone: phone.trim(),
-      estimated_delivery_date: deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : null,
+      estimated_delivery_date: selectedDeliveryOption?.delivery_date || (deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : null),
+      selected_delivery_date: selectedDeliveryOption?.delivery_date || null,
+      assigned_delivery_date: selectedDeliveryOption?.delivery_date || null,
+      production_date: selectedDeliveryOption?.production_date || null,
+      delivery_window_label: selectedDeliveryOption?.delivery_window_label || '5 PM – 8 PM',
+      delivery_window_start: selectedDeliveryOption?.delivery_window_start || '17:00',
+      delivery_window_end: selectedDeliveryOption?.delivery_window_end || '20:00',
+      delivery_schedule_source: selectedDeliveryOption ? 'customer_selected' : 'system_default',
       customer_email: user?.email || null,
       customer_name: resolvedName,
       points_discount: pointsDiscount,
@@ -413,6 +427,15 @@ export default function Checkout() {
           <p className="text-[10px] text-muted-foreground">Included in our next fresh batch</p>
         </div>
       </div>
+
+      {/* Delivery Date Selection */}
+      {deliveryOptions.length > 1 && (
+        <DeliveryDatePicker
+          options={deliveryOptions}
+          selected={selectedDeliveryOption?.delivery_date}
+          onSelect={setSelectedDeliveryOption}
+        />
+      )}
 
       {/* Subscriber Perks Banner */}
       {activeSubscription?.plan && (
