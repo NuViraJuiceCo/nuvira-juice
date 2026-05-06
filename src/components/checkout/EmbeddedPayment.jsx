@@ -1,6 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import {
+  Elements,
+  PaymentElement,
+  ExpressCheckoutElement,
+  useStripe,
+  useElements,
+} from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
 
 // Inner form — must be inside <Elements>
@@ -8,7 +14,33 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
   const stripe   = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
+  const [expressAvailable, setExpressAvailable] = useState(false);
 
+  // Handle Express Checkout (Apple Pay / Google Pay) confirmation
+  const handleExpressConfirm = async () => {
+    if (!stripe || !elements) return;
+    setIsSubmitting(true);
+    setErrorMsg('');
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+      confirmParams: {},
+    });
+
+    if (error) {
+      setErrorMsg(error.message || 'Payment failed. Please try again.');
+      setIsSubmitting(false);
+      onError(error.message);
+    } else if (paymentIntent?.status === 'succeeded') {
+      onSuccess(paymentIntent.id);
+    } else {
+      setErrorMsg('Payment not completed. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle standard card form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!stripe || !elements) return;
@@ -18,7 +50,7 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
-      redirect: 'if_required', // stay in-app, no redirect
+      redirect: 'if_required',
       confirmParams: {},
     });
 
@@ -35,32 +67,68 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <PaymentElement
+    <div className="space-y-4">
+      {/* Express Checkout — Apple Pay / Google Pay */}
+      <ExpressCheckoutElement
+        onConfirm={handleExpressConfirm}
+        onReady={({ availablePaymentMethods }) => {
+          const hasExpress = availablePaymentMethods &&
+            Object.values(availablePaymentMethods).some(Boolean);
+          setExpressAvailable(hasExpress);
+        }}
         options={{
-          layout: 'tabs',
-          wallets: { applePay: 'auto', googlePay: 'auto' },
+          buttonType: {
+            applePay: 'buy',
+            googlePay: 'buy',
+          },
+          layout: {
+            maxColumns: 1,
+            maxRows: 3,
+            overflow: 'never',
+          },
+          wallets: {
+            applePay: 'always',
+            googlePay: 'always',
+          },
         }}
       />
 
-      {errorMsg && (
-        <div className="bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2.5">
-          <p className="text-xs text-destructive font-medium">{errorMsg}</p>
+      {/* Divider — only shown when express wallets are available */}
+      {expressAvailable && (
+        <div className="flex items-center gap-3 my-1">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">or pay with card</span>
+          <div className="flex-1 h-px bg-border" />
         </div>
       )}
 
-      <Button
-        type="submit"
-        disabled={!stripe || isSubmitting}
-        className="w-full h-12 rounded-xl font-semibold text-sm"
-      >
-        {isSubmitting ? 'Processing Payment…' : `Pay $${total.toFixed(2)}`}
-      </Button>
+      {/* Card / Link fallback */}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <PaymentElement
+          options={{
+            layout: 'tabs',
+          }}
+        />
 
-      <p className="text-center text-[10px] text-muted-foreground">
-        Secured by Stripe · Your card info never touches NuVira servers
-      </p>
-    </form>
+        {errorMsg && (
+          <div className="bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2.5">
+            <p className="text-xs text-destructive font-medium">{errorMsg}</p>
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          disabled={!stripe || isSubmitting}
+          className="w-full h-12 rounded-xl font-semibold text-sm"
+        >
+          {isSubmitting ? 'Processing Payment…' : `Pay $${total.toFixed(2)}`}
+        </Button>
+
+        <p className="text-center text-[10px] text-muted-foreground">
+          Secured by Stripe · Your card info never touches NuVira servers
+        </p>
+      </form>
+    </div>
   );
 }
 

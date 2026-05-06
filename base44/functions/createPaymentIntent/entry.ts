@@ -132,10 +132,13 @@ Deno.serve(async (req) => {
     const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 
     // Create PaymentIntent
+    // Explicit payment_method_types: card + link only.
+    // Apple Pay / Google Pay surface automatically via card (wallet detection).
+    // Klarna, bank debit, and bank redirect are intentionally excluded.
     const paymentIntent = await stripe.paymentIntents.create({
       amount:   amountCents,
       currency: 'usd',
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: ['card', 'link'],
       metadata: intentMetadata,
       receipt_email: customer_email || undefined,
       description: `NuVira Order ${orderNumber}`,
