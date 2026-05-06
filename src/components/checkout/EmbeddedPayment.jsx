@@ -2,7 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
-  PaymentElement,
+  CardNumberElement,
+  CardExpiryElement,
+  CardCvcElement,
   ExpressCheckoutElement,
   useStripe,
   useElements,
@@ -10,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 
 // Inner form — must be inside <Elements>
-function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting }) {
+function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting }) {
   const stripe   = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
@@ -40,7 +42,7 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
     }
   };
 
-  // Handle standard card form submission
+  // Handle standard card form submission using CardElement
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!stripe || !elements) return;
@@ -48,10 +50,9 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
     setIsSubmitting(true);
     setErrorMsg('');
 
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: 'if_required',
-      confirmParams: {},
+    const cardElement = elements.getElement(CardNumberElement);
+    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: { card: cardElement },
     });
 
     if (error) {
@@ -66,6 +67,18 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
     }
   };
 
+  const cardElementStyle = {
+    style: {
+      base: {
+        fontSize: '16px',
+        fontFamily: 'Inter, sans-serif',
+        color: '#1a2e23',
+        '::placeholder': { color: '#a0aec0' },
+      },
+      invalid: { color: '#e53e3e' },
+    },
+  };
+
   return (
     <div className="space-y-4">
       {/* Express Checkout — Apple Pay / Google Pay */}
@@ -75,19 +88,6 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
           const methods = availablePaymentMethods || {};
           const hasExpress = Object.values(methods).some(Boolean);
           setExpressAvailable(hasExpress);
-
-          console.group('[ExpressCheckout] onReady');
-          console.log('availablePaymentMethods:', JSON.stringify(methods));
-          console.log('applePay  :', methods.applePay);
-          console.log('googlePay :', methods.googlePay);
-          console.log('link      :', methods.link);
-          console.log('hostname  :', window.location.hostname);
-          console.log('href      :', window.location.href);
-          console.log('in iframe :', window.self !== window.top);
-          if (!hasExpress) {
-            console.warn('⚠️ No express methods available. Apple Pay needs: Safari, domain registered in Stripe Dashboard, card in Wallet, Live Mode.');
-          }
-          console.groupEnd();
         }}
         onLoadError={(err) => {
           console.error('[ExpressCheckout] onLoadError:', err);
@@ -108,16 +108,28 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
         </div>
       )}
 
-      {/* Card / Link fallback */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <PaymentElement
-          options={{
-            layout: 'tabs',
-            paymentMethodOrder: ['card'],
-            wallets: { applePay: 'never', googlePay: 'never' },
-            terms: { card: 'never' },
-          }}
-        />
+      {/* Card-only form — CardNumberElement/CardExpiryElement/CardCvcElement (no Bank/Klarna/ACH possible) */}
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Card number</label>
+          <div className="border border-input rounded-xl px-3 py-3 bg-white">
+            <CardNumberElement options={cardElementStyle} />
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground mb-1 block">Expiry</label>
+            <div className="border border-input rounded-xl px-3 py-3 bg-white">
+              <CardExpiryElement options={cardElementStyle} />
+            </div>
+          </div>
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground mb-1 block">CVC</label>
+            <div className="border border-input rounded-xl px-3 py-3 bg-white">
+              <CardCvcElement options={cardElementStyle} />
+            </div>
+          </div>
+        </div>
 
         {errorMsg && (
           <div className="bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2.5">
@@ -135,8 +147,8 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
 
         <p className="text-center text-[10px] text-muted-foreground">
           {expressAvailable
-            ? 'Apple Pay · Google Pay · Card · Link — Secured by Stripe'
-            : 'Enter your card details above. Fast checkout with Link may be available.'}
+            ? 'Apple Pay · Google Pay · Card — Secured by Stripe'
+            : 'Card — Secured by Stripe'}
         </p>
         <p className="text-center text-[10px] text-muted-foreground opacity-60">
           Your card info never touches NuVira servers
@@ -160,25 +172,9 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
 export default function EmbeddedPayment({ clientSecret, publishableKey, total, onSuccess, onError, isSubmitting, setIsSubmitting }) {
   const stripePromise = useMemo(() => publishableKey ? loadStripe(publishableKey) : null, [publishableKey]);
 
-  // DIAGNOSTIC: full environment + PI trace on mount
-  useEffect(() => {
-    if (!clientSecret) return;
-    const piId = clientSecret.split('_secret_')[0];
-    const isIframe = window.self !== window.top;
-    let topOrigin = 'N/A (cross-origin blocked)';
-    try { topOrigin = window.top.location.origin; } catch {}
-
-    console.group('[NuVira Checkout Diagnostics]');
-    console.log('window.location.href    :', window.location.href);
-    console.log('window.location.origin  :', window.location.origin);
-    console.log('document.referrer       :', document.referrer || '(empty)');
-    console.log('Inside iframe?          :', isIframe);
-    console.log('Top-level origin        :', topOrigin);
-    console.log('PaymentIntent ID        :', piId);
-    console.log('publishableKey mode     :', publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : publishableKey?.startsWith('pk_test') ? 'TEST ⚠️' : 'unknown');
-    console.log('clientSecret prefix     :', clientSecret.substring(0, 40) + '...');
-    console.groupEnd();
-  }, [clientSecret]);
+  const piId = clientSecret ? clientSecret.split('_secret_')[0] : null;
+  const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
 
   if (!clientSecret || !stripePromise) return null;
 
@@ -194,17 +190,28 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
   };
 
   return (
-    <Elements
-      stripe={stripePromise}
-      options={{ clientSecret, appearance, locale: 'en' }}
-    >
-      <PaymentForm
-        total={total}
-        onSuccess={onSuccess}
-        onError={onError}
-        isSubmitting={isSubmitting}
-        setIsSubmitting={setIsSubmitting}
-      />
-    </Elements>
+    <div>
+      {/* Temporary debug bar — remove once Apple Pay domain is confirmed */}
+      <div className="mb-3 rounded-xl border border-amber-400 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 space-y-0.5">
+        <div><span className="font-semibold">Origin:</span> {origin}</div>
+        <div><span className="font-semibold">In iframe:</span> {isIframe ? 'YES ⚠️' : 'No'}</div>
+        <div><span className="font-semibold">PI:</span> {piId}</div>
+        <div><span className="font-semibold">Key mode:</span> {publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : 'TEST ⚠️'}</div>
+      </div>
+
+      <Elements
+        stripe={stripePromise}
+        options={{ clientSecret, appearance, locale: 'en' }}
+      >
+        <PaymentForm
+          total={total}
+          clientSecret={clientSecret}
+          onSuccess={onSuccess}
+          onError={onError}
+          isSubmitting={isSubmitting}
+          setIsSubmitting={setIsSubmitting}
+        />
+      </Elements>
+    </div>
   );
 }
