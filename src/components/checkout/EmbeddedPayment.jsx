@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -15,7 +15,6 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
   const [expressAvailable, setExpressAvailable] = useState(false);
-  const [expressDebug, setExpressDebug] = useState(null);
 
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
   const handleExpressConfirm = async () => {
@@ -76,14 +75,22 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
           const methods = availablePaymentMethods || {};
           const hasExpress = Object.values(methods).some(Boolean);
           setExpressAvailable(hasExpress);
-          setExpressDebug(methods);
-          // Debug log — remove after Apple Pay confirmed working
-          console.log('[ExpressCheckout] onReady availablePaymentMethods:', JSON.stringify(methods));
-          console.log('[ExpressCheckout] applePay:', methods.applePay, '| googlePay:', methods.googlePay, '| link:', methods.link);
-          console.log('[ExpressCheckout] domain:', window.location.hostname);
+
+          console.group('[ExpressCheckout] onReady');
+          console.log('availablePaymentMethods:', JSON.stringify(methods));
+          console.log('applePay  :', methods.applePay);
+          console.log('googlePay :', methods.googlePay);
+          console.log('link      :', methods.link);
+          console.log('hostname  :', window.location.hostname);
+          console.log('href      :', window.location.href);
+          console.log('in iframe :', window.self !== window.top);
           if (!hasExpress) {
-            console.warn('[ExpressCheckout] No express methods available. Apple Pay requires: Safari, verified domain in Stripe Dashboard (nuvirajuice.com), Apple Pay set up in Wallet, Live Mode enabled.');
+            console.warn('⚠️ No express methods available. Apple Pay needs: Safari, domain registered in Stripe Dashboard, card in Wallet, Live Mode.');
           }
+          console.groupEnd();
+        }}
+        onLoadError={(err) => {
+          console.error('[ExpressCheckout] onLoadError:', err);
         }}
         options={{
           buttonType: { applePay: 'buy', googlePay: 'buy' },
@@ -103,9 +110,6 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
 
       {/* Card / Link fallback */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* paymentMethodOrder restricts visible tabs to card + link only.
-            Wallets (Apple Pay / Google Pay) are handled exclusively by ExpressCheckoutElement above.
-            Bank, Klarna, ACH, redirects are suppressed here at the UI layer. */}
         <PaymentElement
           options={{
             layout: 'tabs',
@@ -154,6 +158,26 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
  */
 export default function EmbeddedPayment({ clientSecret, publishableKey, total, onSuccess, onError, isSubmitting, setIsSubmitting }) {
   const stripePromise = useMemo(() => publishableKey ? loadStripe(publishableKey) : null, [publishableKey]);
+
+  // DIAGNOSTIC: full environment + PI trace on mount
+  useEffect(() => {
+    if (!clientSecret) return;
+    const piId = clientSecret.split('_secret_')[0];
+    const isIframe = window.self !== window.top;
+    let topOrigin = 'N/A (cross-origin blocked)';
+    try { topOrigin = window.top.location.origin; } catch {}
+
+    console.group('[NuVira Checkout Diagnostics]');
+    console.log('window.location.href    :', window.location.href);
+    console.log('window.location.origin  :', window.location.origin);
+    console.log('document.referrer       :', document.referrer || '(empty)');
+    console.log('Inside iframe?          :', isIframe);
+    console.log('Top-level origin        :', topOrigin);
+    console.log('PaymentIntent ID        :', piId);
+    console.log('publishableKey mode     :', publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : publishableKey?.startsWith('pk_test') ? 'TEST ⚠️' : 'unknown');
+    console.log('clientSecret prefix     :', clientSecret.substring(0, 40) + '...');
+    console.groupEnd();
+  }, [clientSecret]);
 
   if (!clientSecret || !stripePromise) return null;
 
