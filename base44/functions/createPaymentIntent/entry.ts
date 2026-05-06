@@ -131,19 +131,14 @@ Deno.serve(async (req) => {
     // Do NOT subtract again here — that would double-count.
     const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 
-    // Create PaymentIntent
-    // automatic_payment_methods:enabled is required for Apple Pay / Google Pay eligibility.
-    // allow_redirects:never blocks iDEAL, Sofort, and other redirect-based methods.
-    // Bank (us_bank_account) is separately blocked via payment_method_options setup.
-    // Klarna, Affirm, CashApp are redirect-based and caught by allow_redirects:never.
-    // UI layer additionally enforces paymentMethodOrder:['card','link'] in PaymentElement.
+    // Create PaymentIntent with card only.
+    // payment_method_types:['card'] enables Apple Pay and Google Pay via ExpressCheckoutElement
+    // without opening the door to Bank, Klarna, ACH, or any redirect-based method.
+    // automatic_payment_methods is intentionally omitted to prevent Bank from appearing.
     const paymentIntent = await stripe.paymentIntents.create({
       amount:   amountCents,
       currency: 'usd',
-      automatic_payment_methods: {
-        enabled: true,
-        allow_redirects: 'never',
-      },
+      payment_method_types: ['card'],
       metadata: intentMetadata,
       receipt_email: customer_email || undefined,
       description: `NuVira Order ${orderNumber}`,

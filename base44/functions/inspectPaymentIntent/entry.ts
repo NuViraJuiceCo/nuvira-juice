@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     const freshPi = await stripe.paymentIntents.create({
       amount: 100,
       currency: 'usd',
-      automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      payment_method_types: ['card'],
       description: 'DIAGNOSTIC TEST — cancel immediately',
       metadata: { diagnostic: 'true', checkout_version: '3.0_embedded' },
     });
