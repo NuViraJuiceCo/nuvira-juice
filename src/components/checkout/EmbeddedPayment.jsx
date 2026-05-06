@@ -188,6 +188,7 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
   const piId = clientSecret ? clientSecret.split('_secret_')[0] : null;
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
   const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
+  const showDebug = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
 
   // Early return AFTER all hooks
   if (!clientSecret || !stripePromise) return null;
@@ -210,17 +211,19 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
 
   return (
     <div>
-      {/* Temporary debug bar — remove once Apple Pay domain is confirmed */}
-      <div className="mb-3 rounded-xl border border-amber-400 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 space-y-0.5">
-        <div><span className="font-semibold">Origin:</span> {origin}</div>
-        <div><span className="font-semibold">In iframe:</span> {isIframe ? 'YES ⚠️' : 'No'}</div>
-        <div><span className="font-semibold">PI:</span> {piId}</div>
-        <div><span className="font-semibold">Key mode:</span> {publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : 'TEST ⚠️'}</div>
-        <div><span className="font-semibold">ExpressCheckout mounted:</span> {walletStatus ? 'true ✅' : 'false ❌'}</div>
-        <div><span className="font-semibold">Apple Pay available:</span> {fmt(walletStatus?.methods?.applePay)}</div>
-        <div><span className="font-semibold">Google Pay available:</span> {fmt(walletStatus?.methods?.googlePay)}</div>
-        <div><span className="font-semibold">Link available:</span> {fmt(walletStatus?.methods?.link)}</div>
-      </div>
+      {/* Debug bar — hidden in production, visible with ?debug=1 in URL */}
+      {showDebug && (
+        <div className="mb-3 rounded-xl border border-amber-400 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 space-y-0.5">
+          <div><span className="font-semibold">Origin:</span> {origin}</div>
+          <div><span className="font-semibold">In iframe:</span> {isIframe ? 'YES ⚠️' : 'No'}</div>
+          <div><span className="font-semibold">PI:</span> {piId}</div>
+          <div><span className="font-semibold">Key mode:</span> {publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : 'TEST ⚠️'}</div>
+          <div><span className="font-semibold">ExpressCheckout mounted:</span> {walletStatus ? 'true ✅' : 'false ❌'}</div>
+          <div><span className="font-semibold">Apple Pay available:</span> {fmt(walletStatus?.methods?.applePay)}</div>
+          <div><span className="font-semibold">Google Pay available:</span> {fmt(walletStatus?.methods?.googlePay)}</div>
+          <div><span className="font-semibold">Link available:</span> {fmt(walletStatus?.methods?.link)}</div>
+        </div>
+      )}
 
       <Elements
         stripe={stripePromise}
