@@ -113,6 +113,7 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
         <PaymentElement
           options={{
             layout: 'tabs',
+            paymentMethodOrder: ['card'],
             wallets: { applePay: 'never', googlePay: 'never' },
             terms: { card: 'never' },
           }}
