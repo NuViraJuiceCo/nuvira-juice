@@ -18,6 +18,14 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
  * is_preorder: false and this field has no effect on Hub processing behavior.
  */
 
+// Hardcoded test order numbers that must never reach Hub production systems.
+// These were created during embedded checkout QA and have been cancelled/refunded.
+const DO_NOT_SYNC_ORDER_NUMBERS = new Set([
+  'NV-MOTLSBB2', // abandoned pre-fix PI test
+  'NV-MOTM8I5R', // diagnostic PI test (verify-test@nuvirajuice.com)
+  'NV-MOTMFXWH', // embedded checkout QA test — refund pending
+]);
+
 function isFakeStripeId(id) {
   if (!id) return false;
   const fakePatterns = [
