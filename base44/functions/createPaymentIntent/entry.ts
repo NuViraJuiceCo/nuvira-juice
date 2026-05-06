@@ -144,21 +144,12 @@ Deno.serve(async (req) => {
         enabled: true,
         allow_redirects: 'never',
       },
-      payment_method_options: {
-        us_bank_account: {
-          verification_method: 'skip',
-          // Setting financial_connections to empty networks disables bank account collection
-          financial_connections: { permissions: [] },
-        },
-      },
       metadata: intentMetadata,
       receipt_email: customer_email || undefined,
       description: `NuVira Order ${orderNumber}`,
     });
 
-    console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: automatic_payment_methods=enabled, allow_redirects=never, us_bank_account suppressed`);
-
-    console.log(`[PI] Created PaymentIntent ${paymentIntent.id} for ${orderNumber}, amount=${amountCents}¢, customer=${customer_email}`);
+    console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: automatic_payment_methods=enabled, allow_redirects=never. amount=${amountCents}¢, customer=${customer_email}`);
 
     // Pre-create a pending Order so webhook finalize is simple and idempotent
     const resolvedDeliveryAddress = delivery_address || [address_line1, address_city, address_state, address_postal_code].filter(Boolean).join(', ');
