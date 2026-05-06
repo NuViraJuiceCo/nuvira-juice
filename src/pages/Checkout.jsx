@@ -24,6 +24,26 @@ import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 export default function Checkout() {
   const navigate = useNavigate();
 
+  // DIAGNOSTIC: dump all checkout-related storage keys on mount
+  React.useEffect(() => {
+    console.group('[NuVira Checkout] Storage Audit on Mount');
+    const lsKeys = Object.keys(localStorage).filter(k =>
+      k.includes('nuvira') || k.includes('stripe') || k.includes('checkout') || k.includes('session') || k.includes('client_secret') || k.includes('pending')
+    );
+    const ssKeys = Object.keys(sessionStorage).filter(k =>
+      k.includes('nuvira') || k.includes('stripe') || k.includes('checkout') || k.includes('session') || k.includes('client_secret') || k.includes('pending')
+    );
+    console.log('localStorage matching keys  :', lsKeys.length ? lsKeys : '(none)');
+    lsKeys.forEach(k => console.log(`  localStorage["${k}"] =`, localStorage.getItem(k)));
+    console.log('sessionStorage matching keys:', ssKeys.length ? ssKeys : '(none)');
+    ssKeys.forEach(k => console.log(`  sessionStorage["${k}"] =`, sessionStorage.getItem(k)));
+    console.groupEnd();
+
+    // Force-nuke any stale pending session to guarantee a fresh PI
+    localStorage.removeItem('nuvira_pending_checkout_session');
+    sessionStorage.removeItem('nuvira_pending_checkout_session');
+  }, []);
+
   // Safety net 1: if Stripe redirected back to /checkout with session_id in URL
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -354,6 +374,18 @@ export default function Checkout() {
     });
 
     if (res.data?.clientSecret) {
+      // DIAGNOSTIC: log the full PI response to prove this is a fresh card-only PI
+      const freshPiId = res.data.clientSecret.split('_secret_')[0];
+      console.group('[NuVira Checkout] createPaymentIntent Response');
+      console.log('Source              : FRESH call to createPaymentIntent (not localStorage/sessionStorage)');
+      console.log('PaymentIntent ID    :', freshPiId);
+      console.log('orderNumber         :', res.data.orderNumber);
+      console.log('effectiveTotal      :', res.data.effectiveTotal);
+      console.log('publishableKey mode :', res.data.publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : 'TEST ⚠️');
+      console.log('clientSecret prefix :', res.data.clientSecret.substring(0, 40) + '...');
+      console.log('Full response.data  :', JSON.stringify({ ...res.data, clientSecret: '[REDACTED]' }));
+      console.groupEnd();
+
       // Embedded flow: surface PaymentElement in-page
       setClientSecret(res.data.clientSecret);
       setPublishableKey(res.data.publishableKey);
