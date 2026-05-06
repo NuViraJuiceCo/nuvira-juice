@@ -12,11 +12,12 @@ import {
 import { Button } from '@/components/ui/button';
 
 // Inner form — must be inside <Elements>
-function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting }) {
+function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus }) {
   const stripe   = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
   const [expressAvailable, setExpressAvailable] = useState(false);
+  const [expressMounted, setExpressMounted] = useState(false);
 
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
   // ExpressCheckoutElement calls this after the user authorizes in the wallet sheet.
@@ -91,6 +92,8 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
           const methods = availablePaymentMethods || {};
           const hasExpress = Object.values(methods).some(Boolean);
           setExpressAvailable(hasExpress);
+          setExpressMounted(true);
+          if (onWalletStatus) onWalletStatus({ mounted: true, methods });
         }}
         onLoadError={(err) => {
           console.error('[ExpressCheckout] onLoadError:', err);
@@ -174,6 +177,7 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
  */
 export default function EmbeddedPayment({ clientSecret, publishableKey, total, onSuccess, onError, isSubmitting, setIsSubmitting }) {
   const stripePromise = useMemo(() => publishableKey ? loadStripe(publishableKey) : null, [publishableKey]);
+  const [walletStatus, setWalletStatus] = useState(null); // { mounted: bool, methods: { applePay, googlePay, link, ... } }
 
   const piId = clientSecret ? clientSecret.split('_secret_')[0] : null;
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
@@ -192,6 +196,11 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
     },
   };
 
+  const fmt = (val) => {
+    if (walletStatus === null) return 'not ready';
+    return val ? 'true ✅' : 'false ❌';
+  };
+
   return (
     <div>
       {/* Temporary debug bar — remove once Apple Pay domain is confirmed */}
@@ -200,6 +209,10 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
         <div><span className="font-semibold">In iframe:</span> {isIframe ? 'YES ⚠️' : 'No'}</div>
         <div><span className="font-semibold">PI:</span> {piId}</div>
         <div><span className="font-semibold">Key mode:</span> {publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : 'TEST ⚠️'}</div>
+        <div><span className="font-semibold">ExpressCheckout mounted:</span> {walletStatus ? 'true ✅' : 'false ❌'}</div>
+        <div><span className="font-semibold">Apple Pay available:</span> {fmt(walletStatus?.methods?.applePay)}</div>
+        <div><span className="font-semibold">Google Pay available:</span> {fmt(walletStatus?.methods?.googlePay)}</div>
+        <div><span className="font-semibold">Link available:</span> {fmt(walletStatus?.methods?.link)}</div>
       </div>
 
       <Elements
@@ -213,6 +226,7 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
           onError={onError}
           isSubmitting={isSubmitting}
           setIsSubmitting={setIsSubmitting}
+          onWalletStatus={setWalletStatus}
         />
       </Elements>
     </div>
