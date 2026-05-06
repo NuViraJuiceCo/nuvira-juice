@@ -104,13 +104,14 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
       {/* Card / Link fallback */}
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* paymentMethodOrder restricts visible tabs to card + link only.
-            us_bank_account, ach_debit, bank_redirect are intentionally excluded.
-            This is a UI-layer guard — the PI already has payment_method_types: ['card','link']. */}
+            Wallets (Apple Pay / Google Pay) are handled exclusively by ExpressCheckoutElement above.
+            Bank, Klarna, ACH, redirects are suppressed here at the UI layer. */}
         <PaymentElement
           options={{
             layout: 'tabs',
             paymentMethodOrder: ['card', 'link'],
             wallets: { applePay: 'never', googlePay: 'never' },
+            terms: { card: 'never' },
           }}
         />
 
