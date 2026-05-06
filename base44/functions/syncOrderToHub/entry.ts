@@ -53,6 +53,23 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'No order data' }, { status: 400 });
   }
 
+  // Block known test orders — hardcoded blocklist, never send to Hub
+  if (DO_NOT_SYNC_ORDER_NUMBERS.has(order.order_number)) {
+    console.log(`syncOrderToHub: SKIPPED — order ${order.order_number} is in DO_NOT_SYNC blocklist (test/cancelled). No Hub push.`);
+    try {
+      await base44.asServiceRole.entities.OrderSyncLog.create({
+        order_number: order.order_number,
+        status:       'skipped',
+        hub_action:   'do_not_sync',
+        description:  `Order ${order.order_number} is in DO_NOT_SYNC blocklist. Embedded checkout test order — cancelled/refunded. Hub push permanently blocked.`,
+        started_at:   new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        triggered_by: body.triggered_by || 'guard',
+      });
+    } catch {}
+    return Response.json({ success: true, skipped: true, reason: 'do_not_sync_blocklist' });
+  }
+
   // Block clearly fake/test Stripe IDs
   if (isFakeStripeId(order.stripe_checkout_session_id) || isFakeStripeId(order.stripe_payment_intent_id)) {
     const msg = `syncOrderToHub: BLOCKED — fake Stripe IDs on order ${order.order_number}`;
