@@ -55,8 +55,10 @@ export default function OrderHistory() {
     enabled: !!user?.email,
   });
 
-  const activeOrders = orders.filter(o => !['delivered', 'picked_up'].includes(o.status));
-  const completedOrders = orders.filter(o => ['delivered', 'picked_up'].includes(o.status));
+  // Exclude pending-payment orders (embedded flow pre-creates Order before payment)
+  const paidOrders = orders.filter(o => o.payment_captured !== false || o.payment_status === 'paid');
+  const activeOrders = paidOrders.filter(o => !['delivered', 'picked_up'].includes(o.status));
+  const completedOrders = paidOrders.filter(o => ['delivered', 'picked_up'].includes(o.status));
 
   return (
     <PullToRefresh onRefresh={refetch}>

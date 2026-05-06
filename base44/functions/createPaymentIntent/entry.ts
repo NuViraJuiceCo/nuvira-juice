@@ -127,15 +127,9 @@ Deno.serve(async (req) => {
       delivery_schedule_source: resolvedScheduleSrc,
     };
 
-    // Total discount coupon → apply as negative amount_to_stripe
-    const totalDiscountCents =
-      Math.round((points_discount   || 0) * 100) +
-      Math.round((reward_discount   || 0) * 100) +
-      Math.round((credits_discount  || 0) * 100) +
-      Math.round((referral_discount || 0) * 100) +
-      Math.round(subDiscountAmt          * 100);
-
-    const amountCents = Math.max(50, Math.round(effectiveTotal * 100) - totalDiscountCents);
+    // effectiveTotal already includes all discounts from the frontend (points, credits, referral, reward, sub discount).
+    // Do NOT subtract again here — that would double-count.
+    const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 
     // Create PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
