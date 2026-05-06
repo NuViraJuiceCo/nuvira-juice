@@ -686,7 +686,7 @@ export default function Checkout() {
         <div className="px-4">
           <div className="mb-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Payment</h3>
-            <p className="text-[11px] text-muted-foreground">Pay with Apple Pay, Google Pay, or enter your card details below.</p>
+            <p className="text-[11px] text-muted-foreground">Secure checkout — card, Link, and wallet payments accepted where available.</p>
           </div>
           <EmbeddedPayment
             clientSecret={clientSecret}

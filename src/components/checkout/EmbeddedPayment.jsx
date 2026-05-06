@@ -15,6 +15,7 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
   const [expressAvailable, setExpressAvailable] = useState(false);
+  const [expressDebug, setExpressDebug] = useState(null);
 
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
   const handleExpressConfirm = async () => {
@@ -72,24 +73,22 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
       <ExpressCheckoutElement
         onConfirm={handleExpressConfirm}
         onReady={({ availablePaymentMethods }) => {
-          const hasExpress = availablePaymentMethods &&
-            Object.values(availablePaymentMethods).some(Boolean);
+          const methods = availablePaymentMethods || {};
+          const hasExpress = Object.values(methods).some(Boolean);
           setExpressAvailable(hasExpress);
+          setExpressDebug(methods);
+          // Debug log — remove after Apple Pay confirmed working
+          console.log('[ExpressCheckout] onReady availablePaymentMethods:', JSON.stringify(methods));
+          console.log('[ExpressCheckout] applePay:', methods.applePay, '| googlePay:', methods.googlePay, '| link:', methods.link);
+          console.log('[ExpressCheckout] domain:', window.location.hostname);
+          if (!hasExpress) {
+            console.warn('[ExpressCheckout] No express methods available. Apple Pay requires: Safari, verified domain in Stripe Dashboard (nuvirajuice.com), Apple Pay set up in Wallet, Live Mode enabled.');
+          }
         }}
         options={{
-          buttonType: {
-            applePay: 'buy',
-            googlePay: 'buy',
-          },
-          layout: {
-            maxColumns: 1,
-            maxRows: 3,
-            overflow: 'never',
-          },
-          wallets: {
-            applePay: 'always',
-            googlePay: 'always',
-          },
+          buttonType: { applePay: 'buy', googlePay: 'buy' },
+          layout: { maxColumns: 1, maxRows: 3, overflow: 'never' },
+          wallets: { applePay: 'always', googlePay: 'always' },
         }}
       />
 
@@ -104,9 +103,14 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
 
       {/* Card / Link fallback */}
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* paymentMethodOrder restricts visible tabs to card + link only.
+            us_bank_account, ach_debit, bank_redirect are intentionally excluded.
+            This is a UI-layer guard — the PI already has payment_method_types: ['card','link']. */}
         <PaymentElement
           options={{
             layout: 'tabs',
+            paymentMethodOrder: ['card', 'link'],
+            wallets: { applePay: 'never', googlePay: 'never' },
           }}
         />
 
@@ -125,7 +129,12 @@ function PaymentForm({ total, onSuccess, onError, isSubmitting, setIsSubmitting 
         </Button>
 
         <p className="text-center text-[10px] text-muted-foreground">
-          Secured by Stripe · Your card info never touches NuVira servers
+          {expressAvailable
+            ? 'Apple Pay · Google Pay · Card · Link — Secured by Stripe'
+            : 'Enter your card details above. Fast checkout with Link may be available.'}
+        </p>
+        <p className="text-center text-[10px] text-muted-foreground opacity-60">
+          Your card info never touches NuVira servers
         </p>
       </form>
     </div>
