@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -19,15 +19,18 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
   const [expressAvailable, setExpressAvailable] = useState(false);
 
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
-  const handleExpressConfirm = async () => {
-    if (!stripe || !elements) return;
+  // ExpressCheckoutElement calls this after the user authorizes in the wallet sheet.
+  // The express element has already collected the payment method — just confirm the PI.
+  const handleExpressConfirm = async (event) => {
+    if (!stripe) return;
     setIsSubmitting(true);
     setErrorMsg('');
 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
+      clientSecret,
+      confirmParams: { return_url: window.location.origin + '/order-confirmation' },
       redirect: 'if_required',
-      confirmParams: {},
     });
 
     if (error) {
