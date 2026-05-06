@@ -32,16 +32,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Otherwise create a minimal fresh test PI and return its config
+    // Create a minimal fresh test PI mirroring production createPaymentIntent config
     const freshPi = await stripe.paymentIntents.create({
-      amount: 100, // $1.00 test
+      amount: 100,
       currency: 'usd',
-      payment_method_types: ['card', 'link'],
+      automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      payment_method_options: {
+        us_bank_account: { financial_connections: { permissions: [] } },
+      },
       description: 'DIAGNOSTIC TEST — cancel immediately',
       metadata: { diagnostic: 'true', checkout_version: '3.0_embedded' },
     });
 
-    // Cancel it immediately — we only needed to inspect the config
     await stripe.paymentIntents.cancel(freshPi.id);
 
     return Response.json({
@@ -50,6 +52,7 @@ Deno.serve(async (req) => {
       status: 'canceled_immediately',
       payment_method_types: freshPi.payment_method_types,
       automatic_payment_methods: freshPi.automatic_payment_methods,
+      payment_method_options: freshPi.payment_method_options,
       amount: freshPi.amount,
     });
 

@@ -132,10 +132,11 @@ Deno.serve(async (req) => {
     const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 
     // Create PaymentIntent
-    // automatic_payment_methods with allow_redirects:'never' is required for
-    // Apple Pay and Google Pay to surface in ExpressCheckoutElement.
-    // Klarna, Bank, and redirect-based methods are blocked at the UI layer via
-    // PaymentElement paymentMethodOrder: ['card','link'] and the Stripe Dashboard.
+    // automatic_payment_methods:enabled is required for Apple Pay / Google Pay eligibility.
+    // allow_redirects:never blocks iDEAL, Sofort, and other redirect-based methods.
+    // Bank (us_bank_account) is separately blocked via payment_method_options setup.
+    // Klarna, Affirm, CashApp are redirect-based and caught by allow_redirects:never.
+    // UI layer additionally enforces paymentMethodOrder:['card','link'] in PaymentElement.
     const paymentIntent = await stripe.paymentIntents.create({
       amount:   amountCents,
       currency: 'usd',
@@ -143,12 +144,19 @@ Deno.serve(async (req) => {
         enabled: true,
         allow_redirects: 'never',
       },
+      payment_method_options: {
+        us_bank_account: {
+          verification_method: 'skip',
+          // Setting financial_connections to empty networks disables bank account collection
+          financial_connections: { permissions: [] },
+        },
+      },
       metadata: intentMetadata,
       receipt_email: customer_email || undefined,
       description: `NuVira Order ${orderNumber}`,
     });
 
-    console.log(`[PI] payment_method_types on fresh PI ${paymentIntent.id}: automatic_payment_methods enabled, allow_redirects=never`);
+    console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: automatic_payment_methods=enabled, allow_redirects=never, us_bank_account suppressed`);
 
     console.log(`[PI] Created PaymentIntent ${paymentIntent.id} for ${orderNumber}, amount=${amountCents}¢, customer=${customer_email}`);
 
