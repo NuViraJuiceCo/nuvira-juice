@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import SEO from '@/components/SEO';
+import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -59,6 +60,10 @@ export default function Checkout() {
   const [phone, setPhone] = useState('');
   const [prefilled, setPrefilled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [clientSecret, setClientSecret] = useState(null);
+  const [publishableKey, setPublishableKey] = useState(null);
+  const [pendingOrderNumber, setPendingOrderNumber] = useState(null);
+  const [paymentTotal, setPaymentTotal] = useState(0);
   const [usePoints, setUsePoints] = useState(false);
   const [smsConsent, setSmsConsent] = useState(false);
   const [showOutOfArea, setShowOutOfArea] = useState(false);
@@ -315,7 +320,7 @@ export default function Checkout() {
       }
     }
 
-    const res = await base44.functions.invoke('createCheckoutSession', {
+    const res = await base44.functions.invoke('createPaymentIntent', {
       items,
       subtotal,
       delivery_fee: deliveryFee,
@@ -348,25 +353,16 @@ export default function Checkout() {
       reward_discount: rewardDiscountAmt,
     });
 
-    if (res.data?.url) {
-      const checkoutUrl = res.data.url;
-      const sessionIdMatch = checkoutUrl.match(/[?&]session_id=([^&]+)/) || [];
-      const pendingSessionId = res.data.session_id || sessionIdMatch[1] || null;
-      const pendingOrderNumber = res.data.order_number || null;
-      // Store pending session so PWA resume can detect completed payment
-      if (pendingSessionId) {
-        localStorage.setItem('nuvira_pending_checkout_session', JSON.stringify({
-          session_id: pendingSessionId,
-          order_number: pendingOrderNumber,
-          timestamp: Date.now(),
-        }));
-      }
-      console.log('Redirecting to Stripe checkout:', checkoutUrl);
-      window.location.href = checkoutUrl;
+    if (res.data?.clientSecret) {
+      // Embedded flow: surface PaymentElement in-page
+      setClientSecret(res.data.clientSecret);
+      setPublishableKey(res.data.publishableKey);
+      setPendingOrderNumber(res.data.orderNumber);
+      setPaymentTotal(res.data.effectiveTotal ?? total);
+      setIsSubmitting(false);
     } else {
       const errMsg = res.data?.error || 'Failed to start checkout. Please try again.';
       toast.error(errMsg);
-      // If referral code was already used, clear it so user can proceed without it
       if (errMsg.includes('Referral code already used')) {
         setReferralApplied(false);
         setReferralCode('');
@@ -685,16 +681,47 @@ export default function Checkout() {
         </div>
       </div>
 
-      {/* Place Order */}
-      <div className="px-4">
-        <Button
-          onClick={handlePlaceOrder}
-          disabled={isSubmitting || (fulfillmentType === 'delivery' && !addressValidated)}
-          className="w-full h-12 rounded-xl font-semibold text-sm"
-        >
-          {isSubmitting ? 'Processing...' : fulfillmentType === 'delivery' && !addressValidated ? 'Enter a valid delivery address' : `Complete Payment · $${total.toFixed(2)}`}
-        </Button>
-      </div>
+      {/* Payment Step — embedded Stripe PaymentElement after form is submitted */}
+      {clientSecret ? (
+        <div className="px-4">
+          <div className="mb-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Payment</h3>
+            <p className="text-[11px] text-muted-foreground">Enter your card details or use Apple Pay / Google Pay below.</p>
+          </div>
+          <EmbeddedPayment
+            clientSecret={clientSecret}
+            publishableKey={publishableKey}
+            total={paymentTotal}
+            isSubmitting={isSubmitting}
+            setIsSubmitting={setIsSubmitting}
+            onSuccess={(paymentIntentId) => {
+              clearCart();
+              localStorage.removeItem('nuvira_pending_checkout_session');
+              navigate(`/order-confirmation?order_number=${pendingOrderNumber}&pi=${paymentIntentId}`);
+            }}
+            onError={(msg) => {
+              toast.error(msg || 'Payment failed. Please try again.');
+            }}
+          />
+          <button
+            onClick={() => { setClientSecret(null); setPendingOrderNumber(null); }}
+            className="w-full text-center text-xs text-muted-foreground underline mt-3"
+          >
+            ← Edit order details
+          </button>
+        </div>
+      ) : (
+        /* Place Order — shown until PaymentIntent is created */
+        <div className="px-4">
+          <Button
+            onClick={handlePlaceOrder}
+            disabled={isSubmitting || (fulfillmentType === 'delivery' && !addressValidated)}
+            className="w-full h-12 rounded-xl font-semibold text-sm"
+          >
+            {isSubmitting ? 'Processing...' : fulfillmentType === 'delivery' && !addressValidated ? 'Enter a valid delivery address' : `Review Payment · $${total.toFixed(2)}`}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

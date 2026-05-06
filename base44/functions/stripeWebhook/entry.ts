@@ -373,6 +373,221 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── EMBEDDED CHECKOUT: payment_intent.succeeded ──────────────────────────
+    // Triggered when the in-app PaymentElement flow completes successfully.
+    // Finds the pre-created pending Order and finalizes it.
+    if (event.type === 'payment_intent.succeeded') {
+      const pi = event.data.object;
+      const meta = pi.metadata || {};
+      const orderNumber   = meta.order_number;
+      const customerEmail = meta.customer_email || pi.receipt_email;
+      const amountPaid    = pi.amount_received / 100;
+
+      // Only handle orders created by the embedded flow (checkout_version 3.0_embedded)
+      if (meta.checkout_version !== '3.0_embedded') {
+        console.log(`[PI succeeded] Skipping PI ${pi.id} — not embedded checkout (version=${meta.checkout_version})`);
+        return Response.json({ received: true });
+      }
+
+      if (!orderNumber) {
+        console.error(`[PI succeeded] No order_number in metadata for PI ${pi.id}`);
+        return Response.json({ received: true });
+      }
+
+      console.log(`[PI succeeded] PI ${pi.id} for order ${orderNumber}, customer ${customerEmail}, amount $${amountPaid}`);
+
+      // Find pre-created pending Order
+      const existingOrders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: pi.id });
+
+      if (existingOrders.length > 0) {
+        const order = existingOrders[0];
+
+        // Idempotency: already finalized
+        if (order.payment_captured === true) {
+          console.log(`[PI succeeded] Order ${orderNumber} already finalized, skipping`);
+          return Response.json({ received: true });
+        }
+
+        // Finalize the order
+        const statusHistory = [...(order.status_history || []), {
+          status: 'scheduled_for_juicing',
+          timestamp: new Date().toISOString(),
+          message: 'Payment confirmed — your order is scheduled for juicing!',
+        }];
+
+        await base44.asServiceRole.entities.Order.update(order.id, {
+          status:           'scheduled_for_juicing',
+          payment_status:   'paid',
+          financial_status: 'paid',
+          payment_captured: true,
+          status_history:   statusHistory,
+        });
+        console.log(`[PI succeeded] Order ${orderNumber} finalized`);
+
+        // Validate referral code
+        if (order.referral_code && customerEmail) {
+          const prevOrders = await base44.asServiceRole.entities.Order.filter({ customer_email: customerEmail });
+          const alreadyUsed = prevOrders.filter(o => o.id !== order.id).some(o => o.referral_code === order.referral_code);
+          if (alreadyUsed) {
+            await base44.asServiceRole.entities.Order.update(order.id, { referral_code: null });
+          }
+        }
+
+        // Deduct points / credits from CheckoutSession data
+        let checkoutData = {};
+        try {
+          const csSessions = await base44.asServiceRole.entities.CheckoutSession.filter({ stripe_session_id: pi.id });
+          if (csSessions[0]) checkoutData = csSessions[0].checkout_data || {};
+        } catch {}
+
+        if (customerEmail && (checkoutData.points_used || checkoutData.active_reward?.points_required)) {
+          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
+          if (existing[0]) {
+            const deductPoints = (checkoutData.points_used || 0) + (checkoutData.active_reward?.points_required || 0);
+            const historyEntries = [];
+            if (checkoutData.points_used) historyEntries.push({ amount: -checkoutData.points_used, type: 'redeemed', description: 'Redeemed at checkout', timestamp: new Date().toISOString() });
+            if (checkoutData.active_reward?.points_required) historyEntries.push({ amount: -checkoutData.active_reward.points_required, type: 'redeemed', description: `Redeemed: ${checkoutData.active_reward.title}`, timestamp: new Date().toISOString() });
+            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
+              total_points:    Math.max(0, (existing[0].total_points || 0) - deductPoints),
+              redeemed_points: (existing[0].redeemed_points || 0) + deductPoints,
+              points_history:  [...(existing[0].points_history || []), ...historyEntries],
+            });
+          }
+        }
+
+        if (customerEmail && checkoutData.credits_discount > 0) {
+          const creditRecs = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: customerEmail });
+          if (creditRecs[0]) {
+            const rec = creditRecs[0];
+            await base44.asServiceRole.entities.NuViraCredit.update(rec.id, {
+              balance:       Math.max(0, (rec.balance || 0) - checkoutData.credits_discount),
+              lifetime_used: (rec.lifetime_used || 0) + checkoutData.credits_discount,
+              history: [...(rec.history || []), { amount: checkoutData.credits_discount, type: 'used', description: `Applied to order ${orderNumber}`, order_id: order.id, timestamp: new Date().toISOString() }],
+            });
+          }
+        }
+
+        // Award loyalty points
+        if (customerEmail) {
+          const pointsToAward = Math.floor(amountPaid * 10);
+          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
+          const entry = { amount: pointsToAward, type: 'earned', description: `Order payment of $${amountPaid.toFixed(2)}`, timestamp: new Date().toISOString() };
+          if (existing.length > 0) {
+            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
+              total_points:    (existing[0].total_points || 0) + pointsToAward,
+              lifetime_points: (existing[0].lifetime_points || 0) + pointsToAward,
+              points_history:  [...(existing[0].points_history || []), entry],
+            });
+          } else {
+            await base44.asServiceRole.entities.UserPoints.create({ customer_email: customerEmail, total_points: pointsToAward, lifetime_points: pointsToAward, redeemed_points: 0, points_history: [entry] });
+          }
+        }
+
+        // Push to Shopify
+        base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: order.id })
+          .catch(err => console.error('[PI succeeded] Shopify push failed:', err.message));
+
+        // Sync to Hub
+        try {
+          await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+            order_id:    order.id,
+            stripe_session: { payment_status: 'paid', id: pi.id },
+            triggered_by: 'stripe_webhook',
+          });
+          console.log(`[PI succeeded] ✅ Order ${orderNumber} synced to Hub`);
+        } catch (syncErr) {
+          console.error(`[PI succeeded] ❌ Hub sync failed for ${orderNumber}: ${syncErr.message}`);
+          try {
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: orderNumber, status: 'error',
+              description: `Hub sync failed after PI succeeded: ${syncErr.message}`,
+              started_at: new Date().toISOString(), completed_at: new Date().toISOString(),
+              triggered_by: 'stripe_webhook',
+            });
+          } catch {}
+        }
+
+        // Send notifications
+        base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
+          order_id: order.id, customer_email: customerEmail, order_number: orderNumber,
+          items:                  order.items,
+          total:                  order.total,
+          delivery_address:       order.delivery_address,
+          assigned_delivery_date: order.assigned_delivery_date,
+          delivery_window_label:  order.delivery_window_label,
+        }).catch(err => console.error('[PI succeeded] Email failed:', err.message));
+
+        if (order.contact_phone) {
+          base44.asServiceRole.functions.invoke('sendOrderSms', {
+            phone_number:           order.contact_phone,
+            order_number:           orderNumber,
+            items:                  order.items,
+            total:                  order.total,
+            assigned_delivery_date: order.assigned_delivery_date,
+            delivery_window_label:  order.delivery_window_label,
+          }).catch(err => console.error('[PI succeeded] SMS failed:', err.message));
+        }
+
+        base44.asServiceRole.functions.invoke('notifyOrderProcessed', {
+          order_id: order.id, order_number: orderNumber, customer_email: customerEmail,
+        }).catch(err => console.error('[PI succeeded] Ops notify failed:', err.message));
+
+      } else {
+        // Pre-created Order not found — create it now from metadata (safety net)
+        console.warn(`[PI succeeded] Pre-created Order not found for PI ${pi.id}, creating from metadata`);
+        const resolvedAddr = [meta.delivery_address_line1, meta.delivery_city, meta.delivery_state, meta.delivery_postal_code].filter(Boolean).join(', ');
+        const newOrder = await base44.asServiceRole.entities.Order.create({
+          order_number:    orderNumber,
+          customer_email:  customerEmail || '',
+          customer_name:   meta.customer_name || '',
+          items:           [],
+          subtotal:        amountPaid,
+          total:           amountPaid,
+          fulfillment_type: meta.delivery_method || 'delivery',
+          delivery_address: resolvedAddr,
+          address_line1:   meta.delivery_address_line1 || '',
+          address_city:    meta.delivery_city    || '',
+          address_state:   meta.delivery_state   || '',
+          address_postal_code: meta.delivery_postal_code || '',
+          address_country: 'US',
+          contact_phone:   meta.customer_phone   || '',
+          estimated_delivery_date:  meta.selected_delivery_date || null,
+          assigned_delivery_date:   meta.selected_delivery_date || null,
+          delivery_window_label:    meta.delivery_window_label  || '5 PM – 8 PM',
+          assigned_delivery_window_start: meta.delivery_window_start || '17:00',
+          assigned_delivery_window_end:   meta.delivery_window_end   || '20:00',
+          status:           'scheduled_for_juicing',
+          payment_status:   'paid',
+          financial_status: 'paid',
+          payment_captured: true,
+          stripe_payment_intent_id: pi.id,
+          is_preorder:      false,
+          status_history: [
+            { status: 'order_received', timestamp: new Date().toISOString(), message: 'Order received.' },
+            { status: 'scheduled_for_juicing', timestamp: new Date().toISOString(), message: 'Payment confirmed.' },
+          ],
+        });
+        console.log(`[PI succeeded] Safety-net Order created: ${newOrder.id}`);
+
+        // Sync safety-net order to Hub
+        base44.asServiceRole.functions.invoke('syncOrderToHub', {
+          order_id: newOrder.id,
+          stripe_session: { payment_status: 'paid', id: pi.id },
+          triggered_by: 'stripe_webhook',
+        }).catch(err => console.error('[PI succeeded] Hub sync failed (safety-net):', err.message));
+
+        // Notifications
+        base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
+          order_id: newOrder.id, customer_email: customerEmail, order_number: orderNumber,
+          items: [], total: amountPaid,
+          assigned_delivery_date: meta.selected_delivery_date,
+          delivery_window_label:  meta.delivery_window_label || '5 PM – 8 PM',
+        }).catch(() => {});
+      }
+
+      return Response.json({ received: true });
+    }
+
     // Pre-order cancellation: customer canceled before payment was captured
     if (event.type === 'payment_intent.canceled') {
       const paymentIntent = event.data.object;

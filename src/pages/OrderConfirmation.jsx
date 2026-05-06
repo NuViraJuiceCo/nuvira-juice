@@ -24,6 +24,8 @@ export default function OrderConfirmation() {
   const queryParams = new URLSearchParams(window.location.search);
   const sessionId   = queryParams.get('session_id');
   const orderNumber = queryParams.get('order_number');
+  // pi= param from embedded checkout — treat same as order_number lookup
+  const piParam     = queryParams.get('pi');
 
   const rawPathParam = window.location.pathname.split('/').pop();
   const pathId = rawPathParam && rawPathParam !== 'order-confirmation' ? rawPathParam : null;
@@ -69,7 +71,13 @@ export default function OrderConfirmation() {
         } else if (lookupMode === 'order_number') {
           const orders = await base44.entities.Order.filter({ order_number: orderNumber });
           if (orders && orders.length > 0) {
-            setOrder(orders[0]);
+            const o = orders[0];
+            // For embedded flow: if order exists but payment still pending, keep polling briefly
+            if (o.payment_status === 'pending' && !o.payment_captured) {
+              setPaymentOk(true); // show "finalizing" message
+              return; // keep polling
+            }
+            setOrder(o);
             setLoading(false);
             clearInterval(pollRef.current);
             clearTimeout(timeoutRef.current);
