@@ -93,9 +93,10 @@ Deno.serve(async (req) => {
     console.warn(`syncOrderToHub: WARNING — address_line1 blank for order ${order.order_number}`);
   }
 
-  // Infer order_type from order structure
-  const order_type      = (order.stripe_payment_intent_id && !order.stripe_checkout_session_id) ? 'subscription' : 'one_time';
-  const fulfillment_mode = order_type === 'subscription' ? 'multi_delivery' : 'single_delivery';
+  // order_type: always one_time for Customer App orders.
+  // (Subscriptions go through createSubscriptionSession, not syncOrderToHub)
+  const order_type       = 'one_time';
+  const fulfillment_mode = 'single_delivery';
 
   const payload = {
     event:  'order.created',
