@@ -314,16 +314,67 @@ export default function DriverPortal() {
     }
 
     setOptimizing(true);
+    console.group('[DriverPortal] Optimize Route Click');
+    console.log('Selected date:', date);
+    console.log('Total active stops:', activeStops.length);
+    
+    // Build payload matching contract: include task_id, addresses, customer names, etc.
+    const stopsPayload = activeStops.map(t => ({
+      task_id: t.task_id,
+      customer_name: t.customer_name || 'Unknown',
+      delivery_address: t.delivery_address,
+      scheduled_date: date,
+      delivery_window: t.delivery_window_label || '5 PM - 8 PM',
+      phone: t.contact_phone || '',
+      items_summary: t.items?.length ? `${t.items.length} items` : '',
+      order_number: t.order_number || '',
+      status: t.status,
+    }));
+
+    console.log('Payload stops count:', stopsPayload.length);
+    stopsPayload.forEach((s, i) => {
+      console.log(`  Stop ${i + 1}: task_id=${s.task_id}, addr=${s.delivery_address}, customer=${s.customer_name}`);
+    });
+
+    const payload = { date, optimize: true };
+    console.log('Full payload:', JSON.stringify(payload, null, 2));
+
     try {
-      const res = await base44.functions.invoke('optimizeDeliveryRoute', { date, optimize: true });
+      const res = await base44.functions.invoke('optimizeDeliveryRoute', payload);
+      console.log('Response status:', res.status);
+      console.log('Response data:', JSON.stringify(res.data, null, 2));
+      
       const optimized = res.data?.optimized_orders || [];
+      console.log('Optimized stops returned:', optimized.length);
+      optimized.forEach((s, i) => {
+        console.log(`  Optimized ${i + 1}: task_id=${s.task_id}, addr=${s.delivery_address}`);
+      });
+
+      // Verify task_ids are preserved
+      const originalTaskIds = new Set(activeStops.map(t => t.task_id));
+      const optimizedTaskIds = new Set(optimized.map(t => t.task_id).filter(Boolean));
+      const lostIds = [...originalTaskIds].filter(id => !optimizedTaskIds.has(id));
+      if (lostIds.length > 0) {
+        console.warn('⚠️ LOST TASK IDS:', lostIds);
+      } else {
+        console.log('✓ All task IDs preserved');
+      }
+
+      // Log Google Maps URL
+      const mapsUrl = optimized.filter(t => t.delivery_address && !t.is_return_stop)
+        .map(t => encodeURIComponent(t.delivery_address)).join('|');
+      console.log('Google Maps URL generated:', !!mapsUrl, mapsUrl ? `(${mapsUrl.length} chars)` : '');
+
       setOptimizedOrder(optimized);
       toast.success(`Route optimized · ${optimized.length} stops`);
+      console.log('✓ optimizedOrder state updated');
     } catch (err) {
       console.error('[DriverPortal] optimize error:', err);
+      console.error('Error details:', { message: err.message, stack: err.stack });
       toast.error('Optimization failed — showing manual route');
       setOptimizedOrder(activeStops);
     } finally {
+      console.groupEnd();
       setOptimizing(false);
     }
   };

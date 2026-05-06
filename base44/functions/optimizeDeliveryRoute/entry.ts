@@ -154,23 +154,24 @@ Deno.serve(async (req) => {
                 const fPhone = f.contact_phone || resolvedPhone;
                 const baseNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
                 expanded.push({
-                  id: `hub_${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
-                  hub_order_id: order.id || order.shopify_order_id || null,
-                  hub_fulfillment_number: f.fulfillment_number,
-                  order_number: f.fulfillment_number === 1 ? baseNum : `${baseNum}-${f.fulfillment_number}`,
-                  customer_email: authEmail,
-                  customer_name: resolvedName,
-                  hub_customer_email: order.customer_email || hubEmail,
-                  status: mappedStatus,
-                  total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
-                  fulfillment_type: 'delivery',
-                  delivery_address: fAddress,
-                  contact_phone: fPhone,
-                  estimated_delivery_date: f.delivery_date || null,
-                  items: f.items || order.line_items || [],
-                  notes: `${order.subscription_plan || 'Subscription'} — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
-                  is_hub_order: true,
-                });
+                    id: `hub_${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
+                    task_id: f.id || f.fulfillment_task_id || `hub_${order.id}_f${f.fulfillment_number}`, // Hub FulfillmentTask.id
+                    hub_order_id: order.id || order.shopify_order_id || null,
+                    hub_fulfillment_number: f.fulfillment_number,
+                    order_number: f.fulfillment_number === 1 ? baseNum : `${baseNum}-${f.fulfillment_number}`,
+                    customer_email: authEmail,
+                    customer_name: resolvedName,
+                    hub_customer_email: order.customer_email || hubEmail,
+                    status: mappedStatus,
+                    total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
+                    fulfillment_type: 'delivery',
+                    delivery_address: fAddress,
+                    contact_phone: fPhone,
+                    estimated_delivery_date: f.delivery_date || null,
+                    items: f.items || order.line_items || [],
+                    notes: `${order.subscription_plan || 'Subscription'} — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
+                    is_hub_order: true,
+                  });
               }
             } else {
               const mappedStatus = mapHubStatus(order.status);
@@ -178,6 +179,7 @@ Deno.serve(async (req) => {
               if (order.fulfillment_type === 'pickup') continue;
               expanded.push({
                 id: `hub_${order.id}`,
+                task_id: order.id || order.fulfillment_task_id || null, // Hub FulfillmentTask.id
                 hub_order_id: order.id || order.shopify_order_id || null,
                 order_number: (order.shopify_order_number || order.order_number || '').replace('#', ''),
                 customer_email: authEmail,
@@ -316,11 +318,26 @@ Deno.serve(async (req) => {
     const legs = route.legs || [];
     const ordersWithLegs = optimizedOrders.map((order, i) => {
       const leg = legs[i + 1] || legs[i];
-      return {
+      const enriched = {
         ...order,
         leg_distance_meters: leg?.distanceMeters || null,
         leg_duration_seconds: leg ? parseInt(leg.duration?.replace('s', '') || '0') : null,
       };
+      
+      // CRITICAL: Ensure real Hub task_id is preserved for driver actions
+      // task_id must be the Hub FulfillmentTask.id (not order id, not hub_order_id)
+      if (!enriched.task_id) {
+        // Fallback: if no task_id, generate from hub_order_id or use order id as last resort
+        if (enriched.hub_order_id) {
+          console.warn(`[Route] task_id missing for ${enriched.customer_name}, using hub_order_id fallback`);
+          enriched.task_id = enriched.hub_order_id;
+        } else {
+          console.warn(`[Route] task_id AND hub_order_id missing for ${enriched.customer_name}, using id fallback`);
+          enriched.task_id = enriched.id;
+        }
+      }
+      
+      return enriched;
     });
 
     // Add return-to-origin as final stop (for display only, not a customer delivery)
@@ -339,6 +356,19 @@ Deno.serve(async (req) => {
 
     const totalDistanceMeters = route.distanceMeters || 0;
     const totalDurationSeconds = route.duration ? parseInt(route.duration.replace('s', '')) : 0;
+
+    // Final validation: all optimized stops must have real task_ids
+    const taskIdCheck = optimizedOrdersWithReturn.filter(o => !o.is_return_stop && !o.task_id);
+    if (taskIdCheck.length > 0) {
+      console.error(`[Route] ⚠️ ${taskIdCheck.length} stops missing task_id after optimization:`, taskIdCheck.map(o => o.customer_name));
+    } else {
+      console.log(`✓ All ${optimizedOrders.length} delivery stops have task_ids`);
+    }
+
+    console.log('Optimized stop order (with task_ids):');
+    optimizedOrders.forEach((o, i) => {
+      console.log(`  ${i + 1}. task_id=${o.task_id}, customer=${o.customer_name}, addr=${o.delivery_address}`);
+    });
 
     return Response.json({
       orders: deliveryOrders,
