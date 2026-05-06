@@ -85,25 +85,31 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
 
   return (
     <div className="space-y-4">
-      {/* Express Checkout — Apple Pay / Google Pay */}
-      <ExpressCheckoutElement
-        onConfirm={handleExpressConfirm}
-        onReady={({ availablePaymentMethods }) => {
-          const methods = availablePaymentMethods || {};
-          const hasExpress = Object.values(methods).some(Boolean);
-          setExpressAvailable(hasExpress);
-          setExpressMounted(true);
-          if (onWalletStatus) onWalletStatus({ mounted: true, methods });
-        }}
-        onLoadError={(err) => {
-          console.error('[ExpressCheckout] onLoadError:', err);
-        }}
-        options={{
-          buttonType: { applePay: 'buy', googlePay: 'buy' },
-          layout: { maxColumns: 1, maxRows: 3, overflow: 'never' },
-          wallets: { applePay: 'always', googlePay: 'always' },
-        }}
-      />
+      {/* Express Checkout — Apple Pay / Google Pay — always rendered, never hidden */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
+        <div style={{ minHeight: '48px' }}>
+          <ExpressCheckoutElement
+            onConfirm={handleExpressConfirm}
+            onReady={({ availablePaymentMethods }) => {
+              const methods = availablePaymentMethods || {};
+              const hasExpress = Object.values(methods).some(Boolean);
+              setExpressAvailable(hasExpress);
+              setExpressMounted(true);
+              if (onWalletStatus) onWalletStatus({ mounted: true, methods });
+            }}
+            onLoadError={(err) => {
+              console.error('[ExpressCheckout] onLoadError:', err);
+              if (onWalletStatus) onWalletStatus({ mounted: false, methods: {}, error: err?.message });
+            }}
+            options={{
+              buttonType: { applePay: 'buy', googlePay: 'buy' },
+              layout: { maxColumns: 1, maxRows: 3, overflow: 'auto' },
+              wallets: { applePay: 'always', googlePay: 'always' },
+            }}
+          />
+        </div>
+      </div>
 
       {/* Divider — only shown when express wallets are available */}
       {expressAvailable && (
@@ -183,6 +189,7 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
   const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
 
+  // Early return AFTER all hooks
   if (!clientSecret || !stripePromise) return null;
 
   const appearance = {
