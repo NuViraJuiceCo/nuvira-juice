@@ -280,12 +280,15 @@ export default function DriverPortal() {
   const [date, setDate] = useState(todayStr());
   const [routeData, setRouteData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizedOrder, setOptimizedOrder] = useState(null);
   const [actingTaskId, setActingTaskId] = useState(null);
 
   const isAuthorized = user?.role === 'driver' || user?.role === 'admin' || user?.role === 'operations';
 
   const loadRoute = useCallback(async (selectedDate) => {
     setLoading(true);
+    setOptimizedOrder(null);
     try {
       const res = await base44.functions.invoke('getHubDriverRoute', { date: selectedDate });
       setRouteData(res.data);
@@ -297,6 +300,33 @@ export default function DriverPortal() {
       setLoading(false);
     }
   }, []);
+
+  const handleOptimizeRoute = async () => {
+    const activeStops = [...(routeData?.ready_tasks || []), ...(routeData?.scheduled_tasks || [])];
+    if (activeStops.length === 0) {
+      toast.error('No active deliveries to optimize');
+      return;
+    }
+    if (activeStops.length === 1) {
+      toast.info('Only one delivery — no optimization needed');
+      setOptimizedOrder(activeStops);
+      return;
+    }
+
+    setOptimizing(true);
+    try {
+      const res = await base44.functions.invoke('optimizeDeliveryRoute', { date, optimize: true });
+      const optimized = res.data?.optimized_orders || [];
+      setOptimizedOrder(optimized);
+      toast.success(`Route optimized · ${optimized.length} stops`);
+    } catch (err) {
+      console.error('[DriverPortal] optimize error:', err);
+      toast.error('Optimization failed — showing manual route');
+      setOptimizedOrder(activeStops);
+    } finally {
+      setOptimizing(false);
+    }
+  };
 
   useEffect(() => {
     if (isAuthorized) loadRoute(date);
@@ -362,6 +392,27 @@ export default function DriverPortal() {
   const tasks = [...ready, ...scheduled, ...done];
   const remaining = routeData?.counts?.left ?? (ready.length + scheduled.length);
 
+  // Generate full-route Google Maps URL from optimized stops
+  const getOptimizedMapsUrl = () => {
+    if (!optimizedOrder || optimizedOrder.length === 0) return null;
+    const stops = optimizedOrder.filter(t => t.delivery_address && !t.is_return_stop);
+    if (stops.length === 0) return null;
+    const waypoints = stops.map(t => encodeURIComponent(t.delivery_address)).join('|');
+    const origin = encodeURIComponent('619 N Main St Unit 3, O\'Fallon, MO 63366');
+    return `https://www.google.com/maps/dir/${origin}/${waypoints}/${origin}?travelmode=driving`;
+  };
+
+  // Copy optimized addresses to clipboard
+  const handleCopyAddresses = () => {
+    if (!optimizedOrder || optimizedOrder.length === 0) return;
+    const stops = optimizedOrder
+      .filter(t => t.delivery_address && !t.is_return_stop)
+      .map((t, i) => `${i + 1}. ${t.delivery_address}`);
+    const text = stops.join('\n');
+    navigator.clipboard.writeText(text);
+    toast.success('Addresses copied!');
+  };
+
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
       {/* Header */}
@@ -408,12 +459,49 @@ export default function DriverPortal() {
         ))}
       </div>
 
-      {/* Hub attribution */}
+      {/* Route optimization & links */}
       {routeData && (
-        <div className="px-4 pt-2 pb-1">
+        <div className="px-4 pt-3 pb-2 space-y-2">
           <p className="text-[10px] text-muted-foreground">
             Route data from NuVira Hub · {remaining} stop{remaining !== 1 ? 's' : ''} remaining
           </p>
+          {queued.length > 1 && !optimizedOrder && (
+            <button
+              onClick={handleOptimizeRoute}
+              disabled={optimizing}
+              className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            >
+              <Navigation className={`w-4 h-4 ${optimizing ? 'animate-spin' : ''}`} />
+              {optimizing ? 'Optimizing...' : 'Optimize Route'}
+            </button>
+          )}
+          {optimizedOrder && optimizedOrder.length > 0 && (
+            <div className="space-y-1.5">
+              {getOptimizedMapsUrl() && (
+                <a
+                  href={getOptimizedMapsUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-blue-500 text-white rounded-xl text-sm font-semibold active:scale-95 transition-transform"
+                >
+                  <Navigation className="w-4 h-4" />
+                  Open Full Route
+                </a>
+              )}
+              <button
+                onClick={handleCopyAddresses}
+                className="w-full py-2 text-xs text-muted-foreground border border-border rounded-xl active:scale-95 transition-transform"
+              >
+                📋 Copy Addresses
+              </button>
+              <button
+                onClick={() => setOptimizedOrder(null)}
+                className="w-full py-1.5 text-xs text-muted-foreground underline"
+              >
+                Clear Optimization
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -434,22 +522,45 @@ export default function DriverPortal() {
           </div>
         ) : (
           <>
-            {/* In Progress */}
-            {inProgress.length > 0 && (
-              <Section label="En Route" count={inProgress.length}>
-                {inProgress.map(t => (
-                  <TaskCard key={t.id} task={t} onAction={handleAction} isActing={actingTaskId === t.id} />
+            {/* Optimized route display */}
+            {optimizedOrder && optimizedOrder.length > 0 && (
+              <Section label="Optimized Route" count={optimizedOrder.filter(t => !t.is_return_stop).length}>
+                {optimizedOrder.map((t, idx) => (
+                  <div key={`${t.task_id || t.id}-${idx}`} className="relative">
+                    {!t.is_return_stop && (
+                      <div className="absolute -left-4 top-3 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
+                        {idx + 1}
+                      </div>
+                    )}
+                    <div className="ml-2">
+                      <TaskCard task={t} onAction={handleAction} isActing={actingTaskId === (t.task_id || t.id)} />
+                    </div>
+                  </div>
                 ))}
               </Section>
             )}
 
-            {/* Queued (ready + scheduled, minus in-progress) */}
-            {queued.length > 0 && (
-              <Section label="Queued" count={queued.length}>
-                {queued.map(t => (
-                  <TaskCard key={t.id} task={t} onAction={handleAction} isActing={actingTaskId === t.id} />
-                ))}
-              </Section>
+            {/* Regular sections if no optimization */}
+            {!optimizedOrder && (
+              <>
+                {/* In Progress */}
+                {inProgress.length > 0 && (
+                  <Section label="En Route" count={inProgress.length}>
+                    {inProgress.map(t => (
+                      <TaskCard key={t.id} task={t} onAction={handleAction} isActing={actingTaskId === t.id} />
+                    ))}
+                  </Section>
+                )}
+
+                {/* Queued (ready + scheduled, minus in-progress) */}
+                {queued.length > 0 && (
+                  <Section label="Queued" count={queued.length}>
+                    {queued.map(t => (
+                      <TaskCard key={t.id} task={t} onAction={handleAction} isActing={actingTaskId === t.id} />
+                    ))}
+                  </Section>
+                )}
+              </>
             )}
 
             {/* Done */}
