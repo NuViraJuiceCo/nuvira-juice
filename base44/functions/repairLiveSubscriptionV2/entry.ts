@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
           customer_app_subscription_id: subscription.id,
           payment_status: 'paid',
           financial_status: 'paid',
-          first_invoice_id: invoiceId || null,
+          first_invoice_id: latestInvoice?.id || null,
           plan_id: planId,
           plan_name: plan.name,
           cadence: plan.frequency,
