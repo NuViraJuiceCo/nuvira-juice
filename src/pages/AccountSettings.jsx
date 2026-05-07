@@ -64,12 +64,12 @@ export default function AccountSettings() {
   }
 
   return (
-    <div className="pb-4">
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
-          <ArrowLeft className="w-4 h-4" />
+    <div className="pb-4" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
+        <button onClick={() => navigate(-1)} aria-label="Go back" className="w-11 h-11 flex items-center justify-center -ml-2 active:bg-secondary rounded-lg transition-colors">
+          <ArrowLeft className="w-5 h-5 text-foreground" />
         </button>
-        <h1 className="font-heading text-xl font-bold">Settings</h1>
+        <h1 className="font-heading text-lg font-bold">Settings</h1>
       </div>
 
       <div className="px-4 space-y-5">

@@ -167,7 +167,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.07 }}
-      className="shrink-0 w-[68vw] max-w-[260px] snap-start rounded-2xl overflow-hidden"
+      className="shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden"
       style={{
         border: unlocked ? `1.5px solid ${GOLD}50` : '1px solid hsl(var(--border) / 0.4)',
         background: unlocked
@@ -177,14 +177,14 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       }}
     >
       {/* Top panel */}
-      <div className="h-24 flex items-center justify-center relative overflow-hidden"
+      <div className="h-20 flex items-center justify-center relative overflow-hidden"
         style={{ background: unlocked ? `linear-gradient(135deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` : 'hsl(var(--muted))' }}>
         {unlocked && (
           <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 80% 20%, ${GOLD}25 0%, transparent 60%)` }} />
         )}
-        <span className="text-4xl relative z-10">{reward.icon || '🎁'}</span>
+        <span className="text-3xl relative z-10">{reward.icon || '🎁'}</span>
         {unlocked && (
-          <div className="absolute top-2.5 right-2.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+          <div className="absolute top-2 right-2 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide"
             style={{ background: `${GOLD}30`, color: GOLD_LIGHT, border: `1px solid ${GOLD}50` }}>
             Unlocked
           </div>
@@ -192,34 +192,34 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       </div>
 
       {/* Content */}
-      <div className="p-4">
-        <p className="text-sm font-bold mb-0.5 leading-snug">{reward.title}</p>
-        <p className="text-[11px] text-muted-foreground mb-3">{reward.description}</p>
+      <div className="p-3">
+        <p className="text-xs font-bold mb-1 leading-tight line-clamp-2">{reward.title}</p>
+        <p className="text-[10px] text-muted-foreground mb-2 line-clamp-2">{reward.description}</p>
 
         {/* Points required */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            <Star className="w-3 h-3" style={{ color: GOLD, fill: GOLD }} />
-            <span className="text-xs font-bold" style={{ color: GOLD }}>
-              {reward.points_required.toLocaleString()} pts
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-0.5 min-w-0">
+            <Star className="w-2.5 h-2.5 shrink-0" style={{ color: GOLD, fill: GOLD }} />
+            <span className="text-[10px] font-bold truncate" style={{ color: GOLD }}>
+              {reward.points_required.toLocaleString()}
             </span>
           </div>
           {unlocked ? (
             isActive ? (
               <button onClick={onRemove}
-                className="text-[11px] font-bold px-3 py-1.5 rounded-xl"
+                className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0"
                 style={{ background: 'hsl(var(--destructive)/0.1)', color: 'hsl(var(--destructive))' }}>
-                Applied ✓
+                ✓
               </button>
             ) : (
               <button onClick={onApply}
-                className="text-[11px] font-bold px-3 py-1.5 rounded-xl text-white"
+                className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0 text-white"
                 style={{ background: `linear-gradient(90deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` }}>
                 Redeem
               </button>
             )
           ) : (
-            <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(var(--muted))' }}>
+            <div className="w-12 h-1 rounded-full shrink-0" style={{ background: 'hsl(var(--muted))' }}>
               <div className="h-full rounded-full" style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)` }} />
             </div>
           )}
@@ -440,13 +440,13 @@ export default function Rewards() {
 
       {/* ── Redeem Rewards ── */}
       <div className="mt-8">
-        <div className="flex items-center justify-between px-4 mb-4">
+        <div className="flex items-center justify-between px-4 mb-3">
           <div>
-            <h2 className="font-heading text-xl font-bold">Redeem Rewards</h2>
-            <p className="text-xs text-muted-foreground">Swipe to see all rewards</p>
+            <h2 className="font-heading text-lg font-bold">Redeem Rewards</h2>
+            <p className="text-[11px] text-muted-foreground">Swipe for more</p>
           </div>
         </div>
-        <div className="flex gap-4 overflow-x-auto px-4 pb-3 snap-x snap-mandatory" style={{ scrollbarWidth: 'none' }}>
+        <div className="flex gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory" style={{ scrollbarWidth: 'none', scrollPaddingRight: '1rem' }}>
           {rewards.map((reward, i) => (
             <RewardCard
               key={i}
