@@ -247,9 +247,21 @@ export default function AdminOrders() {
     return map;
   }, [profiles]);
 
+  // Exclude cancelled/refunded/test orders from ALL views in Order Management.
+  // These are not operational and should not appear as active or completed.
+  const operationalOrders = orders.filter(o =>
+    !o.is_test_order &&
+    !o.do_not_recover &&
+    o.payment_status !== 'refunded' &&
+    o.financial_status !== 'refunded' &&
+    o.status !== 'cancelled' &&
+    // exclude abandoned payment_captured=false orders that were never paid
+    !(o.payment_captured === false && o.payment_status !== 'paid' && o.financial_status !== 'paid')
+  );
+
   const statusFiltered = filter === 'active'
-    ? orders.filter(o => ACTIVE_STATUSES.includes(o.status))
-    : orders.filter(o => ['delivered', 'picked_up'].includes(o.status));
+    ? operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status))
+    : operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status));
 
   const filtered = search
     ? statusFiltered.filter(o => {
@@ -346,8 +358,8 @@ export default function AdminOrders() {
       {/* Filter Tabs */}
       <div className="flex gap-2 px-4 mb-4">
         {[
-          { key: 'active', label: `Active (${orders.filter(o => ACTIVE_STATUSES.includes(o.status)).length})` },
-          { key: 'completed', label: `Completed (${orders.filter(o => ['delivered', 'picked_up'].includes(o.status)).length})` },
+          { key: 'active', label: `Active (${operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status)).length})` },
+          { key: 'completed', label: `Completed (${operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status)).length})` },
         ].map(tab => (
           <button
             key={tab.key}

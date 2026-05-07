@@ -34,13 +34,97 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { date, optimize } = body; // date: YYYY-MM-DD, optimize: boolean
+    const { date, optimize, stops: explicitStops } = body; // stops: pre-filtered Hub stops from frontend
 
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     if (!apiKey) {
       return Response.json({ error: 'Google Maps API key not configured' }, { status: 500 });
     }
 
+    // ── FAST PATH: explicit Hub stops provided by frontend ───────────────────
+    // When the Driver Portal passes `stops`, use ONLY those stops.
+    // Never re-fetch from local Customer App DB — that would leak stale/cancelled orders.
+    if (Array.isArray(explicitStops) && explicitStops.length > 0) {
+      console.log(`[Route] Using ${explicitStops.length} explicit Hub stops — skipping local DB fetch`);
+
+      if (!optimize) {
+        return Response.json({ orders: explicitStops, optimized_orders: null });
+      }
+      if (explicitStops.length === 1) {
+        return Response.json({ orders: explicitStops, optimized_orders: explicitStops, total_distance_miles: null, total_duration_minutes: null });
+      }
+
+      const withAddr = explicitStops.filter(s => s.delivery_address);
+      const withoutAddr = explicitStops.filter(s => !s.delivery_address);
+
+      if (withAddr.length < 2) {
+        return Response.json({ orders: explicitStops, optimized_orders: explicitStops, total_distance_miles: null, total_duration_minutes: null });
+      }
+
+      const routePayload = {
+        origin: { address: ORIGIN },
+        destination: { address: ORIGIN },
+        intermediates: withAddr.map(s => ({ address: s.delivery_address })),
+        travelMode: 'DRIVE',
+        optimizeWaypointOrder: true,
+        routingPreference: 'TRAFFIC_AWARE',
+      };
+
+      const routeRes = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'routes.optimizedIntermediateWaypointIndex,routes.distanceMeters,routes.duration,routes.legs',
+        },
+        body: JSON.stringify(routePayload),
+      });
+
+      const routeData = await routeRes.json();
+
+      if (!routeData.routes || routeData.routes.length === 0) {
+        console.error('[Route] Google Maps API error (explicit stops):', JSON.stringify(routeData));
+        // Fall back to original order on Maps API failure
+        return Response.json({ orders: explicitStops, optimized_orders: explicitStops, total_distance_miles: null, total_duration_minutes: null });
+      }
+
+      const route = routeData.routes[0];
+      const optimizedIndexes = route.optimizedIntermediateWaypointIndex || withAddr.map((_, i) => i);
+      const legs = route.legs || [];
+
+      const orderedStops = [
+        ...optimizedIndexes.map((i, legIdx) => ({
+          ...withAddr[i],
+          leg_distance_meters: legs[legIdx + 1]?.distanceMeters || null,
+          leg_duration_seconds: legs[legIdx + 1] ? parseInt(legs[legIdx + 1].duration?.replace('s', '') || '0') : null,
+        })),
+        ...withoutAddr,
+      ];
+
+      const returnStop = {
+        id: 'return_to_origin',
+        order_number: 'RETURN',
+        customer_name: 'Return to NuVira Base',
+        delivery_address: ORIGIN,
+        is_return_stop: true,
+      };
+
+      const totalDistanceMeters = route.distanceMeters || 0;
+      const totalDurationSeconds = route.duration ? parseInt(route.duration.replace('s', '')) : 0;
+
+      console.log(`[Route] Explicit stops optimized: ${orderedStops.length} delivery stops`);
+      orderedStops.forEach((s, i) => console.log(`  ${i + 1}. task_id=${s.task_id} customer=${s.customer_name}`));
+
+      return Response.json({
+        orders: explicitStops,
+        optimized_orders: [...orderedStops, returnStop],
+        total_distance_miles: Math.round((totalDistanceMeters / 1609.344) * 10) / 10,
+        total_duration_minutes: Math.round(totalDurationSeconds / 60),
+        customer_delivery_count: orderedStops.length,
+      });
+    }
+
+    // ── LEGACY PATH: no explicit stops — fetch from local DB (kept for non-driver callers) ──
     // ── 1. Local orders ──────────────────────────────────────────────────────
     const allLocalOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
     

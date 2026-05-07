@@ -302,7 +302,10 @@ export default function DriverPortal() {
   }, []);
 
   const handleOptimizeRoute = async () => {
-    const activeStops = [...(routeData?.ready_tasks || []), ...(routeData?.scheduled_tasks || [])];
+    // CRITICAL: Only optimize stops that came from Hub — never touch local Customer App orders.
+    const activeStops = [...(routeData?.ready_tasks || []), ...(routeData?.scheduled_tasks || [])]
+      .filter(t => t.status !== 'delivered' && t.status !== 'unable_to_deliver');
+
     if (activeStops.length === 0) {
       toast.error('No active deliveries to optimize');
       return;
@@ -314,67 +317,70 @@ export default function DriverPortal() {
     }
 
     setOptimizing(true);
-    console.group('[DriverPortal] Optimize Route Click');
-    console.log('Selected date:', date);
-    console.log('Total active stops:', activeStops.length);
-    
-    // Build payload matching contract: include task_id, addresses, customer names, etc.
-    const stopsPayload = activeStops.map(t => ({
-      task_id: t.task_id,
-      customer_name: t.customer_name || 'Unknown',
-      delivery_address: t.delivery_address,
-      scheduled_date: date,
-      delivery_window: t.delivery_window_label || '5 PM - 8 PM',
-      phone: t.contact_phone || '',
-      items_summary: t.items?.length ? `${t.items.length} items` : '',
-      order_number: t.order_number || '',
-      status: t.status,
-    }));
 
-    console.log('Payload stops count:', stopsPayload.length);
-    stopsPayload.forEach((s, i) => {
-      console.log(`  Stop ${i + 1}: task_id=${s.task_id}, addr=${s.delivery_address}, customer=${s.customer_name}`);
-    });
+    // Build the stops payload from Hub route data only — these are the ONLY stops we will optimize.
+    // The backend will use this exact list and NEVER re-fetch Customer App orders.
+    const hubStops = activeStops
+      .filter(t => t.delivery_address)
+      .map(t => ({
+        task_id: t.task_id,
+        customer_name: t.customer_name || '',
+        delivery_address: t.delivery_address,
+        contact_phone: t.contact_phone || '',
+        order_number: t.order_number || '',
+        status: t.status,
+        items: t.items || [],
+        delivery_window_label: t.delivery_window_label || '',
+        scheduled_date: t.scheduled_date || date,
+        notes: t.notes || '',
+      }));
 
-    const payload = { date, optimize: true };
-    console.log('Full payload:', JSON.stringify(payload, null, 2));
+    console.log(`[DriverPortal] Optimizing ${hubStops.length} Hub stops for ${date}:`);
+    hubStops.forEach((s, i) => console.log(`  ${i + 1}. task_id=${s.task_id} customer=${s.customer_name} addr=${s.delivery_address}`));
 
     try {
-      const res = await base44.functions.invoke('optimizeDeliveryRoute', payload);
-      console.log('Response status:', res.status);
-      console.log('Response data:', JSON.stringify(res.data, null, 2));
-      
-      const optimized = res.data?.optimized_orders || [];
-      console.log('Optimized stops returned:', optimized.length);
-      optimized.forEach((s, i) => {
-        console.log(`  Optimized ${i + 1}: task_id=${s.task_id}, addr=${s.delivery_address}`);
+      // Pass Hub stops explicitly — backend must use these and NOT re-fetch from Customer App DB
+      const res = await base44.functions.invoke('optimizeDeliveryRoute', {
+        stops: hubStops,   // ← explicit Hub stop list; backend uses this, ignores local DB
+        optimize: true,
       });
 
-      // Verify task_ids are preserved
-      const originalTaskIds = new Set(activeStops.map(t => t.task_id));
-      const optimizedTaskIds = new Set(optimized.map(t => t.task_id).filter(Boolean));
-      const lostIds = [...originalTaskIds].filter(id => !optimizedTaskIds.has(id));
-      if (lostIds.length > 0) {
-        console.warn('⚠️ LOST TASK IDS:', lostIds);
-      } else {
-        console.log('✓ All task IDs preserved');
+      const optimized = res.data?.optimized_orders || [];
+
+      // ── Hard validation: reject any response that leaks non-Hub stops ──────
+      const validTaskIds = new Set(activeStops.map(t => t.task_id).filter(Boolean));
+      const deliveryStops = optimized.filter(t => !t.is_return_stop);
+
+      const invalidStops = deliveryStops.filter(t => {
+        // Reject if task_id is not in the original Hub route
+        if (!t.task_id || !validTaskIds.has(t.task_id)) return true;
+        return false;
+      });
+
+      if (invalidStops.length > 0) {
+        console.error('[DriverPortal] REJECTED: optimizer returned non-Hub stops:', invalidStops.map(s => s.customer_name));
+        toast.error('Route optimization returned unexpected stops — showing manual route');
+        setOptimizedOrder(activeStops);
+        return;
       }
 
-      // Log Google Maps URL
-      const mapsUrl = optimized.filter(t => t.delivery_address && !t.is_return_stop)
-        .map(t => encodeURIComponent(t.delivery_address)).join('|');
-      console.log('Google Maps URL generated:', !!mapsUrl, mapsUrl ? `(${mapsUrl.length} chars)` : '');
+      if (deliveryStops.length > activeStops.length) {
+        console.error(`[DriverPortal] REJECTED: optimizer returned ${deliveryStops.length} stops but only ${activeStops.length} were sent`);
+        toast.error('Route optimization returned too many stops — showing manual route');
+        setOptimizedOrder(activeStops);
+        return;
+      }
+
+      console.log(`[DriverPortal] ✓ Optimized route validated: ${deliveryStops.length} stops`);
+      deliveryStops.forEach((s, i) => console.log(`  ${i + 1}. task_id=${s.task_id} customer=${s.customer_name}`));
 
       setOptimizedOrder(optimized);
-      toast.success(`Route optimized · ${optimized.length} stops`);
-      console.log('✓ optimizedOrder state updated');
+      toast.success(`Route optimized · ${deliveryStops.length} stop${deliveryStops.length !== 1 ? 's' : ''}`);
     } catch (err) {
       console.error('[DriverPortal] optimize error:', err);
-      console.error('Error details:', { message: err.message, stack: err.stack });
       toast.error('Optimization failed — showing manual route');
       setOptimizedOrder(activeStops);
     } finally {
-      console.groupEnd();
       setOptimizing(false);
     }
   };
