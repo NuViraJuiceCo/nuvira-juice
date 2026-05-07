@@ -9,11 +9,11 @@ export default function SustainabilityTeaser() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="mx-4 my-5 grid grid-cols-2 gap-3"
+      className="mx-4 my-5 grid grid-cols-2 gap-4"
     >
       {/* Return + Reward */}
       <Link to="/return-reward">
-        <div className="bg-primary rounded-2xl p-4 h-full flex flex-col justify-between min-h-[130px] active:scale-[0.98] transition-transform">
+        <div className="bg-primary rounded-2xl p-4 h-full flex flex-col justify-between min-h-[140px] active:scale-[0.98] transition-transform">
           <div className="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center mb-3">
             <Leaf className="w-4 h-4 text-white" />
           </div>
@@ -29,7 +29,7 @@ export default function SustainabilityTeaser() {
 
       {/* NuVira Difference */}
       <Link to="/why-nuvira">
-        <div className="bg-accent rounded-2xl p-4 h-full flex flex-col justify-between min-h-[130px] active:scale-[0.98] transition-transform">
+        <div className="bg-accent rounded-2xl p-4 h-full flex flex-col justify-between min-h-[140px] active:scale-[0.98] transition-transform">
           <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center mb-3">
             <Sparkles className="w-4 h-4 text-white" />
           </div>

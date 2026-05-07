@@ -26,7 +26,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
           </Link>
         )}
       </div>
-      <div className="flex gap-3 overflow-x-auto px-4 pb-3 no-scrollbar snap-x snap-mandatory">
+      <div className="flex gap-4 overflow-x-auto px-4 pb-3 no-scrollbar snap-x snap-mandatory">
         {products.map((product, i) => (
           <motion.div
             key={product.id}
@@ -34,7 +34,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ delay: i * 0.07, duration: 0.4 }}
-            className="snap-start shrink-0 w-40"
+            className="snap-start shrink-0 w-44"
           >
             <ProductCard product={product} compact />
           </motion.div>
