@@ -157,7 +157,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
         <button
           onClick={handleOpenMenu}
           disabled={isUploading}
-          className={`${sizeClasses[size]} rounded-full bg-gradient-to-br from-primary/25 via-primary/15 to-accent/15 border-2 border-primary/30 dark:border-primary/40 shadow-lg overflow-hidden relative group hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`${sizeClasses[size]} rounded-full bg-gradient-to-br from-primary/25 via-primary/15 to-accent/15 border-2 border-primary/30 dark:border-primary/40 shadow-lg overflow-hidden relative group hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center`}
         >
           {hasPhoto && !isUploading ? (
             <img
@@ -166,7 +166,9 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
               className="w-full h-full object-cover"
             />
           ) : (
-            <User className="w-7 h-7 text-primary" />
+            <div className="flex items-center justify-center w-full h-full">
+              <User className="w-7 h-7 text-primary" />
+            </div>
           )}
           
           {/* Loading Overlay */}
@@ -192,7 +194,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
         )}
       </div>
 
-      {/* Bottom Sheet Menu */}
+      {/* Centered Modal Menu */}
       <AnimatePresence>
         {showMenu && (
           <>
@@ -201,93 +203,89 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm"
+              className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm flex items-center justify-center p-4"
               onClick={handleCloseMenu}
             />
             
-            {/* Bottom Sheet */}
+            {/* Centered Modal */}
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed inset-x-0 bottom-0 z-50 bg-background rounded-t-2xl max-h-[40vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
               style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
             >
-              {/* Handle */}
-              <div className="flex justify-center pt-3 pb-2 shrink-0">
-                <div className="w-10 h-1 bg-border rounded-full" />
-              </div>
+              <div className="bg-background rounded-2xl w-full max-w-sm shadow-2xl pointer-events-auto mx-4" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="px-5 py-4 border-b border-border/40">
+                  <p className="font-heading text-lg font-bold text-center">Profile Photo</p>
+                </div>
 
-              {/* Header */}
-              <div className="px-5 py-2 pb-4 shrink-0">
-                <p className="font-heading text-base font-bold text-center">Profile Photo</p>
-              </div>
-
-              {/* Actions */}
-              <div className="px-5 pb-6 space-y-2 overflow-y-auto flex-1">
-                {/* Upload Photo */}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading}
-                  className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border/40 bg-card hover:bg-secondary/20 transition-colors disabled:opacity-50"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
-                    <Camera className="w-4 h-4 text-primary" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-semibold">
-                      {hasPhoto ? 'Change Photo' : 'Upload Photo'}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      JPG or PNG, max 5MB
-                    </p>
-                  </div>
-                </button>
-
-                {/* Remove Photo (only if photo exists) */}
-                {hasPhoto && (
+                {/* Actions */}
+                <div className="px-5 py-4 space-y-2">
+                  {/* Upload Photo */}
                   <button
-                    onClick={() => removePhotoMutation.mutate()}
-                    disabled={removePhotoMutation.isPending}
-                    className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-destructive/25 bg-destructive/5 hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border/40 bg-card hover:bg-secondary/20 transition-colors disabled:opacity-50"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-destructive/15 flex items-center justify-center shrink-0">
-                      <X className="w-4 h-4 text-destructive" />
+                    <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                      <Camera className="w-4 h-4 text-primary" />
                     </div>
                     <div className="flex-1 text-left">
-                      <p className="text-sm font-semibold text-destructive">
-                        Remove Photo
+                      <p className="text-sm font-semibold">
+                        {hasPhoto ? 'Change Photo' : 'Upload Photo'}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        Return to default avatar
+                        JPG or PNG, max 5MB
                       </p>
                     </div>
-                    {removePhotoMutation.isPending && (
-                      <Loader2 className="w-4 h-4 text-destructive animate-spin" />
-                    )}
                   </button>
-                )}
 
-                {/* Cancel - Secondary text button */}
-                <button
-                  onClick={handleCloseMenu}
-                  disabled={isUploading}
-                  className="w-full p-3.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-secondary/20 transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+                  {/* Remove Photo (only if photo exists) */}
+                  {hasPhoto && (
+                    <button
+                      onClick={() => removePhotoMutation.mutate()}
+                      disabled={removePhotoMutation.isPending}
+                      className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-destructive/25 bg-destructive/5 hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-destructive/15 flex items-center justify-center shrink-0">
+                        <X className="w-4 h-4 text-destructive" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-semibold text-destructive">
+                          Remove Photo
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Return to default avatar
+                        </p>
+                      </div>
+                      {removePhotoMutation.isPending && (
+                        <Loader2 className="w-4 h-4 text-destructive animate-spin" />
+                      )}
+                    </button>
+                  )}
+
+                  {/* Cancel - Secondary text button */}
+                  <button
+                    onClick={handleCloseMenu}
+                    disabled={isUploading}
+                    className="w-full p-3.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-secondary/20 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                {/* Hidden File Input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
               </div>
-
-              {/* Hidden File Input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
             </motion.div>
           </>
         )}
