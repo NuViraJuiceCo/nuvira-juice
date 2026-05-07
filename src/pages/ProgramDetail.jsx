@@ -122,7 +122,7 @@ export default function ProgramDetail() {
         <span className="font-heading text-base font-semibold">{program.name} Program</span>
       </div>
 
-      <div className="px-4 pt-6 pb-72 md:pb-24">
+      <div className="px-4 pt-6 pb-[140px] md:pb-[100px]">
         {/* Hero */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -243,36 +243,60 @@ export default function ProgramDetail() {
       </div>
 
       {/* Bottom Sticky Purchase Tray — Premium Anchored Footer */}
-      <div className="fixed inset-x-0 bottom-0 z-40 md:left-60 border-t border-primary/15" style={{ paddingBottom: `max(0.5rem, env(safe-area-inset-bottom))` }}>
-        <div className="bg-card/95 backdrop-blur-md" style={{ background: `linear-gradient(180deg, rgba(11,61,46,0.08) 0%, rgba(11,61,46,0.04) 100%), hsl(var(--card))` }}>
-          <div className="max-w-full mx-auto px-4 py-4 md:px-6 md:py-5">
-            {/* Top Row: Program Info + Price */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">
-                  {program.name}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-primary/15" style={{ paddingBottom: `max(0.75rem, env(safe-area-inset-bottom))` }}>
+        <div className="bg-gradient-to-b from-card to-card/95 backdrop-blur-sm">
+          <div className="px-4 py-3 md:px-6 md:py-3.5">
+            {/* Mobile: Two-row compact layout */}
+            <div className="md:hidden">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {program.name}
+                  </p>
+                  {selectedShots.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      + {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="font-heading text-2xl font-bold text-foreground">${total}</p>
+                </div>
+              </div>
+              <Button
+                onClick={handleStartProgram}
+                className="w-full h-11 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+              >
+                Start My 3-Day Program
+              </Button>
+            </div>
+
+            {/* Desktop: Single-row professional layout */}
+            <div className="hidden md:flex items-center justify-between max-w-4xl mx-auto">
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {program.name} Program
                 </p>
                 {selectedShots.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    + {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''}
+                    + {selectedShots.length} wellness shot{selectedShots.length > 1 ? 's' : ''}
                   </p>
                 )}
               </div>
-              <div className="text-right">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">
-                  Total Price
-                </p>
-                <p className="font-heading text-3xl font-bold text-foreground">${total}</p>
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground mb-0.5">Total</p>
+                  <p className="font-heading text-2xl font-bold text-foreground">${total}</p>
+                </div>
+                <Button
+                  onClick={handleStartProgram}
+                  className="h-11 px-8 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+                  style={{ minWidth: '280px' }}
+                >
+                  Start My 3-Day Program
+                </Button>
               </div>
             </div>
-
-            {/* Bottom Row: CTA Button */}
-            <Button
-              onClick={handleStartProgram}
-              className="w-full h-13 rounded-xl font-semibold text-sm md:text-base shadow-lg hover:shadow-xl transition-shadow"
-            >
-              Start My 3-Day Program
-            </Button>
           </div>
         </div>
       </div>
