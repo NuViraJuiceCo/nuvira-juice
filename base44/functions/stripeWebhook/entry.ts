@@ -231,48 +231,52 @@ Deno.serve(async (req) => {
           console.log(`[stripeWebhook] Subscription already exists for ${customerEmail} (stripe_sub=${stripeSubscriptionId}), skipping creation`);
         }
 
-        // Award loyalty points for subscription payment (10 pts per $1) — exactly once per stripe invoice
+        // Award loyalty points for subscription payment (10 pts per $1) — exactly once per stripe subscription
         if (customerEmail && amountPaid > 0) {
-          const pointsToAward = Math.floor(amountPaid * 10);
-          const invoiceId = session.invoice;
-          
-          // Idempotency: check if points already awarded for this invoice
-          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-          if (existing[0]) {
-            const alreadyAwarded = existing[0].points_history?.some(h => h.description?.includes(invoiceId));
-            if (!alreadyAwarded) {
-              const entry = {
-                amount: pointsToAward,
-                type: 'earned',
-                description: `Subscription payment of $${amountPaid.toFixed(2)} (invoice ${invoiceId})`,
-                timestamp: new Date().toISOString(),
-              };
-              const history = [...(existing[0].points_history || []), entry];
-              await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-                total_points: (existing[0].total_points || 0) + pointsToAward,
-                lifetime_points: (existing[0].lifetime_points || 0) + pointsToAward,
-                points_history: history,
-              });
-              console.log(`[stripeWebhook] Awarded ${pointsToAward} pts to ${customerEmail} for subscription (invoice ${invoiceId})`);
-            } else {
-              console.log(`[stripeWebhook] Points already awarded for invoice ${invoiceId}, skipping`);
-            }
-          } else {
+        const pointsToAward = Math.floor(amountPaid * 10);
+        const stripeSubId = session.subscription;
+
+        // Idempotency: check if points already awarded for this subscription
+        const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
+        if (existing[0]) {
+          // Check by subscription ID in description to prevent duplicate awards
+          const alreadyAwarded = existing[0].points_history?.some(h => 
+            h.description?.includes(`(subscription ${stripeSubId})`) ||
+            h.description?.includes(`stripe_subscription_id=${stripeSubId}`)
+          );
+          if (!alreadyAwarded) {
             const entry = {
               amount: pointsToAward,
               type: 'earned',
-              description: `Subscription payment of $${amountPaid.toFixed(2)} (invoice ${invoiceId})`,
+              description: `Subscription payment of $${amountPaid.toFixed(2)} (subscription ${stripeSubId})`,
               timestamp: new Date().toISOString(),
             };
-            await base44.asServiceRole.entities.UserPoints.create({
-              customer_email: customerEmail,
-              total_points: pointsToAward,
-              lifetime_points: pointsToAward,
-              redeemed_points: 0,
-              points_history: [entry],
+            const history = [...(existing[0].points_history || []), entry];
+            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
+              total_points: (existing[0].total_points || 0) + pointsToAward,
+              lifetime_points: (existing[0].lifetime_points || 0) + pointsToAward,
+              points_history: history,
             });
-            console.log(`[stripeWebhook] Created points record and awarded ${pointsToAward} pts to ${customerEmail} for subscription (invoice ${invoiceId})`);
+            console.log(`[stripeWebhook] Awarded ${pointsToAward} pts to ${customerEmail} for subscription ${stripeSubId}`);
+          } else {
+            console.log(`[stripeWebhook] Points already awarded for subscription ${stripeSubId}, skipping`);
           }
+        } else {
+          const entry = {
+            amount: pointsToAward,
+            type: 'earned',
+            description: `Subscription payment of $${amountPaid.toFixed(2)} (subscription ${stripeSubId})`,
+            timestamp: new Date().toISOString(),
+          };
+          await base44.asServiceRole.entities.UserPoints.create({
+            customer_email: customerEmail,
+            total_points: pointsToAward,
+            lifetime_points: pointsToAward,
+            redeemed_points: 0,
+            points_history: [entry],
+          });
+          console.log(`[stripeWebhook] Created points record and awarded ${pointsToAward} pts to ${customerEmail} for subscription ${stripeSubId}`);
+        }
         }
       }
 

@@ -134,18 +134,22 @@ Deno.serve(async (req) => {
 
     console.log(`[RepairSubV2] Created Subscription record: ${subscription.id}`);
 
-    // Award loyalty points if not already awarded
+    // Award loyalty points if not already awarded — idempotency by stripe_subscription_id
     const pointsToAward = Math.floor(amountPaid * 10);
-    const invoiceId = latestInvoice?.id;
+    const stripeSubId = stripe_subscription_id;
 
     const pointsRecords = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
     if (pointsRecords[0]) {
-      const alreadyAwarded = pointsRecords[0].points_history?.some(h => h.description?.includes(invoiceId));
+      // Check by subscription ID to prevent duplicate awards
+      const alreadyAwarded = pointsRecords[0].points_history?.some(h => 
+        h.description?.includes(`(subscription ${stripeSubId})`) ||
+        h.description?.includes(`stripe_subscription_id=${stripeSubId}`)
+      );
       if (!alreadyAwarded) {
         const entry = {
           amount: pointsToAward,
           type: 'earned',
-          description: `Subscription payment of $${amountPaid.toFixed(2)} (invoice ${invoiceId}) — recovery`,
+          description: `Subscription payment of $${amountPaid.toFixed(2)} (subscription ${stripeSubId})`,
           timestamp: new Date().toISOString(),
         };
         const history = [...(pointsRecords[0].points_history || []), entry];
@@ -154,13 +158,15 @@ Deno.serve(async (req) => {
           lifetime_points: (pointsRecords[0].lifetime_points || 0) + pointsToAward,
           points_history: history,
         });
-        console.log(`[RepairSubV2] Awarded ${pointsToAward} pts to ${customerEmail}`);
+        console.log(`[RepairSubV2] Awarded ${pointsToAward} pts to ${customerEmail} for subscription ${stripeSubId}`);
+      } else {
+        console.log(`[RepairSubV2] Points already awarded for subscription ${stripeSubId}, skipping`);
       }
     } else {
       const entry = {
         amount: pointsToAward,
         type: 'earned',
-        description: `Subscription payment of $${amountPaid.toFixed(2)} (invoice ${invoiceId}) — recovery`,
+        description: `Subscription payment of $${amountPaid.toFixed(2)} (subscription ${stripeSubId})`,
         timestamp: new Date().toISOString(),
       };
       await base44.asServiceRole.entities.UserPoints.create({
@@ -170,7 +176,7 @@ Deno.serve(async (req) => {
         redeemed_points: 0,
         points_history: [entry],
       });
-      console.log(`[RepairSubV2] Created points record with ${pointsToAward} pts`);
+      console.log(`[RepairSubV2] Created points record with ${pointsToAward} pts for subscription ${stripeSubId}`);
     }
 
     // Fetch customer profile
