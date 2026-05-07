@@ -41,10 +41,13 @@ export default function Account() {
     enabled: !!user?.email,
   });
 
-  // Fetch orders for snapshot stats
+  // Fetch orders for snapshot stats (excluding refunded)
   const { data: orders = [] } = useQuery({
     queryKey: ['my-orders-count'],
-    queryFn: () => base44.entities.Order.filter({ customer_email: user?.email }, 'created_date', 100),
+    queryFn: async () => {
+      const allOrders = await base44.entities.Order.filter({ customer_email: user?.email }, '-created_date', 100);
+      return allOrders.filter(o => o.payment_status !== 'refunded' && o.status !== 'refunded');
+    },
     enabled: !!user?.email,
   });
 
