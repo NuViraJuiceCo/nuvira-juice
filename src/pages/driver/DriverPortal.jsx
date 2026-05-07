@@ -340,7 +340,6 @@ export default function DriverPortal() {
     setOptimizing(true);
 
     // Build the stops payload from Hub route data only — these are the ONLY stops we will optimize.
-    // The backend will use this exact list and NEVER re-fetch Customer App orders.
     const hubStops = activeStops
       .filter(t => t.delivery_address)
       .map(t => ({
@@ -360,13 +359,13 @@ export default function DriverPortal() {
     hubStops.forEach((s, i) => console.log(`  ${i + 1}. task_id=${s.task_id} customer=${s.customer_name} addr=${s.delivery_address}`));
 
     try {
-      // Pass Hub stops explicitly — backend must use these and NOT re-fetch from Customer App DB
-      const res = await base44.functions.invoke('optimizeDeliveryRoute', {
-        stops: hubStops,   // ← explicit Hub stop list; backend uses this, ignores local DB
-        optimize: true,
+      // Call hubOptimizeRoute — NEVER uses local Customer App Order DB, only Hub stops
+      const res = await base44.functions.invoke('hubOptimizeRoute', {
+        stops: hubStops,
+        date,
       });
 
-      const optimized = res.data?.optimized_orders || [];
+      const optimized = res.data?.optimized_orders || res.data?.orders || [];
 
       // ── Hard validation: reject any response that leaks non-Hub stops ──────
       const validTaskIds = new Set(activeStops.map(t => t.task_id).filter(Boolean));
