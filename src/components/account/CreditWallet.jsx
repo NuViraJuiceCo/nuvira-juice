@@ -193,18 +193,18 @@ export default function CreditWallet() {
 
   if (!creditData && returns.length === 0) {
     return (
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mt-4">
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="px-5 mt-3">
         <button onClick={() => setShowModal(true)} className="w-full text-left">
-          <div className="bg-primary rounded-2xl p-5 text-primary-foreground">
+          <div className="bg-primary rounded-2xl p-5 text-primary-foreground shadow-lg">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Leaf className="w-4 h-4 text-primary-foreground/60" />
-                <p className="text-[10px] font-bold uppercase tracking-widest text-primary-foreground/60">NuVira Credits</p>
+                <Leaf className="w-4 h-4 text-white/70" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">NuVira Credits</p>
               </div>
-              <span className="text-[10px] text-primary-foreground/40 font-medium">Tap to view →</span>
+              <span className="text-[10px] text-white/60 font-medium">Tap to view →</span>
             </div>
             <p className="font-heading text-5xl font-bold tracking-tight mb-0.5 text-white">$0.00</p>
-            <p className="text-xs text-primary-foreground/50">No credits yet — earn through returns & more</p>
+            <p className="text-xs text-white/65">No credits yet — earn through returns & more</p>
           </div>
         </button>
         {showModal && (
@@ -223,26 +223,26 @@ export default function CreditWallet() {
 
   return (
     <>
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mt-4">
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="px-5 mt-3">
         <button onClick={() => setShowModal(true)} className="w-full text-left">
-          <div className="bg-primary rounded-2xl p-5 text-primary-foreground">
+          <div className="bg-primary rounded-2xl p-5 text-primary-foreground shadow-lg">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Leaf className="w-4 h-4 text-primary-foreground/60" />
-                <p className="text-[10px] font-bold uppercase tracking-widest text-primary-foreground/60">NuVira Credits</p>
+                <Leaf className="w-4 h-4 text-white/70" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">NuVira Credits</p>
               </div>
-              <span className="text-[10px] text-primary-foreground/40 font-medium">Tap to view →</span>
+              <span className="text-[10px] text-white/60 font-medium">Tap to view →</span>
             </div>
             <p className="font-heading text-5xl font-bold tracking-tight mb-0.5 text-white">${balance.toFixed(2)}</p>
-            <p className="text-xs text-primary-foreground/50">Available for your next order</p>
-            <div className="grid grid-cols-2 gap-4 mt-5 pt-4 border-t border-primary-foreground/15">
+            <p className="text-xs text-white/65">Available for your next order</p>
+            <div className="grid grid-cols-2 gap-4 mt-5 pt-4 border-t border-white/20">
               <div>
-                <p className="text-[10px] text-primary-foreground/50 uppercase tracking-wider mb-0.5">Lifetime Earned</p>
-                <p className="text-sm font-semibold">${earned.toFixed(2)}</p>
+                <p className="text-[10px] text-white/65 uppercase tracking-wider mb-0.5">Lifetime Earned</p>
+                <p className="text-sm font-semibold text-white">${earned.toFixed(2)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-primary-foreground/50 uppercase tracking-wider mb-0.5">Applied</p>
-                <p className="text-sm font-semibold">${used.toFixed(2)}</p>
+                <p className="text-[10px] text-white/65 uppercase tracking-wider mb-0.5">Applied</p>
+                <p className="text-sm font-semibold text-white">${used.toFixed(2)}</p>
               </div>
             </div>
           </div>
