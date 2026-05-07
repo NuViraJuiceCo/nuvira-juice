@@ -158,11 +158,13 @@ export default function Home() {
       <QuickReorder lastOrder={lastOrder} />
 
       {/* Programs — Primary Revenue Section */}
-      <div className="mt-10 px-4 mb-4">
+      <div className="mt-10 px-4 mb-3">
         <h2 className="font-heading text-2xl font-bold mb-1">Your Wellness Plan</h2>
         <p className="text-sm text-muted-foreground">Choose your goal. We'll handle the rest.</p>
       </div>
-      <ProgramCards />
+      <div className="mt-2">
+        <ProgramCards />
+      </div>
 
       {/* Ticker — divider/transition strip after programs */}
       <div className="mt-10">
@@ -171,7 +173,7 @@ export default function Home() {
 
       {/* Quick Options — Secondary */}
       {(featured.length > 0 || products.filter(p => p.category === 'juice').length > 0) && (
-        <div className="mt-3">
+        <div className="mt-10">
           <ProductRow
             title="Quick Options"
             subtitle="Single bottles & small bundles"
