@@ -18,29 +18,30 @@ export default function AppLayout() {
   const [quizDone, setQuizDone] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="bg-background flex" style={{ minHeight: '100dvh' }}>
       {!profileDone && <ProfileSetup onComplete={(isNew) => { setProfileDone(true); if (isNew) setShowQuiz(true); }} />}
       {profileDone && showQuiz && !quizDone && <OnboardingQuiz onComplete={() => { setQuizDone(true); setShowQuiz(false); }} />}
       {/* Sidebar — tablet & desktop */}
       <SideNav />
 
-      {/* Main content */}
+      {/* Main content — single natural scroll container, no overflow-hidden */}
       <div className="flex-1 min-w-0">
-        <main className="pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-          {/* Always-mounted tab panels — preserves scroll & state */}
+        <main className="pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto">
+          {/* Always-mounted tab panels — display toggled to preserve scroll & state */}
           <div style={{ display: location.pathname === '/' ? 'block' : 'none' }}><Home /></div>
           <div style={{ display: location.pathname === '/shop' ? 'block' : 'none' }}><Shop /></div>
           <div style={{ display: location.pathname === '/cart' ? 'block' : 'none' }}><Cart /></div>
 
-          {/* Non-tab routes with slide transition */}
+          {/* Non-tab routes — fade+lift transition (no x-axis reflow) */}
           {!isTabRoute && (
-            <AnimatePresence>
+            <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
-                initial={{ x: 24, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -24, opacity: 0 }}
-                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
+                style={{ willChange: 'opacity, transform' }}
               >
                 <Outlet />
               </motion.div>

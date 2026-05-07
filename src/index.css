@@ -103,8 +103,15 @@
 }
 
 /* Native mobile feel */
-body {
+html, body {
   overscroll-behavior: none;
+  /* iOS momentum scrolling */
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  /* Prevent layout shifts on iOS from address bar height changes */
+  min-height: 100dvh;
 }
 
 button, a, nav {
@@ -116,13 +123,30 @@ svg {
   pointer-events: none;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar — hidden everywhere */
 ::-webkit-scrollbar {
   width: 0px;
+  height: 0px;
+}
+
+* {
+  scrollbar-width: none;
 }
 
 /* Smooth scroll */
 html {
   scroll-behavior: smooth;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* GPU-accelerated scroll containers — horizontal carousels */
+.snap-x {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Prevent horizontal scroll bleed on page root */
+#root {
+  overflow-x: hidden;
+  position: relative;
 }

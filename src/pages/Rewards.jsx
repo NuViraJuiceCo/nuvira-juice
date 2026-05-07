@@ -57,7 +57,7 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-xl"
+      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-xl relative"
       style={{ background: `linear-gradient(145deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` }}
     >
       {/* Gold accent arc */}
@@ -232,7 +232,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
 // ── Guest / logged-out view ─────────────────────────────────────────────────
 function GuestView() {
   return (
-    <div className="pb-28 min-h-screen" style={{ background: 'hsl(var(--background))' }}>
+    <div className="pb-28" style={{ background: 'hsl(var(--background))' }}>
       <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles." />
 
       {/* Hero */}
@@ -385,7 +385,7 @@ export default function Rewards() {
   if (!user) return <GuestView />;
 
   return (
-    <div className="pb-28 min-h-screen" style={{ background: 'hsl(var(--background))' }}>
+    <div className="pb-28" style={{ background: 'hsl(var(--background))' }}>
       <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles." />
 
       {/* Page title */}
