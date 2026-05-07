@@ -122,8 +122,9 @@ Deno.serve(async (req) => {
         }
       }
 
-      // For regular orders: create the order NOW after payment succeeds
-      if (true) {
+      // For regular one-time orders: create the order NOW after payment succeeds
+      // NOTE: Skip order creation for subscription checkouts — Hub owns subscription delivery generation
+      if (session.mode !== 'subscription') {
         const orderNumber = orderData.order_number || session.metadata?.order_number;
 
         // IDEMPOTENCY: Check if order already exists by stripe_checkout_session_id or order_number
