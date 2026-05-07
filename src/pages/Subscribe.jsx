@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Check, Zap, Crown, Leaf, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
+import SubscriptionEmbeddedCheckout from '@/components/checkout/SubscriptionEmbeddedCheckout';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -28,6 +29,8 @@ export default function Subscribe() {
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [showOutOfArea, setShowOutOfArea] = useState(false);
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState(null);
+  const [checkoutPublishableKey, setCheckoutPublishableKey] = useState(null);
   const debounceRef = useRef(null);
 
   const { data: plans = [] } = useQuery({
@@ -74,48 +77,76 @@ export default function Subscribe() {
       alert('Checkout only works from the published app, not the preview.');
       return;
     }
+
+    if (!user) {
+      base44.auth.redirectToLogin('/subscribe');
+      return;
+    }
+
     const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
     if (!addressString.trim()) {
       toast.error('Please enter your delivery address');
-      return;
-    }
-    if (calculating) {
-      toast.error('Please wait while we verify your address');
-      return;
-    }
-    // Always do a fresh live check on subscribe click
-    setLoading(true);
-    const zoneRes = await base44.functions.invoke('calculateDeliveryZone', { address: addressString });
-    const zoneData = zoneRes.data;
-    setCalculatedDistance(zoneData.distance);
-    setCalculatedZone(zoneData.zone || null);
-    if (!zoneData.zone) {
-      setShowOutOfArea(true);
-      setLoading(false);
       return;
     }
     if (!selectedPlanId) {
       toast.error('Please select a plan');
       return;
     }
+    if (calculating) {
+      toast.error('Please wait while we verify your address');
+      return;
+    }
+
     setLoading(true);
+
+    // Fresh delivery zone check
     try {
-      const res = await base44.functions.invoke('createSubscriptionSession', {
+      const zoneRes = await base44.functions.invoke('calculateDeliveryZone', { address: addressString });
+      const zoneData = zoneRes.data;
+      setCalculatedDistance(zoneData.distance);
+      setCalculatedZone(zoneData.zone || null);
+      if (!zoneData.zone) {
+        setShowOutOfArea(true);
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      console.error('[Subscribe] Zone check error:', err);
+      toast.error('Could not verify delivery address. Please try again.');
+      setLoading(false);
+      return;
+    }
+
+    // Create embedded subscription checkout session
+    try {
+      console.log('[Subscribe] Creating embedded subscription checkout...', { plan_id: selectedPlanId, customer_email: user.email });
+      const res = await base44.functions.invoke('createSubscriptionPaymentIntent', {
         plan_id: selectedPlanId,
         bundle_id: null,
-        address: addressString,
-        customer_email: user?.email || null,
+        customer_email: user.email,
+        contact_phone: '',
+        address_line1: address.street || '',
+        address_city: address.city || '',
+        address_state: address.state || '',
+        address_postal_code: address.zip || '',
+        delivery_address: addressString,
       });
-      if (res.data?.url) {
-        window.location.href = res.data.url;
+
+      console.log('[Subscribe] Checkout response:', res.data);
+
+      if (res.data?.clientSecret) {
+        setCheckoutClientSecret(res.data.clientSecret);
+        setCheckoutPublishableKey(res.data.publishableKey);
+        setLoading(false);
       } else {
-        console.error('Checkout session error:', res.data);
-        toast.error(res.data?.error || 'Failed to start checkout. Please try again.');
+        const errMsg = res.data?.error || 'Failed to start subscription checkout. Please try again.';
+        console.error('[Subscribe] Checkout creation failed:', res.data);
+        toast.error(errMsg);
         setLoading(false);
       }
     } catch (err) {
-      console.error('Checkout error:', err);
-      toast.error('An error occurred. Please try again.');
+      console.error('[Subscribe] Checkout error:', err);
+      toast.error('Subscription checkout could not be started. Please try again.');
       setLoading(false);
     }
   };
@@ -124,6 +155,26 @@ export default function Subscribe() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
+      {/* Embedded subscription checkout overlay */}
+      <AnimatePresence>
+        {checkoutClientSecret && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <SubscriptionEmbeddedCheckout
+              clientSecret={checkoutClientSecret}
+              publishableKey={checkoutPublishableKey}
+              onClose={() => {
+                setCheckoutClientSecret(null);
+                setCheckoutPublishableKey(null);
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {showOutOfArea && (
         <OutOfAreaModal
           address={addressString}
@@ -286,15 +337,22 @@ export default function Subscribe() {
         {address.street.trim() && calculating && (
           <p className="text-center text-xs text-muted-foreground">Verifying your address...</p>
         )}
+        {!user && (
+          <p className="text-center text-xs text-amber-600 font-medium">⚠ Sign in to subscribe</p>
+        )}
         <Button
           onClick={handleJoin}
           disabled={loading || !selectedPlanId || !address.street.trim() || calculating}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {loading ? 'Redirecting to payment...' : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
+          {loading
+            ? 'Opening checkout...'
+            : !user
+            ? 'Sign In to Subscribe'
+            : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
         </Button>
         <p className="text-center text-[10px] text-muted-foreground leading-relaxed">
-          No commitments. Cancel anytime directly from your Stripe billing portal.
+          No commitments. Cancel anytime directly from your account.
           Secured by Stripe — Apple Pay, Google Pay & all major cards accepted.
         </p>
       </div>
