@@ -32,7 +32,8 @@ export default function ProductCard({ product, compact = false }) {
       <Link to={`/shop/${product.id}`}>
         <motion.div
           whileTap={{ scale: 0.95 }}
-          className="bg-card rounded-2xl border border-border/40 overflow-hidden shadow-sm"
+          className="bg-card rounded-2xl border border-border/50 overflow-hidden shadow-md"
+          style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
         >
           <div className="relative overflow-hidden" style={{ aspectRatio: '1/1' }}>
             {product.image_url ? (
@@ -84,7 +85,8 @@ export default function ProductCard({ product, compact = false }) {
     <Link to={`/shop/${product.id}`}>
       <motion.div
         whileTap={{ scale: 0.98 }}
-        className="bg-card rounded-xl border border-border/50 overflow-hidden"
+        className="bg-card rounded-xl border border-border/50 overflow-hidden shadow-md"
+        style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
       >
         <div className="aspect-[4/3] bg-secondary/50 relative overflow-hidden">
           {product.image_url ? (

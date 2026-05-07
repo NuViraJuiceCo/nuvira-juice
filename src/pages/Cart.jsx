@@ -118,7 +118,7 @@ export default function Cart() {
 
       {/* Subscriber Perks Banner */}
       {activeSubscription?.plan && (
-        <div className="mx-4 mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3">
+        <div className="mx-4 mb-3 border border-primary/30 rounded-xl p-3 shadow-md" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.12) 0%, rgba(14,90,67,0.08) 100%)` }}>
           <div className="flex items-center gap-2">
             <span className="text-base">⭐</span>
             <div className="flex-1">
@@ -134,7 +134,7 @@ export default function Cart() {
 
       {/* Active Tier Reward Banner */}
       {activeReward && (
-        <div className="mx-4 mb-3 bg-primary/10 border border-primary/30 rounded-xl p-3">
+        <div className="mx-4 mb-3 border border-primary/30 rounded-xl p-3 shadow-md" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.12) 0%, rgba(14,90,67,0.08) 100%)` }}>
           <div className="flex items-center gap-2">
             <span className="text-lg">{activeReward.icon || '🎁'}</span>
             <div className="flex-1">
@@ -223,7 +223,8 @@ export default function Cart() {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
-              className="bg-card rounded-xl border border-border/50 p-3"
+              className="bg-card rounded-xl border border-border/50 p-3 shadow-md"
+              style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)` }}
             >
               <div className="flex gap-3">
                 <div className="w-16 h-16 bg-secondary/50 rounded-lg overflow-hidden shrink-0">

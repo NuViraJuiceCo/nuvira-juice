@@ -73,7 +73,8 @@ export default function ProgramCards() {
             className="shrink-0 w-[78vw] snap-start"
           >
             <Link to={`/program/${program.key}`}>
-              <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform`}>
+              <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform shadow-lg`}
+                style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
                 {program.image && (
                   <div className="relative h-44 overflow-hidden">
                     <img
@@ -117,7 +118,8 @@ export default function ProgramCards() {
             transition={{ delay: i * 0.08 }}
           >
             <Link to={`/program/${program.key}`}>
-              <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] hover:scale-[1.01] transition-transform h-full flex flex-col`}>
+              <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] hover:scale-[1.01] transition-transform h-full flex flex-col shadow-lg`}
+                style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
                 {program.image && (
                   <div className="relative h-52 overflow-hidden">
                     <img

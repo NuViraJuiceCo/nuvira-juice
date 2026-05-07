@@ -57,8 +57,8 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-xl relative"
-      style={{ background: `linear-gradient(145deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` }}
+      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl relative border border-[#C9A24A]/15"
+      style={{ background: `linear-gradient(135deg, #0B3D2E 0%, #0E5A43 42%, #0A6A50 100%)` }}
     >
       {/* Gold accent arc */}
       <div className="absolute" style={{
@@ -138,10 +138,12 @@ function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 + i * 0.07 }}
-          className="rounded-2xl p-3.5 text-center"
+          className="rounded-2xl p-3.5 text-center shadow-md"
           style={{
-            background: gold ? `linear-gradient(135deg, ${GREEN_DEEP}08 0%, ${GOLD}10 100%)` : 'hsl(var(--card))',
-            border: gold ? `1px solid ${GOLD}30` : '1px solid hsl(var(--border) / 0.4)',
+            background: gold 
+              ? `linear-gradient(135deg, rgba(201,162,74,0.15) 0%, rgba(231,200,115,0.08) 100%)`
+              : `linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)`,
+            border: gold ? `1px solid rgba(201,162,74,0.35)` : '1px solid hsl(var(--border) / 0.5)',
           }}
         >
           <div className="w-7 h-7 rounded-full flex items-center justify-center mx-auto mb-1.5"
@@ -167,13 +169,13 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.07 }}
-      className="shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden"
+      className="shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden shadow-lg"
       style={{
-        border: unlocked ? `1.5px solid ${GOLD}50` : '1px solid hsl(var(--border) / 0.4)',
+        border: unlocked ? `1.5px solid rgba(201,162,74,0.5)` : '1px solid hsl(var(--border) / 0.5)',
         background: unlocked
-          ? `linear-gradient(145deg, hsl(var(--card)) 0%, ${GOLD}08 100%)`
-          : 'hsl(var(--card))',
-        boxShadow: unlocked ? `0 4px 20px ${GOLD}18` : '0 2px 8px rgba(0,0,0,0.06)',
+          ? `linear-gradient(135deg, rgba(11,61,46,0.08) 0%, rgba(201,162,74,0.12) 100%)`
+          : `linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)`,
+        boxShadow: unlocked ? `0 6px 24px rgba(201,162,74,0.12), 0 1px 3px rgba(0,0,0,0.1)` : '0 2px 8px rgba(0,0,0,0.06)',
       }}
     >
       {/* Top panel */}

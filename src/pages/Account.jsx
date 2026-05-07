@@ -98,7 +98,7 @@ export default function Account() {
             transition={{ delay: i * 0.05 }}
           >
             <Link to={path}>
-              <div className="flex items-center gap-3 p-3.5 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors">
+              <div className="flex items-center gap-3 p-3.5 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors shadow-sm" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}>
                 <div className="w-9 h-9 bg-primary/8 rounded-lg flex items-center justify-center shrink-0">
                   <Icon className="w-4 h-4 text-primary" />
                 </div>
@@ -125,7 +125,7 @@ export default function Account() {
               transition={{ delay: 0.25 + i * 0.05 }}
             >
               <Link to={path}>
-                <div className="flex items-center gap-3 p-3.5 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors">
+                <div className="flex items-center gap-3 p-3.5 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors shadow-sm" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}>
                   <div className="w-9 h-9 bg-primary/8 rounded-lg flex items-center justify-center shrink-0">
                     <Icon className="w-4 h-4 text-primary" />
                   </div>
@@ -145,7 +145,7 @@ export default function Account() {
       <div className="px-4 mt-4">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">Merch</p>
         <Link to="/merch">
-          <div className="flex items-center justify-between p-3.5 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors">
+          <div className="flex items-center justify-between p-3.5 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors shadow-sm" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}>
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-primary/8 rounded-lg flex items-center justify-center shrink-0">
                 <Shirt className="w-4 h-4 text-primary" />

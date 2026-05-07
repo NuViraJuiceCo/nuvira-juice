@@ -13,7 +13,8 @@ export default function SustainabilityTeaser() {
     >
       {/* Return + Reward */}
       <Link to="/return-reward">
-        <div className="bg-primary rounded-2xl p-4 h-full flex flex-col justify-between min-h-[130px] active:scale-[0.98] transition-transform">
+        <div className="rounded-2xl p-4 h-full flex flex-col justify-between min-h-[130px] active:scale-[0.98] transition-transform shadow-lg border border-primary/30"
+          style={{ background: `linear-gradient(135deg, #0B3D2E 0%, #0E5A43 100%)` }}>
           <div className="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center mb-3">
             <Leaf className="w-4 h-4 text-white" />
           </div>
@@ -29,7 +30,8 @@ export default function SustainabilityTeaser() {
 
       {/* NuVira Difference */}
       <Link to="/why-nuvira">
-        <div className="bg-accent rounded-2xl p-4 h-full flex flex-col justify-between min-h-[130px] active:scale-[0.98] transition-transform">
+        <div className="rounded-2xl p-4 h-full flex flex-col justify-between min-h-[130px] active:scale-[0.98] transition-transform shadow-lg border border-accent/30"
+          style={{ background: `linear-gradient(135deg, rgba(230,126,34,0.9) 0%, rgba(230,100,20,0.95) 100%)` }}>
           <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center mb-3">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
