@@ -1,0 +1,212 @@
+{
+  "name": "PendingSubscriptionCheckout",
+  "type": "object",
+  "properties": {
+    "stripe_checkout_session_id": {
+      "type": "string",
+      "description": "Stripe embedded checkout session ID"
+    },
+    "stripe_subscription_id": {
+      "type": "string",
+      "description": "Stripe subscription ID (populated after checkout.session.completed)"
+    },
+    "stripe_customer_id": {
+      "type": "string",
+      "description": "Stripe customer ID"
+    },
+    "customer_email": {
+      "type": "string",
+      "description": "Customer email for subscription"
+    },
+    "customer_name": {
+      "type": "string",
+      "description": "Customer full name"
+    },
+    "customer_phone": {
+      "type": "string",
+      "description": "Customer phone number"
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "SubscriptionPlan ID"
+    },
+    "plan_name": {
+      "type": "string",
+      "description": "Plan name (Weekly Fresh, Monthly Ritual, VIP Wellness)"
+    },
+    "cadence": {
+      "type": "string",
+      "enum": [
+        "weekly",
+        "monthly"
+      ],
+      "description": "Subscription frequency"
+    },
+    "bundle_id": {
+      "type": "string",
+      "description": "SubscriptionBundle ID if custom"
+    },
+    "delivery_address": {
+      "type": "string",
+      "description": "Full delivery address"
+    },
+    "address_line1": {
+      "type": "string"
+    },
+    "address_line2": {
+      "type": "string"
+    },
+    "address_city": {
+      "type": "string"
+    },
+    "address_state": {
+      "type": "string"
+    },
+    "address_postal_code": {
+      "type": "string"
+    },
+    "address_country": {
+      "type": "string",
+      "default": "US"
+    },
+    "delivery_zone_id": {
+      "type": "string",
+      "description": "DeliveryZone ID for this subscription"
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "stripe_price_id": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Product composition from subscription plan"
+    },
+    "order_timestamp": {
+      "type": "string",
+      "description": "ISO timestamp when checkout was created"
+    },
+    "order_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Order date in YYYY-MM-DD"
+    },
+    "order_time": {
+      "type": "string",
+      "description": "Order time in HH:MM format (Chicago time)"
+    },
+    "production_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Calculated first production date"
+    },
+    "first_delivery_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Calculated first fulfillment/delivery date"
+    },
+    "next_delivery_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Next recurring delivery date after first"
+    },
+    "delivery_window_label": {
+      "type": "string",
+      "default": "5 PM \u2013 8 PM",
+      "description": "Customer-facing delivery window (e.g., '5 PM \u2013 8 PM')"
+    },
+    "delivery_window_start": {
+      "type": "string",
+      "default": "17:00",
+      "description": "Delivery window start time (HH:MM, 24h)"
+    },
+    "delivery_window_end": {
+      "type": "string",
+      "default": "20:00",
+      "description": "Delivery window end time (HH:MM, 24h)"
+    },
+    "date_calculation_reason": {
+      "type": "string",
+      "description": "Log of why these dates were assigned (for audit/debugging)"
+    },
+    "date_calculation_version": {
+      "type": "string",
+      "description": "Version of delivery logic used (e.g., 'v1_may_2026')"
+    },
+    "hub_payload": {
+      "type": "object",
+      "description": "Full Hub customer.subscription_created payload (for retry/audit)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "completed",
+        "failed"
+      ],
+      "default": "pending",
+      "description": "Checkout status: pending \u2192 completed when webhook succeeds"
+    },
+    "completed_at": {
+      "type": "string",
+      "description": "ISO timestamp when webhook successfully processed"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error details if status=failed"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Admin notes about this subscription checkout"
+    }
+  },
+  "required": [
+    "stripe_checkout_session_id",
+    "customer_email",
+    "plan_id",
+    "delivery_zone_id",
+    "production_date",
+    "first_delivery_date"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

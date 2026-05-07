@@ -66,8 +66,6 @@ Deno.serve(async (req) => {
       // Handle subscription checkout — create Subscription record
       if (session.mode === 'subscription' && session.metadata?.plan_id) {
         const planId = session.metadata.plan_id;
-        const bundleId = session.metadata.bundle_id || null;
-        const deliveryAddress = session.metadata.delivery_address || '';
         const stripeSubscriptionId = session.subscription;
 
         if (!stripeSubscriptionId) {
@@ -83,101 +81,198 @@ Deno.serve(async (req) => {
           return Response.json({ received: true });
         }
 
-        console.log(`Subscription checkout completed for ${customerEmail}, plan: ${planId}, stripe sub: ${stripeSubscriptionId}`);
+        console.log(`[stripeWebhook] Subscription checkout completed for ${customerEmail}, plan: ${planId}, stripe sub: ${stripeSubscriptionId}`);
 
-        // Calculate next delivery date (next week for weekly, next month for monthly)
-        const allPlans = await base44.asServiceRole.entities.SubscriptionPlan.list();
-        const plan = allPlans.find(p => p.id === planId);
-        const now = new Date();
-        let nextDelivery = new Date(now);
-        if (plan?.frequency === 'weekly') {
-          nextDelivery.setDate(now.getDate() + 7);
-        } else {
-          nextDelivery.setMonth(now.getMonth() + 1);
+        // CRITICAL: Load PendingSubscriptionCheckout for complete metadata
+        const pendingCheckoutId = session.metadata?.pending_subscription_checkout_id;
+        let pendingCheckout = null;
+        
+        if (pendingCheckoutId) {
+          try {
+            const pendings = await base44.asServiceRole.entities.PendingSubscriptionCheckout.filter({ id: pendingCheckoutId });
+            if (pendings[0]) {
+              pendingCheckout = pendings[0];
+              console.log(`[stripeWebhook] Loaded PendingSubscriptionCheckout: ${pendingCheckoutId}`);
+            }
+          } catch (pendingErr) {
+            console.error(`[stripeWebhook] Failed to load PendingSubscriptionCheckout ${pendingCheckoutId}: ${pendingErr.message}`);
+          }
         }
-        const nextDeliveryStr = nextDelivery.toISOString().split('T')[0];
 
-        // Check if subscription already exists (avoid duplicates)
-        const existing = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
-        const alreadyExists = existing.some(s => s.plan_id === planId && s.status === 'active');
+        // Check if subscription already exists (avoid duplicates by stripe_subscription_id)
+        const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
+        const alreadyExists = existingSubs.some(s => s.stripe_subscription_id === stripeSubscriptionId);
 
         if (!alreadyExists) {
+          // Fetch plan + delivery zone
+          const allPlans = await base44.asServiceRole.entities.SubscriptionPlan.list();
+          const plan = allPlans.find(p => p.id === planId);
+          
+          const allZones = await base44.asServiceRole.entities.DeliveryZone.filter({ is_active: true });
+          const defaultZone = allZones[0];
+
+          // Use pending checkout data if available, fallback to metadata
+          const bundleId = pendingCheckout?.bundle_id || session.metadata?.bundle_id || null;
+          const deliveryAddress = pendingCheckout?.delivery_address || session.metadata?.delivery_address || '';
+          const deliveryZoneId = pendingCheckout?.delivery_zone_id || defaultZone?.id || null;
+          
+          const productionDate = pendingCheckout?.production_date || session.metadata?.production_date || null;
+          const firstDeliveryDate = pendingCheckout?.first_delivery_date || session.metadata?.first_delivery_date || null;
+          const nextDeliveryDate = pendingCheckout?.next_delivery_date || null;
+
+          if (!productionDate || !firstDeliveryDate) {
+            console.error(`[stripeWebhook] CRITICAL: Missing production/delivery dates for subscription. pending=${pendingCheckoutId}, prod=${productionDate}, delivery=${firstDeliveryDate}`);
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: 'SUB_DATE_MISSING',
+              status: 'error',
+              description: `Subscription for ${customerEmail} missing production_date or first_delivery_date. Pending checkout: ${pendingCheckoutId}`,
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+              triggered_by: 'stripe_webhook',
+            }).catch(() => {});
+            return Response.json({ received: true });
+          }
+
           const subscription = await base44.asServiceRole.entities.Subscription.create({
             customer_email: customerEmail,
+            stripe_subscription_id: stripeSubscriptionId,
             plan_id: planId,
             bundle_id: bundleId,
+            delivery_zone_id: deliveryZoneId,
             delivery_address: deliveryAddress,
             status: 'active',
-            started_date: now.toISOString().split('T')[0],
-            next_delivery_date: nextDeliveryStr,
+            started_date: firstDeliveryDate, // First delivery date as started date
+            next_delivery_date: nextDeliveryDate || firstDeliveryDate,
           });
-          console.log(`Subscription record created for ${customerEmail}: ${subscription.id}`);
+          console.log(`[stripeWebhook] Subscription record created: ${subscription.id}`);
 
-          // NOTE: generateSubscriptionOrders removed. Hub owns subscription delivery generation.
-          // Hub will generate 4 weekly delivery orders when subscription.created event is received.
+          // Fetch customer profile
+          const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail });
+          const profile = profiles[0] || {};
+          const resolvedCustomerName = session.metadata?.customer_name || (profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : customerEmail);
+          const resolvedPhone = session.metadata?.customer_phone || profile.phone || '';
 
-          // Fetch customer profile for name & phone
-             const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail });
-             const profile = profiles[0] || {};
-             const resolvedCustomerName = session.metadata?.customer_name || profile.first_name + ' ' + profile.last_name || customerEmail;
-             const resolvedPhone = session.metadata?.customer_phone || profile.phone || '';
+          // Resolve address fields
+          const resolvedAddressLine1 = pendingCheckout?.address_line1 || session.metadata?.delivery_address_line1 || '';
+          const resolvedAddressLine2 = pendingCheckout?.address_line2 || session.metadata?.delivery_address_line2 || '';
+          const resolvedAddressCity = pendingCheckout?.address_city || session.metadata?.delivery_city || '';
+          const resolvedAddressState = pendingCheckout?.address_state || session.metadata?.delivery_state || '';
+          const resolvedAddressZip = pendingCheckout?.address_postal_code || session.metadata?.delivery_postal_code || '';
+          const resolvedDeliveryWindowLabel = pendingCheckout?.delivery_window_label || session.metadata?.delivery_window_label || '5 PM – 8 PM';
+          const resolvedDeliveryWindowStart = pendingCheckout?.delivery_window_start || session.metadata?.delivery_window_start || '17:00';
+          const resolvedDeliveryWindowEnd = pendingCheckout?.delivery_window_end || session.metadata?.delivery_window_end || '20:00';
 
-             // Resolve address fields from metadata
-             const resolvedAddressLine1 = session.metadata?.delivery_address_line1 || '';
-             const resolvedAddressLine2 = session.metadata?.delivery_address_line2 || '';
-             const resolvedAddressCity = session.metadata?.delivery_city || '';
-             const resolvedAddressState = session.metadata?.delivery_state || '';
-             const resolvedAddressZip = session.metadata?.delivery_postal_code || '';
-             const resolvedDeliveryWindowLabel = session.metadata?.delivery_window_label || '5 PM – 8 PM';
-             const resolvedDeliveryWindowStart = session.metadata?.delivery_window_start || '17:00';
-             const resolvedDeliveryWindowEnd = session.metadata?.delivery_window_end || '20:00';
+          // Resolve products
+          let productsArray = pendingCheckout?.products || [];
+          if (productsArray.length === 0 && plan?.composition_template?.bottles_per_delivery?.length > 0) {
+            productsArray = plan.composition_template.bottles_per_delivery.map(bottle => ({
+              product_name: bottle.flavor || 'Juice',
+              quantity: bottle.quantity || 1,
+            }));
+          }
 
-             // Resolve products from plan composition_template
-             let productsArray = [];
-             if (plan?.composition_template?.bottles_per_delivery?.length > 0) {
-               productsArray = plan.composition_template.bottles_per_delivery.map(bottle => ({
-                 product_name: bottle.flavor || 'Juice',
-                 quantity: bottle.quantity || 1,
-               }));
-             }
+          // Build Hub payload with production_date and first_delivery_date
+          const hubPayload = {
+            event: 'customer.subscription_created',
+            customer_email: customerEmail,
+            data: {
+              subscription_id: subscription.id,
+              customer_name: resolvedCustomerName,
+              phone: resolvedPhone,
+              stripe_subscription_id: stripeSubscriptionId,
+              stripe_customer_id: session.customer || null,
+              customer_app_subscription_id: subscription.id,
+              payment_status: 'paid',
+              financial_status: 'paid',
+              first_invoice_id: session.invoice || null,
+              payment_intent_id: session.payment_intent || null,
+              plan_id: planId,
+              plan_name: plan?.name || 'Unknown',
+              cadence: plan?.frequency || 'monthly',
+              production_date: productionDate,
+              first_delivery_date: firstDeliveryDate,
+              next_delivery_date: nextDeliveryDate || firstDeliveryDate,
+              delivery_window_label: resolvedDeliveryWindowLabel,
+              delivery_window_start: resolvedDeliveryWindowStart,
+              delivery_window_end: resolvedDeliveryWindowEnd,
+              delivery_address: deliveryAddress,
+              address_line1: resolvedAddressLine1,
+              address_line2: resolvedAddressLine2,
+              address_city: resolvedAddressCity,
+              address_state: resolvedAddressState,
+              address_postal_code: resolvedAddressZip,
+              address_country: 'US',
+              products: productsArray,
+              subscription_started_date: firstDeliveryDate,
+              delivery_zone_id: deliveryZoneId,
+            },
+          };
 
-             // Sync subscription to hub with full payload
-             base44.asServiceRole.functions.invoke('syncCustomerToHub', {
-               event: 'customer.subscription_created',
-               customer_email: customerEmail,
-               data: {
-                 subscription_id: subscription.id,
-                 customer_name: resolvedCustomerName,
-                 phone: resolvedPhone,
-                 stripe_subscription_id: stripeSubscriptionId,
-                 stripe_customer_id: session.customer || null,
-                 customer_app_subscription_id: subscription.id,
-                 payment_status: 'paid',
-                 financial_status: 'paid',
-                 first_invoice_id: session.invoice || null,
-                 payment_intent_id: session.payment_intent || null,
-                 plan_id: planId,
-                 plan_name: plan?.name || 'Unknown',
-                 cadence: plan?.frequency || 'monthly',
-                 first_delivery_date: nextDeliveryStr,
-                 delivery_window_label: resolvedDeliveryWindowLabel,
-                 delivery_window_start: resolvedDeliveryWindowStart,
-                 delivery_window_end: resolvedDeliveryWindowEnd,
-                 delivery_address: deliveryAddress,
-                 address_line1: resolvedAddressLine1,
-                 address_line2: resolvedAddressLine2,
-                 address_city: resolvedAddressCity,
-                 address_state: resolvedAddressState,
-                 address_postal_code: resolvedAddressZip,
-                 address_country: 'US',
-                 products: productsArray,
-                 subscription_started_date: now.toISOString().split('T')[0],
-                 next_delivery_date: nextDeliveryStr,
-               },
-             })
-               .catch(err => console.error('Failed to sync subscription to hub:', err.message));
+          // Update pending checkout as completed
+          if (pendingCheckoutId) {
+            try {
+              await base44.asServiceRole.entities.PendingSubscriptionCheckout.update(pendingCheckoutId, {
+                status: 'completed',
+                completed_at: new Date().toISOString(),
+                stripe_subscription_id: stripeSubscriptionId,
+                hub_payload: hubPayload,
+              });
+              console.log(`[stripeWebhook] PendingSubscriptionCheckout ${pendingCheckoutId} marked completed`);
+            } catch (updateErr) {
+              console.warn(`[stripeWebhook] Failed to update PendingSubscriptionCheckout: ${updateErr.message}`);
+            }
+          }
+
+          // Sync to Hub
+          base44.asServiceRole.functions.invoke('syncCustomerToHub', hubPayload)
+            .catch(err => console.error('[stripeWebhook] Failed to sync subscription to hub:', err.message));
+
         } else {
-          console.log(`Subscription already exists for ${customerEmail}, skipping creation`);
+          console.log(`[stripeWebhook] Subscription already exists for ${customerEmail} (stripe_sub=${stripeSubscriptionId}), skipping creation`);
+        }
+
+        // Award loyalty points for subscription payment (10 pts per $1) — exactly once per stripe invoice
+        if (customerEmail && amountPaid > 0) {
+          const pointsToAward = Math.floor(amountPaid * 10);
+          const invoiceId = session.invoice;
+          
+          // Idempotency: check if points already awarded for this invoice
+          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
+          if (existing[0]) {
+            const alreadyAwarded = existing[0].points_history?.some(h => h.description?.includes(invoiceId));
+            if (!alreadyAwarded) {
+              const entry = {
+                amount: pointsToAward,
+                type: 'earned',
+                description: `Subscription payment of $${amountPaid.toFixed(2)} (invoice ${invoiceId})`,
+                timestamp: new Date().toISOString(),
+              };
+              const history = [...(existing[0].points_history || []), entry];
+              await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
+                total_points: (existing[0].total_points || 0) + pointsToAward,
+                lifetime_points: (existing[0].lifetime_points || 0) + pointsToAward,
+                points_history: history,
+              });
+              console.log(`[stripeWebhook] Awarded ${pointsToAward} pts to ${customerEmail} for subscription (invoice ${invoiceId})`);
+            } else {
+              console.log(`[stripeWebhook] Points already awarded for invoice ${invoiceId}, skipping`);
+            }
+          } else {
+            const entry = {
+              amount: pointsToAward,
+              type: 'earned',
+              description: `Subscription payment of $${amountPaid.toFixed(2)} (invoice ${invoiceId})`,
+              timestamp: new Date().toISOString(),
+            };
+            await base44.asServiceRole.entities.UserPoints.create({
+              customer_email: customerEmail,
+              total_points: pointsToAward,
+              lifetime_points: pointsToAward,
+              redeemed_points: 0,
+              points_history: [entry],
+            });
+            console.log(`[stripeWebhook] Created points record and awarded ${pointsToAward} pts to ${customerEmail} for subscription (invoice ${invoiceId})`);
+          }
         }
       }
 

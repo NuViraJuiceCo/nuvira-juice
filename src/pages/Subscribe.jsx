@@ -117,10 +117,10 @@ export default function Subscribe() {
       return;
     }
 
-    // Create embedded subscription checkout session
+    // Create embedded subscription checkout session (with full metadata parity)
     try {
       console.log('[Subscribe] Creating embedded subscription checkout...', { plan_id: selectedPlanId, customer_email: user.email });
-      const res = await base44.functions.invoke('createSubscriptionPaymentIntent', {
+      const res = await base44.functions.invoke('createSubscriptionPaymentIntentV2', {
         plan_id: selectedPlanId,
         bundle_id: null,
         customer_email: user.email,
