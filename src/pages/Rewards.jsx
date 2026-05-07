@@ -267,11 +267,11 @@ function GuestView() {
             <div key={label} className="rounded-2xl p-4 border"
               style={{ background: 'hsl(var(--card))', borderColor: `${GOLD}22` }}>
               <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2"
-                style={{ background: `${GOLD}15` }}>
-                <Icon className="w-4 h-4" style={{ color: GOLD }} />
+                style={{ background: `${GOLD}25` }}>
+                <Icon className="w-4 h-4" style={{ color: '#E7C873' }} />
               </div>
-              <p className="text-sm font-semibold">{label}</p>
-              <p className="text-xs mt-0.5 font-bold" style={{ color: GOLD }}>{pts}</p>
+              <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{label}</p>
+              <p className="text-xs mt-0.5 font-bold" style={{ color: '#E7C873' }}>{pts}</p>
             </div>
           ))}
         </div>
@@ -287,12 +287,12 @@ function GuestView() {
               <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"
                 style={{ background: `${GOLD}12` }}>{reward.icon}</div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">{reward.title}</p>
-                <p className="text-xs text-muted-foreground">{reward.description}</p>
+                <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{reward.title}</p>
+                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.75)' }}>{reward.description}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <Star className="w-3 h-3" style={{ color: GOLD, fill: GOLD }} />
-                <span className="text-xs font-bold" style={{ color: GOLD }}>{reward.points_required.toLocaleString()}</span>
+                <Star className="w-3 h-3" style={{ color: '#E7C873', fill: '#E7C873' }} />
+                <span className="text-xs font-bold" style={{ color: '#E7C873' }}>{reward.points_required.toLocaleString()}</span>
               </div>
             </div>
           ))}
@@ -524,8 +524,8 @@ export default function Rewards() {
               <ShoppingBag className="w-4 h-4" style={{ color: '#10B981' }} />
             </div>
             <div>
-              <p className="text-xs font-bold" style={{ color: '#10B981' }}>Shop Now</p>
-              <p className="text-[10px] font-semibold" style={{ color: 'hsl(var(--muted-foreground))' }}>10 pts per $1</p>
+              <p className="text-xs font-bold" style={{ color: '#FFFFFF' }}>Shop Now</p>
+              <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>10 pts per $1</p>
             </div>
           </div>
         </Link>
@@ -537,8 +537,8 @@ export default function Rewards() {
               <Cake className="w-4 h-4" style={{ color: '#9A7B2F' }} />
             </div>
             <div>
-              <p className="text-xs font-bold" style={{ color: '#0B3D2E' }}>Birthday Perk</p>
-              <p className="text-[10px] font-semibold" style={{ color: 'hsl(var(--muted-foreground))' }}>Free juice</p>
+              <p className="text-xs font-bold" style={{ color: '#FFFFFF' }}>Birthday Perk</p>
+              <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>Free juice</p>
             </div>
           </div>
         </Link>
