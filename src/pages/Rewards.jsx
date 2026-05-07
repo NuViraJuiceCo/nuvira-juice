@@ -252,7 +252,7 @@ function GuestView() {
           <button
             onClick={() => base44.auth.redirectToLogin(window.location.pathname)}
             className="w-full h-12 rounded-2xl font-bold text-sm"
-            style={{ background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)`, color: GREEN_DARK }}
+            style={{ background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)`, color: '#062A20' }}
           >
             Sign In to Start Earning
           </button>
@@ -394,7 +394,7 @@ export default function Rewards() {
       <div className="px-4 pt-6 pb-2 flex items-center justify-between" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
         <h1 className="font-heading text-2xl font-bold" style={{ color: 'hsl(var(--foreground))' }}>Rewards</h1>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
-          style={{ background: `${tier.color}25`, color: tier.color === '#7BA05B' || tier.color === '#A8A8A8' ? '#FFFFFF' : '#0B3D2E', border: `1.5px solid ${tier.color}55` }}>
+          style={{ background: `${tier.color}25`, color: '#FFFFFF', border: `1.5px solid ${tier.color}55` }}>
           <Star className="w-3 h-3" style={{ fill: tier.color }} />
           {tier.name}
         </div>
@@ -435,7 +435,7 @@ export default function Rewards() {
           </Link>
         ) : !birthday ? (
           <Link to="/account/settings">
-            <span className="text-xs font-bold px-3 py-1.5 rounded-xl whitespace-nowrap" style={{ background: `${GOLD}18`, color: GREEN_DEEP }}>Set Date</span>
+            <span className="text-xs font-bold px-3 py-1.5 rounded-xl whitespace-nowrap" style={{ background: `${GOLD}25`, color: '#FFFFFF', border: `1px solid ${GOLD}50` }}>Set Date</span>
           </Link>
         ) : null}
       </motion.div>
