@@ -178,7 +178,10 @@ Deno.serve(async (req) => {
         delivery_window_label:    resolvedWindowLabel,
         assigned_delivery_window_start: resolvedWindowStart,
         assigned_delivery_window_end:   resolvedWindowEnd,
-        status:                   'order_received',
+        // CRITICAL: pending_payment is NOT an operational status.
+        // This order must NOT sync to Hub, appear in Driver Portal, route optimization,
+        // production, or Order Management active views until payment_intent.succeeded fires.
+        status:                   'pending_payment',
         payment_status:           'pending',
         financial_status:         'pending',
         payment_captured:         false,
@@ -186,7 +189,7 @@ Deno.serve(async (req) => {
         referral_code:            (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
         is_preorder:              false,
         status_history: [{
-          status:    'order_received',
+          status:    'pending_payment',
           timestamp: new Date().toISOString(),
           message:   'Order created — awaiting payment confirmation.',
         }],

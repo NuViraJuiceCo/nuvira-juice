@@ -303,8 +303,15 @@ export default function DriverPortal() {
 
   const handleOptimizeRoute = async () => {
     // CRITICAL: Only optimize stops that came from Hub — never touch local Customer App orders.
+    // Also exclude any stop that looks like an abandoned/pending checkout (belt-and-suspenders).
     const activeStops = [...(routeData?.ready_tasks || []), ...(routeData?.scheduled_tasks || [])]
-      .filter(t => t.status !== 'delivered' && t.status !== 'unable_to_deliver');
+      .filter(t =>
+        t.status !== 'delivered' &&
+        t.status !== 'unable_to_deliver' &&
+        t.status !== 'pending_payment' &&
+        t.status !== 'cancelled' &&
+        t.task_id // must have a real Hub task_id
+      );
 
     if (activeStops.length === 0) {
       toast.error('No active deliveries to optimize');

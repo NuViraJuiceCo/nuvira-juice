@@ -408,7 +408,13 @@ Deno.serve(async (req) => {
           return Response.json({ received: true });
         }
 
-        // Finalize the order
+        // Safety: do not finalize a cancelled/abandoned order
+        if (order.is_abandoned_checkout || order.do_not_recover) {
+          console.warn(`[PI succeeded] Order ${orderNumber} is marked abandoned/do_not_recover — skipping finalization`);
+          return Response.json({ received: true });
+        }
+
+        // Finalize the order — promote from pending_payment to operational
         const statusHistory = [...(order.status_history || []), {
           status: 'scheduled_for_juicing',
           timestamp: new Date().toISOString(),
@@ -585,6 +591,30 @@ Deno.serve(async (req) => {
         }).catch(() => {});
       }
 
+      return Response.json({ received: true });
+    }
+
+    // Embedded checkout: payment failed — mark pending order as cancelled/abandoned
+    if (event.type === 'payment_intent.payment_failed') {
+      const pi = event.data.object;
+      const orderNumber = pi.metadata?.order_number;
+      if (orderNumber && pi.metadata?.checkout_version === '3.0_embedded') {
+        console.log(`[PI payment_failed] PI ${pi.id} failed for order ${orderNumber}`);
+        const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: pi.id });
+        if (orders.length > 0 && !orders[0].payment_captured) {
+          await base44.asServiceRole.entities.Order.update(orders[0].id, {
+            status: 'cancelled',
+            is_abandoned_checkout: true,
+            do_not_recover: true,
+            canceled_at: new Date().toISOString(),
+            status_history: [
+              ...(orders[0].status_history || []),
+              { status: 'cancelled', timestamp: new Date().toISOString(), message: 'Payment failed — checkout abandoned.' },
+            ],
+          });
+          console.log(`[PI payment_failed] Marked order ${orderNumber} as abandoned`);
+        }
+      }
       return Response.json({ received: true });
     }
 

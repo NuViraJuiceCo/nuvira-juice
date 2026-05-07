@@ -53,6 +53,17 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'No order data' }, { status: 400 });
   }
 
+  // HARD GATE: Never sync unpaid, pending, or abandoned checkout orders to Hub.
+  // Only payment_captured=true + payment_status='paid' orders may enter Hub operational flow.
+  if (order.status === 'pending_payment' || order.is_abandoned_checkout || order.do_not_recover) {
+    console.log(`syncOrderToHub: BLOCKED — order ${order.order_number} is pending/abandoned (status=${order.status}, payment_captured=${order.payment_captured}). No Hub push.`);
+    return Response.json({ success: true, skipped: true, reason: 'pending_or_abandoned_checkout' });
+  }
+  if (!order.payment_captured || (order.payment_status !== 'paid' && order.financial_status !== 'paid')) {
+    console.log(`syncOrderToHub: BLOCKED — order ${order.order_number} not paid (payment_captured=${order.payment_captured}, payment_status=${order.payment_status}). No Hub push.`);
+    return Response.json({ success: true, skipped: true, reason: 'payment_not_captured' });
+  }
+
   // Block known test orders — hardcoded blocklist, never send to Hub
   if (DO_NOT_SYNC_ORDER_NUMBERS.has(order.order_number)) {
     console.log(`syncOrderToHub: SKIPPED — order ${order.order_number} is in DO_NOT_SYNC blocklist (test/cancelled). No Hub push.`);

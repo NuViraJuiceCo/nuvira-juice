@@ -41,6 +41,15 @@ const STATUS_COLORS = {
 
 const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
 
+// Orders that are NOT operational — never show in active/completed views
+function isAbandonedOrUnpaid(o) {
+  return (
+    o.status === 'pending_payment' ||
+    o.is_abandoned_checkout === true ||
+    (!o.payment_captured && o.payment_status !== 'paid' && o.financial_status !== 'paid')
+  );
+}
+
 // Parse YYYY-MM-DD as local date (avoids UTC midnight → previous day in CDT)
 function parseLocalDate(str) {
   if (!str) return new Date();
@@ -215,6 +224,7 @@ export default function AdminOrders() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('active');
+  const [showPending, setShowPending] = useState(false);
   const [advancingId, setAdvancingId] = useState(null);
 
   const [search, setSearch] = useState('');
@@ -247,21 +257,24 @@ export default function AdminOrders() {
     return map;
   }, [profiles]);
 
-  // Exclude cancelled/refunded/test orders from ALL views in Order Management.
-  // These are not operational and should not appear as active or completed.
+  // Split: pending/abandoned vs operational
+  const pendingOrders = orders.filter(o => isAbandonedOrUnpaid(o));
+
+  // Operational = paid, non-cancelled, non-test, non-refunded, non-abandoned
   const operationalOrders = orders.filter(o =>
+    !isAbandonedOrUnpaid(o) &&
     !o.is_test_order &&
     !o.do_not_recover &&
     o.payment_status !== 'refunded' &&
     o.financial_status !== 'refunded' &&
-    o.status !== 'cancelled' &&
-    // exclude abandoned payment_captured=false orders that were never paid
-    !(o.payment_captured === false && o.payment_status !== 'paid' && o.financial_status !== 'paid')
+    o.status !== 'cancelled'
   );
 
   const statusFiltered = filter === 'active'
     ? operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status))
-    : operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status));
+    : filter === 'completed'
+    ? operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status))
+    : pendingOrders; // 'pending' tab
 
   const filtered = search
     ? statusFiltered.filter(o => {
@@ -360,6 +373,7 @@ export default function AdminOrders() {
         {[
           { key: 'active', label: `Active (${operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status)).length})` },
           { key: 'completed', label: `Completed (${operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status)).length})` },
+          { key: 'pending', label: `Pending (${pendingOrders.length})` },
         ].map(tab => (
           <button
             key={tab.key}
