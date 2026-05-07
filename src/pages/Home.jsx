@@ -196,9 +196,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="mt-10">
-        <SustainabilityTeaser />
-      </div>
+      <SustainabilityTeaser />
       <BrandSection />
       <MerchTeaser />
 
