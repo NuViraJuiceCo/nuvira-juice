@@ -148,6 +148,18 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
   };
 
   const hasPhoto = !!userProfile?.profile_photo_url;
+  
+  // Get initials for fallback avatar
+  const getInitials = () => {
+    if (user?.first_name) {
+      return user.first_name.charAt(0).toUpperCase();
+    }
+    if (user?.email) {
+      return user.email.charAt(0).toUpperCase();
+    }
+    return 'U';
+  };
+  const initials = getInitials();
 
   return (
     <>
@@ -166,9 +178,9 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="flex items-center justify-center w-full h-full">
-              <User className="w-7 h-7 text-primary" />
-            </div>
+            <span className="font-heading text-lg font-bold text-primary leading-none">
+              {initials}
+            </span>
           )}
           
           {/* Loading Overlay */}
@@ -208,15 +220,15 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
             />
             
             {/* Centered Modal */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
-              style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
-            >
-              <div className="bg-background rounded-2xl w-full max-w-sm shadow-2xl pointer-events-auto mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                className="bg-background rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {/* Header */}
                 <div className="px-5 py-4 border-b border-border/40">
                   <p className="font-heading text-lg font-bold text-center">Profile Photo</p>
@@ -285,8 +297,8 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
                   onChange={handleFileSelect}
                   className="hidden"
                 />
-              </div>
-            </motion.div>
+              </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>
