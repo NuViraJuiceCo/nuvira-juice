@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import {
-  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Truck, Crown, Wallet, Star, Package
+  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package
 } from 'lucide-react';
 import CreditWallet from '@/components/account/CreditWallet';
 import { motion } from 'framer-motion';
@@ -381,87 +381,64 @@ export default function Account() {
         </Link>
       </div>
 
-      {/* Driver & Admin - Utility Tools (Visually Secondary) */}
-      {(user?.role === 'driver' || user?.role === 'admin') && (
+      {/* Admin Tools - Utility Section */}
+      {user?.role === 'admin' && (
         <div className="px-5 mb-8">
           <div className="rounded-2xl border border-border/50 dark:border-primary/20 overflow-hidden bg-card/40 dark:bg-card/25">
             <div className="px-4 py-2.5 border-b border-border/50 dark:border-primary/20">
-              <p className="text-[10px] font-semibold text-muted-foreground dark:text-muted-foreground/75 uppercase tracking-wider">Tools</p>
+              <p className="text-[10px] font-semibold text-muted-foreground dark:text-muted-foreground/75 uppercase tracking-wider">Admin Tools</p>
             </div>
-            {user?.role === 'driver' && (
-              <Link to="/driver">
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.75 }}
-                  className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                    <Truck className="w-4 h-4 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground dark:text-white">Driver Portal</p>
-                    <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Route planner & bag returns</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-                </motion.div>
-              </Link>
-            )}
-            {user?.role === 'admin' && (
-              <>
-                <Link to="/admin/orders">
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.78 }}
-                    className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                      <ClipboardList className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground dark:text-white">Order Management</p>
-                      <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Update statuses</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-                  </motion.div>
-                </Link>
-                <Link to="/admin/shopify">
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.8 }}
-                    className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                      <Zap className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground dark:text-white">Shopify</p>
-                      <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Sync & webhooks</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-                  </motion.div>
-                </Link>
-                <Link to="/admin/products">
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.82 }}
-                    className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                      <ImagePlus className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground dark:text-white">Product Images</p>
-                      <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Manage photos</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-                  </motion.div>
-                </Link>
-              </>
-            )}
+            <Link to="/admin/orders">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.75 }}
+                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
+              >
+                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
+                  <ClipboardList className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground dark:text-white">Order Management</p>
+                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Update statuses</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
+              </motion.div>
+            </Link>
+            <Link to="/admin/shopify">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.78 }}
+                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
+              >
+                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
+                  <Zap className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground dark:text-white">Shopify</p>
+                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Sync & webhooks</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
+              </motion.div>
+            </Link>
+            <Link to="/admin/products">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.8 }}
+                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
+                  <ImagePlus className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground dark:text-white">Product Images</p>
+                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Manage photos</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
+              </motion.div>
+            </Link>
           </div>
         </div>
       )}

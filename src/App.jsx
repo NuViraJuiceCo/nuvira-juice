@@ -40,7 +40,6 @@ import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
 import SyncStatus from '@/pages/admin/SyncStatus';
 import LiveCheckoutMonitor from '@/pages/admin/LiveCheckoutMonitor';
-import DriverPortal from '@/pages/driver/DriverPortal';
 import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
 import LowercaseRedirect from '@/components/LowercaseRedirect';
@@ -106,11 +105,7 @@ const AuthenticatedApp = () => {
     }
   }
 
-  // Auto-redirect drivers to /driver (but not admins — they see everything)
-  if (user?.role === 'driver' && !location.pathname.startsWith('/driver')) {
-    window.location.replace('/driver');
-    return null;
-  }
+
 
   // Auto-redirect to account setup if profile is not complete (but skip if already on setup page)
   if (user?.email && !userProfileForOnboarding?.onboarding_complete && location.pathname !== '/account-setup') {
@@ -159,10 +154,6 @@ const AuthenticatedApp = () => {
           <Route path="/admin/live-monitor" element={<ProtectedRoute element={<LiveCheckoutMonitor />} user={user} />} />
           <Route path="/return-reward" element={<ProtectedRoute element={<ReturnReward />} user={user} />} />
         </Route>
-        {/* Driver portal — standalone, no customer nav */}
-        <Route path="/driver" element={<DriverPortal />} />
-        <Route path="/driver/returns" element={<DriverPortal />} />
-        <Route path="/driver/route" element={<DriverPortal />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order-confirmation" element={<OrderConfirmation />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
@@ -174,6 +165,9 @@ const AuthenticatedApp = () => {
         <Route path="/event/*" element={<Navigate to="/events" replace />} />
         <Route path="/inavii_ig_media" element={<Navigate to="/" replace />} />
         <Route path="/inavii_ig_media/*" element={<Navigate to="/" replace />} />
+        {/* Redirect old driver portal routes to home */}
+        <Route path="/driver" element={<Navigate to="/" replace />} />
+        <Route path="/driver/*" element={<Navigate to="/" replace />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </CartProvider>
