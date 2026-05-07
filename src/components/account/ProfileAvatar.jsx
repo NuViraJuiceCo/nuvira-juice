@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { User, Camera, X, Loader2 } from 'lucide-react';
+import { User, Camera, X, Loader2, Crown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
@@ -180,7 +180,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
         {/* Crown Badge */}
         {user && (
           <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-accent to-accent/80 rounded-full border-2 border-card flex items-center justify-center shadow-md">
-            <User className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+            <Crown className="w-3.5 h-3.5 text-white" />
           </div>
         )}
 
