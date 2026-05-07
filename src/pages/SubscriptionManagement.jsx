@@ -19,8 +19,14 @@ export default function SubscriptionManagement() {
     if (params.get('subscribed') === 'true') {
       toast.success('Subscription activated! Welcome to NuVira Wellness. 🌿');
       window.history.replaceState({}, '', window.location.pathname);
+      // Refetch subscriptions immediately
+      refetch();
+      // Poll for 30 seconds in case webhook is still processing
+      const pollInterval = setInterval(() => refetch(), 2000);
+      const timeout = setTimeout(() => clearInterval(pollInterval), 30000);
+      return () => { clearInterval(pollInterval); clearTimeout(timeout); };
     }
-  }, []);
+  }, [refetch]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [selectedSubId, setSelectedSubId] = useState(null);
@@ -150,8 +156,8 @@ export default function SubscriptionManagement() {
 
   return (
     <div className="min-h-screen bg-background pb-8">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
+      {/* Header with safe-area top padding */}
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <Link to="/account">
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
             <ArrowLeft className="w-4 h-4" />

@@ -70,6 +70,19 @@ Deno.serve(async (req) => {
         const deliveryAddress = session.metadata.delivery_address || '';
         const stripeSubscriptionId = session.subscription;
 
+        if (!stripeSubscriptionId) {
+          console.error(`[stripeWebhook] CRITICAL: Subscription checkout missing session.subscription for ${customerEmail}, plan ${planId}. Cannot proceed.`);
+          await base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: 'SUB_FAILED',
+            status: 'error',
+            description: `Subscription checkout for ${customerEmail} (plan ${planId}) failed: session.subscription is null/undefined. Stripe session: ${session.id}`,
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+            triggered_by: 'stripe_webhook',
+          }).catch(() => {});
+          return Response.json({ received: true });
+        }
+
         console.log(`Subscription checkout completed for ${customerEmail}, plan: ${planId}, stripe sub: ${stripeSubscriptionId}`);
 
         // Calculate next delivery date (next week for weekly, next month for monthly)

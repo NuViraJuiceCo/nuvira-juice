@@ -25,7 +25,7 @@ export default function SubscriptionEmbeddedCheckout({ clientSecret, publishable
   if (!clientSecret || !stripePromise) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+    <div className="fixed inset-0 z-50 flex flex-col bg-background" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-background shrink-0">
         <span className="font-heading text-base font-semibold">Complete Subscription</span>
@@ -37,8 +37,8 @@ export default function SubscriptionEmbeddedCheckout({ clientSecret, publishable
         </button>
       </div>
 
-      {/* Stripe Embedded Checkout fills remaining space */}
-      <div className="flex-1 overflow-auto">
+      {/* Stripe Embedded Checkout fills remaining space with safe scrolling */}
+      <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 56px)' }}>
         <EmbeddedCheckoutProvider
           stripe={stripePromise}
           options={{ fetchClientSecret }}
