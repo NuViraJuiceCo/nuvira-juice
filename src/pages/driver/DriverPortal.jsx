@@ -286,9 +286,23 @@ export default function DriverPortal() {
 
   const isAuthorized = user?.role === 'driver' || user?.role === 'admin' || user?.role === 'operations';
 
+  // Clear any stale PWA/browser cached optimized route state on mount
+  useEffect(() => {
+    setOptimizedOrder(null);
+    // Also nuke any accidental localStorage persistence of route state
+    try {
+      Object.keys(localStorage).forEach(k => {
+        if (k.includes('optimized') || k.includes('route') || k.includes('driver')) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch {}
+  }, []);
+
   const loadRoute = useCallback(async (selectedDate) => {
     setLoading(true);
-    setOptimizedOrder(null);
+    setOptimizedOrder(null); // Always clear optimized route before loading new data
+    setRouteData(null);      // Clear stale route data immediately so old stops don't linger
     try {
       const res = await base44.functions.invoke('getHubDriverRoute', { date: selectedDate });
       setRouteData(res.data);
@@ -395,6 +409,27 @@ export default function DriverPortal() {
   useEffect(() => {
     if (isAuthorized) loadRoute(date);
   }, [date, isAuthorized, loadRoute]);
+
+  // Hard runtime guard: if optimizedOrder exists but doesn't match current Hub route, discard it
+  useEffect(() => {
+    if (!optimizedOrder || !routeData) return;
+
+    const currentHubTaskIds = new Set([
+      ...(routeData.ready_tasks || []),
+      ...(routeData.scheduled_tasks || []),
+    ].map(t => t.task_id).filter(Boolean));
+
+    const deliveryStops = optimizedOrder.filter(t => !t.is_return_stop);
+
+    const hasInvalidStop = deliveryStops.some(t => !t.task_id || !currentHubTaskIds.has(t.task_id));
+    const tooManyStops = deliveryStops.length > currentHubTaskIds.size;
+
+    if (hasInvalidStop || tooManyStops) {
+      console.warn(`[DriverPortal] Discarding stale optimizedOrder — ${deliveryStops.length} optimized stops vs ${currentHubTaskIds.size} current Hub stops. hasInvalidStop=${hasInvalidStop}`);
+      setOptimizedOrder(null);
+      toast('Cleared stale optimized route — refreshed from Hub.', { icon: '🔄' });
+    }
+  }, [optimizedOrder, routeData]);
 
   const handleAction = async (taskId, action, extra = {}) => {
     setActingTaskId(taskId);
