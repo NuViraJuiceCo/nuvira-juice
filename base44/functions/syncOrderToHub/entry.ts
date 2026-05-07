@@ -208,6 +208,14 @@ Deno.serve(async (req) => {
   console.log(`syncOrderToHub: PAYLOAD for ${order.order_number}: ${payloadSummary}`);
 
   try {
+    // Log refund-specific details
+    if (eventType === 'order.refunded') {
+      console.log(`[syncOrderToHub:REFUND] Sending order.refunded event for ${order.order_number}`);
+      console.log(`[syncOrderToHub:REFUND] Endpoint: ${HUB_API_URL}`);
+      console.log(`[syncOrderToHub:REFUND] Auth: Authorization: Bearer ${(CUSTOMER_APP_SYNC_SECRET || 'NOT_SET').substring(0,20)}...`);
+      console.log(`[syncOrderToHub:REFUND] Refund details: amount=$${order.refund_amount}, id=${order.refund_id}, full=${!order.is_partial_refund}`);
+    }
+
     const response = await fetch(HUB_API_URL, {
       method: 'POST',
       headers: {
@@ -221,13 +229,22 @@ Deno.serve(async (req) => {
     let hubResponse = null;
     try { hubResponse = JSON.parse(responseText); } catch { hubResponse = responseText; }
 
+    if (eventType === 'order.refunded') {
+      console.log(`[syncOrderToHub:REFUND] Response status: ${response.status}`);
+      console.log(`[syncOrderToHub:REFUND] Response body: ${responseText.substring(0, 300)}`);
+    }
+
     if (response.status === 410) {
       console.log(`syncOrderToHub: Hub push deprecated (410). Order ${order.order_number} safe in Customer App DB.`);
       return Response.json({ success: true, note: 'Hub pull model — order will sync on next hub pull cycle' });
     }
 
     if (!response.ok) {
-      console.error(`syncOrderToHub: hub returned ${response.status} for ${order.order_number}:`, responseText);
+      const errorMsg = `syncOrderToHub: hub returned ${response.status} for ${order.order_number}: ${responseText.substring(0, 200)}`;
+      console.error(errorMsg);
+      if (eventType === 'order.refunded') {
+        console.error(`[syncOrderToHub:REFUND] ❌ FAILED: ${errorMsg}`);
+      }
       // Log as error — eligible for retry by retryFailedHubSyncs
       try {
         await base44.asServiceRole.entities.OrderSyncLog.create({

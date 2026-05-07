@@ -89,21 +89,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Sync to Hub with refund event
+    // Sync to Hub with refund event via shared helper
     try {
-      const syncResult = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+      const syncResult = await base44.asServiceRole.functions.invoke('syncRefundToHub', {
         order_id: order.id,
-        stripe_session: {
-          payment_status: 'refunded',
-          id: stripe_refund_id || 'manual_refund',
-          refund_amount: effectiveRefundAmount,
-          is_full_refund: isFull,
-        },
+        stripe_session: { id: stripe_refund_id || 'manual_refund' },
         triggered_by: 'manual_refund_process',
       });
-      console.log(`[processManualRefund] ✅ Hub sync result:`, syncResult);
+      if (syncResult?.success) {
+        console.log(`[processManualRefund] ✅ Hub refund sync succeeded`);
+      } else {
+        console.log(`[processManualRefund] ⚠️ Hub refund sync returned:`, syncResult);
+      }
     } catch (syncErr) {
-      console.error(`[processManualRefund] ❌ Hub sync failed: ${syncErr.message}`);
+      console.error(`[processManualRefund] ❌ Hub refund sync helper failed: ${syncErr.message}`);
       await base44.asServiceRole.entities.OrderSyncLog.create({
         order_number: order_number,
         status: 'error',

@@ -781,21 +781,20 @@ Deno.serve(async (req) => {
         console.warn(`[charge.refunded] Failed to log refund: ${logErr.message}`);
       }
 
-      // Sync refund to Hub
+      // Sync refund to Hub via shared helper
       try {
-        await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+        const refundSyncResult = await base44.asServiceRole.functions.invoke('syncRefundToHub', {
           order_id: order.id,
-          stripe_session: {
-            payment_status: 'refunded',
-            id: charge.id,
-            refund_amount: refundAmount,
-            is_full_refund: isFullRefund,
-          },
+          stripe_session: { id: charge.id },
           triggered_by: 'stripe_refund_webhook',
         });
-        console.log(`[charge.refunded] ✅ Order ${orderNumber} refund synced to Hub`);
+        if (refundSyncResult?.success) {
+          console.log(`[charge.refunded] ✅ Order ${orderNumber} refund synced to Hub successfully`);
+        } else {
+          console.error(`[charge.refunded] ⚠️ Order ${orderNumber} refund sync returned: ${refundSyncResult?.error}`);
+        }
       } catch (syncErr) {
-        console.error(`[charge.refunded] ❌ Hub sync failed for ${orderNumber}: ${syncErr.message}`);
+        console.error(`[charge.refunded] ❌ Hub sync helper failed for ${orderNumber}: ${syncErr.message}`);
         try {
           await base44.asServiceRole.entities.OrderSyncLog.create({
             order_number: orderNumber,
