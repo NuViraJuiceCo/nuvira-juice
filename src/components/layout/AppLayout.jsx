@@ -25,7 +25,7 @@ export default function AppLayout() {
       <SideNav />
 
       {/* Main content — single natural scroll container, no overflow-hidden */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 md:ml-60">
         <main className="pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto">
           {/* Always-mounted tab panels — display toggled to preserve scroll & state */}
           <div style={{ display: location.pathname === '/' ? 'block' : 'none' }}><Home /></div>
