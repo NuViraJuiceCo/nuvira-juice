@@ -318,6 +318,24 @@ export default function Rewards() {
       return results[0] || null;
     },
     enabled: !!user?.email,
+    staleTime: 0,
+    gcTime: 0, // Force fresh fetch each time
+  });
+
+  // Validate points against actual valid orders to catch reconciliation issues
+  const { data: validOrders = [] } = useQuery({
+    queryKey: ['valid-orders-for-points', user?.email],
+    queryFn: async () => {
+      const allOrders = await base44.entities.Order.filter({ customer_email: user?.email }, '-created_date', 100);
+      return allOrders.filter(o =>
+        o.payment_status === 'paid' &&
+        o.payment_captured === true &&
+        !['cancelled', 'refunded', 'pending_payment'].includes(o.status) &&
+        !o.is_abandoned_checkout &&
+        !o.is_test_order
+      );
+    },
+    enabled: !!user?.email,
   });
 
   const { data: userProfile } = useQuery({

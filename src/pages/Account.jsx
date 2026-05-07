@@ -41,14 +41,22 @@ export default function Account() {
     enabled: !!user?.email,
   });
 
-  // Fetch orders for snapshot stats (excluding refunded)
+  // Fetch only valid paid, non-refunded, non-cancelled, non-test, non-abandoned orders
   const { data: orders = [] } = useQuery({
-    queryKey: ['my-orders-count'],
+    queryKey: ['my-valid-orders-count'],
     queryFn: async () => {
       const allOrders = await base44.entities.Order.filter({ customer_email: user?.email }, '-created_date', 100);
-      return allOrders.filter(o => o.payment_status !== 'refunded' && o.status !== 'refunded');
+      return allOrders.filter(o =>
+        o.payment_status === 'paid' &&
+        o.payment_captured === true &&
+        !['cancelled', 'refunded', 'pending_payment'].includes(o.status) &&
+        !o.is_abandoned_checkout &&
+        !o.is_test_order
+      );
     },
     enabled: !!user?.email,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   // Fetch subscriptions for snapshot stats

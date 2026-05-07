@@ -55,10 +55,16 @@ export default function OrderHistory() {
     enabled: !!user?.email,
   });
 
-  // Exclude pending-payment orders (embedded flow pre-creates Order before payment)
-  const paidOrders = orders.filter(o => o.payment_captured !== false || o.payment_status === 'paid');
-  const activeOrders = paidOrders.filter(o => !['delivered', 'picked_up'].includes(o.status));
-  const completedOrders = paidOrders.filter(o => ['delivered', 'picked_up'].includes(o.status));
+  // Filter to valid paid, non-refunded, non-abandoned, non-test orders
+  const validOrders = orders.filter(o => 
+    o.payment_status === 'paid' &&
+    o.payment_captured === true &&
+    !['cancelled', 'refunded', 'pending_payment'].includes(o.status) &&
+    !o.is_abandoned_checkout &&
+    !o.is_test_order
+  );
+  const activeOrders = validOrders.filter(o => !['delivered', 'picked_up'].includes(o.status));
+  const completedOrders = validOrders.filter(o => ['delivered', 'picked_up'].includes(o.status));
 
   return (
     <PullToRefresh onRefresh={refetch}>
@@ -74,10 +80,10 @@ export default function OrderHistory() {
         <div className="px-4 space-y-3">
           {[1,2,3].map(i => <div key={i} className="h-20 bg-secondary/50 rounded-xl animate-pulse" />)}
         </div>
-      ) : orders.length === 0 ? (
+      ) : validOrders.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20">
           <Package className="w-10 h-10 text-muted-foreground mb-3" />
-          <p className="text-sm text-muted-foreground">No orders yet</p>
+          <p className="text-sm text-muted-foreground">No valid orders yet</p>
           <Link to="/shop" onClick={() => sessionStorage.setItem('shopResetTab', '1')} className="text-sm text-primary font-medium mt-2">Start Shopping</Link>
         </div>
       ) : (
