@@ -150,7 +150,7 @@ function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
             style={{ background: gold ? `${GOLD}25` : 'hsl(var(--muted))' }}>
             <Icon className="w-3.5 h-3.5" style={{ color: gold ? '#9A7B2F' : 'hsl(var(--muted-foreground))' }} />
           </div>
-          <p className="font-heading text-base font-bold" style={{ color: gold ? '#0B3D2E' : 'hsl(var(--foreground))' }}>{value}</p>
+          <p className="font-heading text-base font-bold" style={{ color: '#FFFFFF' }}>{value}</p>
           <p className="text-[10px] font-semibold mt-0.5" style={{ color: gold ? '#0B3D2E' : 'hsl(var(--muted-foreground))' }}>{label}</p>
         </motion.div>
       ))}
