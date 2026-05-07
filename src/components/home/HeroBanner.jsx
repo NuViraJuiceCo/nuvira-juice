@@ -19,11 +19,18 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
   const deliveryText = getDeliveryDisplayText(scheduleRules);
 
   const activeBanners = banners.length > 0 ? banners.map(banner => {
-    // Ensure product images match product names in title
+    // CRITICAL: Force correct product images based on title — zero fallback to wrong images
     let image = banner.image_url;
-    if (banner.title?.includes('Oasis')) image = PRODUCT_IMAGE_MAP.Oasis;
-    if (banner.title?.includes('Re-Nu')) image = PRODUCT_IMAGE_MAP['Re-Nu'];
-    if (banner.title?.includes('Aura')) image = PRODUCT_IMAGE_MAP.Aura;
+    
+    // Product-specific overrides (absolute priority)
+    if (banner.title?.toLowerCase().includes('oasis')) {
+      image = PRODUCT_IMAGE_MAP.Oasis;
+    } else if (banner.title?.toLowerCase().includes('re-nu')) {
+      image = PRODUCT_IMAGE_MAP['Re-Nu'];
+    } else if (banner.title?.toLowerCase().includes('aura')) {
+      image = PRODUCT_IMAGE_MAP.Aura;
+    }
+    
     return { ...banner, image_url: image };
   }) : [
     {
