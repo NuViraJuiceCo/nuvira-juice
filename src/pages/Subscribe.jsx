@@ -304,9 +304,9 @@ export default function Subscribe() {
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">FAQs</p>
         <div className="space-y-3">
           {[
-            { q: 'When will I be charged?', a: 'Your card is charged immediately when you subscribe, then automatically on the same day each week or month.' },
+            { q: 'When will I be charged?', a: 'Your card is charged immediately when you subscribe, then automatically on the same day each week or month. You control your subscription anytime from your account.' },
             { q: 'What juices do I get?', a: 'Weekly Fresh: 1 of each flavor (AURA, RE-NU, OASIS). Monthly Ritual & VIP: 1 (or 2 for VIP) of each flavor, 4 times that month.' },
-            { q: 'How do I pause or cancel?', a: 'You can cancel anytime through your Stripe billing portal or by emailing us. No fees, no penalties.' },
+            { q: 'How do I pause or cancel?', a: 'From your account, you can pause for 1-4 weeks, skip a delivery, or cancel anytime. Manage everything through your subscription dashboard or Stripe billing portal.' },
             { q: 'What does "order priority" mean?', a: 'Subscribers get their orders pressed first within each delivery window — so your juice is always the freshest.' },
           ].map(({ q, a }) => (
             <div key={q} className="bg-card border border-border/40 rounded-xl p-4">

@@ -242,23 +242,39 @@ export default function ProgramDetail() {
          </motion.div>
       </div>
 
-      {/* Bottom Sticky Purchase Card */}
-      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 flex justify-center px-4" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-        <div className="w-full max-w-sm bg-card border border-border/60 rounded-2xl shadow-lg p-4 mb-2" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)` }}>
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex-1">
-              <p className="text-xs font-medium text-muted-foreground">
-                {program.name}{selectedShots.length > 0 && ` + ${selectedShots.length} Shot${selectedShots.length > 1 ? 's' : ''}`}
-              </p>
+      {/* Bottom Sticky Purchase Card — Premium Mobile Tray */}
+      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 flex justify-center px-4 pb-3" style={{ paddingBottom: `max(1rem, env(safe-area-inset-bottom))` }}>
+        <div className="w-full max-w-sm bg-card border border-primary/20 rounded-2xl shadow-xl p-4" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.06) 0%, rgba(14,90,67,0.03) 100%)` }}>
+          {/* Subtle top accent line */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-primary/0 via-primary/25 to-primary/0" style={{ borderRadius: '2rem 2rem 0 0' }} />
+
+          {/* Content */}
+          <div className="relative">
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">
+                  {program.name}
+                </p>
+                {selectedShots.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    + {selectedShots.length} Shot{selectedShots.length > 1 ? 's' : ''}
+                  </p>
+                )}
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">
+                  Total
+                </p>
+                <p className="font-heading text-2xl font-bold text-foreground">${total}</p>
+              </div>
             </div>
-            <span className="font-heading text-lg font-bold text-foreground">${total}</span>
+            <Button
+              onClick={handleStartProgram}
+              className="w-full h-12 rounded-xl font-semibold text-sm shadow-md"
+            >
+              Start My 3-Day Program
+            </Button>
           </div>
-          <Button
-            onClick={handleStartProgram}
-            className="w-full h-11 rounded-xl font-semibold text-sm"
-          >
-            Start My 3-Day Program
-          </Button>
         </div>
       </div>
 
