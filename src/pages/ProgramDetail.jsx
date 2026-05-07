@@ -243,9 +243,9 @@ export default function ProgramDetail() {
       </div>
 
       {/* Bottom Sticky Purchase Tray — Premium Anchored Footer */}
-      <div className="fixed bottom-16 left-0 right-0 z-40 md:bottom-0 md:left-0 border-t border-primary/15" style={{ paddingBottom: `max(0.5rem, env(safe-area-inset-bottom))` }}>
+      <div className="fixed inset-x-0 bottom-0 z-40 md:left-60 border-t border-primary/15" style={{ paddingBottom: `max(0.5rem, env(safe-area-inset-bottom))` }}>
         <div className="bg-card/95 backdrop-blur-md" style={{ background: `linear-gradient(180deg, rgba(11,61,46,0.08) 0%, rgba(11,61,46,0.04) 100%), hsl(var(--card))` }}>
-          <div className="max-w-full mx-auto px-4 py-4 md:px-6 md:py-5 md:ml-60">
+          <div className="max-w-full mx-auto px-4 py-4 md:px-6 md:py-5">
             {/* Top Row: Program Info + Price */}
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
