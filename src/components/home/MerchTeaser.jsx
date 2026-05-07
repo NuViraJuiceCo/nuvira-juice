@@ -9,7 +9,7 @@ export default function MerchTeaser() {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.25 }}
-      className="mx-4 mt-6"
+      className="mx-5 mt-6"
     >
       <Link to="/merch">
         <div className="relative bg-gradient-to-r from-foreground to-foreground/80 rounded-2xl p-5 overflow-hidden flex items-center justify-between">

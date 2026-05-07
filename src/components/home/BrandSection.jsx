@@ -27,7 +27,7 @@ export default function BrandSection() {
       className="mt-8 mb-4 space-y-5"
     >
       {/* NuVira Difference — values only, no photo bg */}
-      <div className="mx-4">
+      <div className="mx-5">
         <div className="bg-card border border-border/40 rounded-2xl p-4">
           <p className="font-heading font-bold text-base mb-0.5">The NuVira Difference</p>
           <p className="text-[10px] text-muted-foreground mb-4">No fillers. No compromises.</p>
@@ -53,7 +53,7 @@ export default function BrandSection() {
       </div>
 
       {/* Brand Nav Links */}
-      <div className="mx-4 bg-card border border-border/40 rounded-2xl overflow-hidden divide-y divide-border/40">
+      <div className="mx-5 bg-card border border-border/40 rounded-2xl overflow-hidden divide-y divide-border/40">
         {brandLinks.map(({ label, to, desc }, i) => (
           <motion.div
             key={to}

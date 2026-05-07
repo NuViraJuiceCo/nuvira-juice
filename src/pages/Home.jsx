@@ -118,7 +118,7 @@ export default function Home() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="flex items-center justify-between px-4 pb-2"
+        className="flex items-center justify-between px-5 pb-2"
         style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))' }}
       >
         <div>
@@ -158,7 +158,7 @@ export default function Home() {
       <QuickReorder lastOrder={lastOrder} />
 
       {/* Programs — Primary Revenue Section */}
-      <div className="mt-10 px-4 mb-3">
+      <div className="mt-10 px-5 mb-3">
         <h2 className="font-heading text-2xl font-bold mb-1">Your Wellness Plan</h2>
         <p className="text-sm text-muted-foreground">Choose your goal. We'll handle the rest.</p>
       </div>
@@ -186,7 +186,7 @@ export default function Home() {
       )}
 
       {seasonal.length > 0 && (
-        <div className="mt-2">
+        <div className="mt-2 -mx-5">
           <ProductRow
             title="Seasonal Drops"
             subtitle="Limited time only"
@@ -201,12 +201,12 @@ export default function Home() {
       <MerchTeaser />
 
       {/* NotificationPrompt — low-priority, after all content */}
-      <div className="mt-4 mx-4">
+      <div className="mt-4 mx-5">
         <NotificationPrompt />
       </div>
 
       {/* Site Footer — SEO & trust links */}
-      <footer className="px-4 pt-6 pb-2 border-t border-border/30 mt-4">
+      <footer className="px-5 pt-6 pb-2 border-t border-border/30 mt-4">
         <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mb-3">
           <Link to="/about" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
           <Link to="/contact" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</Link>

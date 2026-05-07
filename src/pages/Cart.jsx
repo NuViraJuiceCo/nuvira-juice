@@ -193,7 +193,7 @@ export default function Cart() {
       {subtotal > 0 && subtotal < 144 && (
         <div className="mx-4 mb-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Complete Your Routine</p>
-          <div className="space-y-2">
+          <div className="space-y-2 px-1">
             {PROGRAMS.slice(0, 2).map(program => (
               <Link key={program.key} to={`/program/${program.key}`}>
                 <div className={`flex items-center gap-3 bg-gradient-to-r ${program.color} border ${program.border} rounded-xl p-3`}>
@@ -214,7 +214,7 @@ export default function Cart() {
       )}
 
       {/* Cart Items */}
-      <div className="px-4 space-y-3">
+      <div className="px-5 space-y-3">
         <AnimatePresence>
           {items.map(item => (
             <motion.div

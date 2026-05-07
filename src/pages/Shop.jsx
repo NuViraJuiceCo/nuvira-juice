@@ -145,7 +145,7 @@ export default function Shop() {
       {/* Programs — show when not searching/filtering */}
       {!search.trim() && category === 'all' && !filterParam && (
         <div className="mb-6">
-          <div className="px-4 mb-3">
+          <div className="px-5 mb-3">
             <h2 className="font-heading text-base font-bold">3-Day Programs</h2>
             <p className="text-[11px] text-muted-foreground">Structured for results — 12 bottles delivered</p>
           </div>
@@ -158,7 +158,7 @@ export default function Shop() {
       )}
 
       {/* Product Grid */}
-      <div className="px-4">
+      <div className="px-5">
         {isLoading ? (
           <div className="grid grid-cols-2 gap-3">
             {[1,2,3,4].map(i => (

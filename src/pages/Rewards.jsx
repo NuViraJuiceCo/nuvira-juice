@@ -446,7 +446,7 @@ export default function Rewards() {
             <p className="text-[11px] text-muted-foreground">Swipe for more</p>
           </div>
         </div>
-        <div className="flex gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory" style={{ scrollbarWidth: 'none', scrollPaddingRight: '1rem' }}>
+        <div className="flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem' }}>
           {rewards.map((reward, i) => (
             <RewardCard
               key={i}

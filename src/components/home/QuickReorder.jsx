@@ -11,7 +11,7 @@ export default function QuickReorder({ lastOrder }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 }}
-      className="mx-4 mt-4"
+      className="mx-5 mt-4"
     >
       <Link to="/account/orders">
         <div className="flex items-center gap-3 bg-secondary/60 rounded-xl p-3.5 border border-border/50">

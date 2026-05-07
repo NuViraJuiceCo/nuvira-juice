@@ -9,7 +9,7 @@ export default function SustainabilityTeaser() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="mx-4 my-5 grid grid-cols-2 gap-3"
+      className="mx-5 my-5 grid grid-cols-2 gap-3"
     >
       {/* Return + Reward */}
       <Link to="/return-reward">
