@@ -223,27 +223,32 @@ export default function Account() {
         </div>
       </div>
 
-      {/* Account Menu - Refined Sections */}
-      <div className="px-5 mb-6">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3 ml-1">Your NuVira</p>
-        <div className="space-y-2">
+      {/* Member Actions - Core NuVira Experience */}
+      <div className="px-5 mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <Leaf className="w-4 h-4 text-primary" />
+          <p className="text-sm font-bold text-foreground">Your Ritual</p>
+        </div>
+        <div className="space-y-2.5">
           {accountMenuItems.map(({ icon: Icon, label, path, desc }, i) => (
             <motion.div
               key={label}
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2 + i * 0.04 }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.25 + i * 0.05 }}
             >
               <Link to={path}>
-                <div className="flex items-center gap-3.5 p-3.5 bg-card rounded-2xl border border-border/30 active:bg-secondary/50 transition-all shadow-sm hover:shadow-md">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shrink-0 border border-primary/15">
-                    <Icon className="w-4 h-4 text-primary" />
+                <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-card to-card/80 border border-border/30 p-4 active:scale-[0.98] transition-all shadow-sm hover:shadow-md">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary/15 to-primary/8 flex items-center justify-center shrink-0 border border-primary/20 group-hover:scale-105 transition-transform">
+                      <Icon className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-foreground">{label}</p>
+                      <p className="text-[10px] text-muted-foreground">{desc}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:translate-x-0.5 transition-transform" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">{label}</p>
-                    <p className="text-[10px] text-muted-foreground">{desc}</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
                 </div>
               </Link>
             </motion.div>
@@ -251,27 +256,96 @@ export default function Account() {
         </div>
       </div>
 
-      {/* Support Menu */}
-      <div className="px-5 mb-6">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3 ml-1">Support</p>
-        <div className="space-y-2">
+      {/* Brand Discovery - Editorial Lifestyle Section */}
+      <div className="px-5 mb-8">
+        <div className="mb-4">
+          <p className="text-xs font-bold text-foreground mb-1">Discover NuVira</p>
+          <p className="text-[10px] text-muted-foreground">Our story, philosophy & community</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {brandItems.slice(0, 2).map(({ icon: Icon, label, path, desc }, i) => (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 + i * 0.05 }}
+            >
+              <Link to={path}>
+                <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 p-4 active:scale-[0.98] transition-all">
+                  <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
+                    <Icon className="w-4 h-4 text-primary" />
+                  </div>
+                  <p className="text-xs font-bold text-foreground mb-1">{label}</p>
+                  <p className="text-[9px] text-muted-foreground leading-snug line-clamp-2">{desc}</p>
+                </div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          {brandItems.slice(2, 4).map(({ icon: Icon, label, path, desc }, i) => (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.45 + i * 0.05 }}
+            >
+              <Link to={path}>
+                <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-accent/10 to-accent/5 border border-accent/20 p-4 active:scale-[0.98] transition-all">
+                  <div className="w-9 h-9 rounded-xl bg-accent/15 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
+                    <Icon className="w-4 h-4 text-accent-foreground" />
+                  </div>
+                  <p className="text-xs font-bold text-foreground mb-1">{label}</p>
+                  <p className="text-[9px] text-muted-foreground leading-snug line-clamp-2">{desc}</p>
+                </div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+        {/* Book Event - Full Width */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55 }}
+          className="mt-2"
+        >
+          <Link to="/book-event">
+            <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/15 to-primary/8 border border-primary/25 p-4 active:scale-[0.98] transition-all">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <PartyPopper className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-foreground">Book Us for an Event</p>
+                  <p className="text-[9px] text-muted-foreground">Birthdays, showers & more</p>
+                </div>
+              </div>
+            </div>
+          </Link>
+        </motion.div>
+      </div>
+
+      {/* Support & Settings - Utility Section (Quieter) */}
+      <div className="px-5 mb-8">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Support</p>
+        <div className="rounded-2xl border border-border/30 overflow-hidden">
           {supportMenuItems.map(({ icon: Icon, label, path, desc }, i) => (
             <motion.div
               key={label}
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 + i * 0.04 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.6 + i * 0.04 }}
             >
               <Link to={path}>
-                <div className="flex items-center gap-3.5 p-3.5 bg-card rounded-2xl border border-border/30 active:bg-secondary/50 transition-all shadow-sm hover:shadow-md">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shrink-0 border border-primary/15">
-                    <Icon className="w-4 h-4 text-primary" />
+                <div className={`flex items-center gap-3.5 p-3.5 bg-card/50 active:bg-secondary/40 transition-colors ${i !== supportMenuItems.length - 1 ? 'border-b border-border/30' : ''}`}>
+                  <div className="w-9 h-9 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
+                    <Icon className="w-4 h-4 text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">{label}</p>
-                    <p className="text-[10px] text-muted-foreground">{desc}</p>
+                    <p className="text-sm font-medium text-foreground">{label}</p>
+                    <p className="text-[9px] text-muted-foreground">{desc}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
                 </div>
               </Link>
             </motion.div>
@@ -279,165 +353,141 @@ export default function Account() {
         </div>
       </div>
 
-      {/* Brand Menu */}
-      <div className="px-5 mb-6">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3 ml-1">Brand</p>
-        <div className="space-y-2">
-          {brandItems.map(({ icon: Icon, label, path, desc }, i) => (
-            <motion.div
-              key={label}
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.42 + i * 0.04 }}
-            >
-              <Link to={path}>
-                <div className="flex items-center gap-3.5 p-3.5 bg-card rounded-2xl border border-border/30 active:bg-secondary/50 transition-all shadow-sm hover:shadow-md">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shrink-0 border border-primary/15">
-                    <Icon className="w-4 h-4 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">{label}</p>
-                    <p className="text-[10px] text-muted-foreground">{desc}</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
-                </div>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {/* Merch */}
-      <div className="px-5 mb-6">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3 ml-1">Merch</p>
+      {/* Merch Teaser - Lifestyle */}
+      <div className="px-5 mb-8">
         <Link to="/merch">
           <motion.div
-            initial={{ opacity: 0, x: -6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.6 }}
-            className="flex items-center justify-between p-3.5 bg-card rounded-2xl border border-border/30 active:bg-secondary/50 transition-all shadow-sm hover:shadow-md"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.7 }}
+            className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-accent/15 via-accent/10 to-accent/5 border border-accent/25 p-5 active:scale-[0.98] transition-all"
           >
-            <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shrink-0 border border-primary/15">
-                <Shirt className="w-4 h-4 text-primary" />
+            <div className="absolute top-0 right-0 w-20 h-20 bg-accent/10 rounded-full blur-2xl" />
+            <div className="relative flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-accent/20 flex items-center justify-center shrink-0">
+                  <Shirt className="w-5 h-5 text-accent-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-foreground mb-0.5">NuVira Merch</p>
+                  <p className="text-[10px] text-muted-foreground">Gear for the wellness lifestyle</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">NuVira Merch</p>
-                <p className="text-[10px] text-muted-foreground">Gear for the wellness lifestyle</p>
-              </div>
+              <span className="text-[9px] font-bold bg-accent/20 text-accent-foreground px-3 py-1 rounded-full">Coming Soon</span>
             </div>
-            <span className="text-[9px] font-bold bg-accent/15 text-accent-foreground px-2.5 py-1 rounded-full">Coming Soon</span>
           </motion.div>
         </Link>
       </div>
 
-      {/* Driver Section */}
+      {/* Driver & Admin - Utility Tools (Visually Secondary) */}
       {(user?.role === 'driver' || user?.role === 'admin') && (
-        <div className="px-5 mb-6">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3 ml-1">Driver</p>
-          <Link to="/driver">
-            <motion.div
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.65 }}
-              className="flex items-center gap-3.5 p-3.5 bg-primary/5 rounded-2xl border border-primary/20 active:bg-primary/10 transition-all"
-            >
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/15">
-                <Truck className="w-4 h-4 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground">Driver Portal</p>
-                <p className="text-[10px] text-muted-foreground">Route planner & bag returns</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
-            </motion.div>
-          </Link>
-        </div>
-      )}
-
-      {/* Admin Section */}
-      {user?.role === 'admin' && (
-        <div className="px-5 mb-6">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3 ml-1">Admin</p>
-          <div className="space-y-2">
-            <Link to="/admin/orders">
-              <motion.div
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.7 }}
-                className="flex items-center gap-3.5 p-3.5 bg-primary/5 rounded-2xl border border-primary/20 active:bg-primary/10 transition-all"
-              >
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/15">
-                  <ClipboardList className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground">Order Management</p>
-                  <p className="text-[10px] text-muted-foreground">Update order statuses</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
-              </motion.div>
-            </Link>
-
-            <Link to="/admin/shopify">
-              <motion.div
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.73 }}
-                className="flex items-center gap-3.5 p-3.5 bg-primary/5 rounded-2xl border border-primary/20 active:bg-primary/10 transition-all"
-              >
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/15">
-                  <Zap className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground">Shopify Integration</p>
-                  <p className="text-[10px] text-muted-foreground">Orders, sync, webhooks, reports</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
-              </motion.div>
-            </Link>
-
-            <Link to="/admin/products">
-              <motion.div
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.76 }}
-                className="flex items-center gap-3.5 p-3.5 bg-primary/5 rounded-2xl border border-primary/20 active:bg-primary/10 transition-all"
-              >
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/15">
-                  <ImagePlus className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground">Product Images</p>
-                  <p className="text-[10px] text-muted-foreground">Upload & manage product photos</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
-              </motion.div>
-            </Link>
+        <div className="px-5 mb-8">
+          <div className="rounded-2xl border border-border/30 overflow-hidden bg-card/30">
+            <div className="px-4 py-2.5 border-b border-border/30">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Tools</p>
+            </div>
+            {user?.role === 'driver' && (
+              <Link to="/driver">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.75 }}
+                  className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/30"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Truck className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">Driver Portal</p>
+                    <p className="text-[9px] text-muted-foreground">Route planner & bag returns</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                </motion.div>
+              </Link>
+            )}
+            {user?.role === 'admin' && (
+              <>
+                <Link to="/admin/orders">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.78 }}
+                    className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/30"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <ClipboardList className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">Order Management</p>
+                      <p className="text-[9px] text-muted-foreground">Update statuses</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                  </motion.div>
+                </Link>
+                <Link to="/admin/shopify">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.8 }}
+                    className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/30"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Zap className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">Shopify</p>
+                      <p className="text-[9px] text-muted-foreground">Sync & webhooks</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                  </motion.div>
+                </Link>
+                <Link to="/admin/products">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.82 }}
+                    className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <ImagePlus className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">Product Images</p>
+                      <p className="text-[9px] text-muted-foreground">Manage photos</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                  </motion.div>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}
 
-      {/* Logout Button */}
-      <div className="px-5 mt-8 mb-6">
+      {/* Sign Out - Clean & Simple */}
+      <div className="px-5 mt-4 mb-8">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2.5 text-sm font-semibold py-3.5 rounded-xl border border-border/60 bg-card hover:bg-secondary/60 transition-all active:scale-[0.98]"
+          className="w-full flex items-center justify-center gap-2 text-sm font-medium py-3 rounded-xl border border-border/40 bg-transparent hover:bg-secondary/30 transition-all active:scale-[0.98]"
         >
           <LogOut className="w-4 h-4 text-muted-foreground" />
           {user ? 'Sign Out' : 'Sign In'}
         </button>
       </div>
 
-      {/* Brand Footer */}
-      <div className="text-center px-5 mt-8">
+      {/* Brand Footer - Minimal & Elegant */}
+      <div className="text-center px-5 mt-8 pb-4">
         <img
           src="https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png"
           alt="NuVira Juice Company"
-          className="h-5 mx-auto mb-1.5 opacity-90"
+          className="h-4 mx-auto mb-2 opacity-80"
         />
-        <p className="text-[10px] text-muted-foreground font-medium">Real. Living. Nutrition.</p>
-        <Link to="/legal" className="text-[10px] text-primary/80 hover:text-primary underline mt-1.5 inline-block transition-colors">Legal & Compliance</Link>
-        <p className="text-[10px] text-muted-foreground mt-1">© {new Date().getFullYear()} NuVira Juice Company · Wentzville, MO</p>
+        <p className="text-[9px] text-muted-foreground">Real. Living. Nutrition.</p>
+        <div className="flex items-center justify-center gap-3 mt-2">
+          <Link to="/legal" className="text-[9px] text-muted-foreground hover:text-primary transition-colors">Legal</Link>
+          <span className="text-[9px] text-muted-foreground/40">·</span>
+          <p className="text-[9px] text-muted-foreground">© {new Date().getFullYear()} NuVira</p>
+        </div>
       </div>
     </div>
   );
