@@ -242,18 +242,20 @@ export default function ProgramDetail() {
          </motion.div>
       </div>
 
-      {/* Bottom CTA */}
-      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border">
-        <div className="max-w-lg mx-auto px-4 py-3">
-          <div className="flex justify-between items-baseline mb-2.5">
-            <span className="text-xs text-muted-foreground">
-              {program.name} Program{selectedShots.length > 0 ? ` + ${selectedShots.length} Shot${selectedShots.length > 1 ? 's' : ''}` : ''}
-            </span>
-            <span className="font-heading text-xl font-bold">${total}</span>
+      {/* Bottom Sticky Purchase Card */}
+      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 flex justify-center px-4" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+        <div className="w-full max-w-sm bg-card border border-border/60 rounded-2xl shadow-lg p-4 mb-2" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)` }}>
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex-1">
+              <p className="text-xs font-medium text-muted-foreground">
+                {program.name}{selectedShots.length > 0 && ` + ${selectedShots.length} Shot${selectedShots.length > 1 ? 's' : ''}`}
+              </p>
+            </div>
+            <span className="font-heading text-lg font-bold text-foreground">${total}</span>
           </div>
           <Button
             onClick={handleStartProgram}
-            className="w-full h-12 rounded-xl font-semibold text-sm"
+            className="w-full h-11 rounded-xl font-semibold text-sm"
           >
             Start My 3-Day Program
           </Button>

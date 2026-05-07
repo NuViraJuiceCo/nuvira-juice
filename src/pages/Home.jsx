@@ -14,6 +14,7 @@ import BrandSection from '@/components/home/BrandSection';
 import NuViraHighlights from '@/components/home/NuViraHighlights';
 import MerchTeaser from '@/components/home/MerchTeaser';
 import SustainabilityTeaser from '@/components/home/SustainabilityTeaser';
+import SubscriptionCard from '@/components/home/SubscriptionCard';
 import NotificationPrompt from '@/components/home/NotificationPrompt';
 
 
@@ -168,6 +169,9 @@ export default function Home() {
 
       {/* NuVira Highlights — premium content section after programs */}
       <NuViraHighlights />
+
+      {/* Subscription visibility card — premium, subtle discovery */}
+      <SubscriptionCard />
 
       {/* Quick Options — Secondary */}
       {(featured.length > 0 || products.filter(p => p.category === 'juice').length > 0) && (
