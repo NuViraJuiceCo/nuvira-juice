@@ -242,35 +242,34 @@ export default function ProgramDetail() {
          </motion.div>
       </div>
 
-      {/* Bottom Sticky Purchase Card — Premium Mobile Tray */}
-      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 flex justify-center px-4 pb-3" style={{ paddingBottom: `max(1rem, env(safe-area-inset-bottom))` }}>
-        <div className="w-full max-w-sm bg-card border border-primary/20 rounded-2xl shadow-xl p-4" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.06) 0%, rgba(14,90,67,0.03) 100%)` }}>
-          {/* Subtle top accent line */}
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-primary/0 via-primary/25 to-primary/0" style={{ borderRadius: '2rem 2rem 0 0' }} />
-
-          {/* Content */}
-          <div className="relative">
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">
+      {/* Bottom Sticky Purchase Tray — Premium Anchored Footer */}
+      <div className="fixed bottom-16 left-0 right-0 z-40 md:bottom-0 md:left-60 border-t border-primary/15" style={{ paddingBottom: `max(0.5rem, env(safe-area-inset-bottom))` }}>
+        <div className="bg-card/95 backdrop-blur-md" style={{ background: `linear-gradient(180deg, rgba(11,61,46,0.08) 0%, rgba(11,61,46,0.04) 100%), hsl(var(--card))` }}>
+          <div className="max-w-full mx-auto px-4 py-4 md:px-6 md:py-5">
+            {/* Top Row: Program Info + Price */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">
                   {program.name}
                 </p>
                 {selectedShots.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    + {selectedShots.length} Shot{selectedShots.length > 1 ? 's' : ''}
+                    + {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''}
                   </p>
                 )}
               </div>
               <div className="text-right">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">
-                  Total
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">
+                  Total Price
                 </p>
-                <p className="font-heading text-2xl font-bold text-foreground">${total}</p>
+                <p className="font-heading text-3xl font-bold text-foreground">${total}</p>
               </div>
             </div>
+
+            {/* Bottom Row: CTA Button */}
             <Button
               onClick={handleStartProgram}
-              className="w-full h-12 rounded-xl font-semibold text-sm shadow-md"
+              className="w-full h-13 rounded-xl font-semibold text-sm md:text-base shadow-lg hover:shadow-xl transition-shadow"
             >
               Start My 3-Day Program
             </Button>
