@@ -55,11 +55,16 @@ Deno.serve(async (req) => {
 
   // HARD GATE: Never sync unpaid, pending, or abandoned checkout orders to Hub.
   // Only payment_captured=true + payment_status='paid' orders may enter Hub operational flow.
+  // EXCEPT: Refunded orders (payment_status='refunded') — these MUST sync to Hub to cancel production/fulfillment
   if (order.status === 'pending_payment' || order.is_abandoned_checkout || order.do_not_recover) {
     console.log(`syncOrderToHub: BLOCKED — order ${order.order_number} is pending/abandoned (status=${order.status}, payment_captured=${order.payment_captured}). No Hub push.`);
     return Response.json({ success: true, skipped: true, reason: 'pending_or_abandoned_checkout' });
   }
-  if (!order.payment_captured || (order.payment_status !== 'paid' && order.financial_status !== 'paid')) {
+  
+  // Allow refunded orders to sync (critical for operational cancellation)
+  const isRefundedOrder = order.payment_status === 'refunded' || order.status === 'refunded';
+  
+  if (!isRefundedOrder && (!order.payment_captured || (order.payment_status !== 'paid' && order.financial_status !== 'paid'))) {
     console.log(`syncOrderToHub: BLOCKED — order ${order.order_number} not paid (payment_captured=${order.payment_captured}, payment_status=${order.payment_status}). No Hub push.`);
     return Response.json({ success: true, skipped: true, reason: 'payment_not_captured' });
   }
@@ -97,15 +102,19 @@ Deno.serve(async (req) => {
   let payment_status = 'pending';
   if (stripeSession?.payment_status === 'paid') {
     payment_status = 'paid';
+  } else if (stripeSession?.payment_status === 'refunded') {
+    payment_status = 'refunded';
   } else if (stripeSession?.payment_status) {
     payment_status = stripeSession.payment_status;
+  } else if (order.payment_status === 'refunded') {
+    payment_status = 'refunded';
   } else if (order.payment_captured === true) {
     payment_status = 'paid';
   }
   // NOTE: is_preorder / authorized logic removed — all new orders are immediate capture.
   // Old orders with is_preorder:true already have correct payment_captured state in DB.
 
-  console.log(`syncOrderToHub: payment_status="${payment_status}" for order ${order.order_number}`);
+  console.log(`syncOrderToHub: payment_status="${payment_status}" for order ${order.order_number}${payment_status === 'refunded' ? ' [REFUND]' : ''}`);
 
   // Resolve address fields — structured first, then fall back to parsing delivery_address string
   const addr = order.delivery_address || '';
@@ -134,8 +143,11 @@ Deno.serve(async (req) => {
   const order_type       = 'one_time';
   const fulfillment_mode = 'single_delivery';
 
+  // Determine event type: refund vs. creation
+  const eventType = payment_status === 'refunded' ? 'order.refunded' : 'order.created';
+  
   const payload = {
-    event:  'order.created',
+    event:  eventType,
     source: 'customer_app',
     order: {
       id:            order.id,
@@ -184,6 +196,11 @@ Deno.serve(async (req) => {
       created_date:    order.created_date,
       order_type,
       fulfillment_mode,
+      // Refund-specific fields
+      refunded_at:      order.refunded_at      || null,
+      refund_id:        order.refund_id        || null,
+      refund_amount:    order.refund_amount    || null,
+      is_partial_refund: order.is_partial_refund || false,
     },
   };
 

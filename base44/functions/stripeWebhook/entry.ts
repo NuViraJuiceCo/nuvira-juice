@@ -686,6 +686,190 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── REFUND HANDLER: charge.refunded ──────────────────────────────────────
+    // Triggered when Stripe issues a refund (full or partial).
+    // Propagates refund to Customer App Order → Hub → Production/Fulfillment.
+    if (event.type === 'charge.refunded') {
+      const charge = event.data.object;
+      const paymentIntentId = charge.payment_intent;
+      const refundAmount = charge.amount_refunded / 100; // cents to dollars
+      const isFullRefund = charge.amount_refunded === charge.amount;
+      
+      console.log(`[charge.refunded] PI ${paymentIntentId}, refunded $${refundAmount} (${isFullRefund ? 'FULL' : 'PARTIAL'})`);
+
+      if (!paymentIntentId) {
+        console.error('[charge.refunded] No payment_intent in charge event');
+        return Response.json({ received: true });
+      }
+
+      // Find Customer App Order by Stripe PaymentIntent ID
+      const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });
+      
+      if (orders.length === 0) {
+        console.warn(`[charge.refunded] No order found for PI ${paymentIntentId}`);
+        // Log the missing order for investigation
+        try {
+          await base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: 'UNKNOWN',
+            status: 'error',
+            description: `[charge.refunded] No Customer App order found for PI ${paymentIntentId}. Refund amount: $${refundAmount}. Manual review required.`,
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+            triggered_by: 'stripe_webhook',
+          });
+        } catch {}
+        return Response.json({ received: true });
+      }
+
+      const order = orders[0];
+      const orderNumber = order.order_number;
+
+      // IDEMPOTENCY: Check if already refunded
+      if (order.payment_status === 'refunded' || order.status === 'refunded' || order.status === 'cancelled') {
+        console.log(`[charge.refunded] Order ${orderNumber} already refunded/cancelled, skipping`);
+        return Response.json({ received: true, action: 'already_refunded' });
+      }
+
+      console.log(`[charge.refunded] Processing refund for Order ${orderNumber} (${order.id}), customer ${order.customer_email}`);
+
+      // Determine refund type and action
+      let newStatus = 'refunded';
+      let action = 'full_refund_processed';
+      
+      if (!isFullRefund) {
+        // Partial refund policy: flag for manual review, do NOT auto-cancel
+        console.warn(`[charge.refunded] PARTIAL refund detected for ${orderNumber}. Flagging for manual review.`);
+        action = 'partial_refund_manual_review';
+        // For partial refunds, we still mark as refunded but operations should review
+        newStatus = 'refunded';
+      }
+
+      // Update Customer App Order
+      const statusHistory = [...(order.status_history || []), {
+        status: newStatus,
+        timestamp: new Date().toISOString(),
+        message: `Stripe refund received: $${refundAmount} (${isFullRefund ? 'full' : 'partial'} refund). Refund ID: ${charge.id}`,
+      }];
+
+      await base44.asServiceRole.entities.Order.update(order.id, {
+        status: newStatus,
+        payment_status: 'refunded',
+        financial_status: 'refunded',
+        payment_captured: false,
+        refunded_at: new Date().toISOString(),
+        refund_id: charge.id,
+        refund_amount: refundAmount,
+        is_partial_refund: !isFullRefund,
+        sync_status: 'refund_pending_hub_sync',
+        status_history: statusHistory,
+      });
+
+      console.log(`[charge.refunded] Order ${orderNumber} updated: payment_status=refunded, status=${newStatus}`);
+
+      // Create RefundSyncLog for audit trail
+      try {
+        await base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number: orderNumber,
+          status: 'success',
+          hub_action: 'refund_received',
+          description: `💰 Stripe refund received: $${refundAmount} (${isFullRefund ? 'FULL' : 'PARTIAL'}). Refund ID: ${charge.id}. Customer App order updated. Syncing to Hub...`,
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          triggered_by: 'stripe_webhook',
+        });
+      } catch (logErr) {
+        console.warn(`[charge.refunded] Failed to log refund: ${logErr.message}`);
+      }
+
+      // Sync refund to Hub
+      try {
+        await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+          order_id: order.id,
+          stripe_session: {
+            payment_status: 'refunded',
+            id: charge.id,
+            refund_amount: refundAmount,
+            is_full_refund: isFullRefund,
+          },
+          triggered_by: 'stripe_refund_webhook',
+        });
+        console.log(`[charge.refunded] ✅ Order ${orderNumber} refund synced to Hub`);
+      } catch (syncErr) {
+        console.error(`[charge.refunded] ❌ Hub sync failed for ${orderNumber}: ${syncErr.message}`);
+        try {
+          await base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: orderNumber,
+            status: 'error',
+            description: `Failed to sync refund to Hub: ${syncErr.message}. Manual sync required.`,
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+            triggered_by: 'stripe_refund_webhook',
+          });
+        } catch {}
+      }
+
+      // Restore loyalty points if full refund
+      if (isFullRefund && order.customer_email) {
+        const pointsToRestore = Math.floor(order.total * 10);
+        const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: order.customer_email });
+        
+        if (existing.length > 0) {
+          const entry = {
+            amount: pointsToRestore,
+            type: 'adjustment',
+            description: `Points restored due to refund of order ${orderNumber}`,
+            timestamp: new Date().toISOString(),
+          };
+          await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
+            total_points: (existing[0].total_points || 0) + pointsToRestore,
+            lifetime_points: (existing[0].lifetime_points || 0) + pointsToRestore,
+            points_history: [...(existing[0].points_history || []), entry],
+          });
+          console.log(`[charge.refunded] Restored ${pointsToRestore} points to ${order.customer_email}`);
+        }
+      }
+
+      // Send refund notification email
+      base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
+        order_id: order.id,
+        customer_email: order.customer_email,
+        order_number: orderNumber,
+        items: order.items,
+        total: order.total,
+        delivery_address: order.delivery_address,
+        estimated_delivery_date: order.estimated_delivery_date,
+        assigned_delivery_date: order.assigned_delivery_date,
+        delivery_window_label: order.delivery_window_label,
+        refund_notification: true,
+        refund_amount: refundAmount,
+        is_full_refund: isFullRefund,
+      }).catch(err => console.error('[charge.refunded] Email failed:', err.message));
+
+      return Response.json({ received: true, action, refund_amount: refundAmount });
+    }
+
+    // ── REFUND UPDATE: refund.updated (for status changes) ───────────────────
+    // Optional: Handle refund status updates if needed
+    if (event.type === 'refund.updated') {
+      const refund = event.data.object;
+      const paymentIntentId = refund.payment_intent;
+      
+      console.log(`[refund.updated] Refund ${refund.id} for PI ${paymentIntentId} updated to status: ${refund.status}`);
+      
+      if (!paymentIntentId) {
+        return Response.json({ received: true });
+      }
+
+      const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });
+      if (orders.length > 0) {
+        const order = orders[0];
+        // Update refund status if needed (mostly for audit)
+        console.log(`[refund.updated] Order ${order.order_number} linked to refund ${refund.id}, status: ${refund.status}`);
+      }
+      
+      return Response.json({ received: true });
+    }
+
     return Response.json({ received: true });
   } catch (err) {
     console.error('Webhook handler error:', err.message);
