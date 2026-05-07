@@ -4,9 +4,10 @@ import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import {
-  User, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package
+  ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package
 } from 'lucide-react';
 import CreditWallet from '@/components/account/CreditWallet';
+import ProfileAvatar from '@/components/account/ProfileAvatar';
 import { motion } from 'framer-motion';
 
 // Account menu items grouped by section
@@ -79,17 +80,8 @@ export default function Account() {
         {/* Main dashboard card */}
         <div className="relative rounded-3xl border border-border/50 dark:border-primary/30 p-5 shadow-lg bg-card/70 backdrop-blur-sm">
           <div className="flex items-start gap-4">
-            {/* Avatar with premium treatment */}
-            <div className="relative shrink-0">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/25 via-primary/15 to-accent/15 flex items-center justify-center border-2 border-primary/30 dark:border-primary/40 shadow-lg">
-                <User className="w-7 h-7 text-primary" />
-              </div>
-              {user && (
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-accent to-accent/80 rounded-full border-2 border-card flex items-center justify-center shadow-md">
-                  <Crown className="w-3.5 h-3.5 text-white" />
-                </div>
-              )}
-            </div>
+            {/* Avatar with profile photo upload */}
+            <ProfileAvatar userProfile={userProfile} size="large" />
 
             {/* User Info - Better hierarchy */}
             <div className="flex-1 min-w-0 pt-0.5">

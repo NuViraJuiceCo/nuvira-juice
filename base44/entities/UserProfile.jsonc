@@ -30,6 +30,10 @@
       "format": "date",
       "description": "User's birthday (YYYY-MM-DD)"
     },
+    "profile_photo_url": {
+      "type": "string",
+      "description": "URL of user's uploaded profile photo"
+    },
     "description": {
       "type": "string",
       "description": "Optional admin note or profile summary for this customer (up to 1000 characters)",
