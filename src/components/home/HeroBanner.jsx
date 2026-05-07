@@ -10,7 +10,7 @@ const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f794548115
 // Product image mapping for hero slides
 const PRODUCT_IMAGE_MAP = {
   'Aura': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg',
-  'Oasis': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b39b67c87_OasisHero.jpg',
+  'Oasis': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg',
   'Re-Nu': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
 };
 
