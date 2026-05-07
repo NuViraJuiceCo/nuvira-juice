@@ -177,17 +177,17 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
           )}
         </button>
 
-        {/* Crown Badge */}
+        {/* Crown Badge - bottom-left to avoid conflict with camera */}
         {user && (
-          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-accent to-accent/80 rounded-full border-2 border-card flex items-center justify-center shadow-md">
-            <Crown className="w-3.5 h-3.5 text-white" />
+          <div className="absolute -bottom-0.5 -left-0.5 w-5 h-5 bg-gradient-to-br from-accent to-accent/80 rounded-full border-2 border-card flex items-center justify-center shadow-md">
+            <Crown className="w-2.5 h-2.5 text-white" />
           </div>
         )}
 
-        {/* Camera/Edit Icon Overlay (only on hover/click for large avatars) */}
+        {/* Camera/Edit Icon - top-right, always visible for large avatars */}
         {size === 'large' && !isUploading && (
-          <div className="absolute bottom-0 right-0 w-7 h-7 bg-primary rounded-full border-2 border-card flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-            <Camera className="w-3.5 h-3.5 text-white" />
+          <div className="absolute top-0 right-0 w-6 h-6 bg-primary rounded-full border-2 border-card flex items-center justify-center shadow-md">
+            <Camera className="w-3 h-3 text-white" />
           </div>
         )}
       </div>
@@ -201,7 +201,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 z-50 backdrop-blur-sm"
+              className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm"
               onClick={handleCloseMenu}
             />
             
@@ -211,35 +211,36 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed inset-x-0 bottom-0 z-50 bg-background rounded-t-3xl max-h-[60vh] flex flex-col"
+              className="fixed inset-x-0 bottom-0 z-50 bg-background rounded-t-2xl max-h-[40vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
+              style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
             >
               {/* Handle */}
-              <div className="flex justify-center pt-3 pb-1 shrink-0">
+              <div className="flex justify-center pt-3 pb-2 shrink-0">
                 <div className="w-10 h-1 bg-border rounded-full" />
               </div>
 
               {/* Header */}
-              <div className="px-5 py-3 border-b border-border/40 shrink-0">
-                <p className="font-heading text-lg font-bold text-center">Profile Photo</p>
+              <div className="px-5 py-2 pb-4 shrink-0">
+                <p className="font-heading text-base font-bold text-center">Profile Photo</p>
               </div>
 
               {/* Actions */}
-              <div className="p-5 space-y-3 overflow-y-auto flex-1">
+              <div className="px-5 pb-6 space-y-2 overflow-y-auto flex-1">
                 {/* Upload Photo */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploading}
-                  className="w-full flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card hover:bg-secondary/30 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border/40 bg-card hover:bg-secondary/20 transition-colors disabled:opacity-50"
                 >
-                  <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-                    <Camera className="w-5 h-5 text-primary" />
+                  <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                    <Camera className="w-4 h-4 text-primary" />
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-sm font-semibold">
                       {hasPhoto ? 'Change Photo' : 'Upload Photo'}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[10px] text-muted-foreground">
                       JPG or PNG, max 5MB
                     </p>
                   </div>
@@ -250,30 +251,30 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
                   <button
                     onClick={() => removePhotoMutation.mutate()}
                     disabled={removePhotoMutation.isPending}
-                    className="w-full flex items-center gap-3 p-4 rounded-xl border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                    className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-destructive/25 bg-destructive/5 hover:bg-destructive/10 transition-colors disabled:opacity-50"
                   >
-                    <div className="w-10 h-10 rounded-full bg-destructive/15 flex items-center justify-center shrink-0">
-                      <X className="w-5 h-5 text-destructive" />
+                    <div className="w-9 h-9 rounded-lg bg-destructive/15 flex items-center justify-center shrink-0">
+                      <X className="w-4 h-4 text-destructive" />
                     </div>
                     <div className="flex-1 text-left">
                       <p className="text-sm font-semibold text-destructive">
                         Remove Photo
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[10px] text-muted-foreground">
                         Return to default avatar
                       </p>
                     </div>
                     {removePhotoMutation.isPending && (
-                      <Loader2 className="w-5 h-5 text-destructive animate-spin" />
+                      <Loader2 className="w-4 h-4 text-destructive animate-spin" />
                     )}
                   </button>
                 )}
 
-                {/* Cancel */}
+                {/* Cancel - Secondary text button */}
                 <button
                   onClick={handleCloseMenu}
                   disabled={isUploading}
-                  className="w-full p-4 rounded-xl border border-border/50 bg-secondary/30 hover:bg-secondary/50 transition-colors font-semibold disabled:opacity-50"
+                  className="w-full p-3.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-secondary/20 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>

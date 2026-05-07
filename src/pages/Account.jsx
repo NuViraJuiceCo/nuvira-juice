@@ -173,10 +173,10 @@ export default function Account() {
         )}
       </div>
 
-      {/* NuVira Wallet / Credits Card - Better spacing */}
+      {/* NuVira Wallet / Credits Card - Refined contrast */}
       {user && <div className="mt-2"><CreditWallet /></div>}
 
-      {/* Premium Quick Actions - Better spacing and contrast */}
+      {/* Premium Quick Actions - Refined contrast */}
       <div className="px-5 mt-5 mb-6">
         <div className="grid grid-cols-2 gap-3">
           <Link to="/account/subscriptions">
@@ -184,15 +184,15 @@ export default function Account() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.15 }}
-              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-primary/25 via-primary/18 to-primary/12 dark:from-primary/30 dark:via-primary/20 dark:to-primary/15 border border-primary/30 dark:border-primary/40 active:scale-[0.97] transition-all shadow-md hover:shadow-lg"
+              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 dark:from-primary/25 dark:via-primary/18 dark:to-primary/12 border border-primary/25 dark:border-primary/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md"
             >
               <div className="relative">
-                <div className="w-10 h-10 rounded-xl bg-primary/20 dark:bg-primary/25 flex items-center justify-center mb-2.5 border border-primary/25 dark:border-primary/35">
-                  <Repeat2 className="w-5 h-5 text-primary dark:text-white" />
+                <div className="w-9 h-9 rounded-lg bg-primary/20 dark:bg-primary/25 flex items-center justify-center mb-2 border border-primary/20 dark:border-primary/30">
+                  <Repeat2 className="w-4 h-4 text-primary dark:text-white" />
                 </div>
-                <p className="text-sm font-bold text-foreground dark:text-white mb-1">Weekly Ritual</p>
-                <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/85 leading-snug">Pause, skip, or subscribe</p>
-                <span className="inline-block mt-2 text-[9px] font-bold text-primary dark:text-white bg-primary/15 dark:bg-primary/25 px-2 py-0.5 rounded-full border border-primary/20 dark:border-primary/30">Flexible</span>
+                <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Weekly Ritual</p>
+                <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/80 leading-snug">Pause, skip, or subscribe</p>
+                <span className="inline-block mt-2 text-[9px] font-bold text-primary dark:text-white bg-primary/12 dark:bg-primary/20 px-2 py-0.5 rounded-full border border-primary/15 dark:border-primary/25">Flexible</span>
               </div>
             </motion.div>
           </Link>
@@ -202,15 +202,15 @@ export default function Account() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.18 }}
-              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-accent/25 via-accent/18 to-accent/12 dark:from-accent/30 dark:via-accent/25 dark:to-accent/15 border border-accent/30 dark:border-accent/40 active:scale-[0.97] transition-all shadow-md hover:shadow-lg"
+              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-[#C9A24A]/15 via-[#C9A24A]/10 to-[#C9A24A]/8 dark:from-[#C9A24A]/20 dark:via-[#C9A24A]/15 dark:to-[#C9A24A]/10 border border-[#C9A24A]/20 dark:border-[#C9A24A]/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md"
             >
               <div className="relative">
-                <div className="w-10 h-10 rounded-xl bg-accent/20 dark:bg-accent/25 flex items-center justify-center mb-2.5 border border-accent/25 dark:border-accent/35">
-                  <Gift className="w-5 h-5 text-accent-foreground dark:text-white" />
+                <div className="w-9 h-9 rounded-lg bg-[#C9A24A]/20 dark:bg-[#C9A24A]/25 flex items-center justify-center mb-2 border border-[#C9A24A]/20 dark:border-[#C9A24A]/30">
+                  <Gift className="w-4 h-4 text-[#9A7B2F] dark:text-[#E7C873]" />
                 </div>
-                <p className="text-sm font-bold text-foreground dark:text-white mb-1">Refer & Earn</p>
-                <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/85 leading-snug">Give $5, get rewarded</p>
-                <span className="inline-block mt-2 text-[9px] font-bold text-accent-foreground dark:text-white bg-accent/15 dark:bg-accent/25 px-2 py-0.5 rounded-full border border-accent/20 dark:border-accent/30">Perk</span>
+                <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Refer & Earn</p>
+                <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/80 leading-snug">Give $5, get rewarded</p>
+                <span className="inline-block mt-2 text-[9px] font-bold text-[#9A7B2F] dark:text-[#E7C873] bg-[#C9A24A]/12 dark:bg-[#C9A24A]/20 px-2 py-0.5 rounded-full border border-[#C9A24A]/20 dark:border-[#C9A24A]/30">Perk</span>
               </div>
             </motion.div>
           </Link>
@@ -447,7 +447,7 @@ export default function Account() {
       </div>
 
       {/* Brand Footer - Minimal & Elegant */}
-      <div className="text-center px-5 mt-8 pb-4">
+      <div className="text-center px-5 mt-10 pb-8">
         <img
           src="https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png"
           alt="NuVira Juice Company"
