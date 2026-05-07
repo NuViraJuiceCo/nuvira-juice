@@ -31,23 +31,28 @@ function bagSummary(r) {
 }
 
 function CreditModal({ onClose, balance, earned, used, history, returns, isLoading }) {
+  const isReady = !isLoading;
+  
   return (
     <>
-      {/* Backdrop overlay */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      {/* Backdrop overlay - only visible when content is ready and dismissible */}
+      {isReady && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+          onClick={onClose}
+        />
+      )}
+      
       {/* Modal content - centered bottom sheet */}
       <motion.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        className="fixed inset-x-0 bottom-0 z-[60] bg-background rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl"
+        className={`fixed inset-x-0 bottom-0 z-[60] bg-background rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl ${!isReady ? 'pointer-events-none' : ''}`}
         onClick={e => e.stopPropagation()}
       >
         {/* Handle */}
@@ -55,15 +60,17 @@ function CreditModal({ onClose, balance, earned, used, history, returns, isLoadi
           <div className="w-10 h-1 bg-border rounded-full" />
         </div>
 
-        {/* Header */}
+        {/* Header - only show close button when ready */}
         <div className="flex items-center justify-between px-5 py-3 shrink-0">
           <div className="flex items-center gap-2">
             <Leaf className="w-4 h-4 text-primary" />
             <p className="font-heading text-lg font-bold">NuVira Credits</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
+          {isReady && (
+            <button onClick={onClose} className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          )}
         </div>
 
         {/* Scrollable content */}
