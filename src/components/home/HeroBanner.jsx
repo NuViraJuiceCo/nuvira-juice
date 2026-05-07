@@ -7,11 +7,25 @@ import { getDeliveryDisplayText } from '@/lib/deliveryUtils';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
+// Product image mapping for hero slides
+const PRODUCT_IMAGE_MAP = {
+  'Aura': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg',
+  'Oasis': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg',
+  'Re-Nu': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
+};
+
 export default function HeroBanner({ banners = [], scheduleRules = [] }) {
   const [current, setCurrent] = useState(0);
   const deliveryText = getDeliveryDisplayText(scheduleRules);
 
-  const activeBanners = banners.length > 0 ? banners : [
+  const activeBanners = banners.length > 0 ? banners.map(banner => {
+    // Ensure product images match product names in title
+    let image = banner.image_url;
+    if (banner.title?.includes('Oasis')) image = PRODUCT_IMAGE_MAP.Oasis;
+    if (banner.title?.includes('Re-Nu')) image = PRODUCT_IMAGE_MAP['Re-Nu'];
+    if (banner.title?.includes('Aura')) image = PRODUCT_IMAGE_MAP.Aura;
+    return { ...banner, image_url: image };
+  }) : [
     {
       title: 'Cold-Pressed.\nNever Compromised.',
       subtitle: 'Real ingredients. Made fresh for you.',

@@ -11,7 +11,7 @@ import QuickReorder from '@/components/home/QuickReorder';
 import ProductRow from '@/components/home/ProductRow';
 import DeliveryBadge from '@/components/home/DeliveryBadge';
 import BrandSection from '@/components/home/BrandSection';
-import TickerBanner from '@/components/home/TickerBanner';
+import NuViraHighlights from '@/components/home/NuViraHighlights';
 import MerchTeaser from '@/components/home/MerchTeaser';
 import SustainabilityTeaser from '@/components/home/SustainabilityTeaser';
 import NotificationPrompt from '@/components/home/NotificationPrompt';
@@ -166,10 +166,8 @@ export default function Home() {
         <ProgramCards />
       </div>
 
-      {/* Ticker — divider/transition strip after programs */}
-      <div className="mt-10">
-        <TickerBanner />
-      </div>
+      {/* NuVira Highlights — premium content section after programs */}
+      <NuViraHighlights />
 
       {/* Quick Options — Secondary */}
       {(featured.length > 0 || products.filter(p => p.category === 'juice').length > 0) && (
