@@ -153,26 +153,27 @@ export default function Home() {
       </motion.div>
 
       <HeroBanner banners={banners} scheduleRules={scheduleRules} heroHeadline="Build Your Routine" heroSubtext="Choose your goal. We'll handle the rest." />
-      <TickerBanner />
-      
-      <div className="mt-4">
-        <NotificationPrompt />
-      </div>
 
+      {/* QuickReorder — immediately after hero for returning customers */}
       <QuickReorder lastOrder={lastOrder} />
 
       {/* Programs — Primary Revenue Section */}
-      <div className="mt-5 px-4 mb-2">
-        <h2 className="font-heading text-xl font-bold mb-0.5">Build Your Routine</h2>
-        <p className="text-xs text-muted-foreground">Choose your goal. We'll handle the rest.</p>
+      <div className="mt-10 px-4 mb-3">
+        <h2 className="font-heading text-2xl font-bold mb-1">Your Wellness Plan</h2>
+        <p className="text-sm text-muted-foreground">Choose your goal. We'll handle the rest.</p>
       </div>
-      <div className="mt-3">
+      <div className="mt-2">
         <ProgramCards />
+      </div>
+
+      {/* Ticker — divider/transition strip after programs */}
+      <div className="mt-10">
+        <TickerBanner />
       </div>
 
       {/* Quick Options — Secondary */}
       {(featured.length > 0 || products.filter(p => p.category === 'juice').length > 0) && (
-        <div className="mt-6">
+        <div className="mt-10">
           <ProductRow
             title="Quick Options"
             subtitle="Single bottles & small bundles"
@@ -185,17 +186,26 @@ export default function Home() {
       )}
 
       {seasonal.length > 0 && (
-        <ProductRow
-          title="Seasonal Drops"
-          subtitle="Limited time only"
-          products={seasonal}
-          linkTo="/shop?filter=seasonal"
-        />
+        <div className="mt-2">
+          <ProductRow
+            title="Seasonal Drops"
+            subtitle="Limited time only"
+            products={seasonal}
+            linkTo="/shop?filter=seasonal"
+          />
+        </div>
       )}
 
-      <SustainabilityTeaser />
-      <MerchTeaser />
+      <div className="mt-10">
+        <SustainabilityTeaser />
+      </div>
       <BrandSection />
+      <MerchTeaser />
+
+      {/* NotificationPrompt — low-priority, after all content */}
+      <div className="mt-4 mx-4">
+        <NotificationPrompt />
+      </div>
 
       {/* Site Footer — SEO & trust links */}
       <footer className="px-4 pt-6 pb-2 border-t border-border/30 mt-4">
