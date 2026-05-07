@@ -103,20 +103,66 @@ Deno.serve(async (req) => {
           // NOTE: generateSubscriptionOrders removed. Hub owns subscription delivery generation.
           // Hub will generate 4 weekly delivery orders when subscription.created event is received.
 
-          // Sync subscription to hub
-          base44.asServiceRole.functions.invoke('syncCustomerToHub', {
-            event: 'customer.subscription_created',
-            customer_email: customerEmail,
-            data: {
-              subscription_id: subscription.id,
-              plan_id: planId,
-              plan_name: plan?.name || 'Unknown',
-              frequency: plan?.frequency || 'unknown',
-              delivery_address: deliveryAddress,
-              next_delivery_date: nextDeliveryStr,
-            },
-          })
-            .catch(err => console.error('Failed to sync subscription to hub:', err.message));
+          // Fetch customer profile for name & phone
+             const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail });
+             const profile = profiles[0] || {};
+             const resolvedCustomerName = session.metadata?.customer_name || profile.first_name + ' ' + profile.last_name || customerEmail;
+             const resolvedPhone = session.metadata?.customer_phone || profile.phone || '';
+
+             // Resolve address fields from metadata
+             const resolvedAddressLine1 = session.metadata?.delivery_address_line1 || '';
+             const resolvedAddressLine2 = session.metadata?.delivery_address_line2 || '';
+             const resolvedAddressCity = session.metadata?.delivery_city || '';
+             const resolvedAddressState = session.metadata?.delivery_state || '';
+             const resolvedAddressZip = session.metadata?.delivery_postal_code || '';
+             const resolvedDeliveryWindowLabel = session.metadata?.delivery_window_label || '5 PM – 8 PM';
+             const resolvedDeliveryWindowStart = session.metadata?.delivery_window_start || '17:00';
+             const resolvedDeliveryWindowEnd = session.metadata?.delivery_window_end || '20:00';
+
+             // Resolve products from plan composition_template
+             let productsArray = [];
+             if (plan?.composition_template?.bottles_per_delivery?.length > 0) {
+               productsArray = plan.composition_template.bottles_per_delivery.map(bottle => ({
+                 product_name: bottle.flavor || 'Juice',
+                 quantity: bottle.quantity || 1,
+               }));
+             }
+
+             // Sync subscription to hub with full payload
+             base44.asServiceRole.functions.invoke('syncCustomerToHub', {
+               event: 'customer.subscription_created',
+               customer_email: customerEmail,
+               data: {
+                 subscription_id: subscription.id,
+                 customer_name: resolvedCustomerName,
+                 phone: resolvedPhone,
+                 stripe_subscription_id: stripeSubscriptionId,
+                 stripe_customer_id: session.customer || null,
+                 customer_app_subscription_id: subscription.id,
+                 payment_status: 'paid',
+                 financial_status: 'paid',
+                 first_invoice_id: session.invoice || null,
+                 payment_intent_id: session.payment_intent || null,
+                 plan_id: planId,
+                 plan_name: plan?.name || 'Unknown',
+                 cadence: plan?.frequency || 'monthly',
+                 first_delivery_date: nextDeliveryStr,
+                 delivery_window_label: resolvedDeliveryWindowLabel,
+                 delivery_window_start: resolvedDeliveryWindowStart,
+                 delivery_window_end: resolvedDeliveryWindowEnd,
+                 delivery_address: deliveryAddress,
+                 address_line1: resolvedAddressLine1,
+                 address_line2: resolvedAddressLine2,
+                 address_city: resolvedAddressCity,
+                 address_state: resolvedAddressState,
+                 address_postal_code: resolvedAddressZip,
+                 address_country: 'US',
+                 products: productsArray,
+                 subscription_started_date: now.toISOString().split('T')[0],
+                 next_delivery_date: nextDeliveryStr,
+               },
+             })
+               .catch(err => console.error('Failed to sync subscription to hub:', err.message));
         } else {
           console.log(`Subscription already exists for ${customerEmail}, skipping creation`);
         }
