@@ -57,51 +57,51 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl relative border border-[#C9A24A]/15"
+      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl relative border border-[#C9A24A]/25"
       style={{ background: `linear-gradient(135deg, #0B3D2E 0%, #0E5A43 42%, #0A6A50 100%)` }}
     >
       {/* Gold accent arc */}
       <div className="absolute" style={{
         top: -60, right: -60, width: 200, height: 200,
         borderRadius: '50%',
-        background: `radial-gradient(circle, ${GOLD}22 0%, transparent 70%)`,
+        background: `radial-gradient(circle, ${GOLD}25 0%, transparent 70%)`,
         pointerEvents: 'none',
       }} />
 
-      <div className="relative px-6 pt-7 pb-6">
+      <div className="relative px-6 pt-8 pb-6">
         {/* Tier badge row */}
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: `${tier.color}22`, border: `1.5px solid ${tier.color}55` }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: `${tier.color}25`, border: `1.5px solid ${tier.color}65` }}>
               <Star className="w-4 h-4" style={{ color: tier.color, fill: tier.color }} />
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD_LIGHT}99` }}>Current Tier</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: '#FFFFFF' }}>Current Tier</p>
               <p className="text-sm font-bold text-white">{tier.name} Member</p>
             </div>
           </div>
-          <div className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: `${GOLD}22`, color: GOLD_LIGHT, border: `1px solid ${GOLD}44` }}>
+          <div className="px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: `${GOLD}35`, color: '#FFFFFF', border: `1px solid ${GOLD}60` }}>
             {tier.name}
           </div>
         </div>
 
         {/* Points balance */}
         <div className="mb-6">
-          <p className="text-[11px] font-semibold uppercase tracking-widest mb-1" style={{ color: `${GOLD_LIGHT}80` }}>Your Balance</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#FFFFFF' }}>Your Balance</p>
           <p className="font-heading font-bold text-white leading-none" style={{ fontSize: 48 }}>
             {totalPoints.toLocaleString()}
           </p>
-          <p className="text-sm mt-1" style={{ color: `${GOLD_LIGHT}99` }}>loyalty points</p>
+          <p className="text-sm mt-1.5" style={{ color: '#E8F5E9' }}>loyalty points</p>
         </div>
 
         {/* Progress to next tier */}
         {tier.next && (
           <div className="mb-2">
             <div className="flex justify-between mb-2">
-              <p className="text-xs text-white/60">{tier.name}</p>
-              <p className="text-xs font-semibold" style={{ color: GOLD_LIGHT }}>{ptsToNext.toLocaleString()} pts to {TIERS[TIERS.findIndex(t => t.name === tier.name) + 1]?.name}</p>
+              <p className="text-xs text-white/90">{tier.name}</p>
+              <p className="text-xs font-bold" style={{ color: '#FFFFFF' }}>{ptsToNext.toLocaleString()} pts to {TIERS[TIERS.findIndex(t => t.name === tier.name) + 1]?.name}</p>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+            <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.2)' }}>
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${progressPct}%` }}
@@ -115,7 +115,7 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
         {!tier.next && (
           <div className="flex items-center gap-2 mt-1">
             <Sparkles className="w-4 h-4" style={{ color: GOLD_LIGHT }} />
-            <p className="text-sm font-semibold" style={{ color: GOLD_LIGHT }}>You've reached Elite status!</p>
+            <p className="text-sm font-bold" style={{ color: '#FFFFFF' }}>You've reached Elite status!</p>
           </div>
         )}
       </div>
@@ -141,17 +141,17 @@ function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
           className="rounded-2xl p-3.5 text-center shadow-md"
           style={{
             background: gold 
-              ? `linear-gradient(135deg, rgba(201,162,74,0.15) 0%, rgba(231,200,115,0.08) 100%)`
-              : `linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)`,
-            border: gold ? `1px solid rgba(201,162,74,0.35)` : '1px solid hsl(var(--border) / 0.5)',
+              ? `linear-gradient(135deg, rgba(201,162,74,0.20) 0%, rgba(231,200,115,0.12) 100%)`
+              : `linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)`,
+            border: gold ? `1.5px solid rgba(201,162,74,0.45)` : '1.5px solid hsl(var(--border) / 0.6)',
           }}
         >
           <div className="w-7 h-7 rounded-full flex items-center justify-center mx-auto mb-1.5"
-            style={{ background: gold ? `${GOLD}20` : 'hsl(var(--muted))' }}>
-            <Icon className="w-3.5 h-3.5" style={{ color: gold ? GOLD : 'hsl(var(--muted-foreground))' }} />
+            style={{ background: gold ? `${GOLD}25` : 'hsl(var(--muted))' }}>
+            <Icon className="w-3.5 h-3.5" style={{ color: gold ? '#9A7B2F' : 'hsl(var(--muted-foreground))' }} />
           </div>
-          <p className="font-heading text-base font-bold" style={{ color: gold ? GREEN_DEEP : 'hsl(var(--foreground))' }}>{value}</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">{label}</p>
+          <p className="font-heading text-base font-bold" style={{ color: gold ? '#0B3D2E' : 'hsl(var(--foreground))' }}>{value}</p>
+          <p className="text-[10px] font-semibold mt-0.5" style={{ color: gold ? '#0B3D2E' : 'hsl(var(--muted-foreground))' }}>{label}</p>
         </motion.div>
       ))}
     </div>
@@ -182,12 +182,12 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       <div className="h-20 flex items-center justify-center relative overflow-hidden"
         style={{ background: unlocked ? `linear-gradient(135deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` : 'hsl(var(--muted))' }}>
         {unlocked && (
-          <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 80% 20%, ${GOLD}25 0%, transparent 60%)` }} />
+          <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 80% 20%, ${GOLD}30 0%, transparent 60%)` }} />
         )}
         <span className="text-3xl relative z-10">{reward.icon || '🎁'}</span>
         {unlocked && (
           <div className="absolute top-2 right-2 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide"
-            style={{ background: `${GOLD}30`, color: GOLD_LIGHT, border: `1px solid ${GOLD}50` }}>
+            style={{ background: `${GOLD}40`, color: '#FFFFFF', border: `1px solid ${GOLD}65` }}>
             Unlocked
           </div>
         )}
@@ -195,14 +195,14 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
 
       {/* Content */}
       <div className="p-3">
-        <p className="text-xs font-bold mb-1 leading-tight line-clamp-2">{reward.title}</p>
-        <p className="text-[10px] text-muted-foreground mb-2 line-clamp-2">{reward.description}</p>
+        <p className="text-xs font-bold mb-1 leading-tight line-clamp-2" style={{ color: 'hsl(var(--foreground))' }}>{reward.title}</p>
+        <p className="text-[10px] font-medium mb-2 line-clamp-2" style={{ color: 'hsl(var(--muted-foreground))' }}>{reward.description}</p>
 
         {/* Points required */}
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-0.5 min-w-0">
-            <Star className="w-2.5 h-2.5 shrink-0" style={{ color: GOLD, fill: GOLD }} />
-            <span className="text-[10px] font-bold truncate" style={{ color: GOLD }}>
+            <Star className="w-2.5 h-2.5 shrink-0" style={{ color: unlocked ? GOLD : 'hsl(var(--muted-foreground))', fill: unlocked ? GOLD : 'hsl(var(--muted-foreground))' }} />
+            <span className="text-[10px] font-bold truncate" style={{ color: unlocked ? '#9A7B2F' : 'hsl(var(--muted-foreground))' }}>
               {reward.points_required.toLocaleString()}
             </span>
           </div>
@@ -210,7 +210,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
             isActive ? (
               <button onClick={onRemove}
                 className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0"
-                style={{ background: 'hsl(var(--destructive)/0.1)', color: 'hsl(var(--destructive))' }}>
+                style={{ background: 'hsl(var(--destructive)/0.15)', color: 'hsl(var(--destructive))' }}>
                 ✓
               </button>
             ) : (
@@ -221,7 +221,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
               </button>
             )
           ) : (
-            <div className="w-12 h-1 rounded-full shrink-0" style={{ background: 'hsl(var(--muted))' }}>
+            <div className="w-12 h-1.5 rounded-full shrink-0" style={{ background: 'hsl(var(--muted))' }}>
               <div className="h-full rounded-full" style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)` }} />
             </div>
           )}
@@ -387,14 +387,14 @@ export default function Rewards() {
   if (!user) return <GuestView />;
 
   return (
-    <div className="pb-28" style={{ background: 'hsl(var(--background))' }}>
+    <div className="pb-32" style={{ background: 'hsl(var(--background))' }}>
       <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles." />
 
-      {/* Page title */}
-      <div className="px-4 pt-5 pb-1 flex items-center justify-between">
-        <h1 className="font-heading text-2xl font-bold">Rewards</h1>
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
-          style={{ background: `${tier.color}18`, color: tier.color, border: `1px solid ${tier.color}40` }}>
+      {/* Page title with safe-area padding */}
+      <div className="px-4 pt-6 pb-2 flex items-center justify-between" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
+        <h1 className="font-heading text-2xl font-bold" style={{ color: 'hsl(var(--foreground))' }}>Rewards</h1>
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
+          style={{ background: `${tier.color}25`, color: tier.color === '#7BA05B' || tier.color === '#A8A8A8' ? '#FFFFFF' : '#0B3D2E', border: `1.5px solid ${tier.color}55` }}>
           <Star className="w-3 h-3" style={{ fill: tier.color }} />
           {tier.name}
         </div>
@@ -465,7 +465,7 @@ export default function Rewards() {
 
       {/* ── How to Earn ── */}
       <div className="mx-4 mt-8">
-        <h2 className="font-heading text-xl font-bold mb-4">How to Earn</h2>
+        <h2 className="font-heading text-xl font-bold mb-4" style={{ color: 'hsl(var(--foreground))' }}>How to Earn</h2>
         <div className="grid grid-cols-2 gap-3">
           {HOW_TO_EARN.map(({ icon: Icon, label, pts }, i) => (
             <motion.div
@@ -474,14 +474,14 @@ export default function Rewards() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * i }}
               className="rounded-2xl p-4"
-              style={{ background: 'hsl(var(--card))', border: `1px solid ${GOLD}20` }}
+              style={{ background: 'hsl(var(--card))', border: `1.5px solid ${GOLD}30` }}
             >
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5"
-                style={{ background: `${GOLD}15` }}>
-                <Icon className="w-4 h-4" style={{ color: GOLD }} />
+                style={{ background: `${GOLD}20` }}>
+                <Icon className="w-4 h-4" style={{ color: '#9A7B2F' }} />
               </div>
-              <p className="text-sm font-semibold mb-0.5">{label}</p>
-              <p className="text-xs font-bold" style={{ color: GOLD }}>{pts}</p>
+              <p className="text-sm font-bold mb-0.5" style={{ color: 'hsl(var(--foreground))' }}>{label}</p>
+              <p className="text-xs font-bold" style={{ color: '#9A7B2F' }}>{pts}</p>
             </motion.div>
           ))}
         </div>
@@ -497,17 +497,17 @@ export default function Rewards() {
             className="rounded-2xl p-5 flex items-center justify-between overflow-hidden relative"
             style={{ background: `linear-gradient(135deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)`, boxShadow: `0 4px 20px ${GREEN_DEEP}30` }}
           >
-            <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 90% 50%, ${GOLD}18 0%, transparent 60%)`, pointerEvents: 'none' }} />
+            <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 90% 50%, ${GOLD}20 0%, transparent 60%)`, pointerEvents: 'none' }} />
             <div className="relative z-10">
               <div className="w-10 h-10 rounded-full flex items-center justify-center mb-3"
-                style={{ background: `${GOLD}22`, border: `1.5px solid ${GOLD}44` }}>
-                <Users className="w-5 h-5" style={{ color: GOLD_LIGHT }} />
+                style={{ background: `${GOLD}30`, border: `1.5px solid ${GOLD}55` }}>
+                <Users className="w-5 h-5" style={{ color: '#FFFFFF' }} />
               </div>
               <p className="font-heading text-lg font-bold text-white">Invite Friends</p>
-              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>Give $10 · Get 250 Points</p>
+              <p className="text-sm" style={{ color: '#E8F5E9' }}>Give $10 · Get 250 Points</p>
             </div>
             <div className="relative z-10 flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm"
-              style={{ background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)`, color: GREEN_DARK }}>
+              style={{ background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)`, color: '#062A20' }}>
               Invite <ArrowRight className="w-4 h-4" />
             </div>
           </motion.div>
@@ -518,27 +518,27 @@ export default function Rewards() {
       <div className="mx-4 mt-4 grid grid-cols-2 gap-3">
         <Link to="/shop">
           <div className="rounded-2xl p-4 flex items-center gap-3 active:opacity-80 transition-opacity"
-            style={{ background: `${GREEN_DEEP}10`, border: `1px solid ${GREEN_DEEP}20` }}>
+            style={{ background: `${GREEN_DEEP}15`, border: `1.5px solid ${GREEN_DEEP}25` }}>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: `${GREEN_DEEP}15` }}>
-              <ShoppingBag className="w-4 h-4 text-primary" />
+              style={{ background: `${GREEN_DEEP}20` }}>
+              <ShoppingBag className="w-4 h-4" style={{ color: '#10B981' }} />
             </div>
             <div>
-              <p className="text-xs font-bold text-primary">Shop Now</p>
-              <p className="text-[10px] text-muted-foreground">10 pts per $1</p>
+              <p className="text-xs font-bold" style={{ color: '#10B981' }}>Shop Now</p>
+              <p className="text-[10px] font-semibold" style={{ color: 'hsl(var(--muted-foreground))' }}>10 pts per $1</p>
             </div>
           </div>
         </Link>
         <Link to="/account/settings">
           <div className="rounded-2xl p-4 flex items-center gap-3 active:opacity-80 transition-opacity"
-            style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}22` }}>
+            style={{ background: `${GOLD}15`, border: `1.5px solid ${GOLD}30` }}>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: `${GOLD}18` }}>
-              <Cake className="w-4 h-4" style={{ color: GOLD }} />
+              style={{ background: `${GOLD}25` }}>
+              <Cake className="w-4 h-4" style={{ color: '#9A7B2F' }} />
             </div>
             <div>
-              <p className="text-xs font-bold" style={{ color: GREEN_DEEP }}>Birthday Perk</p>
-              <p className="text-[10px] text-muted-foreground">Free juice</p>
+              <p className="text-xs font-bold" style={{ color: '#0B3D2E' }}>Birthday Perk</p>
+              <p className="text-[10px] font-semibold" style={{ color: 'hsl(var(--muted-foreground))' }}>Free juice</p>
             </div>
           </div>
         </Link>
@@ -546,27 +546,27 @@ export default function Rewards() {
 
       {/* ── Recent Activity ── */}
       {pointsData?.points_history?.length > 0 ? (
-        <div className="mx-4 mt-8">
-          <h2 className="font-heading text-xl font-bold mb-4">Recent Activity</h2>
+        <div className="mx-4 mt-8 mb-4">
+          <h2 className="font-heading text-xl font-bold mb-4" style={{ color: 'hsl(var(--foreground))' }}>Recent Activity</h2>
           <div className="rounded-2xl overflow-hidden divide-y"
-            style={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border) / 0.4)', divideColor: 'hsl(var(--border) / 0.4)' }}>
+            style={{ background: 'hsl(var(--card))', border: '1.5px solid hsl(var(--border) / 0.5)', divideColor: 'hsl(var(--border) / 0.5)' }}>
             {pointsData.points_history.slice(-6).reverse().map((entry, i) => (
               <div key={i} className="flex items-center justify-between px-4 py-3.5">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: entry.type === 'redeemed' ? 'hsl(var(--muted))' : `${GOLD}15` }}>
+                    style={{ background: entry.type === 'redeemed' ? 'hsl(var(--muted))' : `${GOLD}20` }}>
                     {entry.type === 'redeemed'
-                      ? <Gift className="w-3.5 h-3.5 text-muted-foreground" />
-                      : <Star className="w-3.5 h-3.5" style={{ color: GOLD, fill: GOLD }} />
+                      ? <Gift className="w-3.5 h-3.5" style={{ color: 'hsl(var(--muted-foreground))' }} />
+                      : <Star className="w-3.5 h-3.5" style={{ color: '#9A7B2F', fill: '#9A7B2F' }} />
                     }
                   </div>
                   <div>
-                    <p className="text-sm font-medium leading-snug">{entry.description}</p>
-                    <p className="text-[10px] text-muted-foreground">{new Date(entry.timestamp).toLocaleDateString()}</p>
+                    <p className="text-sm font-semibold leading-snug" style={{ color: 'hsl(var(--foreground))' }}>{entry.description}</p>
+                    <p className="text-[10px] font-medium" style={{ color: 'hsl(var(--muted-foreground))' }}>{new Date(entry.timestamp).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <span className="text-sm font-bold shrink-0 ml-3"
-                  style={{ color: entry.type === 'redeemed' ? 'hsl(var(--destructive))' : GREEN_DEEP }}>
+                  style={{ color: entry.type === 'redeemed' ? 'hsl(var(--destructive))' : '#0B3D2E' }}>
                   {entry.type === 'redeemed' ? '-' : '+'}{entry.amount} pts
                 </span>
               </div>
@@ -574,13 +574,13 @@ export default function Rewards() {
           </div>
         </div>
       ) : (
-        <div className="mx-4 mt-8">
-          <h2 className="font-heading text-xl font-bold mb-4">Recent Activity</h2>
+        <div className="mx-4 mt-8 mb-4">
+          <h2 className="font-heading text-xl font-bold mb-4" style={{ color: 'hsl(var(--foreground))' }}>Recent Activity</h2>
           <div className="rounded-2xl p-8 text-center"
-            style={{ background: 'hsl(var(--card))', border: `1px solid ${GOLD}18` }}>
-            <Star className="w-8 h-8 mx-auto mb-3" style={{ color: `${GOLD}60` }} />
+            style={{ background: 'hsl(var(--card))', border: `1.5px solid ${GOLD}25` }}>
+            <Star className="w-8 h-8 mx-auto mb-3" style={{ color: `${GOLD}70` }} />
             <p className="text-sm font-semibold text-foreground mb-1">No activity yet</p>
-            <p className="text-xs text-muted-foreground">Place your first order to start earning points.</p>
+            <p className="text-xs font-medium text-muted-foreground">Place your first order to start earning points.</p>
             <Link to="/shop">
               <div className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold"
                 style={{ background: `${GREEN_DEEP}`, color: 'white' }}>
@@ -591,7 +591,8 @@ export default function Rewards() {
         </div>
       )}
 
-      <div className="h-8" />
+      {/* Extra bottom padding for safe scrolling above nav */}
+      <div className="h-12" />
 
       <FreeProductPicker
         open={pickerOpen}
