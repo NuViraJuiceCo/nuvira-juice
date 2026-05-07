@@ -64,7 +64,7 @@ const ProtectedRoute = ({ element, user }) => {
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user } = useAuth();
   const [showSplash, setShowSplash] = React.useState(() => !sessionStorage.getItem('splashShown'));
-  const [checkingOrders, setCheckingOrders] = React.useState(false);
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -85,37 +85,10 @@ const AuthenticatedApp = () => {
     setShowSplash(false);
   };
 
-  // Check for existing orders on first login and redirect
-  React.useEffect(() => {
-    if (!user?.email || location.pathname !== '/' || sessionStorage.getItem('ordersChecked')) return;
-
-    const checkOrders = async () => {
-      try {
-        setCheckingOrders(true);
-        const orders = await base44.entities.Order.filter(
-          { customer_email: user.email },
-          'created_date',
-          1
-        );
-        if (orders.length > 0) {
-          sessionStorage.setItem('ordersChecked', '1');
-          navigate('/account/orders');
-        } else {
-          sessionStorage.setItem('ordersChecked', '1');
-        }
-      } catch (err) {
-        console.warn('Failed to check orders:', err);
-        sessionStorage.setItem('ordersChecked', '1');
-      } finally {
-        setCheckingOrders(false);
-      }
-    };
-
-    checkOrders();
-  }, [user?.email, location.pathname, navigate]);
+  // No auto-redirect to orders on app open — customers should always land on Home.
 
   // Show loading spinner while checking app public settings, auth, or profile
-  if (isLoadingPublicSettings || isLoadingAuth || checkingOrders || (user?.email && isLoadingProfile)) {
+  if (isLoadingPublicSettings || isLoadingAuth || (user?.email && isLoadingProfile)) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
