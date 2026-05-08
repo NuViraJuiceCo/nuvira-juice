@@ -74,7 +74,11 @@ export default function Subscribe() {
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
   const handleJoin = async () => {
-    if (window.self !== window.top) {
+    // Only block if running inside an iframe AND hostname contains 'preview' (Base44 preview pane)
+    // Published app is never in an iframe, so this guard should never fire for real customers
+    const isPreviewIframe = window.self !== window.top &&
+      (window.location.hostname.includes('preview') || document.referrer.includes('base44'));
+    if (isPreviewIframe) {
       alert('Checkout only works from the published app, not the preview.');
       return;
     }
