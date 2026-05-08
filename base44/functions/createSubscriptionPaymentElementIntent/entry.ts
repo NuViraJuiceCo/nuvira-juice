@@ -126,6 +126,47 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'You already have an active subscription with this plan.' }, { status: 400 });
     }
 
+    // Check for existing incomplete Stripe subscription on this customer+plan (from a prior failed render attempt).
+    // Stripe rejects creating a second subscription when one is already `incomplete` for the same customer.
+    // Solution: find and reuse the existing incomplete subscription's PaymentIntent instead of creating a new one.
+    try {
+      const incompleteList = await stripe.subscriptions.list({
+        customer: (await stripe.customers.list({ email: customer_email, limit: 1 })).data[0]?.id || '__none__',
+        status: 'incomplete',
+        limit: 5,
+      });
+      for (const incompleteSub of incompleteList.data) {
+        if (incompleteSub.metadata?.plan_id !== plan_id) continue;
+        if (incompleteSub.metadata?.source_app !== 'customer_app') continue;
+        // Found a matching incomplete subscription — retrieve its PaymentIntent and reuse it
+        const invoice = await stripe.invoices.retrieve(incompleteSub.latest_invoice, {
+          expand: ['payment_intent'],
+        });
+        const existingPi = invoice.payment_intent;
+        if (existingPi?.client_secret) {
+          console.log(`[SubPE] Reusing existing incomplete subscription ${incompleteSub.id} / PI ${existingPi.id} for ${customer_email}`);
+          // Update the pending checkout record if one exists for this sub
+          const existingPending = await base44.asServiceRole.entities.PendingSubscriptionCheckout.filter({
+            stripe_subscription_id: incompleteSub.id,
+            customer_email,
+          }).catch(() => []);
+          const pendingRecord = existingPending[0];
+          return Response.json({
+            success: true,
+            paymentIntentClientSecret: existingPi.client_secret,
+            stripeSubscriptionId: incompleteSub.id,
+            pendingCheckoutId: pendingRecord?.id || null,
+            publishableKey: Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+            planName: plan.name,
+            amountDue: (invoice.amount_due || 0) / 100,
+            reused: true,
+          });
+        }
+      }
+    } catch (reuseErr) {
+      console.warn(`[SubPE] Incomplete subscription reuse check failed: ${reuseErr.message} — proceeding to create new`);
+    }
+
     // Delivery zone
     const allZones = await base44.asServiceRole.entities.DeliveryZone.filter({ is_active: true });
     const delivery_zone_id = allZones[0]?.id || null;
