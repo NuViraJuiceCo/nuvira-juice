@@ -195,6 +195,7 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
 
 export default function SubscriptionPaymentPanel({ clientSecret, publishableKey, amountDue, planName, stripeSubscriptionId, onSuccess, onCancel }) {
   const stripePromise = useMemo(() => publishableKey ? loadStripe(publishableKey) : null, [publishableKey]);
+  const safeAmount = typeof amountDue === 'number' && !isNaN(amountDue) ? amountDue : 0;
 
   if (!clientSecret || !stripePromise) return null;
 
@@ -209,14 +210,12 @@ export default function SubscriptionPaymentPanel({ clientSecret, publishableKey,
     },
   };
 
-  // mode + amount + currency required for ExpressCheckoutElement (Apple Pay / Google Pay) to render correctly
+  // When clientSecret is present, do NOT also pass mode/amount/currency — Stripe throws.
+  // clientSecret alone is sufficient; ExpressCheckoutElement reads amount from the PI.
   const elementsOptions = {
     clientSecret,
     appearance,
     locale: 'en',
-    mode: 'subscription',
-    amount: Math.round(amountDue * 100), // cents
-    currency: 'usd',
   };
 
   return (
@@ -227,7 +226,7 @@ export default function SubscriptionPaymentPanel({ clientSecret, publishableKey,
       </div>
       <Elements stripe={stripePromise} options={elementsOptions}>
         <PaymentForm
-          amountDue={amountDue}
+          amountDue={safeAmount}
           planName={planName}
           clientSecret={clientSecret}
           onSuccess={onSuccess}

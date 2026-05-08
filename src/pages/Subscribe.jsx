@@ -90,6 +90,7 @@ export default function Subscribe() {
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
   const handleJoin = async () => {
+    try {
     if (!user) {
       base44.auth.redirectToLogin('/subscribe');
       return;
@@ -144,17 +145,34 @@ export default function Subscribe() {
         delivery_address: addressString,
       });
 
-      if (res.data?.paymentIntentClientSecret) {
-        setCheckoutData(res.data);
+      const data = res?.data;
+
+      // Backend returned an error payload
+      if (data?.error) {
+        setErrorMessage(data.error);
+        setFlowState(FLOW.ERROR);
+        return;
+      }
+
+      // Backend succeeded and returned the client secret
+      if (data?.paymentIntentClientSecret) {
+        setCheckoutData(data);
         setFlowState(FLOW.PAYMENT);
       } else {
-        const errMsg = res.data?.error || 'Failed to prepare subscription checkout. Please try again.';
-        setErrorMessage(errMsg);
+        // Unexpected response shape — log it for debugging
+        console.error('[Subscribe] Unexpected backend response:', JSON.stringify(data));
+        setErrorMessage('Checkout could not be started — unexpected server response. Please try again.');
         setFlowState(FLOW.ERROR);
       }
     } catch (err) {
-      console.error('[Subscribe] Checkout setup error:', err);
-      setErrorMessage('Subscription checkout could not be started. Please try again.');
+      console.error('[Subscribe] Checkout setup error:', err?.message || err);
+      setErrorMessage(err?.message || 'Subscription checkout could not be started. Please try again.');
+      setFlowState(FLOW.ERROR);
+    }
+    } catch (outerErr) {
+      // Safety net: catch any unexpected JS exception so mobile never shows a blank screen
+      console.error('[Subscribe] Unexpected error in handleJoin:', outerErr?.message || outerErr);
+      setErrorMessage('Something went wrong. Please refresh and try again.');
       setFlowState(FLOW.ERROR);
     }
   };
