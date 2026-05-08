@@ -12,33 +12,39 @@ import { useQuery } from '@tanstack/react-query';
 export default function SubscriptionManagement() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-
-  // Show success toast when returning from Stripe subscription checkout
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('subscribed') === 'true') {
-      toast.success('Subscription activated! Welcome to NuVira Wellness. 🌿');
-      window.history.replaceState({}, '', window.location.pathname);
-      // Refetch subscriptions immediately
-      refetch();
-      // Poll for 30 seconds in case webhook is still processing
-      const pollInterval = setInterval(() => refetch(), 2000);
-      const timeout = setTimeout(() => clearInterval(pollInterval), 30000);
-      return () => { clearInterval(pollInterval); clearTimeout(timeout); };
-    }
-  }, [refetch]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [selectedSubId, setSelectedSubId] = useState(null);
   const [pauseDuration, setPauseDuration] = useState('1week');
   const [customDate, setCustomDate] = useState('');
-
+  const [activating, setActivating] = useState(false);
 
   const { data: subscriptions = [], refetch } = useQuery({
     queryKey: ['subscriptions', user?.email],
     queryFn: () => base44.entities.Subscription.filter({ customer_email: user?.email }, '-created_date', 50),
     enabled: !!user?.email,
   });
+
+  // Show success toast + poll when returning from Stripe subscription checkout
+  // Handles both ?subscribed=true and ?session_id=... (Stripe return_url)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasSession = params.get('session_id');
+    const hasSubscribed = params.get('subscribed') === 'true';
+    if (hasSession || hasSubscribed) {
+      setActivating(true);
+      toast.success('Payment received! Activating your subscription...');
+      window.history.replaceState({}, '', window.location.pathname);
+      refetch();
+      // Poll every 2s for up to 30s waiting for webhook to create Subscription
+      const pollInterval = setInterval(() => refetch(), 2000);
+      const timeout = setTimeout(() => {
+        clearInterval(pollInterval);
+        setActivating(false);
+      }, 30000);
+      return () => { clearInterval(pollInterval); clearTimeout(timeout); };
+    }
+  }, []);
 
   const { data: plans = [] } = useQuery({
     queryKey: ['subscription-plans'],
@@ -289,8 +295,19 @@ export default function SubscriptionManagement() {
           </div>
         )}
 
+        {/* Activating state — webhook still processing */}
+        {activating && subscriptions.filter(s => s.status === 'active').length === 0 && (
+          <div className="text-center py-12">
+            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+            <p className="font-medium text-sm mb-1">Activating your subscription...</p>
+            <p className="text-xs text-muted-foreground">This usually takes a few seconds.</p>
+          </div>
+        )}
+
         {/* Empty State */}
-        {subscriptions.length === 0 && (
+        {!activating && subscriptions.length === 0 && (
           <div className="text-center py-12">
             <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
               <Plus className="w-6 h-6 text-muted-foreground" />
