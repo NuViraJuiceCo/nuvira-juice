@@ -1078,11 +1078,33 @@ Deno.serve(async (req) => {
       const sub = event.data.object;
       const stripeSubIdDeleted = sub.id;
       // CRITICAL: Match by stripe_subscription_id to avoid cancelling the wrong active subscription.
-      // The old email-only lookup caused Amar's active sub to be cancelled when we cancelled his old sub.
       const existingSubsDeleted = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubIdDeleted });
       if (existingSubsDeleted.length > 0) {
-        await base44.asServiceRole.entities.Subscription.update(existingSubsDeleted[0].id, { status: 'cancelled' });
-        console.log(`[sub.deleted] Subscription ${stripeSubIdDeleted} marked cancelled`);
+        const cancelledSub = existingSubsDeleted[0];
+        // Determine if this was a customer-initiated period-end cancel or an admin immediate cancel
+        const wasCustomerFutureCancel = sub.cancel_at_period_end === true || cancelledSub.cancel_at_period_end === true;
+        const cancelType = wasCustomerFutureCancel ? 'customer_future_cancel_period_ended' : 'admin_immediate_cancel';
+
+        await base44.asServiceRole.entities.Subscription.update(cancelledSub.id, {
+          status: 'cancelled',
+          cancel_at_period_end: false, // clear since it's now fully cancelled
+        });
+        console.log(`[sub.deleted] Subscription ${stripeSubIdDeleted} marked cancelled (type=${cancelType})`);
+
+        // Notify Hub with cancel type so it can distinguish customer period-end vs admin refund
+        base44.asServiceRole.functions.invoke('syncCustomerToHub', {
+          event: wasCustomerFutureCancel ? 'customer.subscription_period_ended' : 'customer.subscription_cancelled',
+          customer_email: cancelledSub.customer_email,
+          data: {
+            subscription_id: cancelledSub.id,
+            stripe_subscription_id: stripeSubIdDeleted,
+            cancel_type: cancelType,
+            current_cycle_intact: wasCustomerFutureCancel, // Hub: keep fulfilled FulfillmentTasks if period-end cancel
+            message: wasCustomerFutureCancel
+              ? 'Customer subscription period ended after future cancellation. Current cycle was fully served. Stop all future fulfillment cycles.'
+              : 'Subscription cancelled (admin/immediate). Stop all production and fulfillment.',
+          },
+        }).catch(err => console.warn(`[sub.deleted] Hub notify failed: ${err.message}`));
       } else {
         console.log(`[sub.deleted] No CA Subscription found for stripe_sub=${stripeSubIdDeleted}, skipping`);
       }

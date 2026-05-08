@@ -52,6 +52,16 @@
       ],
       "default": "active"
     },
+    "cancel_at_period_end": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, subscription will cancel at end of current paid period. Current cycle deliveries continue unaffected. Set by customer self-service cancel."
+    },
+    "cancel_effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date when cancellation takes effect (Stripe current_period_end). Populated when cancel_at_period_end=true."
+    },
     "next_delivery_date": {
       "type": "string",
       "format": "date"

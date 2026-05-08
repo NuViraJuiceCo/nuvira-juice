@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, Pause, SkipForward, Plus, CreditCard } from 'lucide-react';
+import { ArrowLeft, Calendar, Pause, SkipForward, Plus, CreditCard, XCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -56,24 +56,20 @@ export default function SubscriptionManagement() {
   const getPlan = (planId) => plans.find(p => p.id === planId);
   const getPlanName = (planId) => getPlan(planId)?.name || 'Plan';
 
+  const [showCancelConfirm, setShowCancelConfirm] = useState(null); // subId or null
+
   const handlePause = async (subId) => {
-    const sub = subscriptions.find(s => s.id === subId);
-    if (!sub) return;
-
-    const confirmPause = window.confirm(`Pause your ${getPlanName(sub.plan_id)} subscription? You can resume anytime.`);
-    if (!confirmPause) return;
-
     setLoading(true);
     const resumeDate = calculateResumeDate(pauseDuration, customDate);
     
     try {
-      await base44.functions.invoke('pauseSubscription', {
+      const res = await base44.functions.invoke('pauseSubscription', {
         subscription_id: subId,
         paused_until: resumeDate,
       });
       refetch();
       setShowPauseModal(false);
-      toast.success(`Subscription paused until ${new Date(resumeDate).toLocaleDateString()}`);
+      toast.success(res.data?.message || `Next month paused. Resumes ${new Date(resumeDate).toLocaleDateString()}.`);
     } catch (error) {
       toast.error('Failed to pause subscription');
     }
@@ -97,7 +93,7 @@ export default function SubscriptionManagement() {
     setLoading(true);
     try {
       const nextDate = new Date(sub.next_delivery_date);
-      nextDate.setDate(nextDate.getDate() + 7); // Skip to following week
+      nextDate.setDate(nextDate.getDate() + 7);
       
       await base44.entities.Subscription.update(subId, {
         next_delivery_date: nextDate.toISOString().split('T')[0],
@@ -110,15 +106,51 @@ export default function SubscriptionManagement() {
     setLoading(false);
   };
 
-  const handleCancel = async (subId) => {
-    const confirmCancel = window.confirm('Cancel subscription permanently? This action cannot be undone.');
-    if (!confirmCancel) return;
+  // Customer self-service: cancel FUTURE renewal only (cancel_at_period_end=true)
+  // Does NOT cancel current paid cycle, does NOT refund, does NOT reverse loyalty.
+  const handleCancelFutureRenewal = async (subId) => {
+    setLoading(true);
+    setShowCancelConfirm(null);
+    try {
+      const res = await base44.functions.invoke('cancelSubscriptionFutureRenewal', {
+        subscription_id: subId,
+      });
+      refetch();
+      toast.success(res.data?.message || 'Your renewal has been cancelled. This month\'s deliveries continue as scheduled.');
+    } catch (error) {
+      toast.error('Failed to cancel renewal. Please try again or contact support.');
+    }
+    setLoading(false);
+  };
 
+  const handleResumeCancelledRenewal = async (subId) => {
     setLoading(true);
     try {
-      await base44.entities.Subscription.update(subId, {
-        status: 'cancelled',
+      // Re-activate cancel_at_period_end=false via Stripe portal or direct update
+      const sub = subscriptions.find(s => s.id === subId);
+      if (sub?.stripe_subscription_id) {
+        const Stripe = (await import('@stripe/stripe-js')).loadStripe;
+        // Use billing portal for reactivation
+        handleManageBilling();
+        return;
+      }
+      await base44.asServiceRole.entities.Subscription.update(subId, {
+        cancel_at_period_end: false,
+        cancel_effective_date: null,
       });
+      refetch();
+      toast.success('Renewal reactivated!');
+    } catch (error) {
+      toast.error('Please use Manage Billing to reactivate your renewal.');
+    }
+    setLoading(false);
+  };
+
+  const handleCancel = async (subId) => {
+    // For paused subscriptions — allows full cancel
+    setLoading(true);
+    try {
+      await base44.entities.Subscription.update(subId, { status: 'cancelled' });
       refetch();
       toast.success('Subscription cancelled');
     } catch (error) {
@@ -178,68 +210,108 @@ export default function SubscriptionManagement() {
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">Active</h2>
             <div className="space-y-3">
-              {activeSubscriptions.map((sub, i) => (
-                <motion.div
-                  key={sub.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.1 }}
-                  className="bg-card border border-border/40 rounded-2xl p-4"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <p className="font-semibold text-sm">{getPlanName(sub.plan_id)}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{getPlan(sub.plan_id)?.bottle_count} bottles · {getPlan(sub.plan_id)?.frequency}</p>
-                    </div>
-                    <span className="bg-primary/20 text-primary text-[9px] font-bold px-2 py-1 rounded-full">Active</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 mb-3 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      <span>Next: {new Date(sub.next_delivery_date).toLocaleDateString()}</span>
-                    </div>
-                    <div>Since {new Date(sub.started_date).toLocaleDateString()}</div>
-                  </div>
-
-
-
-                  <div className="flex gap-2 mb-2">
-                    <Button
-                      onClick={() => {
-                        setSelectedSubId(sub.id);
-                        setShowPauseModal(true);
-                      }}
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 h-9 text-xs rounded-lg"
-                    >
-                      <Pause className="w-3 h-3 mr-1" />
-                      Pause
-                    </Button>
-                    <Button
-                      onClick={() => handleSkip(sub.id)}
-                      disabled={loading}
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 h-9 text-xs rounded-lg"
-                    >
-                      <SkipForward className="w-3 h-3 mr-1" />
-                      Skip
-                    </Button>
-                  </div>
-                  <Button
-                    onClick={handleManageBilling}
-                    disabled={billingLoading}
-                    variant="outline"
-                    size="sm"
-                    className="w-full h-9 text-xs rounded-lg"
+              {activeSubscriptions.map((sub, i) => {
+                const isPendingCancel = sub.cancel_at_period_end === true;
+                return (
+                  <motion.div
+                    key={sub.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    className="bg-card border border-border/40 rounded-2xl p-4"
                   >
-                    <CreditCard className="w-3 h-3 mr-1" />
-                    {billingLoading ? 'Loading...' : 'Manage Billing & Payment'}
-                  </Button>
-                </motion.div>
-              ))}
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className="font-semibold text-sm">{getPlanName(sub.plan_id)}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{getPlan(sub.plan_id)?.bottle_count} bottles · {getPlan(sub.plan_id)?.frequency}</p>
+                      </div>
+                      {isPendingCancel
+                        ? <span className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-full">Ends {sub.cancel_effective_date ? new Date(sub.cancel_effective_date).toLocaleDateString() : 'next cycle'}</span>
+                        : <span className="bg-primary/20 text-primary text-[9px] font-bold px-2 py-1 rounded-full">Active</span>
+                      }
+                    </div>
+
+                    {/* Current cycle lock notice */}
+                    <div className="bg-primary/5 border border-primary/15 rounded-lg px-3 py-2 mb-3 flex items-start gap-2">
+                      <Info className="w-3 h-3 text-primary mt-0.5 shrink-0" />
+                      <p className="text-[11px] text-primary/80 leading-snug">
+                        {isPendingCancel
+                          ? `Your current paid month is confirmed. Deliveries continue through ${sub.cancel_effective_date ? new Date(sub.cancel_effective_date).toLocaleDateString() : 'end of current cycle'}. Renewal will not process.`
+                          : 'Your current month is confirmed. Changes apply to your next billing cycle only.'
+                        }
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-3 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        <span>Next delivery: {sub.next_delivery_date ? new Date(sub.next_delivery_date).toLocaleDateString() : '—'}</span>
+                      </div>
+                      <div>Since {sub.started_date ? new Date(sub.started_date).toLocaleDateString() : '—'}</div>
+                    </div>
+
+                    {!isPendingCancel && (
+                      <div className="flex gap-2 mb-2">
+                        <Button
+                          onClick={() => {
+                            setSelectedSubId(sub.id);
+                            setShowPauseModal(true);
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-9 text-xs rounded-lg"
+                        >
+                          <Pause className="w-3 h-3 mr-1" />
+                          Pause Next Month
+                        </Button>
+                        <Button
+                          onClick={() => handleSkip(sub.id)}
+                          disabled={loading}
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-9 text-xs rounded-lg"
+                        >
+                          <SkipForward className="w-3 h-3 mr-1" />
+                          Skip
+                        </Button>
+                      </div>
+                    )}
+
+                    <Button
+                      onClick={handleManageBilling}
+                      disabled={billingLoading}
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-9 text-xs rounded-lg mb-2"
+                    >
+                      <CreditCard className="w-3 h-3 mr-1" />
+                      {billingLoading ? 'Loading...' : 'Manage Billing & Payment'}
+                    </Button>
+
+                    {isPendingCancel ? (
+                      <Button
+                        onClick={handleManageBilling}
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-9 text-xs rounded-lg text-primary border-primary/30"
+                      >
+                        Reactivate Renewal via Billing Portal
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => setShowCancelConfirm(sub.id)}
+                        disabled={loading}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full h-9 text-xs rounded-lg text-destructive hover:bg-destructive/10"
+                      >
+                        <XCircle className="w-3 h-3 mr-1" />
+                        Cancel Renewal
+                      </Button>
+                    )}
+                  </motion.div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -323,22 +395,70 @@ export default function SubscriptionManagement() {
 
 
 
-      {/* Pause Modal */}
+      {/* Cancel Renewal Confirmation Modal */}
+      <AnimatePresence>
+        {showCancelConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-end"
+            onClick={() => setShowCancelConfirm(null)}
+          >
+            <motion.div
+              initial={{ y: 100 }}
+              animate={{ y: 0 }}
+              exit={{ y: 100 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-card w-full rounded-t-2xl p-5"
+            >
+              <h3 className="font-semibold text-base mb-2">Cancel Future Renewal</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                This will stop your subscription after your current paid month. <strong>You will still receive all of this month's scheduled deliveries.</strong>
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4">
+                <p className="text-xs text-amber-800 leading-snug">
+                  Monthly subscription payments are non-refundable once processed. Cancelling only stops the <em>next</em> billing cycle.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowCancelConfirm(null)} className="flex-1 rounded-lg h-10">
+                  Keep Subscription
+                </Button>
+                <Button
+                  onClick={() => handleCancelFutureRenewal(showCancelConfirm)}
+                  disabled={loading}
+                  variant="destructive"
+                  className="flex-1 rounded-lg h-10"
+                >
+                  {loading ? 'Cancelling...' : 'Cancel Renewal'}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Pause Next Month Modal */}
       {showPauseModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end">
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end" onClick={() => setShowPauseModal(false)}>
           <motion.div
             initial={{ y: 100 }}
             animate={{ y: 0 }}
+            onClick={e => e.stopPropagation()}
             className="bg-card w-full rounded-t-2xl p-5"
           >
-            <h3 className="font-semibold text-base mb-4">Pause Subscription</h3>
+            <h3 className="font-semibold text-base mb-1">Pause Next Month</h3>
+            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+              Your current month remains active. Your next billing cycle will be paused.
+            </p>
 
             <div className="space-y-2 mb-5">
               {[
                 { value: '1week', label: 'Pause for 1 week' },
                 { value: '2weeks', label: 'Pause for 2 weeks' },
                 { value: '1month', label: 'Pause for 1 month' },
-                { value: 'custom', label: 'Custom date' },
+                { value: 'custom', label: 'Custom resume date' },
               ].map(opt => (
                 <button
                   key={opt.value}
@@ -367,19 +487,15 @@ export default function SubscriptionManagement() {
             )}
 
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowPauseModal(false)}
-                className="flex-1 rounded-lg h-10"
-              >
-                Cancel
+              <Button variant="outline" onClick={() => setShowPauseModal(false)} className="flex-1 rounded-lg h-10">
+                Back
               </Button>
               <Button
                 onClick={() => handlePause(selectedSubId)}
                 disabled={loading || (pauseDuration === 'custom' && !customDate)}
                 className="flex-1 rounded-lg h-10"
               >
-                {loading ? 'Pausing...' : 'Confirm'}
+                {loading ? 'Pausing...' : 'Confirm Pause'}
               </Button>
             </div>
           </motion.div>
