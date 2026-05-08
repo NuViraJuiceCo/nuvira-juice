@@ -1,0 +1,295 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import Stripe from 'npm:stripe@14.21.0';
+
+/**
+ * createSubscriptionPaymentElementIntent
+ *
+ * Creates a Stripe Subscription in default_incomplete state and returns
+ * the first invoice's PaymentIntent client_secret for in-app Payment Element.
+ *
+ * This is the same pattern as one-time orders — customer stays inside the app,
+ * no external redirect, no EmbeddedCheckout iframe.
+ *
+ * Flow:
+ *  1. Validate plan + customer
+ *  2. Create PendingSubscriptionCheckout with full metadata & delivery dates
+ *  3. Get/create Stripe Customer
+ *  4. Create Stripe Subscription (default_incomplete) — expand latest_invoice.payment_intent
+ *  5. Return { paymentIntentClientSecret, stripeSubscriptionId, pendingCheckoutId, publishableKey, planName, amountDue }
+ */
+
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+
+function resolveSubscriptionFirstFulfillment(orderTimestamp, options = {}) {
+  const orderDate = new Date(orderTimestamp);
+  const chicagoFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+
+  const parts = chicagoFormatter.formatToParts(orderDate);
+  const pm = {};
+  parts.forEach(p => { pm[p.type] = p.value; });
+
+  const chicagoHour = parseInt(pm.hour);
+  const dow = new Date(parseInt(pm.year), parseInt(pm.month) - 1, parseInt(pm.day)).getDay();
+  const cutoffHour = 14;
+
+  let daysToNextProduction = 0, reason = '';
+  if (dow === 0) { daysToNextProduction = 2; reason = 'Sunday → Tuesday production'; }
+  else if (dow === 1) { daysToNextProduction = 1; reason = 'Monday → Tuesday production'; }
+  else if (dow === 2) { daysToNextProduction = chicagoHour < cutoffHour ? 0 : 3; reason = chicagoHour < cutoffHour ? 'Tuesday before cutoff' : 'Tuesday after cutoff → Friday'; }
+  else if (dow === 3) { daysToNextProduction = 2; reason = 'Wednesday → Friday production'; }
+  else if (dow === 4) { daysToNextProduction = 1; reason = 'Thursday → Friday production'; }
+  else if (dow === 5) { daysToNextProduction = chicagoHour < cutoffHour ? 0 : 1; reason = chicagoHour < cutoffHour ? 'Friday before cutoff' : 'Friday after cutoff → Saturday'; }
+  else if (dow === 6) { daysToNextProduction = chicagoHour < cutoffHour ? 0 : 3; reason = chicagoHour < cutoffHour ? 'Saturday before cutoff' : 'Saturday after cutoff → Tuesday'; }
+
+  const productionDate = new Date(parseInt(pm.year), parseInt(pm.month) - 1, parseInt(pm.day));
+  productionDate.setDate(productionDate.getDate() + daysToNextProduction);
+  const productionDateStr = productionDate.toISOString().split('T')[0];
+
+  const deliveryDate = new Date(productionDate);
+  deliveryDate.setDate(deliveryDate.getDate() + 1);
+  const firstDeliveryDateStr = deliveryDate.toISOString().split('T')[0];
+
+  const nextDeliveryDate = new Date(deliveryDate);
+  if (options.plan_cadence === 'weekly') {
+    nextDeliveryDate.setDate(nextDeliveryDate.getDate() + 7);
+  } else {
+    nextDeliveryDate.setMonth(nextDeliveryDate.getMonth() + 1);
+  }
+
+  return {
+    production_date: productionDateStr,
+    first_delivery_date: firstDeliveryDateStr,
+    next_delivery_date: nextDeliveryDate.toISOString().split('T')[0],
+    delivery_window_label: '5 PM – 8 PM',
+    delivery_window_start: '17:00',
+    delivery_window_end: '20:00',
+    reason,
+    order_date: productionDate.toISOString().split('T')[0],
+    order_time: `${String(chicagoHour).padStart(2, '0')}:${String(parseInt(pm.minute)).padStart(2, '0')}`,
+  };
+}
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+
+    const {
+      plan_id,
+      bundle_id,
+      customer_email,
+      contact_phone,
+      address_line1,
+      address_line2,
+      address_city,
+      address_state,
+      address_postal_code,
+      delivery_address,
+    } = await req.json();
+
+    if (!plan_id || !customer_email) {
+      return Response.json({ error: 'Missing plan_id or customer_email' }, { status: 400 });
+    }
+
+    // Resolve customer name from profile
+    let customer_name = '';
+    try {
+      const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email });
+      if (profiles[0]) {
+        const { first_name, last_name } = profiles[0];
+        customer_name = [first_name, last_name].filter(Boolean).join(' ');
+      }
+    } catch (err) {
+      console.warn(`[SubPE] Failed to fetch UserProfile: ${err.message}`);
+    }
+
+    if (!customer_name?.trim()) {
+      return Response.json({ error: 'Customer name is required. Please complete your profile before subscribing.' }, { status: 400 });
+    }
+
+    // Fetch plan
+    const plans = await base44.asServiceRole.entities.SubscriptionPlan.filter({ id: plan_id });
+    if (!plans[0]) return Response.json({ error: 'Subscription plan not found' }, { status: 404 });
+    const plan = plans[0];
+
+    if (!plan.stripe_price_id) {
+      return Response.json({ error: 'This subscription plan is not yet available for purchase. Please contact support.' }, { status: 400 });
+    }
+
+    // Check for existing active subscription on same plan
+    const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ customer_email });
+    const hasActiveSub = existingSubs.some(s => s.plan_id === plan_id && s.status === 'active');
+    if (hasActiveSub) {
+      return Response.json({ error: 'You already have an active subscription with this plan.' }, { status: 400 });
+    }
+
+    // Delivery zone
+    const allZones = await base44.asServiceRole.entities.DeliveryZone.filter({ is_active: true });
+    const delivery_zone_id = allZones[0]?.id || null;
+
+    const resolvedAddress = delivery_address ||
+      [address_line1, address_city, address_state, address_postal_code].filter(Boolean).join(', ');
+
+    // Calculate fulfillment dates
+    const now = new Date();
+    const fulfillmentCalc = resolveSubscriptionFirstFulfillment(now.toISOString(), {
+      plan_cadence: plan.frequency,
+    });
+    console.log(`[SubPE] Fulfillment: production=${fulfillmentCalc.production_date}, first_delivery=${fulfillmentCalc.first_delivery_date}, reason=${fulfillmentCalc.reason}`);
+
+    // Get or create Stripe Customer
+    const customers = await stripe.customers.list({ email: customer_email, limit: 1 });
+    const stripeCustomer = customers.data[0] || await stripe.customers.create({
+      email: customer_email,
+      name: customer_name,
+      phone: contact_phone || undefined,
+      metadata: { source_app: 'customer_app' },
+    });
+    console.log(`[SubPE] Stripe customer: ${stripeCustomer.id}`);
+
+    // Product decomposition
+    const planComposition = plan.composition_template?.bottles_per_delivery || [];
+    const products = planComposition.map(b => ({ product_name: b.flavor || 'Juice', quantity: b.quantity || 1 }));
+    const billingCadence = plan.frequency || 'monthly';
+    const fulfillmentsPerCycle = plan.composition_template?.deliveries_per_cycle || (billingCadence === 'monthly' ? 4 : 1);
+    const itemsSummaryStr = products.length > 0
+      ? products.map(p => `${p.quantity}x ${p.product_name}`).join(', ')
+      : plan.name;
+
+    // Build shared metadata object
+    const sharedMetadata = {
+      base44_app_id: Deno.env.get('BASE44_APP_ID'),
+      source_app: 'customer_app',
+      checkout_version: '4.0_payment_element',
+      checkout_type: 'subscription',
+      source_type: 'subscription_fulfillment',
+      order_type: 'subscription',
+      customer_email: customer_email || '',
+      customer_name: customer_name || '',
+      customer_phone: contact_phone || '',
+      plan_id,
+      plan_name: plan.name,
+      billing_cadence: billingCadence,
+      fulfillment_cadence: 'weekly',
+      fulfillment_number: '1',
+      fulfillments_per_cycle: String(fulfillmentsPerCycle),
+      production_date: fulfillmentCalc.production_date,
+      first_delivery_date: fulfillmentCalc.first_delivery_date,
+      delivery_window_label: fulfillmentCalc.delivery_window_label,
+      items_summary: itemsSummaryStr,
+      delivery_address: resolvedAddress,
+      delivery_address_line1: address_line1 || '',
+      delivery_address_line2: address_line2 || '',
+      delivery_city: address_city || '',
+      delivery_state: address_state || '',
+      delivery_postal_code: address_postal_code || '',
+      delivery_zone_id: delivery_zone_id || '',
+      bundle_id: bundle_id || '',
+    };
+
+    // Create PendingSubscriptionCheckout BEFORE creating the Stripe subscription
+    let pendingCheckout = null;
+    try {
+      pendingCheckout = await base44.asServiceRole.entities.PendingSubscriptionCheckout.create({
+        customer_email,
+        customer_name,
+        customer_phone: contact_phone || '',
+        plan_id,
+        plan_name: plan.name,
+        cadence: billingCadence,
+        bundle_id: bundle_id || null,
+        delivery_address: resolvedAddress,
+        address_line1: address_line1 || '',
+        address_line2: address_line2 || '',
+        address_city: address_city || '',
+        address_state: address_state || '',
+        address_postal_code: address_postal_code || '',
+        address_country: 'US',
+        delivery_zone_id,
+        products,
+        order_timestamp: now.toISOString(),
+        order_date: fulfillmentCalc.order_date,
+        order_time: fulfillmentCalc.order_time,
+        production_date: fulfillmentCalc.production_date,
+        first_delivery_date: fulfillmentCalc.first_delivery_date,
+        next_delivery_date: fulfillmentCalc.next_delivery_date,
+        delivery_window_label: fulfillmentCalc.delivery_window_label,
+        delivery_window_start: fulfillmentCalc.delivery_window_start,
+        delivery_window_end: fulfillmentCalc.delivery_window_end,
+        date_calculation_reason: fulfillmentCalc.reason,
+        date_calculation_version: 'v2_may_2026',
+        stripe_customer_id: stripeCustomer.id,
+        fulfillment_cadence: 'weekly',
+        fulfillments_per_cycle: fulfillmentsPerCycle,
+        fulfillment_number: 1,
+        items_summary: itemsSummaryStr,
+        decomposition_version: 'v2_weekly_decomposed',
+        status: 'pending',
+      });
+      console.log(`[SubPE] Created PendingSubscriptionCheckout: ${pendingCheckout.id}`);
+    } catch (pendingErr) {
+      console.error(`[SubPE] Failed to create PendingSubscriptionCheckout: ${pendingErr.message}`);
+      return Response.json({ error: 'Failed to prepare subscription checkout. Please try again.' }, { status: 500 });
+    }
+
+    const metadataWithPendingId = {
+      ...sharedMetadata,
+      pending_subscription_checkout_id: pendingCheckout.id,
+    };
+
+    // Create Stripe Subscription in default_incomplete state
+    // This creates a subscription + first invoice + PaymentIntent — all in one call
+    const subscription = await stripe.subscriptions.create({
+      customer: stripeCustomer.id,
+      items: [{ price: plan.stripe_price_id }],
+      payment_behavior: 'default_incomplete',
+      payment_settings: {
+        save_default_payment_method: 'on_subscription',
+        payment_method_types: ['card'],
+      },
+      expand: ['latest_invoice.payment_intent'],
+      metadata: metadataWithPendingId,
+    });
+
+    const invoice = subscription.latest_invoice;
+    const paymentIntent = invoice?.payment_intent;
+
+    if (!paymentIntent?.client_secret) {
+      console.error(`[SubPE] No client_secret on PaymentIntent for subscription ${subscription.id}`);
+      // Clean up the incomplete subscription
+      await stripe.subscriptions.cancel(subscription.id).catch(() => {});
+      return Response.json({ error: 'Failed to initialize payment. Please try again.' }, { status: 500 });
+    }
+
+    // Update subscription metadata on the PaymentIntent for webhook idempotency
+    await stripe.paymentIntents.update(paymentIntent.id, {
+      metadata: metadataWithPendingId,
+    }).catch(err => console.warn(`[SubPE] Failed to update PI metadata: ${err.message}`));
+
+    // Update PendingSubscriptionCheckout with stripe subscription + session IDs
+    await base44.asServiceRole.entities.PendingSubscriptionCheckout.update(pendingCheckout.id, {
+      stripe_checkout_session_id: subscription.id, // reuse field for stripe_subscription_id reference
+      stripe_subscription_id: subscription.id,
+      stripe_customer_id: stripeCustomer.id,
+    }).catch(err => console.warn(`[SubPE] Failed to update pending checkout: ${err.message}`));
+
+    console.log(`[SubPE] Subscription ${subscription.id} created (incomplete), PI ${paymentIntent.id} ready for ${customer_email}`);
+
+    return Response.json({
+      success: true,
+      paymentIntentClientSecret: paymentIntent.client_secret,
+      stripeSubscriptionId: subscription.id,
+      pendingCheckoutId: pendingCheckout.id,
+      publishableKey: Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+      planName: plan.name,
+      amountDue: (invoice.amount_due || 0) / 100,
+    });
+
+  } catch (error) {
+    console.error('[SubPE] Error:', error.message);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});
