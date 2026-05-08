@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ArrowLeft, Check, Zap, Crown, Leaf, MapPin, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
@@ -156,25 +156,17 @@ export default function Subscribe() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      {/* Embedded subscription checkout overlay */}
-      <AnimatePresence>
-        {checkoutClientSecret && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <SubscriptionEmbeddedCheckout
-              clientSecret={checkoutClientSecret}
-              publishableKey={checkoutPublishableKey}
-              onClose={() => {
-                setCheckoutClientSecret(null);
-                setCheckoutPublishableKey(null);
-              }}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Embedded subscription checkout overlay — rendered directly, no motion wrapper that could interfere with fixed positioning */}
+      {checkoutClientSecret && (
+        <SubscriptionEmbeddedCheckout
+          clientSecret={checkoutClientSecret}
+          publishableKey={checkoutPublishableKey}
+          onClose={() => {
+            setCheckoutClientSecret(null);
+            setCheckoutPublishableKey(null);
+          }}
+        />
+      )}
 
       {showOutOfArea && (
         <OutOfAreaModal
