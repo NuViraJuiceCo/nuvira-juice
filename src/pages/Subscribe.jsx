@@ -1,11 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Check, Zap, Crown, Leaf, MapPin, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
-import SubscriptionEmbeddedCheckout from '@/components/checkout/SubscriptionEmbeddedCheckout';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -30,8 +29,6 @@ export default function Subscribe() {
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [showOutOfArea, setShowOutOfArea] = useState(false);
-  const [checkoutClientSecret, setCheckoutClientSecret] = useState(null);
-  const [checkoutPublishableKey, setCheckoutPublishableKey] = useState(null);
   const debounceRef = useRef(null);
 
   const { data: plans = [] } = useQuery({
@@ -74,15 +71,6 @@ export default function Subscribe() {
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
   const handleJoin = async () => {
-    // Only block if running inside an iframe AND hostname contains 'preview' (Base44 preview pane)
-    // Published app is never in an iframe, so this guard should never fire for real customers
-    const isPreviewIframe = window.self !== window.top &&
-      (window.location.hostname.includes('preview') || document.referrer.includes('base44'));
-    if (isPreviewIframe) {
-      alert('Checkout only works from the published app, not the preview.');
-      return;
-    }
-
     if (!user) {
       base44.auth.redirectToLogin('/subscribe');
       return;
@@ -122,10 +110,9 @@ export default function Subscribe() {
       return;
     }
 
-    // Create embedded subscription checkout session (with full metadata parity)
+    // Create hosted Stripe checkout session and redirect
     try {
-      console.log('[Subscribe] Creating embedded subscription checkout...', { plan_id: selectedPlanId, customer_email: user.email });
-      const res = await base44.functions.invoke('createSubscriptionPaymentIntentV2', {
+      const res = await base44.functions.invoke('createSubscriptionCheckoutHosted', {
         plan_id: selectedPlanId,
         bundle_id: null,
         customer_email: user.email,
@@ -135,17 +122,14 @@ export default function Subscribe() {
         address_state: address.state || '',
         address_postal_code: address.zip || '',
         delivery_address: addressString,
+        origin: window.location.origin,
       });
 
-      console.log('[Subscribe] Checkout response:', res.data);
-
-      if (res.data?.clientSecret) {
-        setCheckoutClientSecret(res.data.clientSecret);
-        setCheckoutPublishableKey(res.data.publishableKey);
-        setLoading(false);
+      if (res.data?.checkoutUrl) {
+        // Redirect to Stripe hosted checkout — works on all devices
+        window.location.href = res.data.checkoutUrl;
       } else {
         const errMsg = res.data?.error || 'Failed to start subscription checkout. Please try again.';
-        console.error('[Subscribe] Checkout creation failed:', res.data);
         toast.error(errMsg);
         setLoading(false);
       }
@@ -160,18 +144,6 @@ export default function Subscribe() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      {/* Embedded subscription checkout overlay — rendered directly, no motion wrapper that could interfere with fixed positioning */}
-      {checkoutClientSecret && (
-        <SubscriptionEmbeddedCheckout
-          clientSecret={checkoutClientSecret}
-          publishableKey={checkoutPublishableKey}
-          onClose={() => {
-            setCheckoutClientSecret(null);
-            setCheckoutPublishableKey(null);
-          }}
-        />
-      )}
-
       {showOutOfArea && (
         <OutOfAreaModal
           address={addressString}
