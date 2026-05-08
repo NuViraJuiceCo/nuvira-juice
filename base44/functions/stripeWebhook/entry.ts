@@ -1163,12 +1163,15 @@ Deno.serve(async (req) => {
           const pointsToReverse = Math.floor(refundAmount * 10); // $144 → 1440
 
           // --- Loyalty reversal (idempotent) ---
+          // IDEMPOTENCY: Check if points for this subscription have already been reversed (by admin override OR webhook)
+          // Must detect both: "subscription refund" entries AND "admin cancel+refund" entries
           const pointsRecs = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: subEmail });
           let loyaltyAction = 'skipped_no_record';
           if (pointsRecs[0]) {
             const rec = pointsRecs[0];
+            // Check for ANY adjustment (admin or webhook) that mentions this subscription
             const alreadyReversed = rec.points_history?.some(h =>
-              h.description?.includes('subscription refund') && h.description?.includes(stripeSubscriptionId)
+              h.type === 'adjustment' && h.description?.includes(stripeSubscriptionId)
             );
             if (!alreadyReversed) {
               const entry = {
@@ -1185,7 +1188,7 @@ Deno.serve(async (req) => {
               console.log(`[charge.refunded] ✅ Reversed ${pointsToReverse} loyalty pts for ${subEmail}`);
             } else {
               loyaltyAction = 'already_reversed_idempotent';
-              console.log(`[charge.refunded] Loyalty already reversed for sub ${stripeSubscriptionId}, skipping`);
+              console.log(`[charge.refunded] Loyalty already reversed for sub ${stripeSubscriptionId} (admin or prior webhook), skipping`);
             }
           }
 
