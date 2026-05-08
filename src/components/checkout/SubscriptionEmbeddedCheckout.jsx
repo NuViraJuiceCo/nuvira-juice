@@ -1,33 +1,58 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { X } from 'lucide-react';
 
-/**
- * SubscriptionEmbeddedCheckout
- * 
- * Renders Stripe's full embedded checkout inside a bottom sheet.
- * Uses ui_mode='embedded' checkout session — handles all card/wallet input.
- * 
- * Props:
- *   clientSecret: string — from createSubscriptionPaymentIntent
- *   publishableKey: string — Stripe publishable key
- *   onClose: () => void — called when customer cancels
- */
 export default function SubscriptionEmbeddedCheckout({ clientSecret, publishableKey, onClose }) {
   const stripePromise = useMemo(
     () => publishableKey ? loadStripe(publishableKey) : null,
     [publishableKey]
   );
-
   const fetchClientSecret = useCallback(() => Promise.resolve(clientSecret), [clientSecret]);
+  const scrollRef = useRef(null);
+
+  // Lock body scroll and reset page scroll position when overlay opens
+  useEffect(() => {
+    // Save current scroll position and lock body
+    const savedScrollY = window.scrollY;
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${savedScrollY}px`;
+    document.body.style.width = '100%';
+
+    // Reset the overlay's own scroll container to top
+    requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    });
+
+    return () => {
+      // Restore body scroll position on close
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      window.scrollTo(0, savedScrollY);
+    };
+  }, []);
 
   if (!clientSecret || !stripePromise) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-background shrink-0">
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100dvh',
+        backgroundColor: 'hsl(var(--background))',
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
+      {/* Header — always visible at top */}
+      <div style={{ flexShrink: 0 }} className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-background">
         <span className="font-heading text-base font-semibold">Complete Subscription</span>
         <button
           onClick={onClose}
@@ -37,8 +62,11 @@ export default function SubscriptionEmbeddedCheckout({ clientSecret, publishable
         </button>
       </div>
 
-      {/* Stripe Embedded Checkout fills remaining space with safe scrolling */}
-      <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 56px)' }}>
+      {/* Stripe Embedded Checkout — scrollable content area */}
+      <div
+        ref={scrollRef}
+        style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+      >
         <EmbeddedCheckoutProvider
           stripe={stripePromise}
           options={{ fetchClientSecret }}
