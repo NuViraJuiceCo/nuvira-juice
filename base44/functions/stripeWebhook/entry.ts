@@ -899,13 +899,117 @@ Deno.serve(async (req) => {
       const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });
       
       if (orders.length === 0) {
-        console.warn(`[charge.refunded] No order found for PI ${paymentIntentId}`);
-        // Log the missing order for investigation
+        // No one-time order found — check if this PI belongs to a subscription invoice
+        console.log(`[charge.refunded] No one-time order found for PI ${paymentIntentId} — checking subscription path`);
+
+        let stripeSubscriptionId = null;
+        let invoiceCustomerEmail = null;
+        try {
+          const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+          if (pi.invoice) {
+            const invoice = await stripe.invoices.retrieve(typeof pi.invoice === 'string' ? pi.invoice : pi.invoice.id);
+            stripeSubscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id || null;
+            invoiceCustomerEmail = invoice.customer_email || null;
+            console.log(`[charge.refunded] PI belongs to invoice ${invoice.id}, subscription=${stripeSubscriptionId}, email=${invoiceCustomerEmail}`);
+          }
+        } catch (piErr) {
+          console.error(`[charge.refunded] Failed to retrieve PI/invoice for ${paymentIntentId}: ${piErr.message}`);
+        }
+
+        if (stripeSubscriptionId) {
+          // Look up Customer App Subscription
+          const subResults = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubscriptionId });
+          const subscription = subResults[0];
+
+          if (subscription) {
+            const subEmail = subscription.customer_email;
+
+            // --- Loyalty reversal (idempotent) ---
+            const pointsToReverse = Math.floor(refundAmount * 10); // e.g. $144 → 1440
+            const pointsRecs = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: subEmail });
+            if (pointsRecs[0]) {
+              const rec = pointsRecs[0];
+              // Idempotency: only reverse if not already reversed for this subscription
+              const alreadyReversed = rec.points_history?.some(h =>
+                h.description?.includes(`subscription refund`) && h.description?.includes(stripeSubscriptionId)
+              );
+              if (!alreadyReversed) {
+                const entry = {
+                  amount: -pointsToReverse,
+                  type: 'adjustment',
+                  description: `Points reversed: subscription refund (subscription ${stripeSubscriptionId}), refund $${refundAmount.toFixed(2)}`,
+                  timestamp: new Date().toISOString(),
+                };
+                await base44.asServiceRole.entities.UserPoints.update(rec.id, {
+                  total_points: Math.max(0, (rec.total_points || 0) - pointsToReverse),
+                  points_history: [...(rec.points_history || []), entry],
+                });
+                console.log(`[charge.refunded] Reversed ${pointsToReverse} loyalty pts for ${subEmail} (sub ${stripeSubscriptionId})`);
+              } else {
+                console.log(`[charge.refunded] Loyalty already reversed for sub ${stripeSubscriptionId}, skipping`);
+              }
+            }
+
+            // --- Mark Subscription cancelled ---
+            if (subscription.status !== 'cancelled') {
+              await base44.asServiceRole.entities.Subscription.update(subscription.id, {
+                status: 'cancelled',
+              });
+              console.log(`[charge.refunded] Subscription ${subscription.id} marked cancelled`);
+            }
+
+            // --- Notify Hub: subscription cancelled/refunded ---
+            base44.asServiceRole.functions.invoke('syncCustomerToHub', {
+              event: 'customer.subscription_cancelled',
+              event_type: 'customer.subscription_cancelled',
+              source: 'customer_app',
+              customer_email: subEmail,
+              data: {
+                subscription_id: subscription.id,
+                customer_app_subscription_id: subscription.id,
+                stripe_subscription_id: stripeSubscriptionId,
+                customer_email: subEmail,
+                cancellation_reason: 'refunded',
+                refund_amount: refundAmount,
+                is_full_refund: isFullRefund,
+                payment_intent_id: paymentIntentId,
+                cancelled_at: new Date().toISOString(),
+              },
+            }).catch(err => console.error(`[charge.refunded] Hub cancel notify failed: ${err.message}`));
+
+            // --- Audit log ---
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: `SUB-${stripeSubscriptionId}`,
+              status: 'success',
+              hub_action: 'subscription_refund_cancelled',
+              description: `Subscription refund: $${refundAmount} (${isFullRefund ? 'FULL' : 'PARTIAL'}). Loyalty reversed: ${pointsToReverse} pts. Hub cancel event sent. Sub ID: ${subscription.id}`,
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+              triggered_by: 'stripe_webhook',
+            }).catch(() => {});
+
+          } else {
+            console.warn(`[charge.refunded] No Customer App Subscription found for stripe_subscription_id=${stripeSubscriptionId}`);
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: `SUB-${stripeSubscriptionId}`,
+              status: 'error',
+              description: `[charge.refunded] Subscription refund received but no CA Subscription record found. stripe_sub=${stripeSubscriptionId}, PI=${paymentIntentId}, amount=$${refundAmount}. Manual review required.`,
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+              triggered_by: 'stripe_webhook',
+            }).catch(() => {});
+          }
+
+          return Response.json({ received: true });
+        }
+
+        // Not a subscription PI either — log for manual review
+        console.warn(`[charge.refunded] No order or subscription found for PI ${paymentIntentId}`);
         try {
           await base44.asServiceRole.entities.OrderSyncLog.create({
             order_number: 'UNKNOWN',
             status: 'error',
-            description: `[charge.refunded] No Customer App order found for PI ${paymentIntentId}. Refund amount: $${refundAmount}. Manual review required.`,
+            description: `[charge.refunded] No Customer App order or subscription found for PI ${paymentIntentId}. Refund amount: $${refundAmount}. Manual review required.`,
             started_at: new Date().toISOString(),
             completed_at: new Date().toISOString(),
             triggered_by: 'stripe_webhook',
