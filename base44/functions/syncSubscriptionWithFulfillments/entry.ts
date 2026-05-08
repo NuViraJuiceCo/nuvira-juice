@@ -223,9 +223,24 @@ function calculateMonthlyFulfillments(startedDate, planName) {
     const deliveryDate = new Date(start);
     deliveryDate.setDate(deliveryDate.getDate() + (week * 7));
     
-    // Production date: 2 days before delivery
+    // Production date: NuVira produces on Tue/Fri only. Use the Friday immediately before delivery.
+    // If delivery is Saturday (6), production is Friday (5) = 1 day back.
+    // If delivery is Wednesday (3), production is Tuesday (2) = 1 day back.
     const productionDate = new Date(deliveryDate);
-    productionDate.setDate(productionDate.getDate() - 2);
+    const deliveryDayOfWeek = deliveryDate.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+    
+    // For Saturday delivery, go back 1 day to Friday. For any other day, go back to the nearest Tue or Fri.
+    let daysBack;
+    if (deliveryDayOfWeek === 6) { // Saturday -> Friday (1 day back)
+      daysBack = 1;
+    } else if (deliveryDayOfWeek === 3) { // Wednesday -> Tuesday (1 day back)
+      daysBack = 1;
+    } else {
+      // For other days, calculate back to nearest valid production day (Fri or Tue)
+      daysBack = ((deliveryDayOfWeek - 5) % 7 + 7) % 7; // Closest to Friday
+      if (daysBack === 0 || daysBack > 3) daysBack = 2; // Fallback to closest valid day
+    }
+    productionDate.setDate(productionDate.getDate() - daysBack);
     
     const scheduledDateStr = deliveryDate.toISOString().split('T')[0];
     const productionDateStr = productionDate.toISOString().split('T')[0];
