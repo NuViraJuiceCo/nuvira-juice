@@ -10,7 +10,7 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Lock, X } from 'lucide-react';
+import { CheckCircle2, Lock } from 'lucide-react';
 
 /**
  * SubscriptionPaymentPanel
@@ -86,8 +86,14 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
     if (error) {
       setErrorMsg(error.message || 'Payment failed. Please try again.');
       setSubmitting(false);
-    } else if (paymentIntent?.status === 'succeeded') {
+    } else if (paymentIntent?.status === 'succeeded' || paymentIntent?.status === 'processing') {
+      // 'processing' is valid for some payment methods — webhook will fire invoice.payment_succeeded
       onSuccess(paymentIntent.id);
+    } else if (paymentIntent?.status === 'requires_action') {
+      // 3DS or additional authentication needed — Stripe.js handles the UI automatically
+      // confirmCardPayment already handles requires_action internally, so this is a fallback
+      setErrorMsg('Additional authentication required. Please follow the prompts and try again.');
+      setSubmitting(false);
     } else {
       setErrorMsg('Payment not completed. Please try again.');
       setSubmitting(false);
@@ -97,7 +103,7 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
   return (
     <div className="space-y-4">
       {/* Plan summary */}
-      <div className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-xl px-4 py-3">
+      <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-3">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
           <span className="text-sm font-semibold">{planName}</span>
@@ -203,13 +209,23 @@ export default function SubscriptionPaymentPanel({ clientSecret, publishableKey,
     },
   };
 
+  // mode + amount + currency required for ExpressCheckoutElement (Apple Pay / Google Pay) to render correctly
+  const elementsOptions = {
+    clientSecret,
+    appearance,
+    locale: 'en',
+    mode: 'subscription',
+    amount: Math.round(amountDue * 100), // cents
+    currency: 'usd',
+  };
+
   return (
     <div className="bg-card border border-border/40 rounded-2xl p-5 mt-4">
       <div className="flex items-center gap-2 mb-4">
         <Lock className="w-3.5 h-3.5 text-primary" />
         <span className="font-heading text-base font-semibold">Complete Subscription</span>
       </div>
-      <Elements stripe={stripePromise} options={{ clientSecret, appearance, locale: 'en' }}>
+      <Elements stripe={stripePromise} options={elementsOptions}>
         <PaymentForm
           amountDue={amountDue}
           planName={planName}

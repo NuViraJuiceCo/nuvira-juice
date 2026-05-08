@@ -431,7 +431,7 @@ export default function Subscribe() {
           {!isPaymentOpen && (
             <div className="px-4 mt-6 space-y-3">
               {selectedPlan && (
-                <div className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-xl px-4 py-2.5">
+                <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
                     <span className="text-sm font-semibold">{selectedPlan.name}</span>
