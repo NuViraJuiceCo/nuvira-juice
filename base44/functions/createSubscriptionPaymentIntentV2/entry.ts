@@ -206,22 +206,44 @@ Deno.serve(async (req) => {
     }
 
     // Step 2: Create Stripe Checkout Session with essential metadata + reference to pending record
+    // Build items_summary for quick human-readable audit
+    const planCompositionForMeta = subscriptionPlan.composition_template?.bottles_per_delivery || [];
+    const itemsSummary = planCompositionForMeta.length > 0
+      ? planCompositionForMeta.map(b => `${b.quantity}x ${b.flavor}`).join(', ')
+      : subscriptionPlan.name;
+
     const subscriptionMetadata = {
       base44_app_id: Deno.env.get('BASE44_APP_ID'),
       source_app: 'customer_app',
       checkout_version: '3.0_embedded',
+      // Recovery fields — enough for webhook to find/recreate the Customer App record
       checkout_type: 'subscription',
       pending_subscription_checkout_id: pendingCheckout.id,
+      source_type: 'subscription_fulfillment',
+      order_type: 'subscription',
+      // Customer identity
       customer_email: customer_email || '',
       customer_name: customer_name || '',
       customer_phone: contact_phone || '',
+      // Plan
       plan_id: plan_id,
       plan_name: subscriptionPlan.name,
-      cadence: subscriptionPlan.frequency || 'monthly',
+      billing_cadence: subscriptionPlan.frequency || 'monthly',
+      fulfillment_cadence: 'weekly',
+      fulfillment_number: '1',
+      // Fulfillment dates
       production_date: fulfillmentCalc.production_date,
       first_delivery_date: fulfillmentCalc.first_delivery_date,
       delivery_window_label: fulfillmentCalc.delivery_window_label,
+      // Products summary (flat string — Stripe metadata is string-only)
+      items_summary: itemsSummary,
+      // Address
       delivery_address: resolvedAddress,
+      delivery_address_line1: address_line1 || '',
+      delivery_address_line2: address_line2 || '',
+      delivery_city: address_city || '',
+      delivery_state: address_state || '',
+      delivery_postal_code: address_postal_code || '',
       delivery_zone_id: delivery_zone_id || '',
       bundle_id: bundle_id || '',
     };
@@ -229,6 +251,21 @@ Deno.serve(async (req) => {
     const origin = req.headers.get('origin') || 'https://www.nuvirajuice.com';
 
     // Create embedded Stripe Checkout Session for subscription
+    // Full structured payload stored on the Stripe Subscription object for Hub recovery
+    const subscriptionStructuredMetadata = {
+      ...subscriptionMetadata,
+      // Structured address block (flat keys on Stripe Subscription metadata)
+      'address.line1': address_line1 || '',
+      'address.city': address_city || '',
+      'address.state': address_state || '',
+      'address.postal_code': address_postal_code || '',
+      // First fulfillment block
+      'first_fulfillment.fulfillment_number': '1',
+      'first_fulfillment.production_date': fulfillmentCalc.production_date,
+      'first_fulfillment.delivery_date': fulfillmentCalc.first_delivery_date,
+      'first_fulfillment.delivery_window_label': fulfillmentCalc.delivery_window_label,
+    };
+
     const session = await stripe.checkout.sessions.create({
       ui_mode: 'embedded',
       mode: 'subscription',
@@ -236,7 +273,7 @@ Deno.serve(async (req) => {
       line_items: [
         { price: subscriptionPlan.stripe_price_id, quantity: 1 },
       ],
-      subscription_data: { metadata: subscriptionMetadata },
+      subscription_data: { metadata: subscriptionStructuredMetadata },
       metadata: subscriptionMetadata,
       return_url: `${origin}/account/subscriptions?session_id={CHECKOUT_SESSION_ID}`,
     });
