@@ -63,6 +63,45 @@
     "paused_until": {
       "type": "string",
       "format": "date"
+    },
+    "stripe_subscription_id": {
+      "type": "string",
+      "description": "Stripe subscription ID \u2014 primary dedupe key for Hub sync"
+    },
+    "stripe_customer_id": {
+      "type": "string",
+      "description": "Stripe customer ID"
+    },
+    "hub_sync_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "synced",
+        "failed",
+        "pending_review",
+        "skipped"
+      ],
+      "description": "Status of last Hub sync attempt"
+    },
+    "hub_synced_at": {
+      "type": "string",
+      "description": "ISO timestamp of last successful Hub sync"
+    },
+    "hub_sync_error": {
+      "type": "string",
+      "description": "Error message from last failed Hub sync"
+    },
+    "hub_sync_attempted_at": {
+      "type": "string",
+      "description": "ISO timestamp of last Hub sync attempt"
+    },
+    "hub_sync_response_status": {
+      "type": "number",
+      "description": "HTTP status code from last Hub sync response"
+    },
+    "hub_sync_response_body": {
+      "type": "string",
+      "description": "Truncated Hub response body for audit"
     }
   },
   "required": [
