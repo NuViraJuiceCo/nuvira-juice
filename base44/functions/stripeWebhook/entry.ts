@@ -1056,32 +1056,35 @@ Deno.serve(async (req) => {
 
     if (event.type === 'customer.subscription.updated') {
       const sub = event.data.object;
-      const customerEmail = sub.metadata?.customer_email;
-      if (customerEmail) {
-        const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
-        const newStatus = sub.status === 'active' ? 'active' : sub.status === 'paused' ? 'paused' : 'cancelled';
-        // Calculate next delivery from Stripe's current_period_end
-        const nextDeliveryStr = sub.current_period_end
-          ? new Date(sub.current_period_end * 1000).toISOString().split('T')[0]
-          : undefined;
-        if (existingSubs.length > 0) {
-          const updates = { status: newStatus };
-          if (nextDeliveryStr) updates.next_delivery_date = nextDeliveryStr;
-          await base44.asServiceRole.entities.Subscription.update(existingSubs[0].id, updates);
-          console.log(`Subscription for ${customerEmail} updated to ${newStatus}`);
-        }
+      const stripeSubId = sub.id;
+      // CRITICAL: Match by stripe_subscription_id, NOT by customer_email alone.
+      // Matching by email risks updating the wrong Subscription if a customer ever had multiple subs.
+      const existingSubsUpdated = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubId });
+      const newStatus = sub.status === 'active' ? 'active' : sub.status === 'paused' ? 'paused' : 'cancelled';
+      const nextDeliveryStr = sub.current_period_end
+        ? new Date(sub.current_period_end * 1000).toISOString().split('T')[0]
+        : undefined;
+      if (existingSubsUpdated.length > 0) {
+        const updates = { status: newStatus };
+        if (nextDeliveryStr) updates.next_delivery_date = nextDeliveryStr;
+        await base44.asServiceRole.entities.Subscription.update(existingSubsUpdated[0].id, updates);
+        console.log(`[sub.updated] Subscription ${stripeSubId} updated to ${newStatus}`);
+      } else {
+        console.log(`[sub.updated] No CA Subscription found for stripe_sub=${stripeSubId}, skipping`);
       }
     }
 
     if (event.type === 'customer.subscription.deleted') {
       const sub = event.data.object;
-      const customerEmail = sub.metadata?.customer_email;
-      if (customerEmail) {
-        const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
-        if (existingSubs.length > 0) {
-          await base44.asServiceRole.entities.Subscription.update(existingSubs[0].id, { status: 'cancelled' });
-          console.log(`Subscription for ${customerEmail} cancelled`);
-        }
+      const stripeSubIdDeleted = sub.id;
+      // CRITICAL: Match by stripe_subscription_id to avoid cancelling the wrong active subscription.
+      // The old email-only lookup caused Amar's active sub to be cancelled when we cancelled his old sub.
+      const existingSubsDeleted = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubIdDeleted });
+      if (existingSubsDeleted.length > 0) {
+        await base44.asServiceRole.entities.Subscription.update(existingSubsDeleted[0].id, { status: 'cancelled' });
+        console.log(`[sub.deleted] Subscription ${stripeSubIdDeleted} marked cancelled`);
+      } else {
+        console.log(`[sub.deleted] No CA Subscription found for stripe_sub=${stripeSubIdDeleted}, skipping`);
       }
     }
 
