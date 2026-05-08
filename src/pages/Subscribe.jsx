@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Check, Zap, Crown, Leaf, MapPin } from 'lucide-react';
+import { ArrowLeft, Check, Zap, Crown, Leaf, MapPin, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
@@ -14,10 +14,11 @@ import { useQuery } from '@tanstack/react-query';
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
 const PLAN_ICONS = { 0: Leaf, 1: Zap, 2: Crown };
-const PLAN_STYLES = [
-  { color: 'border-border/50', bg: 'bg-card', badge: null },
-  { color: 'border-primary', bg: 'bg-primary/5', badge: 'Most Popular' },
-  { color: 'border-accent', bg: 'bg-accent/5', badge: 'Best Value' },
+// Badge/accent info only — NOT used for selected state
+const PLAN_META = [
+  { badge: null },
+  { badge: 'Most Popular' },
+  { badge: 'Best Value' },
 ];
 
 export default function Subscribe() {
@@ -270,42 +271,53 @@ export default function Subscribe() {
       <div className="px-4 mt-6 space-y-3">
         {plans.map((plan, i) => {
           const Icon = PLAN_ICONS[i] || Leaf;
-          const style = PLAN_STYLES[i] || PLAN_STYLES[0];
+          const meta = PLAN_META[i] || PLAN_META[0];
           const isSelected = selectedPlanId === plan.id;
           const period = plan.frequency === 'weekly' ? '/week' : '/month';
           const savings = plan.discount_percent > 0 ? `Save ${plan.discount_percent}%` : null;
+
           return (
             <motion.button
               key={plan.id}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => setSelectedPlanId(plan.id)}
-              className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${style.color} ${style.bg} ${isSelected ? 'shadow-md' : 'opacity-80'}`}
+              className={`w-full text-left rounded-2xl border-2 p-4 transition-all duration-150 ${
+                isSelected
+                  ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
+                  : 'border-border/40 bg-card opacity-90'
+              }`}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                    <Icon className="w-4 h-4" />
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                    {isSelected ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
                   </div>
                   <div>
-                    <p className="font-semibold text-sm">{plan.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm">{plan.name}</p>
+                      {isSelected && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">Selected</span>
+                      )}
+                    </div>
                     <p className="text-xs font-semibold text-primary">
-                                {plan.frequency === 'weekly' ? '1 delivery' : '4 weekly deliveries'} · {plan.bottle_count} bottles total
-                              </p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {plan.name === 'Weekly Fresh' 
-                                  ? '1 AURA, 1 RE-NU, 1 OASIS' 
-                                  : plan.name === 'Monthly Ritual' 
-                                  ? '1 of each flavor per week × 4' 
-                                  : '2 of each flavor per week × 4'}
-                              </p>
+                      {plan.frequency === 'weekly' ? '1 delivery' : '4 weekly deliveries'} · {plan.bottle_count} bottles total
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {plan.name === 'Weekly Fresh'
+                        ? '1 AURA, 1 RE-NU, 1 OASIS'
+                        : plan.name === 'Monthly Ritual'
+                        ? '1 of each flavor per week × 4'
+                        : '2 of each flavor per week × 4'}
+                    </p>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  {style.badge && (
+                  {meta.badge && (
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${i === 2 ? 'bg-accent/20 text-accent-foreground' : 'bg-primary/15 text-primary'}`}>
-                      {style.badge}
+                      {meta.badge}
                     </span>
                   )}
                   {savings && <p className="text-[9px] text-primary font-bold">{savings}</p>}
@@ -323,14 +335,24 @@ export default function Subscribe() {
                   </div>
                 ))}
               </div>
-              <div className={`mt-3 h-0.5 rounded-full transition-all ${isSelected ? 'bg-primary' : 'bg-transparent'}`} />
             </motion.button>
           );
         })}
       </div>
 
-      {/* CTA */}
+      {/* Selected plan summary + CTA */}
       <div className="px-4 mt-6 space-y-3">
+        {selectedPlan && (
+          <div className="flex items-center justify-between bg-primary/8 border border-primary/20 rounded-xl px-4 py-2.5">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+              <span className="text-sm font-semibold">{selectedPlan.name}</span>
+            </div>
+            <span className="text-sm font-bold text-primary">
+              ${selectedPlan.base_price}{selectedPlan.frequency === 'weekly' ? '/wk' : '/mo'}
+            </span>
+          </div>
+        )}
         {!address.street.trim() && (
           <p className="text-center text-xs text-amber-600 font-medium">⚠ Enter your delivery address above to continue</p>
         )}
@@ -349,7 +371,7 @@ export default function Subscribe() {
             ? 'Opening checkout...'
             : !user
             ? 'Sign In to Subscribe'
-            : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
+            : `Subscribe to ${selectedPlan?.name} — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
         </Button>
         <p className="text-center text-[10px] text-muted-foreground leading-relaxed">
           No commitments. Cancel anytime directly from your account.
