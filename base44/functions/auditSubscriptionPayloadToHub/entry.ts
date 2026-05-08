@@ -52,6 +52,9 @@ Deno.serve(async (req) => {
     const fulfillments = calculateMonthlyFulfillments(subscription.started_date, plan?.name);
     console.log(`[auditPayload] Calculated ${fulfillments.length} fulfillments`);
 
+    // Parse address from subscription delivery_address
+    const addressParts = parseAddressString(subscription.delivery_address);
+
     // Build complete payload
     const billingStart = subscription.started_date;
     const billingEnd = subscription.next_delivery_date || 
@@ -76,11 +79,11 @@ Deno.serve(async (req) => {
 
         // Delivery address
         delivery_address: subscription.delivery_address || null,
-        address_line1: profile.address ? profile.address.split(',')[0] : null,
+        address_line1: addressParts.address_line1,
         address_line2: null,
-        address_city: null,
-        address_state: null,
-        address_postal_code: null,
+        address_city: addressParts.address_city,
+        address_state: addressParts.address_state,
+        address_postal_code: addressParts.address_postal_code,
         address_country: 'US',
 
         // Plan and pricing
@@ -264,6 +267,42 @@ function calculateMonthlyFulfillments(startedDate, planName) {
   }
   
   return fulfillments;
+}
+
+function parseAddressString(fullAddress) {
+  if (!fullAddress) {
+    return {
+      address_line1: null,
+      address_city: null,
+      address_state: null,
+      address_postal_code: null,
+    };
+  }
+
+  // Pattern: "Street, City, State ZipCode"
+  // Example: "206 West Pine Creek Ct, Wentzville, MO, 63385"
+  const parts = fullAddress.split(',').map(p => p.trim());
+  let address_line1 = null;
+  let address_city = null;
+  let address_state = null;
+  let address_postal_code = null;
+
+  if (parts.length >= 1) address_line1 = parts[0] || null;
+  if (parts.length >= 2) address_city = parts[1] || null;
+  if (parts.length >= 3) {
+    // "MO, 63385" → split and take both
+    const stateZip = parts[2].trim().split(/\s+/);
+    address_state = stateZip[0] || null;
+    if (stateZip.length >= 2) {
+      address_postal_code = stateZip[1] || null;
+    }
+  }
+  if (parts.length >= 4) {
+    // Fallback: if zip is separate part
+    address_postal_code = parts[3] || null;
+  }
+
+  return { address_line1, address_city, address_state, address_postal_code };
 }
 
 function checkWeeklySpacing(fulfillments) {

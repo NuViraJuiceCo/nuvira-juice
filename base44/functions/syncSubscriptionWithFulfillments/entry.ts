@@ -3,6 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 /**
  * Sync subscription to Hub with all 4 pre-calculated fulfillments.
  * Replaces individual fulfillment sends with a complete cycle payload.
+ * Includes structured address field parsing.
  * 
  * Payload: { subscription_id, customer_email }
  */
@@ -55,6 +56,9 @@ Deno.serve(async (req) => {
       : customer_email;
 
     // Build complete subscription payload with fulfillments
+    // Parse address from subscription delivery_address string
+    const addressParts = parseAddressString(subscription.delivery_address);
+
     const billingStart = subscription.started_date;
     const billingEnd = subscription.next_delivery_date || 
       new Date(new Date(billingStart).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -68,9 +72,20 @@ Deno.serve(async (req) => {
         stripe_subscription_id: subscription.stripe_subscription_id,
         stripe_customer_id: subscription.stripe_customer_id || null,
         customer_name: customerName,
+        customer_email: customer_email,
+        phone: profile.phone || null,
+        delivery_address: subscription.delivery_address,
+        address_line1: addressParts.address_line1,
+        address_line2: null,
+        address_city: addressParts.address_city,
+        address_state: addressParts.address_state,
+        address_postal_code: addressParts.address_postal_code,
+        address_country: 'US',
         payment_status: 'paid',
         financial_status: 'paid',
         plan_name: plan?.name || 'Unknown',
+        subscription_price: plan?.base_price || 0,
+        amount_paid: plan?.base_price || 0,
         cycle_number: 1,
         billing_period_start: billingStart,
         billing_period_end: billingEnd,
@@ -132,6 +147,43 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
+
+/**
+ * Parse address string into structured fields.
+ * Pattern: "Street, City, State ZipCode" or "Street, City, State, ZipCode"
+ * Example: "206 West Pine Creek Ct, Wentzville, MO, 63385"
+ */
+function parseAddressString(fullAddress) {
+  if (!fullAddress) {
+    return {
+      address_line1: null,
+      address_city: null,
+      address_state: null,
+      address_postal_code: null,
+    };
+  }
+
+  const parts = fullAddress.split(',').map(p => p.trim());
+  let address_line1 = null;
+  let address_city = null;
+  let address_state = null;
+  let address_postal_code = null;
+
+  if (parts.length >= 1) address_line1 = parts[0] || null;
+  if (parts.length >= 2) address_city = parts[1] || null;
+  if (parts.length >= 3) {
+    const stateZip = parts[2].trim().split(/\s+/);
+    address_state = stateZip[0] || null;
+    if (stateZip.length >= 2) {
+      address_postal_code = stateZip[1] || null;
+    }
+  }
+  if (parts.length >= 4) {
+    address_postal_code = parts[3] || null;
+  }
+
+  return { address_line1, address_city, address_state, address_postal_code };
+}
 
 /**
  * Calculate 4 fulfillments for a monthly subscription cycle.
