@@ -162,39 +162,72 @@ Deno.serve(async (req) => {
           const resolvedDeliveryWindowStart = pendingCheckout?.delivery_window_start || session.metadata?.delivery_window_start || '17:00';
           const resolvedDeliveryWindowEnd = pendingCheckout?.delivery_window_end || session.metadata?.delivery_window_end || '20:00';
 
-          // Resolve products
+          // Resolve decomposed weekly fulfillment products (NEVER send plan totals to Hub)
+          // Priority: PendingSubscriptionCheckout.products → plan.composition_template → fallback
           let productsArray = pendingCheckout?.products || [];
           if (productsArray.length === 0 && plan?.composition_template?.bottles_per_delivery?.length > 0) {
+            // Use per-delivery quantities (already decomposed — e.g. 1x AURA not 4x)
             productsArray = plan.composition_template.bottles_per_delivery.map(bottle => ({
               product_name: bottle.flavor || 'Juice',
               quantity: bottle.quantity || 1,
             }));
           }
 
-          // Build Hub payload with production_date and first_delivery_date
+          // Build items_summary from actual decomposed products
+          const resolvedItemsSummary = productsArray.length > 0
+            ? productsArray.map(p => `${p.quantity}x ${p.product_name}`).join(', ')
+            : (session.metadata?.items_summary || plan?.name || 'Unknown');
+
+          // Fulfillment cadence fields
+          const billingCadence = plan?.frequency || session.metadata?.billing_cadence || 'monthly';
+          const fulfillmentCadence = 'weekly';
+          const fulfillmentsPerCycle = plan?.composition_template?.deliveries_per_cycle
+            || parseInt(session.metadata?.fulfillments_per_cycle || '0')
+            || (billingCadence === 'monthly' ? 4 : 1);
+
+          console.log(`[stripeWebhook] Hub products (decomposed): ${resolvedItemsSummary} | billing=${billingCadence} fulfillment=${fulfillmentCadence} fulfillments_per_cycle=${fulfillmentsPerCycle}`);
+
+          // Build complete Hub payload per required contract
           const hubPayload = {
             event: 'customer.subscription_created',
+            event_type: 'customer.subscription_created',
+            source: 'customer_app',
             customer_email: customerEmail,
             data: {
+              // IDs
               subscription_id: subscription.id,
-              customer_name: resolvedCustomerName,
-              phone: resolvedPhone,
+              customer_app_subscription_id: subscription.id,
               stripe_subscription_id: stripeSubscriptionId,
               stripe_customer_id: session.customer || null,
-              customer_app_subscription_id: subscription.id,
-              payment_status: 'paid',
-              financial_status: 'paid',
               first_invoice_id: session.invoice || null,
               payment_intent_id: session.payment_intent || null,
+              // Customer
+              customer_name: resolvedCustomerName,
+              customer_email: customerEmail,
+              phone: resolvedPhone,
+              // Payment
+              payment_status: 'paid',
+              financial_status: 'paid',
+              // Plan
               plan_id: planId,
               plan_name: plan?.name || 'Unknown',
-              cadence: plan?.frequency || 'monthly',
+              billing_cadence: billingCadence,
+              fulfillment_cadence: fulfillmentCadence,
+              fulfillments_per_cycle: fulfillmentsPerCycle,
+              fulfillment_number: 1,
+              // Order type
+              order_type: 'subscription',
+              source_type: 'subscription_fulfillment',
+              // Dates
               production_date: productionDate,
               first_delivery_date: firstDeliveryDate,
               next_delivery_date: nextDeliveryDate || firstDeliveryDate,
+              subscription_started_date: firstDeliveryDate,
+              // Delivery window
               delivery_window_label: resolvedDeliveryWindowLabel,
               delivery_window_start: resolvedDeliveryWindowStart,
               delivery_window_end: resolvedDeliveryWindowEnd,
+              // Address
               delivery_address: deliveryAddress,
               address_line1: resolvedAddressLine1,
               address_line2: resolvedAddressLine2,
@@ -202,9 +235,10 @@ Deno.serve(async (req) => {
               address_state: resolvedAddressState,
               address_postal_code: resolvedAddressZip,
               address_country: 'US',
-              products: productsArray,
-              subscription_started_date: firstDeliveryDate,
               delivery_zone_id: deliveryZoneId,
+              // Products — decomposed weekly quantities, NOT monthly totals
+              products: productsArray,
+              items_summary: resolvedItemsSummary,
             },
           };
 

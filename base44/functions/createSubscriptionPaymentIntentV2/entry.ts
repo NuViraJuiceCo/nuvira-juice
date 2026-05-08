@@ -158,23 +158,31 @@ Deno.serve(async (req) => {
       console.log(`[SubPIv2] Created Stripe Customer: ${stripeCustomer.id} for ${customer_email}`);
     }
 
+    // Hoist decomposition variables so they're available for both PendingCheckout and Stripe metadata
+    const planComposition = subscriptionPlan.composition_template?.bottles_per_delivery || [];
+    const products = planComposition.map(bottle => ({
+      product_name: bottle.flavor || 'Juice',
+      quantity: bottle.quantity || 1,
+    }));
+    const billingCadence = subscriptionPlan.frequency || 'monthly';
+    const fulfillmentCadence = 'weekly';
+    const fulfillmentsPerCycle = subscriptionPlan.composition_template?.deliveries_per_cycle || (billingCadence === 'monthly' ? 4 : 1);
+    const itemsSummaryStr = products.length > 0
+      ? products.map(p => `${p.quantity}x ${p.product_name}`).join(', ')
+      : subscriptionPlan.name;
+
+    console.log(`[SubPIv2] Plan decomposition: ${subscriptionPlan.name} → ${itemsSummaryStr} | billing=${billingCadence} fulfillment=${fulfillmentCadence} per_cycle=${fulfillmentsPerCycle}`);
+
     // Step 1: Create PendingSubscriptionCheckout record with full metadata
     let pendingCheckout = null;
     try {
-      // Fetch plan composition if available
-      const planComposition = subscriptionPlan.composition_template?.bottles_per_delivery || [];
-      const products = planComposition.map(bottle => ({
-        product_name: bottle.flavor || 'Juice',
-        quantity: bottle.quantity || 1,
-      }));
-
       pendingCheckout = await base44.asServiceRole.entities.PendingSubscriptionCheckout.create({
         customer_email,
         customer_name,
         customer_phone: contact_phone || '',
         plan_id,
         plan_name: subscriptionPlan.name,
-        cadence: subscriptionPlan.frequency || 'monthly',
+        cadence: billingCadence,
         bundle_id: bundle_id || null,
         delivery_address: resolvedAddress,
         address_line1: address_line1 || '',
@@ -195,8 +203,14 @@ Deno.serve(async (req) => {
         delivery_window_start: fulfillmentCalc.delivery_window_start,
         delivery_window_end: fulfillmentCalc.delivery_window_end,
         date_calculation_reason: fulfillmentCalc.reason,
-        date_calculation_version: 'v1_may_2026',
+        date_calculation_version: 'v2_may_2026',
         stripe_customer_id: stripeCustomer.id,
+        // Fulfillment decomposition fields (stored as first-class fields)
+        fulfillment_cadence: fulfillmentCadence,
+        fulfillments_per_cycle: fulfillmentsPerCycle,
+        fulfillment_number: 1,
+        items_summary: itemsSummaryStr,
+        decomposition_version: 'v2_weekly_decomposed',
         status: 'pending',
       });
       console.log(`[SubPIv2] Created PendingSubscriptionCheckout: ${pendingCheckout.id}`);
@@ -206,21 +220,15 @@ Deno.serve(async (req) => {
     }
 
     // Step 2: Create Stripe Checkout Session with essential metadata + reference to pending record
-    // Build items_summary for quick human-readable audit
-    const planCompositionForMeta = subscriptionPlan.composition_template?.bottles_per_delivery || [];
-    const itemsSummary = planCompositionForMeta.length > 0
-      ? planCompositionForMeta.map(b => `${b.quantity}x ${b.flavor}`).join(', ')
-      : subscriptionPlan.name;
-
     const subscriptionMetadata = {
       base44_app_id: Deno.env.get('BASE44_APP_ID'),
       source_app: 'customer_app',
       checkout_version: '3.0_embedded',
-      // Recovery fields — enough for webhook to find/recreate the Customer App record
+      // Recovery: webhook uses pending_subscription_checkout_id as primary lookup
       checkout_type: 'subscription',
-      pending_subscription_checkout_id: pendingCheckout.id,
       source_type: 'subscription_fulfillment',
       order_type: 'subscription',
+      pending_subscription_checkout_id: pendingCheckout.id,
       // Customer identity
       customer_email: customer_email || '',
       customer_name: customer_name || '',
@@ -228,15 +236,16 @@ Deno.serve(async (req) => {
       // Plan
       plan_id: plan_id,
       plan_name: subscriptionPlan.name,
-      billing_cadence: subscriptionPlan.frequency || 'monthly',
-      fulfillment_cadence: 'weekly',
+      billing_cadence: billingCadence,
+      fulfillment_cadence: fulfillmentCadence,
       fulfillment_number: '1',
+      fulfillments_per_cycle: String(fulfillmentsPerCycle),
       // Fulfillment dates
       production_date: fulfillmentCalc.production_date,
       first_delivery_date: fulfillmentCalc.first_delivery_date,
       delivery_window_label: fulfillmentCalc.delivery_window_label,
-      // Products summary (flat string — Stripe metadata is string-only)
-      items_summary: itemsSummary,
+      // Products summary (flat string — Stripe metadata values must be strings)
+      items_summary: itemsSummaryStr,
       // Address
       delivery_address: resolvedAddress,
       delivery_address_line1: address_line1 || '',
