@@ -28,8 +28,8 @@ Deno.serve(async (req) => {
 
     // Build URL safely: remove trailing slash from base, construct full path
     const hubUrl = hubBaseUrl.endsWith('/') 
-      ? `${hubBaseUrl}api/functions/receiveCustomerAppEvent`
-      : `${hubBaseUrl}/api/functions/receiveCustomerAppEvent`;
+      ? `${hubBaseUrl}functions/customerAppEventPublicGateway`
+      : `${hubBaseUrl}/functions/customerAppEventPublicGateway`;
 
     const payload = {
       event: event || 'customer.interaction',
