@@ -13,14 +13,14 @@ import Stripe from 'npm:stripe@14.21.0';
  * If Hub requires different endpoint, update HUB_SUBSCRIPTION_SYNC_URL and auth header.
  */
 
-const HUB_API_URL = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '')}/functions/receiveCustomerAppEvent`;
+const HUB_API_URL = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '')}/api/functions/receiveCustomerAppEvent`;
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { subscription_id, stripe_subscription_id } = await req.json();
+    const { subscription_id, stripe_subscription_id, force = false } = await req.json();
 
     if (!subscription_id && !stripe_subscription_id) {
       return Response.json({ error: 'Must provide subscription_id or stripe_subscription_id' }, { status: 400 });
@@ -49,16 +49,19 @@ Deno.serve(async (req) => {
 
     console.log(`[RetrySubHubSync] Subscription found: ${subscription.id}, customer=${customerEmail}, plan=${planId}, stripe_sub=${stripeSubId}`);
 
-    // Idempotency check: if already synced successfully, return early
-    if (subscription.hub_sync_status === 'synced' && subscription.hub_synced_at) {
-      console.log(`[RetrySubHubSync] Subscription already synced at ${subscription.hub_synced_at}, returning early`);
+    // Idempotency check: if already synced successfully, return early unless force=true
+    if (subscription.hub_sync_status === 'synced' && subscription.hub_synced_at && !force) {
+      console.log(`[RetrySubHubSync] Subscription already synced at ${subscription.hub_synced_at}, returning early (use force=true to override)`);
       return Response.json({
         success: true,
-        message: 'Already synced',
+        message: 'Already synced — pass force=true to retry anyway',
         subscription_id: subscription.id,
         hub_sync_status: 'synced',
         hub_synced_at: subscription.hub_synced_at,
       });
+    }
+    if (force) {
+      console.log(`[RetrySubHubSync] force=true — bypassing idempotency guard`);
     }
 
     // Fetch plan
@@ -76,18 +79,32 @@ Deno.serve(async (req) => {
       : customerEmail;
     const phone = profile.phone || '';
 
-    // Fetch Stripe subscription for payment info
+    // Fetch Stripe subscription for payment info and address metadata
     let paymentIntentId = null;
     let invoiceId = null;
+    let stripeCustomerId = null;
+    let addressLine1 = '';
+    let addressCity = '';
+    let addressState = '';
+    let addressZip = '';
     try {
       const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubId);
+      stripeCustomerId = typeof stripeSubscription.customer === 'string' ? stripeSubscription.customer : stripeSubscription.customer?.id;
+      // Pull address from Stripe metadata if stored there
+      addressLine1 = stripeSubscription.metadata?.delivery_address_line1 || '';
+      addressCity  = stripeSubscription.metadata?.delivery_city  || '';
+      addressState = stripeSubscription.metadata?.delivery_state || '';
+      addressZip   = stripeSubscription.metadata?.delivery_postal_code || '';
       const invoices = await stripe.invoices.list({ subscription: stripeSubId, limit: 1 });
       const latestInvoice = invoices.data[0];
       if (latestInvoice) {
         invoiceId = latestInvoice.id;
-        paymentIntentId = latestInvoice.payment_intent;
+        paymentIntentId = typeof latestInvoice.payment_intent === 'string'
+          ? latestInvoice.payment_intent
+          : latestInvoice.payment_intent?.id || null;
       }
-      console.log(`[RetrySubHubSync] Stripe data: invoice=${invoiceId}, payment_intent=${paymentIntentId}`);
+      console.log(`[RetrySubHubSync] Stripe data: customer=${stripeCustomerId}, invoice=${invoiceId}, payment_intent=${paymentIntentId}`);
+      console.log(`[RetrySubHubSync] Address from Stripe metadata: "${addressLine1}, ${addressCity}, ${addressState} ${addressZip}"`);
     } catch (stripeErr) {
       console.warn(`[RetrySubHubSync] Failed to fetch Stripe data: ${stripeErr.message}`);
     }
@@ -106,8 +123,10 @@ Deno.serve(async (req) => {
     const hubData = {
       subscription_id: subscription.id,
       customer_name: customerName,
+      customer_email: customerEmail,
       phone: phone,
       stripe_subscription_id: stripeSubId,
+      stripe_customer_id: stripeCustomerId || null,
       customer_app_subscription_id: subscription.id,
       payment_status: 'paid',
       financial_status: 'paid',
@@ -123,20 +142,25 @@ Deno.serve(async (req) => {
       delivery_window_start: '17:00',
       delivery_window_end: '20:00',
       delivery_address: subscription.delivery_address,
-      address_line1: '',
-      address_city: '',
-      address_state: '',
-      address_postal_code: '',
+      address_line1: addressLine1,
+      address_line2: '',
+      address_city: addressCity,
+      address_state: addressState,
+      address_postal_code: addressZip,
       address_country: 'US',
       products: products,
       subscription_started_date: subscription.started_date,
       delivery_zone_id: subscription.delivery_zone_id,
       source_type: 'subscription_fulfillment',
       order_type: 'subscription',
+      fulfillment_number: 1,
+      requires_hub_fulfillment: true,
+      requires_production_batch: true,
     };
 
     const hubPayload = {
       event: 'customer.subscription_created',
+      event_type: 'customer.subscription_created',
       source: 'customer_app',
       customer_email: customerEmail,
       data: hubData,
