@@ -91,39 +91,48 @@ Deno.serve(async (req) => {
     } = await req.json();
 
     if (!plan_id || !customer_email) {
-      return Response.json({ error: 'Missing plan_id or customer_email' }, { status: 400 });
+      return Response.json({ error_code: 'MISSING_PARAMS', error: 'Missing plan_id or customer_email' }, { status: 400 });
     }
 
     // Resolve customer name from profile
     let customer_name = '';
+    let profileFound = false;
     try {
       const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email });
       if (profiles[0]) {
+        profileFound = true;
         const { first_name, last_name } = profiles[0];
         customer_name = [first_name, last_name].filter(Boolean).join(' ');
+        console.log(`[SubPE] Profile found for ${customer_email}: first_name="${first_name}" last_name="${last_name}" → customer_name="${customer_name}"`);
+      } else {
+        console.warn(`[SubPE] No UserProfile found for ${customer_email}`);
       }
     } catch (err) {
       console.warn(`[SubPE] Failed to fetch UserProfile: ${err.message}`);
     }
 
+    if (!profileFound) {
+      return Response.json({ error_code: 'MISSING_PROFILE', error: 'Profile not found. Please complete your account setup before subscribing.' }, { status: 400 });
+    }
+
     if (!customer_name?.trim()) {
-      return Response.json({ error: 'Customer name is required. Please complete your profile before subscribing.' }, { status: 400 });
+      return Response.json({ error_code: 'MISSING_NAME', error: 'Your profile is missing a name. Please update your profile (first and last name) before subscribing.' }, { status: 400 });
     }
 
     // Fetch plan
     const plans = await base44.asServiceRole.entities.SubscriptionPlan.filter({ id: plan_id });
-    if (!plans[0]) return Response.json({ error: 'Subscription plan not found' }, { status: 404 });
+    if (!plans[0]) return Response.json({ error_code: 'PLAN_NOT_FOUND', error: 'Subscription plan not found' }, { status: 404 });
     const plan = plans[0];
 
     if (!plan.stripe_price_id) {
-      return Response.json({ error: 'This subscription plan is not yet available for purchase. Please contact support.' }, { status: 400 });
+      return Response.json({ error_code: 'MISSING_STRIPE_PRICE_ID', error: 'This subscription plan is not yet available for purchase. Please contact support.' }, { status: 400 });
     }
 
     // Check for existing active subscription on same plan
     const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ customer_email });
     const hasActiveSub = existingSubs.some(s => s.plan_id === plan_id && s.status === 'active');
     if (hasActiveSub) {
-      return Response.json({ error: 'You already have an active subscription with this plan.' }, { status: 400 });
+      return Response.json({ error_code: 'ALREADY_SUBSCRIBED', error: 'You already have an active subscription with this plan.' }, { status: 400 });
     }
 
     // Check for existing incomplete Stripe subscription on this customer+plan (from a prior failed render attempt).

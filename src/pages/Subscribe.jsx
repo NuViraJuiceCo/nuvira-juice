@@ -149,7 +149,14 @@ export default function Subscribe() {
 
       // Backend returned an error payload
       if (data?.error) {
-        setErrorMessage(data.error);
+        const code = data.error_code || '';
+        let msg = data.error;
+        // Surface friendly messages for known codes
+        if (code === 'MISSING_NAME' || code === 'MISSING_PROFILE') {
+          msg = `${data.error} Go to Account → Settings to update your name.`;
+        }
+        console.error(`[Subscribe] Backend error [${code}]: ${data.error}`);
+        setErrorMessage(msg);
         setFlowState(FLOW.ERROR);
         return;
       }
