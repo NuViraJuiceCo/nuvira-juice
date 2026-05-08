@@ -531,8 +531,9 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Award loyalty points: 10 pts per $1 spent — BUT NOT FOR PRE-ORDERS until May 1st
-      if (customerEmail && session.metadata?.is_preorder !== 'true') {
+      // Award loyalty points for one-time orders only (subscriptions handle loyalty above)
+      // NOT for pre-orders, NOT for subscription checkouts (already handled in subscription block)
+      if (session.mode !== 'subscription' && customerEmail && session.metadata?.is_preorder !== 'true') {
         const pointsToAward = Math.floor(amountPaid * 10);
         const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
 
