@@ -17,6 +17,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+
+    // Admin-only: this is a sensitive repair tool that processes refunds
+    const user = await base44.auth.me();
+    if (!user || user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+
     const { order_number, refund_amount, is_full_refund = true, stripe_refund_id } = await req.json();
 
     if (!order_number) {
