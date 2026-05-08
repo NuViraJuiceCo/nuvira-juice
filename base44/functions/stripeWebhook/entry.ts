@@ -257,8 +257,11 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Sync to Hub
-          base44.asServiceRole.functions.invoke('syncCustomerToHub', hubPayload)
+          // Sync to Hub using the new 4-fulfillment payload builder
+          base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+            subscription_id: subscription.id,
+            customer_email: customerEmail,
+          })
             .catch(err => console.error('[stripeWebhook] Failed to sync subscription to hub:', err.message));
 
         } else {
@@ -981,73 +984,11 @@ Deno.serve(async (req) => {
         }).catch(err => console.warn(`[invoice.payment_succeeded] Failed to update pending checkout: ${err.message}`));
       }
 
-      // Resolve product decomposition for Hub
-      let productsArray = pendingCheckout?.products || [];
-      if (productsArray.length === 0 && plan?.composition_template?.bottles_per_delivery?.length > 0) {
-        productsArray = plan.composition_template.bottles_per_delivery.map(b => ({
-          product_name: b.flavor || 'Juice',
-          quantity: b.quantity || 1,
-        }));
-      }
-      const billingCadence = plan?.frequency || meta.billing_cadence || 'monthly';
-      const fulfillmentsPerCycle = plan?.composition_template?.deliveries_per_cycle
-        || parseInt(meta.fulfillments_per_cycle || '0')
-        || (billingCadence === 'monthly' ? 4 : 1);
-      const itemsSummary = productsArray.length > 0
-        ? productsArray.map(p => `${p.quantity}x ${p.product_name}`).join(', ')
-        : (meta.items_summary || plan?.name || 'Unknown');
-
-      const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail });
-      const profile = profiles[0] || {};
-      const resolvedCustomerName = meta.customer_name || [profile.first_name, profile.last_name].filter(Boolean).join(' ') || customerEmail;
-
-      // Build Hub payload and sync
-      const hubPayload = {
-        event: 'customer.subscription_created',
-        event_type: 'customer.subscription_created',
-        source: 'customer_app',
+      // Sync to Hub using the new 4-fulfillment payload builder (invoice.payment_succeeded path)
+      base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+        subscription_id: newSubscription.id,
         customer_email: customerEmail,
-        data: {
-          subscription_id: newSubscription.id,
-          customer_app_subscription_id: newSubscription.id,
-          stripe_subscription_id: stripeSubscriptionId,
-          stripe_customer_id: invoice.customer || null,
-          first_invoice_id: invoice.id || null,
-          payment_intent_id: typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent?.id || null,
-          customer_name: resolvedCustomerName,
-          customer_email: customerEmail,
-          phone: meta.customer_phone || profile.phone || '',
-          payment_status: 'paid',
-          financial_status: 'paid',
-          plan_id: planId,
-          plan_name: plan?.name || 'Unknown',
-          billing_cadence: billingCadence,
-          fulfillment_cadence: 'weekly',
-          fulfillments_per_cycle: fulfillmentsPerCycle,
-          fulfillment_number: 1,
-          order_type: 'subscription',
-          source_type: 'subscription_fulfillment',
-          production_date: productionDate,
-          first_delivery_date: firstDeliveryDate,
-          next_delivery_date: nextDeliveryDate,
-          subscription_started_date: firstDeliveryDate,
-          delivery_window_label: pendingCheckout?.delivery_window_label || meta.delivery_window_label || '5 PM – 8 PM',
-          delivery_window_start: pendingCheckout?.delivery_window_start || '17:00',
-          delivery_window_end: pendingCheckout?.delivery_window_end || '20:00',
-          delivery_address: deliveryAddress,
-          address_line1: pendingCheckout?.address_line1 || meta.delivery_address_line1 || '',
-          address_line2: pendingCheckout?.address_line2 || meta.delivery_address_line2 || '',
-          address_city: pendingCheckout?.address_city || meta.delivery_city || '',
-          address_state: pendingCheckout?.address_state || meta.delivery_state || '',
-          address_postal_code: pendingCheckout?.address_postal_code || meta.delivery_postal_code || '',
-          address_country: 'US',
-          delivery_zone_id: deliveryZoneId,
-          products: productsArray,
-          items_summary: itemsSummary,
-        },
-      };
-
-      base44.asServiceRole.functions.invoke('syncCustomerToHub', hubPayload)
+      })
         .catch(err => console.error('[invoice.payment_succeeded] Hub sync failed:', err.message));
 
       console.log(`[invoice.payment_succeeded] ✅ Subscription ${stripeSubscriptionId} fully activated for ${customerEmail}`);
