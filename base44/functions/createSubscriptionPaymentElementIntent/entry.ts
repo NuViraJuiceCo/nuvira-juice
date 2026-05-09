@@ -20,58 +20,7 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
-function resolveSubscriptionFirstFulfillment(orderTimestamp, options = {}) {
-  const orderDate = new Date(orderTimestamp);
-  const chicagoFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  });
 
-  const parts = chicagoFormatter.formatToParts(orderDate);
-  const pm = {};
-  parts.forEach(p => { pm[p.type] = p.value; });
-
-  const chicagoHour = parseInt(pm.hour);
-  const dow = new Date(parseInt(pm.year), parseInt(pm.month) - 1, parseInt(pm.day)).getDay();
-  const cutoffHour = 14;
-
-  let daysToNextProduction = 0, reason = '';
-  if (dow === 0) { daysToNextProduction = 2; reason = 'Sunday → Tuesday production'; }
-  else if (dow === 1) { daysToNextProduction = 1; reason = 'Monday → Tuesday production'; }
-  else if (dow === 2) { daysToNextProduction = chicagoHour < cutoffHour ? 0 : 3; reason = chicagoHour < cutoffHour ? 'Tuesday before cutoff' : 'Tuesday after cutoff → Friday'; }
-  else if (dow === 3) { daysToNextProduction = 2; reason = 'Wednesday → Friday production'; }
-  else if (dow === 4) { daysToNextProduction = 1; reason = 'Thursday → Friday production'; }
-  else if (dow === 5) { daysToNextProduction = chicagoHour < cutoffHour ? 0 : 1; reason = chicagoHour < cutoffHour ? 'Friday before cutoff' : 'Friday after cutoff → Saturday'; }
-  else if (dow === 6) { daysToNextProduction = chicagoHour < cutoffHour ? 0 : 3; reason = chicagoHour < cutoffHour ? 'Saturday before cutoff' : 'Saturday after cutoff → Tuesday'; }
-
-  const productionDate = new Date(parseInt(pm.year), parseInt(pm.month) - 1, parseInt(pm.day));
-  productionDate.setDate(productionDate.getDate() + daysToNextProduction);
-  const productionDateStr = productionDate.toISOString().split('T')[0];
-
-  const deliveryDate = new Date(productionDate);
-  deliveryDate.setDate(deliveryDate.getDate() + 1);
-  const firstDeliveryDateStr = deliveryDate.toISOString().split('T')[0];
-
-  const nextDeliveryDate = new Date(deliveryDate);
-  if (options.plan_cadence === 'weekly') {
-    nextDeliveryDate.setDate(nextDeliveryDate.getDate() + 7);
-  } else {
-    nextDeliveryDate.setMonth(nextDeliveryDate.getMonth() + 1);
-  }
-
-  return {
-    production_date: productionDateStr,
-    first_delivery_date: firstDeliveryDateStr,
-    next_delivery_date: nextDeliveryDate.toISOString().split('T')[0],
-    delivery_window_label: '5 PM – 8 PM',
-    delivery_window_start: '17:00',
-    delivery_window_end: '20:00',
-    reason,
-    order_date: productionDate.toISOString().split('T')[0],
-    order_time: `${String(chicagoHour).padStart(2, '0')}:${String(parseInt(pm.minute)).padStart(2, '0')}`,
-  };
-}
 
 Deno.serve(async (req) => {
   try {
@@ -232,11 +181,40 @@ Deno.serve(async (req) => {
     const resolvedAddress = delivery_address ||
       [address_line1, address_city, address_state, address_postal_code].filter(Boolean).join(', ');
 
-    // Calculate fulfillment dates
+    // ── CENTRAL SCHEDULE ENGINE ──────────────────────────────────────────
+    // Call calculateNuViraFulfillmentSchedule as single source of truth for dates
     const now = new Date();
-    const fulfillmentCalc = resolveSubscriptionFirstFulfillment(now.toISOString(), {
-      plan_cadence: plan.frequency,
-    });
+    let fulfillmentCalc;
+    try {
+      const scheduleResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
+        created_at: now.toISOString(),
+      });
+      const scheduleResult = scheduleResp.data || scheduleResp;
+      
+      // Calculate next delivery date based on plan cadence
+      const nextDeliveryDate = new Date(scheduleResult.delivery_date);
+      if (plan.frequency === 'weekly') {
+        nextDeliveryDate.setDate(nextDeliveryDate.getDate() + 7);
+      } else {
+        nextDeliveryDate.setMonth(nextDeliveryDate.getMonth() + 1);
+      }
+
+      fulfillmentCalc = {
+        production_date: scheduleResult.production_date,
+        first_delivery_date: scheduleResult.delivery_date,
+        next_delivery_date: nextDeliveryDate.toISOString().split('T')[0],
+        delivery_window_label: scheduleResult.delivery_window_label,
+        delivery_window_start: scheduleResult.delivery_window_start,
+        delivery_window_end: scheduleResult.delivery_window_end,
+        reason: scheduleResult.schedule_reason,
+        order_date: scheduleResult.production_date,
+        order_time: now.toTimeString().substring(0, 5),
+        cutoff_window_label: scheduleResult.cutoff_window_label,
+      };
+    } catch (schedErr) {
+      console.error(`[SubPE] Schedule calculation failed: ${schedErr.message}`);
+      return Response.json({ error: 'Failed to calculate delivery schedule. Please try again.' }, { status: 500 });
+    }
     console.log(`[SubPE] Fulfillment: production=${fulfillmentCalc.production_date}, first_delivery=${fulfillmentCalc.first_delivery_date}, reason=${fulfillmentCalc.reason}`);
 
     // Get or create Stripe Customer
@@ -258,7 +236,7 @@ Deno.serve(async (req) => {
       ? products.map(p => `${p.quantity}x ${p.product_name}`).join(', ')
       : plan.name;
 
-    // Build shared metadata object
+    // Build shared metadata object — centralized schedule fields
     const sharedMetadata = {
       base44_app_id: Deno.env.get('BASE44_APP_ID'),
       source_app: 'customer_app',
@@ -277,7 +255,14 @@ Deno.serve(async (req) => {
       fulfillments_per_cycle: String(fulfillmentsPerCycle),
       production_date: fulfillmentCalc.production_date,
       first_delivery_date: fulfillmentCalc.first_delivery_date,
+      selected_delivery_date: fulfillmentCalc.first_delivery_date,
+      requested_delivery_date: fulfillmentCalc.first_delivery_date,
       delivery_window_label: fulfillmentCalc.delivery_window_label,
+      delivery_window_start: fulfillmentCalc.delivery_window_start,
+      delivery_window_end: fulfillmentCalc.delivery_window_end,
+      schedule_reason: fulfillmentCalc.reason,
+      cutoff_window_label: fulfillmentCalc.cutoff_window_label || '',
+      schedule_timezone: 'America/Chicago',
       items_summary: itemsSummaryStr,
       delivery_address: resolvedAddress,
       delivery_address_line1: address_line1 || '',

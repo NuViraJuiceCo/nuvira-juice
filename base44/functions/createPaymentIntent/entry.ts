@@ -12,30 +12,7 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
  *
  * Metadata mirrors createCheckoutSession for full backward compatibility.
  */
-function calculateDeliveryDate(orderTime = new Date()) {
-  const chicagoFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  });
-  const parts = chicagoFormatter.formatToParts(orderTime);
-  const pm = {};
-  parts.forEach(p => { pm[p.type] = p.value; });
-  const chicagoDate = new Date(parseInt(pm.year), parseInt(pm.month) - 1, parseInt(pm.day), parseInt(pm.hour), 0);
-  const dow = chicagoDate.getDay();
-  const h   = chicagoDate.getHours();
-  let d = 0;
-  if      (dow === 0) d = 3;
-  else if (dow === 1) d = 2;
-  else if (dow === 2) d = h < 14 ? 1 : 4;
-  else if (dow === 3) d = 3;
-  else if (dow === 4) d = 2;
-  else if (dow === 5) d = h < 14 ? 1 : 2;
-  else if (dow === 6) d = 1;
-  const del = new Date(chicagoDate);
-  del.setDate(del.getDate() + d);
-  return del.toISOString().split('T')[0];
-}
+
 
 Deno.serve(async (req) => {
   try {
@@ -93,14 +70,36 @@ Deno.serve(async (req) => {
 
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
 
-    const deliveryDate         = selected_delivery_date || calculateDeliveryDate();
-    const resolvedProdDate     = production_date     || null;
-    const resolvedWindowLabel  = delivery_window_label  || '5 PM – 8 PM';
-    const resolvedWindowStart  = delivery_window_start  || '17:00';
-    const resolvedWindowEnd    = delivery_window_end    || '20:00';
-    const resolvedScheduleSrc  = delivery_schedule_source || 'system_default';
+    // ── CENTRAL SCHEDULE ENGINE ──────────────────────────────────────────
+    // Call calculateNuViraFulfillmentSchedule as single source of truth for dates
+    let scheduleResult;
+    try {
+      const scheduleResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
+        created_at: new Date().toISOString(),
+      });
+      scheduleResult = scheduleResp.data || scheduleResp;
+    } catch (schedErr) {
+      console.error(`[PI] Schedule calculation failed: ${schedErr.message} — using fallback defaults`);
+      scheduleResult = {
+        production_date: '',
+        delivery_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        delivery_window_label: '5 PM – 8 PM',
+        delivery_window_start: '17:00',
+        delivery_window_end: '20:00',
+        schedule_reason: 'fallback_defaults',
+        cutoff_window_label: 'unknown',
+        timezone: 'America/Chicago',
+      };
+    }
 
-    // Metadata — identical contract to createCheckoutSession
+    const deliveryDate         = scheduleResult.delivery_date;
+    const resolvedProdDate     = scheduleResult.production_date;
+    const resolvedWindowLabel  = scheduleResult.delivery_window_label;
+    const resolvedWindowStart  = scheduleResult.delivery_window_start;
+    const resolvedWindowEnd    = scheduleResult.delivery_window_end;
+    const resolvedScheduleSrc  = scheduleResult.schedule_reason || 'system_default';
+
+    // Metadata — centralized schedule fields from calculateNuViraFulfillmentSchedule
     const intentMetadata = {
       base44_app_id:            Deno.env.get('BASE44_APP_ID'),
       source_app:               'customer_app',
@@ -120,11 +119,13 @@ Deno.serve(async (req) => {
       delivery_postal_code:     address_postal_code || '',
       requested_delivery_date:  deliveryDate,
       selected_delivery_date:   deliveryDate,
-      production_date:          resolvedProdDate || '',
+      production_date:          resolvedProdDate,
       delivery_window_label:    resolvedWindowLabel,
       delivery_window_start:    resolvedWindowStart,
       delivery_window_end:      resolvedWindowEnd,
-      delivery_schedule_source: resolvedScheduleSrc,
+      schedule_reason:          resolvedScheduleSrc,
+      cutoff_window_label:      scheduleResult.cutoff_window_label || '',
+      schedule_timezone:        'America/Chicago',
     };
 
     // effectiveTotal already includes all discounts from the frontend (points, credits, referral, reward, sub discount).
