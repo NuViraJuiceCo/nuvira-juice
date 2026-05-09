@@ -116,9 +116,19 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Check if subscription already exists (avoid duplicates by stripe_subscription_id)
-        const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
-        const alreadyExists = existingSubs.some(s => s.stripe_subscription_id === stripeSubscriptionId);
+        // UNIQUENESS GUARD: Search directly by stripe_subscription_id — never by email alone.
+        const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubscriptionId });
+        const alreadyExists = existingSubs.length > 0;
+        // Retire any extra duplicates found
+        if (existingSubs.length > 1) {
+          for (const dup of existingSubs.slice(1)) {
+            console.warn(`[checkout.completed] Retiring duplicate CA record ${dup.id} for stripe_sub=${stripeSubscriptionId}`);
+            await base44.asServiceRole.entities.Subscription.update(dup.id, {
+              status: 'cancelled', hub_sync_status: 'skipped',
+              description: `[DUPLICATE RETIRED] Retired by uniqueness guard in checkout.session.completed. Canonical: ${existingSubs[0].id}. ${new Date().toISOString()}`,
+            }).catch(() => {});
+          }
+        }
 
         if (!alreadyExists) {
           // Fetch plan + delivery zone
@@ -942,12 +952,20 @@ Deno.serve(async (req) => {
 
       console.log(`[invoice.payment_succeeded] Sub ${stripeSubscriptionId} paid, customer ${customerEmail}`);
 
-      // IDEMPOTENCY + TERMINAL STATE GUARD: check if Subscription already exists for this stripe_subscription_id
-      const existingSubsForInvoice = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
-      const existingSubForInvoice = existingSubsForInvoice.find(s => s.stripe_subscription_id === stripeSubscriptionId);
-      const alreadyExists = !!existingSubForInvoice;
+      // UNIQUENESS GUARD: Always search by stripe_subscription_id — never by email alone.
+      // This is the ONLY correct way to detect duplicates; email-based search can return wrong records.
+      const existingSubsForInvoice = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubscriptionId });
 
-      if (alreadyExists) {
+      if (existingSubsForInvoice.length > 0) {
+        const existingSubForInvoice = existingSubsForInvoice[0];
+        // Retire any extra duplicates
+        for (const dup of existingSubsForInvoice.slice(1)) {
+          console.warn(`[invoice.payment_succeeded] Retiring duplicate CA record ${dup.id} for stripe_sub=${stripeSubscriptionId}`);
+          await base44.asServiceRole.entities.Subscription.update(dup.id, {
+            status: 'cancelled', hub_sync_status: 'skipped',
+            description: `[DUPLICATE RETIRED] Retired by uniqueness guard in invoice.payment_succeeded. Canonical: ${existingSubForInvoice.id}. ${new Date().toISOString()}`,
+          }).catch(() => {});
+        }
         // CRITICAL: Do NOT reactivate a cancelled/refunded subscription via invoice replay
         const isTerminalSub = existingSubForInvoice.status === 'cancelled' || existingSubForInvoice.hub_sync_status === 'skipped';
         if (isTerminalSub) {
@@ -1104,12 +1122,19 @@ Deno.serve(async (req) => {
 
       console.log(`[invoice.paid] Sub ${stripeSubscriptionId} paid, customer ${customerEmail}`);
 
-      // IDEMPOTENCY + TERMINAL STATE GUARD: check if Subscription already exists for this stripe_subscription_id
-      const existingSubsForPaidInvoice = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
-      const existingSubForPaidInvoice = existingSubsForPaidInvoice.find(s => s.stripe_subscription_id === stripeSubscriptionId);
-      const alreadyExistsPaid = !!existingSubForPaidInvoice;
+      // UNIQUENESS GUARD: Always search by stripe_subscription_id — never by email alone.
+      const existingSubsForPaidInvoice = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubscriptionId });
 
-      if (alreadyExistsPaid) {
+      if (existingSubsForPaidInvoice.length > 0) {
+        const existingSubForPaidInvoice = existingSubsForPaidInvoice[0];
+        // Retire any extra duplicates
+        for (const dup of existingSubsForPaidInvoice.slice(1)) {
+          console.warn(`[invoice.paid] Retiring duplicate CA record ${dup.id} for stripe_sub=${stripeSubscriptionId}`);
+          await base44.asServiceRole.entities.Subscription.update(dup.id, {
+            status: 'cancelled', hub_sync_status: 'skipped',
+            description: `[DUPLICATE RETIRED] Retired by uniqueness guard in invoice.paid. Canonical: ${existingSubForPaidInvoice.id}. ${new Date().toISOString()}`,
+          }).catch(() => {});
+        }
         // CRITICAL: Do NOT reactivate a cancelled/refunded subscription via invoice replay
         const isTerminalSubPaid = existingSubForPaidInvoice.status === 'cancelled' || existingSubForPaidInvoice.hub_sync_status === 'skipped';
         if (isTerminalSubPaid) {

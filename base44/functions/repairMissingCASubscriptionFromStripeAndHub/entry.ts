@@ -91,32 +91,44 @@ Deno.serve(async (req) => {
 
     console.log(`[RepairCASubscription] Stripe subscription validated: status=${stripeSubscription.status}`);
 
-    // ── STEP 2: Check if CA Subscription already exists ──────────────────
+    // ── STEP 2: UNIQUENESS GUARD — Check if CA Subscription already exists ──
+    // Always search by stripe_subscription_id. If duplicates exist, retire all but the canonical one.
     const existingSubs = await base44.asServiceRole.entities.Subscription.filter({
       stripe_subscription_id,
     });
 
     if (existingSubs.length > 0) {
-      const existing = existingSubs[0];
-      console.log(`[RepairCASubscription] CA Subscription already exists: ${existing.id}, status=${existing.status}`);
+      const canonical = existingSubs.find(s => s.status === 'active') || existingSubs[0];
+      console.log(`[RepairCASubscription] CA Subscription(s) found: ${existingSubs.length}. Canonical: ${canonical.id}, status=${canonical.status}`);
 
-      // If it exists and is active, just return success without modifying
-      if (existing.status === 'active') {
+      // Retire all duplicates beyond the canonical record
+      for (const dup of existingSubs.filter(s => s.id !== canonical.id)) {
+        console.warn(`[RepairCASubscription] Retiring duplicate ${dup.id} for stripe_sub=${stripe_subscription_id}`);
+        await base44.asServiceRole.entities.Subscription.update(dup.id, {
+          status: 'cancelled',
+          hub_sync_status: 'skipped',
+          description: `[DUPLICATE RETIRED] Retired by uniqueness guard in repairMissingCASubscription. Canonical: ${canonical.id}. ${new Date().toISOString()}`,
+        }).catch(() => {});
+      }
+
+      // If canonical is active, return success
+      if (canonical.status === 'active') {
         return Response.json({
           success: true,
-          ca_subscription_id: existing.id,
+          ca_subscription_id: canonical.id,
           action: 'already_exists',
+          duplicates_retired: existingSubs.length - 1,
           stripe_subscription_status: stripeSubscription.status,
-          message: 'CA Subscription already exists and is active',
+          message: 'CA Subscription already exists and is active. Duplicates retired.',
         });
       }
 
-      // If it exists but is not active, we could repair the status
-      // For now, skip to avoid unintended state changes
-      console.warn(`[RepairCASubscription] CA Subscription exists but status=${existing.status}. Skipping repair.`);
+      // If Stripe is active but CA is not, this needs admin review before repair
+      console.warn(`[RepairCASubscription] Canonical CA record status=${canonical.status} but Stripe=${stripeSubscription.status}. Skipping repair.`);
       return Response.json({
         success: false,
-        error: `CA Subscription exists with status=${existing.status}. Admin must review before repair.`,
+        error: `CA Subscription exists with status=${canonical.status}. Admin must review before repair.`,
+        ca_subscription_id: canonical.id,
       }, { status: 409 });
     }
 
