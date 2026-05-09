@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
 
   // ── PHASE 5: Validate schedule fields from central engine ──────────────────
   // All new paid orders have production_date and assigned_delivery_date set by
-  // calculateNuViraFulfillmentSchedule (event.created authority). Validate before Hub push.
+  // calculateNuViraFulfillmentSchedule (event.created authority). ABORT before Hub push if invalid.
   // Refunded orders skip schedule validation — they just need to reach Hub for cancellation.
   const finalProductionDate  = order.production_date || null;
   const finalDeliveryDate    = order.assigned_delivery_date || order.estimated_delivery_date || null;
@@ -165,10 +165,21 @@ Deno.serve(async (req) => {
     const windowMatches  = finalWindowLabel === expectedWindow ||
                            finalWindowLabel === (delDow === 3 ? '5 PM – 8 PM' : '12 PM – 3 PM');
 
-    if (!validProd || !validDel) {
-      const errMsg = `[syncOrderToHub] INVALID SCHEDULE — production_date=${finalProductionDate} (dow=${prodDow}, must be Tue/Fri) | delivery_date=${finalDeliveryDate} (dow=${delDow}, must be Wed/Sat). Order ${order.order_number} will be quarantined at Hub.`;
+    if (!validProd || !validDel || !windowMatches) {
+      const errMsg = `[syncOrderToHub] INVALID SCHEDULE — production_date=${finalProductionDate} (dow=${prodDow}, must be Tue/Fri) | delivery_date=${finalDeliveryDate} (dow=${delDow}, must be Wed/Sat) | delivery_window_label="${finalWindowLabel}" (expected "${expectedWindow}"). Order ${order.order_number} rejected before Hub push.`;
       console.error(errMsg);
-      // Still send to Hub — Hub will quarantine with the reason in the payload
+      return Response.json({
+        success: false,
+        error_code: 'INVALID_SCHEDULE',
+        reason_code: 'INVALID_SCHEDULE',
+        error: errMsg,
+        order_number: order.order_number,
+        production_date: finalProductionDate,
+        delivery_date: finalDeliveryDate,
+        delivery_window_label: finalWindowLabel,
+        expected_window: expectedWindow,
+        hub_push_aborted: true,
+      }, { status: 422 });
     } else {
       console.log(`[syncOrderToHub] Schedule validated ✅ prod=${finalProductionDate}(${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][prodDow]}) del=${finalDeliveryDate}(${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][delDow]}) window="${finalWindowLabel}"`);
     }
