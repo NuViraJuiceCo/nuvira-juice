@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { resolveCustomerIdentities, getSubscriptionsForCustomer, getOrdersForCustomer } from '@/lib/identityResolver';
 import {
   ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package
 } from 'lucide-react';
@@ -42,10 +43,11 @@ export default function Account() {
   });
 
   // Fetch only valid paid, non-refunded, non-cancelled, non-test, non-abandoned orders
+  // Uses identity resolver to handle Apple private relay email variants
   const { data: orders = [] } = useQuery({
-    queryKey: ['my-valid-orders-count'],
+    queryKey: ['my-valid-orders-count', user?.email],
     queryFn: async () => {
-      const allOrders = await base44.entities.Order.filter({ customer_email: user?.email }, '-created_date', 100);
+      const allOrders = await getOrdersForCustomer(user);
       return allOrders.filter(o =>
         o.payment_status === 'paid' &&
         o.payment_captured === true &&
@@ -60,9 +62,10 @@ export default function Account() {
   });
 
   // Fetch subscriptions for snapshot stats
+  // Uses identity resolver to handle Apple private relay email variants
   const { data: subscriptions = [] } = useQuery({
-    queryKey: ['my-subscriptions-count'],
-    queryFn: () => base44.entities.Subscription.filter({ customer_email: user?.email }),
+    queryKey: ['my-subscriptions-count', user?.email],
+    queryFn: () => getSubscriptionsForCustomer(user),
     enabled: !!user?.email,
   });
 

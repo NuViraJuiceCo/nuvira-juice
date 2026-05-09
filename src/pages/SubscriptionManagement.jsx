@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { getSubscriptionsForCustomer } from '@/lib/identityResolver';
 
 
 export default function SubscriptionManagement() {
@@ -21,7 +22,7 @@ export default function SubscriptionManagement() {
 
   const { data: subscriptions = [], refetch } = useQuery({
     queryKey: ['subscriptions', user?.email],
-    queryFn: () => base44.entities.Subscription.filter({ customer_email: user?.email }, '-created_date', 50),
+    queryFn: () => getSubscriptionsForCustomer(user),
     enabled: !!user?.email,
   });
 
