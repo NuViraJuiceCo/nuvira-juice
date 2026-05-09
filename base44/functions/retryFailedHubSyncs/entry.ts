@@ -150,13 +150,17 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Active subscription — call syncSubscriptionWithFulfillments directly via Hub (same path as debug tool)
+        // Active subscription — call syncSubscriptionWithFulfillments with internal secret
+        // SECURITY: pass x-internal-secret so the function can verify this is a trusted internal call.
+        // This prevents the null-user bypass vulnerability where unauthenticated public requests
+        // could appear as service-role calls.
         console.log(`[RetryHubSyncs] Active subscription ${stripeSubId} (${activeSub.customer_email}) — retrying Hub sync`);
         try {
-          // Call syncSubscriptionWithFulfillments which uses customerAppEventPublicGateway directly
           const syncResult = await base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
             subscription_id: activeSub.id,
             customer_email: activeSub.customer_email,
+          }, {
+            headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' },
           });
           const hubResp = syncResult?.data || syncResult;
           const isSuccess = hubResp?.success === true || hubResp?.hub_response?.status === 'success';

@@ -12,14 +12,43 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // Allow both admin users AND service-role callers (e.g. retryFailedHubSyncs, stripeWebhook fire-and-forget)
-    // Service role callers have no user session — check for user only if a real session exists
-    const user = await base44.auth.me().catch(() => null);
-    if (user !== null && user?.role !== 'admin') {
-      return Response.json({ error: 'Admin only' }, { status: 403 });
+    // ── AUTH GATE ────────────────────────────────────────────────────────────
+    // Allowed callers:
+    //   1. Authenticated admin user (role === 'admin')
+    //   2. Internal service callers passing the HUB_SYNC_SECRET as x-internal-secret header
+    //      (used by retryFailedHubSyncs, stripeWebhook fire-and-forget, etc.)
+    //
+    // Rejected callers:
+    //   - Unauthenticated public calls with no internal secret → 401
+    //   - Authenticated non-admin customers → 403
+    //
+    // IMPORTANT: null from auth.me() is NOT treated as a service-role bypass.
+    // All anonymous callers must supply x-internal-secret.
+
+    const INTERNAL_SECRET = Deno.env.get('HUB_SYNC_SECRET');
+    const internalSecretHeader = req.headers.get('x-internal-secret');
+    const isInternalCall = INTERNAL_SECRET && internalSecretHeader === INTERNAL_SECRET;
+
+    // Parse body once — needed for both auth check and payload
+    const body = await req.json();
+
+    if (!isInternalCall) {
+      // Not an internal call — require admin user session
+      const user = await base44.auth.me().catch(() => null);
+      if (!user) {
+        console.warn('[syncSubWithFulfillments] REJECTED: no auth session and no internal secret');
+        return Response.json({ error_code: 'MISSING_AUTH', error: 'Authentication required' }, { status: 401 });
+      }
+      if (user.role !== 'admin') {
+        console.warn(`[syncSubWithFulfillments] REJECTED: customer ${user.email} attempted internal sync`);
+        return Response.json({ error_code: 'FORBIDDEN_CUSTOMER', error: 'Admin access required' }, { status: 403 });
+      }
+      console.log(`[syncSubWithFulfillments] Caller: admin user ${user.email}`);
+    } else {
+      console.log(`[syncSubWithFulfillments] Caller: internal service (x-internal-secret verified)`);
     }
 
-    const { subscription_id, customer_email } = await req.json();
+    const { subscription_id, customer_email } = body;
 
     if (!subscription_id || !customer_email) {
       return Response.json({ error: 'Missing subscription_id or customer_email' }, { status: 400 });
