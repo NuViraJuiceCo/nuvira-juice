@@ -622,6 +622,21 @@ Deno.serve(async (req) => {
       // Find pre-created pending Order
       const existingOrders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: pi.id });
 
+      // ── TERMINAL STATE GUARD ──────────────────────────────────────────
+      // CRITICAL: Do NOT resurrect refunded/cancelled/terminal orders.
+      // Webhook replay order is NOT guaranteed—later refunds can exist before earlier payment events.
+      // Terminal states must always win.
+      if (existingOrders.length > 0) {
+        const order = existingOrders[0];
+        const isTerminal = order.status === 'refunded' || order.status === 'cancelled' || 
+                          order.do_not_recover === true || 
+                          (order.amount_refunded && order.amount_refunded > 0);
+        if (isTerminal) {
+          console.warn(`[PI succeeded] Order ${orderNumber} is in terminal state (refunded/cancelled). Skipping state reset. PI=${pi.id}`);
+          return Response.json({ received: true, action: 'skipped_terminal_state' });
+        }
+      }
+
       if (existingOrders.length > 0) {
         const order = existingOrders[0];
 
