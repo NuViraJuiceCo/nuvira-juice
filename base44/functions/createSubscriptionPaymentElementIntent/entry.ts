@@ -128,11 +128,60 @@ Deno.serve(async (req) => {
       return Response.json({ error_code: 'MISSING_STRIPE_PRICE_ID', error: 'This subscription plan is not yet available for purchase. Please contact support.' }, { status: 400 });
     }
 
-    // Check for existing active subscription on same plan
+    // Check for existing active subscription on same plan — check BOTH CA records AND Stripe directly.
+    // CA records may be missing if webhook failed, so Stripe is authoritative.
     const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ customer_email });
     const hasActiveSub = existingSubs.some(s => s.plan_id === plan_id && s.status === 'active');
     if (hasActiveSub) {
       return Response.json({ error_code: 'ALREADY_SUBSCRIBED', error: 'You already have an active subscription with this plan.' }, { status: 400 });
+    }
+
+    // CRITICAL: Also check Stripe directly — CA records can be missing even when Stripe has an active subscription.
+    // This is the root cause of duplicate purchases when webhooks fail.
+    try {
+      const stripeCustomersCheck = await stripe.customers.list({ email: customer_email, limit: 1 });
+      const existingStripeCustomer = stripeCustomersCheck.data[0];
+      if (existingStripeCustomer) {
+        const activeStripeSubs = await stripe.subscriptions.list({
+          customer: existingStripeCustomer.id,
+          status: 'active',
+          limit: 10,
+        });
+        const matchingActiveSub = activeStripeSubs.data.find(s =>
+          s.items?.data?.some(item => item.price?.id === plan.stripe_price_id)
+        );
+        if (matchingActiveSub) {
+          console.warn(`[SubPE] Stripe has active sub ${matchingActiveSub.id} for ${customer_email} but CA record is missing. Blocking new checkout. Trigger reconciliation.`);
+          // Fire reconciliation in background so CA record gets created
+          base44.asServiceRole.functions.invoke('repairMissingSubscriptionForPaidInvoice', {
+            stripe_subscription_id: matchingActiveSub.id,
+            customer_email,
+          }).catch(err => console.warn(`[SubPE] Background reconcile failed: ${err.message}`));
+          return Response.json({
+            error_code: 'ALREADY_SUBSCRIBED_OR_ACTIVATING',
+            error: 'You already have an active subscription. If you don\'t see it yet, it may still be activating — please check My Subscriptions in a moment or contact support.',
+          }, { status: 400 });
+        }
+
+        // Also check incomplete/past_due subscriptions for the same plan — don't create a duplicate
+        const pendingStripeSubs = await stripe.subscriptions.list({
+          customer: existingStripeCustomer.id,
+          status: 'past_due',
+          limit: 5,
+        });
+        const matchingPendingSub = pendingStripeSubs.data.find(s =>
+          s.items?.data?.some(item => item.price?.id === plan.stripe_price_id)
+        );
+        if (matchingPendingSub) {
+          console.warn(`[SubPE] Stripe has past_due sub ${matchingPendingSub.id} for ${customer_email}. Blocking new checkout.`);
+          return Response.json({
+            error_code: 'ALREADY_SUBSCRIBED_OR_ACTIVATING',
+            error: 'You have a subscription with a payment issue. Please check My Subscriptions or contact support to resolve it.',
+          }, { status: 400 });
+        }
+      }
+    } catch (stripeCheckErr) {
+      console.warn(`[SubPE] Stripe active sub check failed (non-blocking): ${stripeCheckErr.message}`);
     }
 
     // Check for existing incomplete Stripe subscription on this customer+plan (from a prior failed render attempt).

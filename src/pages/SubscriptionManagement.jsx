@@ -25,6 +25,21 @@ export default function SubscriptionManagement() {
     enabled: !!user?.email,
   });
 
+  // Detect if a recent PendingSubscriptionCheckout exists (webhook may still be processing)
+  const { data: pendingCheckouts = [] } = useQuery({
+    queryKey: ['pending-checkouts', user?.email],
+    queryFn: () => base44.entities.PendingSubscriptionCheckout.filter({ customer_email: user?.email }, '-created_date', 5),
+    enabled: !!user?.email,
+    refetchInterval: activating ? 3000 : false,
+  });
+
+  const hasRecentPendingCheckout = pendingCheckouts.some(p => {
+    if (p.status === 'completed' || p.status === 'failed') return false;
+    const createdAt = new Date(p.created_date);
+    const ageMinutes = (Date.now() - createdAt.getTime()) / 60000;
+    return ageMinutes < 60; // within last hour
+  });
+
   // Show success toast + poll when returning from Stripe subscription checkout
   // Handles both ?subscribed=true and ?session_id=... (Stripe return_url)
   useEffect(() => {
@@ -378,8 +393,20 @@ export default function SubscriptionManagement() {
           </div>
         )}
 
-        {/* Empty State */}
-        {!activating && subscriptions.length === 0 && (
+        {/* Activating — pending checkout exists but Subscription record not yet created */}
+        {!activating && subscriptions.filter(s => s.status === 'active').length === 0 && hasRecentPendingCheckout && (
+          <div className="text-center py-12">
+            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+            <p className="font-medium text-sm mb-1">Activating your subscription...</p>
+            <p className="text-xs text-muted-foreground mb-3">Your payment was received. This usually takes a few seconds.</p>
+            <p className="text-xs text-muted-foreground">If this takes longer than a minute, please contact support — your payment is safe.</p>
+          </div>
+        )}
+
+        {/* Empty State — no subscription AND no pending checkout */}
+        {!activating && subscriptions.length === 0 && !hasRecentPendingCheckout && (
           <div className="text-center py-12">
             <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
               <Plus className="w-6 h-6 text-muted-foreground" />
