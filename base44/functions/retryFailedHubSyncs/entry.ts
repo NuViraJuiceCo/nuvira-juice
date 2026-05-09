@@ -16,25 +16,16 @@ Deno.serve(async (req) => {
   const startTime = new Date().toISOString();
   console.log(`[RetryHubSyncs] Starting retry sweep at ${startTime}`);
 
-  // Find all retry-eligible sync logs: error, skipped, or false-success (success with no hub_order_id)
+  // Find all retry-eligible sync logs: only 'error' status
+  // IMPORTANT: do NOT include 'skipped' — skipped includes terminal do_not_sync/resolved logs
+  // IMPORTANT: do NOT include false-success without hub_order_id — subscription syncs legitimately
+  //            return success without a hub_order_id (they use hub_action='subscription_synced')
   const errorLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
     { status: 'error' },
     '-created_date',
     50
   );
-  const skippedLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
-    { status: 'skipped' },
-    '-created_date',
-    50
-  );
-  // Also catch old "success" logs that were logged without a real hub_order_id (pre-fix false successes)
-  const unconfirmedSuccessLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
-    { status: 'success' },
-    '-created_date',
-    100
-  );
-  const falseSuccessLogs = unconfirmedSuccessLogs.filter(l => !l.hub_order_id && !l.matched_hub_order_id);
-  const allLogs = [...errorLogs, ...skippedLogs, ...falseSuccessLogs];
+  const allLogs = [...errorLogs];
 
   // Deduplicate by order_number — only retry the most recent error per order
   const seen = new Set();
@@ -86,33 +77,109 @@ Deno.serve(async (req) => {
     try {
       // ── Subscription retry path ──────────────────────────────────────────
       // Error logs for subscription Hub failures use order_number = "SUB-{stripeSubscriptionId}"
-      if (orderNumber.startsWith('SUB-')) {
-        const stripeSubId = orderNumber.replace('SUB-', '');
-        const subs = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubId });
-        if (!subs.length) {
-          console.warn(`[RetryHubSyncs] Subscription ${stripeSubId} not found in CA, skipping`);
-          results.push({ order_number: orderNumber, result: 'not_found' });
-          continue;
-        }
-        const sub = subs[0];
-        try {
-          await base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
-            subscription_id: sub.id,
-            customer_email: sub.customer_email,
-          });
-          console.log(`[RetryHubSyncs] ✅ Subscription Hub sync retried successfully for ${stripeSubId}`);
+      // Special sentinel logs (e.g. SUB_DATE_MISSING, SUB_FAILED) are not retryable
+      if (orderNumber.startsWith('SUB-') || orderNumber === 'SUB_DATE_MISSING' || orderNumber === 'SUB_FAILED') {
+        // Sentinel non-retryable logs — write terminal skipped log and move on
+        if (!orderNumber.startsWith('SUB-sub_')) {
+          console.log(`[RetryHubSyncs] Sentinel log ${orderNumber} — writing terminal skipped log`);
           await base44.asServiceRole.entities.OrderSyncLog.create({
             order_number: orderNumber,
-            status: 'success',
-            hub_action: 'subscription_synced',
-            description: `Subscription Hub sync succeeded on retry. sub_id=${sub.id}, stripe_sub=${stripeSubId}`,
+            status: 'skipped',
+            hub_action: 'sentinel_not_retryable',
+            description: `Sentinel error log ${orderNumber} is not retryable (no real subscription record). Permanently resolved.`,
             started_at: startTime,
             completed_at: new Date().toISOString(),
             triggered_by: 'recovery_function',
           });
-          results.push({ order_number: orderNumber, result: 'success' });
+          results.push({ order_number: orderNumber, result: 'skipped', reason: 'sentinel_not_retryable' });
+          continue;
+        }
+
+        const stripeSubId = orderNumber.replace('SUB-', '');
+        const subs = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubId });
+
+        if (!subs.length) {
+          // No CA subscription record — cannot retry, write terminal skipped log
+          console.warn(`[RetryHubSyncs] No CA Subscription found for ${stripeSubId} — writing terminal skipped log`);
+          await base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: orderNumber,
+            status: 'skipped',
+            hub_action: 'no_ca_record',
+            description: `No CA Subscription record found for stripe_sub=${stripeSubId}. Cannot retry. Manual review required.`,
+            started_at: startTime,
+            completed_at: new Date().toISOString(),
+            triggered_by: 'recovery_function',
+          });
+          results.push({ order_number: orderNumber, result: 'skipped', reason: 'no_ca_record' });
+          continue;
+        }
+
+        // Use the most recent active subscription record for this stripe_subscription_id
+        const activeSub = subs.find(s => s.status === 'active') || subs[0];
+
+        // ── STATUS-AWARE DECISION ────────────────────────────────────────────
+        // Only retry customer.subscription_created if sub is active.
+        // Cancelled/refunded subscriptions must NOT be re-pushed as active to Hub.
+        if (activeSub.status === 'cancelled') {
+          console.log(`[RetryHubSyncs] Subscription ${stripeSubId} is cancelled — writing terminal resolved log, skipping Hub sync`);
+          await base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: orderNumber,
+            status: 'skipped',
+            hub_action: 'subscription_not_active',
+            description: `Subscription ${stripeSubId} (CA id=${activeSub.id}) is cancelled/refunded. Not retrying as subscription_created. Permanently resolved.`,
+            started_at: startTime,
+            completed_at: new Date().toISOString(),
+            triggered_by: 'recovery_function',
+          });
+          results.push({ order_number: orderNumber, result: 'skipped', reason: 'subscription_not_active', sub_status: activeSub.status });
+          continue;
+        }
+
+        if (activeSub.status !== 'active') {
+          console.warn(`[RetryHubSyncs] Subscription ${stripeSubId} has unexpected status "${activeSub.status}" — skipping`);
+          await base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: orderNumber,
+            status: 'skipped',
+            hub_action: 'subscription_not_active',
+            description: `Subscription ${stripeSubId} status="${activeSub.status}" — not retrying. Manual review if needed.`,
+            started_at: startTime,
+            completed_at: new Date().toISOString(),
+            triggered_by: 'recovery_function',
+          });
+          results.push({ order_number: orderNumber, result: 'skipped', reason: `status_${activeSub.status}` });
+          continue;
+        }
+
+        // Active subscription — call syncSubscriptionWithFulfillments directly via Hub (same path as debug tool)
+        console.log(`[RetryHubSyncs] Active subscription ${stripeSubId} (${activeSub.customer_email}) — retrying Hub sync`);
+        try {
+          // Call syncSubscriptionWithFulfillments which uses customerAppEventPublicGateway directly
+          const syncResult = await base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+            subscription_id: activeSub.id,
+            customer_email: activeSub.customer_email,
+          });
+          const hubResp = syncResult?.data || syncResult;
+          const isSuccess = hubResp?.success === true || hubResp?.hub_response?.status === 'success';
+
+          if (isSuccess) {
+            console.log(`[RetryHubSyncs] ✅ Subscription Hub sync succeeded for ${stripeSubId}`);
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: orderNumber,
+              status: 'success',
+              hub_action: 'subscription_synced',
+              description: `Subscription Hub sync succeeded on retry. sub_id=${activeSub.id}, stripe_sub=${stripeSubId}, fulfillments=${hubResp?.fulfillments_sent || 4}, email=${activeSub.customer_email}`,
+              started_at: startTime,
+              completed_at: new Date().toISOString(),
+              triggered_by: 'recovery_function',
+            });
+            results.push({ order_number: orderNumber, result: 'success', sub_id: activeSub.id });
+          } else {
+            const errDetail = JSON.stringify(hubResp).substring(0, 300);
+            console.error(`[RetryHubSyncs] ❌ Subscription sync returned non-success for ${stripeSubId}: ${errDetail}`);
+            results.push({ order_number: orderNumber, result: 'failed', details: errDetail });
+          }
         } catch (subSyncErr) {
-          console.error(`[RetryHubSyncs] ❌ Subscription retry failed for ${stripeSubId}: ${subSyncErr.message}`);
+          console.error(`[RetryHubSyncs] ❌ Subscription retry threw for ${stripeSubId}: ${subSyncErr.message}`);
           results.push({ order_number: orderNumber, result: 'failed', message: subSyncErr.message });
         }
         continue;
@@ -127,6 +194,30 @@ Deno.serve(async (req) => {
       }
 
       const order = orders[0];
+
+      // ── Order status gate ────────────────────────────────────────────────
+      // Do NOT retry unpaid, abandoned, cancelled, or do_not_recover orders.
+      // Hub correctly rejects these — retrying endlessly wastes cycles and clutters logs.
+      const isUnpaid = !order.payment_captured && order.payment_status !== 'paid' && order.financial_status !== 'paid';
+      const isCancelled = order.status === 'cancelled' || order.status === 'refunded';
+      const isDoNotRecover = order.do_not_recover === true;
+      const isTestOrder = order.is_test_order === true;
+
+      if (isDoNotRecover || isCancelled || isUnpaid || isTestOrder) {
+        const reason = isDoNotRecover ? 'do_not_recover' : isCancelled ? `status_${order.status}` : isTestOrder ? 'test_order' : 'unpaid';
+        console.log(`[RetryHubSyncs] Order ${orderNumber} is not retryable (${reason}) — writing terminal skipped log`);
+        await base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number: orderNumber,
+          status: 'skipped',
+          hub_action: 'order_not_retryable',
+          description: `Order ${orderNumber} permanently excluded from Hub retry. Reason: ${reason}. payment_status=${order.payment_status}, payment_captured=${order.payment_captured}, status=${order.status}, do_not_recover=${order.do_not_recover}.`,
+          started_at: startTime,
+          completed_at: new Date().toISOString(),
+          triggered_by: 'recovery_function',
+        });
+        results.push({ order_number: orderNumber, result: 'skipped', reason });
+        continue;
+      }
 
       // Build full payload (mirrors syncOrderToHub logic)
       const payment_status = order.payment_captured === true ? 'paid' : (order.payment_status || 'pending');

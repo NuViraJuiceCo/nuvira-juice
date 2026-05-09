@@ -11,8 +11,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
+
+    // Allow both admin users AND service-role callers (e.g. retryFailedHubSyncs, stripeWebhook fire-and-forget)
+    // Service role callers have no user session — check for user only if a real session exists
+    const user = await base44.auth.me().catch(() => null);
+    if (user !== null && user?.role !== 'admin') {
       return Response.json({ error: 'Admin only' }, { status: 403 });
     }
 
