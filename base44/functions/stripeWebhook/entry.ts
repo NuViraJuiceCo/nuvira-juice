@@ -1016,6 +1016,161 @@ Deno.serve(async (req) => {
       return Response.json({ received: true });
     }
 
+    // ── invoice.paid — handles subscription invoice paid (alternate to invoice.payment_succeeded) ──
+    // Some Stripe flows emit invoice.paid instead of invoice.payment_succeeded.
+    // This handler mirrors payment_succeeded logic with same idempotency.
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object;
+      const stripeSubscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+
+      // Only process subscription invoices (not standalone invoices)
+      if (!stripeSubscriptionId) {
+        console.log(`[invoice.paid] No subscription ID, skipping invoice ${invoice.id}`);
+        return Response.json({ received: true });
+      }
+
+      // Retrieve the subscription to get full metadata
+      const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId, {
+        expand: ['latest_invoice.payment_intent'],
+      });
+
+      const meta = stripeSubscription.metadata || {};
+      const customerEmail = meta.customer_email || invoice.customer_email;
+
+      if (!customerEmail) {
+        console.error(`[invoice.paid] No customer_email in metadata for sub ${stripeSubscriptionId}`);
+        return Response.json({ received: true });
+      }
+
+      console.log(`[invoice.paid] Sub ${stripeSubscriptionId} paid, customer ${customerEmail}`);
+
+      // IDEMPOTENCY: check if Subscription already exists for this stripe_subscription_id
+      const existingSubsForPaidInvoice = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
+      const alreadyExistsPaid = existingSubsForPaidInvoice.some(s => s.stripe_subscription_id === stripeSubscriptionId);
+
+      if (alreadyExistsPaid) {
+        console.log(`[invoice.paid] Subscription already created for ${stripeSubscriptionId}, skipping`);
+        return Response.json({ received: true });
+      }
+
+      const planId = meta.plan_id;
+      const pendingCheckoutId = meta.pending_subscription_checkout_id;
+
+      if (!planId) {
+        console.error(`[invoice.paid] No plan_id in metadata for sub ${stripeSubscriptionId}`);
+        return Response.json({ received: true });
+      }
+
+      // Load PendingSubscriptionCheckout for complete delivery metadata
+      let pendingCheckoutPaid = null;
+      if (pendingCheckoutId) {
+        try {
+          const pendings = await base44.asServiceRole.entities.PendingSubscriptionCheckout.filter({ id: pendingCheckoutId });
+          pendingCheckoutPaid = pendings[0] || null;
+          if (pendingCheckoutPaid) console.log(`[invoice.paid] Loaded PendingSubscriptionCheckout ${pendingCheckoutId}`);
+        } catch (err) {
+          console.error(`[invoice.paid] Failed to load pending checkout: ${err.message}`);
+        }
+      }
+
+      // Fetch plan + delivery zone
+      const allPlansPaid = await base44.asServiceRole.entities.SubscriptionPlan.list();
+      const planPaid = allPlansPaid.find(p => p.id === planId);
+      const allZonesPaid = await base44.asServiceRole.entities.DeliveryZone.filter({ is_active: true });
+      const defaultZonePaid = allZonesPaid[0];
+
+      const deliveryAddressPaid = pendingCheckoutPaid?.delivery_address || meta.delivery_address || '';
+      const deliveryZoneIdPaid = pendingCheckoutPaid?.delivery_zone_id || defaultZonePaid?.id || null;
+      const productionDatePaid = pendingCheckoutPaid?.production_date || meta.production_date || null;
+      const firstDeliveryDatePaid = pendingCheckoutPaid?.first_delivery_date || meta.first_delivery_date || null;
+      const nextDeliveryDatePaid = pendingCheckoutPaid?.next_delivery_date || firstDeliveryDatePaid;
+
+      if (!productionDatePaid || !firstDeliveryDatePaid) {
+        console.error(`[invoice.paid] Missing dates for sub ${stripeSubscriptionId}`);
+        return Response.json({ received: true });
+      }
+
+      // Create Subscription record
+      const newSubscriptionPaid = await base44.asServiceRole.entities.Subscription.create({
+        customer_email: customerEmail,
+        stripe_subscription_id: stripeSubscriptionId,
+        stripe_customer_id: invoice.customer,
+        plan_id: planId,
+        bundle_id: pendingCheckoutPaid?.bundle_id || meta.bundle_id || null,
+        delivery_zone_id: deliveryZoneIdPaid,
+        delivery_address: deliveryAddressPaid,
+        status: 'active',
+        started_date: firstDeliveryDatePaid,
+        next_delivery_date: nextDeliveryDatePaid,
+      });
+      console.log(`[invoice.paid] Subscription record created: ${newSubscriptionPaid.id}`);
+
+      // Award loyalty points (idempotent — check description includes stripeSubscriptionId)
+      const amountPaidInvoice = (invoice.amount_paid || 0) / 100;
+      if (amountPaidInvoice > 0) {
+        const pointsToAwardPaid = Math.floor(amountPaidInvoice * 10);
+        const existingPointsPaid = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
+        const loyaltyEntryPaid = {
+          amount: pointsToAwardPaid,
+          type: 'earned',
+          description: `Subscription payment of $${amountPaidInvoice.toFixed(2)} (subscription ${stripeSubscriptionId})`,
+          timestamp: new Date().toISOString(),
+        };
+        if (existingPointsPaid[0]) {
+          const alreadyAwardedPaid = existingPointsPaid[0].points_history?.some(h =>
+            h.description?.includes(`subscription ${stripeSubscriptionId}`)
+          );
+          if (!alreadyAwardedPaid) {
+            await base44.asServiceRole.entities.UserPoints.update(existingPointsPaid[0].id, {
+              total_points: (existingPointsPaid[0].total_points || 0) + pointsToAwardPaid,
+              lifetime_points: (existingPointsPaid[0].lifetime_points || 0) + pointsToAwardPaid,
+              points_history: [...(existingPointsPaid[0].points_history || []), loyaltyEntryPaid],
+            });
+            console.log(`[invoice.paid] Awarded ${pointsToAwardPaid} pts to ${customerEmail}`);
+          }
+        } else {
+          await base44.asServiceRole.entities.UserPoints.create({
+            customer_email: customerEmail,
+            total_points: pointsToAwardPaid,
+            lifetime_points: pointsToAwardPaid,
+            redeemed_points: 0,
+            points_history: [loyaltyEntryPaid],
+          });
+        }
+      }
+
+      // Update PendingSubscriptionCheckout as completed
+      if (pendingCheckoutId && pendingCheckoutPaid) {
+        await base44.asServiceRole.entities.PendingSubscriptionCheckout.update(pendingCheckoutId, {
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          stripe_subscription_id: stripeSubscriptionId,
+        }).catch(err => console.warn(`[invoice.paid] Failed to update pending checkout: ${err.message}`));
+      }
+
+      // Sync to Hub using the new 4-fulfillment payload builder (invoice.paid path)
+      // Fire-and-forget: write error log on failure so retryFailedHubSyncs can recover.
+      base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+        subscription_id: newSubscriptionPaid.id,
+        customer_email: customerEmail,
+      }, { headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' } }).then(() => {
+        console.log(`[invoice.paid] ✅ Hub sync dispatched for subscription ${newSubscriptionPaid.id}`);
+      }).catch(err => {
+        console.error(`[invoice.paid] Hub sync failed for subscription ${newSubscriptionPaid.id}: ${err.message}`);
+        base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number: `SUB-${stripeSubscriptionId}`,
+          status: 'error',
+          description: `Hub sync failed after invoice.paid: ${err.message}. Subscription=${newSubscriptionPaid.id}. Will be retried.`,
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          triggered_by: 'stripe_webhook',
+        }).catch(() => {});
+      });
+
+      console.log(`[invoice.paid] ✅ Subscription ${stripeSubscriptionId} fully activated for ${customerEmail}`);
+      return Response.json({ received: true });
+    }
+
     if (event.type === 'customer.subscription.updated') {
       const sub = event.data.object;
       const stripeSubId = sub.id;
