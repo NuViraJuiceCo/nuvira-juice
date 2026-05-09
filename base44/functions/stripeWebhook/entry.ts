@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
           base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
             subscription_id: subscription.id,
             customer_email: customerEmail,
-          }).then(() => {
+          }, { headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' } }).then(() => {
             console.log(`[stripeWebhook] ✅ Hub sync dispatched for subscription ${subscription.id}`);
           }).catch(err => {
             console.error(`[stripeWebhook] Hub sync failed for subscription ${subscription.id}: ${err.message}`);
@@ -998,7 +998,7 @@ Deno.serve(async (req) => {
       base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
         subscription_id: newSubscription.id,
         customer_email: customerEmail,
-      }).then(() => {
+      }, { headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' } }).then(() => {
         console.log(`[invoice.payment_succeeded] ✅ Hub sync dispatched for subscription ${newSubscription.id}`);
       }).catch(err => {
         console.error(`[invoice.payment_succeeded] Hub sync failed for subscription ${newSubscription.id}: ${err.message}`);
