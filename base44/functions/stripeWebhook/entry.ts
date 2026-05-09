@@ -416,19 +416,37 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Hydrate delivery fields from Stripe metadata if missing from CheckoutSession
+        // Hydrate address/contact fields from CheckoutSession or Stripe metadata
         const resolvedAddressLine1   = orderData.address_line1   || session.metadata?.delivery_address_line1 || '';
         const resolvedAddressCity    = orderData.address_city    || session.metadata?.delivery_city    || '';
         const resolvedAddressState   = orderData.address_state   || session.metadata?.delivery_state   || '';
         const resolvedAddressZip     = orderData.address_postal_code || session.metadata?.delivery_postal_code || '';
         const resolvedPhone          = orderData.contact_phone   || session.metadata?.customer_phone   || '';
         const resolvedCustomerName   = orderData.customer_name   || session.metadata?.customer_name    || '';
-        const resolvedDeliveryDate   = orderData.estimated_delivery_date || session.metadata?.selected_delivery_date || session.metadata?.requested_delivery_date || null;
-        const resolvedProductionDate = orderData.production_date || session.metadata?.production_date  || null;
-        const resolvedWindowLabel    = orderData.delivery_window_label || session.metadata?.delivery_window_label || '5 PM – 8 PM';
-        const resolvedWindowStart    = orderData.delivery_window_start || session.metadata?.delivery_window_start || '17:00';
-        const resolvedWindowEnd      = orderData.delivery_window_end   || session.metadata?.delivery_window_end   || '20:00';
         const resolvedDeliveryAddress = orderData.delivery_address || [resolvedAddressLine1, resolvedAddressCity, resolvedAddressState, resolvedAddressZip].filter(Boolean).join(', ');
+
+        // ── CENTRAL SCHEDULE ENGINE: recalculate from paid timestamp (final authority) ──
+        // session.created is the authoritative paid timestamp for checkout.session.completed.
+        // Stripe metadata dates are treated as preview/reference only and may be stale.
+        let checkoutFinalSchedule = null;
+        try {
+          const sessionPaidTimestamp = new Date((session.created || Date.now()) * 1000).toISOString();
+          const csResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
+            paid_at: sessionPaidTimestamp,
+          });
+          checkoutFinalSchedule = csResp.data || csResp;
+          console.log(`[checkout.completed] Final schedule: prod=${checkoutFinalSchedule.production_date} del=${checkoutFinalSchedule.delivery_date} window="${checkoutFinalSchedule.delivery_window_label}" reason="${checkoutFinalSchedule.schedule_reason}"`);
+        } catch (schedErr) {
+          console.error(`[checkout.completed] Schedule recalculation failed: ${schedErr.message} — falling back to metadata`);
+        }
+
+        // Final resolved dates: central engine wins over stale metadata
+        const resolvedDeliveryDate   = checkoutFinalSchedule?.delivery_date   || orderData.estimated_delivery_date || session.metadata?.selected_delivery_date || null;
+        const resolvedProductionDate = checkoutFinalSchedule?.production_date  || orderData.production_date || session.metadata?.production_date || null;
+        const resolvedWindowLabel    = checkoutFinalSchedule?.delivery_window_label  || orderData.delivery_window_label || session.metadata?.delivery_window_label || '5 PM – 8 PM';
+        const resolvedWindowStart    = checkoutFinalSchedule?.delivery_window_start  || orderData.delivery_window_start || session.metadata?.delivery_window_start || '17:00';
+        const resolvedWindowEnd      = checkoutFinalSchedule?.delivery_window_end    || orderData.delivery_window_end   || session.metadata?.delivery_window_end   || '20:00';
+        const resolvedScheduleReason = checkoutFinalSchedule?.schedule_reason || 'checkout_metadata_fallback';
 
         console.log(`[stripeWebhook] Resolved order fields: name="${resolvedCustomerName}" addr="${resolvedAddressLine1}, ${resolvedAddressCity}" delivery="${resolvedDeliveryDate}" window="${resolvedWindowLabel}" items=${resolvedItems.length}`);
 
@@ -473,6 +491,7 @@ Deno.serve(async (req) => {
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id: session.payment_intent || null,
           referral_code: orderData.referral_code || null,
+          scheduling_reason: resolvedScheduleReason,
         });
 
         console.log(`Regular order ${order.id} (${orderNumber}) created after payment completed`);
@@ -683,6 +702,21 @@ Deno.serve(async (req) => {
           return Response.json({ received: true });
         }
 
+        // ── CENTRAL SCHEDULE ENGINE: recalculate from actual paid timestamp ──────
+        // Use PI created/confirmed timestamp as final authority.
+        // Overrides stale checkout metadata if payment crosses a cutoff boundary.
+        let finalSchedule = null;
+        try {
+          const paidTimestamp = new Date((pi.created || Date.now()) * 1000).toISOString();
+          const schedResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
+            paid_at: paidTimestamp,
+          });
+          finalSchedule = schedResp.data || schedResp;
+          console.log(`[PI succeeded] Final schedule: prod=${finalSchedule.production_date} del=${finalSchedule.delivery_date} window="${finalSchedule.delivery_window_label}" reason="${finalSchedule.schedule_reason}"`);
+        } catch (schedErr) {
+          console.error(`[PI succeeded] Schedule recalculation failed: ${schedErr.message} — keeping pending order dates`);
+        }
+
         // Finalize the order — promote from pending_payment to operational
         const statusHistory = [...(order.status_history || []), {
           status: 'scheduled_for_juicing',
@@ -690,13 +724,26 @@ Deno.serve(async (req) => {
           message: 'Payment confirmed — your order is scheduled for juicing!',
         }];
 
-        await base44.asServiceRole.entities.Order.update(order.id, {
+        const finalOrderUpdate = {
           status:           'scheduled_for_juicing',
           payment_status:   'paid',
           financial_status: 'paid',
           payment_captured: true,
           status_history:   statusHistory,
-        });
+        };
+
+        // Override delivery dates if central engine returned a result
+        if (finalSchedule) {
+          finalOrderUpdate.estimated_delivery_date  = finalSchedule.delivery_date;
+          finalOrderUpdate.assigned_delivery_date   = finalSchedule.delivery_date;
+          finalOrderUpdate.delivery_window_label    = finalSchedule.delivery_window_label;
+          finalOrderUpdate.assigned_delivery_window_start = finalSchedule.delivery_window_start;
+          finalOrderUpdate.assigned_delivery_window_end   = finalSchedule.delivery_window_end;
+          finalOrderUpdate.scheduling_reason        = finalSchedule.schedule_reason;
+          finalOrderUpdate.assigned_production_day  = finalSchedule.production_date ? new Date(finalSchedule.production_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) : undefined;
+        }
+
+        await base44.asServiceRole.entities.Order.update(order.id, finalOrderUpdate);
         console.log(`[PI succeeded] Order ${orderNumber} finalized`);
 
         // Validate referral code
@@ -808,9 +855,20 @@ Deno.serve(async (req) => {
         }).catch(err => console.error('[PI succeeded] Ops notify failed:', err.message));
 
       } else {
-        // Pre-created Order not found — create it now from metadata (safety net)
+        // Pre-created Order not found — create it now (safety net), using central schedule engine
         console.warn(`[PI succeeded] Pre-created Order not found for PI ${pi.id}, creating from metadata`);
         const resolvedAddr = [meta.delivery_address_line1, meta.delivery_city, meta.delivery_state, meta.delivery_postal_code].filter(Boolean).join(', ');
+
+        // Recalculate from paid timestamp — never use stale metadata dates in safety-net path
+        let safetyNetSchedule = null;
+        try {
+          const paidTs = new Date((pi.created || Date.now()) * 1000).toISOString();
+          const snResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', { paid_at: paidTs });
+          safetyNetSchedule = snResp.data || snResp;
+        } catch (snErr) {
+          console.error(`[PI succeeded] Safety-net schedule calc failed: ${snErr.message}`);
+        }
+
         const newOrder = await base44.asServiceRole.entities.Order.create({
           order_number:    orderNumber,
           customer_email:  customerEmail || '',
@@ -826,11 +884,12 @@ Deno.serve(async (req) => {
           address_postal_code: meta.delivery_postal_code || '',
           address_country: 'US',
           contact_phone:   meta.customer_phone   || '',
-          estimated_delivery_date:  meta.selected_delivery_date || null,
-          assigned_delivery_date:   meta.selected_delivery_date || null,
-          delivery_window_label:    meta.delivery_window_label  || '5 PM – 8 PM',
-          assigned_delivery_window_start: meta.delivery_window_start || '17:00',
-          assigned_delivery_window_end:   meta.delivery_window_end   || '20:00',
+          estimated_delivery_date:  safetyNetSchedule?.delivery_date || meta.selected_delivery_date || null,
+          assigned_delivery_date:   safetyNetSchedule?.delivery_date || meta.selected_delivery_date || null,
+          delivery_window_label:    safetyNetSchedule?.delivery_window_label || meta.delivery_window_label  || '5 PM – 8 PM',
+          assigned_delivery_window_start: safetyNetSchedule?.delivery_window_start || meta.delivery_window_start || '17:00',
+          assigned_delivery_window_end:   safetyNetSchedule?.delivery_window_end   || meta.delivery_window_end   || '20:00',
+          scheduling_reason:        safetyNetSchedule?.schedule_reason || 'safety_net_creation',
           status:           'scheduled_for_juicing',
           payment_status:   'paid',
           financial_status: 'paid',
@@ -1004,9 +1063,38 @@ Deno.serve(async (req) => {
 
       const deliveryAddress = pendingCheckout?.delivery_address || meta.delivery_address || '';
       const deliveryZoneId = pendingCheckout?.delivery_zone_id || defaultZone?.id || null;
-      const productionDate = pendingCheckout?.production_date || meta.production_date || null;
-      const firstDeliveryDate = pendingCheckout?.first_delivery_date || meta.first_delivery_date || null;
-      const nextDeliveryDate = pendingCheckout?.next_delivery_date || firstDeliveryDate;
+
+      // ── CENTRAL SCHEDULE ENGINE: recalculate from actual paid timestamp ──────
+      // invoice.status_transitions.paid_at or event created is final authority.
+      // Stale pendingCheckout/metadata dates are treated as preview only.
+      let invPaidSchedule = null;
+      try {
+        const invPaidAt = invoice.status_transitions?.paid_at
+          ? new Date(invoice.status_transitions.paid_at * 1000).toISOString()
+          : new Date((event.created || Date.now()) * 1000).toISOString();
+        const invResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
+          paid_at: invPaidAt,
+        });
+        invPaidSchedule = invResp.data || invResp;
+        console.log(`[invoice.payment_succeeded] Final schedule: prod=${invPaidSchedule.production_date} del=${invPaidSchedule.delivery_date} reason="${invPaidSchedule.schedule_reason}"`);
+      } catch (schedErr) {
+        console.error(`[invoice.payment_succeeded] Schedule recalculation failed: ${schedErr.message} — falling back to pending checkout dates`);
+      }
+
+      // Central engine is authoritative; fall back to pendingCheckout only if engine failed
+      const productionDate = invPaidSchedule?.production_date || pendingCheckout?.production_date || meta.production_date || null;
+      const firstDeliveryDate = invPaidSchedule?.delivery_date || pendingCheckout?.first_delivery_date || meta.first_delivery_date || null;
+      const deliveryWindowLabel = invPaidSchedule?.delivery_window_label || pendingCheckout?.delivery_window_label || '5 PM – 8 PM';
+      const deliveryWindowStart = invPaidSchedule?.delivery_window_start || pendingCheckout?.delivery_window_start || '17:00';
+      const deliveryWindowEnd = invPaidSchedule?.delivery_window_end || pendingCheckout?.delivery_window_end || '20:00';
+      const scheduleReason = invPaidSchedule?.schedule_reason || 'invoice_payment_succeeded';
+
+      const nextDeliveryDate = (() => {
+        if (!firstDeliveryDate) return pendingCheckout?.next_delivery_date || firstDeliveryDate;
+        const d = new Date(firstDeliveryDate + 'T12:00:00');
+        d.setDate(d.getDate() + 7); // always next weekly delivery
+        return d.toISOString().split('T')[0];
+      })();
 
       if (!productionDate || !firstDeliveryDate) {
         console.error(`[invoice.payment_succeeded] Missing dates for sub ${stripeSubscriptionId}`);
@@ -1026,7 +1114,7 @@ Deno.serve(async (req) => {
         started_date: firstDeliveryDate,
         next_delivery_date: nextDeliveryDate,
       });
-      console.log(`[invoice.payment_succeeded] Subscription record created: ${newSubscription.id}`);
+      console.log(`[invoice.payment_succeeded] Subscription record created: ${newSubscription.id} (prod=${productionDate} del=${firstDeliveryDate} window="${deliveryWindowLabel}")`);
 
       // Award loyalty points (idempotent — check description includes stripeSubscriptionId)
       const amountPaid = (invoice.amount_paid || 0) / 100;
@@ -1173,9 +1261,31 @@ Deno.serve(async (req) => {
 
       const deliveryAddressPaid = pendingCheckoutPaid?.delivery_address || meta.delivery_address || '';
       const deliveryZoneIdPaid = pendingCheckoutPaid?.delivery_zone_id || defaultZonePaid?.id || null;
-      const productionDatePaid = pendingCheckoutPaid?.production_date || meta.production_date || null;
-      const firstDeliveryDatePaid = pendingCheckoutPaid?.first_delivery_date || meta.first_delivery_date || null;
-      const nextDeliveryDatePaid = pendingCheckoutPaid?.next_delivery_date || firstDeliveryDatePaid;
+
+      // ── CENTRAL SCHEDULE ENGINE: recalculate from actual paid timestamp ──────
+      let invPaidSchedulePaid = null;
+      try {
+        const invPaidAtPaid = invoice.status_transitions?.paid_at
+          ? new Date(invoice.status_transitions.paid_at * 1000).toISOString()
+          : new Date((event.created || Date.now()) * 1000).toISOString();
+        const invRespPaid = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
+          paid_at: invPaidAtPaid,
+        });
+        invPaidSchedulePaid = invRespPaid.data || invRespPaid;
+        console.log(`[invoice.paid] Final schedule: prod=${invPaidSchedulePaid.production_date} del=${invPaidSchedulePaid.delivery_date} reason="${invPaidSchedulePaid.schedule_reason}"`);
+      } catch (schedErrPaid) {
+        console.error(`[invoice.paid] Schedule recalculation failed: ${schedErrPaid.message} — falling back to pending checkout dates`);
+      }
+
+      // Central engine is authoritative; fall back only if engine failed
+      const productionDatePaid = invPaidSchedulePaid?.production_date || pendingCheckoutPaid?.production_date || meta.production_date || null;
+      const firstDeliveryDatePaid = invPaidSchedulePaid?.delivery_date || pendingCheckoutPaid?.first_delivery_date || meta.first_delivery_date || null;
+      const nextDeliveryDatePaid = (() => {
+        if (!firstDeliveryDatePaid) return pendingCheckoutPaid?.next_delivery_date || firstDeliveryDatePaid;
+        const d = new Date(firstDeliveryDatePaid + 'T12:00:00');
+        d.setDate(d.getDate() + 7);
+        return d.toISOString().split('T')[0];
+      })();
 
       if (!productionDatePaid || !firstDeliveryDatePaid) {
         console.error(`[invoice.paid] Missing dates for sub ${stripeSubscriptionId}`);
@@ -1195,7 +1305,7 @@ Deno.serve(async (req) => {
         started_date: firstDeliveryDatePaid,
         next_delivery_date: nextDeliveryDatePaid,
       });
-      console.log(`[invoice.paid] Subscription record created: ${newSubscriptionPaid.id}`);
+      console.log(`[invoice.paid] Subscription record created: ${newSubscriptionPaid.id} (prod=${productionDatePaid} del=${firstDeliveryDatePaid}`);
 
       // Award loyalty points (idempotent — check description includes stripeSubscriptionId)
       const amountPaidInvoice = (invoice.amount_paid || 0) / 100;
