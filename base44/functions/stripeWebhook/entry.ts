@@ -12,7 +12,24 @@ Deno.serve(async (req) => {
   try {
     event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
   } catch (err) {
+    // TEMPORARY DIAGNOSTIC LOGGING FOR INVALID SIGNATURE
+    const secretExists = !!webhookSecret;
+    const secretLength = webhookSecret?.length || 0;
+    const secretPrefix = webhookSecret ? `${webhookSecret.substring(0, 6)}...${webhookSecret.substring(secretLength - 4)}` : 'MISSING';
+    const signatureExists = !!signature;
+    const bodyLength = body?.length || 0;
+    const requestPath = req.url;
+    const webhookBuildId = 'canonical-we-1TVFMc-2026-05-09-v1';
+    
     console.error('Webhook signature verification failed:', err.message);
+    console.error(`[DIAGNOSTICS] STRIPE_WEBHOOK_SECRET exists: ${secretExists}`);
+    console.error(`[DIAGNOSTICS] STRIPE_WEBHOOK_SECRET length: ${secretLength}`);
+    console.error(`[DIAGNOSTICS] STRIPE_WEBHOOK_SECRET prefix/suffix: ${secretPrefix}`);
+    console.error(`[DIAGNOSTICS] Stripe-Signature header exists: ${signatureExists}`);
+    console.error(`[DIAGNOSTICS] Request body length: ${bodyLength}`);
+    console.error(`[DIAGNOSTICS] Request path: ${requestPath}`);
+    console.error(`[DIAGNOSTICS] WEBHOOK_BUILD_ID: ${webhookBuildId}`);
+    
     return Response.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
