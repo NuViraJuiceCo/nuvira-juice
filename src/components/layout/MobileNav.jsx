@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, Search, ShoppingBag, User, Star } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { motion } from 'framer-motion';
@@ -14,6 +14,7 @@ const navItems = [
 
 export default function MobileNav() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { itemCount } = useCart();
 
   return (
@@ -26,11 +27,19 @@ export default function MobileNav() {
             (path === '/rewards' && location.pathname === '/rewards');
 
           return (
-            <Link
+            <button
               key={path}
-              to={path}
-              onClick={() => { if (isActive) window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 relative"
+              type="button"
+              aria-label={label}
+              onClick={() => {
+                if (isActive) window.scrollTo({ top: 0, behavior: 'smooth' });
+                else navigate(path);
+              }}
+              onContextMenu={(e) => e.preventDefault()}
+              onDragStart={(e) => e.preventDefault()}
+              draggable={false}
+              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 relative bg-transparent border-0 outline-none cursor-pointer"
+              style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'manipulation' }}
             >
               <div className="relative">
                 <Icon
@@ -57,7 +66,7 @@ export default function MobileNav() {
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                 />
               )}
-            </Link>
+            </button>
           );
         })}
       </div>
