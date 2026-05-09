@@ -258,11 +258,24 @@ Deno.serve(async (req) => {
           }
 
           // Sync to Hub using the new 4-fulfillment payload builder
+          // Fire-and-forget: Stripe already got 200 at this point.
+          // On failure, write an error OrderSyncLog so retryFailedHubSyncs can pick it up.
           base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
             subscription_id: subscription.id,
             customer_email: customerEmail,
-          })
-            .catch(err => console.error('[stripeWebhook] Failed to sync subscription to hub:', err.message));
+          }).then(() => {
+            console.log(`[stripeWebhook] ✅ Hub sync dispatched for subscription ${subscription.id}`);
+          }).catch(err => {
+            console.error(`[stripeWebhook] Hub sync failed for subscription ${subscription.id}: ${err.message}`);
+            base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: `SUB-${stripeSubscriptionId}`,
+              status: 'error',
+              description: `Hub sync failed after checkout.session.completed: ${err.message}. Subscription=${subscription.id}. Will be retried.`,
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+              triggered_by: 'stripe_webhook',
+            }).catch(() => {});
+          });
 
         } else {
           console.log(`[stripeWebhook] Subscription already exists for ${customerEmail} (stripe_sub=${stripeSubscriptionId}), skipping creation`);
@@ -981,11 +994,23 @@ Deno.serve(async (req) => {
       }
 
       // Sync to Hub using the new 4-fulfillment payload builder (invoice.payment_succeeded path)
+      // Fire-and-forget: write error log on failure so retryFailedHubSyncs can recover.
       base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
         subscription_id: newSubscription.id,
         customer_email: customerEmail,
-      })
-        .catch(err => console.error('[invoice.payment_succeeded] Hub sync failed:', err.message));
+      }).then(() => {
+        console.log(`[invoice.payment_succeeded] ✅ Hub sync dispatched for subscription ${newSubscription.id}`);
+      }).catch(err => {
+        console.error(`[invoice.payment_succeeded] Hub sync failed for subscription ${newSubscription.id}: ${err.message}`);
+        base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number: `SUB-${stripeSubscriptionId}`,
+          status: 'error',
+          description: `Hub sync failed after invoice.payment_succeeded: ${err.message}. Subscription=${newSubscription.id}. Will be retried.`,
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          triggered_by: 'stripe_webhook',
+        }).catch(() => {});
+      });
 
       console.log(`[invoice.payment_succeeded] ✅ Subscription ${stripeSubscriptionId} fully activated for ${customerEmail}`);
       return Response.json({ received: true });

@@ -84,6 +84,41 @@ Deno.serve(async (req) => {
 
   for (const orderNumber of pendingRetry) {
     try {
+      // ── Subscription retry path ──────────────────────────────────────────
+      // Error logs for subscription Hub failures use order_number = "SUB-{stripeSubscriptionId}"
+      if (orderNumber.startsWith('SUB-')) {
+        const stripeSubId = orderNumber.replace('SUB-', '');
+        const subs = await base44.asServiceRole.entities.Subscription.filter({ stripe_subscription_id: stripeSubId });
+        if (!subs.length) {
+          console.warn(`[RetryHubSyncs] Subscription ${stripeSubId} not found in CA, skipping`);
+          results.push({ order_number: orderNumber, result: 'not_found' });
+          continue;
+        }
+        const sub = subs[0];
+        try {
+          await base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+            subscription_id: sub.id,
+            customer_email: sub.customer_email,
+          });
+          console.log(`[RetryHubSyncs] ✅ Subscription Hub sync retried successfully for ${stripeSubId}`);
+          await base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: orderNumber,
+            status: 'success',
+            hub_action: 'subscription_synced',
+            description: `Subscription Hub sync succeeded on retry. sub_id=${sub.id}, stripe_sub=${stripeSubId}`,
+            started_at: startTime,
+            completed_at: new Date().toISOString(),
+            triggered_by: 'recovery_function',
+          });
+          results.push({ order_number: orderNumber, result: 'success' });
+        } catch (subSyncErr) {
+          console.error(`[RetryHubSyncs] ❌ Subscription retry failed for ${stripeSubId}: ${subSyncErr.message}`);
+          results.push({ order_number: orderNumber, result: 'failed', message: subSyncErr.message });
+        }
+        continue;
+      }
+
+      // ── One-time order retry path ────────────────────────────────────────
       const orders = await base44.asServiceRole.entities.Order.filter({ order_number: orderNumber });
       if (!orders.length) {
         console.warn(`[RetryHubSyncs] Order ${orderNumber} not found in CA, skipping`);
