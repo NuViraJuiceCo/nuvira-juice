@@ -131,14 +131,18 @@ Deno.serve(async (req) => {
 
     console.log(`[RepairCASubscription] Plan confirmed: ${plans[0].name}`);
 
-    // ── STEP 4: Create CA Subscription record ─────────────────────────────
+    // ── STEP 4: Fetch default delivery zone ────────────────────────────────
+    const allZones = await base44.asServiceRole.entities.DeliveryZone.filter({ is_active: true }, 'sort_order', 1);
+    const defaultZoneId = allZones[0]?.id || '';
+
+    // ── STEP 5: Create CA Subscription record ─────────────────────────────
     const caSubscription = await base44.asServiceRole.entities.Subscription.create({
       customer_email,
       stripe_subscription_id,
       stripe_customer_id: stripeSubscription.customer,
       plan_id,
-      bundle_id: null,
-      delivery_zone_id: null, // Will be looked up if needed
+      bundle_id: '',
+      delivery_zone_id: defaultZoneId,
       delivery_address,
       status: 'active',
       started_date: next_delivery_date, // Use next delivery as reference point
@@ -153,7 +157,7 @@ Deno.serve(async (req) => {
 
     console.log(`[RepairCASubscription] ✅ CA Subscription created: ${caSubscription.id}`);
 
-    // ── STEP 5: Validate refunded duplicate was not modified ──────────────
+    // ── STEP 6: Validate refunded duplicate was not modified ──────────────
     if (refunded_duplicate_stripe_sub) {
       const refundedSubs = await base44.asServiceRole.entities.Subscription.filter({
         stripe_subscription_id: refunded_duplicate_stripe_sub,
