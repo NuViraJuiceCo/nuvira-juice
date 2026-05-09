@@ -425,17 +425,18 @@ Deno.serve(async (req) => {
         const resolvedCustomerName   = orderData.customer_name   || session.metadata?.customer_name    || '';
         const resolvedDeliveryAddress = orderData.delivery_address || [resolvedAddressLine1, resolvedAddressCity, resolvedAddressState, resolvedAddressZip].filter(Boolean).join(', ');
 
-        // ── CENTRAL SCHEDULE ENGINE: recalculate from paid timestamp (final authority) ──
-        // session.created is the authoritative paid timestamp for checkout.session.completed.
-        // Stripe metadata dates are treated as preview/reference only and may be stale.
+        // ── CENTRAL SCHEDULE ENGINE: recalculate from webhook event timestamp (final authority) ──
+        // Webhook event.created is when checkout.session.completed actually fired (when Stripe sent this event).
+        // This overrides stale session.created (when session was first created) if they differ.
+        // If payment crosses a cutoff boundary between session creation and actual completion, webhook time wins.
         let checkoutFinalSchedule = null;
         try {
-          const sessionPaidTimestamp = new Date((session.created || Date.now()) * 1000).toISOString();
+          const completedTimestamp = new Date((event.created || Date.now()) * 1000).toISOString();
           const csResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
-            paid_at: sessionPaidTimestamp,
+            paid_at: completedTimestamp,
           });
           checkoutFinalSchedule = csResp.data || csResp;
-          console.log(`[checkout.completed] Final schedule: prod=${checkoutFinalSchedule.production_date} del=${checkoutFinalSchedule.delivery_date} window="${checkoutFinalSchedule.delivery_window_label}" reason="${checkoutFinalSchedule.schedule_reason}"`);
+          console.log(`[checkout.completed] Final schedule from event.created (${completedTimestamp}): prod=${checkoutFinalSchedule.production_date} del=${checkoutFinalSchedule.delivery_date} window="${checkoutFinalSchedule.delivery_window_label}" reason="${checkoutFinalSchedule.schedule_reason}"`);
         } catch (schedErr) {
           console.error(`[checkout.completed] Schedule recalculation failed: ${schedErr.message} — falling back to metadata`);
         }
@@ -702,17 +703,18 @@ Deno.serve(async (req) => {
           return Response.json({ received: true });
         }
 
-        // ── CENTRAL SCHEDULE ENGINE: recalculate from actual paid timestamp ──────
-        // Use PI created/confirmed timestamp as final authority.
-        // Overrides stale checkout metadata if payment crosses a cutoff boundary.
+        // ── CENTRAL SCHEDULE ENGINE: recalculate from webhook event timestamp (final authority) ──────
+        // Webhook event.created is when the success actually occurred (when Stripe sent this event).
+        // This overrides stale pi.created (when PI was first created) if they differ.
+        // If payment crosses a cutoff boundary between PI creation and actual success, webhook time wins.
         let finalSchedule = null;
         try {
-          const paidTimestamp = new Date((pi.created || Date.now()) * 1000).toISOString();
+          const successTimestamp = new Date((event.created || Date.now()) * 1000).toISOString();
           const schedResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
-            paid_at: paidTimestamp,
+            paid_at: successTimestamp,
           });
           finalSchedule = schedResp.data || schedResp;
-          console.log(`[PI succeeded] Final schedule: prod=${finalSchedule.production_date} del=${finalSchedule.delivery_date} window="${finalSchedule.delivery_window_label}" reason="${finalSchedule.schedule_reason}"`);
+          console.log(`[PI succeeded] Final schedule from event.created (${successTimestamp}): prod=${finalSchedule.production_date} del=${finalSchedule.delivery_date} window="${finalSchedule.delivery_window_label}" reason="${finalSchedule.schedule_reason}"`);
         } catch (schedErr) {
           console.error(`[PI succeeded] Schedule recalculation failed: ${schedErr.message} — keeping pending order dates`);
         }
@@ -859,11 +861,12 @@ Deno.serve(async (req) => {
         console.warn(`[PI succeeded] Pre-created Order not found for PI ${pi.id}, creating from metadata`);
         const resolvedAddr = [meta.delivery_address_line1, meta.delivery_city, meta.delivery_state, meta.delivery_postal_code].filter(Boolean).join(', ');
 
-        // Recalculate from paid timestamp — never use stale metadata dates in safety-net path
+        // ── CENTRAL SCHEDULE ENGINE: recalculate from webhook event timestamp (final authority) ──
+        // Even for safety-net order creation, use event.created (when success actually occurred), not pi.created.
         let safetyNetSchedule = null;
         try {
-          const paidTs = new Date((pi.created || Date.now()) * 1000).toISOString();
-          const snResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', { paid_at: paidTs });
+          const successTs = new Date((event.created || Date.now()) * 1000).toISOString();
+          const snResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', { paid_at: successTs });
           safetyNetSchedule = snResp.data || snResp;
         } catch (snErr) {
           console.error(`[PI succeeded] Safety-net schedule calc failed: ${snErr.message}`);
