@@ -471,32 +471,28 @@ Deno.serve(async (req) => {
           .catch(err => console.error('Failed to push order to Shopify:', err.message));
 
         // Sync to hub — pass stripe session for correct payment_status mapping
-        try {
-          await base44.asServiceRole.functions.invoke('syncOrderToHub', {
-            order_id: order.id,
-            stripe_session: {
-              payment_status: session.payment_status, // 'paid' from Stripe
-              id: session.id,
-            },
-            triggered_by: 'stripe_webhook',
-          });
+        // CRITICAL: Do NOT throw here — Hub sync failures must not cause Stripe to receive 500.
+        // Stripe would retry the entire webhook, potentially duplicating orders.
+        base44.asServiceRole.functions.invoke('syncOrderToHub', {
+          order_id: order.id,
+          stripe_session: {
+            payment_status: session.payment_status,
+            id: session.id,
+          },
+          triggered_by: 'stripe_webhook',
+        }).then(() => {
           console.log(`✅ Order ${orderNumber} synced to Hub successfully`);
-        } catch (syncErr) {
-          console.error(`❌ CRITICAL: Order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
-          try {
-            await base44.asServiceRole.entities.OrderSyncLog.create({
-              order_number: orderNumber,
-              status: 'error',
-              description: `Failed to sync to Hub immediately after webhook: ${syncErr.message}`,
-              started_at: new Date().toISOString(),
-              completed_at: new Date().toISOString(),
-              triggered_by: 'stripe_webhook',
-            });
-          } catch (logErr) {
-            console.error(`Failed to log sync failure: ${logErr.message}`);
-          }
-          throw new Error(`Hub sync failed for order ${orderNumber}: ${syncErr.message}`);
-        }
+        }).catch(syncErr => {
+          console.error(`❌ Order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
+          base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: orderNumber,
+            status: 'error',
+            description: `Failed to sync to Hub immediately after webhook: ${syncErr.message}`,
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+            triggered_by: 'stripe_webhook',
+          }).catch(() => {});
+        });
 
         // Send order confirmation email
         base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
@@ -1338,6 +1334,24 @@ Deno.serve(async (req) => {
       }).catch(err => console.error('[charge.refunded] Email failed:', err.message));
 
       return Response.json({ received: true, action, refund_amount: refundAmount });
+    }
+
+    // ── invoice.payment_failed — subscription payment failed ─────────────────
+    // Log it and return 200 so Stripe doesn't keep retrying indefinitely with 500.
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object;
+      const stripeSubscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+      const customerEmail = invoice.customer_email || invoice.metadata?.customer_email;
+      console.warn(`[invoice.payment_failed] Invoice ${invoice.id} failed for sub=${stripeSubscriptionId}, customer=${customerEmail}`);
+      base44.asServiceRole.entities.OrderSyncLog.create({
+        order_number: stripeSubscriptionId ? `SUB-${stripeSubscriptionId}` : 'SUB_PAYMENT_FAILED',
+        status: 'error',
+        description: `Stripe invoice.payment_failed: invoice=${invoice.id}, sub=${stripeSubscriptionId}, customer=${customerEmail}, attempt=${invoice.attempt_count}`,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        triggered_by: 'stripe_webhook',
+      }).catch(() => {});
+      return Response.json({ received: true });
     }
 
     // ── REFUND UPDATE: refund.updated (for status changes) ───────────────────
