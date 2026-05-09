@@ -746,6 +746,9 @@ Deno.serve(async (req) => {
           finalOrderUpdate.assigned_delivery_window_end   = finalSchedule.delivery_window_end;
           finalOrderUpdate.scheduling_reason        = finalSchedule.schedule_reason;
           finalOrderUpdate.assigned_production_day  = finalSchedule.production_date ? new Date(finalSchedule.production_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) : undefined;
+          finalOrderUpdate.final_schedule_source    = 'central_engine';
+          finalOrderUpdate.schedule_timezone        = 'America/Chicago';
+          finalOrderUpdate.cutoff_window_label      = finalSchedule.cutoff_window_label || 'unknown';
         }
 
         await base44.asServiceRole.entities.Order.update(order.id, finalOrderUpdate);
