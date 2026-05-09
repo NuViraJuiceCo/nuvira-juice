@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { getOrdersForCustomer } from '@/lib/identityResolver';
 import { ArrowLeft, Truck, Package, Check, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -70,7 +71,23 @@ export default function OrderTracker() {
         }
       }
 
-      // 3. Fallback: search merged Hub+local orders (catches Hub-only or recently synced orders)
+      // 3. Fallback: search merged Hub+local orders using identity resolver (handles Apple relay email)
+      if (user?.email) {
+        try {
+          const allOrders = await getOrdersForCustomer(user);
+          const found = allOrders.find(o =>
+            o.id === searchKey ||
+            o.order_number === searchKey ||
+            o.order_number?.replace('#', '') === searchKey ||
+            o.stripe_checkout_session_id === searchKey
+          );
+          if (found) return found;
+        } catch (err) {
+          console.warn('Linked identity order lookup failed:', err.message);
+        }
+      }
+
+      // 4. Last resort: try Hub merged orders if resolver didn't catch it
       if (user?.email) {
         try {
           const res = await base44.functions.invoke('getCustomerOrdersWithHub', { customer_email: user.email });
@@ -83,21 +100,7 @@ export default function OrderTracker() {
           );
           if (found) return found;
         } catch (err) {
-          console.warn('Merged order lookup failed:', err.message);
-        }
-      }
-
-      // 4. Last resort: scan local orders for this customer (catches new orders not yet in Hub)
-      if (user?.email) {
-        try {
-          const localAll = await base44.entities.Order.filter({ customer_email: user.email }, '-created_date', 20);
-          const found = localAll.find(o =>
-            o.id === searchKey ||
-            o.order_number === searchKey
-          );
-          if (found) return found;
-        } catch (err) {
-          console.warn('Local scan failed:', err.message);
+          console.warn('Hub merged order lookup failed:', err.message);
         }
       }
 

@@ -4,6 +4,7 @@ import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
+import { getOrdersForCustomer } from '@/lib/identityResolver';
 import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
@@ -34,22 +35,27 @@ export default function OrderHistory() {
   });
 
   const { data: orders = [], isLoading, refetch } = useQuery({
-    queryKey: ['my-orders-all'],
+    queryKey: ['my-orders-all', user?.email],
     queryFn: async () => {
       try {
-        // Fetch from backend function that merges local + Hub orders
-        const response = await base44.functions.invoke('getCustomerOrdersWithHub', {
-          customer_email: user?.email,
-        });
-        return response.data?.orders || [];
+        // Fetch using identity resolver to handle Apple private relay email variants
+        const allOrders = await getOrdersForCustomer(user);
+        // Merge with Hub orders if available
+        try {
+          const response = await base44.functions.invoke('getCustomerOrdersWithHub', {
+            customer_email: user?.email,
+          });
+          const hubOrders = response.data?.orders || [];
+          // Deduplicate by stripe_payment_intent_id
+          const seenIds = new Set(allOrders.map(o => o.stripe_payment_intent_id).filter(Boolean));
+          const merged = [...allOrders, ...hubOrders.filter(o => !seenIds.has(o.stripe_payment_intent_id))];
+          return merged;
+        } catch {
+          return allOrders;
+        }
       } catch (err) {
-        console.error('Failed to fetch merged orders:', err);
-        // Fallback to local orders only
-        return base44.entities.Order.filter(
-          { customer_email: user?.email },
-          '-created_date',
-          50
-        );
+        console.error('Failed to fetch orders:', err);
+        return [];
       }
     },
     enabled: !!user?.email,
