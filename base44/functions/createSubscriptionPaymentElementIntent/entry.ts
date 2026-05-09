@@ -147,33 +147,33 @@ Deno.serve(async (req) => {
           status: 'active',
           limit: 10,
         });
-        const matchingActiveSub = activeStripeSubs.data.find(s =>
-          s.items?.data?.some(item => item.price?.id === plan.stripe_price_id)
-        );
-        if (matchingActiveSub) {
-          console.warn(`[SubPE] Stripe has active sub ${matchingActiveSub.id} for ${customer_email} but CA record is missing. Blocking new checkout. Trigger reconciliation.`);
-          // Fire reconciliation in background so CA record gets created
-          base44.asServiceRole.functions.invoke('repairMissingSubscriptionForPaidInvoice', {
-            stripe_subscription_id: matchingActiveSub.id,
+        // CRITICAL: Block if ANY active subscription exists, not just matching plan.
+        // Sukhwant's case: original active sub had no CA record; customer created duplicate.
+        // Stripe is authoritative when CA record is missing.
+        if (activeStripeSubs.data.length > 0) {
+          const activeSubId = activeStripeSubs.data[0].id;
+          console.warn(`[SubPE] Stripe has active sub ${activeSubId} for ${customer_email}. CA record may be missing. Blocking checkout and triggering reconciliation.`);
+
+          // Fire reconciliation in background to create missing CA record
+          base44.asServiceRole.functions.invoke('repairMissingCASubscriptionFromStripeAndHub', {
+            stripe_subscription_id: activeSubId,
             customer_email,
           }).catch(err => console.warn(`[SubPE] Background reconcile failed: ${err.message}`));
+
           return Response.json({
             error_code: 'ALREADY_SUBSCRIBED_OR_ACTIVATING',
             error: 'You already have an active subscription. If you don\'t see it yet, it may still be activating — please check My Subscriptions in a moment or contact support.',
           }, { status: 400 });
         }
 
-        // Also check incomplete/past_due subscriptions for the same plan — don't create a duplicate
+        // Also check incomplete/past_due subscriptions — don't create a duplicate
         const pendingStripeSubs = await stripe.subscriptions.list({
           customer: existingStripeCustomer.id,
           status: 'past_due',
           limit: 5,
         });
-        const matchingPendingSub = pendingStripeSubs.data.find(s =>
-          s.items?.data?.some(item => item.price?.id === plan.stripe_price_id)
-        );
-        if (matchingPendingSub) {
-          console.warn(`[SubPE] Stripe has past_due sub ${matchingPendingSub.id} for ${customer_email}. Blocking new checkout.`);
+        if (pendingStripeSubs.data.length > 0) {
+          console.warn(`[SubPE] Stripe has ${pendingStripeSubs.data.length} past_due sub(s) for ${customer_email}. Blocking new checkout.`);
           return Response.json({
             error_code: 'ALREADY_SUBSCRIBED_OR_ACTIVATING',
             error: 'You have a subscription with a payment issue. Please check My Subscriptions or contact support to resolve it.',
