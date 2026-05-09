@@ -358,7 +358,17 @@ Deno.serve(async (req) => {
           stripe_checkout_session_id: session.id 
         });
         if (existingOrders.length > 0) {
-          console.log(`Order already created for session ${session.id}: ${existingOrders[0].order_number}, skipping`);
+          // ── TERMINAL STATE GUARD ──────────────────────────────────────────
+          // CRITICAL: Do NOT resurrect refunded/cancelled/terminal orders.
+          const existingOrder = existingOrders[0];
+          const isTerminal = existingOrder.status === 'refunded' || existingOrder.status === 'cancelled' ||
+                             existingOrder.do_not_recover === true ||
+                             (existingOrder.amount_refunded && existingOrder.amount_refunded > 0);
+          if (isTerminal) {
+            console.warn(`[checkout.completed] Order ${existingOrder.order_number} is terminal (${existingOrder.status}). Skipping resurrection. session=${session.id}`);
+            return Response.json({ received: true, action: 'skipped_terminal_state' });
+          }
+          console.log(`Order already created for session ${session.id}: ${existingOrder.order_number}, skipping`);
           return Response.json({ received: true }); // Idempotent: return success without re-creating
         }
 
@@ -921,11 +931,18 @@ Deno.serve(async (req) => {
 
       console.log(`[invoice.payment_succeeded] Sub ${stripeSubscriptionId} paid, customer ${customerEmail}`);
 
-      // IDEMPOTENCY: check if Subscription already exists for this stripe_subscription_id
+      // IDEMPOTENCY + TERMINAL STATE GUARD: check if Subscription already exists for this stripe_subscription_id
       const existingSubsForInvoice = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
-      const alreadyExists = existingSubsForInvoice.some(s => s.stripe_subscription_id === stripeSubscriptionId);
+      const existingSubForInvoice = existingSubsForInvoice.find(s => s.stripe_subscription_id === stripeSubscriptionId);
+      const alreadyExists = !!existingSubForInvoice;
 
       if (alreadyExists) {
+        // CRITICAL: Do NOT reactivate a cancelled/refunded subscription via invoice replay
+        const isTerminalSub = existingSubForInvoice.status === 'cancelled' || existingSubForInvoice.hub_sync_status === 'skipped';
+        if (isTerminalSub) {
+          console.warn(`[invoice.payment_succeeded] Subscription ${stripeSubscriptionId} is terminal (status=${existingSubForInvoice.status}). Skipping resurrection.`);
+          return Response.json({ received: true, action: 'skipped_terminal_state' });
+        }
         console.log(`[invoice.payment_succeeded] Subscription already created for ${stripeSubscriptionId}, skipping`);
         return Response.json({ received: true });
       }
@@ -1076,11 +1093,18 @@ Deno.serve(async (req) => {
 
       console.log(`[invoice.paid] Sub ${stripeSubscriptionId} paid, customer ${customerEmail}`);
 
-      // IDEMPOTENCY: check if Subscription already exists for this stripe_subscription_id
+      // IDEMPOTENCY + TERMINAL STATE GUARD: check if Subscription already exists for this stripe_subscription_id
       const existingSubsForPaidInvoice = await base44.asServiceRole.entities.Subscription.filter({ customer_email: customerEmail });
-      const alreadyExistsPaid = existingSubsForPaidInvoice.some(s => s.stripe_subscription_id === stripeSubscriptionId);
+      const existingSubForPaidInvoice = existingSubsForPaidInvoice.find(s => s.stripe_subscription_id === stripeSubscriptionId);
+      const alreadyExistsPaid = !!existingSubForPaidInvoice;
 
       if (alreadyExistsPaid) {
+        // CRITICAL: Do NOT reactivate a cancelled/refunded subscription via invoice replay
+        const isTerminalSubPaid = existingSubForPaidInvoice.status === 'cancelled' || existingSubForPaidInvoice.hub_sync_status === 'skipped';
+        if (isTerminalSubPaid) {
+          console.warn(`[invoice.paid] Subscription ${stripeSubscriptionId} is terminal (status=${existingSubForPaidInvoice.status}). Skipping resurrection.`);
+          return Response.json({ received: true, action: 'skipped_terminal_state' });
+        }
         console.log(`[invoice.paid] Subscription already created for ${stripeSubscriptionId}, skipping`);
         return Response.json({ received: true });
       }
@@ -1214,10 +1238,17 @@ Deno.serve(async (req) => {
         ? new Date(sub.current_period_end * 1000).toISOString().split('T')[0]
         : undefined;
       if (existingSubsUpdated.length > 0) {
-        const updates = { status: newStatus };
-        if (nextDeliveryStr) updates.next_delivery_date = nextDeliveryStr;
-        await base44.asServiceRole.entities.Subscription.update(existingSubsUpdated[0].id, updates);
-        console.log(`[sub.updated] Subscription ${stripeSubId} updated to ${newStatus}`);
+        const existingForUpdate = existingSubsUpdated[0];
+        // TERMINAL STATE GUARD: Do NOT reactivate a cancelled/skipped subscription via updated event
+        // e.g. a quarantined refunded sub must not come back to 'active' from a stale Stripe event
+        if (existingForUpdate.status === 'cancelled' && newStatus === 'active') {
+          console.warn(`[sub.updated] Subscription ${stripeSubId} is cancelled in CA but Stripe says active. Skipping reactivation to prevent resurrection of terminal state.`);
+        } else {
+          const updates = { status: newStatus };
+          if (nextDeliveryStr) updates.next_delivery_date = nextDeliveryStr;
+          await base44.asServiceRole.entities.Subscription.update(existingForUpdate.id, updates);
+          console.log(`[sub.updated] Subscription ${stripeSubId} updated to ${newStatus}`);
+        }
       } else {
         console.log(`[sub.updated] No CA Subscription found for stripe_sub=${stripeSubId}, skipping`);
       }
@@ -1581,8 +1612,28 @@ Deno.serve(async (req) => {
       const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });
       if (orders.length > 0) {
         const order = orders[0];
-        // Update refund status if needed (mostly for audit)
         console.log(`[refund.updated] Order ${order.order_number} linked to refund ${refund.id}, status: ${refund.status}`);
+        
+        // REPAIR GUARD: If refund is 'succeeded' but order is NOT in terminal state, repair it now.
+        // This catches cases where charge.refunded was missed but refund.updated arrives later.
+        if (refund.status === 'succeeded') {
+          const isAlreadyTerminal = order.status === 'refunded' || order.status === 'cancelled' || order.do_not_recover === true;
+          if (!isAlreadyTerminal) {
+            console.warn(`[refund.updated] Order ${order.order_number} is NOT in terminal state (status=${order.status}) but refund succeeded. Repairing to refunded.`);
+            await base44.asServiceRole.entities.Order.update(order.id, {
+              status: 'refunded',
+              payment_status: 'refunded',
+              financial_status: 'refunded',
+              do_not_recover: true,
+              status_history: [...(order.status_history || []), {
+                status: 'refunded',
+                timestamp: new Date().toISOString(),
+                message: `Repaired to terminal state by refund.updated webhook. Refund ${refund.id} succeeded.`,
+              }],
+            });
+            console.log(`[refund.updated] ✅ Repaired Order ${order.order_number} to terminal refunded state.`);
+          }
+        }
       }
       
       return Response.json({ received: true });
