@@ -143,6 +143,37 @@ Deno.serve(async (req) => {
   const order_type       = 'one_time';
   const fulfillment_mode = 'single_delivery';
 
+  // ── PHASE 5: Validate schedule fields from central engine ──────────────────
+  // All new paid orders have production_date and assigned_delivery_date set by
+  // calculateNuViraFulfillmentSchedule (event.created authority). Validate before Hub push.
+  // Refunded orders skip schedule validation — they just need to reach Hub for cancellation.
+  const finalProductionDate  = order.production_date || null;
+  const finalDeliveryDate    = order.assigned_delivery_date || order.estimated_delivery_date || null;
+  const finalWindowLabel     = order.delivery_window_label || '5 PM – 8 PM';
+  const finalWindowStart     = order.assigned_delivery_window_start || '17:00';
+  const finalWindowEnd       = order.assigned_delivery_window_end   || '20:00';
+  const finalScheduleReason  = order.scheduling_reason || 'unknown';
+
+  if (!isRefundedOrder && finalProductionDate && finalDeliveryDate) {
+    // Validate production day (must be Tuesday=2 or Friday=5)
+    const prodDow = new Date(finalProductionDate + 'T12:00:00').getDay();
+    const delDow  = new Date(finalDeliveryDate   + 'T12:00:00').getDay();
+    const validProd = prodDow === 2 || prodDow === 5; // Tue or Fri
+    const validDel  = delDow  === 3 || delDow  === 6; // Wed or Sat
+    // Validate window matches delivery day
+    const expectedWindow = delDow === 3 ? '5:00 PM – 8:00 PM' : '12:00 PM – 3:00 PM';
+    const windowMatches  = finalWindowLabel === expectedWindow ||
+                           finalWindowLabel === (delDow === 3 ? '5 PM – 8 PM' : '12 PM – 3 PM');
+
+    if (!validProd || !validDel) {
+      const errMsg = `[syncOrderToHub] INVALID SCHEDULE — production_date=${finalProductionDate} (dow=${prodDow}, must be Tue/Fri) | delivery_date=${finalDeliveryDate} (dow=${delDow}, must be Wed/Sat). Order ${order.order_number} will be quarantined at Hub.`;
+      console.error(errMsg);
+      // Still send to Hub — Hub will quarantine with the reason in the payload
+    } else {
+      console.log(`[syncOrderToHub] Schedule validated ✅ prod=${finalProductionDate}(${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][prodDow]}) del=${finalDeliveryDate}(${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][delDow]}) window="${finalWindowLabel}"`);
+    }
+  }
+
   // Determine event type: refund vs. creation
   const eventType = payment_status === 'refunded' ? 'order.refunded' : 'order.created';
   
@@ -176,21 +207,23 @@ Deno.serve(async (req) => {
       total:                   order.total,
       fulfillment_method:      order.fulfillment_type || 'delivery',
       fulfillment_type:        order.fulfillment_type,
-      requested_delivery_date:  order.estimated_delivery_date || null,
-      estimated_delivery_date:  order.estimated_delivery_date,
-      assigned_delivery_date:   order.assigned_delivery_date  || order.estimated_delivery_date || null,
-      production_date:          order.production_date || null,
-      delivery_window_label:    order.delivery_window_label   || '5 PM – 8 PM',
-      delivery_window_start:    order.assigned_delivery_window_start || '17:00',
-      delivery_window_end:      order.assigned_delivery_window_end   || '20:00',
+      requested_delivery_date:  finalDeliveryDate,
+      estimated_delivery_date:  finalDeliveryDate,
+      assigned_delivery_date:   finalDeliveryDate,
+      production_date:          finalProductionDate,
+      delivery_window_label:    finalWindowLabel,
+      delivery_window_start:    finalWindowStart,
+      delivery_window_end:      finalWindowEnd,
+      // ── PHASE 5: Central engine schedule fields ──────────────────────────
+      final_schedule_source:    'central_engine',
+      schedule_reason:          finalScheduleReason,
+      schedule_timezone:        'America/Chicago',
       status:                   order.status,
-      production_status:       'new',
+      production_status:        'new',
       payment_status,
-      // Backward compat: pass is_preorder from stored order record.
-      // New orders will always be false. Old preorders keep their value.
-      is_preorder:             order.is_preorder || false,
-      customer_notes:          order.notes || '',
-      notes:                   order.notes,
+      is_preorder:              order.is_preorder || false,
+      customer_notes:           order.notes || '',
+      notes:                    order.notes,
       stripe_checkout_session_id: order.stripe_checkout_session_id || null,
       stripe_payment_intent_id:   order.stripe_payment_intent_id   || null,
       created_date:    order.created_date,

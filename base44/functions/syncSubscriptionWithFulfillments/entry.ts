@@ -74,9 +74,13 @@ Deno.serve(async (req) => {
     });
     const plan = plans[0];
 
-    // Calculate 4 fulfillments
-    const fulfillments = calculateMonthlyFulfillments(subscription.started_date, plan?.name);
-    console.log(`[syncSubWithFulfillments] Calculated ${fulfillments.length} fulfillments`);
+    // ── PHASE 5: Calculate 4 fulfillments using central engine cadence ──────
+    // subscription.started_date = first delivery date from calculateNuViraFulfillmentSchedule.
+    // It will be either a Wednesday (Window 1) or Saturday (Window 2).
+    // All 4 subsequent weekly deliveries must stay on that same day of week.
+    // Production is always 1 day before (Tue before Wed, Fri before Sat).
+    const fulfillments = calculateCentralEngineFulfillments(subscription.started_date, plan?.name);
+    console.log(`[syncSubWithFulfillments] Calculated ${fulfillments.length} fulfillments (central engine cadence)`);
 
     // Fetch user profile for customer name
     const profiles = await base44.asServiceRole.entities.UserProfile.filter({
@@ -94,6 +98,24 @@ Deno.serve(async (req) => {
     const billingStart = subscription.started_date;
     const billingEnd = subscription.next_delivery_date || 
       new Date(new Date(billingStart).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    // ── PHASE 5: Pre-send validation — reject invalid schedules before Hub push ──
+    for (const f of fulfillments) {
+      const delDow  = new Date(f.delivery_date + 'T12:00:00').getDay();
+      const prodDow = new Date(f.production_date + 'T12:00:00').getDay();
+      const validDel  = delDow  === 3 || delDow  === 6; // Wed or Sat
+      const validProd = prodDow === 2 || prodDow === 5; // Tue or Fri
+      if (!validDel || !validProd) {
+        console.error(`[syncSubWithFulfillments] INVALID SCHEDULE in fulfillment #${f.fulfillment_number}: prod=${f.production_date}(dow=${prodDow}) del=${f.delivery_date}(dow=${delDow}). Aborting Hub push.`);
+        return Response.json({
+          success: false,
+          error_code: 'INVALID_SCHEDULE',
+          error: `Fulfillment #${f.fulfillment_number} has invalid production_date=${f.production_date} (must be Tue/Fri) or delivery_date=${f.delivery_date} (must be Wed/Sat). Hub push aborted.`,
+          fulfillment: f,
+        }, { status: 422 });
+      }
+    }
+    console.log(`[syncSubWithFulfillments] All ${fulfillments.length} fulfillment schedules validated ✅`);
 
     const hubPayload = {
       event: 'customer.subscription_created',
@@ -121,6 +143,9 @@ Deno.serve(async (req) => {
         cycle_number: 1,
         billing_period_start: billingStart,
         billing_period_end: billingEnd,
+        // ── PHASE 5: Central engine schedule fields ──────────────────────────
+        final_schedule_source: 'central_engine',
+        schedule_timezone: 'America/Chicago',
         fulfillments: fulfillments,
       },
     };
@@ -242,76 +267,75 @@ function parseAddressString(fullAddress) {
 }
 
 /**
- * Calculate 4 fulfillments for a monthly subscription cycle.
+ * PHASE 5: Central-engine-driven fulfillment calculator.
+ *
+ * startedDate = first delivery date set by calculateNuViraFulfillmentSchedule.
+ * Will be a Wednesday (Window 1) or Saturday (Window 2).
+ *
+ * Rules:
+ *   - Wednesday delivery → Tuesday production, window 5:00 PM – 8:00 PM
+ *   - Saturday delivery  → Friday production,  window 12:00 PM – 3:00 PM
+ *   - All 4 weekly deliveries stay on the SAME day of week as the first delivery.
+ *   - Production is always the day before delivery (Tue→Wed, Fri→Sat).
+ *   - Any other day of week is rejected before Hub push via pre-send validation.
  */
-function calculateMonthlyFulfillments(startedDate, planName) {
+function calculateCentralEngineFulfillments(startedDate, planName) {
   const fulfillments = [];
-  const start = new Date(startedDate + 'T00:00:00');
-  
-  // Determine product composition per fulfillment
-  let productsPerFulfillment = [];
-  if (planName === 'Monthly Ritual') {
-    productsPerFulfillment = [
-      { product_name: 'Aura', quantity: 1 },
-      { product_name: 'Oasis', quantity: 1 },
-      { product_name: 'Re-Nu', quantity: 1 },
-    ];
-  } else if (planName === 'VIP Wellness') {
+  const firstDelivery = new Date(startedDate + 'T00:00:00');
+  const dow = firstDelivery.getDay(); // 3=Wed, 6=Sat
+
+  // Derive window from delivery day of week
+  const isWednesday = dow === 3;
+  const isSaturday  = dow === 6;
+
+  // If neither Wed nor Sat, still generate fulfillments (validation will catch it pre-send)
+  const windowLabel = isWednesday ? '5:00 PM – 8:00 PM' : isSaturday ? '12:00 PM – 3:00 PM' : '5:00 PM – 8:00 PM';
+  const windowStart = isWednesday ? '17:00' : isSaturday ? '12:00' : '17:00';
+  const windowEnd   = isWednesday ? '20:00' : isSaturday ? '15:00' : '20:00';
+
+  // Product composition per plan
+  let productsPerFulfillment;
+  if (planName === 'VIP Wellness') {
     productsPerFulfillment = [
       { product_name: 'Aura', quantity: 2 },
       { product_name: 'Oasis', quantity: 2 },
       { product_name: 'Re-Nu', quantity: 2 },
     ];
   } else {
+    // Monthly Ritual, Weekly Fresh, and default all get 1x each
     productsPerFulfillment = [
       { product_name: 'Aura', quantity: 1 },
       { product_name: 'Oasis', quantity: 1 },
       { product_name: 'Re-Nu', quantity: 1 },
     ];
   }
-  
-  const itemsSummary = productsPerFulfillment
-    .map(p => `${p.quantity}x ${p.product_name}`)
-    .join(', ');
-  
-  // Generate 4 fulfillments: week 1, 2, 3, 4
+
+  const itemsSummary = productsPerFulfillment.map(p => `${p.quantity}x ${p.product_name}`).join(', ');
+
   for (let week = 0; week < 4; week++) {
-    const deliveryDate = new Date(start);
+    const deliveryDate = new Date(firstDelivery);
     deliveryDate.setDate(deliveryDate.getDate() + (week * 7));
-    
-    // Production date: NuVira produces on Tue/Fri only. Use the Friday immediately before delivery.
-    // If delivery is Saturday (6), production is Friday (5) = 1 day back.
-    // If delivery is Wednesday (3), production is Tuesday (2) = 1 day back.
+
+    // Production is always exactly 1 day before delivery (Tue before Wed, Fri before Sat)
     const productionDate = new Date(deliveryDate);
-    const deliveryDayOfWeek = deliveryDate.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
-    
-    // For Saturday delivery, go back 1 day to Friday. For any other day, go back to the nearest Tue or Fri.
-    let daysBack;
-    if (deliveryDayOfWeek === 6) { // Saturday -> Friday (1 day back)
-      daysBack = 1;
-    } else if (deliveryDayOfWeek === 3) { // Wednesday -> Tuesday (1 day back)
-      daysBack = 1;
-    } else {
-      // For other days, calculate back to nearest valid production day (Fri or Tue)
-      daysBack = ((deliveryDayOfWeek - 5) % 7 + 7) % 7; // Closest to Friday
-      if (daysBack === 0 || daysBack > 3) daysBack = 2; // Fallback to closest valid day
-    }
-    productionDate.setDate(productionDate.getDate() - daysBack);
-    
-    const scheduledDateStr = deliveryDate.toISOString().split('T')[0];
-    const productionDateStr = productionDate.toISOString().split('T')[0];
-    
+    productionDate.setDate(productionDate.getDate() - 1);
+
     fulfillments.push({
       fulfillment_number: week + 1,
-      scheduled_date: scheduledDateStr,
-      production_date: productionDateStr,
-      delivery_window_label: '5 PM – 8 PM',
-      delivery_window_start: '17:00',
-      delivery_window_end: '20:00',
+      delivery_date: deliveryDate.toISOString().split('T')[0],
+      scheduled_date: deliveryDate.toISOString().split('T')[0], // backward compat alias
+      production_date: productionDate.toISOString().split('T')[0],
+      delivery_window_label: windowLabel,
+      delivery_window_start: windowStart,
+      delivery_window_end: windowEnd,
+      delivery_day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][deliveryDate.getDay()],
+      production_day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][productionDate.getDay()],
       products: productsPerFulfillment,
       items_summary: itemsSummary,
+      final_schedule_source: 'central_engine',
+      schedule_timezone: 'America/Chicago',
     });
   }
-  
+
   return fulfillments;
 }
