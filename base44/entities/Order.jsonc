@@ -230,6 +230,19 @@
       "type": "string",
       "description": "Why order was assigned to this production window"
     },
+    "final_schedule_source": {
+      "type": "string",
+      "description": "Source of schedule calculation (e.g. 'central_engine'). Phase 5 contract field."
+    },
+    "schedule_timezone": {
+      "type": "string",
+      "default": "America/Chicago",
+      "description": "Timezone for schedule calculation. Phase 5 contract field."
+    },
+    "cutoff_window_label": {
+      "type": "string",
+      "description": "Cutoff window label from schedule engine (e.g. 'Friday after 2:00 PM'). Phase 5 contract field."
+    },
     "financial_status": {
       "type": "string",
       "enum": [

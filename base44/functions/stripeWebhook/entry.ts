@@ -493,6 +493,9 @@ Deno.serve(async (req) => {
           stripe_payment_intent_id: session.payment_intent || null,
           referral_code: orderData.referral_code || null,
           scheduling_reason: resolvedScheduleReason,
+          final_schedule_source: 'central_engine',
+          schedule_timezone: 'America/Chicago',
+          cutoff_window_label: checkoutFinalSchedule?.cutoff_window_label || 'unknown',
         });
 
         console.log(`Regular order ${order.id} (${orderNumber}) created after payment completed`);
