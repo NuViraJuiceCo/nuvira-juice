@@ -163,6 +163,23 @@ Deno.serve(async (req) => {
             headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' },
           });
           const hubResp = syncResult?.data || syncResult;
+
+          // ── 409 SUBSCRIPTION_QUARANTINED — write terminal skipped log, stop retry ──
+          if (hubResp?.quarantined === true || hubResp?.error_code === 'SUBSCRIPTION_QUARANTINED') {
+            console.warn(`[RetryHubSyncs] Hub quarantined sub ${stripeSubId} — writing terminal skipped log, will not retry.`);
+            await base44.asServiceRole.entities.OrderSyncLog.create({
+              order_number: orderNumber,
+              status: 'skipped',
+              hub_action: 'subscription_quarantined',
+              description: `Hub returned 409 SUBSCRIPTION_QUARANTINED for sub ${stripeSubId} (CA id=${activeSub.id}). Subscription is cancelled/refunded on Hub side. Permanently resolved — admin reactivation required to retry.`,
+              started_at: startTime,
+              completed_at: new Date().toISOString(),
+              triggered_by: 'recovery_function',
+            });
+            results.push({ order_number: orderNumber, result: 'skipped', reason: 'subscription_quarantined_or_refunded' });
+            continue;
+          }
+
           const isSuccess = hubResp?.success === true || hubResp?.hub_response?.status === 'success';
 
           if (isSuccess) {

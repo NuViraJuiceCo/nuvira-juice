@@ -153,6 +153,30 @@ Deno.serve(async (req) => {
 
     if (!hubResponse.ok) {
       const hubError = await hubResponse.text();
+
+      // ── 409 SUBSCRIPTION_QUARANTINED — terminal, do not retry ───────────────
+      // Hub returns 409 when the subscription is quarantined (cancelled/refunded on Hub side).
+      // Retrying subscription_created for a quarantined sub would create a new error loop.
+      // Signal this as terminal so callers (retryFailedHubSyncs) write a skipped log instead.
+      if (hubResponse.status === 409 && hubError.includes('SUBSCRIPTION_QUARANTINED')) {
+        console.warn(`[syncSubWithFulfillments] Hub returned 409 SUBSCRIPTION_QUARANTINED for sub ${subscription_id}. Marking as terminal — no retry.`);
+        // Also mark the CA Subscription hub_sync_status as skipped so it's clear in the DB
+        await base44.asServiceRole.entities.Subscription.update(subscription_id, {
+          hub_sync_status: 'skipped',
+          hub_sync_error: 'Hub 409 SUBSCRIPTION_QUARANTINED — subscription is cancelled/refunded on Hub side. Admin reactivation required.',
+          hub_sync_attempted_at: new Date().toISOString(),
+          hub_sync_response_status: 409,
+          hub_sync_response_body: hubError.substring(0, 500),
+        }).catch(err => console.warn(`[syncSubWithFulfillments] Failed to update sub hub_sync_status: ${err.message}`));
+        return Response.json({
+          success: false,
+          quarantined: true,
+          subscription_id,
+          error_code: 'SUBSCRIPTION_QUARANTINED',
+          error: 'Hub has quarantined this subscription (cancelled/refunded). No retry will be attempted.',
+        }, { status: 409 });
+      }
+
       console.error(`[syncSubWithFulfillments] Hub error: ${hubError}`);
       return Response.json({ 
         error: `Hub returned ${hubResponse.status}`,
