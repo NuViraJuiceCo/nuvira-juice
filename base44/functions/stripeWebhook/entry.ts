@@ -650,6 +650,17 @@ Deno.serve(async (req) => {
       if (existingOrders.length > 0) {
         const order = existingOrders[0];
 
+        // ── TERMINAL STATE GUARD ──────────────────────────────────────────
+        // CRITICAL: Do NOT finalize or reactivate a refunded/cancelled order.
+        // Terminal states must ALWAYS be protected, even if payment_captured=false.
+        const isTerminalOrder = order.status === 'refunded' || order.status === 'cancelled' || 
+                                order.do_not_recover === true || 
+                                (order.amount_refunded && order.amount_refunded > 0);
+        if (isTerminalOrder) {
+          console.warn(`[PI succeeded] Order ${orderNumber} is in terminal state (${order.status}). Skipping finalization. PI=${pi.id}`);
+          return Response.json({ received: true, action: 'skipped_terminal_state' });
+        }
+
         // Idempotency: already finalized
         if (order.payment_captured === true) {
           console.log(`[PI succeeded] Order ${orderNumber} already finalized, skipping`);
@@ -657,8 +668,8 @@ Deno.serve(async (req) => {
         }
 
         // Safety: do not finalize a cancelled/abandoned order
-        if (order.is_abandoned_checkout || order.do_not_recover) {
-          console.warn(`[PI succeeded] Order ${orderNumber} is marked abandoned/do_not_recover — skipping finalization`);
+        if (order.is_abandoned_checkout) {
+          console.warn(`[PI succeeded] Order ${orderNumber} is marked abandoned — skipping finalization`);
           return Response.json({ received: true });
         }
 
