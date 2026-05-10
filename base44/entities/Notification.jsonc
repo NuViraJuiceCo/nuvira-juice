@@ -26,6 +26,10 @@
       ],
       "default": "general"
     },
+    "notification_subtype": {
+      "type": "string",
+      "description": "Granular type: order_confirmation, delivery_reminder, out_for_delivery, delivered, subscription_renewal, subscription_payment_success, subscription_payment_failed, promo, loyalty_credit, production_reminder, general"
+    },
     "order_id": {
       "type": "string"
     },
@@ -35,6 +39,14 @@
     },
     "icon": {
       "type": "string"
+    },
+    "deep_link": {
+      "type": "string",
+      "description": "In-app route to navigate to when notification is tapped, e.g. /account/orders"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Unique key to prevent duplicate notifications for the same event"
     }
   },
   "required": [

@@ -104,7 +104,8 @@
 
 /* Native mobile feel */
 html, body {
-  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
   /* iOS momentum scrolling */
   -webkit-overflow-scrolling: touch;
 }
@@ -112,6 +113,25 @@ html, body {
 body {
   /* Prevent layout shifts on iOS from address bar height changes */
   min-height: 100dvh;
+}
+
+/* Smoother scroll momentum on scrollable containers */
+[data-scroll], .overflow-y-auto, .overflow-x-auto, .overflow-y-scroll, .overflow-x-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Snap containers: slightly more fluid feel */
+.snap-x {
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: 1.25rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Prevent scroll chaining on modals/sheets */
+[role="dialog"], .fixed {
+  overscroll-behavior: contain;
 }
 
 button, a, nav {

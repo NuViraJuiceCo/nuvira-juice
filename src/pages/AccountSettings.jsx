@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/AuthContext';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import NotificationPreferencesPanel from '@/components/NotificationPreferencesPanel';
 
 export default function AccountSettings() {
   const navigate = useNavigate();
@@ -129,6 +130,11 @@ export default function AccountSettings() {
             </>
           )}
         </Button>
+
+        {/* Notification Preferences */}
+        <div className="pt-2 border-t border-border/50">
+          <NotificationPreferencesPanel />
+        </div>
 
         {/* Account Deletion */}
         <div className="pt-4 border-t border-border">

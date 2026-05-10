@@ -168,10 +168,21 @@ Deno.serve(async (req) => {
             delivery_zone_id: deliveryZoneId,
             delivery_address: deliveryAddress,
             status: 'active',
-            started_date: firstDeliveryDate, // First delivery date as started date
+            started_date: firstDeliveryDate,
             next_delivery_date: nextDeliveryDate || firstDeliveryDate,
           });
           console.log(`[stripeWebhook] Subscription record created: ${subscription.id}`);
+
+          // In-app notification: subscription payment success
+          base44.asServiceRole.functions.invoke('sendCustomerNotification', {
+            customer_email: customerEmail,
+            type: 'order_update',
+            notification_subtype: 'subscription_payment_success',
+            title: 'Subscription Active 🌿',
+            message: `Your NuVira subscription is active. Your first delivery is scheduled for ${firstDeliveryDate || 'soon'}.`,
+            deep_link: '/account/subscriptions',
+            idempotency_key: `sub_payment_success_${stripeSubscriptionId}`,
+          }).catch(err => console.warn('[stripeWebhook] Sub payment notif failed:', err.message));
 
           // Fetch customer profile
           const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail });
@@ -589,6 +600,18 @@ Deno.serve(async (req) => {
         })
           .catch(err => console.error('Failed to send operations notification:', err.message));
 
+        // In-app notification: order confirmation
+        base44.asServiceRole.functions.invoke('sendCustomerNotification', {
+          customer_email: customerEmail,
+          type: 'order_update',
+          notification_subtype: 'order_confirmation',
+          title: 'Order Confirmed ✅',
+          message: `Your NuVira order #${orderNumber} has been confirmed and is scheduled for juicing.`,
+          order_id: order.id,
+          deep_link: `/order-tracker/${orderNumber}`,
+          idempotency_key: `order_confirmation_${order.id}`,
+        }).catch(err => console.warn('[stripeWebhook] Order confirmation notif failed:', err.message));
+
         // Send SMS if phone provided
         if (resolvedPhone) {
           base44.asServiceRole.functions.invoke('sendOrderSms', {
@@ -861,6 +884,18 @@ Deno.serve(async (req) => {
         base44.asServiceRole.functions.invoke('notifyOrderProcessed', {
           order_id: order.id, order_number: orderNumber, customer_email: customerEmail,
         }).catch(err => console.error('[PI succeeded] Ops notify failed:', err.message));
+
+        // In-app notification: order confirmation (embedded checkout path)
+        base44.asServiceRole.functions.invoke('sendCustomerNotification', {
+          customer_email: customerEmail,
+          type: 'order_update',
+          notification_subtype: 'order_confirmation',
+          title: 'Order Confirmed ✅',
+          message: `Your NuVira order #${orderNumber} has been confirmed and is scheduled for juicing.`,
+          order_id: order.id,
+          deep_link: `/order-tracker/${orderNumber}`,
+          idempotency_key: `order_confirmation_${order.id}`,
+        }).catch(err => console.warn('[PI succeeded] Order confirmation notif failed:', err.message));
 
       } else {
         // Pre-created Order not found — create it now (safety net), using central schedule engine
@@ -1741,6 +1776,20 @@ Deno.serve(async (req) => {
       const stripeSubscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
       const customerEmail = invoice.customer_email || invoice.metadata?.customer_email;
       console.warn(`[invoice.payment_failed] Invoice ${invoice.id} failed for sub=${stripeSubscriptionId}, customer=${customerEmail}`);
+
+      // In-app notification: subscription payment failed (operational — always send)
+      if (customerEmail) {
+        base44.asServiceRole.functions.invoke('sendCustomerNotification', {
+          customer_email: customerEmail,
+          type: 'order_update',
+          notification_subtype: 'subscription_payment_failed',
+          title: 'Payment Needs Attention ⚠️',
+          message: 'Your NuVira subscription payment could not be processed. Please update your billing information.',
+          deep_link: '/account/subscriptions',
+          idempotency_key: `sub_payment_failed_${invoice.id}`,
+        }).catch(err => console.warn('[invoice.payment_failed] Notif failed:', err.message));
+      }
+
       base44.asServiceRole.entities.OrderSyncLog.create({
         order_number: stripeSubscriptionId ? `SUB-${stripeSubscriptionId}` : 'SUB_PAYMENT_FAILED',
         status: 'error',

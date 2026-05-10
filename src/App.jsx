@@ -40,6 +40,7 @@ import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
 import SyncStatus from '@/pages/admin/SyncStatus';
 import LiveCheckoutMonitor from '@/pages/admin/LiveCheckoutMonitor';
+import NotificationCampaigns from '@/pages/admin/NotificationCampaigns';
 import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
 import LowercaseRedirect from '@/components/LowercaseRedirect';
@@ -152,6 +153,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/loyalty-members" element={<ProtectedRoute element={<LoyaltyMembers />} user={user} />} />
           <Route path="/admin/sync-status" element={<ProtectedRoute element={<SyncStatus />} user={user} />} />
           <Route path="/admin/live-monitor" element={<ProtectedRoute element={<LiveCheckoutMonitor />} user={user} />} />
+          <Route path="/admin/notifications" element={<ProtectedRoute element={<NotificationCampaigns />} user={user} />} />
           <Route path="/return-reward" element={<ProtectedRoute element={<ReturnReward />} user={user} />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
