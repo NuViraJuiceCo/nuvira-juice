@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
 import { Star, Lock, Gift, ShoppingBag, Users, Cake, ChevronRight, Flame, Sparkles, ArrowRight } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
+import { getPointsForCustomer, getOrdersForCustomer } from '@/lib/identityResolver';
 import { Link, useNavigate } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
 import { useCart } from '@/lib/cartContext';
@@ -313,20 +314,17 @@ export default function Rewards() {
 
   const { data: pointsData } = useQuery({
     queryKey: ['user-points', user?.email],
-    queryFn: async () => {
-      const results = await base44.entities.UserPoints.filter({ customer_email: user?.email });
-      return results[0] || null;
-    },
+    queryFn: () => getPointsForCustomer(user),
     enabled: !!user?.email,
     staleTime: 0,
-    gcTime: 0, // Force fresh fetch each time
+    gcTime: 0,
   });
 
   // Validate points against actual valid orders to catch reconciliation issues
   const { data: validOrders = [] } = useQuery({
     queryKey: ['valid-orders-for-points', user?.email],
     queryFn: async () => {
-      const allOrders = await base44.entities.Order.filter({ customer_email: user?.email }, '-created_date', 100);
+      const allOrders = await getOrdersForCustomer(user);
       return allOrders.filter(o =>
         o.payment_status === 'paid' &&
         o.payment_captured === true &&

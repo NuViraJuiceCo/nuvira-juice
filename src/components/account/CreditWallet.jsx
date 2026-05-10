@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
+import { resolveCustomerIdentities } from '@/lib/identityResolver';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Leaf, ChevronRight } from 'lucide-react';
@@ -37,15 +38,32 @@ export default function CreditWallet() {
   const { data: creditData, isLoading: isLoadingCredits } = useQuery({
     queryKey: ['nuvira-credits', user?.email],
     queryFn: async () => {
-      const res = await base44.entities.NuViraCredit.filter({ customer_email: user?.email });
-      return res[0] || null;
+      // Resolve all identity emails (handles Apple private relay)
+      const identities = await resolveCustomerIdentities(user);
+      for (const email of identities) {
+        const res = await base44.entities.NuViraCredit.filter({ customer_email: email });
+        if (res[0]) return res[0];
+      }
+      return null;
     },
     enabled: !!user?.email,
   });
 
   const { data: returns = [], isLoading: isLoadingReturns } = useQuery({
     queryKey: ['bag-returns', user?.email],
-    queryFn: () => base44.entities.BagReturn.filter({ customer_email: user?.email }, '-created_date', 10),
+    queryFn: async () => {
+      const identities = await resolveCustomerIdentities(user);
+      const allReturns = [];
+      for (const email of identities) {
+        const res = await base44.entities.BagReturn.filter({ customer_email: email }, '-created_date', 10);
+        allReturns.push(...res);
+      }
+      // Deduplicate by id and sort by date
+      const seen = new Set();
+      return allReturns.filter(r => seen.has(r.id) ? false : seen.add(r.id))
+        .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
+        .slice(0, 10);
+    },
     enabled: !!user?.email,
   });
 
