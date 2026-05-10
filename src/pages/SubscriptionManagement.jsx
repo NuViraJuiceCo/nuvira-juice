@@ -51,13 +51,17 @@ export default function SubscriptionManagement() {
   const [activating, setActivating] = useState(false);
 
   // Use backend function to resolve Apple relay and linked identity subscriptions
-  const { data: subscriptions = [], refetch } = useQuery({
+  // placeholderData keeps previous resolved list visible during background refresh (no false empty flash)
+  const { data: subscriptions = [], isLoading: isLoadingSubs, refetch } = useQuery({
     queryKey: ['subscriptions', user?.email],
     queryFn: async () => {
       const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
       return res.data?.all_subscriptions || [];
     },
     enabled: !!user?.email,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 
   // Detect if a recent PendingSubscriptionCheckout exists (webhook may still be processing)
@@ -441,8 +445,27 @@ export default function SubscriptionManagement() {
           </div>
         )}
 
+        {/* Loading skeleton — only while initial fetch is in-flight (no cached data yet) */}
+        {isLoadingSubs && subscriptions.length === 0 && !activating && (
+          <div className="space-y-3">
+            {[1, 2].map(i => (
+              <div key={i} className="bg-card border border-border/40 rounded-2xl p-4 animate-pulse">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="h-4 w-32 bg-muted rounded mb-1.5" />
+                    <div className="h-3 w-24 bg-muted/60 rounded" />
+                  </div>
+                  <div className="h-5 w-14 bg-muted rounded-full" />
+                </div>
+                <div className="h-10 bg-muted/40 rounded-lg mb-3" />
+                <div className="h-8 bg-muted/30 rounded-lg" />
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Empty State — no subscription AND no pending checkout */}
-        {!activating && subscriptions.length === 0 && !hasRecentPendingCheckout && (
+        {!activating && !isLoadingSubs && subscriptions.length === 0 && !hasRecentPendingCheckout && (
           <div className="text-center py-12">
             <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
               <Plus className="w-6 h-6 text-muted-foreground" />

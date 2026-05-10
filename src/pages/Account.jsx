@@ -165,13 +165,15 @@ export default function Account() {
                 <p className="font-heading text-lg font-bold text-foreground dark:text-white">{subscriptions.filter(s => s.status === 'active').length > 0 ? 'Active' : 'None'}</p>
               )}
             </div>
-            <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm">
+            <Link to="/rewards">
+            <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm active:scale-95 transition-transform">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Wallet className="w-3.5 h-3.5 text-primary" />
-                <p className="text-[9px] font-bold text-foreground/55 dark:text-muted-foreground/80 uppercase tracking-wider">Credits</p>
+                <p className="text-[9px] font-bold text-foreground/55 dark:text-muted-foreground/80 uppercase tracking-wider">Rewards</p>
               </div>
-              <p className="font-heading text-lg font-bold text-foreground dark:text-white">View</p>
+              <p className="font-heading text-lg font-bold text-primary dark:text-white">View →</p>
             </div>
+            </Link>
           </motion.div>
         )}
       </div>

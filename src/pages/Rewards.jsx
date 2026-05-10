@@ -139,12 +139,15 @@ function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 + i * 0.07 }}
-          className="rounded-2xl p-3.5 text-center shadow-md"
+          className="rounded-2xl p-3.5 text-center"
           style={{
             background: gold 
-              ? `linear-gradient(135deg, rgba(201,162,74,0.18) 0%, rgba(231,200,115,0.10) 100%)`
+              ? `linear-gradient(135deg, rgba(201,162,74,0.20) 0%, rgba(231,200,115,0.12) 100%)`
               : 'hsl(var(--card))',
-            border: gold ? `1.5px solid rgba(201,162,74,0.50)` : '1.5px solid hsl(var(--border))',
+            border: gold ? `1.5px solid rgba(201,162,74,0.65)` : '1.5px solid hsl(var(--border))',
+            boxShadow: gold
+              ? '0 4px 16px rgba(201,162,74,0.15), 0 1px 4px rgba(0,0,0,0.08)'
+              : '0 4px 14px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
           <div className="w-7 h-7 rounded-full flex items-center justify-center mx-auto mb-1.5"
@@ -170,13 +173,15 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.07 }}
-      className="shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden shadow-lg"
+      className="shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden"
       style={{
-        border: unlocked ? `1.5px solid rgba(201,162,74,0.5)` : '1px solid hsl(var(--border) / 0.5)',
+        border: unlocked ? `1.5px solid rgba(201,162,74,0.65)` : '1.5px solid hsl(var(--border))',
         background: unlocked
-          ? `linear-gradient(135deg, rgba(11,61,46,0.08) 0%, rgba(201,162,74,0.12) 100%)`
-          : `linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)`,
-        boxShadow: unlocked ? `0 6px 24px rgba(201,162,74,0.12), 0 1px 3px rgba(0,0,0,0.1)` : '0 2px 8px rgba(0,0,0,0.06)',
+          ? `linear-gradient(135deg, rgba(11,61,46,0.09) 0%, rgba(201,162,74,0.14) 100%)`
+          : 'hsl(var(--card))',
+        boxShadow: unlocked
+          ? `0 8px 28px rgba(201,162,74,0.18), 0 2px 6px rgba(0,0,0,0.10)`
+          : '0 4px 14px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)',
       }}
     >
       {/* Top panel */}
@@ -412,7 +417,8 @@ export default function Rewards() {
         className="mx-4 mt-4 rounded-2xl p-4 flex items-center gap-4"
         style={{
           background: birthdayActive ? '#FFF0F4' : 'hsl(var(--card))',
-          border: birthdayActive ? '1.5px solid #F9BBCA' : '1px solid hsl(var(--border) / 0.4)',
+          border: birthdayActive ? '1.5px solid #F9BBCA' : '1.5px solid hsl(var(--border))',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05)',
         }}
       >
         <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"
@@ -433,7 +439,7 @@ export default function Rewards() {
           </Link>
         ) : !birthday ? (
           <Link to="/account/settings">
-            <span className="text-xs font-bold px-3 py-1.5 rounded-xl whitespace-nowrap" style={{ background: `${GOLD}25`, color: '#FFFFFF', border: `1px solid ${GOLD}50` }}>Set Date</span>
+            <span className="text-xs font-bold px-3 py-1.5 rounded-xl whitespace-nowrap" style={{ background: GOLD, color: '#1A0F00', border: `1px solid ${GOLD}` }}>Set Date</span>
           </Link>
         ) : null}
       </motion.div>
@@ -472,7 +478,7 @@ export default function Rewards() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * i }}
               className="rounded-2xl p-4"
-              style={{ background: 'hsl(var(--card))', border: `1.5px solid ${GOLD}30` }}
+              style={{ background: 'hsl(var(--card))', border: `1.5px solid ${GOLD}55`, boxShadow: '0 3px 10px rgba(0,0,0,0.07)' }}
             >
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5"
                 style={{ background: `${GOLD}25` }}>
