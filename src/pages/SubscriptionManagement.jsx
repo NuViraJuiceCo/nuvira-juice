@@ -392,6 +392,7 @@ export default function SubscriptionManagement() {
                       <Calendar className="w-3 h-3" />
                       <span>Resumes: {sub.paused_until ? formatLocalDate(sub.paused_until) : '—'}</span>
                     </div>
+                    {getSinceLabel(sub) && <div>Since {getSinceLabel(sub)}</div>}
                   </div>
 
                   <div className="flex gap-2">
