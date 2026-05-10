@@ -106,37 +106,79 @@
 html, body {
   overscroll-behavior-y: none;
   overscroll-behavior-x: none;
-  /* iOS momentum scrolling */
   -webkit-overflow-scrolling: touch;
 }
 
 body {
-  /* Prevent layout shifts on iOS from address bar height changes */
   min-height: 100dvh;
+  /* Improve text rendering on mobile */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Smoother scroll momentum on scrollable containers */
-[data-scroll], .overflow-y-auto, .overflow-x-auto, .overflow-y-scroll, .overflow-x-scroll {
+/* Smoother scroll momentum on ALL scrollable containers */
+[data-scroll],
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-y-scroll,
+.overflow-x-scroll {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
+  /* GPU-accelerate the scroll layer */
+  transform: translateZ(0);
+  will-change: scroll-position;
 }
 
-/* Snap containers: slightly more fluid feel */
+/* Horizontal carousels — fluid snap with no dead zones */
 .snap-x {
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   scroll-padding-left: 1.25rem;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  /* Ensure the track doesn't block vertical page scroll */
+  touch-action: pan-x;
+  transform: translateZ(0);
+  will-change: scroll-position;
 }
 
+/* Snap children — allow overshoot so swipes feel alive */
+.snap-start { scroll-snap-align: start; scroll-snap-stop: normal; }
+.snap-center { scroll-snap-align: center; scroll-snap-stop: normal; }
+
 /* Prevent scroll chaining on modals/sheets */
-[role="dialog"], .fixed {
+[role="dialog"] {
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fixed overlays must not chain scroll to body */
+.fixed {
+  overscroll-behavior: contain;
+}
+
+/* Inputs and textareas: restore touch-action so virtual keyboard & scrolling work */
+input, textarea, select {
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 button, a, nav {
   -webkit-user-select: none;
   user-select: none;
+  /* Faster tap response — no 300ms delay */
+  touch-action: manipulation;
+}
+
+/* Interactive cards: GPU-promote to avoid repaints on tap */
+.card-interactive {
+  transform: translateZ(0);
+  will-change: transform;
+  transition: transform 0.15s cubic-bezier(0.25, 0.1, 0.25, 1),
+              box-shadow 0.15s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.card-interactive:active {
+  transform: scale(0.97) translateZ(0);
 }
 
 svg {
@@ -159,10 +201,9 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* GPU-accelerated scroll containers — horizontal carousels */
-.snap-x {
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
+/* Page-level fade: ensure transitions don't cause horizontal bleed */
+[data-page-transition] {
+  overflow-x: hidden;
 }
 
 /* Prevent horizontal scroll bleed on page root */

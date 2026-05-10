@@ -31,7 +31,8 @@ export default function ProductCard({ product, compact = false }) {
     return (
       <Link to={`/shop/${product.id}`}>
         <motion.div
-          whileTap={{ scale: 0.95 }}
+          whileTap={{ scale: 0.94 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 28 }}
           className="bg-card rounded-2xl border border-border/50 overflow-hidden shadow-md"
           style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
         >
@@ -84,7 +85,8 @@ export default function ProductCard({ product, compact = false }) {
   return (
     <Link to={`/shop/${product.id}`}>
       <motion.div
-        whileTap={{ scale: 0.98 }}
+        whileTap={{ scale: 0.97 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 28 }}
         className="bg-card rounded-xl border border-border/50 overflow-hidden shadow-md"
         style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
       >

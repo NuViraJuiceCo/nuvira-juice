@@ -38,7 +38,7 @@ export default function MobileNav() {
               onContextMenu={(e) => e.preventDefault()}
               onDragStart={(e) => e.preventDefault()}
               draggable={false}
-              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 relative bg-transparent border-0 outline-none cursor-pointer"
+              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 relative bg-transparent border-0 outline-none cursor-pointer active:scale-90 transition-transform duration-100"
               style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'manipulation' }}
             >
               <div className="relative">

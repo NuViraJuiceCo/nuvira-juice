@@ -26,7 +26,15 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
            </Link>
          )}
        </div>
-       <div className="flex gap-4 overflow-x-auto px-5 pb-3 no-scrollbar snap-x snap-mandatory" style={{ scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem' }}>
+       <div
+          className="flex gap-4 overflow-x-auto px-5 pb-3 no-scrollbar snap-x"
+          style={{
+            scrollPaddingLeft: '1.25rem',
+            scrollPaddingRight: '1.25rem',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorX: 'contain',
+          }}
+        >
         {products.map((product, i) => (
           <motion.div
             key={product.id}
