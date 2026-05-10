@@ -77,7 +77,7 @@ export default function CreditWallet({ dashData: propDashData }) {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="px-5 mt-3">
       {/* Main Credits Card - Always Visible */}
-      <button onClick={() => setIsExpanded(!isExpanded)} className="w-full text-left">
+      <button onClick={() => setIsExpanded(!isExpanded)} className="w-full text-left" style={{ touchAction: 'pan-y' }}>
         <div className="bg-primary rounded-2xl p-5 text-primary-foreground shadow-lg">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">

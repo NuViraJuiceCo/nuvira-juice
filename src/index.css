@@ -135,8 +135,8 @@ body {
   scroll-padding-left: 1.25rem;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  /* Ensure the track doesn't block vertical page scroll */
-  touch-action: pan-x;
+  /* pan-y allows vertical page scroll to pass through even when touch starts on carousel */
+  touch-action: pan-y;
   transform: translateZ(0);
   will-change: scroll-position;
 }
@@ -171,7 +171,9 @@ button, a, nav {
 }
 
 /* Interactive cards: GPU-promote to avoid repaints on tap */
+/* touch-action: pan-y ensures vertical scroll wins even when touch starts on the card */
 .card-interactive {
+  touch-action: pan-y;
   transform: translateZ(0);
   will-change: transform;
   transition: transform 0.15s cubic-bezier(0.25, 0.1, 0.25, 1),

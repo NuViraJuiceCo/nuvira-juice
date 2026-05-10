@@ -17,6 +17,7 @@ export default function PullToRefresh({ onRefresh, children }) {
   const onTouchMove = (e) => {
     if (startY.current === null) return;
     const delta = e.touches[0].clientY - startY.current;
+    // Only handle downward pull at top of page; never call preventDefault so native scroll is unaffected
     if (delta > 0) pullY.set(Math.min(delta * 0.4, THRESHOLD));
   };
 
@@ -31,7 +32,8 @@ export default function PullToRefresh({ onRefresh, children }) {
   };
 
   return (
-    <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+    // touch-action: pan-y lets the browser own vertical scroll; our handlers only read delta, never prevent default
+    <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} style={{ touchAction: 'pan-y' }}>
       <motion.div
         style={{ height: pullY, opacity }}
         className="flex items-center justify-center overflow-hidden"

@@ -1,7 +1,18 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
+
+// Tap-vs-scroll guard — only navigate if vertical movement < 8px
+function useTapGuard() {
+  const startY = useRef(null);
+  const scrolled = useRef(false);
+  return {
+    onTouchStart: (e) => { startY.current = e.touches[0].clientY; scrolled.current = false; },
+    onTouchMove: (e) => { if (startY.current !== null && Math.abs(e.touches[0].clientY - startY.current) > 8) scrolled.current = true; },
+    onClick: (e) => { if (scrolled.current) e.preventDefault(); },
+  };
+}
 
 const PROGRAMS = [
   {
@@ -60,19 +71,21 @@ const PROGRAMS = [
 export { PROGRAMS };
 
 export default function ProgramCards() {
+  const tapGuard = useTapGuard();
   return (
     <>
       {/* Mobile: horizontal scroll, peek next card */}
-      <div className="md:hidden flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory scrollbar-none" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem' }}>
+      <div className="md:hidden flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory scrollbar-none" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem', touchAction: 'pan-y' }}>
         {PROGRAMS.map((program, i) => (
           <motion.div
             key={program.key}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.08 }}
+            style={{ touchAction: 'pan-y' }}
             className="shrink-0 w-[78vw] snap-start"
           >
-            <Link to={`/program/${program.key}`}>
+            <Link to={`/program/${program.key}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove} onClick={tapGuard.onClick}>
               <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform shadow-lg`}
                 style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
                 {program.image && (

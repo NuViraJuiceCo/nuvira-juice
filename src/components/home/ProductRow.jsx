@@ -33,6 +33,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
             scrollPaddingRight: '1.25rem',
             WebkitOverflowScrolling: 'touch',
             overscrollBehaviorX: 'contain',
+            touchAction: 'pan-y',
           }}
         >
         {products.map((product, i) => (
@@ -42,6 +43,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ delay: i * 0.07, duration: 0.4 }}
+            style={{ touchAction: 'pan-y' }}
             className="snap-start shrink-0 w-40"
           >
             <ProductCard product={product} compact />

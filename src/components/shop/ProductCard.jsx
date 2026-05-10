@@ -1,11 +1,27 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { motion } from 'framer-motion';
 
+// Tap-vs-scroll guard: only fire click if touch didn't move more than 8px
+function useTapGuard() {
+  const startPos = React.useRef(null);
+  const didScroll = React.useRef(false);
+  return {
+    onTouchStart: (e) => { startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; didScroll.current = false; },
+    onTouchMove: (e) => {
+      if (!startPos.current) return;
+      const dy = Math.abs(e.touches[0].clientY - startPos.current.y);
+      if (dy > 8) didScroll.current = true;
+    },
+    guardClick: (handler) => (e) => { if (didScroll.current) { e.preventDefault(); e.stopPropagation(); return; } handler(e); },
+  };
+}
+
 export default function ProductCard({ product, compact = false }) {
   const { addItem } = useCart();
+  const tapGuard = useTapGuard();
 
   const handleQuickAdd = (e) => {
     e.preventDefault();
@@ -29,10 +45,11 @@ export default function ProductCard({ product, compact = false }) {
 
   if (compact) {
     return (
-      <Link to={`/shop/${product.id}`}>
+      <Link to={`/shop/${product.id}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
         <motion.div
           whileTap={{ scale: 0.94 }}
           transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+          style={{ touchAction: 'pan-y' }}
           className="bg-card rounded-2xl border border-border/50 overflow-hidden shadow-md"
           style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
         >
@@ -83,10 +100,11 @@ export default function ProductCard({ product, compact = false }) {
   }
 
   return (
-    <Link to={`/shop/${product.id}`}>
+    <Link to={`/shop/${product.id}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
       <motion.div
         whileTap={{ scale: 0.97 }}
         transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+        style={{ touchAction: 'pan-y' }}
         className="bg-card rounded-xl border border-border/50 overflow-hidden shadow-md"
         style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
       >

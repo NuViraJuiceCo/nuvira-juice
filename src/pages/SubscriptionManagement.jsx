@@ -272,7 +272,7 @@ export default function SubscriptionManagement() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.1 }}
-                    className="bg-card border border-border/40 rounded-2xl p-4"
+                    className="bg-card border border-border/40 rounded-2xl p-4" style={{ touchAction: 'pan-y' }}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div>
@@ -496,7 +496,8 @@ export default function SubscriptionManagement() {
               animate={{ y: 0 }}
               exit={{ y: 100 }}
               onClick={e => e.stopPropagation()}
-              className="bg-card w-full rounded-t-2xl p-5"
+              className="bg-card w-full rounded-t-2xl p-5 overflow-y-auto max-h-[85vh]"
+              style={{ touchAction: 'pan-y' }}
             >
               <h3 className="font-semibold text-base mb-2">Cancel Future Renewal</h3>
               <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
@@ -532,7 +533,8 @@ export default function SubscriptionManagement() {
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             onClick={e => e.stopPropagation()}
-            className="bg-card w-full rounded-t-2xl p-5"
+            className="bg-card w-full rounded-t-2xl p-5 overflow-y-auto max-h-[85vh]"
+            style={{ touchAction: 'pan-y' }}
           >
             <h3 className="font-semibold text-base mb-1">Pause Next Month</h3>
             <p className="text-xs text-muted-foreground mb-4 leading-relaxed">

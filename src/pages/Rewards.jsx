@@ -174,7 +174,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.07 }}
       className="shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden"
-      style={{
+      style={{ touchAction: 'pan-y',
         border: unlocked ? `1.5px solid rgba(201,162,74,0.65)` : '1.5px solid hsl(var(--border))',
         background: unlocked
           ? `linear-gradient(135deg, rgba(11,61,46,0.09) 0%, rgba(201,162,74,0.14) 100%)`
@@ -452,7 +452,7 @@ export default function Rewards() {
             <p className="text-[11px] text-muted-foreground">Swipe for more</p>
           </div>
         </div>
-        <div className="flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem' }}>
+        <div className="flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem', touchAction: 'pan-y' }}>
           {rewards.map((reward, i) => (
             <RewardCard
               key={i}

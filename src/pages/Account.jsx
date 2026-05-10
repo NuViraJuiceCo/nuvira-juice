@@ -189,7 +189,7 @@ export default function Account() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.15 }}
-              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 dark:from-primary/25 dark:via-primary/18 dark:to-primary/12 border border-primary/25 dark:border-primary/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md"
+              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 dark:from-primary/25 dark:via-primary/18 dark:to-primary/12 border border-primary/25 dark:border-primary/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md" style={{ touchAction: 'pan-y' }}
             >
               <div className="relative">
                 <div className="w-9 h-9 rounded-lg bg-primary/20 dark:bg-primary/25 flex items-center justify-center mb-2 border border-primary/20 dark:border-primary/30">
@@ -207,7 +207,7 @@ export default function Account() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.18 }}
-              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-[#C9A24A]/15 via-[#C9A24A]/10 to-[#C9A24A]/8 dark:from-[#C9A24A]/20 dark:via-[#C9A24A]/15 dark:to-[#C9A24A]/10 border border-[#C9A24A]/20 dark:border-[#C9A24A]/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md"
+              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-[#C9A24A]/15 via-[#C9A24A]/10 to-[#C9A24A]/8 dark:from-[#C9A24A]/20 dark:via-[#C9A24A]/15 dark:to-[#C9A24A]/10 border border-[#C9A24A]/20 dark:border-[#C9A24A]/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md" style={{ touchAction: 'pan-y' }}
             >
               <div className="relative">
                 <div className="w-9 h-9 rounded-lg bg-[#C9A24A]/20 dark:bg-[#C9A24A]/25 flex items-center justify-center mb-2 border border-[#C9A24A]/20 dark:border-[#C9A24A]/30">
