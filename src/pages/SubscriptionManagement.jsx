@@ -14,6 +14,32 @@ function formatLocalDate(dateStr) {
   return new Date(+y, +m - 1, +d).toLocaleDateString();
 }
 
+// Derive a safe "Since" label for a subscription.
+// Rules:
+//  1. If started_date is set AND it does NOT match next_delivery_date → use it (exact date)
+//  2. Else if created_date is available → use it (exact date)
+//  3. Else → show month/year only from whatever date we have, to avoid showing a misleading exact date
+function getSinceLabel(sub) {
+  const nextDelivery = sub.next_delivery_date ? String(sub.next_delivery_date).split('T')[0] : null;
+  const startedRaw = sub.started_date ? String(sub.started_date).split('T')[0] : null;
+  const createdRaw = sub.created_date ? String(sub.created_date).split('T')[0] : null;
+
+  // started_date is only trustworthy if it isn't equal to next_delivery_date
+  if (startedRaw && startedRaw !== nextDelivery) {
+    return formatLocalDate(startedRaw);
+  }
+
+  // Fall back to created_date (entity creation timestamp) — always reliable
+  if (createdRaw) {
+    const [y, m, d] = createdRaw.split('-');
+    const date = new Date(+y, +m - 1, +d);
+    // Show month + year only to signal lower certainty
+    return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  }
+
+  return null; // hide label entirely
+}
+
 export default function SubscriptionManagement() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -271,7 +297,7 @@ export default function SubscriptionManagement() {
                       <Calendar className="w-3 h-3" />
                       <span>Next delivery: {sub.next_delivery_date ? formatLocalDate(sub.next_delivery_date) : '—'}</span>
                     </div>
-                    <div>Since {sub.started_date ? formatLocalDate(sub.started_date) : sub.created_date ? formatLocalDate(sub.created_date.split('T')[0]) : '—'}</div>
+                    {getSinceLabel(sub) && <div>Since {getSinceLabel(sub)}</div>}
                     </div>
 
                     {!isPendingCancel && (
