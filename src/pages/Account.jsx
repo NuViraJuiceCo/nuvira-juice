@@ -33,8 +33,8 @@ const brandItems = [
 
 export default function Account() {
   const { user } = useAuth();
-  // Single backend call resolves all Apple relay identities server-side (service role)
-  // staleTime: 60s — prevents gcTime:0 from wiping resolved data between renders (flicker fix)
+  // staleTime: 2min — cached data shows instantly on back-navigation (stale-while-revalidate)
+  // isLoading is only true on first load (no cached data yet), not on background refreshes
   const { data: dashData, isLoading: isDashLoading } = useQuery({
     queryKey: ['account-dashboard', user?.email],
     queryFn: async () => {
@@ -42,7 +42,8 @@ export default function Account() {
       return res.data || {};
     },
     enabled: !!user?.email,
-    staleTime: 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 
   const userProfile = dashData?.customer_profile || null;

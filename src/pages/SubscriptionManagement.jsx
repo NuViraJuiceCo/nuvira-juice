@@ -7,6 +7,13 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+// Parse YYYY-MM-DD date strings as local dates (avoids UTC→local shift off-by-one)
+function formatLocalDate(dateStr) {
+  if (!dateStr) return '—';
+  const [y, m, d] = String(dateStr).split('T')[0].split('-');
+  return new Date(+y, +m - 1, +d).toLocaleDateString();
+}
+
 export default function SubscriptionManagement() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -243,7 +250,7 @@ export default function SubscriptionManagement() {
                         <p className="text-xs text-muted-foreground mt-0.5">{getPlan(sub.plan_id)?.bottle_count} bottles · {getPlan(sub.plan_id)?.frequency}</p>
                       </div>
                       {isPendingCancel
-                        ? <span className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-full">Ends {sub.cancel_effective_date ? new Date(sub.cancel_effective_date).toLocaleDateString() : 'next cycle'}</span>
+                        ? <span className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-full">Ends {sub.cancel_effective_date ? formatLocalDate(sub.cancel_effective_date) : 'next cycle'}</span>
                         : <span className="bg-primary/20 text-primary text-[9px] font-bold px-2 py-1 rounded-full">Active</span>
                       }
                     </div>
@@ -260,11 +267,11 @@ export default function SubscriptionManagement() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 mb-3 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        <span>Next delivery: {sub.next_delivery_date ? new Date(sub.next_delivery_date).toLocaleDateString() : '—'}</span>
-                      </div>
-                      <div>Since {sub.started_date ? new Date(sub.started_date).toLocaleDateString() : '—'}</div>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      <span>Next delivery: {sub.next_delivery_date ? formatLocalDate(sub.next_delivery_date) : '—'}</span>
+                    </div>
+                    <div>Since {sub.started_date ? formatLocalDate(sub.started_date) : sub.created_date ? formatLocalDate(sub.created_date.split('T')[0]) : '—'}</div>
                     </div>
 
                     {!isPendingCancel && (
@@ -357,7 +364,7 @@ export default function SubscriptionManagement() {
                   <div className="grid grid-cols-2 gap-2 mb-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      <span>Resumes: {new Date(sub.paused_until).toLocaleDateString()}</span>
+                      <span>Resumes: {sub.paused_until ? formatLocalDate(sub.paused_until) : '—'}</span>
                     </div>
                   </div>
 
