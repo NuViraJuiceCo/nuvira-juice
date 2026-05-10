@@ -4,7 +4,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import PullToRefresh from '@/components/PullToRefresh';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
-import { resolveCustomerIdentities } from '@/lib/identityResolver';
 import { Bell, Package, Sparkles, Megaphone, ArrowLeft, Truck, Star, CreditCard, AlertCircle, Settings } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -59,31 +58,15 @@ export default function Notifications() {
   const { data: notifications = [], isLoading, refetch } = useQuery({
     queryKey: ['notifications', user?.email],
     queryFn: async () => {
-      // Resolve all identity emails (handles Apple relay, alternate emails, etc.)
-      const identities = await resolveCustomerIdentities(user);
-      const seen = new Set();
-      const all = [];
-      for (const email of identities) {
-        const batch = await base44.entities.Notification.filter(
-          { customer_email: email },
-          '-created_date',
-          50
-        );
-        for (const n of batch) {
-          if (!seen.has(n.id)) {
-            seen.add(n.id);
-            all.push(n);
-          }
-        }
-      }
-      // Sort merged results newest first
-      return all.sort((a, b) => new Date(b.created_date) - new Date(a.created_date)).slice(0, 50);
+      // Use backend function — service role identity-aware fetch, RLS-safe for alias emails
+      const res = await base44.functions.invoke('getCustomerNotifications', {});
+      return res.data?.notifications || [];
     },
     enabled: !!user?.email,
   });
 
   const markRead = useMutation({
-    mutationFn: (id) => base44.entities.Notification.update(id, { is_read: true }),
+    mutationFn: (id) => base44.functions.invoke('getCustomerNotifications', { mark_read_id: id }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
