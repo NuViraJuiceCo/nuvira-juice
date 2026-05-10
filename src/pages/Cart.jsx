@@ -192,7 +192,7 @@ export default function Cart() {
       {/* AOV Upsell — Complete Your Routine */}
       {subtotal > 0 && subtotal < 144 && (
         <div className="mx-4 mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Complete Your Routine</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-2">Complete Your Routine</p>
           <div className="space-y-2 px-1">
             {PROGRAMS.slice(0, 2).map(program => (
               <Link key={program.key} to={`/program/${program.key}`}>
@@ -236,7 +236,7 @@ export default function Cart() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{item.title}</p>
-                  {item.size && <p className="text-[10px] text-muted-foreground">{item.size}</p>}
+                  {item.size && <p className="text-[10px] text-foreground/55">{item.size}</p>}
                   <p className="text-sm font-semibold mt-1">${(item.price * item.quantity).toFixed(2)}</p>
                 </div>
                 <div className="flex flex-col items-end justify-between">
@@ -302,11 +302,11 @@ export default function Cart() {
       {/* Bottom Summary */}
       <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border">
         <div className="max-w-lg mx-auto px-4 py-3">
-          <div className="flex justify-between text-xs text-muted-foreground mb-1">
+          <div className="flex justify-between text-xs text-foreground/60 mb-1">
             <span>Subtotal</span>
             <span>${subtotal.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between text-xs text-muted-foreground mb-2">
+          <div className="flex justify-between text-xs text-foreground/60 mb-2">
             <span>Delivery</span>
             <span>{effectiveDeliveryFee === 0 ? <span className="text-primary font-semibold">Free</span> : `$${effectiveDeliveryFee.toFixed(2)}`}</span>
           </div>

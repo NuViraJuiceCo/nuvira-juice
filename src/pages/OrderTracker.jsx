@@ -275,7 +275,7 @@ export default function OrderTracker() {
 
       {/* Progress Tracker */}
       <div className="mx-4 mt-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Status Updates</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-4">Status Updates</h2>
         <div className="space-y-0">
           {stages.map((stage, index) => {
             const isCompleted = index <= currentIndex;
@@ -323,7 +323,7 @@ export default function OrderTracker() {
 
       {/* Order Items */}
       <div className="mx-4 mt-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Your Items</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-3">Your Items</h2>
         <div className="bg-card rounded-2xl border border-border/40 overflow-hidden divide-y divide-border/40">
           {order.items?.map((item, i) => (
             <div key={i} className="flex items-center gap-3 p-4">
@@ -336,7 +336,7 @@ export default function OrderTracker() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate">{item.title}</p>
-                <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                <p className="text-xs text-foreground/55">Qty: {item.quantity}</p>
               </div>
               <p className="text-sm font-bold">${(item.price * item.quantity).toFixed(2)}</p>
             </div>

@@ -91,11 +91,11 @@ export default function ProgramCards() {
                   </div>
                 )}
                 <div className={`bg-gradient-to-br ${program.color} p-3.5`}>
-                  <p className="text-xs text-gray-700 leading-relaxed mb-3 line-clamp-2">{program.description}</p>
+                  <p className="text-xs text-gray-900 leading-relaxed mb-3 line-clamp-2">{program.description}</p>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className={`w-2.5 h-2.5 rounded-full ${program.dot}`} />
-                      <p className="text-xs text-gray-600 font-medium">{program.bottles} bottles · {program.days} days</p>
+                      <p className="text-xs text-gray-800 font-semibold">{program.bottles} bottles · {program.days} days</p>
                     </div>
                     <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
                       Build It <ArrowRight className="w-3.5 h-3.5" />
@@ -136,11 +136,11 @@ export default function ProgramCards() {
                   </div>
                 )}
                 <div className={`bg-gradient-to-br ${program.color} p-4 flex-1 flex flex-col justify-between`}>
-                  <p className="text-xs text-gray-700 leading-relaxed mb-3">{program.description}</p>
+                  <p className="text-xs text-gray-900 leading-relaxed mb-3">{program.description}</p>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className={`w-2.5 h-2.5 rounded-full ${program.dot}`} />
-                      <p className="text-xs text-gray-600 font-medium">{program.bottles} bottles · {program.days} days</p>
+                      <p className="text-xs text-gray-800 font-semibold">{program.bottles} bottles · {program.days} days</p>
                     </div>
                     <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
                       Build It <ArrowRight className="w-3.5 h-3.5" />

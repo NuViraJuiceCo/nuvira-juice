@@ -32,7 +32,7 @@ export default function SubscriptionCard() {
             </div>
 
             {/* Body copy — clean and minimal */}
-            <p className="text-xs text-muted-foreground leading-relaxed mb-4 ml-14">
+            <p className="text-xs text-foreground/60 leading-relaxed mb-4 ml-14">
               Set your favorite NuVira juices on repeat. Pause, adjust, or cancel anytime.
             </p>
 
