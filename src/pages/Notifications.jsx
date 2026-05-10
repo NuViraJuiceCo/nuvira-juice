@@ -86,7 +86,7 @@ export default function Notifications() {
         </button>
         <div className="flex-1">
           <h1 className="font-heading text-xl font-bold">Updates</h1>
-          <p className="text-xs text-muted-foreground">{unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}</p>
+          <p className="text-xs text-foreground/55">{unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}</p>
         </div>
         <Link to="/account/settings" className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
           <Settings className="w-4 h-4 text-muted-foreground" />

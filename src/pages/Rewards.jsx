@@ -142,17 +142,17 @@ function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
           className="rounded-2xl p-3.5 text-center shadow-md"
           style={{
             background: gold 
-              ? `linear-gradient(135deg, rgba(201,162,74,0.20) 0%, rgba(231,200,115,0.12) 100%)`
-              : `linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)`,
-            border: gold ? `1.5px solid rgba(201,162,74,0.45)` : '1.5px solid hsl(var(--border) / 0.6)',
+              ? `linear-gradient(135deg, rgba(201,162,74,0.18) 0%, rgba(231,200,115,0.10) 100%)`
+              : 'hsl(var(--card))',
+            border: gold ? `1.5px solid rgba(201,162,74,0.50)` : '1.5px solid hsl(var(--border))',
           }}
         >
           <div className="w-7 h-7 rounded-full flex items-center justify-center mx-auto mb-1.5"
             style={{ background: gold ? `${GOLD}25` : 'hsl(var(--muted))' }}>
-            <Icon className="w-3.5 h-3.5" style={{ color: gold ? '#9A7B2F' : 'hsl(var(--muted-foreground))' }} />
+            <Icon className="w-3.5 h-3.5" style={{ color: gold ? '#7A5F20' : 'hsl(var(--muted-foreground))' }} />
           </div>
-          <p className="font-heading text-base font-bold" style={{ color: '#FFFFFF' }}>{value}</p>
-          <p className="text-[10px] font-semibold mt-0.5" style={{ color: gold ? '#0B3D2E' : 'hsl(var(--muted-foreground))' }}>{label}</p>
+          <p className="font-heading text-base font-bold text-foreground">{value}</p>
+          <p className="text-[10px] font-semibold mt-0.5" style={{ color: gold ? '#7A5F20' : 'hsl(var(--muted-foreground))' }}>{label}</p>
         </motion.div>
       ))}
     </div>
@@ -269,10 +269,10 @@ function GuestView() {
               style={{ background: 'hsl(var(--card))', borderColor: `${GOLD}22` }}>
               <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2"
                 style={{ background: `${GOLD}25` }}>
-                <Icon className="w-4 h-4" style={{ color: '#E7C873' }} />
+                <Icon className="w-4 h-4" style={{ color: '#7A5F20' }} />
               </div>
-              <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{label}</p>
-              <p className="text-xs mt-0.5 font-bold" style={{ color: '#E7C873' }}>{pts}</p>
+              <p className="text-sm font-semibold text-foreground">{label}</p>
+              <p className="text-xs mt-0.5 font-bold" style={{ color: '#7A5F20' }}>{pts}</p>
             </div>
           ))}
         </div>
@@ -288,8 +288,8 @@ function GuestView() {
               <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"
                 style={{ background: `${GOLD}12` }}>{reward.icon}</div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{reward.title}</p>
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.75)' }}>{reward.description}</p>
+                <p className="text-sm font-semibold text-foreground">{reward.title}</p>
+                <p className="text-xs text-muted-foreground">{reward.description}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <Star className="w-3 h-3" style={{ color: '#E7C873', fill: '#E7C873' }} />
@@ -475,11 +475,11 @@ export default function Rewards() {
               style={{ background: 'hsl(var(--card))', border: `1.5px solid ${GOLD}30` }}
             >
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5"
-                style={{ background: `${GOLD}20` }}>
-                <Icon className="w-4 h-4" style={{ color: '#9A7B2F' }} />
+                style={{ background: `${GOLD}25` }}>
+                <Icon className="w-4 h-4" style={{ color: '#7A5F20' }} />
               </div>
-              <p className="text-sm font-bold mb-0.5" style={{ color: 'hsl(var(--foreground))' }}>{label}</p>
-              <p className="text-xs font-bold" style={{ color: '#9A7B2F' }}>{pts}</p>
+              <p className="text-sm font-bold mb-0.5 text-foreground">{label}</p>
+              <p className="text-xs font-bold" style={{ color: '#7A5F20' }}>{pts}</p>
             </motion.div>
           ))}
         </div>
@@ -516,27 +516,27 @@ export default function Rewards() {
       <div className="mx-4 mt-4 grid grid-cols-2 gap-3">
         <Link to="/shop">
           <div className="rounded-2xl p-4 flex items-center gap-3 active:opacity-80 transition-opacity"
-            style={{ background: `${GREEN_DEEP}15`, border: `1.5px solid ${GREEN_DEEP}25` }}>
+            style={{ background: `${GREEN_DEEP}12`, border: `1.5px solid ${GREEN_DEEP}30` }}>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
               style={{ background: `${GREEN_DEEP}20` }}>
-              <ShoppingBag className="w-4 h-4" style={{ color: '#10B981' }} />
+              <ShoppingBag className="w-4 h-4" style={{ color: '#0B7A50' }} />
             </div>
             <div>
-              <p className="text-xs font-bold" style={{ color: '#FFFFFF' }}>Shop Now</p>
-              <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>10 pts per $1</p>
+              <p className="text-xs font-bold text-foreground">Shop Now</p>
+              <p className="text-[10px] font-semibold text-muted-foreground">10 pts per $1</p>
             </div>
           </div>
         </Link>
         <Link to="/account/settings">
           <div className="rounded-2xl p-4 flex items-center gap-3 active:opacity-80 transition-opacity"
-            style={{ background: `${GOLD}15`, border: `1.5px solid ${GOLD}30` }}>
+            style={{ background: `${GOLD}15`, border: `1.5px solid ${GOLD}40` }}>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: `${GOLD}25` }}>
-              <Cake className="w-4 h-4" style={{ color: '#9A7B2F' }} />
+              style={{ background: `${GOLD}30` }}>
+              <Cake className="w-4 h-4" style={{ color: '#7A5F20' }} />
             </div>
             <div>
-              <p className="text-xs font-bold" style={{ color: '#FFFFFF' }}>Birthday Perk</p>
-              <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>Free juice</p>
+              <p className="text-xs font-bold text-foreground">Birthday Perk</p>
+              <p className="text-[10px] font-semibold text-muted-foreground">Free juice</p>
             </div>
           </div>
         </Link>

@@ -256,9 +256,9 @@ export default function SubscriptionManagement() {
                     </div>
 
                     {/* Current cycle lock notice */}
-                    <div className="bg-primary/5 border border-primary/15 rounded-lg px-3 py-2 mb-3 flex items-start gap-2">
-                      <Info className="w-3 h-3 text-primary mt-0.5 shrink-0" />
-                      <p className="text-[11px] text-primary/80 leading-snug">
+                    <div className="bg-primary/8 border border-primary/20 rounded-lg px-3 py-2 mb-3 flex items-start gap-2">
+                    <Info className="w-3 h-3 text-primary mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-primary leading-snug" style={{ opacity: 0.85 }}>
                         {isPendingCancel
                           ? `Your current paid month is confirmed. Deliveries continue through ${sub.cancel_effective_date ? new Date(sub.cancel_effective_date).toLocaleDateString() : 'end of current cycle'}. Renewal will not process.`
                           : 'Your current month is confirmed. Changes apply to your next billing cycle only.'
@@ -355,8 +355,8 @@ export default function SubscriptionManagement() {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="font-semibold text-sm">{getPlanName(sub.plan_id)}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{getPlan(sub.plan_id)?.bottle_count} bottles · {getPlan(sub.plan_id)?.frequency}</p>
+                      <p className="font-semibold text-sm text-foreground">{getPlanName(sub.plan_id)}</p>
+                      <p className="text-xs text-foreground/60 mt-0.5">{getPlan(sub.plan_id)?.bottle_count} bottles · {getPlan(sub.plan_id)?.frequency}</p>
                     </div>
                     <span className="bg-muted text-muted-foreground text-[9px] font-bold px-2 py-1 rounded-full">Paused</span>
                   </div>
@@ -452,8 +452,8 @@ export default function SubscriptionManagement() {
               <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
                 This will stop your subscription after your current paid month. <strong>You will still receive all of this month's scheduled deliveries.</strong>
               </p>
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4">
-                <p className="text-xs text-amber-800 leading-snug">
+              <div className="bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 mb-4">
+                <p className="text-xs text-amber-900 leading-snug">
                   Monthly subscription payments are non-refundable once processed. Cancelling only stops the <em>next</em> billing cycle.
                 </p>
               </div>

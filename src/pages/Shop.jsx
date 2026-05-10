@@ -131,10 +131,10 @@ export default function Shop() {
           <button
             key={cat.key}
             onClick={() => { setCategory(cat.key); setSearchParams({}); }}
-            className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
               category === cat.key
                 ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground'
+                : 'bg-secondary text-foreground/70 border border-border/60'
             }`}
           >
             {cat.label}

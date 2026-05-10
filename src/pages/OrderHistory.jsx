@@ -78,7 +78,7 @@ export default function OrderHistory() {
         <div className="px-4">
           {activeOrders.length > 0 && (
             <>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Active</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-2">Active</h2>
               <div className="space-y-2 mb-5">
                 {activeOrders.map((order, i) => (
                   <OrderCard key={order.id} order={order} index={i} />
@@ -89,7 +89,7 @@ export default function OrderHistory() {
 
           {completedOrders.length > 0 && (
             <>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Completed</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-2">Completed</h2>
               <div className="space-y-2">
                 {completedOrders.map((order, i) => (
                   <OrderCard key={order.id} order={order} index={i} bagReturn={bagReturns.find(r => r.order_id === order.id)} />

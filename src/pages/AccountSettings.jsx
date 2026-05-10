@@ -76,20 +76,20 @@ export default function AccountSettings() {
       <div className="px-4 space-y-5">
         {/* Profile */}
         <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Profile</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-3">Profile</h2>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">First Name</Label>
+                <Label className="text-xs text-foreground/65 font-medium">First Name</Label>
                 <Input value={form.firstName} onChange={e => setField('firstName', e.target.value)} className="rounded-xl h-11" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Last Name</Label>
+                <Label className="text-xs text-foreground/65 font-medium">Last Name</Label>
                 <Input value={form.lastName} onChange={e => setField('lastName', e.target.value)} className="rounded-xl h-11" />
               </div>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Email</Label>
+              <Label className="text-xs text-foreground/65 font-medium">Email</Label>
               <Input value={user?.email || ''} disabled className="rounded-xl h-11 bg-secondary/30 opacity-70" />
             </div>
             <p className="text-[10px] text-muted-foreground">Email is managed by your account and cannot be changed here.</p>
@@ -98,18 +98,18 @@ export default function AccountSettings() {
 
         {/* Contact */}
         <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Contact</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-3">Contact</h2>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs text-muted-foreground">Phone Number</Label>
+              <Label className="text-xs text-foreground/65 font-medium">Phone Number</Label>
               <Input value={form.phone} onChange={e => setField('phone', e.target.value)} placeholder="(555) 123-4567" className="rounded-xl h-11" />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Default Delivery Address</Label>
+              <Label className="text-xs text-foreground/65 font-medium">Default Delivery Address</Label>
               <AddressAutocomplete value={form.address} onChange={val => setField('address', val)} placeholder="123 Main St, City, State" className="rounded-xl h-11" />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Birthday (for your free annual bottle 🎂)</Label>
+              <Label className="text-xs text-foreground/65 font-medium">Birthday (for your free annual bottle 🎂)</Label>
               <Input type="date" value={form.birthday} onChange={e => setField('birthday', e.target.value)} className="rounded-xl h-11" />
             </div>
           </div>

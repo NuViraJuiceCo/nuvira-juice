@@ -123,7 +123,7 @@ export default function CreditWallet({ dashData: propDashData }) {
               {/* Return Activity */}
               {returns.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Return Activity</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-foreground/55 mb-3">Return Activity</p>
                   <div className="space-y-2">
                     {returns.slice(0, 5).map((r) => (
                       <div key={r.id} className="flex items-center justify-between gap-3 py-2 border-b border-border/30 last:border-0">
@@ -145,7 +145,7 @@ export default function CreditWallet({ dashData: propDashData }) {
               {/* Credit History */}
               {history.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Credit History</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-foreground/55 mb-3">Credit History</p>
                   <div className="space-y-2">
                     {history.slice().reverse().slice(0, 8).map((entry, i) => {
                       const isEarned = entry.type === 'earned';

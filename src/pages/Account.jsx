@@ -87,13 +87,13 @@ export default function Account() {
               {/* Badges row */}
               <div className="flex flex-wrap gap-2 mb-2">
                 {user && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent/20 dark:bg-accent/25 border border-accent/30 dark:border-accent/35 rounded-full">
-                    <Crown className="w-3 h-3 text-accent-foreground dark:text-white" />
-                    <span className="text-[10px] font-bold text-accent-foreground dark:text-white uppercase tracking-wide">Member</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent/25 dark:bg-accent/25 border border-accent/40 dark:border-accent/35 rounded-full">
+                    <Crown className="w-3 h-3 text-orange-800 dark:text-white" />
+                    <span className="text-[10px] font-bold text-orange-800 dark:text-white uppercase tracking-wide">Member</span>
                   </span>
                 )}
                 {!isDashLoading && subscriptions.length > 0 && subscriptions.some(s => s.status === 'active') && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/20 dark:bg-primary/25 border border-primary/30 dark:border-primary/35 rounded-full">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/20 dark:bg-primary/25 border border-primary/40 dark:border-primary/35 rounded-full">
                     <Star className="w-3 h-3 text-primary dark:text-white" />
                     <span className="text-[10px] font-bold text-primary dark:text-white uppercase tracking-wide">Active Ritual</span>
                   </span>
@@ -102,7 +102,7 @@ export default function Account() {
               
               {/* Email - readable in both modes */}
               {user?.email && (
-                <p className="text-xs text-muted-foreground dark:text-muted-foreground/90 truncate max-w-[240px]">{user.email}</p>
+                <p className="text-xs text-foreground/60 dark:text-muted-foreground/90 truncate max-w-[240px]">{user.email}</p>
               )}
             </div>
           </div>
@@ -143,10 +143,10 @@ export default function Account() {
             transition={{ delay: 0.1 }}
             className="grid grid-cols-3 gap-2 mt-3"
           >
-            <div className="rounded-xl border border-border/50 dark:border-primary/25 p-3 text-center bg-card/60 dark:bg-card/40 backdrop-blur-sm">
+            <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Package className="w-3.5 h-3.5 text-primary" />
-                <p className="text-[9px] font-semibold text-muted-foreground dark:text-muted-foreground/80 uppercase">Orders</p>
+                <p className="text-[9px] font-bold text-foreground/55 dark:text-muted-foreground/80 uppercase tracking-wider">Orders</p>
               </div>
               {isDashLoading ? (
                 <div className="h-6 w-8 bg-muted rounded animate-pulse mx-auto" />
@@ -154,10 +154,10 @@ export default function Account() {
                 <p className="font-heading text-lg font-bold text-foreground dark:text-white">{orders.length}</p>
               )}
             </div>
-            <div className="rounded-xl border border-border/50 dark:border-primary/25 p-3 text-center bg-card/60 dark:bg-card/40 backdrop-blur-sm">
+            <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Repeat2 className="w-3.5 h-3.5 text-accent" />
-                <p className="text-[9px] font-semibold text-muted-foreground dark:text-muted-foreground/80 uppercase">Ritual</p>
+                <p className="text-[9px] font-bold text-foreground/55 dark:text-muted-foreground/80 uppercase tracking-wider">Ritual</p>
               </div>
               {isDashLoading ? (
                 <div className="h-6 w-10 bg-muted rounded animate-pulse mx-auto" />
@@ -165,10 +165,10 @@ export default function Account() {
                 <p className="font-heading text-lg font-bold text-foreground dark:text-white">{subscriptions.filter(s => s.status === 'active').length > 0 ? 'Active' : 'None'}</p>
               )}
             </div>
-            <div className="rounded-xl border border-border/50 dark:border-primary/25 p-3 text-center bg-card/60 dark:bg-card/40 backdrop-blur-sm">
+            <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Wallet className="w-3.5 h-3.5 text-primary" />
-                <p className="text-[9px] font-semibold text-muted-foreground dark:text-muted-foreground/80 uppercase">Credits</p>
+                <p className="text-[9px] font-bold text-foreground/55 dark:text-muted-foreground/80 uppercase tracking-wider">Credits</p>
               </div>
               <p className="font-heading text-lg font-bold text-foreground dark:text-white">View</p>
             </div>
@@ -194,8 +194,8 @@ export default function Account() {
                   <Repeat2 className="w-4 h-4 text-primary dark:text-white" />
                 </div>
                 <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Weekly Ritual</p>
-                <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/80 leading-snug">Pause, skip, or subscribe</p>
-                <span className="inline-block mt-2 text-[9px] font-bold text-primary dark:text-white bg-primary/12 dark:bg-primary/20 px-2 py-0.5 rounded-full border border-primary/15 dark:border-primary/25">Flexible</span>
+                <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Pause, skip, or subscribe</p>
+                <span className="inline-block mt-2 text-[9px] font-bold text-primary dark:text-white bg-primary/15 dark:bg-primary/20 px-2 py-0.5 rounded-full border border-primary/30 dark:border-primary/25">Flexible</span>
               </div>
             </motion.div>
           </Link>
@@ -212,8 +212,8 @@ export default function Account() {
                   <Gift className="w-4 h-4 text-[#9A7B2F] dark:text-[#E7C873]" />
                 </div>
                 <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Refer & Earn</p>
-                <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/80 leading-snug">Give $5, get rewarded</p>
-                <span className="inline-block mt-2 text-[9px] font-bold text-[#9A7B2F] dark:text-[#E7C873] bg-[#C9A24A]/12 dark:bg-[#C9A24A]/20 px-2 py-0.5 rounded-full border border-[#C9A24A]/20 dark:border-[#C9A24A]/30">Perk</span>
+                <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Give $5, get rewarded</p>
+                <span className="inline-block mt-2 text-[9px] font-bold text-[#7A5F20] dark:text-[#E7C873] bg-[#C9A24A]/20 dark:bg-[#C9A24A]/20 px-2 py-0.5 rounded-full border border-[#C9A24A]/40 dark:border-[#C9A24A]/30">Perk</span>
               </div>
             </motion.div>
           </Link>
@@ -224,7 +224,7 @@ export default function Account() {
       <div className="px-5 mt-8 mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Leaf className="w-4 h-4 text-primary" />
-          <p className="text-sm font-bold text-foreground dark:text-white">Your Ritual</p>
+          <p className="text-sm font-bold text-foreground">Your Ritual</p>
         </div>
         <div className="space-y-2.5">
           {accountMenuItems.map(({ icon: Icon, label, path, desc }, i) => (
@@ -241,10 +241,10 @@ export default function Account() {
                       <Icon className="w-5 h-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-foreground dark:text-white">{label}</p>
-                      <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/85">{desc}</p>
+                      <p className="text-sm font-bold text-foreground">{label}</p>
+                      <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/85">{desc}</p>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60 group-hover:translate-x-0.5 transition-transform" />
+                    <ChevronRight className="w-4 h-4 text-foreground/35 dark:text-muted-foreground/60 group-hover:translate-x-0.5 transition-transform" />
                   </div>
                 </div>
               </Link>
@@ -256,8 +256,8 @@ export default function Account() {
       {/* Brand Discovery - Editorial Lifestyle Section */}
       <div className="px-5 mb-8">
         <div className="mb-4">
-          <p className="text-xs font-bold text-foreground dark:text-white mb-1">Discover NuVira</p>
-          <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/85">Our story, philosophy & community</p>
+          <p className="text-xs font-bold text-foreground mb-1">Discover NuVira</p>
+          <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/85">Our story, philosophy & community</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
           {brandItems.slice(0, 2).map(({ icon: Icon, label, path, desc }, i) => (
@@ -272,8 +272,8 @@ export default function Account() {
                   <div className="w-9 h-9 rounded-xl bg-primary/18 dark:bg-primary/25 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform border border-primary/20 dark:border-primary/30">
                     <Icon className="w-4 h-4 text-primary" />
                   </div>
-                  <p className="text-xs font-bold text-foreground dark:text-white mb-1">{label}</p>
-                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/85 leading-snug line-clamp-2">{desc}</p>
+                  <p className="text-xs font-bold text-foreground mb-1">{label}</p>
+                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/85 leading-snug line-clamp-2">{desc}</p>
                 </div>
               </Link>
             </motion.div>
@@ -288,12 +288,12 @@ export default function Account() {
               transition={{ delay: 0.45 + i * 0.05 }}
             >
               <Link to={path}>
-                <div className="group relative overflow-hidden rounded-2xl bg-accent/12 dark:bg-accent/18 border border-accent/25 dark:border-accent/35 p-4 active:scale-[0.98] transition-all">
-                  <div className="w-9 h-9 rounded-xl bg-accent/18 dark:bg-accent/25 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform border border-accent/20 dark:border-accent/30">
-                    <Icon className="w-4 h-4 text-accent-foreground dark:text-white" />
+                <div className="group relative overflow-hidden rounded-2xl bg-accent/12 dark:bg-accent/18 border border-accent/30 dark:border-accent/35 p-4 active:scale-[0.98] transition-all">
+                  <div className="w-9 h-9 rounded-xl bg-accent/20 dark:bg-accent/25 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform border border-accent/30 dark:border-accent/30">
+                    <Icon className="w-4 h-4 text-orange-800 dark:text-white" />
                   </div>
-                  <p className="text-xs font-bold text-foreground dark:text-white mb-1">{label}</p>
-                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/85 leading-snug line-clamp-2">{desc}</p>
+                  <p className="text-xs font-bold text-foreground mb-1">{label}</p>
+                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/85 leading-snug line-clamp-2">{desc}</p>
                 </div>
               </Link>
             </motion.div>
@@ -313,8 +313,8 @@ export default function Account() {
                   <PartyPopper className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-foreground dark:text-white">Book Us for an Event</p>
-                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/85">Birthdays, showers & more</p>
+                  <p className="text-xs font-bold text-foreground">Book Us for an Event</p>
+                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/85">Birthdays, showers & more</p>
                 </div>
               </div>
             </div>
@@ -324,7 +324,7 @@ export default function Account() {
 
       {/* Support & Settings - Utility Section (Quieter) */}
       <div className="px-5 mb-8">
-        <p className="text-[10px] font-semibold text-muted-foreground dark:text-muted-foreground/80 uppercase tracking-wider mb-3">Support</p>
+        <p className="text-[10px] font-semibold text-foreground/50 dark:text-muted-foreground/80 uppercase tracking-wider mb-3">Support</p>
         <div className="rounded-2xl border border-border/50 dark:border-primary/20 overflow-hidden bg-card/40 dark:bg-card/30">
           {supportMenuItems.map(({ icon: Icon, label, path, desc }, i) => (
             <motion.div
@@ -339,10 +339,10 @@ export default function Account() {
                     <Icon className="w-4 h-4 text-muted-foreground dark:text-muted-foreground/80" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground dark:text-white">{label}</p>
-                    <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">{desc}</p>
+                    <p className="text-sm font-medium text-foreground">{label}</p>
+                    <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">{desc}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
+                  <ChevronRight className="w-4 h-4 text-foreground/35 dark:text-muted-foreground/60" />
                 </div>
               </Link>
             </motion.div>
@@ -366,8 +366,8 @@ export default function Account() {
                   <Shirt className="w-5 h-5 text-accent-foreground dark:text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">NuVira Merch</p>
-                  <p className="text-[10px] text-muted-foreground dark:text-muted-foreground/85">Gear for the wellness lifestyle</p>
+                  <p className="text-sm font-bold text-foreground mb-0.5">NuVira Merch</p>
+                  <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/85">Gear for the wellness lifestyle</p>
                 </div>
               </div>
               <span className="text-[9px] font-bold bg-accent/25 dark:bg-accent/30 text-accent-foreground dark:text-white px-3 py-1 rounded-full border border-accent/30 dark:border-accent/40">Coming Soon</span>
@@ -381,7 +381,7 @@ export default function Account() {
         <div className="px-5 mb-8">
           <div className="rounded-2xl border border-border/50 dark:border-primary/20 overflow-hidden bg-card/40 dark:bg-card/25">
             <div className="px-4 py-2.5 border-b border-border/50 dark:border-primary/20">
-              <p className="text-[10px] font-semibold text-muted-foreground dark:text-muted-foreground/75 uppercase tracking-wider">Admin Tools</p>
+              <p className="text-[10px] font-semibold text-foreground/50 dark:text-muted-foreground/75 uppercase tracking-wider">Admin Tools</p>
             </div>
             <Link to="/admin/orders">
               <motion.div
@@ -394,8 +394,8 @@ export default function Account() {
                   <ClipboardList className="w-4 h-4 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground dark:text-white">Order Management</p>
-                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Update statuses</p>
+                  <p className="text-sm font-medium text-foreground">Order Management</p>
+                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Update statuses</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
               </motion.div>
@@ -411,8 +411,8 @@ export default function Account() {
                   <Zap className="w-4 h-4 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground dark:text-white">Shopify</p>
-                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Sync & webhooks</p>
+                  <p className="text-sm font-medium text-foreground">Shopify</p>
+                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Sync & webhooks</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
               </motion.div>
@@ -428,8 +428,8 @@ export default function Account() {
                   <ImagePlus className="w-4 h-4 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground dark:text-white">Product Images</p>
-                  <p className="text-[9px] text-muted-foreground dark:text-muted-foreground/75">Manage photos</p>
+                  <p className="text-sm font-medium text-foreground">Product Images</p>
+                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Manage photos</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
               </motion.div>
