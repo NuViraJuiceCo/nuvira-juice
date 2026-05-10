@@ -30,20 +30,24 @@ function bagSummary(r) {
   return parts.join(' + ') || '—';
 }
 
-export default function CreditWallet() {
+// dashData prop: if passed from parent (Account page), skip own fetch to avoid race condition
+export default function CreditWallet({ dashData: propDashData }) {
   const { user } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Use backend function to resolve Apple relay identities server-side
-  const { data: dashData, isLoading: isLoadingCredits } = useQuery({
-    queryKey: ['account-dashboard-credits', user?.email],
+  // Only fetch independently if dashData not passed from parent
+  const { data: ownDashData, isLoading: isLoadingOwn } = useQuery({
+    queryKey: ['account-dashboard', user?.email],
     queryFn: async () => {
       const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
       return res.data || {};
     },
-    enabled: !!user?.email,
+    enabled: !!user?.email && !propDashData,
+    staleTime: 60 * 1000,
   });
 
+  const dashData = propDashData || ownDashData;
+  const isLoadingCredits = !propDashData && isLoadingOwn;
   const creditData = dashData?.credit_record || null;
 
   // Fetch bag returns — use resolved identities from dashboard data

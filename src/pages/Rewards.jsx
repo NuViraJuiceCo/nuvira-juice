@@ -314,14 +314,13 @@ export default function Rewards() {
 
   // Single backend call resolves all Apple relay identities for points/orders/profile
   const { data: dashData } = useQuery({
-    queryKey: ['account-dashboard-rewards', user?.email],
+    queryKey: ['account-dashboard', user?.email],
     queryFn: async () => {
       const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
       return res.data || {};
     },
     enabled: !!user?.email,
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: 60 * 1000,
   });
 
   const pointsData = dashData?.points_record || null;

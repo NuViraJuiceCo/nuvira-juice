@@ -34,15 +34,15 @@ const brandItems = [
 export default function Account() {
   const { user } = useAuth();
   // Single backend call resolves all Apple relay identities server-side (service role)
-  const { data: dashData } = useQuery({
+  // staleTime: 60s — prevents gcTime:0 from wiping resolved data between renders (flicker fix)
+  const { data: dashData, isLoading: isDashLoading } = useQuery({
     queryKey: ['account-dashboard', user?.email],
     queryFn: async () => {
       const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
       return res.data || {};
     },
     enabled: !!user?.email,
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: 60 * 1000,
   });
 
   const userProfile = dashData?.customer_profile || null;
@@ -91,7 +91,7 @@ export default function Account() {
                     <span className="text-[10px] font-bold text-accent-foreground dark:text-white uppercase tracking-wide">Member</span>
                   </span>
                 )}
-                {subscriptions.length > 0 && subscriptions.some(s => s.status === 'active') && (
+                {!isDashLoading && subscriptions.length > 0 && subscriptions.some(s => s.status === 'active') && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/20 dark:bg-primary/25 border border-primary/30 dark:border-primary/35 rounded-full">
                     <Star className="w-3 h-3 text-primary dark:text-white" />
                     <span className="text-[10px] font-bold text-primary dark:text-white uppercase tracking-wide">Active Ritual</span>
@@ -147,14 +147,22 @@ export default function Account() {
                 <Package className="w-3.5 h-3.5 text-primary" />
                 <p className="text-[9px] font-semibold text-muted-foreground dark:text-muted-foreground/80 uppercase">Orders</p>
               </div>
-              <p className="font-heading text-lg font-bold text-foreground dark:text-white">{orders.length}</p>
+              {isDashLoading ? (
+                <div className="h-6 w-8 bg-muted rounded animate-pulse mx-auto" />
+              ) : (
+                <p className="font-heading text-lg font-bold text-foreground dark:text-white">{orders.length}</p>
+              )}
             </div>
             <div className="rounded-xl border border-border/50 dark:border-primary/25 p-3 text-center bg-card/60 dark:bg-card/40 backdrop-blur-sm">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Repeat2 className="w-3.5 h-3.5 text-accent" />
                 <p className="text-[9px] font-semibold text-muted-foreground dark:text-muted-foreground/80 uppercase">Ritual</p>
               </div>
-              <p className="font-heading text-lg font-bold text-foreground dark:text-white">{subscriptions.filter(s => s.status === 'active').length > 0 ? 'Active' : 'None'}</p>
+              {isDashLoading ? (
+                <div className="h-6 w-10 bg-muted rounded animate-pulse mx-auto" />
+              ) : (
+                <p className="font-heading text-lg font-bold text-foreground dark:text-white">{subscriptions.filter(s => s.status === 'active').length > 0 ? 'Active' : 'None'}</p>
+              )}
             </div>
             <div className="rounded-xl border border-border/50 dark:border-primary/25 p-3 text-center bg-card/60 dark:bg-card/40 backdrop-blur-sm">
               <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -168,7 +176,7 @@ export default function Account() {
       </div>
 
       {/* NuVira Wallet / Credits Card - Refined contrast */}
-      {user && <div className="mt-2"><CreditWallet /></div>}
+      {user && <div className="mt-2"><CreditWallet dashData={dashData} /></div>}
 
       {/* Premium Quick Actions - Refined contrast */}
       <div className="px-5 mt-5 mb-6">
