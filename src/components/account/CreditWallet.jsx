@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
-import { resolveCustomerIdentities } from '@/lib/identityResolver';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Leaf, ChevronRight } from 'lucide-react';
@@ -35,36 +34,34 @@ export default function CreditWallet() {
   const { user } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const { data: creditData, isLoading: isLoadingCredits } = useQuery({
-    queryKey: ['nuvira-credits', user?.email],
+  // Use backend function to resolve Apple relay identities server-side
+  const { data: dashData, isLoading: isLoadingCredits } = useQuery({
+    queryKey: ['account-dashboard-credits', user?.email],
     queryFn: async () => {
-      // Resolve all identity emails (handles Apple private relay)
-      const identities = await resolveCustomerIdentities(user);
-      for (const email of identities) {
-        const res = await base44.entities.NuViraCredit.filter({ customer_email: email });
-        if (res[0]) return res[0];
-      }
-      return null;
+      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
+      return res.data || {};
     },
     enabled: !!user?.email,
   });
 
+  const creditData = dashData?.credit_record || null;
+
+  // Fetch bag returns — use resolved identities from dashboard data
   const { data: returns = [], isLoading: isLoadingReturns } = useQuery({
     queryKey: ['bag-returns', user?.email],
     queryFn: async () => {
-      const identities = await resolveCustomerIdentities(user);
+      const identities = dashData?.resolved_identity_emails || [user?.email];
       const allReturns = [];
       for (const email of identities) {
         const res = await base44.entities.BagReturn.filter({ customer_email: email }, '-created_date', 10);
         allReturns.push(...res);
       }
-      // Deduplicate by id and sort by date
       const seen = new Set();
       return allReturns.filter(r => seen.has(r.id) ? false : seen.add(r.id))
         .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
         .slice(0, 10);
     },
-    enabled: !!user?.email,
+    enabled: !!user?.email && !!dashData,
   });
 
   const balance = creditData?.balance || 0;

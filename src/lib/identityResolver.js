@@ -18,49 +18,37 @@ import { base44 } from '@/api/base44Client';
 export async function resolveCustomerIdentities(authUser) {
   if (!authUser?.email) return [];
 
-  const identities = [authUser.email]; // Start with login email
+  const identities = new Set([authUser.email]);
 
   try {
-    // Check if this user has a profile with a different customer_email or contact_email
-    const profiles = await base44.entities.UserProfile.filter(
-      { customer_email: authUser.email }
-    );
-
+    // Forward lookup: profile where customer_email = authEmail
+    const profiles = await base44.entities.UserProfile.filter({ customer_email: authUser.email });
     if (profiles[0]) {
-      const profile = profiles[0];
-      // Add contact_email (real email) if it exists and differs from customer_email
-      if (profile.contact_email && !identities.includes(profile.contact_email)) {
-        identities.push(profile.contact_email);
-      }
-      // If customer_email differs from auth email, add it
-      if (profile.customer_email && !identities.includes(profile.customer_email)) {
-        identities.push(profile.customer_email);
-      }
+      if (profiles[0].contact_email) identities.add(profiles[0].contact_email);
+      if (profiles[0].customer_email) identities.add(profiles[0].customer_email);
     }
 
-    // Also check if a profile exists under contact_email (user signed in with relay but profile under real email)
-    // This handles the case where profile was created under real email first
-    if (identities.length > 0) {
-      for (const altEmail of identities) {
-        if (altEmail !== authUser.email) {
-          const altProfiles = await base44.entities.UserProfile.filter(
-            { customer_email: altEmail }
-          );
-          if (altProfiles[0]) {
-            const altProfile = altProfiles[0];
-            if (altProfile.contact_email && !identities.includes(altProfile.contact_email)) {
-              identities.push(altProfile.contact_email);
-            }
-          }
-        }
+    // Reverse lookup: profile where contact_email = authEmail
+    // This is the critical path for Apple private relay users — their relay email
+    // is stored as contact_email, but their real email is customer_email on the profile.
+    const reverseProfiles = await base44.entities.UserProfile.filter({ contact_email: authUser.email });
+    for (const p of reverseProfiles) {
+      if (p.customer_email) identities.add(p.customer_email);
+      if (p.contact_email) identities.add(p.contact_email);
+    }
+
+    // Secondary forward lookups for any newly added emails
+    for (const email of [...identities]) {
+      if (email !== authUser.email) {
+        const extra = await base44.entities.UserProfile.filter({ customer_email: email });
+        if (extra[0]?.contact_email) identities.add(extra[0].contact_email);
       }
     }
   } catch (err) {
     console.warn(`[identityResolver] Profile lookup failed: ${err.message}`);
-    // Fallback: just use auth email
   }
 
-  return [...new Set(identities)]; // Remove duplicates
+  return [...identities];
 }
 
 /**

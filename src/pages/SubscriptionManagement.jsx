@@ -7,9 +7,6 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { getSubscriptionsForCustomer } from '@/lib/identityResolver';
-
-
 export default function SubscriptionManagement() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -20,9 +17,13 @@ export default function SubscriptionManagement() {
   const [customDate, setCustomDate] = useState('');
   const [activating, setActivating] = useState(false);
 
+  // Use backend function to resolve Apple relay and linked identity subscriptions
   const { data: subscriptions = [], refetch } = useQuery({
     queryKey: ['subscriptions', user?.email],
-    queryFn: () => getSubscriptionsForCustomer(user),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
+      return res.data?.all_subscriptions || [];
+    },
     enabled: !!user?.email,
   });
 

@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
 import { Star, Lock, Gift, ShoppingBag, Users, Cake, ChevronRight, Flame, Sparkles, ArrowRight } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
-import { getPointsForCustomer, getOrdersForCustomer } from '@/lib/identityResolver';
+
 import { Link, useNavigate } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
 import { useCart } from '@/lib/cartContext';
@@ -312,38 +312,21 @@ export default function Rewards() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingReward, setPendingReward] = useState(null);
 
-  const { data: pointsData } = useQuery({
-    queryKey: ['user-points', user?.email],
-    queryFn: () => getPointsForCustomer(user),
+  // Single backend call resolves all Apple relay identities for points/orders/profile
+  const { data: dashData } = useQuery({
+    queryKey: ['account-dashboard-rewards', user?.email],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
+      return res.data || {};
+    },
     enabled: !!user?.email,
     staleTime: 0,
     gcTime: 0,
   });
 
-  // Validate points against actual valid orders to catch reconciliation issues
-  const { data: validOrders = [] } = useQuery({
-    queryKey: ['valid-orders-for-points', user?.email],
-    queryFn: async () => {
-      const allOrders = await getOrdersForCustomer(user);
-      return allOrders.filter(o =>
-        o.payment_status === 'paid' &&
-        o.payment_captured === true &&
-        !['cancelled', 'refunded', 'pending_payment'].includes(o.status) &&
-        !o.is_abandoned_checkout &&
-        !o.is_test_order
-      );
-    },
-    enabled: !!user?.email,
-  });
-
-  const { data: userProfile } = useQuery({
-    queryKey: ['user-profile-rewards', user?.email],
-    queryFn: async () => {
-      const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
-      return profiles[0] || null;
-    },
-    enabled: !!user?.email,
-  });
+  const pointsData = dashData?.points_record || null;
+  const validOrders = dashData?.orders || [];
+  const userProfile = dashData?.customer_profile || null;
 
   const { data: rewardTiers = [] } = useQuery({
     queryKey: ['reward-tiers'],

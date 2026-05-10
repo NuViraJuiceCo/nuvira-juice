@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { resolveCustomerIdentities, getSubscriptionsForCustomer, getOrdersForCustomer } from '@/lib/identityResolver';
+
 import {
   ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package
 } from 'lucide-react';
@@ -33,41 +33,21 @@ const brandItems = [
 
 export default function Account() {
   const { user } = useAuth();
-  const { data: userProfile } = useQuery({
-    queryKey: ['user-profile', user?.email],
+  // Single backend call resolves all Apple relay identities server-side (service role)
+  const { data: dashData } = useQuery({
+    queryKey: ['account-dashboard', user?.email],
     queryFn: async () => {
-      const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
-      return profiles[0] || null;
-    },
-    enabled: !!user?.email,
-  });
-
-  // Fetch only valid paid, non-refunded, non-cancelled, non-test, non-abandoned orders
-  // Uses identity resolver to handle Apple private relay email variants
-  const { data: orders = [] } = useQuery({
-    queryKey: ['my-valid-orders-count', user?.email],
-    queryFn: async () => {
-      const allOrders = await getOrdersForCustomer(user);
-      return allOrders.filter(o =>
-        o.payment_status === 'paid' &&
-        o.payment_captured === true &&
-        !['cancelled', 'refunded', 'pending_payment'].includes(o.status) &&
-        !o.is_abandoned_checkout &&
-        !o.is_test_order
-      );
+      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
+      return res.data || {};
     },
     enabled: !!user?.email,
     staleTime: 0,
     gcTime: 0,
   });
 
-  // Fetch subscriptions for snapshot stats
-  // Uses identity resolver to handle Apple private relay email variants
-  const { data: subscriptions = [] } = useQuery({
-    queryKey: ['my-subscriptions-count', user?.email],
-    queryFn: () => getSubscriptionsForCustomer(user),
-    enabled: !!user?.email,
-  });
+  const userProfile = dashData?.customer_profile || null;
+  const orders = dashData?.orders || [];
+  const subscriptions = dashData?.active_subscriptions || [];
 
   const handleLogout = () => {
     if (user) {
