@@ -107,13 +107,13 @@ export default function OrderTracker() {
     refetchInterval: 3 * 60 * 1000,
   });
 
-  // ── Error state (function call failed entirely) ────────────────────────────
+  // ── Error state (network/5xx failure only — lookup errors now return found:false) ──
   if (isError) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
         <AlertCircle className="w-10 h-10 text-muted-foreground mb-3" />
-        <h2 className="font-heading text-lg font-bold mb-2">Unable to Load Order</h2>
-        <p className="text-sm text-muted-foreground mb-4">There was a problem loading your order. Please try again.</p>
+        <h2 className="font-heading text-lg font-bold mb-2">Connection Problem</h2>
+        <p className="text-sm text-muted-foreground mb-4">We couldn't reach the server. Check your connection and try again.</p>
         <button onClick={() => refetch()} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm mb-3">
           Try Again
         </button>
@@ -180,7 +180,9 @@ export default function OrderTracker() {
         <p className="text-sm text-muted-foreground mb-6 max-w-xs leading-relaxed">
           {isPostCheckoutPending
             ? 'Your order was placed successfully. Details are still syncing — please check back in a moment.'
-            : `We could not find this order. Please contact NuVira Support${displayOrderNum ? ` with order number ${displayOrderNum}` : ''}.`
+            : detail?.reason === 'ORDER_LOOKUP_ERROR'
+              ? 'There was a problem loading this order. Please try again or contact support.'
+              : `This order is no longer available${displayOrderNum ? ` (${displayOrderNum})` : ''}. It may have been removed or was never fully placed. Contact NuVira Support if you believe this is an error.`
           }
         </p>
 

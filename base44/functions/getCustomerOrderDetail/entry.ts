@@ -49,18 +49,25 @@ Deno.serve(async (req) => {
     let order = null;
     let lookupSource = null;
 
-    // Priority 1: by order_id (entity primary key)
-    if (!order && order_id) {
+    // Priority 1: by order_number (most reliable for customer-facing links)
+    if (!order && order_number) {
+      debugPath.push('trying: CA Order by order_number');
+      const rows = await base44.asServiceRole.entities.Order.filter({ order_number }, null, 1).catch(() => []);
+      if (rows[0]) { order = rows[0]; lookupSource = 'ca_order_by_number'; }
+    }
+
+    // Priority 2: by order_id (entity primary key) — only if it looks like a real entity ID (not an order number)
+    if (!order && order_id && !order_id.startsWith('NV-') && !order_id.startsWith('nv-')) {
       debugPath.push('trying: CA Order by order_id');
-      const rows = await base44.asServiceRole.entities.Order.filter({ id: order_id }, null, 1);
+      const rows = await base44.asServiceRole.entities.Order.filter({ id: order_id }, null, 1).catch(() => []);
       if (rows[0]) { order = rows[0]; lookupSource = 'ca_order_by_id'; }
     }
 
-    // Priority 2: by order_number
-    if (!order && order_number) {
-      debugPath.push('trying: CA Order by order_number');
-      const rows = await base44.asServiceRole.entities.Order.filter({ order_number }, null, 1);
-      if (rows[0]) { order = rows[0]; lookupSource = 'ca_order_by_number'; }
+    // If order_id looks like an order number, treat it as one
+    if (!order && order_id && (order_id.startsWith('NV-') || order_id.startsWith('nv-'))) {
+      debugPath.push('trying: CA Order by order_id-as-order_number');
+      const rows = await base44.asServiceRole.entities.Order.filter({ order_number: order_id.toUpperCase() }, null, 1).catch(() => []);
+      if (rows[0]) { order = rows[0]; lookupSource = 'ca_order_by_number_fallback'; }
     }
 
     // Priority 3: by stripe_payment_intent_id
@@ -229,7 +236,17 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('getCustomerOrderDetail error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('getCustomerOrderDetail error:', error.message);
+    // Return structured not-found instead of crashing — frontend isError check triggers for 5xx only
+    return Response.json({
+      found: false,
+      is_recent_checkout_pending: false,
+      reason: 'ORDER_LOOKUP_ERROR',
+      error: error.message,
+      source_record: null,
+      order: null,
+      hub_order: null,
+      fulfillment_tasks: [],
+    }, { status: 200 });
   }
 });

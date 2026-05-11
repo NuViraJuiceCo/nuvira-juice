@@ -47,14 +47,19 @@ export default function OrderHistory() {
     enabled: !!user?.email,
   });
 
-  // Show all real orders — including delivered, refunded, cancelled.
-  // Exclude only: test orders, abandoned checkouts, and truly unpaid/incomplete orders.
-  const validOrders = orders.filter(o =>
-    !o.is_test_order &&
-    !o.is_abandoned_checkout &&
-    // Exclude only unstarted payment sessions with no captured payment
-    !(o.payment_status === 'pending' && !o.payment_captured && o.status === 'order_received' && !o.order_number)
-  );
+  // Show only real paid orders — same logic as backend allOrdersForHistory filter.
+  // Keep: payment_captured=true OR payment_status/financial_status in [paid,refunded]
+  // Hide: test orders, abandoned checkouts, failed uncaptured attempts
+  const validOrders = orders.filter(o => {
+    if (o.is_test_order) return false;
+    if (o.is_abandoned_checkout) return false;
+    const paymentWasCaptured = o.payment_captured === true
+      || o.payment_status === 'paid'
+      || o.payment_status === 'refunded'
+      || o.financial_status === 'paid'
+      || o.financial_status === 'refunded';
+    return paymentWasCaptured;
+  });
   const TERMINAL_STATUSES = ['delivered', 'picked_up', 'cancelled', 'refunded'];
   const activeOrders = validOrders.filter(o => !TERMINAL_STATUSES.includes(o.status));
   const completedOrders = validOrders.filter(o => TERMINAL_STATUSES.includes(o.status));
