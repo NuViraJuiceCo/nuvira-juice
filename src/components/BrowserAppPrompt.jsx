@@ -4,9 +4,11 @@ import { X } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 
 const APP_STORE_URL = 'https://apps.apple.com/us/app/nuvira-juice-co/id6742692918';
-const UNIVERSAL_LINK_BASE = 'https://www.nuvirajuice.com'; // Universal Links use the same domain
+const CUSTOM_SCHEME = 'nuvira'; // Native app must register this URL scheme
 const DISMISSAL_KEY = 'nuvira_app_prompt_dismissed_until';
 const DISMISS_DAYS = 10;
+// How long to wait before assuming the app is not installed and falling back to App Store
+const OPEN_FALLBACK_MS = 1500;
 
 /**
  * Detects if running inside a native app wrapper.
@@ -82,11 +84,40 @@ export default function BrowserAppPrompt({ pageRoute = '' }) {
     try {
       base44.analytics.track({ eventName: 'app_prompt_open_app_clicked', properties: { page: pageRoute } });
     } catch {}
-    // Universal Link — if app installed, iOS opens it; otherwise falls back to website
-    const target = pageRoute
-      ? `${UNIVERSAL_LINK_BASE}${pageRoute}`
-      : UNIVERSAL_LINK_BASE;
-    window.location.href = target;
+
+    // Build custom scheme URL preserving the current route as a path param
+    // e.g. nuvira://open?path=%2Faccount%2Forders
+    const path = pageRoute || '/';
+    const schemeUrl = `${CUSTOM_SCHEME}://open?path=${encodeURIComponent(path)}`;
+
+    // Attempt to open native app via custom URL scheme.
+    // If the app is not installed, iOS will silently fail — after OPEN_FALLBACK_MS
+    // we redirect to the App Store as a fallback.
+    // We track whether the page became hidden (app opened) to cancel the fallback.
+    let fallbackTimer = null;
+
+    const cancelFallback = () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
+
+    // Page visibility / blur fires if the app actually opened and took focus
+    const onVisibilityChange = () => {
+      if (document.hidden) cancelFallback();
+    };
+    const onBlur = () => cancelFallback();
+
+    document.addEventListener('visibilitychange', onVisibilityChange, { once: true });
+    window.addEventListener('blur', onBlur, { once: true });
+
+    fallbackTimer = setTimeout(() => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onBlur);
+      // App didn't open — send to App Store
+      window.location.href = APP_STORE_URL;
+    }, OPEN_FALLBACK_MS);
+
+    // Trigger the custom scheme
+    window.location.href = schemeUrl;
   };
 
   const handleDownload = () => {
