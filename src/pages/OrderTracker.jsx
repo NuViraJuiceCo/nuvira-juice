@@ -7,6 +7,27 @@ import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, RotateCcw } fro
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
+// Parse a date string safely as a LOCAL calendar date (never UTC).
+// "2026-05-09" → May 9 in local time, not May 8 at UTC midnight.
+// Full ISO timestamps (containing 'T') are passed directly to Date() which is correct.
+function parseLocalDate(dateStr) {
+  if (!dateStr) return null;
+  const s = String(dateStr);
+  // Date-only: YYYY-MM-DD — parse as local to avoid off-by-one
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  // Full ISO timestamp — use native parsing (already tz-aware)
+  return new Date(s);
+}
+
+function formatLocalDate(dateStr, fmt = 'EEEE, MMMM d') {
+  const d = parseLocalDate(dateStr);
+  if (!d) return null;
+  return format(d, fmt);
+}
+
 const DELIVERY_STAGES = [
   { key: 'order_received', label: 'Order Received', desc: "We've received your order" },
   { key: 'scheduled_for_juicing', label: 'Scheduled for Juicing', desc: 'Your juice is scheduled for our next fresh batch' },
@@ -233,7 +254,7 @@ export default function OrderTracker() {
           </p>
           {order?.created_date && (
             <p className="text-xs text-muted-foreground mb-4">
-              Order date: {format(new Date(order.created_date), 'MMMM d, yyyy')}
+              Order date: {formatLocalDate(order.created_date, 'MMMM d, yyyy')}
             </p>
           )}
           <div className="space-y-2">
@@ -320,12 +341,13 @@ export default function OrderTracker() {
                 : 'Estimated Pickup'}
             </p>
             <p className="font-heading text-xl font-bold text-white">
-              {currentStatus === 'delivered' && deliveryStatus?.delivered_at
-                ? format(new Date(deliveryStatus.delivered_at), 'EEEE, MMMM d')
+              {currentStatus === 'delivered'
+                // Priority: delivered_at (ISO timestamp) → assigned_delivery_date (date-only) → estimated_delivery_date
+                ? formatLocalDate(deliveryStatus?.delivered_at || order?.assigned_delivery_date || displayOrder.estimated_delivery_date) || 'Delivered'
                 : isOnRoute && etaData?.eta_window
                   ? etaData.eta_window
-                  : displayOrder.estimated_delivery_date
-                    ? format(new Date(displayOrder.estimated_delivery_date), 'EEEE, MMMM d')
+                  : (displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)
+                    ? formatLocalDate(displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)
                     : displayOrder.delivery_window_label
                       ? displayOrder.delivery_window_label
                       : 'Next fresh batch'}

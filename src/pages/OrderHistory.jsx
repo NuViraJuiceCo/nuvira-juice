@@ -8,6 +8,17 @@ import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf } from 'lucide-react'
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+
+// Parse date-only strings (YYYY-MM-DD) as LOCAL calendar dates to avoid UTC off-by-one.
+function parseLocalDate(dateStr) {
+  if (!dateStr) return null;
+  const s = String(dateStr);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  return new Date(s);
+}
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
 
@@ -172,7 +183,7 @@ function OrderCard({ order, index, bagReturn }) {
             <div>
               <p className="text-sm font-medium">#{order.order_number} • {getDisplayName()}</p>
               <p className="text-[10px] text-muted-foreground">
-                {order.created_date ? format(new Date(order.created_date), 'MMM d, yyyy') : ''}
+                {order.created_date ? format(parseLocalDate(order.created_date), 'MMM d, yyyy') : ''}
               </p>
             </div>
             <div className="flex items-center gap-1.5">
