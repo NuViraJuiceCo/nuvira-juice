@@ -8,6 +8,7 @@ import {
   ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package
 } from 'lucide-react';
 import CreditWallet from '@/components/account/CreditWallet';
+import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import ProfileAvatar from '@/components/account/ProfileAvatar';
 import { motion } from 'framer-motion';
 
@@ -60,6 +61,7 @@ export default function Account() {
 
   return (
     <div className="pb-6">
+      <BrowserAppPrompt pageRoute="/account" />
       {/* Premium Member Dashboard Header */}
       <div className="relative overflow-hidden px-5 pt-10 pb-8 mb-4" style={{ 
         paddingTop: 'max(2.5rem, env(safe-area-inset-top))',

@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, RotateCcw } from 'lucide-react';
+import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
@@ -318,6 +319,7 @@ export default function OrderTracker() {
 
   return (
     <div className="pb-8 min-h-screen bg-background">
+      <BrowserAppPrompt pageRoute={`/order-tracker/${displayNum || ''}`} />
       {/* Header */}
       <div className="bg-primary px-4 pt-10 pb-6">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4">

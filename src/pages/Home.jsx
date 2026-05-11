@@ -1,6 +1,7 @@
 import React from 'react';
 import SEO, { LOCAL_BUSINESS_SCHEMA } from '@/components/SEO';
 import PullToRefresh from '@/components/PullToRefresh';
+import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import { motion } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
@@ -103,6 +104,8 @@ export default function Home() {
   };
 
   return (
+    <>
+    <BrowserAppPrompt pageRoute="/" />
     <PullToRefresh onRefresh={handleRefresh}>
     <div className="pb-4">
       <SEO
@@ -220,5 +223,6 @@ export default function Home() {
       </footer>
     </div>
     </PullToRefresh>
+    </>
   );
 }

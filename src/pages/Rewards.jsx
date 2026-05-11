@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import SEO from '@/components/SEO';
+import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -391,6 +392,7 @@ export default function Rewards() {
 
   return (
     <div className="pb-32" style={{ background: 'hsl(var(--background))' }}>
+      <BrowserAppPrompt pageRoute="/rewards" />
       <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles." />
 
       {/* Page title with safe-area padding */}
