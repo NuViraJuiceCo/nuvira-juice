@@ -14,6 +14,7 @@ import { motion } from 'framer-motion';
 const statusLabels = {
   order_received: 'Received',
   scheduled_for_juicing: 'Scheduled',
+  scheduled_for_production: 'Scheduled',
   in_production: 'In Production',
   bottled_packed: 'Packed',
   out_for_delivery: 'On the Way',
@@ -21,6 +22,9 @@ const statusLabels = {
   delivered: 'Delivered',
   ready_for_pickup: 'Ready',
   picked_up: 'Picked Up',
+  cancelled: 'Cancelled',
+  refunded: 'Refunded',
+  failed: 'Failed',
 };
 
 export default function OrderHistory() {
@@ -43,16 +47,17 @@ export default function OrderHistory() {
     enabled: !!user?.email,
   });
 
-  // Filter to valid paid, non-refunded, non-abandoned, non-test orders
-  const validOrders = orders.filter(o => 
-    o.payment_status === 'paid' &&
-    o.payment_captured === true &&
-    !['cancelled', 'refunded', 'pending_payment'].includes(o.status) &&
+  // Show all real orders — including delivered, refunded, cancelled.
+  // Exclude only: test orders, abandoned checkouts, and truly unpaid/incomplete orders.
+  const validOrders = orders.filter(o =>
+    !o.is_test_order &&
     !o.is_abandoned_checkout &&
-    !o.is_test_order
+    // Exclude only unstarted payment sessions with no captured payment
+    !(o.payment_status === 'pending' && !o.payment_captured && o.status === 'order_received' && !o.order_number)
   );
-  const activeOrders = validOrders.filter(o => !['delivered', 'picked_up'].includes(o.status));
-  const completedOrders = validOrders.filter(o => ['delivered', 'picked_up'].includes(o.status));
+  const TERMINAL_STATUSES = ['delivered', 'picked_up', 'cancelled', 'refunded'];
+  const activeOrders = validOrders.filter(o => !TERMINAL_STATUSES.includes(o.status));
+  const completedOrders = validOrders.filter(o => TERMINAL_STATUSES.includes(o.status));
 
   return (
     <PullToRefresh onRefresh={refetch}>
@@ -113,7 +118,9 @@ const returnStatusColor = {
 };
 
 function OrderCard({ order, index, bagReturn }) {
-  const isActive = !['delivered', 'picked_up'].includes(order.status);
+  const TERMINAL = ['delivered', 'picked_up', 'cancelled', 'refunded', 'failed'];
+  const isActive = !TERMINAL.includes(order.status);
+  const isCancelled = ['cancelled', 'refunded', 'failed'].includes(order.status);
   const { addItem } = useCart();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -165,7 +172,9 @@ function OrderCard({ order, index, bagReturn }) {
             </div>
             <div className="flex items-center gap-1.5">
               <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 ${
-                isActive ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
+                isActive ? 'bg-primary/10 text-primary'
+                : isCancelled ? 'bg-destructive/10 text-destructive'
+                : 'bg-secondary text-muted-foreground'
               }`}>
                 {statusLabels[order.status] || order.status}
               </Badge>
