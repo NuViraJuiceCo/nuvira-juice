@@ -56,7 +56,7 @@ export default function OrderTracker() {
 
   const hasLookupKey = !!(lookupPayload.order_number || lookupPayload.order_id || lookupPayload.stripe_checkout_session_id || lookupPayload.stripe_payment_intent_id);
 
-  const { data: detail, isLoading, refetch } = useQuery({
+  const { data: detail, isLoading, isError, refetch } = useQuery({
     queryKey: ['order-detail', rawParam, sessionId, paymentIntentId, user?.email],
     queryFn: async () => {
       const res = await base44.functions.invoke('getCustomerOrderDetail', lookupPayload);
@@ -69,7 +69,7 @@ export default function OrderTracker() {
       if (source === 'post_checkout' && data && !data.found) return 5000;
       return false;
     },
-    retry: 2,
+    retry: 1,
   });
 
   const { data: userProfile } = useQuery({
@@ -107,6 +107,23 @@ export default function OrderTracker() {
     refetchInterval: 3 * 60 * 1000,
   });
 
+  // ── Error state (function call failed entirely) ────────────────────────────
+  if (isError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <AlertCircle className="w-10 h-10 text-muted-foreground mb-3" />
+        <h2 className="font-heading text-lg font-bold mb-2">Unable to Load Order</h2>
+        <p className="text-sm text-muted-foreground mb-4">There was a problem loading your order. Please try again.</p>
+        <button onClick={() => refetch()} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm mb-3">
+          Try Again
+        </button>
+        <button onClick={() => navigate('/account/orders')} className="px-6 py-2.5 bg-secondary text-foreground rounded-xl font-medium text-sm">
+          Back to Orders
+        </button>
+      </div>
+    );
+  }
+
   // ── Loading state ──────────────────────────────────────────────────────────
   if (isLoading || (!detail && user?.email && hasLookupKey)) {
     return (
@@ -141,8 +158,12 @@ export default function OrderTracker() {
 
   // ── Order not found ────────────────────────────────────────────────────────
   if (detail && !detail.found) {
-    // ONLY show "Finalizing Your Order" for post_checkout with recent Stripe session
-    const isPostCheckoutPending = source === 'post_checkout' && detail.is_recent_checkout_pending;
+    // HARD GUARD: Finalizing is ONLY allowed when ALL three are true:
+    // 1. source is explicitly 'post_checkout'
+    // 2. a Stripe session or payment intent was provided
+    // 3. backend confirmed is_recent_checkout_pending
+    const hasStripeIdentifier = !!(sessionId || paymentIntentId || rawParam?.startsWith('cs_') || rawParam?.startsWith('pi_'));
+    const isPostCheckoutPending = source === 'post_checkout' && hasStripeIdentifier && detail.is_recent_checkout_pending === true;
     const displayOrderNum = orderNumberParam || rawParam;
 
     return (
