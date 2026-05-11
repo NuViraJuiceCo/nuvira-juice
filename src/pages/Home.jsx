@@ -24,7 +24,7 @@ import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 
 
-const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
+const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/7b701192b_IMG_2609.png";
 
 export default function Home() {
   const { user } = useAuth();
