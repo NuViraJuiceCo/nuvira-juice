@@ -125,7 +125,7 @@ export default function BrowserAppPrompt({ pageRoute = '' }) {
             <div className="flex items-center gap-3 px-4 pt-4 pb-4 pr-12">
               {/* App icon */}
               <img
-                src="https://media.base44.com/images/public/69d48d0c39891f7945481152/7b701192b_IMG_2609.png"
+                src="https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png"
                 alt="NuVira"
                 className="w-12 h-12 rounded-2xl shrink-0 border border-white/20"
               />

@@ -456,7 +456,7 @@ export default function Account() {
       {/* Brand Footer - Minimal & Elegant */}
       <div className="text-center px-5 mt-10 pb-8">
         <img
-          src="https://media.base44.com/images/public/69d48d0c39891f7945481152/7b701192b_IMG_2609.png"
+          src="https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png"
           alt="NuVira Juice Company"
           className="h-4 mx-auto mb-2 opacity-80 dark:opacity-75"
         />
