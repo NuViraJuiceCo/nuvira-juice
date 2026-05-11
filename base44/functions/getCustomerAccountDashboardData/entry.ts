@@ -114,7 +114,9 @@ Deno.serve(async (req) => {
         100
       );
       for (const order of orders) {
-        const dedupeKey = order.stripe_payment_intent_id || order.id;
+        // Dedupe by order_number first (most reliable), then PI, then entity id
+        // Using order_number prevents hiding a refunded order that shares a PI with another attempt
+        const dedupeKey = order.order_number || order.stripe_payment_intent_id || order.id;
         if (!seenOrderPIs.has(dedupeKey)) {
           seenOrderPIs.add(dedupeKey);
           allOrders.push(order);
@@ -122,14 +124,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Valid paid orders (for count display)
+    // Valid paid orders (for count display — excludes test/abandoned/unpaid)
     const validOrders = allOrders.filter(o =>
-      o.payment_status === 'paid' &&
-      o.payment_captured === true &&
-      !['cancelled', 'refunded', 'pending_payment'].includes(o.status) &&
+      (o.payment_status === 'paid' || o.payment_status === 'refunded' || o.payment_captured === true || o.financial_status === 'paid' || o.financial_status === 'refunded') &&
       !o.is_abandoned_checkout &&
       !o.is_test_order
     );
+
+    // All orders to show in Order History: everything real except test/abandoned/never-paid
+    // Keep: paid, refunded, cancelled-after-payment, delivered, any status where payment was captured
+    // Hide: test orders, abandoned checkouts, orders where payment was never captured (failed/pending with no capture)
+    const allOrdersForHistory = allOrders.filter(o => {
+      if (o.is_test_order) return false;
+      if (o.is_abandoned_checkout) return false;
+      // Never show orders where payment was never captured at all
+      const paymentWasCaptured = o.payment_captured === true
+        || o.payment_status === 'paid'
+        || o.payment_status === 'refunded'
+        || o.financial_status === 'paid'
+        || o.financial_status === 'refunded';
+      if (!paymentWasCaptured) return false;
+      return true;
+    });
+
+    console.log(`[getCustomerAccountDashboardData] allOrders=${allOrders.length} validOrders=${validOrders.length} allOrdersForHistory=${allOrdersForHistory.length}`);
+    console.log(`[getCustomerAccountDashboardData] order details: ${JSON.stringify(allOrders.map(o => ({ num: o.order_number, id: o.id, status: o.status, payment_status: o.payment_status, captured: o.payment_captured, pi: o.stripe_payment_intent_id?.slice(0,12) })))}`);
 
     // ── STEP 5: Load credits across all identities ────────────────────────────
     let creditRecord = null;
@@ -176,7 +195,7 @@ Deno.serve(async (req) => {
 
       // Orders
       orders: validOrders,
-      all_orders_raw: allOrders,
+      all_orders_raw: allOrdersForHistory,
       order_count: validOrders.length,
 
       // Credits
