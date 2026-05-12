@@ -3,6 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 
+// TODO: Re-enable after nuvira:// URL scheme is registered in Xcode, tested on a real iPhone,
+// and deep links to /rewards, /account, /account/subscriptions, /order-tracker/:id are verified.
+const ENABLE_BROWSER_APP_PROMPT = false;
+
 const APP_STORE_URL = 'https://apps.apple.com/us/app/nuvira-juice-co/id6742692918';
 const CUSTOM_SCHEME = 'nuvira'; // Native app must register this URL scheme
 const DISMISSAL_KEY = 'nuvira_app_prompt_dismissed_until';
@@ -60,6 +64,8 @@ export default function BrowserAppPrompt({ pageRoute = '' }) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    // Feature flag — disabled until native deep linking is ready
+    if (!ENABLE_BROWSER_APP_PROMPT) return;
     // Only show on iOS Safari browser — never inside native wrapper
     if (isNativeApp()) return;
     if (!isIOS()) return;
