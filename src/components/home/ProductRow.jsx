@@ -27,11 +27,10 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
          )}
        </div>
        <div
-           className="flex gap-4 overflow-x-auto pb-3 no-scrollbar -mx-5 px-5"
+           className="flex gap-4 overflow-x-auto overflow-y-visible pb-3 no-scrollbar px-5"
            style={{
              WebkitOverflowScrolling: 'touch',
              overscrollBehaviorX: 'contain',
-             touchAction: 'auto',
            }}
          >
          {products.map((product, i) => (

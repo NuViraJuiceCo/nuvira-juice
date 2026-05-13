@@ -496,7 +496,7 @@ export default function Rewards() {
         </div>
         <div
           ref={rewardsContainerRef}
-          className="flex gap-4 overflow-x-auto overflow-y-hidden px-5 pb-2"
+          className="flex gap-4 overflow-x-auto overflow-y-visible px-5 pb-2"
           style={{
             scrollbarWidth: 'none',
             scrollPaddingLeft: '1.25rem',

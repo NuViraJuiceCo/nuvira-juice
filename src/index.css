@@ -104,6 +104,7 @@
 
 /* Native mobile feel */
 html, body {
+  overflow-x: hidden;
   overscroll-behavior-y: none;
   overscroll-behavior-x: none;
   -webkit-overflow-scrolling: touch;
