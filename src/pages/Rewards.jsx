@@ -175,7 +175,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.07 }}
-      className="shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden"
+      className="flex-shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden"
       style={{ touchAction: 'pan-y',
         border: unlocked ? `1.5px solid rgba(201,162,74,0.65)` : '1.5px solid hsl(var(--border))',
         background: unlocked

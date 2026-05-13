@@ -135,8 +135,8 @@ body {
   scroll-padding-left: 1.25rem;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  /* pan-y allows vertical page scroll to pass through even when touch starts on carousel */
-  touch-action: pan-y;
+  /* Allow horizontal pan (swipe) while still allowing page vertical scroll */
+  touch-action: pan-y pinch-zoom;
   transform: translateZ(0);
   will-change: scroll-position;
 }
@@ -208,8 +208,7 @@ html {
   overflow-x: hidden;
 }
 
-/* Prevent horizontal scroll bleed on page root */
+/* Prevent horizontal scroll bleed on page root — allow children to have nested horizontal scroll */
 #root {
-  overflow-x: hidden;
   position: relative;
 }
