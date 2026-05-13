@@ -310,11 +310,11 @@ export default function Cart() {
           </div>
           <div className="flex justify-between text-xs text-foreground/60 mb-2">
             <span>Delivery</span>
-            <span>{effectiveDeliveryFee === 0 ? <span className="text-primary font-semibold">Free</span> : `$${effectiveDeliveryFee.toFixed(2)}`}</span>
+            <span>{effectiveDeliveryFee === 0 ? <span className="text-primary font-semibold">Free</span> : <span className="text-foreground/60">from $3.99 <span className="text-[10px]">(based on address)</span></span>}</span>
           </div>
           <div className="flex justify-between text-sm font-semibold mb-3">
             <span>Total</span>
-            <span>${(subtotal + effectiveDeliveryFee).toFixed(2)}</span>
+            <span>${subtotal.toFixed(2)}+</span>
           </div>
           <Button
             onClick={() => {
