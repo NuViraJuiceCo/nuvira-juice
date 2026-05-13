@@ -31,21 +31,18 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
            style={{
              WebkitOverflowScrolling: 'touch',
              overscrollBehaviorX: 'contain',
-             touchAction: 'pan-x',
-             pointerEvents: 'auto',
-             cursor: 'grab',
+             touchAction: 'auto',
            }}
          >
-        {products.map((product, i) => (
-          <motion.div
-            key={product.id}
-            initial={{ opacity: 0, x: 20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: i * 0.07, duration: 0.4 }}
-            style={{ touchAction: 'pan-x', pointerEvents: 'none' }}
-            className="shrink-0 w-40"
-          >
+         {products.map((product, i) => (
+           <motion.div
+             key={product.id}
+             initial={{ opacity: 0, x: 20 }}
+             whileInView={{ opacity: 1, x: 0 }}
+             viewport={{ once: true }}
+             transition={{ delay: i * 0.07, duration: 0.4 }}
+             className="shrink-0 w-40"
+           >
             <ProductCard product={product} compact />
           </motion.div>
         ))}
