@@ -64,8 +64,9 @@ export default function NuViraHighlights() {
               viewport={{ once: true }}
               transition={{ delay: i * 0.08 }}
               className="shrink-0 w-[280px] rounded-2xl p-4 border border-border/50 shadow-sm"
-              style={{ touchAction: 'pan-x', pointerEvents: 'auto' }}
               style={{
+                touchAction: 'pan-x',
+                pointerEvents: 'auto',
                 background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)`,
               }}
             >
