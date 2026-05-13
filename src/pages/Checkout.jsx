@@ -19,6 +19,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
+import Zone3RouteReviewPanel from '@/components/checkout/Zone3RouteReviewPanel';
 
 
 export default function Checkout() {
@@ -763,6 +764,25 @@ export default function Checkout() {
         </div>
       </div>
 
+      {/* Zone 3 Route Review — shown instead of normal checkout when address is in zone_3 */}
+      {zoneEligibility?.zone_type === 'route_review' && zoneEligibility?.checkout_allowed && !clientSecret && (
+        <Zone3RouteReviewPanel
+          zoneEligibility={zoneEligibility}
+          items={items}
+          subtotal={subtotal}
+          address={address}
+          phone={phone}
+          customerEmail={user?.email}
+          customerName={(user?.full_name || '').trim() || ((userProfile?.first_name || '') + ' ' + (userProfile?.last_name || '')).trim()}
+          onSuccess={({ requestNumber, darId, paymentIntentId, total: holdTotal }) => {
+            navigate('/zone3-review-submitted', {
+              state: { requestNumber, darId, paymentIntentId, total: holdTotal, address: [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ') },
+            });
+          }}
+          onCancel={() => navigate('/cart')}
+        />
+      )}
+
       {/* Payment Step — embedded Stripe PaymentElement after form is submitted */}
       {clientSecret ? (
         <div className="px-4">
@@ -793,15 +813,17 @@ export default function Checkout() {
           </button>
         </div>
       ) : (
-        /* Place Order — shown until PaymentIntent is created */
+        /* Place Order — shown until PaymentIntent is created (not shown for Zone 3 — handled by Zone3RouteReviewPanel) */
         <div className="px-4">
           {(() => {
             const zone = zoneEligibility;
             const needsMinimum = zone?.reason_code === 'MINIMUM_ORDER_NOT_MET';
             const isZone3 = zone?.zone_type === 'route_review';
             const isWaitlist = zone?.zone_type === 'waitlist_only';
+            // Zone 3 is handled by Zone3RouteReviewPanel above — don't show normal button
+            if (isZone3 && zone?.checkout_allowed) return null;
             const isBlocked = fulfillmentType === 'delivery' && (
-              !addressValidated || needsMinimum || isZone3 || isWaitlist
+              !addressValidated || needsMinimum || isWaitlist
             );
             let label = `Review Payment · $${total.toFixed(2)}`;
             if (isSubmitting) label = 'Processing...';

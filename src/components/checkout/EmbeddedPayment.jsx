@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 
 // Inner form — must be inside <Elements>
-function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus }) {
+function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus, confirmLabel }) {
   const stripe   = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
@@ -38,7 +38,7 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
       setErrorMsg(error.message || 'Payment failed. Please try again.');
       setIsSubmitting(false);
       onError(error.message);
-    } else if (paymentIntent?.status === 'succeeded') {
+    } else if (paymentIntent?.status === 'succeeded' || paymentIntent?.status === 'requires_capture') {
       onSuccess(paymentIntent.id);
     } else {
       setErrorMsg('Payment not completed. Please try again.');
@@ -63,7 +63,8 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
       setErrorMsg(error.message || 'Payment failed. Please try again.');
       setIsSubmitting(false);
       onError(error.message);
-    } else if (paymentIntent?.status === 'succeeded') {
+    } else if (paymentIntent?.status === 'succeeded' || paymentIntent?.status === 'requires_capture') {
+      // requires_capture = Zone 3 manual hold authorized successfully
       onSuccess(paymentIntent.id);
     } else {
       setErrorMsg('Payment not completed. Please try again.');
@@ -154,7 +155,7 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
           disabled={!stripe || isSubmitting}
           className="w-full h-12 rounded-xl font-semibold text-sm"
         >
-          {isSubmitting ? 'Processing Payment…' : `Pay $${total.toFixed(2)}`}
+          {isSubmitting ? 'Processing…' : (confirmLabel || `Pay $${total.toFixed(2)}`)}
         </Button>
 
         <p className="text-center text-[10px] text-muted-foreground">
@@ -181,7 +182,7 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
  *   isSubmitting: boolean
  *   setIsSubmitting: (v: boolean) => void
  */
-export default function EmbeddedPayment({ clientSecret, publishableKey, total, onSuccess, onError, isSubmitting, setIsSubmitting }) {
+export default function EmbeddedPayment({ clientSecret, publishableKey, total, onSuccess, onError, isSubmitting, setIsSubmitting, confirmLabel }) {
   const stripePromise = useMemo(() => publishableKey ? loadStripe(publishableKey) : null, [publishableKey]);
   const [walletStatus, setWalletStatus] = useState(null); // { mounted: bool, methods: { applePay, googlePay, link, ... } }
 
@@ -237,6 +238,7 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
           isSubmitting={isSubmitting}
           setIsSubmitting={setIsSubmitting}
           onWalletStatus={setWalletStatus}
+          confirmLabel={confirmLabel}
         />
       </Elements>
     </div>

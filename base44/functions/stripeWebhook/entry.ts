@@ -662,6 +662,103 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── ZONE 3: payment_intent.amount_capturable_updated ─────────────────────
+    // Fires when Zone 3 manual capture PI becomes capturable (card authorized).
+    if (event.type === 'payment_intent.amount_capturable_updated') {
+      const pi = event.data.object;
+      const meta = pi.metadata || {};
+
+      if (meta.flow_type !== 'zone3_route_review') {
+        return Response.json({ received: true });
+      }
+
+      const darId = meta.dar_id;
+      if (!darId) {
+        console.error(`[Zone3 webhook] No dar_id in PI ${pi.id} metadata`);
+        return Response.json({ received: true });
+      }
+
+      const dars = await base44.asServiceRole.entities.DeliveryApprovalRequest.filter({ id: darId });
+      const dar = dars[0];
+      if (!dar) {
+        console.error(`[Zone3 webhook] No DAR found for id=${darId}`);
+        return Response.json({ received: true });
+      }
+
+      // Idempotent: already in pending_review
+      if (dar.status === 'pending_review') {
+        console.log(`[Zone3 webhook] DAR ${darId} already pending_review, skipping`);
+        return Response.json({ received: true });
+      }
+
+      const amountCapturable = pi.amount_capturable / 100;
+      // authorization_expires_at: Stripe holds uncaptured PIs for 7 days
+      const authExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      await base44.asServiceRole.entities.DeliveryApprovalRequest.update(darId, {
+        status: 'pending_review',
+        stripe_authorization_status: 'requires_capture',
+        amount_capturable: amountCapturable,
+        authorization_expires_at: authExpiresAt,
+        audit_trail: [...(dar.audit_trail || []), {
+          action: 'authorization_succeeded',
+          performed_by: 'stripe_webhook',
+          timestamp: new Date().toISOString(),
+          note: `PI ${pi.id} authorized. Amount capturable: $${amountCapturable}. Expires: ${authExpiresAt}`,
+        }],
+      });
+
+      console.log(`[Zone3 webhook] DAR ${darId} set to pending_review. PI=${pi.id}, capturable=$${amountCapturable}`);
+
+      // Notify admins
+      base44.asServiceRole.functions.invoke('sendCustomerNotification', {
+        customer_email: 'info@nuvirajuice.com',
+        type: 'general',
+        title: '🗺️ Zone 3 Route Review Pending',
+        message: `New Zone 3 delivery request from ${dar.customer_name || dar.customer_email} (${dar.delivery_address}). Request: ${dar.request_number}. Distance: ${dar.estimated_distance_miles} miles. Auth hold: $${amountCapturable}. Review and approve/deny in Admin → Orders.`,
+        deep_link: '/admin/orders',
+        idempotency_key: `zone3_admin_notify_${darId}`,
+      }).catch(() => {});
+
+      // Notify customer
+      base44.asServiceRole.functions.invoke('sendCustomerNotification', {
+        customer_email: dar.customer_email,
+        type: 'general',
+        title: 'Route Review Submitted ✅',
+        message: `Your delivery request to ${dar.delivery_address} has been submitted for review. We'll respond within 24–48 hours. No charge will be made until approved. Request #${dar.request_number}.`,
+        deep_link: '/account/orders',
+        idempotency_key: `zone3_customer_submitted_${darId}`,
+      }).catch(() => {});
+
+      return Response.json({ received: true });
+    }
+
+    // ── ZONE 3: payment_intent.canceled ──────────────────────────────────────
+    // Also handled in the existing payment_intent.canceled block below, but
+    // we add zone3-specific DAR update here before the general handler.
+    if (event.type === 'payment_intent.canceled') {
+      const pi = event.data.object;
+      const meta = pi.metadata || {};
+      if (meta.flow_type === 'zone3_route_review' && meta.dar_id) {
+        const dars = await base44.asServiceRole.entities.DeliveryApprovalRequest.filter({ id: meta.dar_id });
+        const dar = dars[0];
+        if (dar && !['denied', 'expired', 'captured'].includes(dar.status)) {
+          await base44.asServiceRole.entities.DeliveryApprovalRequest.update(meta.dar_id, {
+            status: 'expired',
+            stripe_authorization_status: 'canceled',
+            audit_trail: [...(dar.audit_trail || []), {
+              action: 'pi_canceled_by_stripe',
+              performed_by: 'stripe_webhook',
+              timestamp: new Date().toISOString(),
+              note: `PI ${pi.id} canceled by Stripe. DAR auto-expired.`,
+            }],
+          });
+          console.log(`[Zone3 webhook] DAR ${meta.dar_id} auto-expired via PI cancel`);
+        }
+        return Response.json({ received: true });
+      }
+    }
+
     // ── EMBEDDED CHECKOUT: payment_intent.succeeded ──────────────────────────
     // Triggered when the in-app PaymentElement flow completes successfully.
     // Finds the pre-created pending Order and finalizes it.

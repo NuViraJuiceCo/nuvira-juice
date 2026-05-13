@@ -45,6 +45,7 @@ import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
 import LowercaseRedirect from '@/components/LowercaseRedirect';
 import Home from '@/pages/Home';
+import Zone3ReviewSubmitted from '@/pages/Zone3ReviewSubmitted';
 import Shop from '@/pages/Shop';
 import Cart from '@/pages/Cart';
 import ProgramDetail from '@/pages/ProgramDetail';
@@ -162,6 +163,7 @@ const AuthenticatedApp = () => {
         <Route path="/order-incomplete" element={<OrderIncomplete />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
         <Route path="/account-setup" element={<AccountSetup />} />
+        <Route path="/zone3-review-submitted" element={<Zone3ReviewSubmitted />} />
         {/* Redirect old/invalid routes to correct pages */}
         <Route path="/event" element={<Navigate to="/events" replace />} />
         <Route path="/event/*" element={<Navigate to="/events" replace />} />
