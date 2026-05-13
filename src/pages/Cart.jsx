@@ -261,9 +261,6 @@ export default function Cart() {
           </div>
         )}
 
-        {/* Health Advisory */}
-        <HealthAdvisory variant="compact" />
-
         {/* Cart Items Section */}
         <div className="pt-2">
           <p className="text-xs font-semibold uppercase tracking-widest text-foreground/50 mb-3 px-0.5">Items</p>
@@ -366,6 +363,10 @@ export default function Cart() {
               <span>Total</span>
               <span>${subtotal.toFixed(2)}+</span>
             </div>
+          </div>
+          {/* Health Advisory Note */}
+          <div className="text-[10px] text-foreground/60 leading-relaxed py-2 border-t border-border/20 pt-2">
+            If pregnant, nursing, immunocompromised, elderly, purchasing for a child, or managing a medical condition, consult your healthcare provider.
           </div>
           <Button
             onClick={() => {

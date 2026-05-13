@@ -797,7 +797,7 @@ export default function Checkout() {
 
       {/* Payment Step — embedded Stripe PaymentElement after form is submitted */}
       {clientSecret ? (
-        <div className="px-4">
+        <div className="px-4 md:px-6">
           <div className="mb-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Payment</h3>
             <p className="text-[11px] text-muted-foreground">Secure checkout — card, Link, and wallet payments accepted where available.</p>
@@ -825,10 +825,10 @@ export default function Checkout() {
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 px-4 md:px-6">
           {/* Health Advisory Checkbox */}
           {!clientSecret && (
-            <div className="px-4 mb-4 p-4 rounded-2xl border" style={{ background: 'rgba(11, 61, 46, 0.06)', borderColor: 'rgba(218, 165, 32, 0.25)' }}>
+            <div className="w-full rounded-2xl border p-5" style={{ background: 'rgba(11, 61, 46, 0.06)', borderColor: 'rgba(218, 165, 32, 0.25)' }}>
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -844,7 +844,7 @@ export default function Checkout() {
           )}
 
           {/* Place Order — shown until PaymentIntent is created (not shown for Zone 3 — handled by Zone3RouteReviewPanel) */}
-          <div className="px-4">
+          <div>
             {(() => {
             const zone = zoneEligibility;
             const needsMinimum = zone?.reason_code === 'MINIMUM_ORDER_NOT_MET';
