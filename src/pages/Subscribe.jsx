@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 import SubscriptionPaymentPanel from '@/components/checkout/SubscriptionPaymentPanel';
+import Zone3SubscriptionRouteReviewPanel from '@/components/checkout/Zone3SubscriptionRouteReviewPanel';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -47,6 +48,7 @@ export default function Subscribe() {
 
   // Checkout session data
   const [checkoutData, setCheckoutData] = useState(null);
+  const [zone3ReviewMode, setZone3ReviewMode] = useState(false);
   // { paymentIntentClientSecret, stripeSubscriptionId, pendingCheckoutId, publishableKey, planName, amountDue }
 
   const { data: plans = [] } = useQuery({
@@ -131,7 +133,7 @@ export default function Subscribe() {
       return;
     }
 
-    // Create subscription PaymentIntent for in-app payment
+    // Create subscription PaymentIntent — backend will return SUBSCRIPTION_NOT_AVAILABLE_IN_ZONE for zone3
     try {
       const res = await base44.functions.invoke('createSubscriptionPaymentElementIntent', {
         plan_id: selectedPlanId,
@@ -150,6 +152,14 @@ export default function Subscribe() {
       // Backend returned an error payload
       if (data?.error) {
         const code = data.error_code || '';
+
+        // Zone 3 subscription route review — intercept and show review panel
+        if (code === 'SUBSCRIPTION_NOT_AVAILABLE_IN_ZONE' && data.subscription_route_review_required) {
+          setFlowState(FLOW.IDLE);
+          setZone3ReviewMode(true);
+          return;
+        }
+
         let msg = data.error;
         // Surface friendly messages for known codes
         if (code === 'MISSING_NAME' || code === 'MISSING_PROFILE') {
@@ -292,8 +302,19 @@ export default function Subscribe() {
         )}
       </AnimatePresence>
 
-      {/* Main content — hidden while activating/success */}
-      {!isActivating && !isSuccess && (
+      {/* Zone 3 Subscription Route Review Panel */}
+      {zone3ReviewMode && selectedPlan && user && (
+        <Zone3SubscriptionRouteReviewPanel
+          address={address}
+          selectedPlan={selectedPlan}
+          user={user}
+          distanceMiles={calculatedDistance}
+          onBack={() => setZone3ReviewMode(false)}
+        />
+      )}
+
+      {/* Main content — hidden while activating/success or zone3 review */}
+      {!isActivating && !isSuccess && !zone3ReviewMode && (
         <>
           {/* Address Section */}
           <div className="px-4 mt-6">
@@ -501,7 +522,7 @@ export default function Subscribe() {
             </div>
           )}
 
-          {/* FAQ */}
+          {/* FAQ — hidden in zone3 review mode */}
           <div className="px-4 mt-8">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">FAQs</p>
             <div className="space-y-3">

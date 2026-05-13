@@ -33,6 +33,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
   const [reason, setReason] = useState('');
 
   const isPendingReview = dar.status === 'pending_review';
+  const isSubscriptionReview = dar.request_type === 'subscription_route_review';
   const createdAt = dar.created_date ? format(new Date(dar.created_date), 'MMM d · h:mm a') : '—';
   const expiresAt = dar.authorization_expires_at
     ? format(new Date(dar.authorization_expires_at), 'MMM d, yyyy')
@@ -50,12 +51,20 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[dar.status] || 'bg-muted text-muted-foreground'}`}>
               {STATUS_LABELS[dar.status] || dar.status}
             </span>
+            {isSubscriptionReview && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                Subscription
+              </span>
+            )}
           </div>
           <p className="text-sm font-semibold truncate">{dar.customer_name || dar.customer_email}</p>
           <p className="text-xs text-muted-foreground truncate">{dar.delivery_address}</p>
           <div className="flex gap-3 mt-0.5 flex-wrap">
             <span className="text-xs text-muted-foreground">{dar.estimated_distance_miles?.toFixed(1)} mi</span>
-            <span className="text-xs font-semibold text-amber-700">${(dar.amount_authorized || dar.estimated_total || 0).toFixed(2)} hold</span>
+            {isSubscriptionReview
+              ? <span className="text-xs font-semibold text-blue-700">{dar.selected_plan_name || '—'} · ${dar.selected_plan_price}/{dar.selected_plan_frequency === 'weekly' ? 'wk' : 'mo'}</span>
+              : <span className="text-xs font-semibold text-amber-700">${(dar.amount_authorized || dar.estimated_total || 0).toFixed(2)} hold</span>
+            }
             <span className="text-xs text-muted-foreground">{createdAt}</span>
           </div>
         </div>
@@ -82,14 +91,24 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
                 <div className="flex justify-between"><span className="text-muted-foreground">Phone</span><span className="font-medium">{dar.customer_phone || '—'}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Distance</span><span className="font-medium">{dar.estimated_distance_miles?.toFixed(1)} mi · {dar.estimated_drive_time_minutes} min</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Zone</span><span className="font-medium">{dar.zone_name || dar.zone_key}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Cart</span><span className="font-medium">${(dar.cart_subtotal || 0).toFixed(2)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Est. Fee</span><span className="font-medium">${(dar.estimated_delivery_fee || 0).toFixed(2)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Auth Hold</span><span className="font-semibold text-amber-700">${(dar.amount_authorized || 0).toFixed(2)}</span></div>
-                {dar.amount_capturable != null && (
-                  <div className="flex justify-between"><span className="text-muted-foreground">Capturable</span><span className="font-medium">${(dar.amount_capturable || 0).toFixed(2)}</span></div>
+                {isSubscriptionReview ? (
+                  <>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Plan</span><span className="font-semibold text-blue-700">{dar.selected_plan_name || '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Plan Price</span><span className="font-medium">${(dar.selected_plan_price || 0).toFixed(2)}/{dar.selected_plan_frequency === 'weekly' ? 'wk' : 'mo'}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Setup Intent</span><span className="font-mono text-[10px] text-muted-foreground">{dar.stripe_setup_intent_id || 'Not saved'}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Cart</span><span className="font-medium">${(dar.cart_subtotal || 0).toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Auth Hold</span><span className="font-semibold text-amber-700">${(dar.amount_authorized || 0).toFixed(2)}</span></div>
+                    {dar.amount_capturable != null && (
+                      <div className="flex justify-between"><span className="text-muted-foreground">Capturable</span><span className="font-medium">${(dar.amount_capturable || 0).toFixed(2)}</span></div>
+                    )}
+                    <div className="flex justify-between"><span className="text-muted-foreground">Auth Expires</span><span className="font-medium">{expiresAt}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Stripe PI</span><span className="font-mono text-[10px] text-muted-foreground">{dar.stripe_payment_intent_id || '—'}</span></div>
+                  </>
                 )}
-                <div className="flex justify-between"><span className="text-muted-foreground">Auth Expires</span><span className="font-medium">{expiresAt}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Stripe PI</span><span className="font-mono text-[10px] text-muted-foreground">{dar.stripe_payment_intent_id || '—'}</span></div>
               </div>
 
               {/* Cart Items */}
@@ -157,12 +176,15 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
                       Deny
                     </Button>
                     <Button
-                      onClick={() => onApprove(dar.id, deliveryFee, reason)}
+                      onClick={() => onApprove(dar.id, deliveryFee, reason, isSubscriptionReview)}
                       disabled={isProcessing || !reason.trim()}
                       className="flex-1 h-10 rounded-xl text-sm font-semibold bg-green-700 hover:bg-green-800 text-white"
                     >
                       <CheckCircle className="w-4 h-4 mr-1.5" />
-                      {isProcessing ? 'Processing…' : `Approve · $${(dar.cart_subtotal + deliveryFee).toFixed(2)}`}
+                      {isProcessing ? 'Processing…' : isSubscriptionReview
+                        ? `Approve Sub · +$${deliveryFee.toFixed(2)} fee`
+                        : `Approve · $${(dar.cart_subtotal + deliveryFee).toFixed(2)}`
+                      }
                     </Button>
                   </div>
                 </div>
@@ -200,11 +222,16 @@ export default function Zone3ReviewPanel() {
   const [processingId, setProcessingId] = useState(null);
 
   const approveMutation = useMutation({
-    mutationFn: ({ dar_id, approved_delivery_fee, admin_decision_reason }) =>
-      base44.functions.invoke('approveZone3DeliveryRequest', { dar_id, approved_delivery_fee, admin_decision_reason }),
+    mutationFn: ({ dar_id, approved_delivery_fee, admin_decision_reason, is_subscription }) => {
+      const fn = is_subscription ? 'approveZone3SubscriptionRequest' : 'approveZone3DeliveryRequest';
+      return base44.functions.invoke(fn, { dar_id, approved_delivery_fee, admin_decision_reason });
+    },
     onSuccess: (res, vars) => {
       if (res.data?.success) {
-        toast.success(`Route approved · Order ${res.data.order_number}`);
+        const msg = vars.is_subscription
+          ? `Subscription route approved · Customer notified to complete payment`
+          : `Route approved · Order ${res.data.order_number}`;
+        toast.success(msg);
         queryClient.invalidateQueries({ queryKey: ['zone3-dars'] });
       } else {
         toast.error(res.data?.error || 'Approval failed');
@@ -229,10 +256,10 @@ export default function Zone3ReviewPanel() {
     onError: (err) => { toast.error(err.message || 'Denial failed'); setProcessingId(null); },
   });
 
-  const handleApprove = (darId, deliveryFee, reason) => {
+  const handleApprove = (darId, deliveryFee, reason, isSubscription = false) => {
     if (!reason?.trim()) { toast.error('Reason is required'); return; }
     setProcessingId(darId);
-    approveMutation.mutate({ dar_id: darId, approved_delivery_fee: deliveryFee, admin_decision_reason: reason });
+    approveMutation.mutate({ dar_id: darId, approved_delivery_fee: deliveryFee, admin_decision_reason: reason, is_subscription: isSubscription });
   };
 
   const handleDeny = (darId, reason) => {

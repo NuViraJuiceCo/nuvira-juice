@@ -4,7 +4,16 @@
   "properties": {
     "request_number": {
       "type": "string",
-      "description": "Unique request identifier, e.g. DAR-XXXXXXXX"
+      "description": "Unique request identifier, e.g. DAR-XXXXXXXX or SUBR-XXXXXXXX"
+    },
+    "request_type": {
+      "type": "string",
+      "enum": [
+        "one_time_order",
+        "subscription_route_review"
+      ],
+      "default": "one_time_order",
+      "description": "Whether this is a one-time order auth hold or a subscription route review"
     },
     "customer_name": {
       "type": "string"
@@ -43,7 +52,7 @@
       "items": {
         "type": "object"
       },
-      "description": "Snapshot of cart items at time of request"
+      "description": "Snapshot of cart items (one-time order flow)"
     },
     "cart_subtotal": {
       "type": "number",
@@ -58,16 +67,13 @@
       "description": "Estimated total including delivery fee"
     },
     "estimated_distance_miles": {
-      "type": "number",
-      "description": "Driving distance in miles from origin to delivery address"
+      "type": "number"
     },
     "estimated_drive_time_minutes": {
-      "type": "number",
-      "description": "Estimated driving time in minutes"
+      "type": "number"
     },
     "zone_key": {
-      "type": "string",
-      "description": "Zone key from DeliveryZone entity"
+      "type": "string"
     },
     "zone_name": {
       "type": "string"
@@ -77,37 +83,54 @@
     },
     "requested_delivery_date": {
       "type": "string",
-      "format": "date",
-      "description": "Customer's requested delivery date if provided"
+      "format": "date"
+    },
+    "selected_plan_id": {
+      "type": "string",
+      "description": "SubscriptionPlan ID (subscription route review only)"
+    },
+    "selected_plan_name": {
+      "type": "string",
+      "description": "Plan name (subscription route review only)"
+    },
+    "selected_plan_price": {
+      "type": "number",
+      "description": "Plan base price (subscription route review only)"
+    },
+    "selected_plan_frequency": {
+      "type": "string",
+      "description": "Plan frequency: weekly or monthly (subscription route review only)"
     },
     "stripe_payment_intent_id": {
       "type": "string",
-      "description": "Stripe PaymentIntent ID for the authorization hold"
+      "description": "Stripe PaymentIntent ID for one-time order authorization hold"
+    },
+    "stripe_setup_intent_id": {
+      "type": "string",
+      "description": "Stripe SetupIntent ID for saving payment method (subscription route review)"
+    },
+    "stripe_setup_intent_client_secret": {
+      "type": "string",
+      "description": "SetupIntent client_secret (subscription route review \u2014 for card save)"
     },
     "stripe_customer_id": {
-      "type": "string",
-      "description": "Stripe Customer ID"
+      "type": "string"
     },
     "stripe_authorization_status": {
-      "type": "string",
-      "description": "Current Stripe PI authorization status (requires_capture, canceled, succeeded, etc.)"
+      "type": "string"
     },
     "amount_authorized": {
-      "type": "number",
-      "description": "Amount authorized on hold in dollars"
+      "type": "number"
     },
     "amount_capturable": {
-      "type": "number",
-      "description": "Amount available to capture in dollars"
+      "type": "number"
     },
     "authorization_expires_at": {
-      "type": "string",
-      "description": "ISO timestamp when Stripe authorization hold expires (typically 7 days)"
+      "type": "string"
     },
     "customer_acknowledged_hold": {
       "type": "boolean",
-      "default": false,
-      "description": "Customer confirmed they understand the authorization hold before checkout"
+      "default": false
     },
     "status": {
       "type": "string",
@@ -122,8 +145,7 @@
         "captured",
         "failed"
       ],
-      "default": "draft",
-      "description": "Current status of the delivery approval request"
+      "default": "draft"
     },
     "admin_decision": {
       "type": "string",
@@ -132,56 +154,47 @@
         "denied",
         "expired",
         "cancelled"
-      ],
-      "description": "Admin's final decision"
+      ]
     },
     "admin_decision_reason": {
-      "type": "string",
-      "description": "Admin's reason for approval or denial"
+      "type": "string"
     },
     "approved_delivery_fee": {
-      "type": "number",
-      "description": "Final delivery fee approved by admin (may differ from estimate)"
+      "type": "number"
     },
     "approved_by": {
-      "type": "string",
-      "description": "Email of admin who approved"
+      "type": "string"
     },
     "approved_at": {
-      "type": "string",
-      "description": "ISO timestamp of approval"
+      "type": "string"
     },
     "denied_by": {
-      "type": "string",
-      "description": "Email of admin who denied"
+      "type": "string"
     },
     "denied_at": {
-      "type": "string",
-      "description": "ISO timestamp of denial"
+      "type": "string"
     },
     "capture_idempotency_key": {
-      "type": "string",
-      "description": "Idempotency key for Stripe capture call"
+      "type": "string"
     },
     "cancel_idempotency_key": {
-      "type": "string",
-      "description": "Idempotency key for Stripe cancellation call"
+      "type": "string"
     },
     "created_order_id": {
-      "type": "string",
-      "description": "CA Order entity ID created after approval and capture"
+      "type": "string"
     },
     "created_order_number": {
-      "type": "string",
-      "description": "NV- order number created after approval"
+      "type": "string"
     },
     "created_hub_order_id": {
+      "type": "string"
+    },
+    "created_subscription_stripe_id": {
       "type": "string",
-      "description": "Hub order ID after sync"
+      "description": "Stripe subscription ID created after subscription route review approval"
     },
     "waitlist_id": {
-      "type": "string",
-      "description": "DeliveryWaitlist entity ID if customer was moved to waitlist on denial"
+      "type": "string"
     },
     "audit_trail": {
       "type": "array",
@@ -201,8 +214,7 @@
             "type": "string"
           }
         }
-      },
-      "description": "Append-only log of all actions on this request"
+      }
     }
   },
   "required": [
