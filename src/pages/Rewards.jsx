@@ -176,7 +176,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.07 }}
       className="flex-shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden"
-      style={{ touchAction: 'pan-y',
+      style={{ touchAction: 'pan-x',
         border: unlocked ? `1.5px solid rgba(201,162,74,0.65)` : '1.5px solid hsl(var(--border))',
         background: unlocked
           ? `linear-gradient(135deg, rgba(11,61,46,0.09) 0%, rgba(201,162,74,0.14) 100%)`
@@ -184,17 +184,18 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
         boxShadow: unlocked
           ? `0 8px 28px rgba(201,162,74,0.18), 0 2px 6px rgba(0,0,0,0.10)`
           : '0 4px 14px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)',
+        pointerEvents: 'none',
       }}
     >
       {/* Top panel */}
-      <div className="h-20 flex items-center justify-center relative overflow-hidden"
+      <div className="h-20 flex items-center justify-center relative overflow-hidden pointer-events-none"
         style={{ background: unlocked ? `linear-gradient(135deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` : 'hsl(var(--muted))' }}>
         {unlocked && (
-          <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 80% 20%, ${GOLD}30 0%, transparent 60%)` }} />
+          <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(circle at 80% 20%, ${GOLD}30 0%, transparent 60%)` }} />
         )}
-        <span className="text-3xl relative z-10">{reward.icon || '🎁'}</span>
+        <span className="text-3xl relative z-10 pointer-events-none">{reward.icon || '🎁'}</span>
         {unlocked && (
-          <div className="absolute top-2 right-2 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide"
+          <div className="absolute top-2 right-2 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide pointer-events-none"
             style={{ background: `${GOLD}40`, color: '#FFFFFF', border: `1px solid ${GOLD}65` }}>
             Unlocked
           </div>
@@ -202,35 +203,35 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       </div>
 
       {/* Content */}
-      <div className="p-3">
-        <p className="text-xs font-bold mb-1 leading-tight line-clamp-2" style={{ color: 'hsl(var(--foreground))' }}>{reward.title}</p>
-        <p className="text-[10px] font-medium mb-2 line-clamp-2" style={{ color: 'hsl(var(--muted-foreground))' }}>{reward.description}</p>
+      <div className="p-3 pointer-events-none">
+        <p className="text-xs font-bold mb-1 leading-tight line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--foreground))' }}>{reward.title}</p>
+        <p className="text-[10px] font-medium mb-2 line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--muted-foreground))' }}>{reward.description}</p>
 
         {/* Points required */}
-        <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center justify-between gap-1 pointer-events-none">
           <div className="flex items-center gap-0.5 min-w-0">
-            <Star className="w-2.5 h-2.5 shrink-0" style={{ color: unlocked ? GOLD : 'hsl(var(--muted-foreground))', fill: unlocked ? GOLD : 'hsl(var(--muted-foreground))' }} />
-            <span className="text-[10px] font-bold truncate" style={{ color: unlocked ? '#9A7B2F' : 'hsl(var(--muted-foreground))' }}>
+            <Star className="w-2.5 h-2.5 shrink-0 pointer-events-none" style={{ color: unlocked ? GOLD : 'hsl(var(--muted-foreground))', fill: unlocked ? GOLD : 'hsl(var(--muted-foreground))' }} />
+            <span className="text-[10px] font-bold truncate pointer-events-none" style={{ color: unlocked ? '#9A7B2F' : 'hsl(var(--muted-foreground))' }}>
               {reward.points_required.toLocaleString()}
             </span>
           </div>
           {unlocked ? (
             isActive ? (
               <button onClick={onRemove}
-                className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0"
+                className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0 pointer-events-auto"
                 style={{ background: 'hsl(var(--destructive)/0.15)', color: 'hsl(var(--destructive))' }}>
                 ✓
               </button>
             ) : (
               <button onClick={onApply}
-                className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0 text-white"
+                className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0 text-white pointer-events-auto"
                 style={{ background: `linear-gradient(90deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` }}>
                 Redeem
               </button>
             )
           ) : (
-            <div className="w-12 h-1.5 rounded-full shrink-0" style={{ background: 'hsl(var(--muted))' }}>
-              <div className="h-full rounded-full" style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)` }} />
+            <div className="w-12 h-1.5 rounded-full shrink-0 pointer-events-none" style={{ background: 'hsl(var(--muted))' }}>
+              <div className="h-full rounded-full pointer-events-none" style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)` }} />
             </div>
           )}
         </div>
@@ -504,6 +505,8 @@ export default function Rewards() {
             WebkitOverflowScrolling: 'touch',
             msOverflowStyle: 'none',
             WebkitTouchCallout: 'none',
+            pointerEvents: 'auto',
+            cursor: 'grab',
           }}
         >
           {rewards.map((reward, i) => (
