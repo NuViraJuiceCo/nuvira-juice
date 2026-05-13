@@ -191,7 +191,7 @@ export default function Home() {
       )}
 
       {seasonal.length > 0 && (
-        <div className="mt-2 -mx-5">
+        <div className="mt-10">
           <ProductRow
             title="Seasonal Drops"
             subtitle="Limited time only"

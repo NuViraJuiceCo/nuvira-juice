@@ -501,12 +501,9 @@ export default function Rewards() {
             scrollbarWidth: 'none',
             scrollPaddingLeft: '1.25rem',
             scrollPaddingRight: '1.25rem',
-            touchAction: 'pan-x',
             WebkitOverflowScrolling: 'touch',
             msOverflowStyle: 'none',
             WebkitTouchCallout: 'none',
-            pointerEvents: 'auto',
-            cursor: 'grab',
           }}
         >
           {rewards.map((reward, i) => (

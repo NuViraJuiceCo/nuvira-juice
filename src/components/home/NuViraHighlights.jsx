@@ -40,7 +40,7 @@ const HIGHLIGHTS = [
 
 export default function NuViraHighlights() {
   return (
-    <div className="mt-10 mx-5">
+    <div className="mt-10 px-5">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -53,7 +53,7 @@ export default function NuViraHighlights() {
       </motion.div>
 
       {/* Horizontal scrollable highlights */}
-      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-5 px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', pointerEvents: 'auto' }}>
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
         {HIGHLIGHTS.map((highlight, i) => {
           const Icon = highlight.icon;
           return (
@@ -65,8 +65,6 @@ export default function NuViraHighlights() {
               transition={{ delay: i * 0.08 }}
               className="shrink-0 w-[280px] rounded-2xl p-4 border border-border/50 shadow-sm"
               style={{
-                touchAction: 'pan-x',
-                pointerEvents: 'auto',
                 background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)`,
               }}
             >
