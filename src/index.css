@@ -209,4 +209,7 @@ html {
 /* Prevent horizontal scroll bleed on page root — allow children to have nested horizontal scroll */
 #root {
   position: relative;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
 }

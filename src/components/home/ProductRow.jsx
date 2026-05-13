@@ -31,6 +31,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
            style={{
              WebkitOverflowScrolling: 'touch',
              overscrollBehaviorX: 'contain',
+             touchAction: 'pan-y',
            }}
          >
          {products.map((product, i) => (

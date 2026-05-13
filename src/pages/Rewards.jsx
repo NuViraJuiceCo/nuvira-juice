@@ -504,6 +504,7 @@ export default function Rewards() {
             WebkitOverflowScrolling: 'touch',
             msOverflowStyle: 'none',
             WebkitTouchCallout: 'none',
+            touchAction: 'pan-y',
           }}
         >
           {rewards.map((reward, i) => (

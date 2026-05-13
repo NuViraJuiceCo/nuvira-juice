@@ -53,7 +53,7 @@ export default function NuViraHighlights() {
       </motion.div>
 
       {/* Horizontal scrollable highlights */}
-      <div className="flex gap-3 overflow-x-auto overflow-y-visible pb-2 scrollbar-none px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex gap-3 overflow-x-auto overflow-y-visible pb-2 scrollbar-none px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
         {HIGHLIGHTS.map((highlight, i) => {
           const Icon = highlight.icon;
           return (
