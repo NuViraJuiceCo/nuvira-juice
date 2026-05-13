@@ -122,7 +122,7 @@ export default function ProductDetail() {
   };
 
   return (
-    <div className="pb-40 md:pb-0" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8rem)' }}>
+    <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 6.5rem)' }}>
       <SEO
         title={`${product.title} — Cold-Pressed Juice | Wentzville, MO`}
         description={product.short_description || product.description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`}
@@ -236,24 +236,41 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      {/* Bottom Bar */}
-      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border shadow-lg" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div className="flex items-center gap-3 px-4 py-3 md:px-6 md:max-w-4xl">
-          <div className="flex items-center gap-3 bg-secondary rounded-xl px-3 py-2">
-            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="active:scale-90 transition-transform">
-              <Minus className="w-4 h-4" />
+      {/* Sticky Purchase Bar — fixed above bottom nav */}
+      <div 
+        className="fixed left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border/50"
+        style={{
+          bottom: 'calc(4rem + env(safe-area-inset-bottom))',
+          padding: '10px 16px',
+          paddingBottom: '10px',
+        }}
+      >
+        <div className="flex items-center gap-2">
+          {/* Quantity Stepper */}
+          <div className="flex items-center gap-2.5 bg-secondary rounded-xl px-3 py-2.5 shrink-0">
+            <button 
+              onClick={() => setQuantity(Math.max(1, quantity - 1))} 
+              className="active:scale-90 transition-transform hover:opacity-60"
+              aria-label="Decrease quantity"
+            >
+              <Minus className="w-3.5 h-3.5" />
             </button>
-            <span className="text-sm font-semibold w-5 text-center">{quantity}</span>
-            <button onClick={() => setQuantity(quantity + 1)} className="active:scale-90 transition-transform">
-              <Plus className="w-4 h-4" />
+            <span className="text-xs font-semibold w-6 text-center">{quantity}</span>
+            <button 
+              onClick={() => setQuantity(quantity + 1)} 
+              className="active:scale-90 transition-transform hover:opacity-60"
+              aria-label="Increase quantity"
+            >
+              <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
+          {/* Add to Cart Button */}
           <Button
             onClick={handleAddToCart}
-            className="flex-1 h-11 rounded-xl font-semibold"
+            className="flex-1 h-10 rounded-xl font-semibold text-sm"
           >
-            <ShoppingBag className="w-4 h-4 mr-2" />
-            {`Add to Cart · $${(product.price * quantity).toFixed(2)}`}
+            <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
+            {`$${(product.price * quantity).toFixed(2)}`}
           </Button>
         </div>
       </div>
