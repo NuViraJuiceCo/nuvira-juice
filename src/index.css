@@ -129,13 +129,10 @@ body {
   will-change: scroll-position;
 }
 
-/* Horizontal carousels — fluid snap with no dead zones */
+/* Horizontal carousels — smooth scrolling without snap locks */
 .snap-x {
-  scroll-snap-type: x proximity;
-  scroll-padding-left: 1.25rem;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  /* Allow horizontal pan (swipe) while still allowing page vertical scroll */
   touch-action: pan-y pinch-zoom;
   transform: translateZ(0);
   will-change: scroll-position;

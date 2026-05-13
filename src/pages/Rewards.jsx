@@ -175,7 +175,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.07 }}
-      className="flex-shrink-0 w-[155px] snap-start rounded-2xl overflow-hidden"
+      className="flex-shrink-0 w-[155px] rounded-2xl overflow-hidden"
       style={{ touchAction: 'pan-x',
         border: unlocked ? `1.5px solid rgba(201,162,74,0.65)` : '1.5px solid hsl(var(--border))',
         background: unlocked
@@ -496,7 +496,7 @@ export default function Rewards() {
         </div>
         <div
           ref={rewardsContainerRef}
-          className="flex gap-4 overflow-x-auto overflow-y-hidden px-5 pb-2 snap-x snap-mandatory"
+          className="flex gap-4 overflow-x-auto overflow-y-hidden px-5 pb-2"
           style={{
             scrollbarWidth: 'none',
             scrollPaddingLeft: '1.25rem',
