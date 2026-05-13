@@ -495,14 +495,15 @@ export default function Rewards() {
         </div>
         <div
           ref={rewardsContainerRef}
-          className="flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory scroll-smooth"
+          className="flex gap-4 overflow-x-auto overflow-y-hidden px-5 pb-2 snap-x snap-mandatory"
           style={{
             scrollbarWidth: 'none',
             scrollPaddingLeft: '1.25rem',
             scrollPaddingRight: '1.25rem',
-            touchAction: 'pan-y',
+            touchAction: 'pan-x',
             WebkitOverflowScrolling: 'touch',
             msOverflowStyle: 'none',
+            WebkitTouchCallout: 'none',
           }}
         >
           {rewards.map((reward, i) => (
