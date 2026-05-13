@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ProductCard from '@/components/shop/ProductCard';
+import MobileCarousel from '@/components/carousel/MobileCarousel';
 
 export default function ProductRow({ title, subtitle, products, linkTo }) {
   if (!products || products.length === 0) return null;
@@ -26,13 +27,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
            </Link>
          )}
        </div>
-       <div
-           className="flex gap-4 overflow-x-auto overflow-y-visible pb-3 no-scrollbar px-5"
-           style={{
-             WebkitOverflowScrolling: 'touch',
-             overscrollBehaviorX: 'contain',
-           }}
-         >
+       <MobileCarousel>
          {products.map((product, i) => (
            <motion.div
              key={product.id}
@@ -40,12 +35,12 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
              whileInView={{ opacity: 1, x: 0 }}
              viewport={{ once: true }}
              transition={{ delay: i * 0.07, duration: 0.4 }}
-             className="shrink-0 w-40"
+             className="w-40"
            >
             <ProductCard product={product} compact />
           </motion.div>
         ))}
-      </div>
+       </MobileCarousel>
     </motion.section>
   );
 }

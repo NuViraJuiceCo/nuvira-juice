@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
+import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 
@@ -75,14 +76,14 @@ export default function ProgramCards() {
   return (
     <>
       {/* Mobile: horizontal scroll, peek next card */}
-      <div className="md:hidden flex gap-4 overflow-x-auto overflow-y-visible pb-2 scrollbar-none px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <MobileCarousel className="md:hidden">
         {PROGRAMS.map((program, i) => (
           <motion.div
             key={program.key}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.08 }}
-            className="shrink-0 w-[78vw]"
+            className="w-[78vw]"
           >
             <Link to={`/program/${program.key}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove} onClick={tapGuard.onClick}>
               <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform shadow-lg`}
@@ -118,7 +119,7 @@ export default function ProgramCards() {
             </Link>
           </motion.div>
         ))}
-      </div>
+      </MobileCarousel>
 
       {/* Desktop: 3 columns side by side */}
       <div className="hidden md:grid md:grid-cols-3 gap-4 px-4">

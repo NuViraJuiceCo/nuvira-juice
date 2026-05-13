@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Leaf, Truck, Star, Sparkles, ArrowRight } from 'lucide-react';
+import MobileCarousel from '@/components/carousel/MobileCarousel';
 
 const HIGHLIGHTS = [
   {
@@ -54,7 +55,7 @@ export default function NuViraHighlights() {
       </div>
 
       {/* Horizontal scrollable highlights */}
-      <div className="flex gap-3 overflow-x-auto overflow-y-visible pb-2 scrollbar-none px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <MobileCarousel className="gap-3">
         {HIGHLIGHTS.map((highlight, i) => {
           const Icon = highlight.icon;
           return (
@@ -64,13 +65,13 @@ export default function NuViraHighlights() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.08 }}
-              className="shrink-0 w-[280px] rounded-2xl p-4 border border-border/50 shadow-sm"
+              className="w-[280px] rounded-2xl p-4 border border-border/50 shadow-sm"
               style={{
                 background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)`,
               }}
             >
               {/* Icon badge */}
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 shrink-0" style={{ background: `${highlight.accentColor}20` }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: `${highlight.accentColor}20` }}>
                 <Icon className="w-5 h-5" style={{ color: highlight.accentColor }} />
               </div>
 
@@ -80,7 +81,7 @@ export default function NuViraHighlights() {
             </motion.div>
           );
         })}
-      </div>
+      </MobileCarousel>
 
       {/* Optional CTA card */}
       <div className="px-5 mt-3">

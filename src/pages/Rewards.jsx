@@ -11,6 +11,7 @@ import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager
 
 import { Link, useNavigate } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
+import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 
@@ -494,14 +495,9 @@ export default function Rewards() {
             {canScroll && <p className="text-[11px] text-muted-foreground">Swipe for more</p>}
           </div>
         </div>
-        <div
-          ref={rewardsContainerRef}
-          className="flex gap-4 overflow-x-auto overflow-y-visible px-5 pb-2"
+        <MobileCarousel
+          className="no-scrollbar"
           style={{
-            scrollbarWidth: 'none',
-            scrollPaddingLeft: '1.25rem',
-            scrollPaddingRight: '1.25rem',
-            WebkitOverflowScrolling: 'touch',
             msOverflowStyle: 'none',
             WebkitTouchCallout: 'none',
           }}
@@ -517,7 +513,7 @@ export default function Rewards() {
               index={i}
             />
           ))}
-        </div>
+        </MobileCarousel>
       </div>
 
       {/* ── How to Earn ── */}

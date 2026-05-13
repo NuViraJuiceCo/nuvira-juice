@@ -169,9 +169,7 @@ button, a, nav {
 }
 
 /* Interactive cards: GPU-promote to avoid repaints on tap */
-/* touch-action: pan-y ensures vertical scroll wins even when touch starts on the card */
 .card-interactive {
-  touch-action: pan-y;
   transform: translateZ(0);
   will-change: transform;
   transition: transform 0.15s cubic-bezier(0.25, 0.1, 0.25, 1),
@@ -179,6 +177,36 @@ button, a, nav {
 }
 .card-interactive:active {
   transform: scale(0.97) translateZ(0);
+}
+
+/* MOBILE CAROUSEL PATTERN
+   - Used for all horizontally scrollable card sections
+   - Allows native horizontal scroll without page-level drift
+   - Vertical scroll still works everywhere
+   - Cards never touch screen edges
+*/
+.mobile-carousel {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 1rem;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  padding-bottom: 0.75rem;
+  scroll-padding-left: 1.25rem;
+  scroll-padding-right: 1.25rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y pinch-zoom;
+  transform: translateZ(0);
+  will-change: scroll-position;
+}
+
+/* Carousel cards must not shrink */
+.mobile-carousel > * {
+  flex: 0 0 auto;
 }
 
 svg {
