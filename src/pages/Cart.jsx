@@ -4,6 +4,7 @@ import { PROGRAMS } from '@/components/home/ProgramCards';
 import { isPreLaunch } from '@/lib/launchConfig';
 
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle, Zap, Gift } from 'lucide-react';
+import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { useQuery } from '@tanstack/react-query';
@@ -259,6 +260,9 @@ export default function Cart() {
             </div>
           </div>
         )}
+
+        {/* Health Advisory */}
+        <HealthAdvisory variant="compact" />
 
         {/* Cart Items Section */}
         <div className="pt-2">

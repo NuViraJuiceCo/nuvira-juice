@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { AnimatePresence } from 'framer-motion';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 import Zone3RouteReviewPanel from '@/components/checkout/Zone3RouteReviewPanel';
+import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 
 
 export default function Checkout() {
@@ -97,6 +98,7 @@ export default function Checkout() {
   const [deliveryZone, setDeliveryZone] = useState(null);
   // Full eligibility result from validateDeliveryEligibility
   const [zoneEligibility, setZoneEligibility] = useState(null);
+  const [healthAdvisoryAcknowledged, setHealthAdvisoryAcknowledged] = useState(false);
   const REFERRAL_DISCOUNT = 5.00;
   const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
 
@@ -274,6 +276,12 @@ export default function Checkout() {
       return;
     }
 
+    // Verify health advisory acknowledgment
+    if (!healthAdvisoryAcknowledged) {
+      toast.error('Please acknowledge the health advisory before placing your order.');
+      return;
+    }
+
     // Resolve customer_name with fallback priority
     // 1. User's full_name from auth
     // 2. Profile first_name + last_name
@@ -402,6 +410,10 @@ export default function Checkout() {
       reward_discount: rewardDiscountAmt,
       // Zone eligibility snapshot
       zone_key: zoneEligibility?.zone_key || null,
+      // Health advisory acknowledgment
+      health_advisory_acknowledged: true,
+      health_advisory_acknowledged_at: new Date().toISOString(),
+      health_advisory_version: HEALTH_ADVISORY_CONFIG.version,
     });
 
     if (res.data?.clientSecret) {
@@ -813,9 +825,27 @@ export default function Checkout() {
           </button>
         </div>
       ) : (
-        /* Place Order — shown until PaymentIntent is created (not shown for Zone 3 — handled by Zone3RouteReviewPanel) */
-        <div className="px-4">
-          {(() => {
+        <div className="space-y-4">
+          {/* Health Advisory Checkbox */}
+          {!clientSecret && (
+            <div className="px-4 mb-4 p-4 rounded-2xl border" style={{ background: 'rgba(11, 61, 46, 0.06)', borderColor: 'rgba(218, 165, 32, 0.25)' }}>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={healthAdvisoryAcknowledged}
+                  onChange={(e) => setHealthAdvisoryAcknowledged(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-border accent-primary shrink-0"
+                />
+                <span className="text-xs text-foreground/70 leading-relaxed">
+                  {HEALTH_ADVISORY_CONFIG.checkboxLabel}
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* Place Order — shown until PaymentIntent is created (not shown for Zone 3 — handled by Zone3RouteReviewPanel) */}
+          <div className="px-4">
+            {(() => {
             const zone = zoneEligibility;
             const needsMinimum = zone?.reason_code === 'MINIMUM_ORDER_NOT_MET';
             const isZone3 = zone?.zone_type === 'route_review';
@@ -836,13 +866,14 @@ export default function Checkout() {
             return (
               <Button
                 onClick={handlePlaceOrder}
-                disabled={isSubmitting || isBlocked}
+                disabled={isSubmitting || isBlocked || !healthAdvisoryAcknowledged}
                 className="w-full h-12 rounded-xl font-semibold text-sm"
               >
                 {label}
               </Button>
             );
-          })()}
+            })()}
+          </div>
         </div>
       )}
     </div>

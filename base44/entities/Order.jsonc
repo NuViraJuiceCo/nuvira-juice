@@ -291,6 +291,19 @@
     "saturday_threshold_decided_at": {
       "type": "string",
       "description": "ISO timestamp when Saturday threshold was evaluated"
+    },
+    "health_advisory_acknowledged": {
+      "type": "boolean",
+      "default": false,
+      "description": "Customer acknowledged health advisory before order placement"
+    },
+    "health_advisory_acknowledged_at": {
+      "type": "string",
+      "description": "ISO timestamp when customer acknowledged health advisory"
+    },
+    "health_advisory_version": {
+      "type": "string",
+      "description": "Version of health advisory acknowledged (e.g. 2026-05-13-v1)"
     }
   },
   "required": [

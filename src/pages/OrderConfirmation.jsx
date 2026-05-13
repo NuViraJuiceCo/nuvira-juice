@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import SEO from '@/components/SEO';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import GoogleCustomerReviewsOptIn from '@/components/GoogleCustomerReviewsOptIn';
+import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail } from 'lucide-react';
@@ -254,11 +255,19 @@ export default function OrderConfirmation() {
           </div>
         </div>
 
+        {/* Health Advisory Reminder */}
+         <div className="rounded-2xl p-3.5 border mb-6 flex items-start gap-3" style={{ background: 'rgba(11, 61, 46, 0.06)', borderColor: 'rgba(218, 165, 32, 0.25)' }}>
+           <svg className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'rgba(218, 165, 32, 0.6)' }} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+           <p className="text-xs text-foreground/70 leading-relaxed">
+             {HEALTH_ADVISORY_CONFIG.confirmationNotice}
+           </p>
+         </div>
+
         {/* Order Summary */}
-        <div className="bg-secondary/40 rounded-xl p-4 mb-6">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-            Order Summary
-          </h3>
+         <div className="bg-secondary/40 rounded-xl p-4 mb-6">
+           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+             Order Summary
+           </h3>
           {order.items?.map((item, i) => (
             <div key={i} className="flex justify-between text-sm mb-1">
               <span>{item.quantity}x {item.title}</span>

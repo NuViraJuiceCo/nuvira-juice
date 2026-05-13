@@ -5,6 +5,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Minus, Plus, ShoppingBag, Heart, Leaf, Info } from 'lucide-react';
+import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { motion } from 'framer-motion';
@@ -228,6 +229,11 @@ export default function ProductDetail() {
             <p className="text-xs text-foreground/70 leading-relaxed">{product.ingredients}</p>
           </div>
         )}
+
+        {/* Health Advisory */}
+        <div className="mt-4">
+          <HealthAdvisory variant="expanded" />
+        </div>
       </div>
 
       {/* Bottom Bar */}
