@@ -40,20 +40,21 @@ const HIGHLIGHTS = [
 
 export default function NuViraHighlights() {
   return (
-    <div className="mt-10 px-5">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.5 }}
-        className="mb-4"
-      >
-        <p className="font-heading font-bold text-lg mb-1">NuVira Highlights</p>
-        <p className="text-xs text-muted-foreground">What makes us different</p>
-      </motion.div>
+    <div className="mt-10">
+      <div className="px-5 mb-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <p className="font-heading font-bold text-lg mb-1">NuVira Highlights</p>
+          <p className="text-xs text-muted-foreground">What makes us different</p>
+        </motion.div>
+      </div>
 
       {/* Horizontal scrollable highlights */}
-      <div className="flex gap-3 overflow-x-auto overflow-y-visible pb-2 scrollbar-none px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+      <div className="flex gap-3 overflow-x-auto overflow-y-visible pb-2 scrollbar-none px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
         {HIGHLIGHTS.map((highlight, i) => {
           const Icon = highlight.icon;
           return (
@@ -82,27 +83,29 @@ export default function NuViraHighlights() {
       </div>
 
       {/* Optional CTA card */}
-      <Link to="/rewards">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.32 }}
-          className="mt-3 rounded-2xl p-4 flex items-center justify-between border border-border/50 shadow-sm"
-          style={{
-            background: `linear-gradient(135deg, rgba(201,162,74,0.12) 0%, rgba(201,162,74,0.06) 100%)`,
-            borderColor: 'rgba(201,162,74,0.3)',
-          }}
-        >
-          <div>
-            <p className="text-sm font-semibold">Loyalty Awaits</p>
-            <p className="text-[10px] text-muted-foreground">Join our rewards program</p>
-          </div>
-          <div className="flex items-center justify-center w-8 h-8 rounded-full" style={{ background: 'rgba(201,162,74,0.2)' }}>
-            <ArrowRight className="w-4 h-4" style={{ color: '#C9A24A' }} />
-          </div>
-        </motion.div>
-      </Link>
+      <div className="px-5 mt-3">
+        <Link to="/rewards">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.32 }}
+            className="rounded-2xl p-4 flex items-center justify-between border border-border/50 shadow-sm"
+            style={{
+              background: `linear-gradient(135deg, rgba(201,162,74,0.12) 0%, rgba(201,162,74,0.06) 100%)`,
+              borderColor: 'rgba(201,162,74,0.3)',
+            }}
+          >
+            <div>
+              <p className="text-sm font-semibold">Loyalty Awaits</p>
+              <p className="text-[10px] text-muted-foreground">Join our rewards program</p>
+            </div>
+            <div className="flex items-center justify-center w-8 h-8 rounded-full" style={{ background: 'rgba(201,162,74,0.2)' }}>
+              <ArrowRight className="w-4 h-4" style={{ color: '#C9A24A' }} />
+            </div>
+          </motion.div>
+        </Link>
+      </div>
     </div>
   );
 }
