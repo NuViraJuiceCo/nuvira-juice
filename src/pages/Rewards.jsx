@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import SEO from '@/components/SEO';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import { base44 } from '@/api/base44Client';
@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
 import { Star, Lock, Gift, ShoppingBag, Users, Cake, ChevronRight, Flame, Sparkles, ArrowRight } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
+import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 
 import { Link, useNavigate } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
@@ -346,10 +347,46 @@ export default function Rewards() {
   const rewards        = rewardTiers.length > 0 ? rewardTiers : DEFAULT_REWARDS;
   const tier           = getTier(totalPoints);
 
-  const [activeReward, setActiveReward] = useState(() => {
-    if (!user?.email) return null;
-    try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
-  });
+  const [activeReward, setActiveReward] = useState(null);
+  const [isValidatingReward, setIsValidatingReward] = useState(false);
+  const rewardsContainerRef = useRef(null);
+  const [canScroll, setCanScroll] = useState(false);
+
+  // Validate active reward on mount and user change
+  useEffect(() => {
+    const validateReward = async () => {
+      if (!user?.email) {
+        setActiveReward(null);
+        return;
+      }
+      setIsValidatingReward(true);
+      const stored = getStoredActiveReward(user.email);
+      if (stored) {
+        const validated = await validateActiveReward(stored, user.email);
+        if (validated) {
+          setActiveReward(validated);
+        } else {
+          localStorage.removeItem(`activeReward_${user.email}`);
+          setActiveReward(null);
+        }
+      }
+      setIsValidatingReward(false);
+    };
+    validateReward();
+  }, [user?.email]);
+
+  // Check if rewards container is scrollable
+  useEffect(() => {
+    const checkScroll = () => {
+      if (rewardsContainerRef.current) {
+        const { scrollWidth, clientWidth } = rewardsContainerRef.current;
+        setCanScroll(scrollWidth > clientWidth);
+      }
+    };
+    checkScroll();
+    window.addEventListener('resize', checkScroll);
+    return () => window.removeEventListener('resize', checkScroll);
+  }, [rewards]);
 
   // ── Reward apply/remove logic (unchanged) ──
   const handleApplyReward = async (reward) => {
@@ -383,7 +420,9 @@ export default function Rewards() {
   };
 
   const handleRemoveReward = () => {
-    localStorage.removeItem(`activeReward_${user.email}`);
+    if (user?.email) {
+      localStorage.removeItem(`activeReward_${user.email}`);
+    }
     setActiveReward(null);
     toast.success('Reward removed.');
   };
@@ -451,10 +490,21 @@ export default function Rewards() {
         <div className="flex items-center justify-between px-4 mb-3">
           <div>
             <h2 className="font-heading text-lg font-bold">Redeem Rewards</h2>
-            <p className="text-[11px] text-muted-foreground">Swipe for more</p>
+            {canScroll && <p className="text-[11px] text-muted-foreground">Swipe for more</p>}
           </div>
         </div>
-        <div className="flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem', touchAction: 'pan-y' }}>
+        <div
+          ref={rewardsContainerRef}
+          className="flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory scroll-smooth"
+          style={{
+            scrollbarWidth: 'none',
+            scrollPaddingLeft: '1.25rem',
+            scrollPaddingRight: '1.25rem',
+            touchAction: 'pan-y',
+            WebkitOverflowScrolling: 'touch',
+            msOverflowStyle: 'none',
+          }}
+        >
           {rewards.map((reward, i) => (
             <RewardCard
               key={i}

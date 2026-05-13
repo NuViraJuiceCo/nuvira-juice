@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PROGRAMS } from '@/components/home/ProgramCards';
 import { isPreLaunch } from '@/lib/launchConfig';
@@ -14,6 +14,7 @@ import BundleComposer from '@/components/cart/BundleComposer';
 import { useAuth } from '@/lib/AuthContext';
 import { isBirthdayRewardActive, useBirthdayReward } from '@/lib/birthdayReward';
 import FreeProductPicker from '@/components/FreeProductPicker';
+import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 
 export default function Cart() {
   const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem } = useCart();
@@ -51,11 +52,33 @@ export default function Cart() {
   const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
 
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
-  const [activeReward, setActiveReward] = useState(() => {
-    if (!user?.email) return null;
-    try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
-  });
+  const [activeReward, setActiveReward] = useState(null);
+  const [isValidatingReward, setIsValidatingReward] = useState(false);
   const { rewardInCart, addBirthdayReward, removeBirthdayReward } = useBirthdayReward(items, addItem, removeItem);
+
+  // On mount and user change, validate active reward against backend
+  useEffect(() => {
+    const validateReward = async () => {
+      if (!user?.email) {
+        setActiveReward(null);
+        return;
+      }
+      setIsValidatingReward(true);
+      const stored = getStoredActiveReward(user.email);
+      if (stored) {
+        const validated = await validateActiveReward(stored, user.email);
+        if (validated) {
+          setActiveReward(validated);
+        } else {
+          // Reward is invalid, clear it
+          localStorage.removeItem(`activeReward_${user.email}`);
+          setActiveReward(null);
+        }
+      }
+      setIsValidatingReward(false);
+    };
+    validateReward();
+  }, [user?.email]);
 
   const handleBirthdayProductSelect = (product) => {
     addItem({ ...product, id: '__birthday_reward__', price: 0, title: `🎂 ${product.title} (Free)` }, 1, { isBirthdayReward: true });
@@ -134,8 +157,8 @@ export default function Cart() {
         </div>
       )}
 
-      {/* Active Tier Reward Banner */}
-      {activeReward && (
+      {/* Active Tier Reward Banner — Only show if validated and user has points */}
+      {activeReward && !isValidatingReward && (
         <div className="mx-4 mb-3 border border-primary/30 rounded-xl p-3 shadow-md" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.12) 0%, rgba(14,90,67,0.08) 100%)` }}>
           <div className="flex items-center gap-2">
             <span className="text-lg">{activeReward.icon || '🎁'}</span>
