@@ -75,15 +75,15 @@ export default function ProgramCards() {
   return (
     <>
       {/* Mobile: horizontal scroll, peek next card */}
-      <div className="md:hidden flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory scrollbar-none" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem', touchAction: 'pan-y' }}>
+      <div className="md:hidden flex gap-4 overflow-x-auto px-5 pb-2 scrollbar-none" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem', touchAction: 'pan-x', WebkitOverflowScrolling: 'touch' }}>
         {PROGRAMS.map((program, i) => (
           <motion.div
             key={program.key}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.08 }}
-            style={{ touchAction: 'pan-y' }}
-            className="shrink-0 w-[78vw] snap-start"
+            style={{ touchAction: 'pan-x' }}
+            className="shrink-0 w-[78vw]"
           >
             <Link to={`/program/${program.key}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove} onClick={tapGuard.onClick}>
               <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform shadow-lg`}

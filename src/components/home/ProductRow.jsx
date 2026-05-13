@@ -27,15 +27,17 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
          )}
        </div>
        <div
-          className="flex gap-4 overflow-x-auto px-5 pb-3 no-scrollbar snap-x"
-          style={{
-            scrollPaddingLeft: '1.25rem',
-            scrollPaddingRight: '1.25rem',
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehaviorX: 'contain',
-            touchAction: 'pan-y',
-          }}
-        >
+           className="flex gap-4 overflow-x-auto px-5 pb-3 no-scrollbar"
+           style={{
+             scrollPaddingLeft: '1.25rem',
+             scrollPaddingRight: '1.25rem',
+             WebkitOverflowScrolling: 'touch',
+             overscrollBehaviorX: 'contain',
+             touchAction: 'pan-x',
+             pointerEvents: 'auto',
+             cursor: 'grab',
+           }}
+         >
         {products.map((product, i) => (
           <motion.div
             key={product.id}
@@ -43,8 +45,8 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ delay: i * 0.07, duration: 0.4 }}
-            style={{ touchAction: 'pan-y' }}
-            className="snap-start shrink-0 w-40"
+            style={{ touchAction: 'pan-x', pointerEvents: 'none' }}
+            className="shrink-0 w-40"
           >
             <ProductCard product={product} compact />
           </motion.div>
