@@ -94,6 +94,8 @@ export default function Checkout() {
   const [addressValidated, setAddressValidated] = useState(false);
   const [validatingAddress, setValidatingAddress] = useState(false);
   const [deliveryZone, setDeliveryZone] = useState(null);
+  // Full eligibility result from validateDeliveryEligibility
+  const [zoneEligibility, setZoneEligibility] = useState(null);
   const REFERRAL_DISCOUNT = 5.00;
   const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
 
@@ -137,29 +139,48 @@ export default function Checkout() {
     const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
     if (!addrString.trim() || addrString.length < 5) {
       setAddressValidated(false);
+      setZoneEligibility(null);
+      setDeliveryZone(null);
       setHasShownOutOfAreaModal(false);
       return;
     }
 
     if (addressDebounceRef.current) clearTimeout(addressDebounceRef.current);
     setValidatingAddress(true);
+    // Clear previous result while re-validating
+    setZoneEligibility(null);
+    setAddressValidated(false);
 
     addressDebounceRef.current = setTimeout(async () => {
       try {
-        const res = await base44.functions.invoke('calculateDeliveryZone', { address: addrString });
-        const zoneData = res.data;
-        const isValid = !!zoneData?.ok && !!zoneData?.zone;
+        const res = await base44.functions.invoke('validateDeliveryEligibility', {
+          delivery_address: addrString,
+          address_line1: address.street || '',
+          address_city: address.city || '',
+          address_state: address.state || '',
+          address_postal_code: address.zip || '',
+          cart_subtotal: subtotal || 0,
+          order_type: 'one_time',
+        });
+        const eligibility = res.data;
+        setZoneEligibility(eligibility);
+
+        // Zone 1 & Zone 2 (minimum met) → valid for checkout
+        const isValid = !!eligibility?.checkout_allowed &&
+          (eligibility.zone_type === 'core' || eligibility.zone_type === 'extended');
+
         setAddressValidated(isValid);
-        setDeliveryZone(isValid ? { fee: zoneData.fee, distance: zoneData.distance } : null);
-        
-        // Show modal once when address goes out of range
-        if (!isValid && !hasShownOutOfAreaModal) {
+        setDeliveryZone(isValid ? { fee: eligibility.delivery_fee ?? 0, distance: eligibility.estimated_distance_miles } : null);
+
+        // Show out-of-area modal for waitlist/unavailable
+        if (eligibility?.zone_type === 'waitlist_only' && !hasShownOutOfAreaModal) {
           setHasShownOutOfAreaModal(true);
           setShowOutOfArea(true);
         }
       } catch (err) {
         console.error('Address validation error:', err);
         setAddressValidated(false);
+        setZoneEligibility(null);
         setDeliveryZone(null);
       } finally {
         setValidatingAddress(false);
@@ -167,7 +188,7 @@ export default function Checkout() {
     }, 800);
 
     return () => clearTimeout(addressDebounceRef.current);
-  }, [address, fulfillmentType, hasShownOutOfAreaModal]);
+  }, [address, fulfillmentType, subtotal, hasShownOutOfAreaModal]);
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
@@ -229,7 +250,7 @@ export default function Checkout() {
   const rewardFreeDelivery = activeReward?.reward_type === 'free_delivery';
   const rewardDiscountPct = activeReward?.reward_type === 'discount' ? 10 : 0;
   const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
-  const baseFee = deliveryZone?.fee || 0;
+  const baseFee = zoneEligibility?.delivery_fee ?? deliveryZone?.fee ?? 0;
   const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery && !subFreeDelivery) ? baseFee : 0;
   const subDiscountAmt = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
   const availableCredits = userCreditsData?.balance || 0;
@@ -278,14 +299,21 @@ export default function Checkout() {
 
     setIsSubmitting(true);
 
-    // Check delivery zone via backend
+    // Confirm eligibility is valid before submitting (already validated by debounce, but double-check state)
     if (fulfillmentType === 'delivery') {
-      const addrCheck = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
-      const zoneRes = await base44.functions.invoke('calculateDeliveryZone', { address: addrCheck });
-      const zoneData = zoneRes.data;
-      if (!zoneData?.zone) {
+      if (!zoneEligibility?.checkout_allowed) {
         setIsSubmitting(false);
-        setShowOutOfArea(true);
+        if (zoneEligibility?.zone_type === 'waitlist_only') {
+          setShowOutOfArea(true);
+        } else {
+          toast.error(zoneEligibility?.customer_message || 'Delivery is not available to this address. Please check your address.');
+        }
+        return;
+      }
+      // Zone 3 must not flow into normal checkout
+      if (zoneEligibility.zone_type === 'route_review') {
+        setIsSubmitting(false);
+        toast.error('This address requires route review. Please contact us to arrange delivery.');
         return;
       }
     }
@@ -371,6 +399,8 @@ export default function Checkout() {
       referral_code: referralApplied ? referralCode : null,
       active_reward: activeReward || null,
       reward_discount: rewardDiscountAmt,
+      // Zone eligibility snapshot
+      zone_key: zoneEligibility?.zone_key || null,
     });
 
     if (res.data?.clientSecret) {
@@ -644,9 +674,29 @@ export default function Checkout() {
             {validatingAddress && (
               <p className="text-xs text-muted-foreground mt-1.5">Checking delivery area...</p>
             )}
-            {!validatingAddress && addressValidated && (
-              <p className="text-xs text-primary font-medium mt-1.5">✓ Address validated</p>
-            )}
+            {!validatingAddress && zoneEligibility && (() => {
+              const e = zoneEligibility;
+              if (e.zone_type === 'core' && e.checkout_allowed) {
+                return <p className="text-xs text-primary font-medium mt-1.5">✓ {e.customer_message}</p>;
+              }
+              if (e.zone_type === 'extended' && e.checkout_allowed) {
+                return <p className="text-xs text-primary font-medium mt-1.5">✓ {e.customer_message}</p>;
+              }
+              if (e.zone_type === 'extended' && !e.checkout_allowed && e.reason_code === 'MINIMUM_ORDER_NOT_MET') {
+                return (
+                  <p className="text-xs text-amber-600 font-medium mt-1.5">
+                    {e.customer_message}
+                  </p>
+                );
+              }
+              if (e.zone_type === 'route_review') {
+                return <p className="text-xs text-amber-600 font-medium mt-1.5">⚠️ {e.customer_message}</p>;
+              }
+              if (e.zone_type === 'waitlist_only' || !e.checkout_allowed) {
+                return <p className="text-xs text-destructive font-medium mt-1.5">{e.customer_message}</p>;
+              }
+              return null;
+            })()}
           </div>
         )}
       </div>
@@ -745,13 +795,32 @@ export default function Checkout() {
       ) : (
         /* Place Order — shown until PaymentIntent is created */
         <div className="px-4">
-          <Button
-            onClick={handlePlaceOrder}
-            disabled={isSubmitting || (fulfillmentType === 'delivery' && !addressValidated)}
-            className="w-full h-12 rounded-xl font-semibold text-sm"
-          >
-            {isSubmitting ? 'Processing...' : fulfillmentType === 'delivery' && !addressValidated ? 'Enter a valid delivery address' : `Review Payment · $${total.toFixed(2)}`}
-          </Button>
+          {(() => {
+            const zone = zoneEligibility;
+            const needsMinimum = zone?.reason_code === 'MINIMUM_ORDER_NOT_MET';
+            const isZone3 = zone?.zone_type === 'route_review';
+            const isWaitlist = zone?.zone_type === 'waitlist_only';
+            const isBlocked = fulfillmentType === 'delivery' && (
+              !addressValidated || needsMinimum || isZone3 || isWaitlist
+            );
+            let label = `Review Payment · $${total.toFixed(2)}`;
+            if (isSubmitting) label = 'Processing...';
+            else if (validatingAddress) label = 'Checking address...';
+            else if (fulfillmentType === 'delivery' && !zone && address.street) label = 'Checking delivery area...';
+            else if (fulfillmentType === 'delivery' && !address.street) label = 'Enter a delivery address';
+            else if (needsMinimum) label = `Add $${zone.amount_needed?.toFixed(2)} more to qualify`;
+            else if (isZone3) label = 'Route review required — contact us';
+            else if (isWaitlist) label = 'Delivery not available in your area';
+            return (
+              <Button
+                onClick={handlePlaceOrder}
+                disabled={isSubmitting || isBlocked}
+                className="w-full h-12 rounded-xl font-semibold text-sm"
+              >
+                {label}
+              </Button>
+            );
+          })()}
         </div>
       )}
     </div>

@@ -1,6 +1,55 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
+// ── Inline zone classifier ────────────────────────────────────────────────────
+const ORIGIN_ADDRESS_SUB = "619 N Main St, O'Fallon, MO 63366";
+const ZONE_RULES_SUB = [
+  { zone_key: 'zone_1_core',         zone_type: 'core',         min: 0,     max: 15,    delivery_fee: 5.99,  minimum_order: null,  checkout_allowed: true,  manual_capture_required: false, allowed_for_subscriptions: true },
+  { zone_key: 'zone_2_extended',     zone_type: 'extended',     min: 15.01, max: 25,    delivery_fee: 9.99,  minimum_order: 49.99, checkout_allowed: true,  manual_capture_required: false, allowed_for_subscriptions: true },
+  { zone_key: 'zone_3_route_review', zone_type: 'route_review', min: 25.01, max: 30,    delivery_fee: 12.99, minimum_order: 59.99, checkout_allowed: true,  manual_capture_required: true,  allowed_for_subscriptions: false },
+  { zone_key: 'zone_3_route_review', zone_type: 'route_review', min: 30.01, max: 35,    delivery_fee: 15.99, minimum_order: 72.0,  checkout_allowed: true,  manual_capture_required: true,  allowed_for_subscriptions: false },
+  { zone_key: 'waitlist_only',       zone_type: 'waitlist_only',min: 35.01, max: 99999, delivery_fee: null,  minimum_order: null,  checkout_allowed: false, manual_capture_required: false, allowed_for_subscriptions: false },
+];
+
+async function getSubDeliveryEligibility(address, cartSubtotal, orderType) {
+  const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
+  if (!apiKey) throw new Error('GOOGLE_MAPS_API_KEY not configured');
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(ORIGIN_ADDRESS_SUB)}&destinations=${encodeURIComponent(address)}&units=imperial&key=${apiKey}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.status !== 'OK') throw new Error(`Maps API status: ${data.status}`);
+  const element = data.rows?.[0]?.elements?.[0];
+  if (element?.status !== 'OK') throw new Error(`Maps element status: ${element?.status}`);
+  const distanceMiles = Math.round((element.distance.value / 1609.344) * 10) / 10;
+  const driveTimeMinutes = Math.round(element.duration.value / 60);
+  const zone = ZONE_RULES_SUB.find(z => distanceMiles >= z.min && distanceMiles <= z.max) || ZONE_RULES_SUB[ZONE_RULES_SUB.length - 1];
+  const minimumMet = !zone.minimum_order || cartSubtotal >= zone.minimum_order;
+  const amountNeeded = minimumMet ? 0 : Math.round((zone.minimum_order - cartSubtotal) * 100) / 100;
+  let checkoutAllowed = zone.checkout_allowed;
+  let reasonCode = 'ELIGIBLE';
+  if (!checkoutAllowed) reasonCode = zone.zone_type === 'waitlist_only' ? 'WAITLIST_ONLY' : 'ZONE_BLOCKED';
+  else if (!minimumMet) { checkoutAllowed = false; reasonCode = 'MINIMUM_ORDER_NOT_MET'; }
+  else if (!zone.allowed_for_subscriptions && orderType === 'subscription') { checkoutAllowed = false; reasonCode = 'SUBSCRIPTION_NOT_AVAILABLE_IN_ZONE'; }
+  else if (zone.zone_type === 'route_review') reasonCode = 'ROUTE_REVIEW_REQUIRED';
+  return {
+    eligible: checkoutAllowed,
+    checkout_allowed: checkoutAllowed,
+    zone_key: zone.zone_key,
+    zone_type: zone.zone_type,
+    delivery_fee: zone.delivery_fee,
+    minimum_order: zone.minimum_order,
+    minimum_order_met: minimumMet,
+    amount_needed: amountNeeded,
+    estimated_distance_miles: distanceMiles,
+    estimated_drive_time_minutes: driveTimeMinutes,
+    distance_confidence: 'driving',
+    manual_capture_required: zone.manual_capture_required,
+    allowed_for_subscriptions: zone.allowed_for_subscriptions,
+    subscription_route_review_required: zone.zone_type === 'route_review' && orderType === 'subscription',
+    reason_code: reasonCode,
+  };
+}
+
 /**
  * createSubscriptionPaymentElementIntent
  *
@@ -174,12 +223,46 @@ Deno.serve(async (req) => {
       console.warn(`[SubPE] Incomplete subscription reuse check failed: ${reuseErr.message} — proceeding to create new`);
     }
 
-    // Delivery zone
-    const allZones = await base44.asServiceRole.entities.DeliveryZone.filter({ is_active: true });
-    const delivery_zone_id = allZones[0]?.id || null;
-
     const resolvedAddress = delivery_address ||
       [address_line1, address_city, address_state, address_postal_code].filter(Boolean).join(', ');
+
+    // ── SERVER-SIDE ELIGIBILITY GUARD ────────────────────────────────────────
+    // Re-validate delivery eligibility before creating any Stripe subscription.
+    let eligibility = null;
+    try {
+      eligibility = await getSubDeliveryEligibility(resolvedAddress, plan.base_price || 0, 'subscription');
+    } catch (eligErr) {
+      console.error(`[SubPE] Eligibility check failed: ${eligErr.message}`);
+      return Response.json({ error: 'Could not verify delivery eligibility. Please try again.' }, { status: 400 });
+    }
+
+    console.log(`[SubPE] Eligibility: zone=${eligibility.zone_key}, checkout_allowed=${eligibility.checkout_allowed}, reason=${eligibility.reason_code}`);
+
+    if (!eligibility.checkout_allowed) {
+      return Response.json({
+        error_code: eligibility.reason_code || 'DELIVERY_NOT_AVAILABLE',
+        error: eligibility.customer_message || 'Delivery is not available to this address.',
+        zone_key: eligibility.zone_key,
+        zone_type: eligibility.zone_type,
+        amount_needed: eligibility.amount_needed || 0,
+      }, { status: 400 });
+    }
+
+    // Zone 3 subscriptions are not allowed — they require route review
+    if (eligibility.zone_type === 'route_review' || eligibility.subscription_route_review_required) {
+      return Response.json({
+        error_code: 'SUBSCRIPTION_NOT_AVAILABLE_IN_ZONE',
+        error: eligibility.customer_message || 'Subscriptions are not available for your delivery area at this time. Contact us to be notified when your area opens.',
+        zone_key: eligibility.zone_key,
+        zone_type: eligibility.zone_type,
+        subscription_route_review_required: true,
+      }, { status: 400 });
+    }
+
+    // Delivery zone — use validated zone_key to find the matching DeliveryZone record
+    const allZones = await base44.asServiceRole.entities.DeliveryZone.filter({ is_active: true });
+    const matchedZone = allZones.find(z => z.zone_key === eligibility.zone_key) || allZones[0] || null;
+    const delivery_zone_id = matchedZone?.id || null;
 
     // ── CENTRAL SCHEDULE ENGINE ──────────────────────────────────────────
     // Call calculateNuViraFulfillmentSchedule as single source of truth for dates
@@ -272,6 +355,15 @@ Deno.serve(async (req) => {
       delivery_postal_code: address_postal_code || '',
       delivery_zone_id: delivery_zone_id || '',
       bundle_id: bundle_id || '',
+      // Zone eligibility fields
+      delivery_zone_key:        eligibility?.zone_key        || '',
+      delivery_zone_name:       eligibility?.zone_name       || '',
+      delivery_zone_type:       eligibility?.zone_type       || '',
+      delivery_zone_fee:        eligibility ? String(eligibility.delivery_fee ?? '') : '',
+      estimated_distance_miles: eligibility ? String(eligibility.estimated_distance_miles ?? '') : '',
+      distance_confidence:      eligibility?.distance_confidence || '',
+      zone_origin_address:      "619 N Main St, O'Fallon, MO 63366",
+      eligibility_reason_code:  eligibility?.reason_code     || '',
     };
 
     // Create PendingSubscriptionCheckout BEFORE creating the Stripe subscription
