@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import Zone3ReviewPanel from '@/components/admin/Zone3ReviewPanel';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -226,6 +227,7 @@ export default function AdminOrders() {
   const [filter, setFilter] = useState('active');
   const [showPending, setShowPending] = useState(false);
   const [advancingId, setAdvancingId] = useState(null);
+  const [showZone3, setShowZone3] = useState(false);
 
   const [search, setSearch] = useState('');
 
@@ -369,7 +371,7 @@ export default function AdminOrders() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 px-4 mb-4">
+      <div className="flex gap-2 px-4 mb-4 overflow-x-auto pb-1">
         {[
           { key: 'active', label: `Active (${operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status)).length})` },
           { key: 'completed', label: `Completed (${operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status)).length})` },
@@ -377,18 +379,33 @@ export default function AdminOrders() {
         ].map(tab => (
           <button
             key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-              filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
+            onClick={() => { setFilter(tab.key); setShowZone3(false); }}
+            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors shrink-0 ${
+              filter === tab.key && !showZone3 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
             }`}
           >
             {tab.label}
           </button>
         ))}
+        <button
+          onClick={() => setShowZone3(!showZone3)}
+          className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors shrink-0 ${
+            showZone3 ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'
+          }`}
+        >
+          🗺️ Route Review
+        </button>
       </div>
 
+      {/* Zone 3 Route Review Panel */}
+      {showZone3 && (
+        <div className="px-4 mb-4">
+          <Zone3ReviewPanel />
+        </div>
+      )}
+
       {/* Orders List */}
-      <div className="px-4 space-y-3">
+      {!showZone3 && <div className="px-4 space-y-3">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -409,7 +426,7 @@ export default function AdminOrders() {
             />
           ))
         )}
-      </div>
+      </div>}
     </div>
   );
 }
