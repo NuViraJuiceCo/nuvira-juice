@@ -43,7 +43,9 @@ export default function Cart() {
 
   const subDiscountPct = activeSubscription?.plan?.discount_percent || 0;
   const subFreeDelivery = subDiscountPct > 0;
-  const effectiveDeliveryFee = subFreeDelivery ? 0 : 5.00;
+  // Delivery fee shown on cart is an estimate — exact fee is zone-validated at checkout.
+  // Show "from $3.99" for non-subscribers (Zone 1A is the lowest possible fee).
+  const effectiveDeliveryFee = subFreeDelivery ? 0 : null; // null = show estimated range
 
   const birthday = userProfile?.birthday || user?.birthday;
   const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
