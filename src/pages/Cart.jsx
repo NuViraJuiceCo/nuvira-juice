@@ -121,7 +121,7 @@ export default function Cart() {
 
   if (items.length === 0) {
     return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center px-4">
+      <div className="min-h-screen flex flex-col items-center justify-center px-5 pt-safe pb-safe">
         <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4">
           <ShoppingBag className="w-7 h-7 text-muted-foreground" />
         </div>
@@ -135,209 +135,213 @@ export default function Cart() {
   }
 
   return (
-    <div className="pb-44">
-      <div className="px-4 pt-4 pb-3">
-        <h1 className="font-heading text-xl font-bold">Your Cart</h1>
+    <div style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: 'calc(14rem + env(safe-area-inset-bottom))' }}>
+      {/* Header */}
+      <div className="px-5 pb-4 border-b border-border/30">
+        <h1 className="font-heading text-2xl font-bold mb-1">Your Cart</h1>
         <p className="text-xs text-muted-foreground">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
       </div>
 
-      {/* Subscriber Perks Banner */}
-      {activeSubscription?.plan && (
-        <div className="mx-4 mb-3 border border-primary/30 rounded-xl p-3 shadow-md" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.12) 0%, rgba(14,90,67,0.08) 100%)` }}>
-          <div className="flex items-center gap-2">
-            <span className="text-base">⭐</span>
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-primary">{activeSubscription.plan.name} — Subscriber Perks Active</p>
-              <div className="flex flex-wrap gap-x-3">
-                {subFreeDelivery && <p className="text-[10px] text-primary/80">✓ Free delivery</p>}
-                {subDiscountPct > 0 && <p className="text-[10px] text-primary/80">✓ {subDiscountPct}% off applied at checkout</p>}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Active Tier Reward Banner — Only show if validated and user has points */}
-      {activeReward && !isValidatingReward && (
-        <div className="mx-4 mb-3 border border-primary/30 rounded-xl p-3 shadow-md" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.12) 0%, rgba(14,90,67,0.08) 100%)` }}>
-          <div className="flex items-center gap-2">
-            <span className="text-lg">{activeReward.icon || '🎁'}</span>
-            <div className="flex-1">
-              <p className="text-xs font-semibold">{activeReward.title} — Active!</p>
-              <p className="text-[10px] text-muted-foreground">{activeReward.description} · Will be applied at checkout</p>
-            </div>
-            <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Active</span>
-          </div>
-        </div>
-      )}
-
-      {/* Birthday Reward Banner */}
-      {birthdayActive && meetsMinimum && (
-        <div className="mx-4 mb-3 bg-pink-500/10 border border-pink-500/30 rounded-xl p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Gift className="w-4 h-4 text-pink-500 shrink-0" />
-              <div>
-                <p className="text-xs font-semibold">🎂 Birthday Reward — Free 12oz Juice!</p>
-                <p className="text-[10px] text-muted-foreground">Add a free bottle to your order (valid 30 days)</p>
-              </div>
-            </div>
-            {rewardInCart ? (
-              <button onClick={removeBirthdayReward} className="text-[10px] font-semibold text-pink-500 underline">Remove</button>
-            ) : (
-              <button onClick={() => setShowBirthdayPicker(true)} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-full">Choose Free</button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Minimum Order Notice */}
-      {!meetsMinimum && (
-      <div className="mx-4 mb-3 bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center gap-2">
-      <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
-      <p className="text-xs font-semibold text-foreground">
-        Minimum order is 3 juices or 6 shots — add more to checkout.
-      </p>
-      </div>
-      )}
-
-      {productionInfo && (
-        <div className="mx-4 mb-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-center gap-2">
-          <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
-          <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">{productionInfo.label}</p>
-        </div>
-      )}
-
-      {/* Delivery Estimate */}
-      <div className="mx-4 mb-4 bg-primary/5 rounded-xl p-3 flex items-center gap-2">
-        <Truck className="w-4 h-4 text-primary shrink-0" />
-        <p className="text-xs font-medium text-primary">{deliveryText}</p>
-      </div>
-
-      {/* AOV Upsell — Complete Your Routine */}
-      {subtotal > 0 && subtotal < 144 && (
-        <div className="mx-4 mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-2">Complete Your Routine</p>
-          <div className="space-y-2 px-1">
-            {PROGRAMS.slice(0, 2).map(program => (
-              <Link key={program.key} to={`/program/${program.key}`}>
-                <div className={`flex items-center gap-3 bg-gradient-to-r ${program.color} border ${program.border} rounded-xl p-3`}>
-                  <span className="text-xl">{program.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-gray-900">{program.name} Program</p>
-                    <p className="text-[10px] text-gray-700">{program.composition} · 12 bottles</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-gray-900">${program.price}</p>
-                    <p className={`text-[10px] font-semibold ${program.accent}`}>View</p>
-                  </div>
+      {/* Content Scrollable Area */}
+      <div className="space-y-3 px-5 pt-4">
+        {/* Subscriber Perks Banner */}
+        {activeSubscription?.plan && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="border border-primary/30 rounded-2xl p-3.5 shadow-sm" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.12) 0%, rgba(14,90,67,0.08) 100%)` }}>
+            <div className="flex items-center gap-3">
+              <span className="text-base">⭐</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-primary">{activeSubscription.plan.name} — Subscriber Perks</p>
+                <div className="flex flex-wrap gap-x-3">
+                  {subFreeDelivery && <p className="text-[10px] text-primary/80">✓ Free delivery</p>}
+                  {subDiscountPct > 0 && <p className="text-[10px] text-primary/80">✓ {subDiscountPct}% off at checkout</p>}
                 </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+              </div>
+            </div>
+          </motion.div>
+        )}
 
-      {/* Cart Items */}
-      <div className="px-5 space-y-3">
-        <AnimatePresence>
-          {items.map(item => (
-            <motion.div
-              key={item.product_id}
-              layout
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="bg-card rounded-xl border border-border/50 p-3 shadow-md"
-              style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)` }}
-            >
-              <div className="flex gap-3">
-                <div className="w-16 h-16 bg-secondary/50 rounded-lg overflow-hidden shrink-0">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-2xl">🍊</div>
+        {/* Active Tier Reward Banner */}
+        {activeReward && !isValidatingReward && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="border border-primary/30 rounded-2xl p-3.5 shadow-sm" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.12) 0%, rgba(14,90,67,0.08) 100%)` }}>
+            <div className="flex items-center gap-3">
+              <span className="text-lg">{activeReward.icon || '🎁'}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold">{activeReward.title} — Active!</p>
+                <p className="text-[10px] text-muted-foreground line-clamp-1">{activeReward.description}</p>
+              </div>
+              <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full shrink-0">Applied</span>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Birthday Reward Banner */}
+        {birthdayActive && meetsMinimum && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-pink-500/10 border border-pink-500/30 rounded-2xl p-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <Gift className="w-4 h-4 text-pink-500 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold">🎂 Birthday Reward</p>
+                  <p className="text-[10px] text-muted-foreground">Free 12oz juice (30 days valid)</p>
+                </div>
+              </div>
+              {rewardInCart ? (
+                <button onClick={removeBirthdayReward} className="text-[10px] font-semibold text-pink-500 shrink-0">Remove</button>
+              ) : (
+                <button onClick={() => setShowBirthdayPicker(true)} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-lg shrink-0">Choose</button>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Minimum Order Notice */}
+        {!meetsMinimum && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-3.5 flex items-center gap-3">
+            <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
+            <p className="text-xs font-semibold text-foreground">Add {Math.ceil(3 - juiceCount)} more to checkout</p>
+          </motion.div>
+        )}
+
+        {/* Production Alert */}
+        {productionInfo && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 flex items-center gap-3">
+            <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
+            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">{productionInfo.label}</p>
+          </motion.div>
+        )}
+
+        {/* Delivery Estimate */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-primary/8 rounded-2xl p-3.5 flex items-center gap-3 border border-primary/20">
+          <Truck className="w-4 h-4 text-primary shrink-0" />
+          <p className="text-xs font-semibold text-primary">{deliveryText}</p>
+        </motion.div>
+
+        {/* AOV Upsell */}
+        {subtotal > 0 && subtotal < 144 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-foreground/50 mb-2.5 px-0.5">Complete Your Routine</p>
+            <div className="space-y-2">
+              {PROGRAMS.slice(0, 2).map(program => (
+                <Link key={program.key} to={`/program/${program.key}`}>
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`flex items-center gap-3 bg-gradient-to-r ${program.color} border ${program.border} rounded-2xl p-3.5 shadow-sm`}>
+                    <span className="text-xl">{program.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-900">{program.name}</p>
+                      <p className="text-[10px] text-gray-700">{program.composition}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-bold text-gray-900">${program.price}</p>
+                      <p className={`text-[9px] font-semibold ${program.accent}`}>View →</p>
+                    </div>
+                  </motion.div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Cart Items Section */}
+        <div className="pt-2">
+          <p className="text-xs font-semibold uppercase tracking-widest text-foreground/50 mb-3 px-0.5">Items</p>
+          <div className="space-y-3">
+            <AnimatePresence>
+              {items.map(item => (
+                <motion.div
+                  key={item.product_id}
+                  layout
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="bg-card rounded-2xl border border-border/50 p-3.5 shadow-sm"
+                  style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)` }}
+                >
+                  <div className="flex gap-3">
+                    <div className="w-16 h-16 bg-secondary/50 rounded-xl overflow-hidden shrink-0">
+                      {item.image_url ? (
+                        <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl">🍊</div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{item.title}</p>
+                      {item.size && <p className="text-[10px] text-foreground/55">{item.size}</p>}
+                      <p className="text-sm font-bold mt-1 text-primary">${(item.price * item.quantity).toFixed(2)}</p>
+                    </div>
+                    <div className="flex flex-col items-end justify-between gap-2">
+                      <button onClick={() => removeItem(item.product_id)} className="p-1 hover:opacity-60 transition-opacity">
+                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
+                      <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-2 py-1.5">
+                        <button onClick={() => updateQuantity(item.product_id, item.quantity - 1)} className="hover:opacity-60">
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
+                        <button onClick={() => updateQuantity(item.product_id, item.quantity + 1)} className="hover:opacity-60">
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bundle Details */}
+                  {item.category === 'bundle' && (item.is_program || item.title?.includes('Trio')) && item.bundle_composition?.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border/40 space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Includes</p>
+                      {item.bundle_composition.map(comp => {
+                        const juice = juices.find(j => j.id === comp.product_id || j.title?.toLowerCase().includes(comp.product_name?.toLowerCase()));
+                        return (
+                          <div key={comp.product_id} className="bg-secondary/40 rounded-lg p-2.5 flex items-center gap-2">
+                            <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+                              {juice?.image_url ? (
+                                <img src={juice.image_url} alt={comp.product_name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-sm">🍊</div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-foreground">{comp.product_name}</p>
+                              <p className="text-[10px] text-muted-foreground">{comp.quantity} bottle{comp.quantity !== 1 ? 's' : ''}</p>
+                            </div>
+                            <span className="text-xs font-bold text-muted-foreground">×{comp.quantity}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{item.title}</p>
-                  {item.size && <p className="text-[10px] text-foreground/55">{item.size}</p>}
-                  <p className="text-sm font-semibold mt-1">${(item.price * item.quantity).toFixed(2)}</p>
-                </div>
-                <div className="flex flex-col items-end justify-between">
-                  <button onClick={() => removeItem(item.product_id)} className="p-1">
-                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                  </button>
-                  <div className="flex items-center gap-2 bg-secondary rounded-lg px-2 py-1">
-                    <button onClick={() => updateQuantity(item.product_id, item.quantity - 1)}>
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.product_id, item.quantity + 1)}>
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              </div>
 
-              {/* Fixed Bundle Composition — programs and "The NuVira Trio" */}
-              {item.category === 'bundle' && (item.is_program || item.title?.includes('Trio')) && item.bundle_composition?.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-border/40">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Program Includes</p>
-                  <div className="space-y-2">
-                    {item.bundle_composition.map(comp => {
-                      const juice = juices.find(j => j.id === comp.product_id || j.title?.toLowerCase().includes(comp.product_name?.toLowerCase()));
-                      return (
-                        <div key={comp.product_id} className="bg-secondary/30 rounded-lg p-3 flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
-                            {juice?.image_url ? (
-                              <img src={juice.image_url} alt={comp.product_name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-lg">🍊</div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground">{comp.product_name}</p>
-                            <p className="text-xs text-muted-foreground">{comp.quantity} bottles</p>
-                          </div>
-                          <div className="flex items-center justify-center">
-                            <span className="text-lg font-heading font-bold text-muted-foreground">{comp.quantity}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Bundle Composer — custom bundles only (NOT programs or NuVira Trio) */}
-              {item.category === 'bundle' && !item.is_program && !item.title?.includes('Trio') && item.bundle_composition?.length === 0 && item.bottles_per_unit && (
-                <BundleComposer
-                  bundleSize={item.bottles_per_unit * item.quantity}
-                  composition={item.bundle_composition || []}
-                  juices={juices}
-                  onChange={(comp) => updateBundleComposition(item.product_id, comp)}
-                />
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
+                  {/* Bundle Composer */}
+                  {item.category === 'bundle' && !item.is_program && !item.title?.includes('Trio') && item.bundle_composition?.length === 0 && item.bottles_per_unit && (
+                    <BundleComposer
+                      bundleSize={item.bottles_per_unit * item.quantity}
+                      composition={item.bundle_composition || []}
+                      juices={juices}
+                      onChange={(comp) => updateBundleComposition(item.product_id, comp)}
+                    />
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
 
-      {/* Bottom Summary */}
-      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border">
-        <div className="max-w-lg mx-auto px-4 py-3">
-          <div className="flex justify-between text-xs text-foreground/60 mb-1">
-            <span>Subtotal</span>
-            <span>${subtotal.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-xs text-foreground/60 mb-2">
-            <span>Delivery</span>
-            <span>{effectiveDeliveryFee === 0 ? <span className="text-primary font-semibold">Free</span> : <span className="text-foreground/60">from $3.99 <span className="text-[10px]">(based on address)</span></span>}</span>
-          </div>
-          <div className="flex justify-between text-sm font-semibold mb-3">
-            <span>Total</span>
-            <span>${subtotal.toFixed(2)}+</span>
+      {/* Fixed Checkout Footer */}
+      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-gradient-to-t from-background via-background to-background/80 border-t border-border/30 pt-3" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+        <div className="max-w-lg mx-auto px-5 space-y-3">
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs text-foreground/60">
+              <span>Subtotal</span>
+              <span>${subtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-foreground/60">
+              <span>Delivery</span>
+              <span>{effectiveDeliveryFee === 0 ? <span className="text-primary font-semibold">Free</span> : <span>from $3.99</span>}</span>
+            </div>
+            <div className="flex justify-between text-sm font-bold text-foreground pt-1 border-t border-border/30">
+              <span>Total</span>
+              <span>${subtotal.toFixed(2)}+</span>
+            </div>
           </div>
           <Button
             onClick={() => {
@@ -349,13 +353,14 @@ export default function Cart() {
               navigate('/checkout');
             }}
             disabled={!meetsMinimum}
-            className="w-full h-12 rounded-xl font-semibold text-sm disabled:opacity-50"
+            className="w-full h-11 rounded-xl font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {meetsMinimum ? 'Checkout' : 'Add more to checkout'}
+            {meetsMinimum ? 'Checkout' : 'Add more items'}
             {meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
         </div>
       </div>
+
       <FreeProductPicker
         open={showBirthdayPicker}
         onClose={() => setShowBirthdayPicker(false)}
