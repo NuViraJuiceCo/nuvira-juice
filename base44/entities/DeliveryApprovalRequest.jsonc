@@ -1,0 +1,243 @@
+{
+  "name": "DeliveryApprovalRequest",
+  "type": "object",
+  "properties": {
+    "request_number": {
+      "type": "string",
+      "description": "Unique request identifier, e.g. DAR-XXXXXXXX"
+    },
+    "customer_name": {
+      "type": "string"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "customer_phone": {
+      "type": "string"
+    },
+    "delivery_address": {
+      "type": "string",
+      "description": "Full delivery address string"
+    },
+    "address_line1": {
+      "type": "string"
+    },
+    "address_line2": {
+      "type": "string"
+    },
+    "address_city": {
+      "type": "string"
+    },
+    "address_state": {
+      "type": "string"
+    },
+    "address_postal_code": {
+      "type": "string"
+    },
+    "address_country": {
+      "type": "string",
+      "default": "US"
+    },
+    "cart_items": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Snapshot of cart items at time of request"
+    },
+    "cart_subtotal": {
+      "type": "number",
+      "description": "Cart subtotal in dollars at time of request"
+    },
+    "estimated_delivery_fee": {
+      "type": "number",
+      "description": "Delivery fee for the assigned zone"
+    },
+    "estimated_total": {
+      "type": "number",
+      "description": "Estimated total including delivery fee"
+    },
+    "estimated_distance_miles": {
+      "type": "number",
+      "description": "Driving distance in miles from origin to delivery address"
+    },
+    "estimated_drive_time_minutes": {
+      "type": "number",
+      "description": "Estimated driving time in minutes"
+    },
+    "zone_key": {
+      "type": "string",
+      "description": "Zone key from DeliveryZone entity"
+    },
+    "zone_name": {
+      "type": "string"
+    },
+    "zone_type": {
+      "type": "string"
+    },
+    "requested_delivery_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Customer's requested delivery date if provided"
+    },
+    "stripe_payment_intent_id": {
+      "type": "string",
+      "description": "Stripe PaymentIntent ID for the authorization hold"
+    },
+    "stripe_customer_id": {
+      "type": "string",
+      "description": "Stripe Customer ID"
+    },
+    "stripe_authorization_status": {
+      "type": "string",
+      "description": "Current Stripe PI authorization status (requires_capture, canceled, succeeded, etc.)"
+    },
+    "amount_authorized": {
+      "type": "number",
+      "description": "Amount authorized on hold in dollars"
+    },
+    "amount_capturable": {
+      "type": "number",
+      "description": "Amount available to capture in dollars"
+    },
+    "authorization_expires_at": {
+      "type": "string",
+      "description": "ISO timestamp when Stripe authorization hold expires (typically 7 days)"
+    },
+    "customer_acknowledged_hold": {
+      "type": "boolean",
+      "default": false,
+      "description": "Customer confirmed they understand the authorization hold before checkout"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "pending_authorization",
+        "pending_review",
+        "approved",
+        "denied",
+        "expired",
+        "cancelled",
+        "captured",
+        "failed"
+      ],
+      "default": "draft",
+      "description": "Current status of the delivery approval request"
+    },
+    "admin_decision": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "denied",
+        "expired",
+        "cancelled"
+      ],
+      "description": "Admin's final decision"
+    },
+    "admin_decision_reason": {
+      "type": "string",
+      "description": "Admin's reason for approval or denial"
+    },
+    "approved_delivery_fee": {
+      "type": "number",
+      "description": "Final delivery fee approved by admin (may differ from estimate)"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "Email of admin who approved"
+    },
+    "approved_at": {
+      "type": "string",
+      "description": "ISO timestamp of approval"
+    },
+    "denied_by": {
+      "type": "string",
+      "description": "Email of admin who denied"
+    },
+    "denied_at": {
+      "type": "string",
+      "description": "ISO timestamp of denial"
+    },
+    "capture_idempotency_key": {
+      "type": "string",
+      "description": "Idempotency key for Stripe capture call"
+    },
+    "cancel_idempotency_key": {
+      "type": "string",
+      "description": "Idempotency key for Stripe cancellation call"
+    },
+    "created_order_id": {
+      "type": "string",
+      "description": "CA Order entity ID created after approval and capture"
+    },
+    "created_order_number": {
+      "type": "string",
+      "description": "NV- order number created after approval"
+    },
+    "created_hub_order_id": {
+      "type": "string",
+      "description": "Hub order ID after sync"
+    },
+    "waitlist_id": {
+      "type": "string",
+      "description": "DeliveryWaitlist entity ID if customer was moved to waitlist on denial"
+    },
+    "audit_trail": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "performed_by": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Append-only log of all actions on this request"
+    }
+  },
+  "required": [
+    "customer_email",
+    "delivery_address",
+    "zone_key",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

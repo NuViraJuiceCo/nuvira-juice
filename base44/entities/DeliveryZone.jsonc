@@ -2,32 +2,110 @@
   "name": "DeliveryZone",
   "type": "object",
   "properties": {
-    "name": {
+    "zone_key": {
       "type": "string",
-      "description": "Zone name (e.g., Zone 1)"
+      "description": "Unique identifier key, e.g. zone_1_core, zone_2_extended, zone_3_route_review_25_30"
     },
-    "description": {
+    "zone_name": {
       "type": "string",
-      "description": "Optional notes about this delivery zone and the areas it covers (up to 1000 characters)",
-      "maxLength": 1000
+      "description": "Human-readable name for this zone"
     },
-    "max_miles": {
+    "zone_type": {
+      "type": "string",
+      "enum": [
+        "core",
+        "extended",
+        "route_review",
+        "waitlist_only",
+        "unavailable"
+      ],
+      "description": "Zone classification"
+    },
+    "origin_address": {
+      "type": "string",
+      "description": "Origin address for distance calculations (defaults to 619 N Main St, O'Fallon, MO 63366)"
+    },
+    "origin_latitude": {
       "type": "number",
-      "description": "Maximum miles from store"
+      "description": "Latitude of origin address"
+    },
+    "origin_longitude": {
+      "type": "number",
+      "description": "Longitude of origin address"
+    },
+    "min_drive_miles": {
+      "type": "number",
+      "description": "Minimum driving miles from origin for this zone"
+    },
+    "max_drive_miles": {
+      "type": "number",
+      "description": "Maximum driving miles from origin for this zone"
     },
     "delivery_fee": {
       "type": "number",
-      "description": "Delivery fee for this zone"
+      "description": "Delivery fee in dollars for this zone (null = not applicable)"
+    },
+    "minimum_order": {
+      "type": "number",
+      "description": "Minimum order subtotal required for this zone (null = no minimum)"
+    },
+    "approval_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether an admin must approve delivery before the order is confirmed"
+    },
+    "manual_capture_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether Stripe payment capture must be manual (authorization hold only) until admin approval"
+    },
+    "checkout_allowed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether customers in this zone can initiate checkout"
+    },
+    "payment_allowed_before_approval": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether payment (capture) is allowed before admin approval. False = authorization hold only."
+    },
+    "allowed_for_one_time_orders": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether one-time orders are supported in this zone"
+    },
+    "allowed_for_subscriptions": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether subscriptions are supported in this zone"
+    },
+    "allowed_delivery_days": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Days of week deliveries are allowed, e.g. ['Wednesday', 'Saturday']"
+    },
+    "customer_message": {
+      "type": "string",
+      "description": "Customer-facing message shown at checkout for this zone"
+    },
+    "admin_notes": {
+      "type": "string",
+      "description": "Internal admin notes about this zone"
     },
     "is_active": {
       "type": "boolean",
-      "default": true
+      "default": true,
+      "description": "Whether this zone is currently active"
     }
   },
   "required": [
-    "name",
-    "max_miles",
-    "delivery_fee"
+    "zone_key",
+    "zone_name",
+    "zone_type",
+    "min_drive_miles",
+    "max_drive_miles"
   ],
   "rls": {
     "create": {
