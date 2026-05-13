@@ -175,6 +175,7 @@ Deno.serve(async (req) => {
       customer_email,
       customer_phone,
       order_type = 'one_time',
+      _test_distance_miles,   // Admin-only mock: bypasses Google Maps for unit testing
     } = body;
 
     // Build normalized address string
@@ -213,8 +214,19 @@ Deno.serve(async (req) => {
     let distanceConfidence = 'estimated';
     let resolvedAddress = normalizedAddress;
 
+    // Admin-only mock bypass for unit testing Zone 3A/3B classification
+    if (typeof _test_distance_miles === 'number') {
+      const user = await base44.auth.me();
+      if (user?.role === 'admin') {
+        distanceMiles = _test_distance_miles;
+        driveTimeMinutes = Math.round(_test_distance_miles * 1.5);
+        distanceConfidence = 'mocked_test';
+        console.log(`[validateDeliveryEligibility] MOCK distance: ${distanceMiles} miles (admin test)`);
+      }
+    }
+
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
-    if (apiKey) {
+    if (apiKey && distanceMiles === null) {
       try {
         const url = `https://maps.googleapis.com/maps/api/distancematrix/json?` +
           `origins=${encodeURIComponent(ORIGIN_ADDRESS)}` +

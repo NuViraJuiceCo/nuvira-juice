@@ -42,12 +42,23 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    const {
-      items, subtotal, delivery_fee, total,
-      delivery_address, address_line1, address_line2, address_city, address_state, address_postal_code,
-      contact_phone, customer_email, customer_name: inputCustomerName,
-      customer_acknowledged_hold,
-    } = await req.json();
+    const body = await req.json();
+
+    // Normalize input keys — accept both frontend contract and legacy/test variants
+    const items = body.items ?? body.cart_items ?? [];
+    const subtotal = body.subtotal ?? body.cart_subtotal ?? 0;
+    const delivery_fee = body.delivery_fee ?? null;
+    const total = body.total ?? null;
+    const delivery_address = body.delivery_address ?? null;
+    const address_line1 = body.address_line1 ?? '';
+    const address_line2 = body.address_line2 ?? '';
+    const address_city = body.address_city ?? '';
+    const address_state = body.address_state ?? '';
+    const address_postal_code = body.address_postal_code ?? '';
+    const contact_phone = body.contact_phone ?? body.customer_phone ?? body.phone ?? '';
+    const customer_email = body.customer_email ?? '';
+    const inputCustomerName = body.customer_name ?? '';
+    const customer_acknowledged_hold = body.customer_acknowledged_hold ?? false;
 
     // Require customer acknowledgment
     if (!customer_acknowledged_hold) {
