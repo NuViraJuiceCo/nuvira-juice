@@ -217,50 +217,6 @@ export default function Cart() {
           <p className="text-xs font-semibold text-primary">{deliveryText}</p>
         </motion.div>
 
-        {/* AOV Upsell */}
-        {subtotal > 0 && subtotal < 144 && (
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-foreground/50 mb-3 px-0.5">Complete Your Routine</p>
-            <div className="space-y-2.5">
-              {PROGRAMS.slice(0, 2).map((program, idx) => (
-                <Link key={program.key} to={`/program/${program.key}`}>
-                  <motion.div 
-                    initial={{ opacity: 0, y: 8 }} 
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="flex items-center gap-3.5 rounded-2xl p-3.5 border backdrop-blur-sm transition-all hover:border-opacity-100 active:scale-[0.98]"
-                    style={{
-                      background: `rgba(11, 61, 46, 0.08)`,
-                      borderColor: `${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}20`,
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-                    }}
-                  >
-                    {/* Icon Chip */}
-                    <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-base"
-                      style={{ background: `${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}15`, border: `1px solid ${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}25` }}
-                    >
-                      {program.emoji}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-foreground">{program.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{program.composition}</p>
-                    </div>
-
-                    {/* Price & CTA */}
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-foreground">${program.price}</p>
-                      <p className="text-[10px] font-semibold mt-1" style={{ color: program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B' }}>View</p>
-                    </div>
-                  </motion.div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Cart Items Section */}
         <div className="pt-2">
           <p className="text-xs font-semibold uppercase tracking-widest text-foreground/50 mb-3 px-0.5">Items</p>
@@ -345,6 +301,50 @@ export default function Cart() {
             </AnimatePresence>
           </div>
         </div>
+
+        {/* AOV Upsell */}
+        {subtotal > 0 && subtotal < 144 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-foreground/50 mb-3 px-0.5">Complete Your Routine</p>
+            <div className="space-y-2.5">
+              {PROGRAMS.slice(0, 2).map((program, idx) => (
+                <Link key={program.key} to={`/program/${program.key}`}>
+                  <motion.div 
+                    initial={{ opacity: 0, y: 8 }} 
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="flex items-center gap-3.5 rounded-2xl p-3.5 border backdrop-blur-sm transition-all hover:border-opacity-100 active:scale-[0.98]"
+                    style={{
+                      background: `rgba(11, 61, 46, 0.08)`,
+                      borderColor: `${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}20`,
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+                    }}
+                  >
+                    {/* Icon Chip */}
+                    <div 
+                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-base"
+                      style={{ background: `${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}15`, border: `1px solid ${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}25` }}
+                    >
+                      {program.emoji}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-foreground">{program.name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{program.composition}</p>
+                    </div>
+
+                    {/* Price & CTA */}
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-foreground">${program.price}</p>
+                      <p className="text-[10px] font-semibold mt-1" style={{ color: program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B' }}>View</p>
+                    </div>
+                  </motion.div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Fixed Checkout Footer */}
