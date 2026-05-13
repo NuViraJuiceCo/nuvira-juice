@@ -75,7 +75,7 @@ export default function ProgramCards() {
   return (
     <>
       {/* Mobile: horizontal scroll, peek next card */}
-      <div className="md:hidden flex gap-4 overflow-x-auto px-5 pb-2 scrollbar-none" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '1.25rem', scrollPaddingRight: '1.25rem', touchAction: 'pan-x', WebkitOverflowScrolling: 'touch' }}>
+      <div className="md:hidden flex gap-4 overflow-x-auto pb-2 scrollbar-none -mx-5 px-5" style={{ scrollbarWidth: 'none', touchAction: 'pan-x', WebkitOverflowScrolling: 'touch', pointerEvents: 'auto' }}>
         {PROGRAMS.map((program, i) => (
           <motion.div
             key={program.key}

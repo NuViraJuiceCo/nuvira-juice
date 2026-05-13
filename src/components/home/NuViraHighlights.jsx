@@ -53,7 +53,7 @@ export default function NuViraHighlights() {
       </motion.div>
 
       {/* Horizontal scrollable highlights */}
-      <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-none" style={{ scrollbarWidth: 'none', scrollPaddingLeft: '0.75rem', scrollPaddingRight: '0.75rem' }}>
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-5 px-5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', pointerEvents: 'auto' }}>
         {HIGHLIGHTS.map((highlight, i) => {
           const Icon = highlight.icon;
           return (
@@ -63,7 +63,8 @@ export default function NuViraHighlights() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.08 }}
-              className="shrink-0 w-[280px] snap-start rounded-2xl p-4 border border-border/50 shadow-sm"
+              className="shrink-0 w-[280px] rounded-2xl p-4 border border-border/50 shadow-sm"
+              style={{ touchAction: 'pan-x', pointerEvents: 'auto' }}
               style={{
                 background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)`,
               }}

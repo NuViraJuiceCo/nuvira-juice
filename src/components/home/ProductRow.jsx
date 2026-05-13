@@ -27,10 +27,8 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
          )}
        </div>
        <div
-           className="flex gap-4 overflow-x-auto px-5 pb-3 no-scrollbar"
+           className="flex gap-4 overflow-x-auto pb-3 no-scrollbar -mx-5 px-5"
            style={{
-             scrollPaddingLeft: '1.25rem',
-             scrollPaddingRight: '1.25rem',
              WebkitOverflowScrolling: 'touch',
              overscrollBehaviorX: 'contain',
              touchAction: 'pan-x',
