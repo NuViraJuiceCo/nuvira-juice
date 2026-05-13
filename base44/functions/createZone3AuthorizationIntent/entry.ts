@@ -4,16 +4,17 @@ import Stripe from 'npm:stripe@14.21.0';
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
 const ORIGIN_ADDRESS = "619 N Main St, O'Fallon, MO 63366";
-const ZONE_RULES = [
-  { zone_key: 'zone_3_route_review', zone_name: 'Route Review Zone',          zone_type: 'route_review', min: 25.01, max: 30,    delivery_fee: 12.99, minimum_order: 59.99 },
-  { zone_key: 'zone_3_route_review', zone_name: 'Extended Route Review Zone', zone_type: 'route_review', min: 30.01, max: 35,    delivery_fee: 15.99, minimum_order: 72.0 },
-  { zone_key: 'waitlist_only',       zone_name: 'Delivery Waitlist Area',      zone_type: 'waitlist_only',min: 35.01, max: 99999, delivery_fee: null,  minimum_order: null },
-];
 const ALL_ZONE_RULES = [
-  { zone_key: 'zone_1_core',         zone_type: 'core',         min: 0,     max: 15 },
-  { zone_key: 'zone_2_extended',     zone_type: 'extended',     min: 15.01, max: 25 },
-  ...ZONE_RULES,
+  { zone_key: 'zone_1a_core_0_5',          zone_name: 'Core Delivery',               zone_tier_label: 'Core Delivery',         zone_type: 'core',         min: 0,     max: 5,     delivery_fee: 3.99,  minimum_order: null },
+  { zone_key: 'zone_1b_core_5_10',         zone_name: 'Core Delivery',               zone_tier_label: 'Core Delivery',         zone_type: 'core',         min: 5.01,  max: 10,    delivery_fee: 5.99,  minimum_order: null },
+  { zone_key: 'zone_1c_core_10_15',        zone_name: 'Core Delivery',               zone_tier_label: 'Core Delivery',         zone_type: 'core',         min: 10.01, max: 15,    delivery_fee: 7.99,  minimum_order: null },
+  { zone_key: 'zone_2_extended',           zone_name: 'Extended Delivery',           zone_tier_label: 'Extended Delivery',     zone_type: 'extended',     min: 15.01, max: 25,    delivery_fee: 9.99,  minimum_order: 49.99 },
+  { zone_key: 'zone_3a_route_review_25_30',zone_name: 'Route Review Zone',           zone_tier_label: 'Route Review Required', zone_type: 'route_review', min: 25.01, max: 30,    delivery_fee: 12.99, minimum_order: 59.99 },
+  { zone_key: 'zone_3b_route_review_30_35',zone_name: 'Extended Route Review Zone',  zone_tier_label: 'Route Review Required', zone_type: 'route_review', min: 30.01, max: 35,    delivery_fee: 15.99, minimum_order: 72.0 },
+  { zone_key: 'waitlist_only',             zone_name: 'Delivery Waitlist Area',      zone_tier_label: 'Not Yet Available',     zone_type: 'waitlist_only',min: 35.01, max: 99999, delivery_fee: null,  minimum_order: null },
 ];
+// Zone 3 rules only (for route review eligibility check)
+const ZONE_RULES = ALL_ZONE_RULES.filter(z => z.zone_type === 'route_review' || z.zone_type === 'waitlist_only');
 
 async function getEligibility(address, subtotal) {
   const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');

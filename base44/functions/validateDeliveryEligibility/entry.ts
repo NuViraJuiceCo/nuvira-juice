@@ -12,14 +12,32 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const ORIGIN_ADDRESS = "619 N Main St, O'Fallon, MO 63366";
 
-// Zone thresholds (driving miles)
+// Zone thresholds (driving miles) — Zone 1 has three fee sub-tiers
 const ZONES = [
+  // ── Zone 1A: 0–5 miles — $3.99 ─────────────────────────────────────────────
   {
-    zone_key: 'zone_1_core',
-    zone_name: 'Core Delivery Zone',
+    zone_key: 'zone_1a_core_0_5',
+    zone_name: 'Core Delivery',
+    zone_tier_label: 'Core Delivery',
     zone_type: 'core',
     min: 0,
-    max: 15,
+    max: 5,
+    delivery_fee: 3.99,
+    minimum_order: null,
+    approval_required: false,
+    manual_capture_required: false,
+    checkout_allowed: true,
+    payment_capture_method: 'automatic',
+    allowed_for_subscriptions: true,
+  },
+  // ── Zone 1B: 5.01–10 miles — $5.99 ─────────────────────────────────────────
+  {
+    zone_key: 'zone_1b_core_5_10',
+    zone_name: 'Core Delivery',
+    zone_tier_label: 'Core Delivery',
+    zone_type: 'core',
+    min: 5.01,
+    max: 10,
     delivery_fee: 5.99,
     minimum_order: null,
     approval_required: false,
@@ -28,9 +46,27 @@ const ZONES = [
     payment_capture_method: 'automatic',
     allowed_for_subscriptions: true,
   },
+  // ── Zone 1C: 10.01–15 miles — $7.99 ─────────────────────────────────────────
+  {
+    zone_key: 'zone_1c_core_10_15',
+    zone_name: 'Core Delivery',
+    zone_tier_label: 'Core Delivery',
+    zone_type: 'core',
+    min: 10.01,
+    max: 15,
+    delivery_fee: 7.99,
+    minimum_order: null,
+    approval_required: false,
+    manual_capture_required: false,
+    checkout_allowed: true,
+    payment_capture_method: 'automatic',
+    allowed_for_subscriptions: true,
+  },
+  // ── Zone 2: 15.01–25 miles — $9.99, $49.99 minimum ─────────────────────────
   {
     zone_key: 'zone_2_extended',
-    zone_name: 'Extended Delivery Zone',
+    zone_name: 'Extended Delivery',
+    zone_tier_label: 'Extended Delivery',
     zone_type: 'extended',
     min: 15.01,
     max: 25,
@@ -42,9 +78,11 @@ const ZONES = [
     payment_capture_method: 'automatic',
     allowed_for_subscriptions: true,
   },
+  // ── Zone 3A: 25.01–30 miles — $12.99, route review ─────────────────────────
   {
-    zone_key: 'zone_3_route_review',
+    zone_key: 'zone_3a_route_review_25_30',
     zone_name: 'Route Review Zone',
+    zone_tier_label: 'Route Review Required',
     zone_type: 'route_review',
     min: 25.01,
     max: 30,
@@ -56,9 +94,11 @@ const ZONES = [
     payment_capture_method: 'manual',
     allowed_for_subscriptions: false,
   },
+  // ── Zone 3B: 30.01–35 miles — $15.99, route review ─────────────────────────
   {
-    zone_key: 'zone_3_route_review',
+    zone_key: 'zone_3b_route_review_30_35',
     zone_name: 'Extended Route Review Zone',
+    zone_tier_label: 'Route Review Required',
     zone_type: 'route_review',
     min: 30.01,
     max: 35,
@@ -70,9 +110,11 @@ const ZONES = [
     payment_capture_method: 'manual',
     allowed_for_subscriptions: false,
   },
+  // ── Waitlist: 35+ miles ──────────────────────────────────────────────────────
   {
     zone_key: 'waitlist_only',
     zone_name: 'Delivery Waitlist Area',
+    zone_tier_label: 'Not Yet Available',
     zone_type: 'waitlist_only',
     min: 35.01,
     max: 99999,
@@ -283,6 +325,7 @@ Deno.serve(async (req) => {
       manual_capture_required: zone.manual_capture_required,
       zone_key: zone.zone_key,
       zone_name: zone.zone_name,
+      zone_tier_label: zone.zone_tier_label,
       zone_type: zone.zone_type,
       delivery_fee: zone.delivery_fee,
       minimum_order: minimumOrder,
