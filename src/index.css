@@ -213,6 +213,22 @@ svg {
   pointer-events: none;
 }
 
+/* Hide Base44 editor badge in production customer app */
+[data-base44-badge],
+[class*="base44-badge"],
+[class*="base44-editor"],
+[class*="base44-builder"],
+[id*="base44-badge"],
+[id*="base44-editor"],
+[id*="base44-builder"],
+[class*="edit-with-base44"],
+[id*="edit-with-base44"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* Custom scrollbar — hidden everywhere */
 ::-webkit-scrollbar {
   width: 0px;
