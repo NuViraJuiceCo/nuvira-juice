@@ -99,8 +99,61 @@ Deno.serve(async (req) => {
       }],
     });
 
-    // Notify customer
+    // Send denial email
     const resolvedAddress = dar.delivery_address || [dar.address_line1, dar.address_city, dar.address_state, dar.address_postal_code].filter(Boolean).join(', ');
+    const denialEmailHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; color: #333; background: #f9f7f4; margin: 0; padding: 0; }
+    .wrapper { max-width: 580px; margin: 40px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: #2d6a4f; padding: 32px 24px; text-align: center; }
+    .header h1 { color: #fff; margin: 0; font-size: 22px; letter-spacing: 0.5px; }
+    .header p { color: #b7e4c7; margin: 6px 0 0; font-size: 13px; }
+    .body { padding: 28px 32px; }
+    .body p { font-size: 15px; line-height: 1.6; margin: 0 0 16px; }
+    .notice-box { background: #fff8f0; border: 1px solid #f4d3a8; border-radius: 10px; padding: 20px 24px; margin: 20px 0; }
+    .notice-box p { margin: 0; font-size: 14px; color: #7a4f00; }
+    .waitlist-banner { background: #1b4332; color: #fff; border-radius: 8px; padding: 14px 20px; text-align: center; margin: 20px 0; font-size: 15px; }
+    .footer { text-align: center; padding: 20px 24px; font-size: 12px; color: #999; border-top: 1px solid #eee; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>NuVira Route Review Update</h1>
+      <p>Real. Living. Nutrition.</p>
+    </div>
+    <div class="body">
+      <p>Hi ${dar.customer_name || 'there'},</p>
+      <p>Thank you for your interest in NuVira delivery to <strong>${resolvedAddress}</strong>.</p>
+      <p>Unfortunately, we're not able to offer delivery to your area at this time based on our current route schedule.</p>
+      <div class="notice-box">
+        <p>✅ <strong>No charge was made.</strong> The temporary authorization hold on your card has been fully released.</p>
+      </div>
+      <div class="waitlist-banner">
+        📋 You've been added to our delivery waitlist!<br>
+        <span style="font-size:13px; opacity:0.85;">We'll notify you as soon as your area opens up.</span>
+      </div>
+      <p>We're constantly expanding our delivery routes and hope to serve your area soon. In the meantime, feel free to explore pickup options or reach out with any questions.</p>
+      <p>Questions? Reply to this email or reach us at <a href="mailto:support@nuvirajuice.com" style="color:#2d6a4f;">support@nuvirajuice.com</a>.</p>
+      <p style="margin-top:24px;">With love & greens,<br><strong>The NuVira Team 🌿</strong></p>
+    </div>
+    <div class="footer">&copy; 2026 NuVira Juice Company · Wentzville, MO</div>
+  </div>
+</body>
+</html>`;
+
+    base44.asServiceRole.integrations.Core.SendEmail({
+      to: dar.customer_email,
+      subject: 'NuVira Route Review Update',
+      body: denialEmailHtml,
+      from_name: 'NuVira Juice Co.',
+    }).then(() => console.log(`[Zone3 Deny] Denial email sent to ${dar.customer_email}`))
+      .catch(err => console.warn(`[Zone3 Deny] Email send failed: ${err.message}`));
+
+    // Notify customer (in-app)
     base44.asServiceRole.functions.invoke('sendCustomerNotification', {
       customer_email: dar.customer_email,
       type: 'general',
