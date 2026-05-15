@@ -105,7 +105,6 @@
 /* Native mobile feel */
 html, body {
   overflow-x: hidden;
-  overscroll-behavior-y: none;
   overscroll-behavior-x: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -248,12 +247,14 @@ html {
 /* Page-level fade: ensure transitions don't cause horizontal bleed */
 [data-page-transition] {
   overflow-x: hidden;
+  overflow-y: visible;
 }
 
 /* Prevent horizontal scroll bleed on page root — allow children to have nested horizontal scroll */
 #root {
   position: relative;
   overflow-x: hidden;
+  overflow-y: visible;
   width: 100%;
   max-width: 100vw;
 }
