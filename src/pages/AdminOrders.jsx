@@ -405,28 +405,30 @@ export default function AdminOrders() {
       )}
 
       {/* Orders List */}
-      {!showZone3 && <div className="px-4 space-y-3">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-muted-foreground text-sm">{search ? 'No orders match your search' : `No ${filter} orders`}</p>
-          </div>
-        ) : (
-          filtered.map(order => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              onAdvance={handleAdvance}
-              onGoBack={handleGoBack}
-              isAdvancing={advancingId === order.id}
-              customerName={nameMap[order.customer_email] || order.customer_name || null}
-            />
-          ))
-        )}
-      </div>}
+      {!showZone3 && (
+        <div className="px-4 space-y-3">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-muted-foreground text-sm">{search ? 'No orders match your search' : `No ${filter} orders`}</p>
+            </div>
+          ) : (
+            filtered.map(order => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                onAdvance={handleAdvance}
+                onGoBack={handleGoBack}
+                isAdvancing={advancingId === order.id}
+                customerName={nameMap[order.customer_email] || order.customer_name || null}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
