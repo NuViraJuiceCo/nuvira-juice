@@ -105,6 +105,85 @@ Deno.serve(async (req) => {
     });
 
     console.log(`[sendOrderStatusNotification] Status "${new_status}" notif for order ${orderNum}: ${JSON.stringify(result.data)}`);
+
+    // ── Delivery confirmation email ───────────────────────────────────────────
+    if (new_status === 'delivered') {
+      try {
+        // Fetch full order for email details
+        const orderRows = await base44.asServiceRole.entities.Order.filter({ id: order_id }, null, 1);
+        const fullOrder = orderRows[0];
+
+        if (fullOrder && email) {
+          const deliveredAt = fullOrder.delivered_at
+            ? new Date(fullOrder.delivered_at).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
+            : new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
+
+          const itemsHtml = (fullOrder.items || [])
+            .map(i => `<div class="row"><span class="label">${i.title} ×${i.quantity}</span><span class="value">$${((i.price || 0) * (i.quantity || 1)).toFixed(2)}</span></div>`)
+            .join('');
+
+          const dropLocationLine = fullOrder.delivery_drop_location
+            ? `<div class="detail-row">📍 Left at: <strong>${fullOrder.delivery_drop_location}</strong></div>`
+            : '';
+
+          const photoLine = fullOrder.delivery_photo_url
+            ? `<div style="margin-top:16px;"><p style="font-size:13px;color:#555;margin-bottom:8px;">Delivery photo:</p><img src="${fullOrder.delivery_photo_url}" alt="Delivery proof" style="width:100%;border-radius:8px;border:1px solid #d8f3e6;max-height:220px;object-fit:cover;" /></div>`
+            : '';
+
+          const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  body{font-family:Arial,sans-serif;color:#333;background:#f9f7f4;margin:0;padding:0;}
+  .wrapper{max-width:580px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);}
+  .header{background:#2d6a4f;padding:32px 24px;text-align:center;}
+  .header h1{color:#fff;margin:0;font-size:22px;}
+  .header p{color:#b7e4c7;margin:6px 0 0;font-size:13px;}
+  .body{padding:28px 32px;}
+  .body p{font-size:15px;line-height:1.6;margin:0 0 16px;}
+  .order-box{background:#f0faf4;border:1px solid #b7e4c7;border-radius:10px;padding:20px 24px;margin:20px 0;}
+  .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #d8f3e6;font-size:14px;}
+  .row:last-child{border-bottom:none;}
+  .label{color:#555;}
+  .value{color:#1b4332;font-weight:600;}
+  .delivery-banner{background:#1b4332;color:#fff;border-radius:8px;padding:14px 20px;text-align:center;margin:20px 0;font-size:15px;}
+  .delivery-banner strong{font-size:17px;display:block;margin-top:4px;}
+  .detail-row{font-size:13px;color:#555;margin-top:8px;}
+  .footer{text-align:center;padding:20px 24px;font-size:12px;color:#999;border-top:1px solid #eee;}
+</style>
+</head><body>
+<div class="wrapper">
+  <div class="header"><h1>🎉 Your Order Has Been Delivered!</h1><p>Real. Living. Nutrition.</p></div>
+  <div class="body">
+    <p>Hi there,</p>
+    <p>Great news — your NuVira order <strong>#${orderNum}</strong> has been delivered. Enjoy your fresh juices!</p>
+    <div class="order-box">
+      <div class="row"><span class="label">Order</span><span class="value">#${orderNum}</span></div>
+      ${itemsHtml}
+      <div class="row"><span class="label">Total</span><span class="value">$${(fullOrder.total || 0).toFixed(2)}</span></div>
+    </div>
+    <div class="delivery-banner">✅ Delivered<strong>${deliveredAt} (CT)</strong></div>
+    ${dropLocationLine}
+    ${photoLine}
+    <p style="margin-top:20px;">Questions or concerns? Reply to this email or reach us at <a href="mailto:support@nuvirajuice.com" style="color:#2d6a4f;">support@nuvirajuice.com</a>.</p>
+    <p style="margin-top:24px;">With love & greens,<br><strong>The NuVira Team 🌿</strong></p>
+  </div>
+  <div class="footer">&copy; 2026 NuVira Juice Company · Wentzville, MO</div>
+</div>
+</body></html>`;
+
+          await base44.asServiceRole.integrations.Core.SendEmail({
+            to: email,
+            subject: `Your NuVira order #${orderNum} has been delivered! 🎉`,
+            body: html,
+            from_name: 'NuVira Juice Co.',
+          });
+          console.log(`[sendOrderStatusNotification] ✅ Delivery confirmation email sent to ${email} for order ${orderNum}`);
+        }
+      } catch (emailErr) {
+        console.error(`[sendOrderStatusNotification] ❌ Delivery email failed: ${emailErr.message}`);
+      }
+    }
+
     return Response.json({ success: true, order_number: orderNum, status: new_status });
 
   } catch (error) {

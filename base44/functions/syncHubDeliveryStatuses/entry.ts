@@ -158,10 +158,19 @@ Deno.serve(async (req) => {
         },
       ];
 
-      await base44.asServiceRole.entities.Order.update(caOrder.id, {
+      // Build update payload — stamp delivered_at and pull proof fields on delivery
+      const updatePayload = {
         status: mappedStatus,
         status_history: newHistory,
-      });
+      };
+      if (mappedStatus === 'delivered') {
+        updatePayload.delivered_at = new Date().toISOString();
+        // Pull proof-of-delivery fields from Hub order if present
+        if (hubOrder.delivery_photo_url) updatePayload.delivery_photo_url = hubOrder.delivery_photo_url;
+        if (hubOrder.delivery_drop_location) updatePayload.delivery_drop_location = hubOrder.delivery_drop_location;
+      }
+
+      await base44.asServiceRole.entities.Order.update(caOrder.id, updatePayload);
 
       console.log(`[syncHubDeliveryStatuses] ✅ ${caOrder.order_number}: ${caOrder.status} → ${mappedStatus}`);
       updated++;

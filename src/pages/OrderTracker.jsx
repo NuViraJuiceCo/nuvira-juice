@@ -29,6 +29,25 @@ function formatLocalDate(dateStr, fmt = 'EEEE, MMMM d') {
   return format(d, fmt);
 }
 
+// Format a delivered_at ISO timestamp with time for the tracker header
+function formatDeliveredAt(deliveredAt, fallbackDateStr) {
+  // Full ISO timestamp → show date + time
+  if (deliveredAt && deliveredAt.includes('T')) {
+    try {
+      const d = new Date(deliveredAt);
+      if (!isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat('en-US', {
+          weekday: 'long', month: 'long', day: 'numeric',
+          hour: 'numeric', minute: '2-digit',
+          timeZone: 'America/Chicago',
+        }).format(d) + ' CT';
+      }
+    } catch { /* fall through */ }
+  }
+  // Date-only fallback
+  return formatLocalDate(deliveredAt || fallbackDateStr) || 'Delivered';
+}
+
 const DELIVERY_STAGES = [
   { key: 'order_received', label: 'Order Received', desc: "We've received your order" },
   { key: 'scheduled_for_juicing', label: 'Scheduled for Juicing', desc: 'Your juice is scheduled for our next fresh batch' },
@@ -344,8 +363,8 @@ export default function OrderTracker() {
             </p>
             <p className="font-heading text-xl font-bold text-white">
               {currentStatus === 'delivered'
-                // Priority: delivered_at (ISO timestamp) → assigned_delivery_date (date-only) → estimated_delivery_date
-                ? formatLocalDate(deliveryStatus?.delivered_at || order?.assigned_delivery_date || displayOrder.estimated_delivery_date) || 'Delivered'
+              // Priority: delivered_at (full timestamp with time) → assigned_delivery_date → estimated_delivery_date
+              ? formatDeliveredAt(deliveryStatus?.delivered_at, order?.assigned_delivery_date || displayOrder.estimated_delivery_date)
                 : isOnRoute && etaData?.eta_window
                   ? etaData.eta_window
                   : (displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)
