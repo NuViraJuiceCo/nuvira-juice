@@ -85,16 +85,13 @@ Deno.serve(async (req) => {
 
     // ── STEP 2: Idempotency check — prevent duplicate notifications ──────────
     if (idempotency_key) {
-      // Check all identity emails for existing notification with this key
-      for (const email of identityList) {
-        const existing = await base44.asServiceRole.entities.Notification.filter({
-          customer_email: email,
-        });
-        const duplicate = existing.find(n => n.idempotency_key === idempotency_key);
-        if (duplicate) {
-          console.log(`[sendCustomerNotification] Duplicate detected (key=${idempotency_key}) for ${email}. Skipping.`);
-          return Response.json({ success: true, skipped: true, reason: 'duplicate_idempotency_key', existing_id: duplicate.id });
-        }
+      // Query directly by idempotency_key — efficient and race-condition resistant
+      const existing = await base44.asServiceRole.entities.Notification.filter({
+        idempotency_key,
+      }, null, 1);
+      if (existing[0]) {
+        console.log(`[sendCustomerNotification] Duplicate detected (key=${idempotency_key}). Skipping.`);
+        return Response.json({ success: true, skipped: true, reason: 'duplicate_idempotency_key', existing_id: existing[0].id });
       }
     }
 
