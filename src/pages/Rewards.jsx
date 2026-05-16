@@ -36,10 +36,12 @@ function getTier(pts) {
 
 // ── Default rewards ─────────────────────────────────────────────────────────
 const DEFAULT_REWARDS = [
-  { title: 'Free Wellness Shot', description: 'Any wellness add-on shot', points_required: 500,  icon: '💛', reward_type: 'free_bottle' },
-  { title: 'Free Delivery',       description: 'On your next order',       points_required: 1000, icon: '🚚', reward_type: 'free_delivery' },
-  { title: 'Free 32oz Juice',     description: 'Any flavor, any day',      points_required: 2500, icon: '🍊', reward_type: 'free_bottle' },
-  { title: 'Bundle Deal',         description: '6-pack at the price of 3', points_required: 5000, icon: '🎁', reward_type: 'bundle' },
+  { title: 'Free Wellness Shot',      description: 'Add a free 2oz wellness shot to any order',                                                       points_required: 500,  icon: '⚡', reward_type: 'free_shot' },
+  { title: 'Free Add-On Bottle',      description: 'Add a free 12oz bottle to your next order',                                                        points_required: 1000, icon: '🍵', reward_type: 'free_bottle' },
+  { title: 'Double Points Order',     description: 'Earn 2x loyalty points on your next purchase',                                                     points_required: 1500, icon: '✨', reward_type: 'double_points' },
+  { title: '10% Off Your Order',      description: '10% discount applied to your next order',                                                          points_required: 2500, icon: '💸', reward_type: 'discount_10pct' },
+  { title: 'Wellness Bundle Upgrade', description: 'Upgrade any 3-bottle order to a 6-bottle bundle — 50% off the additional 3 bottles',              points_required: 4000, icon: '🎁', reward_type: 'bundle_upgrade' },
+  { title: 'VIP Wellness Box',        description: 'Exclusive curated box of 6 bottles — our best flavors, hand-selected for you',                    points_required: 6000, icon: '👑', reward_type: 'vip_box' },
 ];
 
 const HOW_TO_EARN = [
@@ -257,7 +259,7 @@ function GuestView() {
           </div>
           <h1 className="font-heading text-2xl font-bold text-white mb-2">NuVira Rewards</h1>
           <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            Earn points on every order. Unlock free bottles, delivery, and exclusive drops.
+            Earn points on every order. Unlock free bottles, discounts, and exclusive drops.
           </p>
           <button
             onClick={() => base44.auth.redirectToLogin(window.location.pathname)}
@@ -390,27 +392,30 @@ export default function Rewards() {
     return () => window.removeEventListener('resize', checkScroll);
   }, [rewards]);
 
-  // ── Reward apply/remove logic (unchanged) ──
+  // ── Reward apply/remove logic ──
   const handleApplyReward = async (reward) => {
-    if (reward.reward_type === 'free_bottle') {
+    // free_shot and free_bottle both open the product picker
+    if (reward.reward_type === 'free_shot' || reward.reward_type === 'free_bottle') {
       setPendingReward(reward);
       setPickerOpen(true);
       return;
     }
+    // All other reward types (double_points, discount_10pct, bundle_upgrade, vip_box)
+    // are stored locally and applied at checkout
     try {
       await base44.functions.invoke('claimReward', {
         email: user.email,
-        reward_id: reward.id,
+        reward_id: reward.id || reward.title,
         reward_title: reward.title,
         reward_type: reward.reward_type,
       });
     } catch (err) {
       console.warn('Failed to sync reward claim:', err.message);
     }
-    const r = { id: reward.id, title: reward.title, description: reward.description, reward_type: reward.reward_type, points_required: reward.points_required, icon: reward.icon };
+    const r = { id: reward.id || reward.title, title: reward.title, description: reward.description, reward_type: reward.reward_type, points_required: reward.points_required, icon: reward.icon };
     localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(r));
     setActiveReward(r);
-    toast.success(`${reward.title} applied! Head to your cart to use it.`);
+    toast.success(`${reward.title} applied! Head to checkout to use it.`);
   };
 
   const handleFreeProductSelect = (product) => {
@@ -434,7 +439,7 @@ export default function Rewards() {
   return (
     <div className="pb-32" style={{ background: 'hsl(var(--background))' }}>
       <BrowserAppPrompt pageRoute="/rewards" />
-      <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles." />
+      <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, discounts, and exclusive bundles." />
 
       {/* Page title with safe-area padding */}
       <div className="px-4 pt-6 pb-2 flex items-center justify-between" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
@@ -652,7 +657,7 @@ export default function Rewards() {
         onClose={() => { setPickerOpen(false); setPendingReward(null); }}
         onSelect={handleFreeProductSelect}
         title={pendingReward ? `Choose Your ${pendingReward.title}` : 'Choose Your Free Item'}
-        category="juice"
+        category={pendingReward?.reward_type === 'free_shot' ? 'shot' : 'juice'}
       />
     </div>
   );
