@@ -71,58 +71,59 @@ export function getEligibleDeliveryOptions(now = new Date(), sundayEnabled = fal
   const pm = {};
   parts.forEach(p => { pm[p.type] = p.value; });
 
+  // Chicago-local "now" as a plain local Date (no timezone offset confusion)
   const chicagoNow = new Date(
     parseInt(pm.year), parseInt(pm.month) - 1, parseInt(pm.day),
     parseInt(pm.hour), parseInt(pm.minute)
   );
-  const dow = chicagoNow.getDay(); // 0=Sun ... 6=Sat
-  const hour = chicagoNow.getHours();
-  const CUTOFF = 14; // 2 PM
+  const todayDow = chicagoNow.getDay(); // 0=Sun ... 6=Sat
+  const todayHour = chicagoNow.getHours();
+  const CUTOFF = 14; // 2 PM Chicago
 
-  // NuVira production batches: each entry is [productionDow, deliveryDow]
+  // NuVira batches: [productionDow, deliveryDow]
   const batches = [
-    [2, 3], // Tue → Wed
-    [5, 6], // Fri → Sat
-    ...(sundayEnabled ? [[6, 0]] : []), // Sat → Sun (optional)
+    [2, 3], // Tuesday prod → Wednesday delivery
+    [5, 6], // Friday prod → Saturday delivery
+    ...(sundayEnabled ? [[6, 0]] : []),
   ];
 
+  const toISODate = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dy}`;
+  };
+
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
   const options = [];
-  // Search up to 14 days ahead to find next 3 eligible delivery slots
-  for (let daysAhead = 0; daysAhead <= 14 && options.length < batches.length; daysAhead++) {
-    const candidate = new Date(chicagoNow);
-    candidate.setDate(candidate.getDate() + daysAhead);
-    const candidateDow = candidate.getDay();
+
+  // Walk forward up to 14 days to find the next eligible delivery slots
+  for (let daysAhead = 1; daysAhead <= 14 && options.length < batches.length; daysAhead++) {
+    const deliveryCandidate = new Date(chicagoNow);
+    deliveryCandidate.setDate(deliveryCandidate.getDate() + daysAhead);
+    const deliveryDow = deliveryCandidate.getDay();
 
     for (const [prodDow, delDow] of batches) {
-      if (options.some(o => o._delDow === delDow)) continue; // already found this slot
-      if (candidateDow !== delDow) continue;
+      if (options.some(o => o._delDow === delDow)) continue; // slot already found
+      if (deliveryDow !== delDow) continue;                   // not this batch's delivery day
 
-      // Check cutoff: if the production day (day before) has already passed cutoff, skip
-      // Production day is the day before delivery day
-      const prodCandidate = new Date(candidate);
+      // Production day is always 1 day before delivery
+      const prodCandidate = new Date(deliveryCandidate);
       prodCandidate.setDate(prodCandidate.getDate() - 1);
-      const prodDayDow = prodCandidate.getDay();
+      if (prodCandidate.getDay() !== prodDow) continue; // sanity check
 
-      // Is production day in the past or past cutoff today?
-      if (prodDayDow !== prodDow) continue; // schedule mismatch (shouldn't happen)
+      // If production day is TODAY, only include if before 2 PM cutoff
+      if (daysAhead === 1 && todayHour >= CUTOFF) continue;
 
-      if (daysAhead === 1) {
-        // Production day is today — check if cutoff has passed
-        if (hour >= CUTOFF) continue; // too late, skip to next cycle
-      }
-      if (daysAhead === 0) continue; // delivery day can't be today
-
-      const toISODate = (d) => {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-      };
+      // If production day is already in the past (daysAhead >= 2 means prod is tomorrow or later — always ok)
+      // daysAhead=1 → prod is today (handled above)
+      // daysAhead=2 → prod is tomorrow → always eligible
 
       options.push({
-        delivery_date: toISODate(candidate),
+        delivery_date: toISODate(deliveryCandidate),
         production_date: toISODate(prodCandidate),
-        delivery_day_name: ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][delDow],
+        delivery_day_name: DAY_NAMES[delDow],
         delivery_window_label: '5 PM – 8 PM',
         delivery_window_start: '17:00',
         delivery_window_end: '20:00',
