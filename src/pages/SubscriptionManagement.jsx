@@ -471,9 +471,12 @@ export default function SubscriptionManagement() {
               <Plus className="w-6 h-6 text-muted-foreground" />
             </div>
             <p className="font-medium text-sm mb-1">No active subscriptions</p>
-            <p className="text-xs text-muted-foreground mb-4">Start a subscription to get fresh juice delivered regularly.</p>
-            <Link to="/subscribe">
-              <Button size="sm" className="rounded-full">Subscribe Now</Button>
+            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+              Subscription plans are currently being refined and will return soon.<br />
+              One-time orders are still available.
+            </p>
+            <Link to="/shop">
+              <Button size="sm" className="rounded-full">Shop One-Time Orders</Button>
             </Link>
           </div>
         )}

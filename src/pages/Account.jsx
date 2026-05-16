@@ -15,7 +15,7 @@ import { motion } from 'framer-motion';
 // Account menu items grouped by section
 const accountMenuItems = [
   { icon: ShoppingBag, label: 'Order History', path: '/account/orders', desc: 'View past and active orders' },
-  { icon: Repeat2, label: 'My Subscriptions', path: '/account/subscriptions', desc: 'Pause, skip, or manage your ritual' },
+  { icon: Repeat2, label: 'My Subscriptions', path: '/account/subscriptions', desc: 'View and manage your active ritual' },
 ];
 
 const supportMenuItems = [
@@ -198,7 +198,7 @@ export default function Account() {
                   <Repeat2 className="w-4 h-4 text-primary dark:text-white" />
                 </div>
                 <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Weekly Ritual</p>
-                <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Pause, skip, or subscribe</p>
+                <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Pause, skip, or manage</p>
                 <span className="inline-block mt-2 text-[9px] font-bold text-primary dark:text-white bg-primary/15 dark:bg-primary/20 px-2 py-0.5 rounded-full border border-primary/30 dark:border-primary/25">Flexible</span>
               </div>
             </motion.div>
