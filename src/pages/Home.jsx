@@ -216,7 +216,6 @@ export default function Home() {
           <Link to="/about" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
           <Link to="/contact" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
           <Link to="/support" className="text-xs text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
-          <Link to="/subscribe" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Subscribe</Link>
           <Link to="/legal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Legal</Link>
         </div>
         <p className="text-center text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co. · Wentzville, MO · <a href="mailto:info@nuvirajuice.com" className="hover:text-foreground transition-colors">info@nuvirajuice.com</a></p>

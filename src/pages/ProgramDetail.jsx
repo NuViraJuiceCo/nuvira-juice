@@ -7,7 +7,6 @@ import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import SubscriptionUpsellModal from '@/components/program/SubscriptionUpsellModal';
 import ConsumptionSchedule from '@/components/program/ConsumptionSchedule';
 import { PROGRAMS } from '@/components/home/ProgramCards';
 
@@ -25,7 +24,6 @@ export default function ProgramDetail() {
 
   const program = PROGRAMS.find(p => p.key === key);
   const [selectedShots, setSelectedShots] = useState([]); // array of shot ids, max 3
-  const [showUpsell, setShowUpsell] = useState(false);
 
   const { data: shots = [] } = useQuery({
     queryKey: ['wellness-shots'],
@@ -42,7 +40,8 @@ export default function ProgramDetail() {
   const total = basePrice + shotsTotal;
 
   const handleStartProgram = () => {
-    setShowUpsell(true);
+    // Subscriptions temporarily disabled — go straight to one-time purchase
+    handleOneTime();
   };
 
   const getFixedComposition = () => {
@@ -82,32 +81,9 @@ export default function ProgramDetail() {
       if (shot) addItem({ id: shot.id, title: shot.title, price: shot.price, image_url: shot.image_url, category: 'shot' }, 1);
     });
     toast.success(`${program.name} Program added to cart`);
-    setShowUpsell(false);
     navigate('/cart');
   };
 
-  const handleSubscribe = async (planId, deliveryAddress) => {
-    if (window.self !== window.top) {
-      alert('Checkout only works from the published app, not the preview.');
-      return;
-    }
-    try {
-      const res = await base44.functions.invoke('createSubscriptionSession', {
-        plan_id: planId,
-        bundle_id: null,
-        address: deliveryAddress,
-        customer_email: null,
-      });
-      if (res.data?.url) {
-        window.location.href = res.data.url;
-      } else {
-        toast.error(res.data?.error || 'Failed to start checkout');
-      }
-    } catch (err) {
-      console.error('Subscription checkout error:', err);
-      toast.error('An error occurred. Please try again.');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -301,15 +277,7 @@ export default function ProgramDetail() {
         </div>
       </div>
 
-      {/* Subscription Upsell Modal */}
-      <SubscriptionUpsellModal
-        open={showUpsell}
-        onClose={() => setShowUpsell(false)}
-        onOneTime={handleOneTime}
-        onSubscribe={handleSubscribe}
-        programName={program.name}
-        programTotal={total}
-      />
+
     </div>
   );
 }
