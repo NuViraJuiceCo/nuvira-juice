@@ -136,19 +136,41 @@ export function getEligibleDeliveryOptions(now = new Date(), sundayEnabled = fal
   return options;
 }
 
-// Returns production info if today is the day before a delivery day
+// Returns production urgency info ONLY if today is an actual NuVira production day
+// AND the order would still make the cutoff (before 2 PM Chicago time).
+// NuVira production days: Tuesday (→ Wednesday delivery), Friday (→ Saturday delivery)
 export function getProductionInfo(scheduleRules, now = new Date()) {
-  const rules   = (scheduleRules && scheduleRules.length > 0) ? scheduleRules : DEFAULT_RULES;
-  const today   = getDay(now);
-  const tomorrow = (today + 1) % 7;
+  const chicagoFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const parts = chicagoFormatter.formatToParts(now);
+  const pm = {};
+  parts.forEach(p => { pm[p.type] = p.value; });
+  const chicagoNow = new Date(
+    parseInt(pm.year), parseInt(pm.month) - 1, parseInt(pm.day),
+    parseInt(pm.hour), parseInt(pm.minute)
+  );
 
-  const deliveryRule = rules.find(r => r.delivery_day === tomorrow);
-  if (!deliveryRule) return null;
+  const dow = chicagoNow.getDay();   // 0=Sun ... 6=Sat
+  const hour = chicagoNow.getHours();
+  const CUTOFF = 14; // 2 PM
 
-  const deliveryDate = addDays(now, 1);
+  // NuVira production days only: Tuesday=2 → Wednesday=3, Friday=5 → Saturday=6
+  const PRODUCTION_BATCHES = { 2: 3, 5: 6 }; // prodDow → delDow
+
+  if (!(dow in PRODUCTION_BATCHES)) return null; // not a production day
+  if (hour >= CUTOFF) return null; // past cutoff — order missed this batch
+
+  const delDow = PRODUCTION_BATCHES[dow];
+  const deliveryDate = addDays(chicagoNow, 1);
+  const delDayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][delDow];
+  const dateLabel = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' }).format(deliveryDate);
+
   return {
     isProductionDay: true,
     deliveryDate,
-    label: `In production today · Delivered ${format(deliveryDate, 'EEEE, MMM d', { timeZone: 'America/Chicago' })}`,
+    label: `Order by 2 PM for ${delDayName} delivery · ${dateLabel}`,
   };
 }
