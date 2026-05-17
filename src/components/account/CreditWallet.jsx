@@ -66,6 +66,7 @@ export default function CreditWallet({ dashData: propDashData }) {
         .slice(0, 10);
     },
     enabled: !!user?.email && !!dashData,
+    staleTime: 5 * 60 * 1000,
   });
 
   const balance = creditData?.balance || 0;

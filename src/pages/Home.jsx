@@ -96,8 +96,9 @@ export default function Home() {
   const lastOrder = orders[0];
   const unreadCount = notifications.length;
 
-  const { refetch: refetchProducts } = useQuery({ queryKey: ['products'], queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 50) });
-  const { refetch: refetchSchedules } = useQuery({ queryKey: ['delivery-schedule'], queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }) });
+  // Pull refetch handles from the queries already registered above — no duplicate registration
+  const { refetch: refetchProducts } = useQuery({ queryKey: ['products'] });
+  const { refetch: refetchSchedules } = useQuery({ queryKey: ['delivery-schedule'] });
 
   const handleRefresh = async () => {
     await Promise.all([refetchProducts(), refetchSchedules()]);

@@ -341,6 +341,7 @@ export default function Rewards() {
   const { data: rewardTiers = [] } = useQuery({
     queryKey: ['reward-tiers'],
     queryFn: () => base44.entities.RewardTier.filter({ is_active: true }, 'sort_order', 20),
+    staleTime: 10 * 60 * 1000, // reward tiers rarely change
   });
 
   const totalPoints    = pointsData?.total_points    || 0;

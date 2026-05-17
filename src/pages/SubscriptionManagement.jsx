@@ -69,7 +69,9 @@ export default function SubscriptionManagement() {
     queryKey: ['pending-checkouts', user?.email],
     queryFn: () => base44.entities.PendingSubscriptionCheckout.filter({ customer_email: user?.email }, '-created_date', 5),
     enabled: !!user?.email,
+    staleTime: activating ? 0 : 2 * 60 * 1000, // only bypass cache during active post-checkout polling
     refetchInterval: activating ? 3000 : false,
+    refetchIntervalInBackground: false,
   });
 
   const hasRecentPendingCheckout = pendingCheckouts.some(p => {

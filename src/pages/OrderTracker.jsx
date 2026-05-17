@@ -122,6 +122,7 @@ export default function OrderTracker() {
       return profiles[0] || null;
     },
     enabled: !!user?.email,
+    staleTime: 5 * 60 * 1000,
   });
 
   const order = detail?.order;
