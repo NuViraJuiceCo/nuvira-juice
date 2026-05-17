@@ -8,9 +8,10 @@ export default function CartDeliveryCheckPrompt() {
   const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
-  // Only show if ZIP hasn't been checked yet this session
+  // Only show if ZIP hasn't been confirmed eligible this session
   const status = getEligibilityStatus();
-  if (status !== 'unknown' || dismissed) return null;
+  // Hide if already confirmed eligible, or dismissed, or not yet checked (show only as soft nudge)
+  if (status === 'eligible' || dismissed) return null;
 
   return (
     <motion.div

@@ -39,6 +39,13 @@ export function wasZipChecked(zip) {
 }
 
 /**
+ * Returns the ZIP code that was checked in this session, or null.
+ */
+export function getCheckedZip() {
+  return getDeliveryAvailability()?.checked_zip_code || null;
+}
+
+/**
  * Returns the current eligibility status: 'unknown' | 'eligible' | 'ineligible'
  */
 export function getEligibilityStatus() {

@@ -26,16 +26,18 @@ export default function WaitlistForm({ zip, onSuccess, onBack }) {
         postal_code: zip,
       });
       if (existing.length === 0) {
-        await base44.entities.DeliveryWaitlist.create({
+        const createData = {
           customer_name: form.first_name.trim(),
           customer_email: form.email.trim().toLowerCase(),
-          customer_phone: form.phone.trim() || null,
-          delivery_address: `ZIP: ${zip}`,
+          delivery_address: zip,
           postal_code: zip,
-          source: 'customer_app_delivery_checker',
+          source: 'checkout',
           status: 'new',
           reason: 'outside_zone',
-        });
+          admin_notes: 'Submitted via homepage delivery availability checker',
+        };
+        if (form.phone.trim()) createData.customer_phone = form.phone.trim();
+        await base44.entities.DeliveryWaitlist.create(createData);
       }
       setSubmitted(true);
       onSuccess?.();
