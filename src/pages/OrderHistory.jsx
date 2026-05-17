@@ -51,11 +51,22 @@ export default function OrderHistory() {
   const { data: orders = [], isLoading, refetch } = useQuery({
     queryKey: ['my-orders-all', user?.email],
     queryFn: async () => {
-      // Backend function resolves Apple relay + linked identities server-side
       const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
       return res.data?.all_orders_raw || [];
     },
     enabled: !!user?.email,
+  });
+
+  // Fetch user profile ONCE at the list level — not per-card
+  const { data: userProfile } = useQuery({
+    queryKey: ['order-history-profile', user?.email],
+    queryFn: async () => {
+      if (!user?.email) return null;
+      const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
+      return profiles[0] || null;
+    },
+    enabled: !!user?.email,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Show only real paid orders — same logic as backend allOrdersForHistory filter.
@@ -102,7 +113,7 @@ export default function OrderHistory() {
               <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-2">Active</h2>
               <div className="space-y-2 mb-5">
                 {activeOrders.map((order, i) => (
-                  <OrderCard key={order.id} order={order} index={i} />
+                  <OrderCard key={order.id} order={order} index={i} userProfile={userProfile} />
                 ))}
               </div>
             </>
@@ -113,7 +124,7 @@ export default function OrderHistory() {
               <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-2">Completed</h2>
               <div className="space-y-2">
                 {completedOrders.map((order, i) => (
-                  <OrderCard key={order.id} order={order} index={i} bagReturn={bagReturns.find(r => r.order_id === order.id)} />
+                  <OrderCard key={order.id} order={order} index={i} userProfile={userProfile} bagReturn={bagReturns.find(r => r.order_id === order.id)} />
                 ))}
               </div>
             </>
@@ -133,25 +144,15 @@ const returnStatusColor = {
   not_eligible: 'text-muted-foreground bg-secondary',
 };
 
-function OrderCard({ order, index, bagReturn }) {
+function OrderCard({ order, index, bagReturn, userProfile }) {
   const TERMINAL = ['delivered', 'picked_up', 'cancelled', 'refunded', 'failed'];
   const isActive = !TERMINAL.includes(order.status);
   const isCancelled = ['cancelled', 'refunded', 'failed'].includes(order.status);
   const { addItem } = useCart();
   const navigate = useNavigate();
-  const { user } = useAuth();
 
-  const { data: userProfile } = useQuery({
-    queryKey: ['order-history-profile', user?.email],
-    queryFn: async () => {
-      if (!user?.email) return null;
-      const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
-      return profiles[0] || null;
-    },
-    enabled: !!user?.email,
-  });
+  // Resolve customer name from passed-down profile
 
-  // Resolve customer name with fallback chain
   const getDisplayName = () => {
     if (order.customer_name) return order.customer_name;
     if (userProfile?.first_name && userProfile?.last_name) {

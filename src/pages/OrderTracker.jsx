@@ -104,12 +104,13 @@ export default function OrderTracker() {
       return res.data;
     },
     enabled: !!user?.email && hasLookupKey,
-    staleTime: 0,
+    staleTime: 60 * 1000,  // 1 min — order status doesn't change faster than syncHubDeliveryStatuses (30 min)
     refetchInterval: (data) => {
-      // Poll every 5s during post_checkout sync window, stop once found
+      // Only poll during post_checkout sync window (waiting for webhook), stop once found
       if (source === 'post_checkout' && data && !data.found) return 5000;
       return false;
     },
+    refetchIntervalInBackground: false, // stop polling when tab is inactive
     retry: 1,
   });
 
@@ -145,7 +146,9 @@ export default function OrderTracker() {
       return res.data;
     },
     enabled: !!order?.id && isOnRoute,
-    refetchInterval: 3 * 60 * 1000,
+    staleTime: 3 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,   // every 5 min (was 3 min) — only fires when isOnRoute
+    refetchIntervalInBackground: false, // pause when tab inactive
   });
 
   // ── Error state (network/5xx failure only — lookup errors now return found:false) ──

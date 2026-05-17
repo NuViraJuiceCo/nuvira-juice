@@ -58,11 +58,11 @@ export default function Notifications() {
   const { data: notifications = [], isLoading, refetch } = useQuery({
     queryKey: ['notifications', user?.email],
     queryFn: async () => {
-      // Use backend function — service role identity-aware fetch, RLS-safe for alias emails
       const res = await base44.functions.invoke('getCustomerNotifications', {});
       return res.data?.notifications || [];
     },
     enabled: !!user?.email,
+    staleTime: 60 * 1000,  // 1 min — notifications don't need instant consistency
   });
 
   const markRead = useMutation({
