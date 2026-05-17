@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import CartDeliveryCheckPrompt from '@/components/delivery/CartDeliveryCheckPrompt';
 import { getProductionInfo, getEligibleDeliveryOptions } from '@/lib/deliveryUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import BundleComposer from '@/components/cart/BundleComposer';
@@ -194,6 +195,9 @@ export default function Cart() {
             </div>
           </motion.div>
         )}
+
+        {/* Delivery area check prompt — only shown if ZIP not yet checked */}
+        <CartDeliveryCheckPrompt />
 
         {/* Minimum Order Notice */}
         {!meetsMinimum && (

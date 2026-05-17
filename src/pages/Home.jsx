@@ -20,6 +20,7 @@ import NotificationPrompt from '@/components/home/NotificationPrompt';
 
 
 import ProgramCards from '@/components/home/ProgramCards';
+import DeliveryAvailabilityCard from '@/components/delivery/DeliveryAvailabilityCard';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 
@@ -161,6 +162,9 @@ export default function Home() {
 
       {/* QuickReorder — immediately after hero for returning customers */}
       <QuickReorder lastOrder={lastOrder} />
+
+      {/* Delivery Availability — visible early, below hero */}
+      <DeliveryAvailabilityCard />
 
       {/* Programs — Primary Revenue Section */}
       <div className="mt-10 px-5 mb-3">
