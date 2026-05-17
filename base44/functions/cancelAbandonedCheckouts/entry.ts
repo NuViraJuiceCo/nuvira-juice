@@ -45,13 +45,15 @@ Deno.serve(async (req) => {
 
     const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30 min ago
 
-    // Fetch all orders that are pending payment
-    const allOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
+    // Fetch only pending_payment orders (targeted filter — not full dataset scan)
+    const pendingOrders = await base44.asServiceRole.entities.Order.filter(
+      { status: 'pending_payment' },
+      '-created_date',
+      50
+    );
 
-    const abandoned = allOrders.filter(o =>
-      (o.status === 'pending_payment' || (o.payment_captured === false && o.payment_status !== 'paid' && o.financial_status !== 'paid')) &&
+    const abandoned = pendingOrders.filter(o =>
       o.created_date < cutoff &&
-      o.status !== 'cancelled' &&
       !o.is_abandoned_checkout
     );
 

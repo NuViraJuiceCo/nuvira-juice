@@ -20,11 +20,16 @@ Deno.serve(async (req) => {
   // IMPORTANT: do NOT include 'skipped' — skipped includes terminal do_not_sync/resolved logs
   // IMPORTANT: do NOT include false-success without hub_order_id — subscription syncs legitimately
   //            return success without a hub_order_id (they use hub_action='subscription_synced')
+  // ── EARLY EXIT: skip all 4 collection reads if no error logs exist ──────
   const errorLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
     { status: 'error' },
     '-created_date',
     50
   );
+  if (errorLogs.length === 0) {
+    console.log('[RetryHubSyncs] No error logs — nothing to retry. Exiting early.');
+    return Response.json({ success: true, retried: 0, message: 'No failed syncs to retry' });
+  }
   const allLogs = [...errorLogs];
 
   // Deduplicate by order_number — only retry the most recent error per order

@@ -18,32 +18,6 @@ const SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
 const TERMINAL_STATUSES = new Set(['delivered', 'picked_up', 'cancelled', 'refunded']);
 
-// Notification maps for inline safety-net (mirrors sendOrderStatusNotification config)
-const NOTIF_SUBTYPE_MAP = {
-  scheduled_for_juicing: 'production_reminder',
-  in_production:         'production_reminder',
-  out_for_delivery:      'out_for_delivery',
-  arriving_soon:         'delivery_reminder',
-  delivered:             'delivered',
-  ready_for_pickup:      'delivery_reminder',
-};
-const NOTIF_TITLE_MAP = {
-  scheduled_for_juicing: 'Juicing Time 🌿',
-  in_production:         "We're Juicing! 🍊",
-  out_for_delivery:      'Out for Delivery 🚚',
-  arriving_soon:         'Almost There! 📍',
-  delivered:             'Delivered! 🎉',
-  ready_for_pickup:      'Ready for Pickup 📦',
-};
-const NOTIF_MSG_MAP = {
-  scheduled_for_juicing: 'Your NuVira juices are being freshly prepared for your upcoming delivery.',
-  in_production:         'Your NuVira order is currently in production.',
-  out_for_delivery:      'Your NuVira order is on its way. Keep an eye out for your driver.',
-  arriving_soon:         'Your NuVira delivery is arriving very soon.',
-  delivered:             'Your NuVira order has been delivered. Enjoy your fresh juices!',
-  ready_for_pickup:      'Your NuVira order is ready for pickup!',
-};
-
 // Hub production_status → CA Order status
 function mapHubStatus(hubStatus) {
   const map = {
@@ -176,30 +150,10 @@ Deno.serve(async (req) => {
       updated++;
       updatedOrders.push({ order_number: caOrder.order_number, from: caOrder.status, to: mappedStatus });
 
-      // Safety net: call sendCustomerNotification directly so notifications are
-      // persisted even if the entity automation chain silently fails.
-      // Idempotency key matches sendOrderStatusNotification so there are no duplicates
-      // regardless of which path fires first.
-      try {
-        const notifResult = await base44.asServiceRole.functions.invoke('sendCustomerNotification', {
-          customer_email: caOrder.customer_email,
-          type: 'order_update',
-          notification_subtype: NOTIF_SUBTYPE_MAP[mappedStatus] || 'general',
-          title: NOTIF_TITLE_MAP[mappedStatus] || 'Order Update',
-          message: NOTIF_MSG_MAP[mappedStatus] || 'Your order status has been updated.',
-          order_id: caOrder.id,
-          deep_link: `/order-tracker/${caOrder.order_number}`,
-          idempotency_key: `order_status_${caOrder.id}_${mappedStatus}`,
-        });
-        const notifData = notifResult?.data || notifResult || {};
-        if (notifData.skipped) {
-          console.log(`[syncHubDeliveryStatuses] Notif skipped (${notifData.reason}) for ${caOrder.order_number} → ${mappedStatus}`);
-        } else {
-          console.log(`[syncHubDeliveryStatuses] ✅ Notif persisted: id=${notifData.notification_id} order=${caOrder.order_number} status=${mappedStatus} email=${caOrder.customer_email}`);
-        }
-      } catch (notifErr) {
-        console.error(`[syncHubDeliveryStatuses] ❌ Notif persistence FAILED for ${caOrder.order_number} → ${mappedStatus}: ${notifErr.message}`);
-      }
+      // NOTE: Notification is handled exclusively by the entity automation
+      // "Order Status Notification Trigger" → sendOrderStatusNotification → sendCustomerNotification.
+      // The idempotency key in sendCustomerNotification prevents duplicates.
+      // Safety-net direct call removed (2026-05-17) to eliminate double function invocation credits.
     }
 
     console.log(`[syncHubDeliveryStatuses] Done. updated=${updated} skipped=${skipped}`);
