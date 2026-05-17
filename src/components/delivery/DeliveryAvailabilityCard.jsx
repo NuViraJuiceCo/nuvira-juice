@@ -64,14 +64,9 @@ export default function DeliveryAvailabilityCard() {
 
       setStatus(isEligible ? 'eligible' : 'ineligible');
     } catch {
-      // On error, don't block — just show ineligible gracefully
-      setStatus('ineligible');
-      setDeliveryAvailability({
-        checked_zip_code: clean,
-        delivery_eligibility_status: 'ineligible',
-        matched_delivery_zone_id: null,
-        matched_delivery_zone_name: null,
-      });
+      // Network/unexpected error — do NOT mark ineligible; let customer try again
+      setStatus('idle');
+      setZipError('Something went wrong. Please try again.');
     }
   };
 
@@ -106,10 +101,10 @@ export default function DeliveryAvailabilityCard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-heading text-base font-bold text-foreground leading-snug">
-                    Fresh Delivery Is Available
+                    Your Area May Be Eligible For Fresh Delivery
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Great news — NuVira delivery is available for ZIP {zip}.
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    NuVira currently serves select areas near ZIP {zip}. Your full delivery address will be confirmed at checkout.
                   </p>
                 </div>
               </div>
