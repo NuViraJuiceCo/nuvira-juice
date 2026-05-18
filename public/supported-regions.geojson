@@ -1,0 +1,26 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "NuVira Service Area",
+        "description": "Geographic regions served by NuVira Juice Co."
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [-90.6, 38.6],
+              [-90.4, 38.6],
+              [-90.4, 38.8],
+              [-90.6, 38.8],
+              [-90.6, 38.6]
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

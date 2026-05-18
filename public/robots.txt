@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Disallow private/admin/transactional routes
+Disallow: /admin/
+Disallow: /driver/
+Disallow: /account-setup
+Disallow: /checkout
+Disallow: /order-confirmation/
+Disallow: /order-tracker/
+
+# Static sitemap (regenerated on build)
+Sitemap: https://www.nuvirajuice.com/sitemap.xml
