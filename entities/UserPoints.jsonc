@@ -1,0 +1,104 @@
+{
+  "name": "UserPoints",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this loyalty points account (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "total_points": {
+      "type": "number",
+      "default": 0
+    },
+    "lifetime_points": {
+      "type": "number",
+      "default": 0
+    },
+    "redeemed_points": {
+      "type": "number",
+      "default": 0
+    },
+    "points_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "earned",
+              "redeemed",
+              "bonus"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "claimed_rewards": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "properties": {
+          "reward_id": {
+            "type": "string"
+          },
+          "reward_title": {
+            "type": "string"
+          },
+          "reward_type": {
+            "type": "string"
+          },
+          "claimed_at": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "customer_email"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

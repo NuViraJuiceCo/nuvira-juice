@@ -1,0 +1,86 @@
+{
+  "name": "NotificationPreference",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string",
+      "description": "Canonical customer email (identity-resolved)"
+    },
+    "order_updates": {
+      "type": "boolean",
+      "default": true,
+      "description": "Order confirmation, status updates"
+    },
+    "delivery_updates": {
+      "type": "boolean",
+      "default": true,
+      "description": "Out for delivery, delivered notifications"
+    },
+    "subscription_updates": {
+      "type": "boolean",
+      "default": true,
+      "description": "Renewal reminders, payment success/failed"
+    },
+    "production_reminders": {
+      "type": "boolean",
+      "default": true,
+      "description": "Production scheduled, in progress"
+    },
+    "promotions": {
+      "type": "boolean",
+      "default": true,
+      "description": "Promos, new drops, events, announcements"
+    },
+    "rewards_credits": {
+      "type": "boolean",
+      "default": true,
+      "description": "Points earned/redeemed, credits applied"
+    }
+  },
+  "required": [
+    "customer_email"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

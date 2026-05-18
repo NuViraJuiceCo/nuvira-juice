@@ -1,0 +1,81 @@
+{
+  "name": "OperationalAlert",
+  "type": "object",
+  "properties": {
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "new_order",
+        "same_day_pickup",
+        "next_day_delivery",
+        "high_volume",
+        "inventory_shortage",
+        "missing_info",
+        "payment_issue",
+        "refund",
+        "cancellation"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "description": "Additional context or admin notes for this alert (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "shopify_order_id": {
+      "type": "string"
+    },
+    "order_number": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "default": "info"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false
+    },
+    "resolved": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "alert_type",
+    "title",
+    "message"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

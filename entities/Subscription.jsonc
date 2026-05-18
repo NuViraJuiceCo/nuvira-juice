@@ -1,0 +1,167 @@
+{
+  "name": "Subscription",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this subscription (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Reference to SubscriptionPlan"
+    },
+    "bundle_id": {
+      "type": "string",
+      "description": "Reference to SubscriptionBundle"
+    },
+    "custom_composition": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Customer's custom juice mix (if customized)"
+    },
+    "delivery_zone_id": {
+      "type": "string",
+      "description": "Reference to DeliveryZone"
+    },
+    "delivery_address": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "cancelled"
+      ],
+      "default": "active"
+    },
+    "cancel_at_period_end": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, subscription will cancel at end of current paid period. Current cycle deliveries continue unaffected. Set by customer self-service cancel."
+    },
+    "cancel_effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date when cancellation takes effect (Stripe current_period_end). Populated when cancel_at_period_end=true."
+    },
+    "next_delivery_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "started_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "paused_until": {
+      "type": "string",
+      "format": "date"
+    },
+    "stripe_subscription_id": {
+      "type": "string",
+      "description": "Stripe subscription ID \u2014 primary dedupe key for Hub sync"
+    },
+    "stripe_customer_id": {
+      "type": "string",
+      "description": "Stripe customer ID"
+    },
+    "hub_sync_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "synced",
+        "failed",
+        "pending_review",
+        "skipped"
+      ],
+      "description": "Status of last Hub sync attempt"
+    },
+    "hub_synced_at": {
+      "type": "string",
+      "description": "ISO timestamp of last successful Hub sync"
+    },
+    "hub_sync_error": {
+      "type": "string",
+      "description": "Error message from last failed Hub sync"
+    },
+    "hub_sync_attempted_at": {
+      "type": "string",
+      "description": "ISO timestamp of last Hub sync attempt"
+    },
+    "hub_sync_response_status": {
+      "type": "number",
+      "description": "HTTP status code from last Hub sync response"
+    },
+    "hub_sync_response_body": {
+      "type": "string",
+      "description": "Truncated Hub response body for audit"
+    }
+  },
+  "required": [
+    "customer_email",
+    "plan_id",
+    "bundle_id",
+    "delivery_zone_id",
+    "delivery_address"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

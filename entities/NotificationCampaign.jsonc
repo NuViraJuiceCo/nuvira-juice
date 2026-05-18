@@ -1,0 +1,91 @@
+{
+  "name": "NotificationCampaign",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Notification title"
+    },
+    "message": {
+      "type": "string",
+      "description": "Notification body message"
+    },
+    "deep_link": {
+      "type": "string",
+      "description": "In-app route to open, e.g. /shop or /rewards"
+    },
+    "audience": {
+      "type": "string",
+      "enum": [
+        "all_customers",
+        "active_subscribers",
+        "one_time_customers",
+        "lapsed_customers",
+        "test_only"
+      ],
+      "default": "test_only",
+      "description": "Target audience for this campaign"
+    },
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "order_update",
+        "promotion",
+        "new_drop",
+        "general"
+      ],
+      "default": "promotion"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "sent",
+        "failed"
+      ],
+      "default": "draft"
+    },
+    "sent_count": {
+      "type": "number",
+      "default": 0
+    },
+    "failed_count": {
+      "type": "number",
+      "default": 0
+    },
+    "sent_at": {
+      "type": "string",
+      "description": "ISO timestamp when campaign was sent"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Admin email who created this campaign"
+    }
+  },
+  "required": [
+    "title",
+    "message"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

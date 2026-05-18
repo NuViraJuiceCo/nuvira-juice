@@ -1,0 +1,255 @@
+{
+  "name": "DeliveryApprovalRequest",
+  "type": "object",
+  "properties": {
+    "request_number": {
+      "type": "string",
+      "description": "Unique request identifier, e.g. DAR-XXXXXXXX or SUBR-XXXXXXXX"
+    },
+    "request_type": {
+      "type": "string",
+      "enum": [
+        "one_time_order",
+        "subscription_route_review"
+      ],
+      "default": "one_time_order",
+      "description": "Whether this is a one-time order auth hold or a subscription route review"
+    },
+    "customer_name": {
+      "type": "string"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "customer_phone": {
+      "type": "string"
+    },
+    "delivery_address": {
+      "type": "string",
+      "description": "Full delivery address string"
+    },
+    "address_line1": {
+      "type": "string"
+    },
+    "address_line2": {
+      "type": "string"
+    },
+    "address_city": {
+      "type": "string"
+    },
+    "address_state": {
+      "type": "string"
+    },
+    "address_postal_code": {
+      "type": "string"
+    },
+    "address_country": {
+      "type": "string",
+      "default": "US"
+    },
+    "cart_items": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Snapshot of cart items (one-time order flow)"
+    },
+    "cart_subtotal": {
+      "type": "number",
+      "description": "Cart subtotal in dollars at time of request"
+    },
+    "estimated_delivery_fee": {
+      "type": "number",
+      "description": "Delivery fee for the assigned zone"
+    },
+    "estimated_total": {
+      "type": "number",
+      "description": "Estimated total including delivery fee"
+    },
+    "estimated_distance_miles": {
+      "type": "number"
+    },
+    "estimated_drive_time_minutes": {
+      "type": "number"
+    },
+    "zone_key": {
+      "type": "string"
+    },
+    "zone_name": {
+      "type": "string"
+    },
+    "zone_type": {
+      "type": "string"
+    },
+    "requested_delivery_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "selected_plan_id": {
+      "type": "string",
+      "description": "SubscriptionPlan ID (subscription route review only)"
+    },
+    "selected_plan_name": {
+      "type": "string",
+      "description": "Plan name (subscription route review only)"
+    },
+    "selected_plan_price": {
+      "type": "number",
+      "description": "Plan base price (subscription route review only)"
+    },
+    "selected_plan_frequency": {
+      "type": "string",
+      "description": "Plan frequency: weekly or monthly (subscription route review only)"
+    },
+    "stripe_payment_intent_id": {
+      "type": "string",
+      "description": "Stripe PaymentIntent ID for one-time order authorization hold"
+    },
+    "stripe_setup_intent_id": {
+      "type": "string",
+      "description": "Stripe SetupIntent ID for saving payment method (subscription route review)"
+    },
+    "stripe_setup_intent_client_secret": {
+      "type": "string",
+      "description": "SetupIntent client_secret (subscription route review \u2014 for card save)"
+    },
+    "stripe_customer_id": {
+      "type": "string"
+    },
+    "stripe_authorization_status": {
+      "type": "string"
+    },
+    "amount_authorized": {
+      "type": "number"
+    },
+    "amount_capturable": {
+      "type": "number"
+    },
+    "authorization_expires_at": {
+      "type": "string"
+    },
+    "customer_acknowledged_hold": {
+      "type": "boolean",
+      "default": false
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "pending_authorization",
+        "pending_review",
+        "approved",
+        "denied",
+        "expired",
+        "cancelled",
+        "captured",
+        "failed"
+      ],
+      "default": "draft"
+    },
+    "admin_decision": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "denied",
+        "expired",
+        "cancelled"
+      ]
+    },
+    "admin_decision_reason": {
+      "type": "string"
+    },
+    "approved_delivery_fee": {
+      "type": "number"
+    },
+    "approved_by": {
+      "type": "string"
+    },
+    "approved_at": {
+      "type": "string"
+    },
+    "denied_by": {
+      "type": "string"
+    },
+    "denied_at": {
+      "type": "string"
+    },
+    "capture_idempotency_key": {
+      "type": "string"
+    },
+    "cancel_idempotency_key": {
+      "type": "string"
+    },
+    "created_order_id": {
+      "type": "string"
+    },
+    "created_order_number": {
+      "type": "string"
+    },
+    "created_hub_order_id": {
+      "type": "string"
+    },
+    "created_subscription_stripe_id": {
+      "type": "string",
+      "description": "Stripe subscription ID created after subscription route review approval"
+    },
+    "waitlist_id": {
+      "type": "string"
+    },
+    "audit_trail": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "performed_by": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "customer_email",
+    "delivery_address",
+    "zone_key",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

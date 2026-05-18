@@ -1,0 +1,81 @@
+{
+  "name": "DeliverySchedule",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Schedule name e.g. Default"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional notes about this delivery schedule (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "rules": {
+      "type": "array",
+      "description": "Array of order-day to delivery-day mappings",
+      "items": {
+        "type": "object",
+        "properties": {
+          "order_days": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Days of week (0=Sun, 1=Mon, ... 6=Sat)"
+          },
+          "delivery_day": {
+            "type": "number",
+            "description": "Delivery day of week"
+          },
+          "cutoff_hour": {
+            "type": "number",
+            "default": 23,
+            "description": "Order cutoff hour (24h format)"
+          }
+        }
+      }
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "holiday_exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "name",
+    "rules"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {},
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

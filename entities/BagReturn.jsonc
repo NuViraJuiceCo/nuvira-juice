@@ -1,0 +1,166 @@
+{
+  "name": "BagReturn",
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "description": "Reference to the Order entity"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this bag return record (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "small_bags_requested": {
+      "type": "number",
+      "default": 0
+    },
+    "tote_bags_requested": {
+      "type": "number",
+      "default": 0
+    },
+    "small_bags_accepted": {
+      "type": "number",
+      "default": 0
+    },
+    "tote_bags_accepted": {
+      "type": "number",
+      "default": 0
+    },
+    "small_bag_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "not_eligible",
+        "not_found"
+      ],
+      "default": "pending"
+    },
+    "tote_bag_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "not_eligible",
+        "not_found"
+      ],
+      "default": "pending"
+    },
+    "rejection_reason": {
+      "type": "string",
+      "enum": [
+        "dirty_stained",
+        "odor",
+        "damaged",
+        "customer_not_home",
+        "other",
+        ""
+      ],
+      "default": ""
+    },
+    "rejection_notes": {
+      "type": "string"
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "verified",
+        "partially_verified",
+        "not_found",
+        "not_eligible",
+        "unable_to_collect"
+      ],
+      "default": "requested"
+    },
+    "credit_issued": {
+      "type": "number",
+      "default": 0
+    },
+    "credit_applied": {
+      "type": "boolean",
+      "default": false
+    },
+    "verified_by": {
+      "type": "string"
+    },
+    "verified_at": {
+      "type": "string"
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "driver_notes": {
+      "type": "string"
+    },
+    "delivery_status": {
+      "type": "string",
+      "enum": [
+        "delivered",
+        "unable_to_deliver",
+        ""
+      ],
+      "default": "",
+      "description": "Driver's delivery outcome for the linked order stop"
+    },
+    "unable_to_deliver_reason": {
+      "type": "string",
+      "enum": [
+        "customer_not_home",
+        "wrong_address",
+        "access_issue",
+        "refused_delivery",
+        "other",
+        ""
+      ],
+      "default": ""
+    }
+  },
+  "required": [
+    "order_id",
+    "customer_email"
+  ],
+  "rls": {
+    "create": {},
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "driver"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "driver"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

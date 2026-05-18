@@ -1,0 +1,55 @@
+{
+  "name": "CheckoutSession",
+  "type": "object",
+  "properties": {
+    "stripe_session_id": {
+      "type": "string",
+      "description": "Stripe checkout session ID"
+    },
+    "order_number": {
+      "type": "string"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this checkout session (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "checkout_data": {
+      "type": "object",
+      "description": "Full checkout data for webhook processing"
+    },
+    "expires_at": {
+      "type": "string",
+      "description": "ISO timestamp when this record should be cleaned up"
+    }
+  },
+  "required": [
+    "stripe_session_id",
+    "checkout_data"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

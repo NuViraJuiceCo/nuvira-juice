@@ -1,0 +1,108 @@
+{
+  "name": "DeliveryWaitlist",
+  "type": "object",
+  "properties": {
+    "customer_name": {
+      "type": "string"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "customer_phone": {
+      "type": "string"
+    },
+    "delivery_address": {
+      "type": "string",
+      "description": "Full address string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "postal_code": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "outside_zone",
+        "denied_route_review",
+        "unavailable_area",
+        "customer_requested_expansion"
+      ],
+      "description": "Why this customer is on the waitlist"
+    },
+    "requested_zone": {
+      "type": "string",
+      "description": "Zone key or label for the area customer is requesting"
+    },
+    "cart_subtotal": {
+      "type": "number",
+      "description": "Cart value at time of waitlist entry (intent signal)"
+    },
+    "distance_miles": {
+      "type": "number",
+      "description": "Driving distance in miles from origin"
+    },
+    "drive_time_minutes": {
+      "type": "number",
+      "description": "Estimated driving time in minutes"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "checkout",
+        "account",
+        "admin",
+        "route_review_denial"
+      ],
+      "description": "How the customer ended up on the waitlist"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "contacted",
+        "converted",
+        "inactive"
+      ],
+      "default": "new",
+      "description": "Admin follow-up status"
+    },
+    "admin_notes": {
+      "type": "string",
+      "description": "Internal notes about this waitlist entry"
+    }
+  },
+  "required": [
+    "customer_email",
+    "delivery_address"
+  ],
+  "rls": {
+    "create": {},
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

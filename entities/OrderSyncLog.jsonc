@@ -1,0 +1,87 @@
+{
+  "name": "OrderSyncLog",
+  "type": "object",
+  "properties": {
+    "order_number": {
+      "type": "string",
+      "description": "Order number (e.g. NV-MONI2Z3R)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "error",
+        "recovery",
+        "pending",
+        "deduped",
+        "skipped",
+        "queued_for_review",
+        "rejected"
+      ],
+      "default": "pending",
+      "description": "Sync status. 'success'=Hub confirmed created/updated with hub_order_id. 'deduped'=Hub matched exact duplicate, no new record needed. 'skipped'=Hub returned no-op without confirmed action (retry eligible). 'queued_for_review'/'rejected'=Hub explicit states. 'error'=network/HTTP failure (retry eligible)."
+    },
+    "hub_order_id": {
+      "type": "string",
+      "description": "Hub-assigned order ID returned on action=created or action=updated"
+    },
+    "matched_hub_order_id": {
+      "type": "string",
+      "description": "Hub order ID returned on action=dedupe_exact_match"
+    },
+    "hub_action": {
+      "type": "string",
+      "description": "Raw action field returned by Hub (created, updated, dedupe_exact_match, queued_for_review, rejected, acknowledged, etc.)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed sync log message (up to 1000 chars)",
+      "maxLength": 1000
+    },
+    "started_at": {
+      "type": "string",
+      "description": "ISO timestamp when sync started"
+    },
+    "completed_at": {
+      "type": "string",
+      "description": "ISO timestamp when sync completed"
+    },
+    "triggered_by": {
+      "type": "string",
+      "enum": [
+        "stripe_webhook",
+        "stripe_webhook_preorder",
+        "recovery_function",
+        "manual",
+        "cron_poll"
+      ],
+      "description": "What triggered this sync"
+    }
+  },
+  "required": [
+    "order_number",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

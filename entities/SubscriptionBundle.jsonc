@@ -1,0 +1,34 @@
+{
+  "name": "SubscriptionBundle",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Bundle name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Customer-facing description of this subscription bundle (up to 1000 characters)",
+      "maxLength": 1000
+    }
+  },
+  "required": [],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {},
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

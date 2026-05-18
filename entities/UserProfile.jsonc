@@ -1,0 +1,132 @@
+{
+  "name": "UserProfile",
+  "type": "object",
+  "properties": {
+    "first_name": {
+      "type": "string",
+      "description": "User's first name"
+    },
+    "last_name": {
+      "type": "string",
+      "description": "User's last name"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "contact_email": {
+      "type": "string",
+      "description": "User's real contact email (may differ from auth email, e.g. Sign in with Apple relay)"
+    },
+    "phone": {
+      "type": "string",
+      "description": "User's phone number"
+    },
+    "address": {
+      "type": "string",
+      "description": "User's delivery address"
+    },
+    "birthday": {
+      "type": "string",
+      "format": "date",
+      "description": "User's birthday (YYYY-MM-DD)"
+    },
+    "profile_photo_url": {
+      "type": "string",
+      "description": "URL of user's uploaded profile photo"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note or profile summary for this customer (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "wellness_goals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "juice_experience": {
+      "type": "string",
+      "enum": [
+        "new",
+        "occasional",
+        "weekly",
+        "daily"
+      ]
+    },
+    "flavor_preferences": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "drink_time": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "afternoon",
+        "post_workout",
+        "anytime"
+      ]
+    },
+    "onboarding_complete": {
+      "type": "boolean",
+      "default": false
+    },
+    "sms_consent": {
+      "type": "boolean",
+      "default": false,
+      "description": "User has consented to receive order updates via SMS"
+    },
+    "sms_consent_date": {
+      "type": "string",
+      "description": "ISO timestamp when user granted SMS consent"
+    }
+  },
+  "required": [
+    "customer_email"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "name": "ShopifyWebhookLog",
+  "type": "object",
+  "properties": {
+    "topic": {
+      "type": "string",
+      "description": "Shopify webhook topic e.g. orders/create"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this webhook log entry (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "shopify_order_id": {
+      "type": "string"
+    },
+    "shopify_order_number": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "received",
+        "processed",
+        "failed",
+        "duplicate"
+      ],
+      "default": "received"
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "payload_preview": {
+      "type": "string",
+      "description": "First 500 chars of payload"
+    },
+    "processed_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "topic"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

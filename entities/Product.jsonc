@@ -1,0 +1,151 @@
+{
+  "name": "Product",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Product name"
+    },
+    "short_description": {
+      "type": "string",
+      "description": "Short tagline"
+    },
+    "description": {
+      "type": "string",
+      "description": "Full description"
+    },
+    "ingredients": {
+      "type": "string",
+      "description": "Ingredient list"
+    },
+    "wellness_note": {
+      "type": "string",
+      "description": "Wellness positioning copy"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "juice",
+        "shot",
+        "bundle",
+        "wellness_pack",
+        "seasonal",
+        "apparel",
+        "merch"
+      ],
+      "description": "Product category"
+    },
+    "price": {
+      "type": "number",
+      "description": "Price in dollars"
+    },
+    "compare_at_price": {
+      "type": "number",
+      "description": "Original price if on sale"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Main product image URL"
+    },
+    "secondary_images": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional image URLs"
+    },
+    "size": {
+      "type": "string",
+      "description": "Bottle size or quantity"
+    },
+    "bottle_count": {
+      "type": "number",
+      "description": "Number of bottles in this bundle (only for bundle category)"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for search and filtering"
+    },
+    "is_featured": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_best_seller": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_seasonal": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_available": {
+      "type": "boolean",
+      "default": true
+    },
+    "is_preorder": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, this individual product is in pre-order mode (e.g. new seasonal drop). Customers can order but it won't ship until the preorder_ship_date."
+    },
+    "preorder_ship_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Expected ship/fulfillment date for per-product pre-orders"
+    },
+    "sort_order": {
+      "type": "number",
+      "default": 0
+    },
+    "shopify_product_id": {
+      "type": "string",
+      "description": "Linked Shopify product ID (auto-populated after first sync)"
+    },
+    "consumption_instructions": {
+      "type": "array",
+      "description": "Daily consumption schedule for this bundle/program",
+      "items": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "description": "Time of day label (e.g. AM, Afternoon Boost)"
+          },
+          "label": {
+            "type": "string",
+            "description": "Drink name or description"
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional guidance note"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "title",
+    "price",
+    "category"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {},
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

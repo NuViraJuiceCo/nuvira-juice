@@ -1,0 +1,92 @@
+{
+  "name": "NuViraCredit",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string",
+      "description": "Customer email address"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional admin note about this credit account (up to 1000 characters)",
+      "maxLength": 1000
+    },
+    "balance": {
+      "type": "number",
+      "default": 0,
+      "description": "Current available credit balance in dollars"
+    },
+    "lifetime_issued": {
+      "type": "number",
+      "default": 0,
+      "description": "Total credits ever issued to this customer"
+    },
+    "lifetime_used": {
+      "type": "number",
+      "default": 0,
+      "description": "Total credits ever redeemed"
+    },
+    "history": {
+      "type": "array",
+      "default": [],
+      "description": "History of credit transactions",
+      "items": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "issued",
+              "used",
+              "adjustment"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "order_id": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "customer_email"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

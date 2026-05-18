@@ -1,0 +1,75 @@
+{
+  "name": "Event",
+  "type": "object",
+  "properties": {
+    "hub_event_id": {
+      "type": "string",
+      "description": "Unique event ID from the hub app (used for upsert matching)"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "time": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "price": {
+      "type": "number"
+    },
+    "capacity": {
+      "type": "number"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "website_link": {
+      "type": "string",
+      "description": "URL to the event's website"
+    },
+    "tickets_link": {
+      "type": "string",
+      "description": "Direct URL to purchase tickets"
+    }
+  },
+  "required": [
+    "hub_event_id",
+    "title"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {},
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

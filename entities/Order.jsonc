@@ -1,0 +1,358 @@
+{
+  "name": "Order",
+  "type": "object",
+  "properties": {
+    "order_number": {
+      "type": "string"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "customer_name": {
+      "type": "string",
+      "description": "Customer's full name"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "image_url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "subtotal": {
+      "type": "number"
+    },
+    "delivery_fee": {
+      "type": "number",
+      "default": 0
+    },
+    "total": {
+      "type": "number"
+    },
+    "fulfillment_type": {
+      "type": "string",
+      "enum": [
+        "delivery",
+        "pickup"
+      ],
+      "default": "delivery"
+    },
+    "delivery_address": {
+      "type": "string",
+      "description": "Full address string (legacy / display)"
+    },
+    "address_line1": {
+      "type": "string",
+      "description": "Street address line 1"
+    },
+    "address_line2": {
+      "type": "string",
+      "description": "Apt, suite, unit, etc."
+    },
+    "address_city": {
+      "type": "string"
+    },
+    "address_state": {
+      "type": "string"
+    },
+    "address_postal_code": {
+      "type": "string"
+    },
+    "address_country": {
+      "type": "string",
+      "default": "US"
+    },
+    "contact_phone": {
+      "type": "string"
+    },
+    "estimated_delivery_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "assigned_delivery_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Scheduled delivery date after production is verified"
+    },
+    "assigned_delivery_window_start": {
+      "type": "string",
+      "description": "Delivery window start time, e.g. 17:00 for 5:00 PM"
+    },
+    "assigned_delivery_window_end": {
+      "type": "string",
+      "description": "Delivery window end time, e.g. 20:00 for 8:00 PM"
+    },
+    "delivery_window_label": {
+      "type": "string",
+      "description": "Customer-facing window label, e.g. '5:00 PM - 8:00 PM'"
+    },
+    "delivery_window_timezone": {
+      "type": "string",
+      "default": "America/Chicago",
+      "description": "Timezone for delivery window"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "order_received",
+        "scheduled_for_juicing",
+        "in_production",
+        "bottled_packed",
+        "out_for_delivery",
+        "arriving_soon",
+        "delivered",
+        "ready_for_pickup",
+        "picked_up"
+      ],
+      "default": "order_received"
+    },
+    "status_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    },
+    "referral_code": {
+      "type": "string",
+      "description": "Referral code used on this order"
+    },
+    "delivery_photo_url": {
+      "type": "string",
+      "description": "Proof of delivery photo taken by driver"
+    },
+    "delivery_drop_location": {
+      "type": "string",
+      "description": "Where the driver left the order (e.g. Front door, With neighbor)"
+    },
+    "delivered_by": {
+      "type": "string",
+      "description": "Driver email who completed the delivery"
+    },
+    "delivered_at": {
+      "type": "string",
+      "description": "ISO timestamp of actual delivery"
+    },
+    "is_preorder": {
+      "type": "boolean",
+      "default": false
+    },
+    "preorder_fulfillment_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "stripe_payment_intent_id": {
+      "type": "string"
+    },
+    "stripe_checkout_session_id": {
+      "type": "string"
+    },
+    "payment_captured": {
+      "type": "boolean",
+      "default": false
+    },
+    "assigned_production_day": {
+      "type": "string",
+      "description": "Tuesday, Friday, or Saturday (from production window)"
+    },
+    "assigned_delivery_day": {
+      "type": "string",
+      "description": "Wednesday, Saturday, or Sunday (from production window)"
+    },
+    "production_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "scheduled_for_production",
+        "in_production",
+        "completed",
+        "cancelled"
+      ]
+    },
+    "fulfillment_status": {
+      "type": "string",
+      "enum": [
+        "pending_production",
+        "ready_for_delivery",
+        "in_transit",
+        "delivered",
+        "cancelled"
+      ]
+    },
+    "delivery_status": {
+      "type": "string",
+      "enum": [
+        "not_ready",
+        "ready",
+        "in_transit",
+        "delivered"
+      ]
+    },
+    "ready_for_driver": {
+      "type": "boolean",
+      "default": false,
+      "description": "Only true when batch verified AND fulfillment_status = ready_for_delivery"
+    },
+    "batch_trigger": {
+      "type": "string",
+      "description": "What triggered batch assignment (e.g. window_1_default, saturday_threshold_met)"
+    },
+    "scheduling_reason": {
+      "type": "string",
+      "description": "Why order was assigned to this production window"
+    },
+    "final_schedule_source": {
+      "type": "string",
+      "description": "Source of schedule calculation (e.g. 'central_engine'). Phase 5 contract field."
+    },
+    "schedule_timezone": {
+      "type": "string",
+      "default": "America/Chicago",
+      "description": "Timezone for schedule calculation. Phase 5 contract field."
+    },
+    "cutoff_window_label": {
+      "type": "string",
+      "description": "Cutoff window label from schedule engine (e.g. 'Friday after 2:00 PM'). Phase 5 contract field."
+    },
+    "financial_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid",
+        "refunded",
+        "failed"
+      ]
+    },
+    "payment_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid",
+        "refunded",
+        "failed"
+      ]
+    },
+    "do_not_recover": {
+      "type": "boolean",
+      "default": false,
+      "description": "Flag to prevent order re-entry into production if refunded/cancelled"
+    },
+    "canceled_at": {
+      "type": "string",
+      "description": "ISO timestamp when order was cancelled"
+    },
+    "deleted_at": {
+      "type": "string",
+      "description": "ISO timestamp when order was deleted"
+    },
+    "is_test_order": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test orders excluded from production scheduling"
+    },
+    "saturday_threshold_decision": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected_rolled_to_tuesday"
+      ],
+      "description": "Window 3 threshold decision status"
+    },
+    "saturday_threshold_decided_at": {
+      "type": "string",
+      "description": "ISO timestamp when Saturday threshold was evaluated"
+    },
+    "health_advisory_acknowledged": {
+      "type": "boolean",
+      "default": false,
+      "description": "Customer acknowledged health advisory before order placement"
+    },
+    "health_advisory_acknowledged_at": {
+      "type": "string",
+      "description": "ISO timestamp when customer acknowledged health advisory"
+    },
+    "health_advisory_version": {
+      "type": "string",
+      "description": "Version of health advisory acknowledged (e.g. 2026-05-13-v1)"
+    }
+  },
+  "required": [
+    "customer_email",
+    "items",
+    "total",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "driver"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "driver"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
