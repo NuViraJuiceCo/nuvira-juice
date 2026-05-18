@@ -1,0 +1,146 @@
+import React, { useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { Plus } from 'lucide-react';
+import { useCart } from '@/lib/cartContext';
+import { motion } from 'framer-motion';
+
+// Tap-vs-scroll guard: only fire click if touch didn't move more than 8px
+function useTapGuard() {
+  const startPos = React.useRef(null);
+  const didScroll = React.useRef(false);
+  return {
+    onTouchStart: (e) => { startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; didScroll.current = false; },
+    onTouchMove: (e) => {
+      if (!startPos.current) return;
+      const dy = Math.abs(e.touches[0].clientY - startPos.current.y);
+      if (dy > 8) didScroll.current = true;
+    },
+    guardClick: (handler) => (e) => { if (didScroll.current) { e.preventDefault(); e.stopPropagation(); return; } handler(e); },
+  };
+}
+
+export default function ProductCard({ product, compact = false }) {
+  const { addItem } = useCart();
+  const tapGuard = useTapGuard();
+
+  const handleQuickAdd = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const extra = {};
+    if (product.category === 'bundle') {
+      extra.bottles_per_unit = product.bottle_count || 3;
+      // NuVira Trio has fixed composition: 1 RE-NU, 1 OASIS, 1 AURA
+      if (product.title?.includes('Trio')) {
+        extra.bundle_composition = [
+          { product_id: 're-nu', product_name: 'RE-NU', quantity: 1 },
+          { product_id: 'oasis', product_name: 'OASIS', quantity: 1 },
+          { product_id: 'aura', product_name: 'AURA', quantity: 1 },
+        ];
+      } else {
+        extra.bundle_composition = [];
+      }
+    }
+    addItem(product, 1, extra);
+  };
+
+  if (compact) {
+    return (
+      <Link to={`/shop/${product.id}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
+        <motion.div
+            whileTap={{ scale: 0.94 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            className="bg-card rounded-2xl border border-border/50 overflow-hidden shadow-md"
+            style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
+        >
+          <div className="relative overflow-hidden" style={{ aspectRatio: '1/1' }}>
+            {product.image_url ? (
+              <motion.img
+                src={product.image_url}
+                alt={product.title}
+                className="w-full h-full object-cover"
+                whileHover={{ scale: 1.05 }}
+                transition={{ duration: 0.4 }}
+                width="300"
+                height="400"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <div className="w-full h-full bg-secondary/50 flex items-center justify-center text-4xl">🍊</div>
+            )}
+            {/* Bottom gradient */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+            {/* Price badge */}
+            <div className="absolute bottom-2 left-2 bg-white/95 backdrop-blur rounded-full px-2.5 py-1">
+              <span className="text-xs font-bold text-slate-900">${product.price?.toFixed(2)}</span>
+            </div>
+            {/* Add button */}
+            <motion.button
+              onClick={handleQuickAdd}
+              whileTap={{ scale: 0.88 }}
+              aria-label={`Add ${product.title} to cart`}
+              className="absolute bottom-2 right-2 w-9 h-9 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:opacity-90 transition-opacity"
+            >
+              <Plus className="w-4 h-4" />
+            </motion.button>
+            {product.is_best_seller && (
+              <div className="absolute top-2 left-2 bg-accent text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow">
+                Best Seller
+              </div>
+            )}
+          </div>
+          <div className="px-2.5 py-2">
+            <p className="text-xs font-semibold text-foreground truncate">{product.title}</p>
+            {product.size && <p className="text-[10px] text-foreground/55">{product.size}</p>}
+          </div>
+        </motion.div>
+      </Link>
+    );
+  }
+
+  return (
+    <Link to={`/shop/${product.id}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
+      <motion.div
+         whileTap={{ scale: 0.97 }}
+         transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+         className="bg-card rounded-xl border border-border/50 overflow-hidden shadow-md"
+         style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
+      >
+        <div className="aspect-[4/3] bg-secondary/50 relative overflow-hidden">
+          {product.image_url ? (
+            <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" width="400" height="300" loading="lazy" decoding="async" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-5xl">🍊</div>
+          )}
+          {product.is_seasonal && (
+            <span className="absolute top-2 left-2 bg-accent text-accent-foreground text-[10px] font-bold px-2 py-0.5 rounded-full">
+              Seasonal
+            </span>
+          )}
+          <button
+            onClick={handleQuickAdd}
+            aria-label={`Add ${product.title} to cart`}
+            className="absolute bottom-2 right-2 w-11 h-11 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-3">
+        <p className="font-semibold text-sm text-foreground">{product.title}</p>
+        {product.short_description && (
+          <p className="text-xs text-foreground/55 mt-0.5 line-clamp-1">{product.short_description}</p>
+        )}
+        <div className="flex items-center gap-2 mt-1.5">
+          <span className="text-sm font-semibold text-foreground">${product.price?.toFixed(2)}</span>
+          {product.compare_at_price && (
+            <span className="text-xs text-foreground/45 line-through">${product.compare_at_price.toFixed(2)}</span>
+          )}
+          {product.size && (
+            <span className="text-[10px] text-foreground/50 ml-auto">{product.size}</span>
+          )}
+        </div>
+        </div>
+      </motion.div>
+    </Link>
+  );
+}
