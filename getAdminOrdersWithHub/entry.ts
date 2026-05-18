@@ -1,0 +1,381 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+/**
+ * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
+ * 
+ * Role: Admin view of ALL orders (local + Hub-verified) with full merge and expansion.
+ * Source of Truth: Hub (for operational orders, subscriptions, deliveries)
+ * 
+ * PROCESS:
+ * 1. Fetch all local orders (excluding superseded, cancelled, ghost pre-orders)
+ * 2. Fetch ALL UserProfile records to get every customer's contact email
+ * 3. Query Hub for each customer's orders (include cancelled-only customers for visibility)
+ * 4. Expand Hub subscription orders into fulfillment-level display records
+ * 5. Expand local subscription orders via FulfillmentTask references
+ * 6. Merge: Hub wins on order_number; local fills missing contact info
+ * 7. Return merged list sorted by created_date (newest first)
+ * 
+ * FULFILLMENT EXPANSION:
+ * - Hub subscriptions: broken into individual fulfillments (e.g., 4 weekly deliveries)
+ * - Local subscriptions: expanded via FulfillmentTask if available
+ * - Result: Admins see individual deliveries, not parent "0-item" records
+ * 
+ * STATUS UPDATES:
+ * - Hub-managed orders (is_hub_order=true) send status updates via pushOrderStatusToHub
+ * - Local orders update directly via Order.update() (no Hub push)
+ * - Admin can always edit status; status history is tracked
+ * 
+ * Called by: pages/AdminOrders (admin order management)
+ */
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // 1. Fetch all local orders, exclude superseded, cancelled, and ghost pre-orders
+    // A "ghost" pre-order is one that was authorized but never completed payment capture
+    // (payment_captured=false AND no stripe_payment_intent_id means it's an abandoned/admin-created stub)
+    const allLocalOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
+    
+    // Fetch all FulfillmentTasks for expanding local subscription orders
+    let fulfillmentTasks = [];
+    try {
+      if (allLocalOrders.length > 0) {
+        fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.list('-created_date', 500);
+      }
+    } catch (err) {
+      // FulfillmentTask may not exist yet — skip expansion
+      console.warn('[AdminOrders] FulfillmentTask not available, skipping expansion:', err.message);
+    }
+    const cancelledOrderNumbers = new Set(
+      allLocalOrders
+        .filter(o => o.status === 'cancelled')
+        .map(o => (o.order_number || '').toString().replace(/^#/, '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+    // Also track customer emails that have ONLY cancelled orders (no live orders)
+    // so we can suppress ALL their Hub orders from showing up
+    const allEmailsWithLiveOrders = new Set(
+       allLocalOrders
+         .filter(o =>
+           o.status !== 'cancelled' &&
+           o.financial_status !== 'refunded' &&
+           o.payment_status !== 'refunded' &&
+           o.do_not_recover !== true &&
+           !(o.notes && o.notes.includes('SUPERSEDED_BY_HUB'))
+         )
+         .map(o => o.customer_email?.toLowerCase())
+         .filter(Boolean)
+     );
+    const localOrders = allLocalOrders.filter(o => {
+      if (o.notes && o.notes.includes('SUPERSEDED_BY_HUB')) return false;
+      if (o.status === 'cancelled') return false;
+      // Filter ghost pre-orders: is_preorder=true, payment_captured=false, no stripe_payment_intent_id
+      if (o.is_preorder && !o.payment_captured && !o.stripe_payment_intent_id) return false;
+      return true;
+    });
+    console.log(`[AdminOrders] Local: ${allLocalOrders.length} total, ${localOrders.length} after filtering. Cancelled order numbers: ${[...cancelledOrderNumbers].join(', ')}`);
+
+    // 2. Fetch ALL UserProfiles to get every customer — including those whose only local
+    //    record was superseded and would otherwise be invisible.
+    const profiles = await base44.asServiceRole.entities.UserProfile.list('-created_date', 500);
+
+    // Build bidirectional auth_email <-> contact_email maps, and a name lookup map
+    const authToContact = {};
+    const contactToAuth = {};
+    const emailToName = {};    // auth_email -> "First Last"
+    const emailToPhone = {};   // auth_email -> phone
+    const emailToAddress = {}; // auth_email -> address string
+    for (const p of profiles) {
+      if (p.customer_email) {
+        const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+        if (name) emailToName[p.customer_email.toLowerCase()] = name;
+        if (p.phone) emailToPhone[p.customer_email.toLowerCase()] = p.phone;
+        if (p.address) emailToAddress[p.customer_email.toLowerCase()] = p.address;
+        if (p.contact_email && p.contact_email !== p.customer_email) {
+          authToContact[p.customer_email] = p.contact_email;
+          contactToAuth[p.contact_email] = p.customer_email;
+          // Also index by contact_email so lookups work both ways
+          if (name) emailToName[p.contact_email.toLowerCase()] = name;
+          if (p.phone) emailToPhone[p.contact_email.toLowerCase()] = p.phone;
+          if (p.address) emailToAddress[p.contact_email.toLowerCase()] = p.address;
+        }
+      }
+    }
+
+    // Build cancelledCustomerEmails = emails that appear ONLY in cancelled orders (no live orders at all)
+    // We suppress ALL Hub queries for these customers.
+    // We add BOTH the auth email AND any contact_email alias so the Hub-query skip fires regardless
+    // of which email variant we use to query the Hub.
+    const cancelledCustomerEmails = new Set();
+     for (const o of allLocalOrders) {
+       const isCancelledOrRefunded = o.status === 'cancelled' || o.financial_status === 'refunded' || o.payment_status === 'refunded' || o.do_not_recover === true;
+       if (!isCancelledOrRefunded) continue;
+       const email = o.customer_email?.toLowerCase();
+       if (!email || allEmailsWithLiveOrders.has(email)) continue;
+       cancelledCustomerEmails.add(email);
+       // Also add the contact_email alias used to query Hub
+       const contactAlias = authToContact[o.customer_email]?.toLowerCase();
+       if (contactAlias) cancelledCustomerEmails.add(contactAlias);
+     }
+    console.log(`[AdminOrders] Cancelled-only customers (suppress Hub): ${[...cancelledCustomerEmails].join(', ')} | Live order emails: ${[...allEmailsWithLiveOrders].join(', ')}`);
+
+    // Build the set of hub query emails from surviving local orders + profiles of customers with live orders
+    // Use contact_email if available (real email, not Apple relay) — never add both variants
+    // EXCLUDE cancelled-only customers entirely
+    const hubQueryEmails = new Set();
+    for (const p of profiles) {
+      if (p.customer_email) {
+        const authEmail = p.customer_email.toLowerCase();
+        // Skip if this customer has ONLY cancelled orders
+        if (cancelledCustomerEmails.has(authEmail)) continue;
+        const queryEmail = p.contact_email || p.customer_email;
+        hubQueryEmails.add(queryEmail.toLowerCase().trim());
+      }
+    }
+    // Also include emails from local orders not covered by profiles
+    for (const o of localOrders) {
+      if (o.customer_email) {
+        const queryEmail = authToContact[o.customer_email] || o.customer_email;
+        hubQueryEmails.add(queryEmail.toLowerCase().trim());
+      }
+    }
+
+    // 3. Fetch Hub orders for each unique hub email
+    const hubApiUrl = Deno.env.get('HUB_API_URL');
+    const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+    const hubBase = hubApiUrl ? hubApiUrl.replace(/\/$/, '').replace(/\/functions\/.*$/, '') : null;
+
+    let allHubOrders = [];
+
+    if (hubBase && hubSecret) {
+      // Fetch in batches of 5 to avoid Hub rate limiting
+      const emailList = Array.from(hubQueryEmails);
+      const BATCH_SIZE = 5;
+
+      const fetchOne = async (hubEmail) => {
+        // Skip entirely for customers whose only local orders are cancelled
+        // Check both the hub email itself AND its resolved auth email
+        const normalizedHub = hubEmail.toLowerCase();
+        const resolvedAuth = (contactToAuth[normalizedHub] || normalizedHub);
+        if (cancelledCustomerEmails.has(normalizedHub) || cancelledCustomerEmails.has(resolvedAuth)) {
+          console.log(`[AdminOrders] Skipping Hub fetch for cancelled customer: ${hubEmail}`);
+          return [];
+        }
+        try {
+          const url = `${hubBase}/functions/getOrderUpdatesForCustomerApp?email=${encodeURIComponent(hubEmail)}`;
+          const res = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${hubSecret}` },
+          });
+          if (!res.ok) {
+            console.warn(`[AdminOrders] Hub fetch failed for ${hubEmail}: ${res.status}`);
+            return [];
+          }
+          const data = await res.json();
+          const rawOrders = data.orders || [];
+          if (rawOrders.length === 0) return [];
+
+          const authEmail = contactToAuth[hubEmail] || hubEmail;
+          const resolveField = (hubVal, profileVal) => hubVal || profileVal || '';
+          const authKey = authEmail.toLowerCase();
+
+          const expanded = [];
+          for (const order of rawOrders) {
+            const hubName = order.customer_name || order.full_name || '';
+            const resolvedName = resolveField(hubName, emailToName[authKey]);
+            const resolvedPhone = resolveField(order.contact_phone || order.phone, emailToPhone[authKey]);
+            const resolvedAddress = resolveField(order.delivery_address, emailToAddress[authKey]);
+
+            const fulfillments = order.fulfillments;
+            const isSubscription = order.order_type === 'subscription' || order.fulfillment_mode === 'multi_delivery';
+
+            // Only expand subscriptions. One-time orders use line_items (main product display)
+            if (isSubscription && Array.isArray(fulfillments) && fulfillments.length > 0) {
+              for (const f of fulfillments) {
+                const baseOrderNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
+                const fAddress = resolveField(f.delivery_address || order.delivery_address, emailToAddress[authKey]);
+                const fPhone = resolveField(f.contact_phone || order.contact_phone || order.phone, emailToPhone[authKey]);
+                expanded.push({
+                  id: `hub_${order.id || order.shopify_order_id}_f${f.fulfillment_number}`,
+                  hub_order_id: order.id || order.shopify_order_id || null,
+                  hub_fulfillment_number: f.fulfillment_number,
+                  order_number: f.fulfillment_number === 1 ? baseOrderNum : `${baseOrderNum}-${f.fulfillment_number}`,
+                  customer_email: authEmail,
+                  customer_name: resolvedName,
+                  hub_customer_email: order.customer_email || hubEmail,
+                  status: mapHubStatus(f.status || order.status),
+                  total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
+                  subtotal: order.subtotal ? parseFloat((order.subtotal / fulfillments.length).toFixed(2)) : 0,
+                  delivery_fee: order.delivery_fee || 0,
+                  fulfillment_type: order.fulfillment_type || 'delivery',
+                  delivery_address: fAddress,
+                  contact_phone: fPhone,
+                  estimated_delivery_date: f.delivery_date || null,
+                  created_date: f.delivery_date || order.created_date || order.updated_date || null,
+                  items: f.items || order.line_items || [],
+                  notes: `${order.subscription_plan || 'Subscription'} — Delivery ${f.fulfillment_number} of ${fulfillments.length}`,
+                  is_hub_order: true,
+                });
+              }
+            } else {
+              const baseOrderNum = (order.shopify_order_number || order.order_number || '').replace('#', '');
+              expanded.push({
+                id: `hub_${order.id}`,
+                hub_order_id: order.id || order.shopify_order_id || null,
+                order_number: baseOrderNum,
+                customer_email: authEmail,
+                customer_name: resolvedName,
+                hub_customer_email: order.customer_email || hubEmail,
+                status: mapHubStatus(order.status),
+                total: order.total || 0,
+                subtotal: order.subtotal || 0,
+                delivery_fee: order.delivery_fee || 0,
+                fulfillment_type: order.fulfillment_type || 'delivery',
+                delivery_address: resolvedAddress,
+                contact_phone: resolvedPhone,
+                estimated_delivery_date: order.estimated_delivery_date || null,
+                created_date: order.created_date || order.updated_date || null,
+                items: order.line_items || order.items || [],
+                notes: order.notes || null,
+                is_hub_order: true,
+              });
+            }
+          }
+          return expanded;
+        } catch (err) {
+          console.warn(`[AdminOrders] Hub error for ${hubEmail}: ${err.message}`);
+          return [];
+        }
+      };
+
+      // Process in batches of 5 to avoid Hub rate limiting
+      for (let i = 0; i < emailList.length; i += BATCH_SIZE) {
+        const batch = emailList.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(fetchOne));
+        allHubOrders.push(...batchResults.flat());
+      }
+      console.log(`[AdminOrders] Hub returned ${allHubOrders.length} expanded orders across ${hubQueryEmails.size} customers`);
+    }
+
+    // Filter out cancelled hub orders AND hub orders whose order_number is locally cancelled
+    const filteredHubOrders = allHubOrders.filter(o => {
+      if (o.status === 'cancelled') return false;
+      const normNum = normalizeOrderNum(o.order_number);
+      if (normNum && cancelledOrderNumbers.has(normNum)) return false;
+      return true;
+    });
+    console.log(`[AdminOrders] After cancel filter: ${filteredHubOrders.length} hub orders (removed ${allHubOrders.length - filteredHubOrders.length} cancelled)`);
+
+    // 3b. Expand local subscription orders that reference FulfillmentTasks
+    const expandedLocalOrders = [];
+    for (const order of localOrders) {
+      const tasksForOrder = fulfillmentTasks.filter(t => t.order_id === order.id);
+      
+      if (tasksForOrder.length > 0) {
+        // Subscription order — expand each fulfillment task into a display record
+        for (const task of tasksForOrder) {
+          expandedLocalOrders.push({
+            id: task.id,
+            order_number: order.order_number + (tasksForOrder.length > 1 ? `-${task.fulfillment_number || 1}` : ''),
+            customer_email: order.customer_email,
+            customer_name: order.customer_name || '',
+            status: order.status,
+            total: order.total ? order.total / tasksForOrder.length : 0,
+            subtotal: order.subtotal ? order.subtotal / tasksForOrder.length : 0,
+            delivery_fee: order.delivery_fee || 0,
+            fulfillment_type: order.fulfillment_type || 'delivery',
+            delivery_address: order.delivery_address || '',
+            contact_phone: order.contact_phone || '',
+            estimated_delivery_date: task.delivery_date || order.estimated_delivery_date || null,
+            created_date: order.created_date || null,
+            items: task.items || order.items || [],
+            notes: order.notes || '',
+            is_local_fulfillment_expansion: true,
+          });
+        }
+      } else {
+        expandedLocalOrders.push(order);
+      }
+    }
+
+    // 4. Merge: Hub wins for any order_number it has; local wins otherwise
+    // Normalize order numbers for comparison: strip leading #, lowercase, trim
+    function normalizeOrderNum(num) {
+      return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
+    }
+
+    const mergedMap = new Map();
+
+    // Seed with Hub orders first — deduplicate Hub side too (same order fetched via contact+auth email)
+    for (const order of filteredHubOrders) {
+      const key = normalizeOrderNum(order.order_number);
+      if (!key) continue;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, order);
+      }
+    }
+
+    // Local orders fill in only where Hub has no record
+    for (const order of expandedLocalOrders) {
+      const key = normalizeOrderNum(order.order_number);
+      if (!key) continue; // skip orders with no order_number entirely
+      const hubHasIt = mergedMap.has(key) && mergedMap.get(key).is_hub_order;
+      if (!hubHasIt) {
+        mergedMap.set(key, order);
+      }
+    }
+
+    const merged = Array.from(mergedMap.values()).sort((a, b) => {
+      const aDate = new Date(a.created_date || 0);
+      const bDate = new Date(b.created_date || 0);
+      return bDate - aDate;
+    });
+
+    console.log(`[AdminOrders] Final: ${merged.length} orders (${expandedLocalOrders.length} local expanded including fulfillments, ${filteredHubOrders.length} hub expanded)`);
+
+    return Response.json({
+      success: true,
+      total: merged.length,
+      local_count: localOrders.length,
+      hub_count: allHubOrders.length,
+      orders: merged,
+    });
+  } catch (error) {
+    console.error('[AdminOrders] Error:', error.message);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});
+
+function mapHubStatus(hubStatus) {
+  const map = {
+    new: 'order_received',
+    awaiting_production: 'scheduled_for_juicing',
+    in_production: 'in_production',
+    bottled: 'bottled_packed',
+    labeled: 'bottled_packed',
+    qc_checked: 'bottled_packed',
+    packed: 'bottled_packed',
+    in_cold_storage: 'bottled_packed',
+    assigned_for_pickup: 'ready_for_pickup',
+    assigned_for_delivery: 'out_for_delivery',
+    fulfilled: 'delivered',
+    canceled: 'cancelled', // explicit cancelled status — filtered out below
+    cancelled: 'cancelled',
+    refunded: 'cancelled',
+    pending: 'scheduled_for_juicing',
+    production_scheduled: 'scheduled_for_juicing',
+    // pass-through valid customer app statuses
+    order_received: 'order_received',
+    scheduled_for_juicing: 'scheduled_for_juicing',
+    bottled_packed: 'bottled_packed',
+    out_for_delivery: 'out_for_delivery',
+    arriving_soon: 'arriving_soon',
+    delivered: 'delivered',
+    ready_for_pickup: 'ready_for_pickup',
+    picked_up: 'picked_up',
+  };
+  return map[hubStatus] || 'order_received';
+}
