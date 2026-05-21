@@ -36,6 +36,27 @@ function isFakeStripeId(id) {
   return fakePatterns.some(p => id.includes(p));
 }
 
+function normalizeDeliveryWindowBucket(label) {
+  if (!label || typeof label !== 'string') return null;
+
+  const normalized = label
+    .toLowerCase()
+    .replace(/[–—−]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const hasWednesday = /\bwednesday\b/.test(normalized);
+  const hasSaturday = /\bsaturday\b/.test(normalized);
+  const isFiveToEight = /\b5(?::00)?\s*pm\s*-\s*8(?::00)?\s*pm\b/.test(normalized);
+  const isTwelveToThree = /\b12(?::00)?\s*pm\s*-\s*3(?::00)?\s*pm\b/.test(normalized);
+
+  if (hasWednesday) return isFiveToEight ? 'wednesday_5_8' : null;
+  if (hasSaturday) return isTwelveToThree ? 'saturday_12_3' : null;
+  if (isFiveToEight) return 'wednesday_5_8';
+  if (isTwelveToThree) return 'saturday_12_3';
+  return null;
+}
+
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
   const body   = await req.json();
@@ -153,6 +174,7 @@ Deno.serve(async (req) => {
   const finalWindowStart     = order.assigned_delivery_window_start || '17:00';
   const finalWindowEnd       = order.assigned_delivery_window_end   || '20:00';
   const finalScheduleReason  = order.scheduling_reason || 'unknown';
+  const finalScheduleSource  = order.final_schedule_source || 'unknown';
 
   if (!isRefundedOrder && finalProductionDate && finalDeliveryDate) {
     // Validate production day (must be Tuesday=2 or Friday=5)
@@ -161,12 +183,13 @@ Deno.serve(async (req) => {
     const validProd = prodDow === 2 || prodDow === 5; // Tue or Fri
     const validDel  = delDow  === 3 || delDow  === 6; // Wed or Sat
     // Validate window matches delivery day
-    const expectedWindow = delDow === 3 ? '5:00 PM – 8:00 PM' : '12:00 PM – 3:00 PM';
-    const windowMatches  = finalWindowLabel === expectedWindow ||
-                           finalWindowLabel === (delDow === 3 ? '5 PM – 8 PM' : '12 PM – 3 PM');
+    const expectedWindow = delDow === 3 ? 'Wednesday 5 PM - 8 PM' : 'Saturday 12 PM - 3 PM';
+    const expectedWindowBucket = delDow === 3 ? 'wednesday_5_8' : 'saturday_12_3';
+    const actualWindowBucket = normalizeDeliveryWindowBucket(finalWindowLabel);
+    const windowMatches = actualWindowBucket === expectedWindowBucket;
 
     if (!validProd || !validDel || !windowMatches) {
-      const errMsg = `[syncOrderToHub] INVALID SCHEDULE — production_date=${finalProductionDate} (dow=${prodDow}, must be Tue/Fri) | delivery_date=${finalDeliveryDate} (dow=${delDow}, must be Wed/Sat) | delivery_window_label="${finalWindowLabel}" (expected "${expectedWindow}"). Order ${order.order_number} rejected before Hub push.`;
+      const errMsg = `[syncOrderToHub] INVALID SCHEDULE — production_date=${finalProductionDate} (dow=${prodDow}, must be Tue/Fri) | delivery_date=${finalDeliveryDate} (dow=${delDow}, must be Wed/Sat) | delivery_window_label="${finalWindowLabel}" (expected "${expectedWindow}", bucket=${expectedWindowBucket}, actual_bucket=${actualWindowBucket || 'unknown'}). Order ${order.order_number} rejected before Hub push.`;
       console.error(errMsg);
       return Response.json({
         success: false,
@@ -178,10 +201,12 @@ Deno.serve(async (req) => {
         delivery_date: finalDeliveryDate,
         delivery_window_label: finalWindowLabel,
         expected_window: expectedWindow,
+        expected_window_bucket: expectedWindowBucket,
+        actual_window_bucket: actualWindowBucket,
         hub_push_aborted: true,
       }, { status: 422 });
     } else {
-      console.log(`[syncOrderToHub] Schedule validated ✅ prod=${finalProductionDate}(${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][prodDow]}) del=${finalDeliveryDate}(${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][delDow]}) window="${finalWindowLabel}"`);
+      console.log(`[syncOrderToHub] Schedule validated ✅ prod=${finalProductionDate}(${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][prodDow]}) del=${finalDeliveryDate}(${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][delDow]}) window="${finalWindowLabel}" bucket=${actualWindowBucket}`);
     }
   }
 
@@ -226,7 +251,7 @@ Deno.serve(async (req) => {
       delivery_window_start:    finalWindowStart,
       delivery_window_end:      finalWindowEnd,
       // ── PHASE 5: Central engine schedule fields ──────────────────────────
-      final_schedule_source:    'central_engine',
+      final_schedule_source:    finalScheduleSource,
       schedule_reason:          finalScheduleReason,
       schedule_timezone:        'America/Chicago',
       status:                   order.status,
