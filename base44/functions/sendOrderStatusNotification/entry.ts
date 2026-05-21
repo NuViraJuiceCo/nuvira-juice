@@ -106,8 +106,16 @@ Deno.serve(async (req) => {
 
     console.log(`[sendOrderStatusNotification] Status "${new_status}" notif for order ${orderNum}: ${JSON.stringify(result.data)}`);
 
+    const notifData = result?.data || result;
+    const deliveredNotificationAlreadyExists =
+      new_status === 'delivered' &&
+      notifData?.skipped === true &&
+      notifData?.reason === 'duplicate_idempotency_key';
+
     // ── Delivery confirmation email ───────────────────────────────────────────
-    if (new_status === 'delivered') {
+    if (new_status === 'delivered' && deliveredNotificationAlreadyExists) {
+      console.log('[sendOrderStatusNotification] Delivered email already sent; skipping duplicate');
+    } else if (new_status === 'delivered') {
       try {
         // Fetch full order for email details
         const orderRows = await base44.asServiceRole.entities.Order.filter({ id: order_id }, null, 1);
