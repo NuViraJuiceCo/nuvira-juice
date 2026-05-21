@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { format } from 'date-fns';
-import { ChevronRight, ChevronDown, Package, Truck, ArrowLeft, Search } from 'lucide-react';
+import { ChevronRight, ChevronDown, ArrowLeft, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -62,8 +62,93 @@ function InfoRow({ label, value }) {
   if (!value) return null;
   return (
     <div className="flex gap-2">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-16 shrink-0 pt-0.5">{label}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-24 shrink-0 pt-0.5">{label}</span>
       <span className="text-xs text-foreground flex-1">{value}</span>
+    </div>
+  );
+}
+
+function formatStatusLabel(value) {
+  if (!value) return null;
+  return value
+    .toString()
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function formatDateOnly(value) {
+  if (!value) return null;
+  try {
+    return format(parseLocalDate(value), 'MMM d, yyyy');
+  } catch {
+    return value;
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) return null;
+  try {
+    return format(new Date(value), 'MMM d, yyyy - h:mm a');
+  } catch {
+    return value;
+  }
+}
+
+function HubOperationsPanel({ order, customerAppStatusLabel }) {
+  if (!order.is_hub_order) return null;
+
+  const proofLink = order.delivery_photo_url ? (
+    <a
+      href={order.delivery_photo_url}
+      target="_blank"
+      rel="noreferrer"
+      className="text-primary underline underline-offset-2"
+    >
+      View proof photo
+    </a>
+  ) : null;
+
+  const hasHubOpsData = Boolean(
+    order.hub_operational_status ||
+    order.hub_fulfillment_status ||
+    order.production_date ||
+    order.assigned_delivery_date ||
+    order.delivery_window_label ||
+    order.delivered_at ||
+    order.delivered_by ||
+    order.delivery_photo_url ||
+    order.delivery_drop_location ||
+    order.source_channel ||
+    order.stripe_subscription_id ||
+    order.hub_updated_date
+  );
+
+  return (
+    <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hub Operations</p>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Read-only</span>
+      </div>
+      {hasHubOpsData ? (
+        <>
+          <InfoRow label="Customer App Status" value={customerAppStatusLabel || formatStatusLabel(order.status)} />
+          <InfoRow label="Hub Operational Status" value={formatStatusLabel(order.hub_operational_status)} />
+          <InfoRow label="Fulfillment" value={formatStatusLabel(order.hub_fulfillment_status)} />
+          <InfoRow label="Production Date" value={formatDateOnly(order.production_date)} />
+          <InfoRow label="Delivery" value={formatDateOnly(order.assigned_delivery_date)} />
+          <InfoRow label="Window" value={order.delivery_window_label} />
+          <InfoRow label="Delivered" value={formatDateTime(order.delivered_at)} />
+          <InfoRow label="By" value={order.delivered_by} />
+          <InfoRow label="Drop" value={order.delivery_drop_location} />
+          <InfoRow label="Proof" value={proofLink} />
+          <InfoRow label="Source" value={formatStatusLabel(order.source_channel)} />
+          <InfoRow label="Subscription ID" value={order.stripe_subscription_id} />
+          <InfoRow label="Last Hub Update" value={formatDateTime(order.hub_updated_date)} />
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground italic">No Hub operations data yet</p>
+      )}
     </div>
   );
 }
@@ -85,6 +170,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const itemsSummary = order.items?.length > 0
     ? order.items.map(i => `${i.title} ×${i.quantity}`).join(', ')
     : null;
+  const customerAppStatusLabel = stages.find(s => s.key === order.status)?.label || formatStatusLabel(order.status);
 
   return (
     <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
@@ -95,7 +181,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-bold">#{order.order_number}</p>
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[order.status] || 'bg-muted text-muted-foreground'}`}>
-              {stages.find(s => s.key === order.status)?.label || order.status}
+              {customerAppStatusLabel}
             </span>
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
               {order.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'}
@@ -172,6 +258,8 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                   <span>${(order.total || 0).toFixed(2)}</span>
                 </div>
               </div>
+
+              <HubOperationsPanel order={order} customerAppStatusLabel={customerAppStatusLabel} />
 
               {/* Progress */}
               <div>
