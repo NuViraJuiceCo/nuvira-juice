@@ -2,6 +2,36 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const HUB_ENDPOINT = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '')}/functions/receiveCustomerAppEvent`;
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+const MAX_RETRY_ATTEMPTS_PER_ORDER = 3;
+const TERMINAL_SKIPPED_ACTIONS = new Set([
+  'order_not_retryable',
+  'sentinel_not_retryable',
+  'subscription_not_active',
+  'subscription_quarantined',
+  'manual_review_required',
+]);
+
+function isRetryAttemptLog(log) {
+  if (!log?.order_number) return false;
+  if (log.status === 'error') return true;
+  return log.status === 'skipped' && !TERMINAL_SKIPPED_ACTIONS.has(log.hub_action);
+}
+
+async function writeRetryFailureLog(base44, { orderNumber, startTime, description }) {
+  try {
+    await base44.asServiceRole.entities.OrderSyncLog.create({
+      order_number: orderNumber,
+      status: 'error',
+      hub_action: 'retry_failed',
+      description: description.substring(0, 1000),
+      started_at: startTime,
+      completed_at: new Date().toISOString(),
+      triggered_by: 'recovery_function',
+    });
+  } catch (logErr) {
+    console.error(`[RetryHubSyncs] Failed to write retry failure log for ${orderNumber}: ${logErr.message}`);
+  }
+}
 
 /**
  * Automated retry: finds all orders whose most recent OrderSyncLog is status=error
@@ -67,8 +97,30 @@ Deno.serve(async (req) => {
   );
   const dedupedOrders = new Set(dedupedLogs.map(l => l.order_number));
 
+  const skippedLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
+    { status: 'skipped' },
+    '-created_date',
+    300
+  );
+  const terminalSkippedOrders = new Set(
+    skippedLogs
+      .filter(l => TERMINAL_SKIPPED_ACTIONS.has(l.hub_action))
+      .map(l => l.order_number)
+  );
+
+  const retryAttemptCounts = new Map();
+  for (const log of [...errorLogs, ...skippedLogs]) {
+    if (!isRetryAttemptLog(log)) continue;
+    retryAttemptCounts.set(log.order_number, (retryAttemptCounts.get(log.order_number) || 0) + 1);
+  }
+
   // Skip retry only if truly resolved (confirmed hub_order_id, recovery, or dedupe match)
-  const pendingRetry = toRetry.filter(on => !succeededOrders.has(on) && !recoveredOrders.has(on) && !dedupedOrders.has(on));
+  const pendingRetry = toRetry.filter(on =>
+    !succeededOrders.has(on) &&
+    !recoveredOrders.has(on) &&
+    !dedupedOrders.has(on) &&
+    !terminalSkippedOrders.has(on)
+  );
 
   console.log(`[RetryHubSyncs] ${toRetry.length} error logs found, ${pendingRetry.length} need retry`);
 
@@ -80,6 +132,22 @@ Deno.serve(async (req) => {
 
   for (const orderNumber of pendingRetry) {
     try {
+      const retryAttemptCount = retryAttemptCounts.get(orderNumber) || 0;
+      if (retryAttemptCount >= MAX_RETRY_ATTEMPTS_PER_ORDER) {
+        console.warn(`[RetryHubSyncs] ${orderNumber} reached retry cap (${retryAttemptCount}/${MAX_RETRY_ATTEMPTS_PER_ORDER}) — writing manual review terminal log`);
+        await base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number: orderNumber,
+          status: 'skipped',
+          hub_action: 'manual_review_required',
+          description: `Order ${orderNumber} reached Hub retry cap (${retryAttemptCount}/${MAX_RETRY_ATTEMPTS_PER_ORDER}). Automatic retry stopped; manual review required before any further recovery attempt.`,
+          started_at: startTime,
+          completed_at: new Date().toISOString(),
+          triggered_by: 'recovery_function',
+        });
+        results.push({ order_number: orderNumber, result: 'skipped', reason: 'manual_review_required', retry_attempts: retryAttemptCount });
+        continue;
+      }
+
       // ── Subscription retry path ──────────────────────────────────────────
       // Error logs for subscription Hub failures use order_number = "SUB-{stripeSubscriptionId}"
       // Special sentinel logs (e.g. SUB_DATE_MISSING, SUB_FAILED) are not retryable
@@ -202,10 +270,20 @@ Deno.serve(async (req) => {
           } else {
             const errDetail = JSON.stringify(hubResp).substring(0, 300);
             console.error(`[RetryHubSyncs] ❌ Subscription sync returned non-success for ${stripeSubId}: ${errDetail}`);
+            await writeRetryFailureLog(base44, {
+              orderNumber,
+              startTime,
+              description: `Subscription Hub sync retry returned non-success for ${stripeSubId}. Response: ${errDetail}`,
+            });
             results.push({ order_number: orderNumber, result: 'failed', details: errDetail });
           }
         } catch (subSyncErr) {
           console.error(`[RetryHubSyncs] ❌ Subscription retry threw for ${stripeSubId}: ${subSyncErr.message}`);
+          await writeRetryFailureLog(base44, {
+            orderNumber,
+            startTime,
+            description: `Subscription Hub sync retry threw for ${stripeSubId}: ${subSyncErr.message}`,
+          });
           results.push({ order_number: orderNumber, result: 'failed', message: subSyncErr.message });
         }
         continue;
@@ -351,10 +429,20 @@ Deno.serve(async (req) => {
         results.push({ order_number: orderNumber, result: logStatus });
       } else {
         console.error(`[RetryHubSyncs] ❌ ${orderNumber} retry failed: ${response.status}`);
+        await writeRetryFailureLog(base44, {
+          orderNumber,
+          startTime,
+          description: `Order Hub sync retry failed with HTTP ${response.status}. Response: ${responseText.substring(0, 500)}`,
+        });
         results.push({ order_number: orderNumber, result: 'failed', status: response.status, details: responseText.substring(0, 200) });
       }
     } catch (err) {
       console.error(`[RetryHubSyncs] Error retrying ${orderNumber}: ${err.message}`);
+      await writeRetryFailureLog(base44, {
+        orderNumber,
+        startTime,
+        description: `Order Hub sync retry threw: ${err.message}`,
+      });
       results.push({ order_number: orderNumber, result: 'error', message: err.message });
     }
   }
