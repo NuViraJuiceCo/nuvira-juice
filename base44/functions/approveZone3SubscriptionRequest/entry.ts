@@ -314,7 +314,8 @@ Deno.serve(async (req) => {
       base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
         subscription_id: caSubscription.id,
         customer_email,
-      }).catch(err => console.error(`[Zone3SubApprove] Hub sync failed: ${err.message}`));
+      }, { headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' } })
+        .catch(err => console.error(`[Zone3SubApprove] Hub sync failed: ${err.message}`));
 
       // Notify customer
       base44.asServiceRole.functions.invoke('sendCustomerNotification', {
