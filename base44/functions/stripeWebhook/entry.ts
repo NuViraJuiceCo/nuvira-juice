@@ -701,6 +701,7 @@ Deno.serve(async (req) => {
         // Send SMS if phone provided
         if (resolvedPhone) {
           base44.asServiceRole.functions.invoke('sendOrderSms', {
+            order_id: order.id,
             phone_number: resolvedPhone,
             order_number: orderNumber,
             items: resolvedItems,
@@ -1074,6 +1075,7 @@ Deno.serve(async (req) => {
 
         if (order.contact_phone) {
           base44.asServiceRole.functions.invoke('sendOrderSms', {
+            order_id:                order.id,
             phone_number:           order.contact_phone,
             order_number:           orderNumber,
             items:                  order.items,
