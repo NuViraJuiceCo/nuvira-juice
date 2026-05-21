@@ -138,7 +138,10 @@ Deno.serve(async (req) => {
         status_history: newHistory,
       };
       if (mappedStatus === 'delivered') {
-        updatePayload.delivered_at = new Date().toISOString();
+        const hubDeliveredAt = hubOrder.delivered_at && !Number.isNaN(Date.parse(hubOrder.delivered_at))
+          ? hubOrder.delivered_at
+          : null;
+        updatePayload.delivered_at = hubDeliveredAt || new Date().toISOString();
         // Pull proof-of-delivery fields from Hub order if present
         if (hubOrder.delivery_photo_url) updatePayload.delivery_photo_url = hubOrder.delivery_photo_url;
         if (hubOrder.delivery_drop_location) updatePayload.delivery_drop_location = hubOrder.delivery_drop_location;
