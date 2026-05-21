@@ -2,6 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
+const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 
 // ── Inline zone classifier (mirrors validateDeliveryEligibility, no inter-function call needed) ──
 const ORIGIN_ADDRESS = "619 N Main St, O'Fallon, MO 63366";
@@ -85,6 +87,100 @@ function buildZoneMessage(zone, cartSubtotal, orderType, amountNeeded) {
   return "We're not delivering to this address just yet. Join the delivery waitlist and we'll notify you when your area opens.";
 }
 
+function getScheduleValue(schedule, canonicalField, legacyField) {
+  return schedule?.[canonicalField] || schedule?.[legacyField] || null;
+}
+
+function normalizeSchedule(schedule) {
+  const productionDate = getScheduleValue(schedule, 'assigned_production_day', 'production_date');
+  const deliveryDate = getScheduleValue(schedule, 'assigned_delivery_date', 'delivery_date');
+  const windowLabel = schedule?.delivery_window_label || null;
+  const windowStart = getScheduleValue(schedule, 'assigned_delivery_window_start', 'delivery_window_start');
+  const windowEnd = getScheduleValue(schedule, 'assigned_delivery_window_end', 'delivery_window_end');
+  const schedulingReason = schedule?.scheduling_reason || schedule?.schedule_reason || null;
+
+  return {
+    productionDate,
+    deliveryDate,
+    windowLabel,
+    windowStart,
+    windowEnd,
+    deliveryWindowTimezone: schedule?.delivery_window_timezone || schedule?.timezone || 'America/Chicago',
+    finalScheduleSource: schedule?.final_schedule_source || 'backend_cadence',
+    schedulingReason,
+    cutoffWindowLabel: schedule?.cutoff_window_label || null,
+    scheduleTimezone: schedule?.schedule_timezone || schedule?.timezone || 'America/Chicago',
+  };
+}
+
+function isCanonicalSchedule(schedule) {
+  const normalized = normalizeSchedule(schedule);
+  if (!normalized.productionDate || !normalized.deliveryDate || !normalized.windowLabel || !normalized.windowStart || !normalized.windowEnd) {
+    return false;
+  }
+
+  const prodDow = new Date(`${normalized.productionDate}T12:00:00`).getDay();
+  const delDow = new Date(`${normalized.deliveryDate}T12:00:00`).getDay();
+  const label = normalized.windowLabel;
+  const isWednesday = prodDow === 2 && delDow === 3 && label === 'Wednesday 5 PM - 8 PM';
+  const isSaturday = prodDow === 5 && delDow === 6 && label === 'Saturday 12 PM - 3 PM';
+  return isWednesday || isSaturday;
+}
+
+async function getLatestScheduleOptions(base44, createdAt) {
+  const response = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
+    mode: 'options',
+    created_at: createdAt,
+    option_count: 2,
+  });
+  const payload = response.data || response;
+  return Array.isArray(payload?.options) ? payload.options : [];
+}
+
+function scheduleFromOption(option) {
+  return {
+    production_date: option?.production_date || null,
+    assigned_production_day: option?.production_date || null,
+    delivery_date: option?.delivery_date || null,
+    assigned_delivery_date: option?.delivery_date || null,
+    delivery_window_label: option?.delivery_window_label || null,
+    delivery_window_start: option?.delivery_window_start || null,
+    delivery_window_end: option?.delivery_window_end || null,
+    assigned_delivery_window_start: option?.delivery_window_start || null,
+    assigned_delivery_window_end: option?.delivery_window_end || null,
+    delivery_window_timezone: option?.delivery_window_timezone || option?.timezone || 'America/Chicago',
+    final_schedule_source: option?.final_schedule_source || 'backend_cadence',
+    cutoff_window_label: option?.cutoff_window_label || null,
+    schedule_reason: option?.scheduling_reason || null,
+    scheduling_reason: option?.scheduling_reason || null,
+    schedule_timezone: option?.schedule_timezone || option?.timezone || 'America/Chicago',
+    timezone: option?.timezone || 'America/Chicago',
+  };
+}
+
+function optionMatchesSubmittedFields(option, selectedOption) {
+  if (!option || !selectedOption) return false;
+
+  const submittedProductionDate = selectedOption.production_date || selectedOption.assigned_production_day || null;
+  const submittedDeliveryDate = selectedOption.delivery_date || selectedOption.assigned_delivery_date || null;
+  const submittedWindowStart = selectedOption.delivery_window_start || selectedOption.assigned_delivery_window_start || null;
+  const submittedWindowEnd = selectedOption.delivery_window_end || selectedOption.assigned_delivery_window_end || null;
+
+  if (submittedProductionDate && submittedProductionDate !== option.production_date) return false;
+  if (submittedDeliveryDate && submittedDeliveryDate !== option.delivery_date) return false;
+  if (selectedOption.delivery_window_label && selectedOption.delivery_window_label !== option.delivery_window_label) return false;
+  if (submittedWindowStart && submittedWindowStart !== option.delivery_window_start) return false;
+  if (submittedWindowEnd && submittedWindowEnd !== option.delivery_window_end) return false;
+
+  return Boolean(
+    submittedProductionDate ||
+    submittedDeliveryDate ||
+    selectedOption.delivery_window_label ||
+    submittedWindowStart ||
+    submittedWindowEnd
+  );
+}
+
 /**
  * Creates a Stripe PaymentIntent for embedded in-app checkout.
  * Returns { clientSecret, orderNumber, effectiveTotal, ... } — NO redirect URL.
@@ -108,6 +204,7 @@ Deno.serve(async (req) => {
       points_discount, points_used,
       active_reward, reward_discount, credits_discount,
       referral_discount, referral_code,
+      selected_schedule_option_id, selected_schedule_option,
       selected_delivery_date, assigned_delivery_date, production_date,
       delivery_window_label, delivery_window_start, delivery_window_end,
       delivery_schedule_source,
@@ -192,33 +289,65 @@ Deno.serve(async (req) => {
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
 
     // ── CENTRAL SCHEDULE ENGINE ──────────────────────────────────────────
-    // Call calculateNuViraFulfillmentSchedule as single source of truth for dates
-    let scheduleResult;
+    // Read latest backend options as the single source of truth for checkout dates.
+    // Fail closed before creating a PaymentIntent or Order if cadence cannot be confirmed.
+    const scheduleCreatedAt = new Date().toISOString();
+    let latestOptions = [];
     try {
-      const scheduleResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
-        created_at: new Date().toISOString(),
-      });
-      scheduleResult = scheduleResp.data || scheduleResp;
+      latestOptions = await getLatestScheduleOptions(base44, scheduleCreatedAt);
+      if (!latestOptions.length) {
+        throw new Error('Schedule options response did not include options');
+      }
+
+      for (const option of latestOptions) {
+        if (!isCanonicalSchedule(scheduleFromOption(option))) {
+          throw new Error('Schedule option did not match canonical cadence');
+        }
+      }
     } catch (schedErr) {
-      console.error(`[PI] Schedule calculation failed: ${schedErr.message} — using fallback defaults`);
-      scheduleResult = {
-        production_date: '',
-        delivery_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        delivery_window_label: '5 PM – 8 PM',
-        delivery_window_start: '17:00',
-        delivery_window_end: '20:00',
-        schedule_reason: 'fallback_defaults',
-        cutoff_window_label: 'unknown',
-        timezone: 'America/Chicago',
-      };
+      console.error(`[PI] Schedule calculation failed closed: ${schedErr.message}`);
+      return Response.json({ ok: false, error: SCHEDULE_FAILURE_MESSAGE }, { status: 503 });
     }
 
-    const deliveryDate         = scheduleResult.delivery_date;
-    const resolvedProdDate     = scheduleResult.production_date;
-    const resolvedWindowLabel  = scheduleResult.delivery_window_label;
-    const resolvedWindowStart  = scheduleResult.delivery_window_start;
-    const resolvedWindowEnd    = scheduleResult.delivery_window_end;
-    const resolvedScheduleSrc  = scheduleResult.schedule_reason || 'system_default';
+    const selectedOption = selected_schedule_option || (
+      selected_delivery_date || production_date || delivery_window_label || delivery_window_start || delivery_window_end
+        ? {
+          option_id: selected_schedule_option_id || null,
+          production_date,
+          delivery_date: selected_delivery_date || assigned_delivery_date,
+          delivery_window_label,
+          delivery_window_start,
+          delivery_window_end,
+        }
+        : null
+    );
+    const submittedOptionId = selected_schedule_option_id || selectedOption?.option_id || null;
+    let selectedBackendOption;
+
+    if (submittedOptionId) {
+      selectedBackendOption = latestOptions.find((option) => option.option_id === submittedOptionId);
+    } else if (selectedOption) {
+      selectedBackendOption = latestOptions.find((option) => optionMatchesSubmittedFields(option, selectedOption));
+    } else {
+      selectedBackendOption = latestOptions.find((option) => option.is_default) || latestOptions[0];
+    }
+
+    if (!selectedBackendOption) {
+      return Response.json({
+        ok: false,
+        error_code: 'STALE_DELIVERY_SELECTION',
+        message: STALE_DELIVERY_SELECTION_MESSAGE,
+        latest_options: latestOptions,
+      }, { status: 409 });
+    }
+
+    const canonicalSchedule = normalizeSchedule(scheduleFromOption(selectedBackendOption));
+    const deliveryDate         = canonicalSchedule.deliveryDate;
+    const resolvedProdDate     = canonicalSchedule.productionDate;
+    const resolvedWindowLabel  = canonicalSchedule.windowLabel;
+    const resolvedWindowStart  = canonicalSchedule.windowStart;
+    const resolvedWindowEnd    = canonicalSchedule.windowEnd;
+    const resolvedScheduleSrc  = canonicalSchedule.schedulingReason || 'backend cadence';
 
     const eligibility = validatedEligibility;
 
@@ -243,12 +372,16 @@ Deno.serve(async (req) => {
       requested_delivery_date:  deliveryDate,
       selected_delivery_date:   deliveryDate,
       production_date:          resolvedProdDate,
+      assigned_production_day:  resolvedProdDate,
       delivery_window_label:    resolvedWindowLabel,
       delivery_window_start:    resolvedWindowStart,
       delivery_window_end:      resolvedWindowEnd,
       schedule_reason:          resolvedScheduleSrc,
-      cutoff_window_label:      scheduleResult.cutoff_window_label || '',
-      schedule_timezone:        'America/Chicago',
+      scheduling_reason:        resolvedScheduleSrc,
+      final_schedule_source:    canonicalSchedule.finalScheduleSource,
+      cutoff_window_label:      canonicalSchedule.cutoffWindowLabel || '',
+      delivery_window_timezone: canonicalSchedule.deliveryWindowTimezone,
+      schedule_timezone:        canonicalSchedule.scheduleTimezone,
       // Zone eligibility fields
       delivery_zone_key:        eligibility?.zone_key        || '',
       delivery_zone_name:       eligibility?.zone_name       || '',
@@ -309,9 +442,16 @@ Deno.serve(async (req) => {
         contact_phone:            contact_phone  || '',
         estimated_delivery_date:  deliveryDate,
         assigned_delivery_date:   deliveryDate,
+        assigned_production_day:  resolvedProdDate,
+        production_date:          resolvedProdDate,
         delivery_window_label:    resolvedWindowLabel,
         assigned_delivery_window_start: resolvedWindowStart,
         assigned_delivery_window_end:   resolvedWindowEnd,
+        delivery_window_timezone: canonicalSchedule.deliveryWindowTimezone,
+        final_schedule_source:    canonicalSchedule.finalScheduleSource,
+        scheduling_reason:        resolvedScheduleSrc,
+        schedule_timezone:        canonicalSchedule.scheduleTimezone,
+        cutoff_window_label:      canonicalSchedule.cutoffWindowLabel || '',
         // CRITICAL: pending_payment is NOT an operational status.
         // This order must NOT sync to Hub, appear in Driver Portal, route optimization,
         // production, or Order Management active views until payment_intent.succeeded fires.
@@ -345,7 +485,7 @@ Deno.serve(async (req) => {
         order_number:      orderNumber,
         customer_email:    customer_email || '',
         checkout_data: {
-          order_number, customer_email, customer_name,
+          order_number: orderNumber, customer_email, customer_name,
           address_line1, address_line2, address_city, address_state, address_postal_code,
           address_country: 'US',
           items, subtotal,
@@ -356,11 +496,19 @@ Deno.serve(async (req) => {
           contact_phone:             contact_phone    || '',
           estimated_delivery_date:   deliveryDate,
           assigned_delivery_date:    deliveryDate,
+          assigned_production_day:   resolvedProdDate,
           production_date:           resolvedProdDate || null,
           delivery_window_label:     resolvedWindowLabel,
           delivery_window_start:     resolvedWindowStart,
           delivery_window_end:       resolvedWindowEnd,
-          delivery_schedule_source:  resolvedScheduleSrc,
+          assigned_delivery_window_start: resolvedWindowStart,
+          assigned_delivery_window_end:   resolvedWindowEnd,
+          delivery_window_timezone:  canonicalSchedule.deliveryWindowTimezone,
+          delivery_schedule_source:  canonicalSchedule.finalScheduleSource,
+          final_schedule_source:     canonicalSchedule.finalScheduleSource,
+          scheduling_reason:         resolvedScheduleSrc,
+          cutoff_window_label:       canonicalSchedule.cutoffWindowLabel || '',
+          schedule_timezone:         canonicalSchedule.scheduleTimezone,
           is_preorder:               false,
           referral_code:             (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
           points_used:               points_used    || 0,

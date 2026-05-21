@@ -16,21 +16,45 @@ const ALL_ZONE_RULES = [
 // Zone 3 rules only (for route review eligibility check)
 const ZONE_RULES = ALL_ZONE_RULES.filter(z => z.zone_type === 'route_review' || z.zone_type === 'waitlist_only');
 
-async function getEligibility(address, subtotal) {
+async function canUseTestDistanceOverride(base44, req) {
+  if (Deno.env.get('NUVIRA_STAGING_SAFE_MODE') !== 'true') return false;
+
+  const user = await base44.auth.me().catch(() => null);
+  return user?.role === 'admin';
+}
+
+async function getEligibility(address, subtotal, { base44, req, testDistanceMiles } = {}) {
+  let distanceMiles = null;
+  let driveTimeMinutes = null;
+  let distanceConfidence = 'driving';
+
+  if (typeof testDistanceMiles === 'number') {
+    if (!await canUseTestDistanceOverride(base44, req)) {
+      throw new Error('_test_distance_miles override is only allowed in Gate D staging admin context');
+    }
+    distanceMiles = testDistanceMiles;
+    driveTimeMinutes = Math.round(testDistanceMiles * 1.5);
+    distanceConfidence = 'staging_test';
+    console.log(`[Zone3] STAGING TEST distance override: ${distanceMiles} miles`);
+  }
+
   const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
-  if (!apiKey) throw new Error('GOOGLE_MAPS_API_KEY not configured');
-  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(ORIGIN_ADDRESS)}&destinations=${encodeURIComponent(address)}&units=imperial&key=${apiKey}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.status !== 'OK') throw new Error(`Maps API: ${data.status}`);
-  const element = data.rows?.[0]?.elements?.[0];
-  if (element?.status !== 'OK') throw new Error(`Maps element: ${element?.status}`);
-  const distanceMiles = Math.round((element.distance.value / 1609.344) * 10) / 10;
-  const driveTimeMinutes = Math.round(element.duration.value / 60);
+  if (distanceMiles === null) {
+    if (!apiKey) throw new Error('GOOGLE_MAPS_API_KEY not configured');
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(ORIGIN_ADDRESS)}&destinations=${encodeURIComponent(address)}&units=imperial&key=${apiKey}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status !== 'OK') throw new Error(`Maps API: ${data.status}`);
+    const element = data.rows?.[0]?.elements?.[0];
+    if (element?.status !== 'OK') throw new Error(`Maps element: ${element?.status}`);
+    distanceMiles = Math.round((element.distance.value / 1609.344) * 10) / 10;
+    driveTimeMinutes = Math.round(element.duration.value / 60);
+  }
+
   const zone = ALL_ZONE_RULES.find(z => distanceMiles >= z.min && distanceMiles <= z.max) || ALL_ZONE_RULES[ALL_ZONE_RULES.length - 1];
   const z3 = ZONE_RULES.find(z => distanceMiles >= z.min && distanceMiles <= z.max) || null;
   const minimumMet = !z3?.minimum_order || subtotal >= z3.minimum_order;
-  return { zone_key: zone.zone_key, zone_type: zone.zone_type, zone_name: z3?.zone_name || zone.zone_key, delivery_fee: z3?.delivery_fee || null, minimum_order: z3?.minimum_order || null, minimum_order_met: minimumMet, amount_needed: minimumMet ? 0 : Math.round((z3.minimum_order - subtotal) * 100) / 100, estimated_distance_miles: distanceMiles, estimated_drive_time_minutes: driveTimeMinutes };
+  return { zone_key: zone.zone_key, zone_type: zone.zone_type, zone_name: z3?.zone_name || zone.zone_key, delivery_fee: z3?.delivery_fee || null, minimum_order: z3?.minimum_order || null, minimum_order_met: minimumMet, amount_needed: minimumMet ? 0 : Math.round((z3.minimum_order - subtotal) * 100) / 100, estimated_distance_miles: distanceMiles, estimated_drive_time_minutes: driveTimeMinutes, distance_confidence: distanceConfidence };
 }
 
 /**
@@ -59,6 +83,7 @@ Deno.serve(async (req) => {
     const customer_email = body.customer_email ?? '';
     const inputCustomerName = body.customer_name ?? '';
     const customer_acknowledged_hold = body.customer_acknowledged_hold ?? false;
+    const testDistanceMiles = body._test_distance_miles;
 
     // Require customer acknowledgment
     if (!customer_acknowledged_hold) {
@@ -79,7 +104,11 @@ Deno.serve(async (req) => {
     // Validate Zone 3
     let eligibility;
     try {
-      eligibility = await getEligibility(addrString, subtotal || 0);
+      eligibility = await getEligibility(addrString, subtotal || 0, {
+        base44,
+        req,
+        testDistanceMiles,
+      });
     } catch (err) {
       console.error(`[Zone3] Eligibility check failed: ${err.message}`);
       return Response.json({ error: 'Could not verify delivery eligibility. Please try again.' }, { status: 400 });
