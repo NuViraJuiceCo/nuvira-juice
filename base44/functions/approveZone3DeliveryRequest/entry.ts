@@ -37,6 +37,27 @@ function isCanonicalSchedule(schedule) {
     (prodDow === 5 && delDow === 6 && normalized.windowLabel === 'Saturday 12 PM - 3 PM');
 }
 
+async function findSentDeliveryLog(base44, idempotencyKey) {
+  try {
+    const existingSentLogs = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
+      idempotency_key: idempotencyKey,
+      status: 'sent',
+    }, '-created_date', 1);
+    return existingSentLogs[0] || null;
+  } catch (error) {
+    console.warn(`[Zone3 Approve] Delivery log lookup failed: ${error.message}`);
+    return null;
+  }
+}
+
+async function createDeliveryLog(base44, payload) {
+  try {
+    await base44.asServiceRole.entities.CustomerMessageDeliveryLog.create(payload);
+  } catch (error) {
+    console.warn(`[Zone3 Approve] Delivery log write failed: ${error.message}`);
+  }
+}
+
 /**
  * approveZone3DeliveryRequest (Admin-only)
  * Captures a Zone 3 manual authorization, creates the Order, syncs Hub.
@@ -263,13 +284,59 @@ Deno.serve(async (req) => {
     if (stagingSafeMode) {
       console.log(`[Zone3 Approve] STAGING SAFE MODE: skipped approval email for ${orderNumber}`);
     } else {
-      base44.asServiceRole.integrations.Core.SendEmail({
-        to: dar.customer_email,
-        subject: `🎉 Your NuVira Delivery is Approved! Order #${orderNumber}`,
-        body: approvalEmailHtml,
-        from_name: 'NuVira Juice Co.',
-      }).then(() => console.log(`[Zone3 Approve] Approval email sent to ${dar.customer_email}`))
-        .catch(err => console.warn(`[Zone3 Approve] Email send failed: ${err.message}`));
+      const approvalEmailKey = `zone3_approval_email_${dar_id}`;
+      const existingSentLog = await findSentDeliveryLog(base44, approvalEmailKey);
+
+      if (existingSentLog) {
+        console.log('[Zone3 Approve] Zone 3 approval email already sent; skipping duplicate');
+      } else {
+        try {
+          await base44.asServiceRole.integrations.Core.SendEmail({
+            to: dar.customer_email,
+            subject: `🎉 Your NuVira Delivery is Approved! Order #${orderNumber}`,
+            body: approvalEmailHtml,
+            from_name: 'NuVira Juice Co.',
+          });
+          console.log(`[Zone3 Approve] Approval email sent to ${dar.customer_email}`);
+          await createDeliveryLog(base44, {
+            idempotency_key: approvalEmailKey,
+            channel: 'email',
+            message_type: 'zone3_approval',
+            order_id: order.id,
+            order_number: orderNumber,
+            customer_email: dar.customer_email,
+            provider: 'internal',
+            provider_message_id: null,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            metadata: {
+              source_function: 'approveZone3DeliveryRequest',
+              dar_id,
+              request_number: dar.request_number || null,
+            },
+          });
+        } catch (err) {
+          console.warn(`[Zone3 Approve] Email send failed: ${err.message}`);
+          await createDeliveryLog(base44, {
+            idempotency_key: approvalEmailKey,
+            channel: 'email',
+            message_type: 'zone3_approval',
+            order_id: order.id,
+            order_number: orderNumber,
+            customer_email: dar.customer_email,
+            provider: 'internal',
+            provider_message_id: null,
+            status: 'failed',
+            error_message: err.message,
+            sent_at: new Date().toISOString(),
+            metadata: {
+              source_function: 'approveZone3DeliveryRequest',
+              dar_id,
+              request_number: dar.request_number || null,
+            },
+          });
+        }
+      }
     }
 
     // Notify customer (in-app)
