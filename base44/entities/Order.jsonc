@@ -180,15 +180,15 @@
       "type": "boolean",
       "default": false
     },
-    "assigned_production_day": {
-      "type": "string",
-      "format": "date",
-      "description": "Canonical production date assigned by the schedule engine (YYYY-MM-DD)"
-    },
     "production_date": {
       "type": "string",
       "format": "date",
       "description": "Deprecated transition alias for assigned_production_day (YYYY-MM-DD)"
+    },
+    "assigned_production_day": {
+      "type": "string",
+      "format": "date",
+      "description": "Canonical production date assigned by the schedule engine (YYYY-MM-DD)"
     },
     "assigned_delivery_day": {
       "type": "string",
