@@ -1,7 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const HUB_ENDPOINT = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '')}/functions/receiveCustomerAppEvent`;
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_RETRY_ATTEMPTS_PER_ORDER = 3;
 const TERMINAL_SKIPPED_ACTIONS = new Set([
   'order_not_retryable',
@@ -323,118 +321,37 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Build full payload (mirrors syncOrderToHub logic)
-      const payment_status = order.payment_captured === true ? 'paid' : (order.payment_status || 'pending');
-
-      const payload = {
-        event: 'order.created',
-        source: 'customer_app',
-        order: {
-          id: order.id,
-          order_number: order.order_number,
-          customer_email: order.customer_email,
-          customer_name: order.customer_name || '',
-          customer_phone: order.contact_phone || '',
-          address_line1: order.address_line1 || '',
-          address_line2: order.address_line2 || '',
-          address_city: order.address_city || '',
-          address_state: order.address_state || '',
-          address_postal_code: order.address_postal_code || '',
-          address_country: order.address_country || 'US',
-          delivery_address: order.delivery_address || '',
-          line_items: (order.items || []).map(i => ({
-            title: i.title,
-            quantity: i.quantity,
-            price: i.price,
-            product_id: i.product_id,
-            image_url: i.image_url || null,
-          })),
-          items: order.items,
-          subtotal: order.subtotal,
-          delivery_fee: order.delivery_fee,
-          total_price: order.total,
-          total: order.total,
-          fulfillment_method: order.fulfillment_type || 'delivery',
-          fulfillment_type: order.fulfillment_type,
-          requested_delivery_date: order.estimated_delivery_date || null,
-          estimated_delivery_date: order.estimated_delivery_date,
-          assigned_delivery_date: order.assigned_delivery_date || order.estimated_delivery_date || null,
-          delivery_window_label: order.delivery_window_label || '5 PM – 8 PM',
-          delivery_window_start: order.assigned_delivery_window_start || '17:00',
-          delivery_window_end: order.assigned_delivery_window_end || '20:00',
-          status: order.status,
-          payment_status,
-          is_preorder: order.is_preorder || false,
-          customer_notes: order.notes || '',
-          stripe_checkout_session_id: order.stripe_checkout_session_id || null,
-          stripe_payment_intent_id: order.stripe_payment_intent_id || null,
-          created_date: order.created_date,
-          order_type: 'one_time',
-          fulfillment_mode: 'single_delivery',
-        },
-      };
-
-      const response = await fetch(HUB_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-        },
-        body: JSON.stringify(payload),
+      console.log(`[RetryHubSyncs] Delegating one-time order ${orderNumber} retry to syncOrderToHub`);
+      const syncResult = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+        order_id: order.id,
+        triggered_by: 'retry_failed_hub_syncs',
       });
+      const delegateResponse = syncResult?.data || syncResult;
+      const delegateLogStatus = delegateResponse?.log_status || null;
+      const delegateSucceeded =
+        delegateResponse?.success === true ||
+        delegateLogStatus === 'success' ||
+        delegateLogStatus === 'deduped';
 
-      const responseText = await response.text();
-      let hubResponse = null;
-      try { hubResponse = JSON.parse(responseText); } catch { hubResponse = responseText; }
-
-      if (response.ok) {
-        // Apply same response contract as syncOrderToHub — only log success if Hub confirms action
-        const hubAction = typeof hubResponse === 'object' ? (hubResponse?.action || hubResponse?.status || null) : null;
-        const hubOrderId = typeof hubResponse === 'object' ? (hubResponse?.hub_order_id || hubResponse?.order_id || null) : null;
-        const matchedHubOrderId = typeof hubResponse === 'object' ? (hubResponse?.matched_hub_order_id || null) : null;
-
-        let logStatus;
-        let logLabel;
-
-        if (hubAction === 'created' || hubAction === 'updated') {
-          logStatus = 'success';
-          logLabel = `✅ Hub ${hubAction}. hub_order_id=${hubOrderId}`;
-        } else if (hubAction === 'dedupe_exact_match') {
-          logStatus = 'deduped';
-          logLabel = `🔁 Hub dedupe_exact_match. matched_hub_order_id=${matchedHubOrderId}`;
-        } else if (hubAction === 'queued_for_review') {
-          logStatus = 'queued_for_review';
-          logLabel = `⏳ Hub queued_for_review.`;
-        } else if (hubAction === 'rejected') {
-          logStatus = 'rejected';
-          logLabel = `🚫 Hub rejected.`;
-        } else {
-          // Generic acknowledged/no action — still unconfirmed, keep retry eligible
-          logStatus = 'skipped';
-          logLabel = `⚠️ Hub returned 200 with no confirmed action (hub_action="${hubAction}"). Retry eligible. Response: ${JSON.stringify(hubResponse).substring(0, 200)}`;
-        }
-
-        console.log(`[RetryHubSyncs] ${logLabel} for ${orderNumber}`);
-        await base44.asServiceRole.entities.OrderSyncLog.create({
+      if (delegateSucceeded) {
+        const resultStatus = delegateLogStatus || (delegateResponse?.skipped ? 'skipped' : 'success');
+        console.log(`[RetryHubSyncs] syncOrderToHub delegate completed for ${orderNumber}: ${resultStatus}`);
+        results.push({
           order_number: orderNumber,
-          status: logStatus,
-          hub_action: hubAction || 'unknown',
-          hub_order_id: hubOrderId || undefined,
-          matched_hub_order_id: matchedHubOrderId || undefined,
-          description: logLabel.substring(0, 1000),
-          started_at: startTime,
-          completed_at: new Date().toISOString(),
-          triggered_by: 'recovery_function',
+          result: resultStatus,
+          delegated: true,
+          hub_action: delegateResponse?.hub_action || null,
+          reason: delegateResponse?.reason || null,
         });
-        results.push({ order_number: orderNumber, result: logStatus });
       } else {
-        console.error(`[RetryHubSyncs] ❌ ${orderNumber} retry failed: ${response.status}`);
+        const detail = JSON.stringify(delegateResponse || {}).substring(0, 500);
+        console.error(`[RetryHubSyncs] ❌ syncOrderToHub delegate did not confirm success/dedupe for ${orderNumber}: ${detail}`);
         await writeRetryFailureLog(base44, {
           orderNumber,
           startTime,
-          description: `Order Hub sync retry failed with HTTP ${response.status}. Response: ${responseText.substring(0, 500)}`,
+          description: `syncOrderToHub delegate did not confirm success/dedupe for ${orderNumber}. Response: ${detail || 'malformed delegate response'}`,
         });
-        results.push({ order_number: orderNumber, result: 'failed', status: response.status, details: responseText.substring(0, 200) });
+        results.push({ order_number: orderNumber, result: 'failed', delegated: true, details: detail });
       }
     } catch (err) {
       console.error(`[RetryHubSyncs] Error retrying ${orderNumber}: ${err.message}`);
