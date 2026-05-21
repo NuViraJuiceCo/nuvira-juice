@@ -21,34 +21,46 @@ Deno.serve(async (req) => {
     console.log(`Found ${subscriptions.length} subscription(s) with delivery on ${targetDateStr}`);
 
     let notified = 0;
+    let skipped = 0;
+    const errors = [];
 
     for (const sub of subscriptions) {
-      // Check if we already sent a notification for this delivery date
-      const existing = await base44.asServiceRole.entities.Notification.filter({
-        customer_email: sub.customer_email,
-        type: 'order_update',
-        title: `Your delivery is coming up on ${targetDateStr}`,
-      });
+      const title = `Your delivery is coming up on ${targetDateStr}`;
+      const message = `Your next NuVira delivery is scheduled for ${new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}. Want to switch things up? Customize your juice mix before it ships!`;
+      const idempotencyKey = sub.id
+        ? `upcoming_delivery_${sub.id}_${targetDateStr}`
+        : `upcoming_delivery_${sub.customer_email}_${targetDateStr}`;
 
-      if (existing.length > 0) {
-        console.log(`Already notified ${sub.customer_email} for ${targetDateStr}`);
+      try {
+        const result = await base44.asServiceRole.functions.invoke('sendCustomerNotification', {
+          customer_email: sub.customer_email,
+          title,
+          message,
+          type: 'order_update',
+          notification_subtype: 'delivery_reminder',
+          idempotency_key: idempotencyKey,
+          deep_link: '/account/subscriptions',
+        });
+
+        const notificationResult = result?.data || result;
+        if (notificationResult?.skipped === true) {
+          skipped++;
+          console.log(`Skipped upcoming delivery notification for ${sub.customer_email}: ${notificationResult.reason || 'skipped'}`);
+        } else {
+          notified++;
+          console.log(`Notified ${sub.customer_email}`);
+        }
+      } catch (notifyErr) {
+        errors.push({
+          customer_email: sub.customer_email,
+          reason: notifyErr.message,
+        });
+        console.error(`Failed to notify ${sub.customer_email}: ${notifyErr.message}`);
         continue;
       }
-
-      await base44.asServiceRole.entities.Notification.create({
-        customer_email: sub.customer_email,
-        title: `Your delivery is coming up on ${targetDateStr}`,
-        message: `Your next NuVira delivery is scheduled for ${new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}. Want to switch things up? Customize your juice mix before it ships!`,
-        type: 'order_update',
-        is_read: false,
-        icon: '🥤',
-      });
-
-      notified++;
-      console.log(`Notified ${sub.customer_email}`);
     }
 
-    return Response.json({ success: true, notified, checked: subscriptions.length });
+    return Response.json({ success: true, notified, skipped, errors, checked: subscriptions.length });
   } catch (error) {
     console.error('Upcoming delivery notification error:', error);
     return Response.json({ error: error.message }, { status: 500 });
