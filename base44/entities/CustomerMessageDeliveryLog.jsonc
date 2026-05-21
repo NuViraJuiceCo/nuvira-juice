@@ -1,0 +1,100 @@
+{
+  "name": "CustomerMessageDeliveryLog",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Unique key used to prevent duplicate customer message delivery"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "email",
+        "sms",
+        "push",
+        "in_app"
+      ]
+    },
+    "message_type": {
+      "type": "string",
+      "enum": [
+        "order_confirmation",
+        "order_status",
+        "subscription_upcoming_delivery",
+        "refund",
+        "zone3_approval",
+        "zone3_denial"
+      ]
+    },
+    "order_id": {
+      "type": "string"
+    },
+    "order_number": {
+      "type": "string"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "customer_phone": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "resend",
+        "sendblue",
+        "internal"
+      ]
+    },
+    "provider_message_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "failed",
+        "skipped"
+      ],
+      "default": "sent"
+    },
+    "error_message": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "sent_at": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "channel",
+    "message_type",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
