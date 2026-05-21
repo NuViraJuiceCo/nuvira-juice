@@ -11,6 +11,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * - DO_NOT_TOUCH: specific order numbers never modified
  * - Terminal CA statuses (delivered, cancelled, refunded, etc.) are never overwritten
  * - dry_run=true (default) returns full diff without any writes
+ * - live writes are disabled; use syncHubDeliveryStatuses for scheduled status readback
  */
 
 // Explicit approved patches — applied verbatim regardless of Hub field availability
@@ -77,13 +78,20 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.role !== 'admin') return Response.json({ error: 'Admin access required' }, { status: 403 });
 
     const body = await req.json().catch(() => ({}));
     const dry_run: boolean = body.dry_run !== false;
-    const approved_by: string = body.approved_by || 'unknown';
 
-    if (!dry_run && approved_by === 'unknown') {
-      return Response.json({ error: 'Live run requires approved_by.' }, { status: 400 });
+    if (!dry_run) {
+      return Response.json({
+        error: 'DEPRECATED_LIVE_WRITE_DISABLED',
+        message: 'hubToCustomerAppStatusSync live writes are disabled. Use syncHubDeliveryStatuses for scheduled status readback or request a separately approved repair plan.',
+        deprecated_live_write: true,
+        mutated: false,
+        replacement: 'syncHubDeliveryStatuses',
+        requires_separate_approval: true,
+      }, { status: 410 });
     }
 
     const ca = base44.asServiceRole;
@@ -246,57 +254,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ===== DRY RUN =====
-    if (dry_run) {
-      return Response.json({
-        dry_run: true,
-        mode: 'DRY RUN — zero writes',
-        summary: {
-          would_update: would_update.map(r => r.order_number),
-          would_update_count: would_update.length,
-          in_sync_count: in_sync.length,
-          in_sync: in_sync,
-          cancelled_guard: cancelled_guard,
-          missing_ca: missing_ca,
-          no_hub_data: no_hub_data,
-          errors: errors.length,
-        },
-        would_update_details: would_update,
-        blockers: errors,
-      });
-    }
-
-    // ===== LIVE WRITES =====
-    const updated: string[] = [];
-    const write_errors: string[] = [];
-
-    for (const item of would_update) {
-      try {
-        await ca.entities.Order.update(item.ca_id, item.patch);
-        updated.push(item.order_number);
-        console.log(`[Sync] Updated ${item.order_number}:`, JSON.stringify(item.patch));
-      } catch (e: any) {
-        write_errors.push(`${item.order_number}: ${e.message}`);
-        console.error(`[Sync] Failed to update ${item.order_number}: ${e.message}`);
-      }
-    }
-
     return Response.json({
-      dry_run: false,
-      status: write_errors.length === 0 ? 'success' : 'partial',
+      dry_run: true,
+      mode: 'DRY RUN — zero writes',
+      mutated: false,
       summary: {
-        updated,
-        updated_count: updated.length,
+        would_update: would_update.map(r => r.order_number),
+        would_update_count: would_update.length,
         in_sync_count: in_sync.length,
+        in_sync: in_sync,
         cancelled_guard: cancelled_guard,
         missing_ca: missing_ca,
         no_hub_data: no_hub_data,
-        write_errors,
+        errors: errors.length,
       },
-      audit_note: {
-        executed_by: `hubToCustomerAppStatusSync — approved_by: ${approved_by}`,
-        executed_at: new Date().toISOString(),
-      },
+      would_update_details: would_update,
+      blockers: errors,
     });
 
   } catch (e: any) {
