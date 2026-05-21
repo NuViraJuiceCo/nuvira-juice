@@ -57,6 +57,20 @@ function normalizeDeliveryWindowBucket(label) {
   return null;
 }
 
+const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
+  'backend_cadence',
+  'admin_override',
+  'route_review_approval',
+  'subscription_renewal',
+  'legacy_migration',
+  'unknown',
+]);
+
+function normalizeFinalScheduleSource(source) {
+  if (source === 'central_engine') return 'backend_cadence';
+  return LOCKED_FINAL_SCHEDULE_SOURCES.has(source) ? source : 'unknown';
+}
+
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
   const body   = await req.json();
@@ -164,7 +178,7 @@ Deno.serve(async (req) => {
   const order_type       = 'one_time';
   const fulfillment_mode = 'single_delivery';
 
-  // ── PHASE 5: Validate schedule fields from central engine ──────────────────
+  // ── PHASE 5: Validate canonical schedule fields ───────────────────────────
   // All new paid orders have production_date and assigned_delivery_date set by
   // calculateNuViraFulfillmentSchedule (event.created authority). ABORT before Hub push if invalid.
   // Refunded orders skip schedule validation — they just need to reach Hub for cancellation.
@@ -174,7 +188,7 @@ Deno.serve(async (req) => {
   const finalWindowStart     = order.assigned_delivery_window_start || '17:00';
   const finalWindowEnd       = order.assigned_delivery_window_end   || '20:00';
   const finalScheduleReason  = order.scheduling_reason || 'unknown';
-  const finalScheduleSource  = order.final_schedule_source || 'unknown';
+  const finalScheduleSource  = normalizeFinalScheduleSource(order.final_schedule_source);
 
   if (!isRefundedOrder && finalProductionDate && finalDeliveryDate) {
     // Validate production day (must be Tuesday=2 or Friday=5)
@@ -250,7 +264,7 @@ Deno.serve(async (req) => {
       delivery_window_label:    finalWindowLabel,
       delivery_window_start:    finalWindowStart,
       delivery_window_end:      finalWindowEnd,
-      // ── PHASE 5: Central engine schedule fields ──────────────────────────
+      // ── PHASE 5: Canonical schedule fields ───────────────────────────────
       final_schedule_source:    finalScheduleSource,
       schedule_reason:          finalScheduleReason,
       schedule_timezone:        'America/Chicago',
