@@ -2,6 +2,33 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 
+function buildOrderConfirmationEmailKey(orderId, orderNumber) {
+  if (orderId) return `order_confirmation_email_${orderId}`;
+  if (orderNumber) return `order_confirmation_email_${orderNumber}`;
+  return null;
+}
+
+async function createDeliveryLog(base44, payload) {
+  try {
+    await base44.asServiceRole.entities.CustomerMessageDeliveryLog.create(payload);
+  } catch (error) {
+    console.warn(`sendOrderReceivedNotification: delivery log write failed: ${error.message}`);
+  }
+}
+
+async function findSentDeliveryLog(base44, idempotencyKey) {
+  try {
+    const existingSentLogs = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
+      idempotency_key: idempotencyKey,
+      status: 'sent',
+    }, '-created_date', 1);
+    return existingSentLogs[0] || null;
+  } catch (error) {
+    console.warn(`sendOrderReceivedNotification: delivery log lookup failed: ${error.message}`);
+    return null;
+  }
+}
+
 /**
  * Sends order confirmation email to customer via Resend
  * Triggered by: stripeWebhook after checkout.session.completed
@@ -11,6 +38,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const { order_id, customer_email, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label } = await req.json();
+    const idempotencyKey = buildOrderConfirmationEmailKey(order_id, order_number);
 
     if (!customer_email) {
       return Response.json({ error: 'Missing customer_email' }, { status: 400 });
@@ -19,6 +47,20 @@ Deno.serve(async (req) => {
     if (!RESEND_API_KEY) {
       console.error('sendOrderReceivedNotification: RESEND_API_KEY not set');
       return Response.json({ error: 'Email service not configured' }, { status: 500 });
+    }
+
+    if (idempotencyKey) {
+      const existingSentLog = await findSentDeliveryLog(base44, idempotencyKey);
+
+      if (existingSentLog) {
+        console.log(`sendOrderReceivedNotification: duplicate email delivery skipped for key ${idempotencyKey}`);
+        return Response.json({
+          success: true,
+          skipped: true,
+          reason: 'duplicate_idempotency_key',
+          existing_id: existingSentLog.id,
+        });
+      }
     }
 
     // Format items list
@@ -136,12 +178,47 @@ Deno.serve(async (req) => {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error(`sendOrderReceivedNotification: Resend API error - ${response.status}:`, error);
+      const errorMessage = `Resend API error ${response.status}`;
+      console.error(`sendOrderReceivedNotification: ${errorMessage}`);
+      if (idempotencyKey) {
+        await createDeliveryLog(base44, {
+          idempotency_key: idempotencyKey,
+          channel: 'email',
+          message_type: 'order_confirmation',
+          order_id: order_id || null,
+          order_number: order_number || null,
+          customer_email,
+          provider: 'resend',
+          status: 'failed',
+          error_message: errorMessage,
+          metadata: {
+            source_function: 'sendOrderReceivedNotification',
+          },
+        });
+      }
       return Response.json({ error: 'Failed to send email' }, { status: response.status });
     }
 
     const result = await response.json();
+    if (idempotencyKey) {
+      await createDeliveryLog(base44, {
+        idempotency_key: idempotencyKey,
+        channel: 'email',
+        message_type: 'order_confirmation',
+        order_id: order_id || null,
+        order_number: order_number || null,
+        customer_email,
+        provider: 'resend',
+        provider_message_id: result?.id || null,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        metadata: {
+          source_function: 'sendOrderReceivedNotification',
+          delivery_date: assigned_delivery_date || estimated_delivery_date || null,
+          delivery_window_label: delivery_window_label || null,
+        },
+      });
+    }
     console.log(`Order confirmation email sent to ${customer_email}:`, result.id);
     return Response.json({ success: true, email_id: result.id });
   } catch (error) {
