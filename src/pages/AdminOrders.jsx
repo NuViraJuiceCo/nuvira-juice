@@ -153,6 +153,90 @@ function HubOperationsPanel({ order, customerAppStatusLabel }) {
   );
 }
 
+function FulfillmentTasksPanel({ order }) {
+  const shouldFetchTasks = Boolean(
+    order.is_hub_order &&
+    (order.hub_order_id || order.order_number || order.stripe_subscription_id)
+  );
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin-fulfillment-tasks', order.hub_order_id, order.order_number, order.stripe_subscription_id, order.hub_fulfillment_number],
+    queryFn: async () => {
+      const payload = {
+        hub_order_id: order.hub_order_id || null,
+        order_number: order.order_number || null,
+        stripe_subscription_id: order.stripe_subscription_id || null,
+        limit: 50,
+      };
+      if (order.hub_fulfillment_number) {
+        payload.fulfillment_number = order.hub_fulfillment_number;
+      }
+      const res = await base44.functions.invoke('getAdminFulfillmentTaskDetails', payload);
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result || { tasks: [] };
+    },
+    enabled: shouldFetchTasks,
+    staleTime: 60000,
+  });
+
+  if (!order.is_hub_order) return null;
+
+  const tasks = data?.tasks || [];
+
+  return (
+    <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fulfillment Tasks</p>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Read-only</span>
+      </div>
+
+      {!shouldFetchTasks ? (
+        <p className="text-xs text-muted-foreground italic">No Hub task identifiers available</p>
+      ) : isLoading ? (
+        <p className="text-xs text-muted-foreground italic">Loading fulfillment tasks...</p>
+      ) : isError ? (
+        <p className="text-xs text-destructive">Unable to load FulfillmentTask details</p>
+      ) : tasks.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">No FulfillmentTask details found</p>
+      ) : (
+        <div className="space-y-2">
+          {tasks.map(task => {
+            const proofLink = task.delivery_photo_url ? (
+              <a
+                href={task.delivery_photo_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline underline-offset-2"
+              >
+                View proof photo
+              </a>
+            ) : null;
+
+            return (
+              <div key={task.id || `${task.order_id}-${task.fulfillment_number}`} className="rounded-lg border border-border/50 bg-background/60 p-2 space-y-1.5">
+                <InfoRow label="Task ID" value={task.id} />
+                <InfoRow label="Fulfillment" value={task.fulfillment_number ? `#${task.fulfillment_number}` : null} />
+                <InfoRow label="Task Status" value={formatStatusLabel(task.status)} />
+                <InfoRow label="Delivery Status" value={formatStatusLabel(task.delivery_status)} />
+                <InfoRow label="Production Date" value={formatDateOnly(task.production_date)} />
+                <InfoRow label="Delivery Date" value={formatDateOnly(task.delivery_date || task.scheduled_date)} />
+                <InfoRow label="Window" value={task.delivery_window_label} />
+                <InfoRow label="Items" value={task.items_summary} />
+                <InfoRow label="Source" value={formatStatusLabel(task.source_type)} />
+                <InfoRow label="Schedule Source" value={formatStatusLabel(task.schedule_source)} />
+                <InfoRow label="Delivered" value={formatDateTime(task.delivered_at)} />
+                <InfoRow label="Proof" value={proofLink} />
+                <InfoRow label="Drop" value={task.delivery_drop_location} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const [expanded, setExpanded] = useState(false);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
@@ -260,6 +344,8 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               </div>
 
               <HubOperationsPanel order={order} customerAppStatusLabel={customerAppStatusLabel} />
+
+              <FulfillmentTasksPanel order={order} />
 
               {/* Progress */}
               <div>
