@@ -6,7 +6,7 @@ import { CalendarCheck } from 'lucide-react';
  * DeliveryDatePicker
  * Shows available NuVira delivery slots for the customer to choose from.
  * Props:
- *   options: Array from getEligibleDeliveryOptions()
+ *   options: Array from the backend scheduling function
  *   selected: currently selected delivery_date string (YYYY-MM-DD)
  *   onSelect: (option) => void
  */
@@ -20,7 +20,7 @@ export default function DeliveryDatePicker({ options, selected, onSelect }) {
           Choose Your Delivery Date
         </p>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          Your juices are made fresh the day before delivery. All deliveries arrive between 5 PM – 8 PM.
+          Your juices are made fresh the day before delivery. Available delivery windows are shown below.
         </p>
       </div>
 

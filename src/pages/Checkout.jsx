@@ -13,7 +13,6 @@ import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { base44 } from '@/api/base44Client';
-import { getDeliveryDisplayText, getNextDeliveryDate, getEligibleDeliveryOptions } from '@/lib/deliveryUtils';
 import DeliveryDatePicker from '@/components/checkout/DeliveryDatePicker';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -99,6 +98,8 @@ export default function Checkout() {
   // Full eligibility result from validateDeliveryEligibility
   const [zoneEligibility, setZoneEligibility] = useState(null);
   const [healthAdvisoryAcknowledged, setHealthAdvisoryAcknowledged] = useState(false);
+  const [selectedDeliveryOption, setSelectedDeliveryOption] = useState(null);
+  const [scheduleOptionsOverride, setScheduleOptionsOverride] = useState(null);
   const REFERRAL_DISCOUNT = 5.00;
   const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
 
@@ -193,9 +194,24 @@ export default function Checkout() {
     return () => clearTimeout(addressDebounceRef.current);
   }, [address, fulfillmentType, subtotal, hasShownOutOfAreaModal]);
 
-  const { data: schedules = [] } = useQuery({
-    queryKey: ['delivery-schedule'],
-    queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
+  const {
+    data: scheduleOptionsPayload,
+    isLoading: scheduleOptionsLoading,
+  } = useQuery({
+    queryKey: ['checkout-schedule-options'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('calculateNuViraFulfillmentSchedule', {
+        mode: 'options',
+        created_at: new Date().toISOString(),
+        option_count: 2,
+      });
+      const data = res?.data || res;
+      if (!data?.ok || !Array.isArray(data.options)) {
+        throw new Error(data?.error || 'Could not load delivery windows');
+      }
+      return data;
+    },
+    staleTime: 60 * 1000,
   });
 
   const { data: userCreditsData } = useQuery({
@@ -241,15 +257,22 @@ export default function Checkout() {
   const pointsDiscount = usePoints ? Math.min(maxDiscount, subtotal) : 0;
   const pointsUsed = pointsDiscount * 100;
 
-  const scheduleRules = schedules[0]?.rules || [];
-  const deliveryDate = getNextDeliveryDate(scheduleRules);
-  const deliveryText = getDeliveryDisplayText(scheduleRules, fulfillmentType);
+  const deliveryOptions = scheduleOptionsOverride || scheduleOptionsPayload?.options || [];
+  React.useEffect(() => {
+    if (!deliveryOptions.length) {
+      if (selectedDeliveryOption) setSelectedDeliveryOption(null);
+      return;
+    }
+    const selectedStillValid = selectedDeliveryOption?.option_id &&
+      deliveryOptions.some(option => option.option_id === selectedDeliveryOption.option_id);
+    if (!selectedStillValid) {
+      setSelectedDeliveryOption(deliveryOptions.find(option => option.is_default) || deliveryOptions[0]);
+    }
+  }, [deliveryOptions, selectedDeliveryOption]);
+  const selectedDeliveryLabel = selectedDeliveryOption?.delivery_date
+    ? format(new Date(selectedDeliveryOption.delivery_date + 'T12:00:00'), 'EEEE, MMMM d')
+    : null;
 
-  // Eligible delivery options for customer selection
-  const deliveryOptions = React.useMemo(() => getEligibleDeliveryOptions(new Date(), false), []);
-  const [selectedDeliveryOption, setSelectedDeliveryOption] = useState(
-    () => deliveryOptions[0] || null
-  );
   const rewardFreeDelivery = activeReward?.reward_type === 'free_delivery';
   const rewardDiscountPct = activeReward?.reward_type === 'discount' ? 10 : 0;
   const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
@@ -303,6 +326,10 @@ export default function Checkout() {
     }
     if (!phone.trim()) {
       toast.error('Please enter your phone number');
+      return;
+    }
+    if (!selectedDeliveryOption?.option_id) {
+      toast.error('We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.');
       return;
     }
 
@@ -391,13 +418,15 @@ export default function Checkout() {
       address_state: address.state || '',
       address_postal_code: address.zip || '',
       contact_phone: phone.trim(),
-      estimated_delivery_date: selectedDeliveryOption?.delivery_date || (deliveryDate ? format(deliveryDate, 'yyyy-MM-dd') : null),
+      selected_schedule_option_id: selectedDeliveryOption?.option_id || null,
+      selected_schedule_option: selectedDeliveryOption || null,
+      estimated_delivery_date: selectedDeliveryOption?.delivery_date || null,
       selected_delivery_date: selectedDeliveryOption?.delivery_date || null,
       assigned_delivery_date: selectedDeliveryOption?.delivery_date || null,
       production_date: selectedDeliveryOption?.production_date || null,
-      delivery_window_label: selectedDeliveryOption?.delivery_window_label || '5 PM – 8 PM',
-      delivery_window_start: selectedDeliveryOption?.delivery_window_start || '17:00',
-      delivery_window_end: selectedDeliveryOption?.delivery_window_end || '20:00',
+      delivery_window_label: selectedDeliveryOption?.delivery_window_label || null,
+      delivery_window_start: selectedDeliveryOption?.delivery_window_start || null,
+      delivery_window_end: selectedDeliveryOption?.delivery_window_end || null,
       delivery_schedule_source: selectedDeliveryOption ? 'customer_selected' : 'system_default',
       customer_email: user?.email || null,
       customer_name: resolvedName,
@@ -436,6 +465,14 @@ export default function Checkout() {
       setPaymentTotal(res.data.effectiveTotal ?? total);
       setIsSubmitting(false);
     } else {
+      if (res.data?.error_code === 'STALE_DELIVERY_SELECTION') {
+        const latest = Array.isArray(res.data.latest_options) ? res.data.latest_options : [];
+        setScheduleOptionsOverride(latest);
+        setSelectedDeliveryOption(latest.find(option => option.is_default) || latest[0] || null);
+        toast.error(res.data.message || 'That delivery window is no longer available. Please select a new delivery window.');
+        setIsSubmitting(false);
+        return;
+      }
       const errMsg = res.data?.error || 'Failed to start checkout. Please try again.';
       toast.error(errMsg);
       if (errMsg.includes('Referral code already used')) {
@@ -534,8 +571,8 @@ export default function Checkout() {
         <div>
           <p className="text-sm font-semibold text-primary">
             {selectedDeliveryOption
-              ? `Delivered ${selectedDeliveryOption.delivery_day_name}, ${format(new Date(selectedDeliveryOption.delivery_date + 'T12:00:00'), 'MMMM d')}`
-              : deliveryText}
+              ? `Delivered ${selectedDeliveryLabel}`
+              : scheduleOptionsLoading ? 'Confirming delivery windows...' : 'Delivery window will be confirmed before payment'}
           </p>
           <p className="text-[10px] text-muted-foreground">
             {selectedDeliveryOption?.delivery_window_label
