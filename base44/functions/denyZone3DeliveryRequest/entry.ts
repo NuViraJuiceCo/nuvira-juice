@@ -3,6 +3,27 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function findSentDeliveryLog(base44, idempotencyKey) {
+  try {
+    const existingSentLogs = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
+      idempotency_key: idempotencyKey,
+      status: 'sent',
+    }, '-created_date', 1);
+    return existingSentLogs[0] || null;
+  } catch (error) {
+    console.warn(`[Zone3 Deny] Delivery log lookup failed: ${error.message}`);
+    return null;
+  }
+}
+
+async function createDeliveryLog(base44, payload) {
+  try {
+    await base44.asServiceRole.entities.CustomerMessageDeliveryLog.create(payload);
+  } catch (error) {
+    console.warn(`[Zone3 Deny] Delivery log write failed: ${error.message}`);
+  }
+}
+
 /**
  * denyZone3DeliveryRequest (Admin-only)
  * Cancels the uncaptured Stripe authorization, adds customer to waitlist, notifies customer.
@@ -145,13 +166,57 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-    base44.asServiceRole.integrations.Core.SendEmail({
-      to: dar.customer_email,
-      subject: 'NuVira Route Review Update',
-      body: denialEmailHtml,
-      from_name: 'NuVira Juice Co.',
-    }).then(() => console.log(`[Zone3 Deny] Denial email sent to ${dar.customer_email}`))
-      .catch(err => console.warn(`[Zone3 Deny] Email send failed: ${err.message}`));
+    const denialEmailKey = `zone3_denial_email_${dar_id}`;
+    const existingSentLog = await findSentDeliveryLog(base44, denialEmailKey);
+
+    if (existingSentLog) {
+      console.log('[Zone3 Deny] Zone 3 denial email already sent; skipping duplicate');
+    } else {
+      try {
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          to: dar.customer_email,
+          subject: 'NuVira Route Review Update',
+          body: denialEmailHtml,
+          from_name: 'NuVira Juice Co.',
+        });
+        console.log(`[Zone3 Deny] Denial email sent to ${dar.customer_email}`);
+        await createDeliveryLog(base44, {
+          idempotency_key: denialEmailKey,
+          channel: 'email',
+          message_type: 'zone3_denial',
+          customer_email: dar.customer_email,
+          provider: 'internal',
+          provider_message_id: null,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          metadata: {
+            source_function: 'denyZone3DeliveryRequest',
+            dar_id,
+            request_number: dar.request_number || null,
+            stripe_action: stripeAction,
+          },
+        });
+      } catch (err) {
+        console.warn(`[Zone3 Deny] Email send failed: ${err.message}`);
+        await createDeliveryLog(base44, {
+          idempotency_key: denialEmailKey,
+          channel: 'email',
+          message_type: 'zone3_denial',
+          customer_email: dar.customer_email,
+          provider: 'internal',
+          provider_message_id: null,
+          status: 'failed',
+          error_message: err.message,
+          sent_at: new Date().toISOString(),
+          metadata: {
+            source_function: 'denyZone3DeliveryRequest',
+            dar_id,
+            request_number: dar.request_number || null,
+            stripe_action: stripeAction,
+          },
+        });
+      }
+    }
 
     // Notify customer (in-app)
     base44.asServiceRole.functions.invoke('sendCustomerNotification', {
