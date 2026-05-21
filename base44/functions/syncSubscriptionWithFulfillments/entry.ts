@@ -74,13 +74,13 @@ Deno.serve(async (req) => {
     });
     const plan = plans[0];
 
-    // ── PHASE 5: Calculate 4 fulfillments using central engine cadence ──────
+    // ── PHASE 5: Calculate 4 fulfillments using subscription renewal cadence ──────
     // subscription.started_date = first delivery date from calculateNuViraFulfillmentSchedule.
     // It will be either a Wednesday (Window 1) or Saturday (Window 2).
     // All 4 subsequent weekly deliveries must stay on that same day of week.
     // Production is always 1 day before (Tue before Wed, Fri before Sat).
-    const fulfillments = calculateCentralEngineFulfillments(subscription.started_date, plan?.name);
-    console.log(`[syncSubWithFulfillments] Calculated ${fulfillments.length} fulfillments (central engine cadence)`);
+    const fulfillments = calculateSubscriptionRenewalFulfillments(subscription.started_date, plan?.name);
+    console.log(`[syncSubWithFulfillments] Calculated ${fulfillments.length} fulfillments (subscription renewal cadence)`);
 
     // Fetch user profile for customer name
     const profiles = await base44.asServiceRole.entities.UserProfile.filter({
@@ -143,8 +143,8 @@ Deno.serve(async (req) => {
         cycle_number: 1,
         billing_period_start: billingStart,
         billing_period_end: billingEnd,
-        // ── PHASE 5: Central engine schedule fields ──────────────────────────
-        final_schedule_source: 'central_engine',
+        // ── PHASE 5: Subscription renewal schedule fields ────────────────────
+        final_schedule_source: 'subscription_renewal',
         schedule_timezone: 'America/Chicago',
         fulfillments: fulfillments,
       },
@@ -267,7 +267,7 @@ function parseAddressString(fullAddress) {
 }
 
 /**
- * PHASE 5: Central-engine-driven fulfillment calculator.
+ * PHASE 5: Subscription-renewal fulfillment calculator.
  *
  * startedDate = first delivery date set by calculateNuViraFulfillmentSchedule.
  * Will be a Wednesday (Window 1) or Saturday (Window 2).
@@ -279,7 +279,7 @@ function parseAddressString(fullAddress) {
  *   - Production is always the day before delivery (Tue→Wed, Fri→Sat).
  *   - Any other day of week is rejected before Hub push via pre-send validation.
  */
-function calculateCentralEngineFulfillments(startedDate, planName) {
+function calculateSubscriptionRenewalFulfillments(startedDate, planName) {
   const fulfillments = [];
   const firstDelivery = new Date(startedDate + 'T00:00:00');
   const dow = firstDelivery.getDay(); // 3=Wed, 6=Sat
@@ -332,7 +332,7 @@ function calculateCentralEngineFulfillments(startedDate, planName) {
       production_day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][productionDate.getDay()],
       products: productsPerFulfillment,
       items_summary: itemsSummary,
-      final_schedule_source: 'central_engine',
+      final_schedule_source: 'subscription_renewal',
       schedule_timezone: 'America/Chicago',
     });
   }
