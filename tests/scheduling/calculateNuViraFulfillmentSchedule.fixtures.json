@@ -1,0 +1,92 @@
+[
+  {
+    "name": "friday_159_pm_before_cutoff",
+    "input_now_iso": "2026-05-22T13:59:00-05:00",
+    "expected_production_date": "2026-05-22",
+    "expected_delivery_date": "2026-05-23",
+    "expected_delivery_window_label": "Saturday 12 PM - 3 PM",
+    "expected_bucket": "friday_saturday",
+    "expected_cutoff_window_label": "Friday before/at 2:00 PM"
+  },
+  {
+    "name": "friday_201_pm_after_cutoff",
+    "input_now_iso": "2026-05-22T14:01:00-05:00",
+    "expected_production_date": "2026-05-26",
+    "expected_delivery_date": "2026-05-27",
+    "expected_delivery_window_label": "Wednesday 5 PM - 8 PM",
+    "expected_bucket": "tuesday_wednesday",
+    "expected_cutoff_window_label": "Friday after 2:00 PM"
+  },
+  {
+    "name": "tuesday_159_pm_before_cutoff",
+    "input_now_iso": "2026-05-26T13:59:00-05:00",
+    "expected_production_date": "2026-05-26",
+    "expected_delivery_date": "2026-05-27",
+    "expected_delivery_window_label": "Wednesday 5 PM - 8 PM",
+    "expected_bucket": "tuesday_wednesday",
+    "expected_cutoff_window_label": "Tuesday before/at 2:00 PM"
+  },
+  {
+    "name": "tuesday_201_pm_after_cutoff",
+    "input_now_iso": "2026-05-26T14:01:00-05:00",
+    "expected_production_date": "2026-05-29",
+    "expected_delivery_date": "2026-05-30",
+    "expected_delivery_window_label": "Saturday 12 PM - 3 PM",
+    "expected_bucket": "friday_saturday",
+    "expected_cutoff_window_label": "Tuesday after 2:00 PM"
+  },
+  {
+    "name": "saturday_noon",
+    "input_now_iso": "2026-05-23T12:00:00-05:00",
+    "expected_production_date": "2026-05-26",
+    "expected_delivery_date": "2026-05-27",
+    "expected_delivery_window_label": "Wednesday 5 PM - 8 PM",
+    "expected_bucket": "tuesday_wednesday",
+    "expected_cutoff_window_label": "Saturday before Tuesday 2:00 PM cutoff"
+  },
+  {
+    "name": "monday_noon",
+    "input_now_iso": "2026-05-25T12:00:00-05:00",
+    "expected_production_date": "2026-05-26",
+    "expected_delivery_date": "2026-05-27",
+    "expected_delivery_window_label": "Wednesday 5 PM - 8 PM",
+    "expected_bucket": "tuesday_wednesday",
+    "expected_cutoff_window_label": "Monday before Tuesday 2:00 PM cutoff"
+  },
+  {
+    "name": "wednesday_noon",
+    "input_now_iso": "2026-05-27T12:00:00-05:00",
+    "expected_production_date": "2026-05-29",
+    "expected_delivery_date": "2026-05-30",
+    "expected_delivery_window_label": "Saturday 12 PM - 3 PM",
+    "expected_bucket": "friday_saturday",
+    "expected_cutoff_window_label": "Wednesday after Tuesday 2:00 PM cutoff"
+  },
+  {
+    "name": "route_review_approval_uses_approval_time",
+    "input_now_iso": "2026-05-27T12:00:00-05:00",
+    "expected_production_date": "2026-05-29",
+    "expected_delivery_date": "2026-05-30",
+    "expected_delivery_window_label": "Saturday 12 PM - 3 PM",
+    "expected_bucket": "friday_saturday",
+    "expected_cutoff_window_label": "Wednesday after Tuesday 2:00 PM cutoff"
+  },
+  {
+    "name": "waitlist_only_zone_no_schedule",
+    "input_now_iso": null,
+    "expected_production_date": null,
+    "expected_delivery_date": null,
+    "expected_delivery_window_label": null,
+    "expected_bucket": "waitlist_only_no_schedule",
+    "expected_cutoff_window_label": null
+  },
+  {
+    "name": "stale_frontend_selection_latest_backend_option",
+    "input_now_iso": "2026-05-22T14:01:00-05:00",
+    "expected_production_date": "2026-05-26",
+    "expected_delivery_date": "2026-05-27",
+    "expected_delivery_window_label": "Wednesday 5 PM - 8 PM",
+    "expected_bucket": "tuesday_wednesday",
+    "expected_cutoff_window_label": "Friday after 2:00 PM"
+  }
+]

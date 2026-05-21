@@ -1,204 +1,297 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+const TIMEZONE = 'America/Chicago';
+const FINAL_SCHEDULE_SOURCE = 'backend_cadence';
+
 /**
  * CENTRAL FULFILLMENT SCHEDULE ENGINE
- * 
+ *
  * Single source of truth for NuVira production and delivery dates.
  * All order creation, subscription checkout, webhook processing, and Hub payloads
  * must use this function to ensure consistent scheduling.
- * 
+ *
  * Official Rules (America/Chicago timezone):
- *   Window 1: Friday 14:01 through Tuesday 14:00 (inclusive)
- *     → Production: Tuesday evening
- *     → Delivery: Wednesday, 5:00 PM – 8:00 PM
- * 
- *   Window 2: Tuesday 14:01 through Friday 14:00 (inclusive)
- *     → Production: Friday evening
- *     → Delivery: Saturday, 12:00 PM – 3:00 PM
- * 
- * Boundary Rules:
- *   - Exactly Tuesday 14:00:00 qualifies for Tuesday production/Wednesday delivery
- *   - Tuesday 14:00:01 moves to Friday production/Saturday delivery
- *   - Exactly Friday 14:00:00 qualifies for Friday production/Saturday delivery
- *   - Friday 14:00:01 moves to Tuesday production/Wednesday delivery
+ *   Window 1: Friday 14:00:01 through Tuesday 14:00:00
+ *     -> Production: Tuesday
+ *     -> Delivery: Wednesday, 5 PM - 8 PM
+ *
+ *   Window 2: Tuesday 14:00:01 through Friday 14:00:00
+ *     -> Production: Friday
+ *     -> Delivery: Saturday, 12 PM - 3 PM
  */
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function getChicagoParts(timestamp) {
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('Invalid timestamp');
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const values = {};
+  formatter.formatToParts(parsed).forEach((part) => {
+    values[part.type] = part.value;
+  });
+
+  const year = parseInt(values.year, 10);
+  const month = parseInt(values.month, 10) - 1;
+  const day = parseInt(values.day, 10);
+  const hour = parseInt(values.hour, 10);
+  const minute = parseInt(values.minute, 10);
+  const second = parseInt(values.second, 10);
+  const chicagoDate = new Date(year, month, day, hour, minute, second);
+
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+    dow: chicagoDate.getDay(),
+    chicagoTime: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`,
+  };
+}
+
+function toISODate(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function addDays(date, days) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function getOffsetMinutesForZone(utcDate, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const values = {};
+  formatter.formatToParts(utcDate).forEach((part) => {
+    values[part.type] = part.value;
+  });
+
+  const asUTC = Date.UTC(
+    parseInt(values.year, 10),
+    parseInt(values.month, 10) - 1,
+    parseInt(values.day, 10),
+    parseInt(values.hour, 10),
+    parseInt(values.minute, 10),
+    parseInt(values.second, 10)
+  );
+
+  return (asUTC - utcDate.getTime()) / 60000;
+}
+
+function localChicagoDateTimeToISO(dateStr, timeStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hour, minute] = timeStr.split(':').map(Number);
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const offsetMinutes = getOffsetMinutesForZone(utcGuess, TIMEZONE);
+  const utcDate = new Date(utcGuess.getTime() - offsetMinutes * 60000);
+  return utcDate.toISOString();
+}
+
+function getWindowForDelivery(deliveryDow) {
+  if (deliveryDow === 3) {
+    return {
+      label: 'Wednesday 5 PM - 8 PM',
+      startTime: '17:00',
+      endTime: '20:00',
+      bucket: 'tuesday_wednesday',
+    };
+  }
+
+  if (deliveryDow === 6) {
+    return {
+      label: 'Saturday 12 PM - 3 PM',
+      startTime: '12:00',
+      endTime: '15:00',
+      bucket: 'friday_saturday',
+    };
+  }
+
+  throw new Error(`Unsupported delivery day: ${deliveryDow}`);
+}
+
+function buildSchedule(productionDate, cutoffWindowLabel, schedulingReason, inputTimestamp, chicagoParts) {
+  const deliveryDate = addDays(productionDate, 1);
+  const productionDateStr = toISODate(productionDate);
+  const deliveryDateStr = toISODate(deliveryDate);
+  const deliveryDow = deliveryDate.getDay();
+  const window = getWindowForDelivery(deliveryDow);
+  const deliveryWindowStart = localChicagoDateTimeToISO(deliveryDateStr, window.startTime);
+  const deliveryWindowEnd = localChicagoDateTimeToISO(deliveryDateStr, window.endTime);
+
+  return {
+    ok: true,
+    input_timestamp: inputTimestamp,
+    chicago_time: chicagoParts?.chicagoTime || null,
+    day_of_week: chicagoParts ? DAY_NAMES[chicagoParts.dow] : null,
+    production_date: productionDateStr,
+    assigned_production_day: productionDateStr,
+    delivery_date: deliveryDateStr,
+    assigned_delivery_date: deliveryDateStr,
+    delivery_window_label: window.label,
+    delivery_window_start: deliveryWindowStart,
+    delivery_window_end: deliveryWindowEnd,
+    assigned_delivery_window_start: deliveryWindowStart,
+    assigned_delivery_window_end: deliveryWindowEnd,
+    delivery_window_timezone: TIMEZONE,
+    final_schedule_source: FINAL_SCHEDULE_SOURCE,
+    cutoff_window_label: cutoffWindowLabel,
+    schedule_reason: schedulingReason,
+    scheduling_reason: schedulingReason,
+    schedule_timezone: TIMEZONE,
+    timezone: TIMEZONE,
+    bucket: window.bucket,
+  };
+}
+
+function calculateSchedule(inputTimestamp) {
+  const parts = getChicagoParts(inputTimestamp);
+  const { year, month, day, hour, minute, second, dow } = parts;
+  const timeInSeconds = hour * 3600 + minute * 60 + second;
+  const cutoffInSeconds = 14 * 3600;
+  const isAfterCutoff = timeInSeconds > cutoffInSeconds;
+
+  let productionDate;
+  let cutoffWindowLabel;
+  let schedulingReason;
+
+  if (dow === 5 && !isAfterCutoff) {
+    productionDate = new Date(year, month, day);
+    cutoffWindowLabel = 'Friday before/at 2:00 PM';
+    schedulingReason = 'Friday at/before cutoff -> Friday production, Saturday delivery';
+  } else if (dow === 5 && isAfterCutoff) {
+    productionDate = addDays(new Date(year, month, day), 4);
+    cutoffWindowLabel = 'Friday after 2:00 PM';
+    schedulingReason = 'Friday after cutoff -> next Tuesday production, Wednesday delivery';
+  } else if (dow === 6 || dow === 0 || dow === 1) {
+    const daysToNextTuesday = (2 - dow + 7) % 7 || 7;
+    productionDate = addDays(new Date(year, month, day), daysToNextTuesday);
+    cutoffWindowLabel = `${DAY_NAMES[dow]} before Tuesday 2:00 PM cutoff`;
+    schedulingReason = `${DAY_NAMES[dow]} -> next Tuesday production, Wednesday delivery`;
+  } else if (dow === 2 && !isAfterCutoff) {
+    productionDate = new Date(year, month, day);
+    cutoffWindowLabel = 'Tuesday before/at 2:00 PM';
+    schedulingReason = 'Tuesday at/before cutoff -> Tuesday production, Wednesday delivery';
+  } else if (dow === 2 && isAfterCutoff) {
+    productionDate = addDays(new Date(year, month, day), 3);
+    cutoffWindowLabel = 'Tuesday after 2:00 PM';
+    schedulingReason = 'Tuesday after cutoff -> Friday production, Saturday delivery';
+  } else if (dow === 3 || dow === 4) {
+    const daysToNextFriday = (5 - dow + 7) % 7 || 7;
+    productionDate = addDays(new Date(year, month, day), daysToNextFriday);
+    cutoffWindowLabel = `${DAY_NAMES[dow]} after Tuesday 2:00 PM cutoff`;
+    schedulingReason = `${DAY_NAMES[dow]} -> next Friday production, Saturday delivery`;
+  } else {
+    throw new Error('Unable to determine schedule window');
+  }
+
+  return buildSchedule(productionDate, cutoffWindowLabel, schedulingReason, inputTimestamp, parts);
+}
+
+function nextProductionDate(productionDateStr) {
+  const current = new Date(`${productionDateStr}T12:00:00`);
+  const dow = current.getDay();
+  if (dow === 2) return addDays(current, 3);
+  if (dow === 5) return addDays(current, 4);
+  throw new Error(`Invalid production date for cadence: ${productionDateStr}`);
+}
+
+function optionFromSchedule(schedule, isDefault = false) {
+  return {
+    option_id: `${FINAL_SCHEDULE_SOURCE}:${schedule.production_date}:${schedule.delivery_date}`,
+    production_date: schedule.production_date,
+    delivery_date: schedule.delivery_date,
+    delivery_window_label: schedule.delivery_window_label,
+    delivery_window_start: schedule.delivery_window_start,
+    delivery_window_end: schedule.delivery_window_end,
+    cutoff_window_label: schedule.cutoff_window_label,
+    final_schedule_source: FINAL_SCHEDULE_SOURCE,
+    scheduling_reason: schedule.scheduling_reason,
+    is_default: isDefault,
+  };
+}
+
+function getScheduleOptions(firstSchedule, count = 2) {
+  const safeCount = Math.min(Math.max(Number(count) || 2, 1), 4);
+  const options = [optionFromSchedule(firstSchedule, true)];
+  let cursor = firstSchedule.production_date;
+
+  while (options.length < safeCount) {
+    const productionDate = nextProductionDate(cursor);
+    const schedule = buildSchedule(
+      productionDate,
+      'Backend cadence option',
+      'Upcoming backend cadence option',
+      firstSchedule.input_timestamp,
+      null
+    );
+    options.push(optionFromSchedule(schedule, false));
+    cursor = schedule.production_date;
+  }
+
+  return options;
+}
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    // OPTIONAL: Verify caller is admin (non-blocking for test execution)
-    let user = null;
     try {
-      user = await base44.auth.me();
-    } catch (e) {
-      // Public call allowed for testing
+      await base44.auth.me();
+    } catch {
+      // Public call allowed for checkout scheduling and test execution.
     }
 
     const body = await req.json();
-    const { created_at, checkout_completed_at, paid_at } = body;
-
-    // Accept any timestamp variant; use first non-null
+    const { created_at, checkout_completed_at, paid_at, mode, option_count } = body;
     const inputTimestamp = created_at || checkout_completed_at || paid_at;
+
     if (!inputTimestamp) {
-      return Response.json({ error: 'Missing timestamp: created_at, checkout_completed_at, or paid_at required' }, { status: 400 });
+      return Response.json({ ok: false, error: 'Missing timestamp: created_at, checkout_completed_at, or paid_at required' }, { status: 400 });
     }
 
-    console.log(`[CalcSchedule] Input: ${inputTimestamp}`);
+    const schedule = calculateSchedule(inputTimestamp);
 
-    // Parse timestamp into America/Chicago time
-    const orderDate = new Date(inputTimestamp);
-    const chicagoFormatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Chicago',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-
-    const parts = chicagoFormatter.formatToParts(orderDate);
-    const pm = {};
-    parts.forEach(p => { pm[p.type] = p.value; });
-
-    const year = parseInt(pm.year);
-    const month = parseInt(pm.month) - 1; // 0-indexed
-    const day = parseInt(pm.day);
-    const hour = parseInt(pm.hour);
-    const minute = parseInt(pm.minute);
-    const second = parseInt(pm.second);
-
-    // Get day of week in Chicago time (0=Sunday, 6=Saturday)
-    const chicagoDate = new Date(year, month, day, hour, minute, second);
-    const dow = chicagoDate.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
-
-    // Cutoff boundary: 14:00:00 (2:00 PM exactly)
-    const cutoffHour = 14;
-    const cutoffMinute = 0;
-    const cutoffSecond = 0;
-    const timeInSeconds = hour * 3600 + minute * 60 + second;
-    const cutoffInSeconds = cutoffHour * 3600 + cutoffMinute * 60 + cutoffSecond;
-    const isAfterCutoff = timeInSeconds > cutoffInSeconds; // AFTER 14:00:00, not at or after
-
-    console.log(`[CalcSchedule] Chicago time: ${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`);
-    console.log(`[CalcSchedule] Day of week: ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow]}, isAfterCutoff: ${isAfterCutoff}`);
-
-    let productionDate, deliveryDate, deliveryWindowLabel, deliveryWindowStart, deliveryWindowEnd, cutoffWindowLabel, scheduleReason;
-
-    // ── WINDOW 1: Friday 14:01 through Tuesday 14:00 (inclusive) ────
-    // Produces: Tuesday, Delivers: Wednesday
-    // This includes:
-    //   - Friday after 14:00 (dow=5 && isAfterCutoff)
-    //   - Saturday (dow=6)
-    //   - Sunday (dow=0)
-    //   - Monday (dow=1)
-    //   - Tuesday before/at 14:00 (dow=2 && !isAfterCutoff)
-    
-    // ── WINDOW 2: Tuesday 14:01 through Friday 14:00 (inclusive) ────
-    // Produces: Friday, Delivers: Saturday
-    // This includes:
-    //   - Tuesday after 14:00 (dow=2 && isAfterCutoff)
-    //   - Wednesday (dow=3)
-    //   - Thursday (dow=4)
-    //   - Friday before/at 14:00 (dow=5 && !isAfterCutoff)
-
-    if (dow === 5 && !isAfterCutoff) {
-      // Friday BEFORE/AT 14:00 → Window 2 (Fri prod today, Sat del)
-      productionDate = new Date(year, month, day);
-      deliveryDate = new Date(productionDate);
-      deliveryDate.setDate(deliveryDate.getDate() + 1); // Friday + 1 = Saturday
-      deliveryWindowLabel = '12:00 PM – 3:00 PM';
-      deliveryWindowStart = '12:00';
-      deliveryWindowEnd = '15:00';
-      cutoffWindowLabel = 'Friday before/at 2:00 PM';
-      scheduleReason = 'Friday before cutoff → today production, Saturday delivery (Window 2)';
-    } else if (dow === 5 && isAfterCutoff) {
-      // Friday AFTER 14:00 → Window 1 (next Tue prod, Wed del)
-      productionDate = new Date(year, month, day);
-      productionDate.setDate(productionDate.getDate() + 4); // Friday + 4 = Tuesday next week
-      deliveryDate = new Date(productionDate);
-      deliveryDate.setDate(deliveryDate.getDate() + 1); // Tuesday + 1 = Wednesday
-      deliveryWindowLabel = '5:00 PM – 8:00 PM';
-      deliveryWindowStart = '17:00';
-      deliveryWindowEnd = '20:00';
-      cutoffWindowLabel = 'Friday after 2:00 PM';
-      scheduleReason = 'Friday after cutoff → next Tuesday production, Wednesday delivery (Window 1)';
-    } else if (dow === 6 || dow === 0 || dow === 1) {
-      // Saturday, Sunday, Monday → Window 1 (Tue prod, Wed del)
-      // Calculate next Tuesday
-      const daysToNextTuesday = (2 - dow + 7) % 7;
-      productionDate = new Date(year, month, day);
-      productionDate.setDate(productionDate.getDate() + (daysToNextTuesday === 0 ? 7 : daysToNextTuesday));
-      deliveryDate = new Date(productionDate);
-      deliveryDate.setDate(deliveryDate.getDate() + 1);
-      deliveryWindowLabel = '5:00 PM – 8:00 PM';
-      deliveryWindowStart = '17:00';
-      deliveryWindowEnd = '20:00';
-      cutoffWindowLabel = `${['Sun', 'Mon'][dow === 1 ? 1 : 0]} (before Friday cutoff)`;
-      scheduleReason = `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow]} → next Tuesday production, Wednesday delivery (Window 1)`;
-    } else if (dow === 2 && !isAfterCutoff) {
-      // Tuesday BEFORE/AT 14:00 → Window 1 (Tue prod, Wed del) — TODAY
-      productionDate = new Date(year, month, day);
-      deliveryDate = new Date(productionDate);
-      deliveryDate.setDate(deliveryDate.getDate() + 1);
-      deliveryWindowLabel = '5:00 PM – 8:00 PM';
-      deliveryWindowStart = '17:00';
-      deliveryWindowEnd = '20:00';
-      cutoffWindowLabel = 'Tuesday before/at 2:00 PM';
-      scheduleReason = 'Tuesday at/before cutoff → today production, Wednesday delivery (Window 1)';
-    } else if (dow === 2 && isAfterCutoff) {
-      // Tuesday AFTER 14:00 → Window 2 (Fri prod, Sat del)
-      const daysToNextFriday = (5 - dow + 7) % 7;
-      productionDate = new Date(year, month, day);
-      productionDate.setDate(productionDate.getDate() + (daysToNextFriday === 0 ? 7 : daysToNextFriday));
-      deliveryDate = new Date(productionDate);
-      deliveryDate.setDate(deliveryDate.getDate() + 1);
-      deliveryWindowLabel = '12:00 PM – 3:00 PM';
-      deliveryWindowStart = '12:00';
-      deliveryWindowEnd = '15:00';
-      cutoffWindowLabel = 'Tuesday after 2:00 PM';
-      scheduleReason = 'Tuesday after cutoff → next Friday production, Saturday delivery (Window 2)';
-    } else if (dow === 3 || dow === 4) {
-      // Wednesday, Thursday → Window 2 (Fri prod, Sat del)
-      const daysToNextFriday = (5 - dow + 7) % 7;
-      productionDate = new Date(year, month, day);
-      productionDate.setDate(productionDate.getDate() + (daysToNextFriday === 0 ? 7 : daysToNextFriday));
-      deliveryDate = new Date(productionDate);
-      deliveryDate.setDate(deliveryDate.getDate() + 1);
-      deliveryWindowLabel = '12:00 PM – 3:00 PM';
-      deliveryWindowStart = '12:00';
-      deliveryWindowEnd = '15:00';
-      cutoffWindowLabel = `${['Wed', 'Thu'][dow === 3 ? 0 : 1]} (after Tuesday cutoff)`;
-      scheduleReason = `${['', '', '', 'Wednesday', 'Thursday'][dow]} → next Friday production, Saturday delivery (Window 2)`;
-    } else {
-      return Response.json({ error: 'Unable to determine schedule window' }, { status: 500 });
+    if (mode === 'options' || body.options === true || body.return_options === true) {
+      return Response.json({
+        ok: true,
+        timezone: TIMEZONE,
+        generated_at: new Date().toISOString(),
+        options: getScheduleOptions(schedule, option_count),
+      });
     }
 
-    // Format dates as YYYY-MM-DD
-    const productionDateStr = productionDate.toISOString().split('T')[0];
-    const deliveryDateStr = deliveryDate.toISOString().split('T')[0];
-
-    const result = {
-      input_timestamp: inputTimestamp,
-      chicago_time: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`,
-      day_of_week: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow],
-      production_date: productionDateStr,
-      delivery_date: deliveryDateStr,
-      delivery_window_label: deliveryWindowLabel,
-      delivery_window_start: deliveryWindowStart,
-      delivery_window_end: deliveryWindowEnd,
-      cutoff_window_label: cutoffWindowLabel,
-      schedule_reason: scheduleReason,
-      timezone: 'America/Chicago',
-    };
-
-    console.log(`[CalcSchedule] ✅ Result: ${productionDateStr} (prod) → ${deliveryDateStr} (${deliveryWindowLabel})`);
-    return Response.json(result);
-
+    console.log(`[CalcSchedule] Result: ${schedule.production_date} (prod) -> ${schedule.delivery_date} (${schedule.delivery_window_label})`);
+    return Response.json(schedule);
   } catch (error) {
     console.error('[CalcSchedule] Error:', error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ ok: false, error: error.message }, { status: 500 });
   }
 });

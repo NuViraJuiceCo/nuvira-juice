@@ -2,6 +2,79 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
+  'backend_cadence',
+  'admin_override',
+  'route_review_approval',
+  'subscription_renewal',
+  'legacy_migration',
+  'unknown',
+]);
+
+function resolveFinalScheduleSource(source, fallback = 'backend_cadence') {
+  const candidate = source || fallback;
+  return LOCKED_FINAL_SCHEDULE_SOURCES.has(candidate) ? candidate : fallback;
+}
+
+function isStagingSafeMode() {
+  return Deno.env.get('NUVIRA_STAGING_SAFE_MODE') === 'true';
+}
+
+function skipLoyaltyWrite(stagingSafeMode) {
+  if (!stagingSafeMode) return false;
+  console.log('[stripeWebhook] STAGING SAFE MODE: skipped loyalty/UserPoints write');
+  return true;
+}
+
+function installStagingSideEffectGuards(base44, stagingSafeMode) {
+  if (!stagingSafeMode) return;
+
+  const sideEffectFunctions = new Set([
+    'syncSubscriptionWithFulfillments',
+    'pushOrderToShopify',
+    'syncOrderToHub',
+    'sendOrderReceivedNotification',
+    'notifyOrderProcessed',
+    'sendCustomerNotification',
+    'sendOrderSms',
+    'sendPushNotification',
+    'syncCustomerToHub',
+    'syncRefundToHub',
+  ]);
+
+  const originalInvoke = base44.asServiceRole.functions.invoke.bind(base44.asServiceRole.functions);
+  base44.asServiceRole.functions.invoke = (name, payload) => {
+    if (sideEffectFunctions.has(name)) {
+      console.log(`[stripeWebhook] STAGING SAFE MODE: skipped side-effect function ${name}`);
+      return Promise.resolve({ data: { skipped: true, function_name: name } });
+    }
+    return originalInvoke(name, payload);
+  };
+
+  const sendEmail = base44.asServiceRole.integrations?.Core?.SendEmail;
+  if (sendEmail) {
+    base44.asServiceRole.integrations.Core.SendEmail = (payload) => {
+      console.log(`[stripeWebhook] STAGING SAFE MODE: skipped email send to ${payload?.to || 'unknown'}`);
+      return Promise.resolve({ skipped: true });
+    };
+  }
+
+  const userPoints = base44.asServiceRole.entities.UserPoints;
+  if (userPoints) {
+    userPoints.filter = () => {
+      console.log('[stripeWebhook] STAGING SAFE MODE: skipped UserPoints lookup');
+      return Promise.resolve([]);
+    };
+    userPoints.create = () => {
+      console.log('[stripeWebhook] STAGING SAFE MODE: skipped UserPoints create');
+      return Promise.resolve({ skipped: true });
+    };
+    userPoints.update = () => {
+      console.log('[stripeWebhook] STAGING SAFE MODE: skipped UserPoints update');
+      return Promise.resolve({ skipped: true });
+    };
+  }
+}
 
 Deno.serve(async (req) => {
   const body = await req.text();
@@ -34,6 +107,8 @@ Deno.serve(async (req) => {
   }
 
   const base44 = createClientFromRequest(req);
+  const stagingSafeMode = isStagingSafeMode();
+  installStagingSideEffectGuards(base44, stagingSafeMode);
 
   try {
     if (event.type === 'checkout.session.completed') {
@@ -320,7 +395,9 @@ Deno.serve(async (req) => {
         }
 
         // Award loyalty points for subscription payment (10 pts per $1) — exactly once per stripe subscription
-        if (customerEmail && amountPaid > 0) {
+        if (skipLoyaltyWrite(stagingSafeMode)) {
+          // Loyalty is intentionally suppressed in isolated staging smoke tests.
+        } else if (customerEmail && amountPaid > 0) {
         const pointsToAward = Math.floor(amountPaid * 10);
         const stripeSubId = session.subscription;
 
@@ -453,12 +530,15 @@ Deno.serve(async (req) => {
         }
 
         // Final resolved dates: central engine wins over stale metadata
-        const resolvedDeliveryDate   = checkoutFinalSchedule?.delivery_date   || orderData.estimated_delivery_date || session.metadata?.selected_delivery_date || null;
-        const resolvedProductionDate = checkoutFinalSchedule?.production_date  || orderData.production_date || session.metadata?.production_date || null;
+        const resolvedDeliveryDate   = checkoutFinalSchedule?.assigned_delivery_date || checkoutFinalSchedule?.delivery_date || orderData.estimated_delivery_date || session.metadata?.selected_delivery_date || null;
+        const resolvedProductionDate = checkoutFinalSchedule?.assigned_production_day || checkoutFinalSchedule?.production_date || orderData.assigned_production_day || orderData.production_date || session.metadata?.assigned_production_day || session.metadata?.production_date || null;
         const resolvedWindowLabel    = checkoutFinalSchedule?.delivery_window_label  || orderData.delivery_window_label || session.metadata?.delivery_window_label || '5 PM – 8 PM';
-        const resolvedWindowStart    = checkoutFinalSchedule?.delivery_window_start  || orderData.delivery_window_start || session.metadata?.delivery_window_start || '17:00';
-        const resolvedWindowEnd      = checkoutFinalSchedule?.delivery_window_end    || orderData.delivery_window_end   || session.metadata?.delivery_window_end   || '20:00';
-        const resolvedScheduleReason = checkoutFinalSchedule?.schedule_reason || 'checkout_metadata_fallback';
+        const resolvedWindowStart    = checkoutFinalSchedule?.assigned_delivery_window_start || checkoutFinalSchedule?.delivery_window_start || orderData.assigned_delivery_window_start || orderData.delivery_window_start || session.metadata?.assigned_delivery_window_start || session.metadata?.delivery_window_start || '17:00';
+        const resolvedWindowEnd      = checkoutFinalSchedule?.assigned_delivery_window_end || checkoutFinalSchedule?.delivery_window_end || orderData.assigned_delivery_window_end || orderData.delivery_window_end || session.metadata?.assigned_delivery_window_end || session.metadata?.delivery_window_end || '20:00';
+        const resolvedScheduleReason = checkoutFinalSchedule?.scheduling_reason || checkoutFinalSchedule?.schedule_reason || 'checkout_metadata_fallback';
+        const resolvedFinalScheduleSource = resolveFinalScheduleSource(checkoutFinalSchedule?.final_schedule_source, checkoutFinalSchedule ? 'backend_cadence' : 'unknown');
+        const resolvedScheduleTimezone = checkoutFinalSchedule?.schedule_timezone || checkoutFinalSchedule?.timezone || 'America/Chicago';
+        const resolvedDeliveryWindowTimezone = checkoutFinalSchedule?.delivery_window_timezone || checkoutFinalSchedule?.timezone || 'America/Chicago';
 
         console.log(`[stripeWebhook] Resolved order fields: name="${resolvedCustomerName}" addr="${resolvedAddressLine1}, ${resolvedAddressCity}" delivery="${resolvedDeliveryDate}" window="${resolvedWindowLabel}" items=${resolvedItems.length}`);
 
@@ -482,10 +562,14 @@ Deno.serve(async (req) => {
           contact_phone: resolvedPhone,
           estimated_delivery_date: resolvedDeliveryDate,
           assigned_delivery_date: resolvedDeliveryDate,
+          assigned_production_day: resolvedProductionDate,
           production_date: resolvedProductionDate,
           delivery_window_label: resolvedWindowLabel,
+          delivery_window_start: resolvedWindowStart,
+          delivery_window_end: resolvedWindowEnd,
           assigned_delivery_window_start: resolvedWindowStart,
           assigned_delivery_window_end: resolvedWindowEnd,
+          delivery_window_timezone: resolvedDeliveryWindowTimezone,
           payment_status: 'paid',
           financial_status: 'paid',
           status: 'scheduled_for_juicing',
@@ -504,15 +588,17 @@ Deno.serve(async (req) => {
           stripe_payment_intent_id: session.payment_intent || null,
           referral_code: orderData.referral_code || null,
           scheduling_reason: resolvedScheduleReason,
-          final_schedule_source: 'central_engine',
-          schedule_timezone: 'America/Chicago',
+          final_schedule_source: resolvedFinalScheduleSource,
+          schedule_timezone: resolvedScheduleTimezone,
           cutoff_window_label: checkoutFinalSchedule?.cutoff_window_label || 'unknown',
         });
 
         console.log(`Regular order ${order.id} (${orderNumber}) created after payment completed`);
 
         // Deduct points and credits after order is confirmed
-        if (customerEmail && (orderData.points_used || orderData.active_reward?.points_required)) {
+        if (skipLoyaltyWrite(stagingSafeMode)) {
+          // Loyalty redemption is intentionally suppressed in isolated staging smoke tests.
+        } else if (customerEmail && (orderData.points_used || orderData.active_reward?.points_required)) {
           const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
           if (existing[0]) {
             const deductPoints = (orderData.points_used || 0) + (orderData.active_reward?.points_required || 0);
@@ -628,7 +714,9 @@ Deno.serve(async (req) => {
 
       // Award loyalty points for one-time orders only (subscriptions handle loyalty above)
       // NOT for pre-orders, NOT for subscription checkouts (already handled in subscription block)
-      if (session.mode !== 'subscription' && customerEmail && session.metadata?.is_preorder !== 'true') {
+      if (skipLoyaltyWrite(stagingSafeMode)) {
+        // Loyalty is intentionally suppressed in isolated staging smoke tests.
+      } else if (session.mode !== 'subscription' && customerEmail && session.metadata?.is_preorder !== 'true') {
         const pointsToAward = Math.floor(amountPaid * 10);
         const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
 
@@ -859,15 +947,24 @@ Deno.serve(async (req) => {
 
         // Override delivery dates if central engine returned a result
         if (finalSchedule) {
-          finalOrderUpdate.estimated_delivery_date  = finalSchedule.delivery_date;
-          finalOrderUpdate.assigned_delivery_date   = finalSchedule.delivery_date;
+          const finalProductionDate = finalSchedule.assigned_production_day || finalSchedule.production_date || null;
+          const finalDeliveryDate = finalSchedule.assigned_delivery_date || finalSchedule.delivery_date || null;
+          const finalWindowStart = finalSchedule.assigned_delivery_window_start || finalSchedule.delivery_window_start || null;
+          const finalWindowEnd = finalSchedule.assigned_delivery_window_end || finalSchedule.delivery_window_end || null;
+
+          finalOrderUpdate.estimated_delivery_date  = finalDeliveryDate;
+          finalOrderUpdate.assigned_delivery_date   = finalDeliveryDate;
+          finalOrderUpdate.assigned_production_day  = finalProductionDate;
+          finalOrderUpdate.production_date          = finalProductionDate;
           finalOrderUpdate.delivery_window_label    = finalSchedule.delivery_window_label;
-          finalOrderUpdate.assigned_delivery_window_start = finalSchedule.delivery_window_start;
-          finalOrderUpdate.assigned_delivery_window_end   = finalSchedule.delivery_window_end;
-          finalOrderUpdate.scheduling_reason        = finalSchedule.schedule_reason;
-          finalOrderUpdate.assigned_production_day  = finalSchedule.production_date ? new Date(finalSchedule.production_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) : undefined;
-          finalOrderUpdate.final_schedule_source    = 'central_engine';
-          finalOrderUpdate.schedule_timezone        = 'America/Chicago';
+          finalOrderUpdate.delivery_window_start    = finalWindowStart;
+          finalOrderUpdate.delivery_window_end      = finalWindowEnd;
+          finalOrderUpdate.assigned_delivery_window_start = finalWindowStart;
+          finalOrderUpdate.assigned_delivery_window_end   = finalWindowEnd;
+          finalOrderUpdate.delivery_window_timezone = finalSchedule.delivery_window_timezone || finalSchedule.timezone || 'America/Chicago';
+          finalOrderUpdate.scheduling_reason        = finalSchedule.scheduling_reason || finalSchedule.schedule_reason;
+          finalOrderUpdate.final_schedule_source    = resolveFinalScheduleSource(finalSchedule.final_schedule_source, 'backend_cadence');
+          finalOrderUpdate.schedule_timezone        = finalSchedule.schedule_timezone || finalSchedule.timezone || 'America/Chicago';
           finalOrderUpdate.cutoff_window_label      = finalSchedule.cutoff_window_label || 'unknown';
         }
 
@@ -890,7 +987,9 @@ Deno.serve(async (req) => {
           if (csSessions[0]) checkoutData = csSessions[0].checkout_data || {};
         } catch {}
 
-        if (customerEmail && (checkoutData.points_used || checkoutData.active_reward?.points_required)) {
+        if (skipLoyaltyWrite(stagingSafeMode)) {
+          // Loyalty redemption is intentionally suppressed in isolated staging smoke tests.
+        } else if (customerEmail && (checkoutData.points_used || checkoutData.active_reward?.points_required)) {
           const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
           if (existing[0]) {
             const deductPoints = (checkoutData.points_used || 0) + (checkoutData.active_reward?.points_required || 0);
@@ -918,7 +1017,9 @@ Deno.serve(async (req) => {
         }
 
         // Award loyalty points
-        if (customerEmail) {
+        if (skipLoyaltyWrite(stagingSafeMode)) {
+          // Loyalty is intentionally suppressed in isolated staging smoke tests.
+        } else if (customerEmail) {
           const pointsToAward = Math.floor(amountPaid * 10);
           const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
           const entry = { amount: pointsToAward, type: 'earned', description: `Order payment of $${amountPaid.toFixed(2)}`, timestamp: new Date().toISOString() };
@@ -939,12 +1040,16 @@ Deno.serve(async (req) => {
 
         // Sync to Hub
         try {
-          await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+          const hubSyncResult = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
             order_id:    order.id,
             stripe_session: { payment_status: 'paid', id: pi.id },
             triggered_by: 'stripe_webhook',
           });
-          console.log(`[PI succeeded] ✅ Order ${orderNumber} synced to Hub`);
+          if (hubSyncResult?.data?.skipped) {
+            console.log(`[PI succeeded] Hub sync skipped in staging-safe mode for ${orderNumber}`);
+          } else {
+            console.log(`[PI succeeded] ✅ Order ${orderNumber} synced to Hub`);
+          }
         } catch (syncErr) {
           console.error(`[PI succeeded] ❌ Hub sync failed for ${orderNumber}: ${syncErr.message}`);
           try {
@@ -1010,6 +1115,17 @@ Deno.serve(async (req) => {
           console.error(`[PI succeeded] Safety-net schedule calc failed: ${snErr.message}`);
         }
 
+        const safetyNetProductionDate = safetyNetSchedule?.assigned_production_day || safetyNetSchedule?.production_date || meta.assigned_production_day || meta.production_date || null;
+        const safetyNetDeliveryDate = safetyNetSchedule?.assigned_delivery_date || safetyNetSchedule?.delivery_date || meta.assigned_delivery_date || meta.selected_delivery_date || null;
+        const safetyNetWindowLabel = safetyNetSchedule?.delivery_window_label || meta.delivery_window_label || '5 PM – 8 PM';
+        const safetyNetWindowStart = safetyNetSchedule?.assigned_delivery_window_start || safetyNetSchedule?.delivery_window_start || meta.assigned_delivery_window_start || meta.delivery_window_start || '17:00';
+        const safetyNetWindowEnd = safetyNetSchedule?.assigned_delivery_window_end || safetyNetSchedule?.delivery_window_end || meta.assigned_delivery_window_end || meta.delivery_window_end || '20:00';
+        const safetyNetScheduleTimezone = safetyNetSchedule?.schedule_timezone || safetyNetSchedule?.timezone || meta.schedule_timezone || 'America/Chicago';
+        const safetyNetDeliveryWindowTimezone = safetyNetSchedule?.delivery_window_timezone || safetyNetSchedule?.timezone || meta.delivery_window_timezone || 'America/Chicago';
+        const safetyNetScheduleSource = safetyNetSchedule
+          ? resolveFinalScheduleSource(safetyNetSchedule.final_schedule_source, 'backend_cadence')
+          : resolveFinalScheduleSource(meta.final_schedule_source, 'unknown');
+
         const newOrder = await base44.asServiceRole.entities.Order.create({
           order_number:    orderNumber,
           customer_email:  customerEmail || '',
@@ -1025,12 +1141,20 @@ Deno.serve(async (req) => {
           address_postal_code: meta.delivery_postal_code || '',
           address_country: 'US',
           contact_phone:   meta.customer_phone   || '',
-          estimated_delivery_date:  safetyNetSchedule?.delivery_date || meta.selected_delivery_date || null,
-          assigned_delivery_date:   safetyNetSchedule?.delivery_date || meta.selected_delivery_date || null,
-          delivery_window_label:    safetyNetSchedule?.delivery_window_label || meta.delivery_window_label  || '5 PM – 8 PM',
-          assigned_delivery_window_start: safetyNetSchedule?.delivery_window_start || meta.delivery_window_start || '17:00',
-          assigned_delivery_window_end:   safetyNetSchedule?.delivery_window_end   || meta.delivery_window_end   || '20:00',
-          scheduling_reason:        safetyNetSchedule?.schedule_reason || 'safety_net_creation',
+          estimated_delivery_date:  safetyNetDeliveryDate,
+          assigned_delivery_date:   safetyNetDeliveryDate,
+          assigned_production_day:  safetyNetProductionDate,
+          production_date:          safetyNetProductionDate,
+          delivery_window_label:    safetyNetWindowLabel,
+          delivery_window_start:    safetyNetWindowStart,
+          delivery_window_end:      safetyNetWindowEnd,
+          assigned_delivery_window_start: safetyNetWindowStart,
+          assigned_delivery_window_end:   safetyNetWindowEnd,
+          delivery_window_timezone: safetyNetDeliveryWindowTimezone,
+          scheduling_reason:        safetyNetSchedule?.scheduling_reason || safetyNetSchedule?.schedule_reason || 'safety_net_creation',
+          final_schedule_source:    safetyNetScheduleSource,
+          schedule_timezone:        safetyNetScheduleTimezone,
+          cutoff_window_label:      safetyNetSchedule?.cutoff_window_label || meta.cutoff_window_label || 'unknown',
           status:           'scheduled_for_juicing',
           payment_status:   'paid',
           financial_status: 'paid',
@@ -1259,7 +1383,9 @@ Deno.serve(async (req) => {
 
       // Award loyalty points (idempotent — check description includes stripeSubscriptionId)
       const amountPaid = (invoice.amount_paid || 0) / 100;
-      if (amountPaid > 0) {
+      if (skipLoyaltyWrite(stagingSafeMode)) {
+        // Loyalty is intentionally suppressed in isolated staging smoke tests.
+      } else if (amountPaid > 0) {
         const pointsToAward = Math.floor(amountPaid * 10);
         const existingPoints = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
         const loyaltyEntry = {
@@ -1450,7 +1576,9 @@ Deno.serve(async (req) => {
 
       // Award loyalty points (idempotent — check description includes stripeSubscriptionId)
       const amountPaidInvoice = (invoice.amount_paid || 0) / 100;
-      if (amountPaidInvoice > 0) {
+      if (skipLoyaltyWrite(stagingSafeMode)) {
+        // Loyalty is intentionally suppressed in isolated staging smoke tests.
+      } else if (amountPaidInvoice > 0) {
         const pointsToAwardPaid = Math.floor(amountPaidInvoice * 10);
         const existingPointsPaid = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
         const loyaltyEntryPaid = {
@@ -1632,30 +1760,36 @@ Deno.serve(async (req) => {
           // --- Loyalty reversal (idempotent) ---
           // IDEMPOTENCY: Check if points for this subscription have already been reversed (by admin override OR webhook)
           // Must detect both: "subscription refund" entries AND "admin cancel+refund" entries
-          const pointsRecs = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: subEmail });
           let loyaltyAction = 'skipped_no_record';
-          if (pointsRecs[0]) {
-            const rec = pointsRecs[0];
-            // Check for ANY adjustment (admin or webhook) that mentions this subscription
-            const alreadyReversed = rec.points_history?.some(h =>
-              h.type === 'adjustment' && h.description?.includes(stripeSubscriptionId)
-            );
-            if (!alreadyReversed) {
-              const entry = {
-                amount: -pointsToReverse,
-                type: 'adjustment',
-                description: `Points reversed: subscription refund (subscription ${stripeSubscriptionId}), refund $${refundAmount.toFixed(2)}`,
-                timestamp: new Date().toISOString(),
-              };
-              await base44.asServiceRole.entities.UserPoints.update(rec.id, {
-                total_points: Math.max(0, (rec.total_points || 0) - pointsToReverse),
-                points_history: [...(rec.points_history || []), entry],
-              });
-              loyaltyAction = `reversed_${pointsToReverse}_pts`;
-              console.log(`[charge.refunded] ✅ Reversed ${pointsToReverse} loyalty pts for ${subEmail}`);
+          if (skipLoyaltyWrite(stagingSafeMode)) {
+            loyaltyAction = 'skipped_staging_safe_mode';
+          } else {
+            const pointsRecs = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: subEmail });
+            if (pointsRecs[0]) {
+              const rec = pointsRecs[0];
+              // Check for ANY adjustment (admin or webhook) that mentions this subscription
+              const alreadyReversed = rec.points_history?.some(h =>
+                h.type === 'adjustment' && h.description?.includes(stripeSubscriptionId)
+              );
+              if (!alreadyReversed) {
+                const entry = {
+                  amount: -pointsToReverse,
+                  type: 'adjustment',
+                  description: `Points reversed: subscription refund (subscription ${stripeSubscriptionId}), refund $${refundAmount.toFixed(2)}`,
+                  timestamp: new Date().toISOString(),
+                };
+                await base44.asServiceRole.entities.UserPoints.update(rec.id, {
+                  total_points: Math.max(0, (rec.total_points || 0) - pointsToReverse),
+                  points_history: [...(rec.points_history || []), entry],
+                });
+                loyaltyAction = `reversed_${pointsToReverse}_pts`;
+                console.log(`[charge.refunded] ✅ Reversed ${pointsToReverse} loyalty pts for ${subEmail}`);
+              } else {
+                loyaltyAction = 'already_reversed_idempotent';
+                console.log(`[charge.refunded] Loyalty already reversed for sub ${stripeSubscriptionId} (admin or prior webhook), skipping`);
+              }
             } else {
-              loyaltyAction = 'already_reversed_idempotent';
-              console.log(`[charge.refunded] Loyalty already reversed for sub ${stripeSubscriptionId} (admin or prior webhook), skipping`);
+              loyaltyAction = 'skipped_no_record';
             }
           }
 
@@ -1827,7 +1961,9 @@ Deno.serve(async (req) => {
       }
 
       // Restore loyalty points if full refund
-      if (isFullRefund && order.customer_email) {
+      if (skipLoyaltyWrite(stagingSafeMode)) {
+        // Loyalty is intentionally suppressed in isolated staging smoke tests.
+      } else if (isFullRefund && order.customer_email) {
         const pointsToRestore = Math.floor(order.total * 10);
         const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: order.customer_email });
         
