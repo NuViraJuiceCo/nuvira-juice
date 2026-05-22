@@ -35,6 +35,7 @@ import Partner from '@/pages/Partner';
 import BookEvent from '@/pages/BookEvent';
 import AdminOrders from '@/pages/AdminOrders';
 import ShopifyDashboard from '@/pages/admin/ShopifyDashboard';
+import ProductionQueueSummary from '@/pages/admin/ProductionQueueSummary';
 import AdminProducts from '@/pages/admin/AdminProducts';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
@@ -148,6 +149,7 @@ const AuthenticatedApp = () => {
           <Route path="/partner" element={<Partner />} />
           <Route path="/book-event" element={<BookEvent />} />
           <Route path="/admin/orders" element={<ProtectedRoute element={<AdminOrders />} user={user} />} />
+          <Route path="/admin/production-queue" element={<ProtectedRoute element={<ProductionQueueSummary />} user={user} />} />
           <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
           <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
           <Route path="/admin/bag-returns" element={<ProtectedRoute element={<BagReturnAdmin />} user={user} />} />
