@@ -95,6 +95,22 @@ function formatDateTime(value) {
   }
 }
 
+function SectionLabel({ title, description, badge }) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        {description && (
+          <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
+        )}
+      </div>
+      {badge && (
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{badge}</span>
+      )}
+    </div>
+  );
+}
+
 function HubOperationsPanel({ order, customerAppStatusLabel }) {
   if (!order.is_hub_order) return null;
 
@@ -371,9 +387,12 @@ function InternalHubNoteComposer({ order }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Internal Hub Note</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Admin-only. Appends to Hub ops notes. Not customer-visible.</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Append-only · Admin-only · Not customer-visible.</p>
         </div>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Append-only</span>
+        <div className="flex flex-col items-end gap-1 text-right">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Append-only</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 leading-tight">Only Hub write available here</span>
+        </div>
       </div>
 
       {!hasIdentifiers ? (
@@ -512,53 +531,70 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                 </div>
               </div>
 
-              <HubOperationsPanel order={order} customerAppStatusLabel={customerAppStatusLabel} />
+              {order.is_hub_order && (
+                <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
+                  <SectionLabel
+                    title="Hub Read-Only Context"
+                    description="View-only operational data from Hub."
+                    badge="Read-only"
+                  />
+                  <div className="space-y-2">
+                    <HubOperationsPanel order={order} customerAppStatusLabel={customerAppStatusLabel} />
+                    <FulfillmentTasksPanel order={order} />
+                    <HubTimelinePanel order={order} />
+                  </div>
+                </section>
+              )}
 
               <InternalHubNoteComposer order={order} />
 
-              <FulfillmentTasksPanel order={order} />
+              <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
+                <SectionLabel
+                  title="Customer App Order Controls"
+                  description="These controls update the order workflow and are separate from the read-only Hub panels."
+                  badge="Order workflow"
+                />
 
-              <HubTimelinePanel order={order} />
-
-              {/* Progress */}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Progress — Step {currentIndex + 1} of {stages.length}</p>
-                <div className="flex gap-1">
-                  {stages.map((stage, i) => (
-                    <div key={stage.key} className={`h-1.5 flex-1 rounded-full ${i <= currentIndex ? 'bg-primary' : 'bg-border'}`} />
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{stages[currentIndex]?.label}</p>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex gap-2">
-                {prevStage && (
-                  <button
-                    onClick={() => onGoBack(order, prevStage)}
-                    disabled={isAdvancing}
-                    className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                  >
-                    ← Back
-                  </button>
-                )}
-                {!isComplete ? (
-                  <button
-                    onClick={() => onAdvance(order, nextStage)}
-                    disabled={isAdvancing}
-                    className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                  >
-                    {isAdvancing ? 'Updating...' : `→ ${nextStage.label}`}
-                  </button>
-                ) : (
-                  <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
-                    ✓ Complete
+                {/* Progress */}
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Progress — Step {currentIndex + 1} of {stages.length}</p>
+                  <div className="flex gap-1">
+                    {stages.map((stage, i) => (
+                      <div key={stage.key} className={`h-1.5 flex-1 rounded-full ${i <= currentIndex ? 'bg-primary' : 'bg-border'}`} />
+                    ))}
                   </div>
+                  <p className="text-xs text-muted-foreground mt-1">{stages[currentIndex]?.label}</p>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                  {prevStage && (
+                    <button
+                      onClick={() => onGoBack(order, prevStage)}
+                      disabled={isAdvancing}
+                      className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                    >
+                      ← Back
+                    </button>
+                  )}
+                  {!isComplete ? (
+                    <button
+                      onClick={() => onAdvance(order, nextStage)}
+                      disabled={isAdvancing}
+                      className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+                    >
+                      {isAdvancing ? 'Updating...' : `→ ${nextStage.label}`}
+                    </button>
+                  ) : (
+                    <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
+                      ✓ Complete
+                    </div>
+                  )}
+                </div>
+                {order.is_hub_order && (
+                  <p className="text-[10px] text-muted-foreground text-center">Status syncs to Hub through the existing order workflow controls.</p>
                 )}
-              </div>
-              {order.is_hub_order && (
-                <p className="text-[10px] text-muted-foreground text-center">Status syncs to Hub</p>
-              )}
+              </section>
             </div>
           </motion.div>
         )}
