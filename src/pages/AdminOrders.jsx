@@ -319,6 +319,93 @@ function HubTimelinePanel({ order }) {
   );
 }
 
+function generateRequestId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `hub-note-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function InternalHubNoteComposer({ order }) {
+  const [note, setNote] = useState('');
+  const trimmedNote = note.trim();
+  const hasIdentifiers = Boolean(order.hub_order_id || order.order_number);
+
+  const appendNoteMutation = useMutation({
+    mutationFn: async ({ requestId }) => {
+      const res = await base44.functions.invoke('appendAdminHubOrderNote', {
+        hub_order_id: order.hub_order_id || null,
+        order_number: order.order_number || null,
+        note: trimmedNote,
+        request_id: requestId,
+      });
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: (result) => {
+      if (result?.skipped && result?.reason === 'duplicate_request_id') {
+        toast.info('Note already submitted');
+      } else {
+        toast.success('Internal Hub note appended');
+      }
+      setNote('');
+    },
+    onError: () => {
+      toast.error('Unable to append internal Hub note');
+    },
+  });
+
+  if (!order.is_hub_order) return null;
+
+  const isDisabled = appendNoteMutation.isPending || !hasIdentifiers || !trimmedNote || trimmedNote.length > 1000;
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (isDisabled) return;
+    appendNoteMutation.mutate({ requestId: generateRequestId() });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-secondary/40 rounded-xl p-3 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Internal Hub Note</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Admin-only. Appends to Hub ops notes. Not customer-visible.</p>
+        </div>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Append-only</span>
+      </div>
+
+      {!hasIdentifiers ? (
+        <p className="text-xs text-muted-foreground italic">No Hub note identifiers available</p>
+      ) : (
+        <>
+          <textarea
+            value={note}
+            onChange={event => setNote(event.target.value)}
+            maxLength={1000}
+            rows={2}
+            placeholder="Add an internal operations note..."
+            className="w-full rounded-lg border border-border bg-background/80 p-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <span className={`text-[10px] ${trimmedNote.length > 1000 ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {trimmedNote.length}/1000
+            </span>
+            <button
+              type="submit"
+              disabled={isDisabled}
+              className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {appendNoteMutation.isPending ? 'Appending...' : 'Append Note'}
+            </button>
+          </div>
+        </>
+      )}
+    </form>
+  );
+}
+
 function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const [expanded, setExpanded] = useState(false);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
@@ -426,6 +513,8 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               </div>
 
               <HubOperationsPanel order={order} customerAppStatusLabel={customerAppStatusLabel} />
+
+              <InternalHubNoteComposer order={order} />
 
               <FulfillmentTasksPanel order={order} />
 
