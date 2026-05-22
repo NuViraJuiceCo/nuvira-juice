@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Truck,
+  UsersRound,
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -66,6 +67,19 @@ const sections = [
         route: '/admin/delivery-queue',
         description: 'Read-only delivery stops, proof visibility, drop locations, and completed deliveries.',
         icon: Truck,
+        badges: ['Read-only', 'Hub-backed'],
+      },
+    ],
+  },
+  {
+    title: 'Resources',
+    description: 'Team and equipment visibility',
+    cards: [
+      {
+        title: 'Resources',
+        route: '/admin/resources',
+        description: 'Read-only team and equipment visibility from Hub resources.',
+        icon: UsersRound,
         badges: ['Read-only', 'Hub-backed'],
       },
     ],
