@@ -83,14 +83,55 @@ function statusClass(status) {
   return 'bg-muted text-muted-foreground';
 }
 
+function isDoneStatus(status) {
+  const key = (status || '').toString().toLowerCase();
+  return ['verified_logged', 'completed', 'archived', 'fulfilled'].includes(key);
+}
+
+function isInProgressStatus(status) {
+  const key = (status || '').toString().toLowerCase();
+  return key === 'in_production' || key.includes('in progress');
+}
+
+function isNeedsVerificationStatus(status) {
+  const key = (status || '').toString().toLowerCase();
+  return key === 'completed_pending_verification' || key.includes('pending verification') || key.includes('needs verification');
+}
+
+function isShotCategory(category) {
+  return (category || '').toString().toLowerCase() === 'shot';
+}
+
+function getBatchTab(batch, today) {
+  if (isNeedsVerificationStatus(batch.status)) return 'verify';
+  if (isInProgressStatus(batch.status)) return 'in_progress';
+  if (isDoneStatus(batch.status) || (batch.production_date && batch.production_date < today)) return 'history';
+  return 'today';
+}
+
+function uniqueOptions(items, field) {
+  return [...new Set(items.map(item => item[field]).filter(Boolean))]
+    .sort((a, b) => formatLabel(a).localeCompare(formatLabel(b)));
+}
+
+function groupByProductionDate(items) {
+  return items.reduce((groups, batch) => {
+    const date = batch.production_date || 'unscheduled';
+    if (!groups[date]) groups[date] = [];
+    groups[date].push(batch);
+    return groups;
+  }, {});
+}
+
 function BatchCard({ batch }) {
+  const categoryAccent = isShotCategory(batch.product_category) ? 'border-l-amber-400' : 'border-l-primary';
+
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+    <div className={`rounded-xl border border-border/50 border-l-4 ${categoryAccent} bg-card p-4 space-y-3`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold text-muted-foreground">{formatDate(batch.production_date)}</p>
           <h2 className="font-heading text-lg font-bold text-foreground mt-0.5">{batch.product_name || 'Unnamed product'}</h2>
-          <p className="text-xs text-muted-foreground">{batch.product_category || 'Uncategorized'} · {batch.batch_id || 'No batch id'}</p>
+          <p className="text-xs text-muted-foreground">{batch.product_category || 'Uncategorized'}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {batch.is_locked && (
@@ -107,17 +148,22 @@ function BatchCard({ batch }) {
 
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg bg-secondary/50 p-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Planned</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Needed</p>
           <p className="text-sm font-bold">{batch.planned_units ?? '-'}</p>
         </div>
         <div className="rounded-lg bg-secondary/50 p-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Actual</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Produced</p>
           <p className="text-sm font-bold">{batch.actual_units ?? '-'}</p>
         </div>
         <div className="rounded-lg bg-secondary/50 p-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Orders</p>
           <p className="text-sm font-bold">{batch.order_count || 0}</p>
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Batch ID</p>
+        <p className="text-xs font-medium text-foreground break-words">{batch.batch_id || 'No batch id'}</p>
       </div>
 
       <div className="space-y-1.5">
@@ -139,12 +185,59 @@ function BatchCard({ batch }) {
   );
 }
 
+function ProductionDateSection({ date, batches, today }) {
+  const isToday = date === today;
+  const isPast = date !== 'unscheduled' && date < today;
+  const neededUnits = batches.reduce((total, batch) => total + (Number(batch.planned_units) || 0), 0);
+  const producedUnits = batches.reduce((total, batch) => total + (Number(batch.actual_units) || 0), 0);
+  const productCount = batches.length;
+  const headerClass = isToday
+    ? 'bg-primary/10 border-primary/30'
+    : isPast
+      ? 'bg-muted/40 border-border'
+      : 'bg-muted/30 border-border';
+  const titleClass = isToday ? 'text-primary' : 'text-foreground';
+  const dateLabel = date === 'unscheduled'
+    ? 'Production Date Pending'
+    : isToday
+      ? `Today - ${formatDate(date)}`
+      : formatDate(date);
+
+  return (
+    <section className="space-y-3">
+      <div className={`rounded-xl border p-3 ${headerClass}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className={`text-sm font-bold ${titleClass}`}>{dateLabel}</h2>
+            <p className="text-xs text-foreground/70 mt-0.5 font-medium">
+              {productCount} product{productCount !== 1 ? 's' : ''} · {neededUnits} needed
+              {` · ${producedUnits} produced`}
+            </p>
+          </div>
+          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-card/70 border border-border text-muted-foreground">
+            Hub Production
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {batches.map(batch => (
+          <BatchCard key={batch.id || batch.batch_id} batch={batch} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function ProductionQueueSummary() {
   const { user } = useAuth();
   const defaultFrom = useMemo(() => todayDate(), []);
   const defaultTo = useMemo(() => addDays(defaultFrom, 14), [defaultFrom]);
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(defaultTo);
+  const [tab, setTab] = useState('today');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const rangeDays = dateFrom && dateTo ? daysInclusive(dateFrom, dateTo) : null;
   const rangeInvalid = Boolean(!dateFrom || !dateTo || dateTo < dateFrom || rangeDays > 31);
@@ -173,7 +266,28 @@ export default function ProductionQueueSummary() {
     );
   }
 
-  const batches = data?.batches || [];
+  const allBatches = data?.batches || [];
+  const categoryOptions = uniqueOptions(allBatches, 'product_category');
+  const statusOptions = uniqueOptions(allBatches, 'status');
+  const filteredBatches = allBatches.filter(batch => {
+    if (categoryFilter !== 'all' && batch.product_category !== categoryFilter) return false;
+    if (statusFilter !== 'all' && batch.status !== statusFilter) return false;
+    return getBatchTab(batch, defaultFrom) === tab;
+  });
+  const groupedBatches = groupByProductionDate(filteredBatches);
+  const sortedDates = Object.keys(groupedBatches).sort((a, b) => {
+    if (a === 'unscheduled') return 1;
+    if (b === 'unscheduled') return -1;
+    return a.localeCompare(b);
+  });
+  const totalNeeded = filteredBatches.reduce((total, batch) => total + (Number(batch.planned_units) || 0), 0);
+
+  const tabs = [
+    { id: 'today', label: 'Today & Upcoming' },
+    { id: 'in_progress', label: 'In Progress' },
+    { id: 'verify', label: 'Needs Verification' },
+    { id: 'history', label: 'History' },
+  ];
 
   return (
     <div className="min-h-screen bg-background pb-10">
@@ -229,17 +343,65 @@ export default function ProductionQueueSummary() {
           <div className="rounded-xl border border-border/50 bg-card p-3">
             <Package className="w-4 h-4 text-primary mb-1" />
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Batches</p>
-            <p className="text-lg font-bold">{data?.count ?? 0}</p>
+            <p className="text-lg font-bold">{filteredBatches.length}</p>
           </div>
           <div className="rounded-xl border border-border/50 bg-card p-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Range</p>
-            <p className="text-lg font-bold">{rangeInvalid ? '-' : rangeDays}</p>
-            <p className="text-[10px] text-muted-foreground">days</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Needed</p>
+            <p className="text-lg font-bold">{totalNeeded}</p>
+            <p className="text-[10px] text-muted-foreground">units</p>
           </div>
           <div className="rounded-xl border border-border/50 bg-card p-3">
             <RefreshCw className={`w-4 h-4 text-primary mb-1 ${isFetching ? 'animate-spin' : ''}`} />
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Status</p>
             <p className="text-xs font-semibold">{isFetching ? 'Refreshing' : data?.truncated ? 'Truncated' : 'Current'}</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex gap-0 border-b overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+            {tabs.map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`shrink-0 whitespace-nowrap px-3 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors ${
+                  tab === item.id
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="space-y-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Category</span>
+              <select
+                value={categoryFilter}
+                onChange={event => setCategoryFilter(event.target.value)}
+                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="all">All</option>
+                {categoryOptions.map(category => (
+                  <option key={category} value={category}>{formatLabel(category)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Status</span>
+              <select
+                value={statusFilter}
+                onChange={event => setStatusFilter(event.target.value)}
+                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="all">All</option>
+                {statusOptions.map(status => (
+                  <option key={status} value={status}>{formatLabel(status)}</option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
 
@@ -252,20 +414,30 @@ export default function ProductionQueueSummary() {
             <p className="text-sm font-semibold text-destructive">Unable to load production queue summary</p>
             <p className="text-xs text-muted-foreground mt-1">{error?.message || 'Try again later.'}</p>
           </div>
-        ) : !rangeInvalid && batches.length === 0 ? (
+        ) : !rangeInvalid && allBatches.length === 0 ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
-            <p className="text-sm font-semibold text-foreground">No production batches found</p>
+            <p className="text-sm font-semibold text-foreground">No upcoming production scheduled</p>
             <p className="text-xs text-muted-foreground mt-1">This date range has no Hub production queue summary yet.</p>
           </div>
+        ) : !rangeInvalid && filteredBatches.length === 0 ? (
+          <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
+            <p className="text-sm font-semibold text-foreground">No production batches match this view</p>
+            <p className="text-xs text-muted-foreground mt-1">Try another Hub production tab, category, or status filter.</p>
+          </div>
         ) : !rangeInvalid ? (
-          <div className="space-y-3">
+          <div className="space-y-6">
             {data?.truncated && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
                 Results are capped at 100 batches. Narrow the date range for a complete view.
               </p>
             )}
-            {batches.map(batch => (
-              <BatchCard key={batch.id || batch.batch_id} batch={batch} />
+            {sortedDates.map(date => (
+              <ProductionDateSection
+                key={date}
+                date={date}
+                batches={groupedBatches[date]}
+                today={defaultFrom}
+              />
             ))}
           </div>
         ) : null}
