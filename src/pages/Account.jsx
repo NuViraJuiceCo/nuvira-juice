@@ -387,6 +387,23 @@ export default function Account() {
             <div className="px-4 py-2.5 border-b border-border/50 dark:border-primary/20">
               <p className="text-[10px] font-semibold text-foreground/50 dark:text-muted-foreground/75 uppercase tracking-wider">Admin Tools</p>
             </div>
+            <Link to="/admin/operations">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.74 }}
+                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
+              >
+                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
+                  <Settings className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">Operations</p>
+                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Hub-backed admin workspace</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
+              </motion.div>
+            </Link>
             <Link to="/admin/orders">
               <motion.div
                 initial={{ opacity: 0 }}
