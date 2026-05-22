@@ -39,6 +39,7 @@ import ProductionQueueSummary from '@/pages/admin/ProductionQueueSummary';
 import DeliveryQueue from '@/pages/admin/DeliveryQueue';
 import InventoryStatus from '@/pages/admin/InventoryStatus';
 import OpsAlerts from '@/pages/admin/OpsAlerts';
+import Operations from '@/pages/admin/Operations';
 import AdminProducts from '@/pages/admin/AdminProducts';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
@@ -151,6 +152,7 @@ const AuthenticatedApp = () => {
           <Route path="/contact" element={<Contact />} />
           <Route path="/partner" element={<Partner />} />
           <Route path="/book-event" element={<BookEvent />} />
+          <Route path="/admin/operations" element={<ProtectedRoute element={<Operations />} user={user} />} />
           <Route path="/admin/orders" element={<ProtectedRoute element={<AdminOrders />} user={user} />} />
           <Route path="/admin/production-queue" element={<ProtectedRoute element={<ProductionQueueSummary />} user={user} />} />
           <Route path="/admin/delivery-queue" element={<ProtectedRoute element={<DeliveryQueue />} user={user} />} />
