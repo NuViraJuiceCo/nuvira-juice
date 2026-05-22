@@ -37,6 +37,7 @@ import AdminOrders from '@/pages/AdminOrders';
 import ShopifyDashboard from '@/pages/admin/ShopifyDashboard';
 import ProductionQueueSummary from '@/pages/admin/ProductionQueueSummary';
 import DeliveryQueue from '@/pages/admin/DeliveryQueue';
+import InventoryStatus from '@/pages/admin/InventoryStatus';
 import AdminProducts from '@/pages/admin/AdminProducts';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
@@ -152,6 +153,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/orders" element={<ProtectedRoute element={<AdminOrders />} user={user} />} />
           <Route path="/admin/production-queue" element={<ProtectedRoute element={<ProductionQueueSummary />} user={user} />} />
           <Route path="/admin/delivery-queue" element={<ProtectedRoute element={<DeliveryQueue />} user={user} />} />
+          <Route path="/admin/inventory-status" element={<ProtectedRoute element={<InventoryStatus />} user={user} />} />
           <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
           <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
           <Route path="/admin/bag-returns" element={<ProtectedRoute element={<BagReturnAdmin />} user={user} />} />
