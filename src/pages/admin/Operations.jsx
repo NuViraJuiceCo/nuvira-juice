@@ -182,34 +182,44 @@ function OperationsSnapshot({ user }) {
   const [preset, setPreset] = useState('last_7_days');
   const [dateFrom, setDateFrom] = useState(addDays(today, -6));
   const [dateTo, setDateTo] = useState(today);
+  const [appliedDateFrom, setAppliedDateFrom] = useState(addDays(today, -6));
+  const [appliedDateTo, setAppliedDateTo] = useState(today);
   const isCustom = preset === 'custom';
-  const rangeError = isCustom ? validateRange(dateFrom, dateTo) : null;
+  const rangeError = validateRange(dateFrom, dateTo);
+  const requestDateFrom = isCustom ? appliedDateFrom : null;
+  const requestDateTo = isCustom ? appliedDateTo : null;
 
-  const queryKey = ['admin-operations-dashboard-summary', preset, dateFrom, dateTo];
+  const queryKey = ['admin-operations-dashboard-summary', preset, requestDateFrom, requestDateTo];
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
       const payload = isCustom
-        ? { preset: 'custom', date_from: dateFrom, date_to: dateTo }
+        ? { preset: 'custom', date_from: appliedDateFrom, date_to: appliedDateTo }
         : { preset };
       const res = await base44.functions.invoke('getAdminOperationsDashboardSummary', payload);
       const result = res?.data || res;
       if (result?.error) throw new Error(result.error);
       return result || { summary: {} };
     },
-    enabled: user?.role === 'admin' && !rangeError,
+    enabled: user?.role === 'admin',
     staleTime: 60000,
   });
 
   const summary = data?.summary || {};
+  const showError = isError && !data && !isFetching;
   const contextLabel = useMemo(() => {
+    if (isCustom) {
+      const hasCurrentResponse = data?.date_from === appliedDateFrom && data?.date_to === appliedDateTo;
+      const from = hasCurrentResponse ? data.date_from : appliedDateFrom;
+      const to = hasCurrentResponse ? data.date_to : appliedDateTo;
+      return `${formatDate(from)} - ${formatDate(to)}`;
+    }
     if (data?.date_from && data?.date_to) {
       return `${formatDate(data.date_from)} - ${formatDate(data.date_to)}`;
     }
-    if (isCustom) return `${formatDate(dateFrom)} - ${formatDate(dateTo)}`;
     const option = presetOptions.find(item => item.value === preset);
     return option?.label || 'Last 7 Days';
-  }, [data?.date_from, data?.date_to, dateFrom, dateTo, isCustom, preset]);
+  }, [appliedDateFrom, appliedDateTo, data?.date_from, data?.date_to, isCustom, preset]);
 
   const allZero = [
     summary.orders?.total,
@@ -247,7 +257,9 @@ function OperationsSnapshot({ user }) {
           <button
             key={option.value}
             type="button"
-            onClick={() => setPreset(option.value)}
+            onClick={() => {
+              setPreset(option.value);
+            }}
             className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
               preset === option.value
                 ? 'bg-primary text-primary-foreground border-primary'
@@ -266,7 +278,6 @@ function OperationsSnapshot({ user }) {
             type="date"
             value={dateFrom}
             onChange={(event) => {
-              setPreset('custom');
               setDateFrom(event.target.value);
             }}
             className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
@@ -278,12 +289,33 @@ function OperationsSnapshot({ user }) {
             type="date"
             value={dateTo}
             onChange={(event) => {
-              setPreset('custom');
               setDateTo(event.target.value);
             }}
             className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
           />
         </label>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={Boolean(rangeError)}
+          onClick={() => {
+            if (rangeError) return;
+            setAppliedDateFrom(dateFrom);
+            setAppliedDateTo(dateTo);
+            setPreset('custom');
+          }}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            rangeError
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : preset === 'custom' && appliedDateFrom === dateFrom && appliedDateTo === dateTo
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-background text-muted-foreground border-border hover:text-foreground'
+          }`}
+        >
+          Apply Range
+        </button>
       </div>
 
       {rangeError && (
@@ -292,7 +324,7 @@ function OperationsSnapshot({ user }) {
         </div>
       )}
 
-      {isError && (
+      {showError && (
         <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700">
           {error?.message || 'Unable to load operations snapshot.'}
         </div>
@@ -312,7 +344,7 @@ function OperationsSnapshot({ user }) {
         </div>
       ) : (
         <div className="space-y-4">
-          {allZero && !rangeError && !isError && (
+          {allZero && !showError && (
             <div className="rounded-lg border border-border/50 bg-background p-3 text-xs text-muted-foreground">
               No aggregate activity found for this range.
             </div>
