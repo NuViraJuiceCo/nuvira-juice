@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   BarChart3,
   Bell,
+  CalendarDays,
   ChevronRight,
   ClipboardList,
   Package,
@@ -47,6 +48,13 @@ const sections = [
         route: '/admin/production-queue',
         description: 'Read-only production batches and demand grouped by production date.',
         icon: Package,
+        badges: ['Read-only', 'Hub-backed'],
+      },
+      {
+        title: 'Production Planning',
+        route: '/admin/production-planning',
+        description: 'Read-only ingredient demand and production planning coverage.',
+        icon: CalendarDays,
         badges: ['Read-only', 'Hub-backed'],
       },
       {
