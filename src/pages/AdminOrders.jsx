@@ -237,6 +237,88 @@ function FulfillmentTasksPanel({ order }) {
   );
 }
 
+function HubTimelinePanel({ order }) {
+  const shouldFetchTimeline = Boolean(
+    order.is_hub_order &&
+    (order.hub_order_id || order.order_number || order.stripe_subscription_id || order.id)
+  );
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin-order-timeline', order.hub_order_id, order.order_number, order.stripe_subscription_id, order.id],
+    queryFn: async () => {
+      const timelineRequest = { limit: 50 };
+      if (order.hub_order_id) timelineRequest.hub_order_id = order.hub_order_id;
+      if (order.order_number) timelineRequest.order_number = order.order_number;
+      if (order.stripe_subscription_id) timelineRequest.stripe_subscription_id = order.stripe_subscription_id;
+      if (order.id) timelineRequest.customer_app_order_id = order.id;
+
+      const res = await base44.functions.invoke('getAdminOrderTimeline', timelineRequest);
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result || { events: [] };
+    },
+    enabled: shouldFetchTimeline,
+    staleTime: 60000,
+  });
+
+  if (!order.is_hub_order) return null;
+
+  const events = data?.events || [];
+
+  return (
+    <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hub Timeline</p>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Read-only</span>
+      </div>
+
+      {!shouldFetchTimeline ? (
+        <p className="text-xs text-muted-foreground italic">No Hub timeline identifiers available</p>
+      ) : isLoading ? (
+        <p className="text-xs text-muted-foreground italic">Loading Hub timeline...</p>
+      ) : isError ? (
+        <p className="text-xs text-destructive">Unable to load Hub timeline</p>
+      ) : events.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">No Hub timeline events found</p>
+      ) : (
+        <div className="space-y-2">
+          {events.map((event, index) => {
+            const proofLink = event.details?.delivery_photo_url ? (
+              <a
+                href={event.details.delivery_photo_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline underline-offset-2"
+              >
+                View proof photo
+              </a>
+            ) : null;
+            const eventWhen = event.timestamp ? formatDateTime(event.timestamp) : formatDateOnly(event.date);
+
+            return (
+              <div key={`${event.type}-${event.source}-${event.task_id || index}-${event.timestamp || event.date || index}`} className="rounded-lg border border-border/50 bg-background/60 p-2 space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-semibold text-foreground">{event.label || formatStatusLabel(event.type) || 'Hub Event'}</p>
+                  <span className="text-[10px] text-muted-foreground shrink-0">{eventWhen || 'Date pending'}</span>
+                </div>
+                <InfoRow label="Type" value={formatStatusLabel(event.type)} />
+                <InfoRow label="Source" value={formatStatusLabel(event.source)} />
+                <InfoRow label="Status" value={formatStatusLabel(event.status)} />
+                <InfoRow label="Fulfillment" value={event.fulfillment_number ? `#${event.fulfillment_number}` : null} />
+                <InfoRow label="Task ID" value={event.task_id} />
+                <InfoRow label="Window" value={event.delivery_window_label} />
+                <InfoRow label="Proof" value={event.details?.proof_available ? 'Available' : null} />
+                <InfoRow label="Proof Link" value={proofLink} />
+                <InfoRow label="Drop" value={event.details?.delivery_drop_location} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const [expanded, setExpanded] = useState(false);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
@@ -346,6 +428,8 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               <HubOperationsPanel order={order} customerAppStatusLabel={customerAppStatusLabel} />
 
               <FulfillmentTasksPanel order={order} />
+
+              <HubTimelinePanel order={order} />
 
               {/* Progress */}
               <div>
