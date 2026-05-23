@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
   AlertCircle,
@@ -55,6 +55,32 @@ function categorySelectOptions(alerts, selectedCategory) {
   return [...categories].sort((a, b) => a.localeCompare(b));
 }
 
+function normalizedStatus(status) {
+  return (status || '').toString().trim().toLowerCase();
+}
+
+function availableAlertActions(status) {
+  const key = normalizedStatus(status);
+  if (key === 'unread' || key === 'read') return ['acknowledge', 'resolve', 'dismiss'];
+  if (key === 'acknowledged') return ['resolve', 'dismiss'];
+  return [];
+}
+
+function isTerminalStatus(status) {
+  const key = normalizedStatus(status);
+  return key === 'resolved' || key === 'dismissed';
+}
+
+function generateRequestId(action, alertId) {
+  const randomPart = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+  return `ops_alert_${action}_${alertId}_${Date.now()}_${randomPart}`;
+}
+
+function sanitizeClientNote(value) {
+  const text = (value || '').toString().replace(/\s+/g, ' ').trim();
+  return text.length > 500 ? `${text.slice(0, 499).trim()}...` : text;
+}
+
 function StatCard({ icon: Icon, label, value, sublabel, isRefreshing }) {
   return (
     <div className="rounded-xl border border-border/50 bg-card p-3">
@@ -74,9 +100,31 @@ function Chip({ value, classNameFor }) {
   );
 }
 
-function AlertCard({ alert }) {
+function ActionButton({ children, onClick, disabled, variant = 'default' }) {
+  const variantClasses = {
+    default: 'border-border bg-background text-foreground hover:bg-secondary',
+    primary: 'border-primary/20 bg-primary text-primary-foreground hover:bg-primary/90',
+    muted: 'border-border bg-secondary text-secondary-foreground hover:bg-secondary/80',
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`h-8 rounded-lg border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${variantClasses[variant]}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AlertCard({ alert, feedback, pendingAction, onAction }) {
   const created = formatDateTime(alert.created_date);
   const updated = formatDateTime(alert.updated_date);
+  const actions = alert.id ? availableAlertActions(alert.status) : [];
+  const terminal = isTerminalStatus(alert.status);
+  const isPending = pendingAction?.alertId === alert.id;
 
   return (
     <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
@@ -118,16 +166,64 @@ function AlertCard({ alert }) {
         <p className="text-[10px] text-muted-foreground">Created: {created || 'Not set'}</p>
         <p className="text-[10px] text-muted-foreground sm:text-right">Updated: {updated || 'Not set'}</p>
       </div>
+
+      {(actions.length > 0 || terminal || feedback) && (
+        <div className="border-t border-border/40 pt-3 space-y-2">
+          {actions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {actions.includes('acknowledge') && (
+                <ActionButton
+                  onClick={() => onAction(alert, 'acknowledge')}
+                  disabled={isPending}
+                  variant="muted"
+                >
+                  {isPending && pendingAction.action === 'acknowledge' ? 'Acknowledging...' : 'Acknowledge'}
+                </ActionButton>
+              )}
+              {actions.includes('resolve') && (
+                <ActionButton
+                  onClick={() => onAction(alert, 'resolve')}
+                  disabled={isPending}
+                  variant="primary"
+                >
+                  {isPending && pendingAction.action === 'resolve' ? 'Resolving...' : 'Resolve'}
+                </ActionButton>
+              )}
+              {actions.includes('dismiss') && (
+                <ActionButton
+                  onClick={() => onAction(alert, 'dismiss')}
+                  disabled={isPending}
+                >
+                  {isPending && pendingAction.action === 'dismiss' ? 'Dismissing...' : 'Dismiss'}
+                </ActionButton>
+              )}
+            </div>
+          )}
+          {terminal && (
+            <p className="text-[10px] text-muted-foreground">
+              This alert is {formatLabel(alert.status).toLowerCase()}. No actions are available.
+            </p>
+          )}
+          {feedback && (
+            <p className={`text-[10px] font-medium ${feedback.type === 'error' ? 'text-destructive' : 'text-green-700'}`}>
+              {feedback.message}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 export default function OpsAlerts() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [pendingAction, setPendingAction] = useState(null);
+  const [feedbackByAlert, setFeedbackByAlert] = useState({});
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['admin-ops-alerts-summary', severityFilter, statusFilter, categoryFilter, search],
@@ -153,6 +249,63 @@ export default function OpsAlerts() {
   const summary = data?.summary || {};
   const categoryOptions = useMemo(() => categorySelectOptions(alerts, categoryFilter), [alerts, categoryFilter]);
 
+  const handleAlertAction = async (alert, action) => {
+    if (!alert?.id || pendingAction) return;
+
+    let resolutionNote = '';
+    if (action === 'resolve') {
+      const confirmed = window.confirm('Resolve this ops alert? This will mark it resolved in Operations Hub.');
+      if (!confirmed) return;
+      const note = window.prompt('Optional resolution note. Leave blank for no note.', '');
+      if (note === null) return;
+      resolutionNote = sanitizeClientNote(note);
+    }
+
+    if (action === 'dismiss') {
+      const confirmed = window.confirm('Dismiss this ops alert? Dismissed alerts are terminal.');
+      if (!confirmed) return;
+    }
+
+    const requestId = generateRequestId(action, alert.id);
+    setPendingAction({ alertId: alert.id, action });
+    setFeedbackByAlert(current => ({
+      ...current,
+      [alert.id]: null,
+    }));
+
+    try {
+      const payload = {
+        alert_id: alert.id,
+        action,
+        request_id: requestId,
+      };
+      if (action === 'resolve' && resolutionNote) payload.resolution_note = resolutionNote;
+
+      const res = await base44.functions.invoke('updateAdminOpsAlertStatus', payload);
+      const result = res?.data || res;
+      if (!result?.success) throw new Error('Alert update failed');
+
+      setFeedbackByAlert(current => ({
+        ...current,
+        [alert.id]: {
+          type: 'success',
+          message: `${formatLabel(action)} saved.`,
+        },
+      }));
+      await queryClient.invalidateQueries({ queryKey: ['admin-ops-alerts-summary'] });
+    } catch {
+      setFeedbackByAlert(current => ({
+        ...current,
+        [alert.id]: {
+          type: 'error',
+          message: 'Unable to update this alert. Refresh and try again.',
+        },
+      }));
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   if (user?.role !== 'admin') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
@@ -170,9 +323,9 @@ export default function OpsAlerts() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="font-heading text-2xl font-bold text-primary-foreground">Ops Alerts</h1>
-            <p className="text-primary-foreground/70 text-xs mt-0.5">Read-only operations inbox</p>
+            <p className="text-primary-foreground/70 text-xs mt-0.5">Sanitized operations inbox</p>
           </div>
-          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">Read-only</span>
+          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">Limited actions</span>
         </div>
       </div>
 
@@ -245,7 +398,7 @@ export default function OpsAlerts() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Alerts view</p>
-            <p className="text-[10px] text-muted-foreground">Sanitized alert visibility only. No acknowledge, resolve, or dismiss actions are available yet.</p>
+            <p className="text-[10px] text-muted-foreground">Sanitized alert visibility only. Acknowledge, resolve, and dismiss are available for active alerts only.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
@@ -274,7 +427,13 @@ export default function OpsAlerts() {
             )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {alerts.map(alert => (
-                <AlertCard key={alert.id || `${alert.title}-${alert.created_date}`} alert={alert} />
+                <AlertCard
+                  key={alert.id || `${alert.title}-${alert.created_date}`}
+                  alert={alert}
+                  feedback={feedbackByAlert[alert.id]}
+                  pendingAction={pendingAction}
+                  onAction={handleAlertAction}
+                />
               ))}
             </div>
           </div>
