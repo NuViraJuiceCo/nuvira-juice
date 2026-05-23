@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Activity,
   AlertTriangle,
   ArrowLeft,
   BarChart3,
@@ -114,6 +115,13 @@ const sections = [
         route: '/admin/ops-alerts',
         description: 'Read-only sanitized operations alerts without raw payloads or alert actions.',
         icon: Bell,
+        badges: ['Read-only', 'Hub-backed'],
+      },
+      {
+        title: 'Sync Health',
+        route: '/admin/sync-health',
+        description: 'Read-only bridge health with aggregate sync counts and sanitized error categories.',
+        icon: Activity,
         badges: ['Read-only', 'Hub-backed'],
       },
     ],
