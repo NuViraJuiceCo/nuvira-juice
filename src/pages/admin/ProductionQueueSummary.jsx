@@ -292,7 +292,7 @@ export default function ProductionQueueSummary() {
   return (
     <div className="min-h-screen bg-background pb-10">
       <div className="bg-primary px-4 pt-10 pb-5">
-        <Link to="/account" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
+        <Link to="/admin/operations" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
           <ArrowLeft className="w-4 h-4 text-white" />
         </Link>
         <div className="flex items-start justify-between gap-3">
@@ -337,6 +337,9 @@ export default function ProductionQueueSummary() {
               Showing production batches from {formatDate(dateFrom)} through {formatDate(dateTo)}.
             </p>
           )}
+          <p className="text-[10px] text-muted-foreground">
+            Read-only Hub data · No actions available here. Production Queue shows batch/date execution visibility; Production Planning shows ingredient demand and shortage visibility.
+          </p>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
