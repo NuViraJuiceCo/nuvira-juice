@@ -80,6 +80,19 @@ const sections = [
     ],
   },
   {
+    title: 'Schedule',
+    description: 'Calendar and event visibility',
+    cards: [
+      {
+        title: 'Calendar',
+        route: '/admin/calendar',
+        description: 'Read-only operations schedule with events plus aggregate production and delivery day summaries.',
+        icon: CalendarDays,
+        badges: ['Read-only', 'Hub-backed'],
+      },
+    ],
+  },
+  {
     title: 'Resources',
     description: 'Team and equipment visibility',
     cards: [
