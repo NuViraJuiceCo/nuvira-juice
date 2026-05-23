@@ -195,7 +195,7 @@ export default function InventoryStatus() {
   return (
     <div className="min-h-screen bg-background pb-10">
       <div className="bg-primary px-4 pt-10 pb-5">
-        <Link to="/account" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
+        <Link to="/admin/operations" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
           <ArrowLeft className="w-4 h-4 text-white" />
         </Link>
         <div className="flex items-start justify-between gap-3">
@@ -260,7 +260,7 @@ export default function InventoryStatus() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Inventory view</p>
-            <p className="text-[10px] text-muted-foreground">Preserved read-only stock summary from Hub.</p>
+            <p className="text-[10px] text-muted-foreground">Read-only Hub data · No actions available here.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>

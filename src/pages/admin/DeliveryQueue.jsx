@@ -145,14 +145,17 @@ function StopCard({ stop, completed }) {
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Proof</p>
           </div>
           {stop.delivery_photo_url ? (
-            <a
-              href={stop.delivery_photo_url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs font-semibold text-primary underline underline-offset-2 mt-1 inline-block"
-            >
-              View proof photo
-            </a>
+            <div className="mt-1">
+              <p className="text-[10px] text-muted-foreground font-semibold">Read-only evidence</p>
+              <a
+                href={stop.delivery_photo_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-semibold text-primary underline underline-offset-2 inline-block"
+              >
+                View proof photo
+              </a>
+            </div>
           ) : (
             <p className="text-xs font-medium mt-1">{stop.proof_available ? 'Proof available' : 'No proof yet'}</p>
           )}
@@ -250,7 +253,7 @@ export default function DeliveryQueue() {
   return (
     <div className="min-h-screen bg-background pb-10">
       <div className="bg-primary px-4 pt-10 pb-5">
-        <Link to="/account" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
+        <Link to="/admin/operations" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
           <ArrowLeft className="w-4 h-4 text-white" />
         </Link>
         <div className="flex items-start justify-between gap-3">
@@ -306,6 +309,7 @@ export default function DeliveryQueue() {
           <p className="text-xs text-muted-foreground">
             Showing Hub delivery route summary for {formatDate(deliveryDate)}.
           </p>
+          <p className="text-[10px] text-muted-foreground">Read-only Hub data · No actions available here.</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
