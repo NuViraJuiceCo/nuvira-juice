@@ -37,6 +37,7 @@ import AdminOrders from '@/pages/AdminOrders';
 import ShopifyDashboard from '@/pages/admin/ShopifyDashboard';
 import ProductionQueueSummary from '@/pages/admin/ProductionQueueSummary';
 import ProductionPlanning from '@/pages/admin/ProductionPlanning';
+import Calendar from '@/pages/admin/Calendar';
 import DeliveryQueue from '@/pages/admin/DeliveryQueue';
 import InventoryStatus from '@/pages/admin/InventoryStatus';
 import OpsAlerts from '@/pages/admin/OpsAlerts';
@@ -158,6 +159,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/orders" element={<ProtectedRoute element={<AdminOrders />} user={user} />} />
           <Route path="/admin/production-queue" element={<ProtectedRoute element={<ProductionQueueSummary />} user={user} />} />
           <Route path="/admin/production-planning" element={<ProtectedRoute element={<ProductionPlanning />} user={user} />} />
+          <Route path="/admin/calendar" element={<ProtectedRoute element={<Calendar />} user={user} />} />
           <Route path="/admin/delivery-queue" element={<ProtectedRoute element={<DeliveryQueue />} user={user} />} />
           <Route path="/admin/inventory-status" element={<ProtectedRoute element={<InventoryStatus />} user={user} />} />
           <Route path="/admin/ops-alerts" element={<ProtectedRoute element={<OpsAlerts />} user={user} />} />
