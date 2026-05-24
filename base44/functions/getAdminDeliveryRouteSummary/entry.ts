@@ -9,6 +9,17 @@ function normalizeText(value) {
   return (value || '').toString().trim();
 }
 
+function sanitizeAssignedDriver(value) {
+  const text = normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]');
+
+  if (!text) return null;
+  return text.length > 120 ? `${text.slice(0, 119).trim()}...` : text;
+}
+
 function todayChicagoDate() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: CHICAGO_TZ,
@@ -54,6 +65,7 @@ function sanitizeStop(stop) {
     order_number: stop.order_number || null,
     fulfillment_number: stop.fulfillment_number ?? null,
     source_type: stop.source_type || null,
+    assigned_driver: sanitizeAssignedDriver(stop.assigned_driver),
     task_status: stop.task_status || null,
     delivery_status: stop.delivery_status || null,
     fulfillment_status: stop.fulfillment_status || null,
