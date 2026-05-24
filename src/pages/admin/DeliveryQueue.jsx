@@ -95,6 +95,12 @@ function requestIdFor(action, taskId) {
   return `fulfillment_assignment_${action}_${taskId}_${Date.now()}_${randomId}`;
 }
 
+function outForDeliveryRequestId(taskId) {
+  const fallback = Math.random().toString(36).slice(2);
+  const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+  return `fulfillment_out_for_delivery_${taskId}_${Date.now()}_${randomId}`;
+}
+
 function BagReturnsValue({ value }) {
   if (value === null || value === undefined) return <span className="text-xs font-semibold">Not tracked</span>;
   return <span className="text-lg font-bold">{value}</span>;
@@ -236,6 +242,82 @@ function DriverAssignmentControls({ stop, onAssignmentSuccess }) {
   );
 }
 
+function OperationalStatusControls({ stop, onStatusSuccess }) {
+  const taskId = stop.task_id;
+  const status = normalizedStatus(stop.task_status);
+  const assignedDriver = trimDriverLabel(stop.assigned_driver);
+  const hasDriver = Boolean(assignedDriver);
+  const eligibleStatus = status === 'scheduled' || status === 'packed' || status === 'in transit';
+  const isOutForDelivery = status === 'out for delivery';
+
+  const [pendingTaskId, setPendingTaskId] = useState(null);
+  const [message, setMessage] = useState(null);
+  const pending = pendingTaskId === taskId;
+
+  if (isOutForDelivery) {
+    return (
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-2">
+        <p className="text-[10px] uppercase tracking-wider text-blue-700 font-semibold">Operational Status</p>
+        <p className="text-xs font-semibold text-blue-800 mt-1">Out For Delivery</p>
+      </div>
+    );
+  }
+
+  if (!taskId || !eligibleStatus) return null;
+
+  async function markOutForDelivery() {
+    if (!hasDriver) return;
+    if (!window.confirm('Mark this task as Out For Delivery in Operations? This will not notify the customer.')) return;
+
+    setPendingTaskId(taskId);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('markAdminFulfillmentTaskOutForDelivery', {
+        fulfillment_task_id: taskId,
+        request_id: outForDeliveryRequestId(taskId),
+        reason: 'Marked out for delivery from Delivery Queue.',
+      });
+      const result = res?.data || res;
+      if (!result?.success) throw new Error('out_for_delivery_failed');
+      setMessage({ type: 'success', text: 'Task marked Out For Delivery.' });
+      await onStatusSuccess?.();
+    } catch {
+      setMessage({ type: 'error', text: 'Unable to mark task out for delivery.' });
+    } finally {
+      setPendingTaskId(null);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-background p-2 space-y-2">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Operational Status</p>
+        <p className="text-[10px] text-muted-foreground">Operations-only status update. No customer notification.</p>
+      </div>
+
+      {hasDriver ? (
+        <button
+          type="button"
+          onClick={markOutForDelivery}
+          disabled={pending}
+          className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {pending ? 'Saving...' : 'Mark Out For Delivery'}
+        </button>
+      ) : (
+        <p className="text-xs font-semibold text-muted-foreground">Assign driver first</p>
+      )}
+
+      {message && (
+        <p className={`text-xs ${message.type === 'error' ? 'text-destructive' : 'text-green-700'}`}>
+          {message.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function StopCard({ stop, completed, onAssignmentSuccess }) {
   return (
     <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
@@ -335,6 +417,7 @@ function StopCard({ stop, completed, onAssignmentSuccess }) {
       </p>
 
       <DriverAssignmentControls stop={stop} onAssignmentSuccess={onAssignmentSuccess} />
+      <OperationalStatusControls stop={stop} onStatusSuccess={onAssignmentSuccess} />
     </div>
   );
 }
@@ -417,9 +500,9 @@ export default function DeliveryQueue() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="font-heading text-2xl font-bold text-primary-foreground">Delivery Queue</h1>
-            <p className="text-primary-foreground/70 text-xs mt-0.5">Hub delivery summary with controlled driver assignment</p>
+            <p className="text-primary-foreground/70 text-xs mt-0.5">Hub delivery summary with controlled operational actions</p>
           </div>
-          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">Assignment v1</span>
+          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">Ops v1</span>
         </div>
       </div>
 
@@ -467,7 +550,7 @@ export default function DeliveryQueue() {
           <p className="text-xs text-muted-foreground">
             Showing Hub delivery route summary for {formatDate(deliveryDate)}.
           </p>
-          <p className="text-[10px] text-muted-foreground">Hub data · Driver assignment only for active scheduled tasks.</p>
+          <p className="text-[10px] text-muted-foreground">Hub data · Driver assignment and operational Out For Delivery only for eligible active tasks.</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
