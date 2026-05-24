@@ -5,7 +5,9 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const FUNCTION_NAME = 'syncAdminSingleHubDeliveryStatus';
 const HUB_GUARD_UNAVAILABLE_WARNING = 'hub_guard_fields_unavailable: Live sync is blocked because Hub sync/exclusion guard fields are unavailable from the scoped Hub response.';
 const APPROVED_TEST_EMAILS = new Set(['delivered-test@nuvirajuice.com']);
+const APPROVED_TEST_ORDER_NUMBER = 'NV-TEST-G15E-DELIVERED';
 const APPROVED_TEST_ORDER_PATTERN = /^NV-TEST-G15E-DELIVERED(?:-[A-Z0-9-]+)?$/;
+const APPROVED_SYNTHETIC_HUB_ORDER_ID_PREFIX = 'TEST-NONPROVIDER-';
 const TERMINAL_STATUSES = new Set(['delivered', 'picked_up', 'cancelled', 'refunded']);
 const BLOCKED_HUB_STATUSES = new Set(['refunded', 'cancelled', 'canceled']);
 const ALLOWED_BODY_KEYS = new Set([
@@ -123,19 +125,75 @@ function hasOwnField(source, fieldName) {
   return Boolean(source && Object.prototype.hasOwnProperty.call(source, fieldName));
 }
 
-function hasProviderOrPaymentIds(order, hubOrder) {
+function hasCustomerContactOrAddress(order, hubOrder) {
+  const fields = [
+    order?.contact_phone,
+    order?.customer_phone,
+    order?.delivery_address,
+    order?.address_line1,
+    order?.address_line2,
+    order?.address_city,
+    order?.address_state,
+    order?.address_postal_code,
+    hubOrder?.customer_phone,
+    hubOrder?.phone,
+    hubOrder?.delivery_address,
+    hubOrder?.address_line1,
+    hubOrder?.address_line2,
+    hubOrder?.address_city,
+    hubOrder?.address_state,
+    hubOrder?.address_postal_code,
+  ];
+
+  return fields.some((field) => Boolean(normalizeSingleLine(field)));
+}
+
+function isApprovedSyntheticHubOrderId(value) {
+  return normalizeSingleLine(value).startsWith(APPROVED_SYNTHETIC_HUB_ORDER_ID_PREFIX);
+}
+
+function isApprovedSyntheticTestPath({ order, hubOrder, allowTestOrder }) {
+  const caEmail = normalizeEmail(order?.customer_email);
+  const orderNumber = normalizeOrderNumber(order?.order_number);
+
+  return APPROVED_TEST_EMAILS.has(caEmail) &&
+    hubEmailMatches(hubOrder, caEmail) &&
+    orderNumber === APPROVED_TEST_ORDER_NUMBER &&
+    order?.is_test_order === true &&
+    allowTestOrder === true &&
+    hasFakeMarker(order) &&
+    !hasProofOrDrop(order, hubOrder) &&
+    !hasCustomerContactOrAddress(order, hubOrder);
+}
+
+function getProviderPaymentGuard({ order, hubOrder, allowTestOrder }) {
   const caKeys = [
     'stripe_payment_intent_id',
     'stripe_checkout_session_id',
     'stripe_subscription_id',
     'shopify_order_id',
   ];
-  const hubKeys = [
-    'shopify_order_id',
-    'stripe_subscription_id',
-  ];
-  return caKeys.some((key) => Boolean(normalizeSingleLine(order?.[key]))) ||
-    hubKeys.some((key) => Boolean(normalizeSingleLine(hubOrder?.[key])));
+  const hubStripeKeys = ['stripe_subscription_id'];
+  const caHasProviderOrPaymentId = caKeys.some((key) => Boolean(normalizeSingleLine(order?.[key])));
+  const hubHasStripeId = hubStripeKeys.some((key) => Boolean(normalizeSingleLine(hubOrder?.[key])));
+  const hubShopifyOrderId = normalizeSingleLine(hubOrder?.shopify_order_id);
+
+  if (!hubShopifyOrderId) {
+    return {
+      blocked: caHasProviderOrPaymentId || hubHasStripeId,
+      syntheticAllowed: false,
+    };
+  }
+
+  const syntheticAllowed = isApprovedSyntheticHubOrderId(hubShopifyOrderId) &&
+    isApprovedSyntheticTestPath({ order, hubOrder, allowTestOrder }) &&
+    !caHasProviderOrPaymentId &&
+    !hubHasStripeId;
+
+  return {
+    blocked: caHasProviderOrPaymentId || hubHasStripeId || !syntheticAllowed,
+    syntheticAllowed,
+  };
 }
 
 function hasProofOrDrop(order, hubOrder) {
@@ -251,6 +309,7 @@ function buildGuardWarnings({ order, hubOrder, hubMatches, mappedStatus, hubProd
   const hubProduction = normalizeLower(hubProductionStatus);
   const hubFulfillment = normalizeLower(hubFulfillmentStatus);
   const hubSyncStatus = normalizeLower(hubOrder?.sync_status);
+  const providerPaymentGuard = getProviderPaymentGuard({ order, hubOrder, allowTestOrder });
 
   if (!dryRun && !requestId) warnings.push('live mode requires request_id');
   if (!dryRun && confirm !== true) warnings.push('live mode requires confirm=true');
@@ -275,7 +334,8 @@ function buildGuardWarnings({ order, hubOrder, hubMatches, mappedStatus, hubProd
   if (hubSyncStatus === 'do_not_sync') warnings.push('hub order is do_not_sync');
   if (hubOrderIsExcluded(hubOrder)) warnings.push('hub order is excluded');
   if (hasProofOrDrop(order, hubOrder)) warnings.push('proof/drop fields are present while proof/drop are out of scope');
-  if (hasProviderOrPaymentIds(order, hubOrder)) warnings.push('provider/payment identifiers are present');
+  if (providerPaymentGuard.blocked) warnings.push('provider/payment identifiers are present');
+  if (dryRun && providerPaymentGuard.syntheticAllowed) warnings.push('synthetic_nonprovider_id_allowed_for_test');
   if (hubMatches.length > 1) warnings.push('multiple matching Hub orders found');
 
   return warnings;
@@ -455,7 +515,8 @@ Deno.serve(async (req) => {
       allowTestOrder,
     });
     const alreadyDelivered = normalizeLower(order?.status) === 'delivered';
-    const liveAllowed = warnings.length === 0;
+    const blockingWarnings = warnings.filter((warning) => warning !== 'synthetic_nonprovider_id_allowed_for_test');
+    const liveAllowed = blockingWarnings.length === 0;
 
     if (dryRun) {
       return Response.json(buildSafeResponse({
@@ -511,9 +572,10 @@ Deno.serve(async (req) => {
 
     if (!liveAllowed) {
       const hubGuardUnavailable = warnings.includes(HUB_GUARD_UNAVAILABLE_WARNING);
+      const providerLinkageBlocked = warnings.includes('provider/payment identifiers are present');
       return Response.json({
         error: 'Scoped delivered sync guard failed',
-        error_code: hubGuardUnavailable ? 'hub_guard_fields_unavailable' : 'scoped_delivered_sync_guard_failed',
+        error_code: hubGuardUnavailable ? 'hub_guard_fields_unavailable' : providerLinkageBlocked ? 'provider_linkage_blocked' : 'scoped_delivered_sync_guard_failed',
         warnings: warnings.map((warning) => sanitizeText(warning, 160)).filter(Boolean),
       }, { status: 409 });
     }
