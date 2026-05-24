@@ -3,6 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const FUNCTION_NAME = 'syncAdminSingleHubDeliveryStatus';
+const HUB_GUARD_UNAVAILABLE_WARNING = 'hub_guard_fields_unavailable: Live sync is blocked because Hub sync/exclusion guard fields are unavailable from the scoped Hub response.';
 const APPROVED_TEST_EMAILS = new Set(['delivered-test@nuvirajuice.com']);
 const APPROVED_TEST_ORDER_PATTERN = /^NV-TEST-G15E-DELIVERED(?:-[A-Z0-9-]+)?$/;
 const TERMINAL_STATUSES = new Set(['delivered', 'picked_up', 'cancelled', 'refunded']);
@@ -14,59 +15,6 @@ const ALLOWED_BODY_KEYS = new Set([
   'dry_run',
   'confirm',
   'allow_test_order',
-]);
-const FORBIDDEN_BODY_KEYS = new Set([
-  'customer_email',
-  'customer_name',
-  'customer_phone',
-  'customer_address',
-  'address',
-  'delivery_address',
-  'address_line1',
-  'address_line2',
-  'address_city',
-  'address_state',
-  'address_postal_code',
-  'hub_order',
-  'raw_hub_order',
-  'customer_app_order',
-  'raw_customer_app_order',
-  'raw_order',
-  'order',
-  'payload',
-  'raw_payload',
-  'status',
-  'new_status',
-  'status_override',
-  'notification',
-  'notification_override',
-  'notify_customer',
-  'send_notification',
-  'proof',
-  'proof_url',
-  'proof_file',
-  'proof_photo_url',
-  'photo',
-  'photo_url',
-  'delivery_photo_url',
-  'drop_location',
-  'delivery_drop_location',
-  'provider_id',
-  'provider_ids',
-  'shopify_order_id',
-  'stripe_payment_intent_id',
-  'stripe_checkout_session_id',
-  'stripe_subscription_id',
-  'payment_status',
-  'financial_status',
-  'headers',
-  'authorization',
-  'auth_header',
-  'secret',
-  'token',
-  'api_key',
-  'api-key',
-  'bulk_ids',
 ]);
 
 function normalizeText(value) {
@@ -165,16 +113,14 @@ function findForbiddenBodyKey(body) {
   for (const key of Object.keys(body)) {
     const normalized = normalizeLower(key);
     if (ALLOWED_BODY_KEYS.has(normalized)) continue;
-    if (FORBIDDEN_BODY_KEYS.has(normalized)) return key;
-    if (/(^|_)(customer|order|task|batch|inventory|review_queue|delivery|route|proof|provider|payment)_(id|ids|status|update|mutation|payload|name|email|phone|address|fields|url|file)$/i.test(normalized)) {
-      return key;
-    }
-    if (/(^|_)(header|headers|authorization|auth|secret|token|api_key|api-key)$/i.test(normalized)) {
-      return key;
-    }
+    return key;
   }
 
   return null;
+}
+
+function hasOwnField(source, fieldName) {
+  return Boolean(source && Object.prototype.hasOwnProperty.call(source, fieldName));
 }
 
 function hasProviderOrPaymentIds(order, hubOrder) {
@@ -228,6 +174,27 @@ function buildNotificationKey(orderId) {
   return `order_status_${orderId}_delivered`;
 }
 
+function hubGuardFieldsAvailable(hubOrder) {
+  const hasSyncStatus = hasOwnField(hubOrder, 'sync_status');
+  const hasExclusionMarker = hasOwnField(hubOrder, 'tags') ||
+    hasOwnField(hubOrder, 'excluded') ||
+    hasOwnField(hubOrder, 'is_excluded');
+
+  return hasSyncStatus && hasExclusionMarker;
+}
+
+function hubOrderIsExcluded(hubOrder) {
+  const hubTags = Array.isArray(hubOrder?.tags) ? hubOrder.tags.map((tag) => normalizeLower(tag)) : [];
+  return hubTags.includes('excluded') ||
+    hubOrder?.excluded === true ||
+    hubOrder?.is_excluded === true;
+}
+
+function deliveredHistoryPresent(order) {
+  const history = Array.isArray(order?.status_history) ? order.status_history : [];
+  return history.some((entry) => normalizeLower(entry?.status) === 'delivered');
+}
+
 function buildSafeResponse({
   dryRun,
   order,
@@ -243,6 +210,7 @@ function buildSafeResponse({
   notificationKey,
   notificationExistingCount,
   notificationExpected,
+  deliveredHistoryPresent: deliveredHistory = null,
   skipped = false,
   requestId = null,
   warnings = [],
@@ -265,6 +233,7 @@ function buildSafeResponse({
     notification_key: sanitizeText(notificationKey, 180) || null,
     notification_existing_count: notificationExistingCount,
     notification_expected: notificationExpected === true,
+    delivered_history_present: deliveredHistory === null ? null : deliveredHistory === true,
     skipped: skipped === true,
     request_id: sanitizeText(requestId, 160) || null,
     warnings: warnings.map((warning) => sanitizeText(warning, 160)).filter(Boolean),
@@ -282,10 +251,12 @@ function buildGuardWarnings({ order, hubOrder, hubMatches, mappedStatus, hubProd
   const hubProduction = normalizeLower(hubProductionStatus);
   const hubFulfillment = normalizeLower(hubFulfillmentStatus);
   const hubSyncStatus = normalizeLower(hubOrder?.sync_status);
-  const hubTags = Array.isArray(hubOrder?.tags) ? hubOrder.tags.map((tag) => normalizeLower(tag)) : [];
 
   if (!dryRun && !requestId) warnings.push('live mode requires request_id');
   if (!dryRun && confirm !== true) warnings.push('live mode requires confirm=true');
+  if (!hubGuardFieldsAvailable(hubOrder)) {
+    warnings.push(HUB_GUARD_UNAVAILABLE_WARNING);
+  }
   if (!APPROVED_TEST_EMAILS.has(caEmail)) warnings.push('customer app email is not an approved test inbox');
   if (!hubEmailMatches(hubOrder, caEmail)) warnings.push('hub email does not match customer app test inbox');
   if (!orderMatchesApprovedPattern(orderNumber)) warnings.push('order number does not match approved fake delivered test pattern');
@@ -302,7 +273,7 @@ function buildGuardWarnings({ order, hubOrder, hubMatches, mappedStatus, hubProd
   if (!isValidIsoTimestamp(deliveredAt)) warnings.push('hub delivered_at is missing or invalid');
   if (BLOCKED_HUB_STATUSES.has(hubProduction) || BLOCKED_HUB_STATUSES.has(hubFulfillment)) warnings.push('hub order is refunded or cancelled');
   if (hubSyncStatus === 'do_not_sync') warnings.push('hub order is do_not_sync');
-  if (hubTags.includes('excluded')) warnings.push('hub order is excluded');
+  if (hubOrderIsExcluded(hubOrder)) warnings.push('hub order is excluded');
   if (hasProofOrDrop(order, hubOrder)) warnings.push('proof/drop fields are present while proof/drop are out of scope');
   if (hasProviderOrPaymentIds(order, hubOrder)) warnings.push('provider/payment identifiers are present');
   if (hubMatches.length > 1) warnings.push('multiple matching Hub orders found');
@@ -412,7 +383,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const forbiddenKey = findForbiddenBodyKey(body);
     if (forbiddenKey) {
-      return Response.json({ error: `Unsupported field: ${forbiddenKey}` }, { status: 400 });
+      return Response.json({
+        error: `Unsupported field: ${sanitizeText(forbiddenKey, 80)}`,
+        error_code: 'unsupported_field',
+      }, { status: 400 });
     }
 
     const dryRun = body.dry_run !== false;
@@ -465,6 +439,7 @@ Deno.serve(async (req) => {
     const notificationKey = buildNotificationKey(order.id);
     const notificationExistingCount = await countDeliveredNotifications(ca, notificationKey);
     const previousStatus = sanitizeText(order?.status, 40);
+    const deliveredHistory = deliveredHistoryPresent(order);
     const statusHistoryWouldAppend = mappedStatus === 'delivered' && previousStatus !== 'delivered';
     const warnings = buildGuardWarnings({
       order,
@@ -496,12 +471,21 @@ Deno.serve(async (req) => {
         notificationKey,
         notificationExistingCount,
         notificationExpected: mappedStatus === 'delivered' && previousStatus !== 'delivered',
+        deliveredHistoryPresent: deliveredHistory,
         warnings,
         liveAllowed,
       }));
     }
 
     if (alreadyDelivered) {
+      const alreadyDeliveredWarnings = [...warnings, 'customer app order already delivered; no write performed'];
+      if (!deliveredHistory) {
+        alreadyDeliveredWarnings.push('delivered status_history entry was not detected');
+      }
+      if (notificationExistingCount === 0) {
+        alreadyDeliveredWarnings.push('delivered notification was not detected');
+      }
+
       return Response.json(buildSafeResponse({
         dryRun: false,
         order,
@@ -517,16 +501,19 @@ Deno.serve(async (req) => {
         notificationKey,
         notificationExistingCount,
         notificationExpected: false,
+        deliveredHistoryPresent: deliveredHistory,
         skipped: true,
         requestId,
-        warnings: [...warnings, 'customer app order already delivered; no write performed'],
+        warnings: alreadyDeliveredWarnings,
         liveAllowed: false,
       }));
     }
 
     if (!liveAllowed) {
+      const hubGuardUnavailable = warnings.includes(HUB_GUARD_UNAVAILABLE_WARNING);
       return Response.json({
         error: 'Scoped delivered sync guard failed',
+        error_code: hubGuardUnavailable ? 'hub_guard_fields_unavailable' : 'scoped_delivered_sync_guard_failed',
         warnings: warnings.map((warning) => sanitizeText(warning, 160)).filter(Boolean),
       }, { status: 409 });
     }
@@ -548,6 +535,7 @@ Deno.serve(async (req) => {
         notificationKey,
         notificationExistingCount,
         notificationExpected: false,
+        deliveredHistoryPresent: deliveredHistory,
         skipped: true,
         requestId,
         warnings: ['duplicate request_id already processed; no write performed'],
@@ -595,6 +583,7 @@ Deno.serve(async (req) => {
       notificationKey,
       notificationExistingCount,
       notificationExpected: true,
+      deliveredHistoryPresent: true,
       skipped: false,
       requestId,
       warnings: [],
