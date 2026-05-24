@@ -114,7 +114,7 @@ function StopCard({ stop, completed }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="rounded-lg bg-secondary/50 p-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Delivery Window</p>
           <p className="text-sm font-bold">{stop.delivery_window_label || 'Window pending'}</p>
@@ -122,6 +122,10 @@ function StopCard({ stop, completed }) {
         <div className="rounded-lg bg-secondary/50 p-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source</p>
           <p className="text-sm font-bold">{sourceTypeLabel(stop.source_type)}</p>
+        </div>
+        <div className="rounded-lg bg-secondary/50 p-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Assigned Driver</p>
+          <p className="text-sm font-bold break-words">{stop.assigned_driver || 'Unassigned'}</p>
         </div>
       </div>
 
