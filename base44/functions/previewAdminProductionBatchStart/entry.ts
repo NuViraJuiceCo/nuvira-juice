@@ -37,6 +37,18 @@ function sanitizeText(value, maxLength = 160) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
+function sanitizeAdminPreviewText(value, maxLength = 160) {
+  const text = normalizeSingleLine(value)
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Circle|Cir|Way|Place|Pl)\b/gi, '[redacted address]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]')
+    .replace(/\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, '[redacted token]');
+
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
 function normalizeId(value, fieldName, required = true) {
   const text = normalizeSingleLine(value);
   if (!text) {
@@ -87,6 +99,30 @@ function safeCountMap(value) {
   );
 }
 
+function safeOrderSourceSummaries(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, SAFE_ARRAY_LIMIT)
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+      const summary = {};
+      const sourceType = sanitizeAdminPreviewText(item.source_type, 80);
+      const orderNumber = sanitizeAdminPreviewText(item.order_number, 80);
+      const customerName = sanitizeAdminPreviewText(item.customer_name, 100);
+      const customerEmail = sanitizeAdminPreviewText(item.customer_email, 120);
+      const fulfillmentType = sanitizeAdminPreviewText(item.fulfillment_type, 80);
+
+      if (sourceType) summary.source_type = sourceType;
+      if (orderNumber) summary.order_number = orderNumber;
+      if (customerName) summary.customer_name = customerName;
+      if (customerEmail) summary.customer_email = customerEmail;
+      if (fulfillmentType) summary.fulfillment_type = fulfillmentType;
+
+      return Object.keys(summary).length > 0 ? summary : null;
+    })
+    .filter(Boolean);
+}
+
 function sanitizeHubPreviewResponse(data, requestId) {
   return {
     success: data?.success === true,
@@ -98,6 +134,12 @@ function sanitizeHubPreviewResponse(data, requestId) {
     is_locked: data?.is_locked === true,
     order_sources_count: Number(data?.order_sources_count) || 0,
     order_source_type_counts: safeCountMap(data?.order_source_type_counts),
+    order_number_count: Number(data?.order_number_count) || 0,
+    customer_context_present: data?.customer_context_present === true,
+    customer_context_allowed_for_preview: data?.customer_context_allowed_for_preview === true,
+    order_sources_preview_allowed: data?.order_sources_preview_allowed === true,
+    customer_data_blocking: data?.customer_data_blocking === true,
+    safe_order_source_summaries: safeOrderSourceSummaries(data?.safe_order_source_summaries),
     manual_source_count: Number(data?.manual_source_count) || 0,
     linked_task_count: Number(data?.linked_task_count) || 0,
     linked_order_count: Number(data?.linked_order_count) || 0,
