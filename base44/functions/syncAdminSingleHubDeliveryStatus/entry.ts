@@ -5,11 +5,60 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const FUNCTION_NAME = 'syncAdminSingleHubDeliveryStatus';
 const HUB_GUARD_UNAVAILABLE_WARNING = 'hub_guard_fields_unavailable: Live sync is blocked because Hub sync/exclusion guard fields are unavailable from the scoped Hub response.';
 const APPROVED_TEST_EMAILS = new Set(['delivered-test@nuvirajuice.com']);
+const APPROVED_TEST_CUSTOMER_NAME = 'G15E Delivered Test - No Customer';
 const APPROVED_TEST_ORDER_NUMBER = 'NV-TEST-G15E-DELIVERED';
 const APPROVED_TEST_ORDER_PATTERN = /^NV-TEST-G15E-DELIVERED(?:-[A-Z0-9-]+)?$/;
 const APPROVED_SYNTHETIC_HUB_ORDER_ID_PREFIX = 'TEST-NONPROVIDER-';
 const TERMINAL_STATUSES = new Set(['delivered', 'picked_up', 'cancelled', 'refunded']);
 const BLOCKED_HUB_STATUSES = new Set(['refunded', 'cancelled', 'canceled']);
+const SAFE_PROVIDER_PAYMENT_KEYS = new Set([
+  'payment_status',
+  'financial_status',
+  'payment_captured',
+  'production_status',
+  'fulfillment_status',
+  'order_status',
+  'order_number',
+  'shopify_order_number',
+]);
+const PROVIDER_PAYMENT_KEY_TERMS = [
+  'stripe',
+  'shopify',
+  'payment',
+  'payment_intent',
+  'checkout_session',
+  'session_id',
+  'subscription_id',
+  'provider',
+  'external_id',
+  'gateway',
+  'transaction',
+  'charge',
+  'invoice',
+  'payment_method',
+  'processor',
+  'fulfillment_provider',
+];
+const CONTACT_ADDRESS_KEY_TERMS = [
+  'phone',
+  'address',
+  'shipping',
+  'billing',
+  'street',
+  'city',
+  'state',
+  'zip',
+  'postal',
+  'apartment',
+  'unit',
+  'lat',
+  'lng',
+  'longitude',
+  'latitude',
+  'geo',
+  'contact_phone',
+  'customer_phone',
+];
 const ALLOWED_BODY_KEYS = new Set([
   'order_id',
   'order_number',
@@ -125,27 +174,73 @@ function hasOwnField(source, fieldName) {
   return Boolean(source && Object.prototype.hasOwnProperty.call(source, fieldName));
 }
 
+function normalizeFieldKey(key) {
+  const snake = (key ?? '').toString().trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase();
+
+  return {
+    snake,
+    compact: snake.replace(/[^a-z0-9]/g, ''),
+  };
+}
+
+function fieldKeyMatchesTerms(key, terms) {
+  const normalized = normalizeFieldKey(key);
+  return terms.some((term) => {
+    const normalizedTerm = normalizeFieldKey(term);
+    return normalized.snake.includes(normalizedTerm.snake) ||
+      normalized.compact.includes(normalizedTerm.compact);
+  });
+}
+
+function hasMeaningfulFieldValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return Boolean(normalizeSingleLine(value));
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return Boolean(normalizeSingleLine(value));
+}
+
+function findUnsafeFieldKeys(source, { terms, safeKeys = new Set(), isAllowed = () => false }) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return [];
+
+  return Object.entries(source).reduce((keys, [key, value]) => {
+    if (!hasMeaningfulFieldValue(value)) return keys;
+
+    const normalized = normalizeFieldKey(key);
+    if (safeKeys.has(normalized.snake) || safeKeys.has(normalized.compact)) return keys;
+    if (isAllowed({ key, normalized, value })) return keys;
+    if (fieldKeyMatchesTerms(key, terms)) keys.push(normalized.snake || 'unknown_field');
+
+    return keys;
+  }, []);
+}
+
+function isApprovedTestContactField({ normalized, value }) {
+  const fieldValue = normalizeSingleLine(value);
+  if (normalized.compact.includes('email')) {
+    return APPROVED_TEST_EMAILS.has(normalizeEmail(fieldValue));
+  }
+  if (normalized.compact.includes('name')) {
+    return fieldValue === APPROVED_TEST_CUSTOMER_NAME;
+  }
+  return false;
+}
+
 function hasCustomerContactOrAddress(order, hubOrder) {
-  const fields = [
-    order?.contact_phone,
-    order?.customer_phone,
-    order?.delivery_address,
-    order?.address_line1,
-    order?.address_line2,
-    order?.address_city,
-    order?.address_state,
-    order?.address_postal_code,
-    hubOrder?.customer_phone,
-    hubOrder?.phone,
-    hubOrder?.delivery_address,
-    hubOrder?.address_line1,
-    hubOrder?.address_line2,
-    hubOrder?.address_city,
-    hubOrder?.address_state,
-    hubOrder?.address_postal_code,
+  const unsafeKeys = [
+    ...findUnsafeFieldKeys(order, {
+      terms: CONTACT_ADDRESS_KEY_TERMS,
+      isAllowed: isApprovedTestContactField,
+    }),
+    ...findUnsafeFieldKeys(hubOrder, {
+      terms: CONTACT_ADDRESS_KEY_TERMS,
+      isAllowed: isApprovedTestContactField,
+    }),
   ];
 
-  return fields.some((field) => Boolean(normalizeSingleLine(field)));
+  return unsafeKeys.length > 0;
 }
 
 function isApprovedSyntheticHubOrderId(value) {
@@ -167,32 +262,28 @@ function isApprovedSyntheticTestPath({ order, hubOrder, allowTestOrder }) {
 }
 
 function getProviderPaymentGuard({ order, hubOrder, allowTestOrder }) {
-  const caKeys = [
-    'stripe_payment_intent_id',
-    'stripe_checkout_session_id',
-    'stripe_subscription_id',
-    'shopify_order_id',
-  ];
-  const hubStripeKeys = ['stripe_subscription_id'];
-  const caHasProviderOrPaymentId = caKeys.some((key) => Boolean(normalizeSingleLine(order?.[key])));
-  const hubHasStripeId = hubStripeKeys.some((key) => Boolean(normalizeSingleLine(hubOrder?.[key])));
   const hubShopifyOrderId = normalizeSingleLine(hubOrder?.shopify_order_id);
+  const syntheticAllowed = Boolean(hubShopifyOrderId) &&
+    isApprovedSyntheticHubOrderId(hubShopifyOrderId) &&
+    isApprovedSyntheticTestPath({ order, hubOrder, allowTestOrder });
 
-  if (!hubShopifyOrderId) {
-    return {
-      blocked: caHasProviderOrPaymentId || hubHasStripeId,
-      syntheticAllowed: false,
-    };
-  }
-
-  const syntheticAllowed = isApprovedSyntheticHubOrderId(hubShopifyOrderId) &&
-    isApprovedSyntheticTestPath({ order, hubOrder, allowTestOrder }) &&
-    !caHasProviderOrPaymentId &&
-    !hubHasStripeId;
+  const caUnsafeKeys = findUnsafeFieldKeys(order, {
+    terms: PROVIDER_PAYMENT_KEY_TERMS,
+    safeKeys: SAFE_PROVIDER_PAYMENT_KEYS,
+  });
+  const hubUnsafeKeys = findUnsafeFieldKeys(hubOrder, {
+    terms: PROVIDER_PAYMENT_KEY_TERMS,
+    safeKeys: SAFE_PROVIDER_PAYMENT_KEYS,
+    isAllowed: ({ normalized, value }) => (
+      normalized.snake === 'shopify_order_id' &&
+      isApprovedSyntheticHubOrderId(value) &&
+      syntheticAllowed
+    ),
+  });
 
   return {
-    blocked: caHasProviderOrPaymentId || hubHasStripeId || !syntheticAllowed,
-    syntheticAllowed,
+    blocked: caUnsafeKeys.length > 0 || hubUnsafeKeys.length > 0,
+    syntheticAllowed: syntheticAllowed && caUnsafeKeys.length === 0 && hubUnsafeKeys.length === 0,
   };
 }
 
@@ -310,6 +401,7 @@ function buildGuardWarnings({ order, hubOrder, hubMatches, mappedStatus, hubProd
   const hubFulfillment = normalizeLower(hubFulfillmentStatus);
   const hubSyncStatus = normalizeLower(hubOrder?.sync_status);
   const providerPaymentGuard = getProviderPaymentGuard({ order, hubOrder, allowTestOrder });
+  const customerDataPresent = hasCustomerContactOrAddress(order, hubOrder);
 
   if (!dryRun && !requestId) warnings.push('live mode requires request_id');
   if (!dryRun && confirm !== true) warnings.push('live mode requires confirm=true');
@@ -334,6 +426,7 @@ function buildGuardWarnings({ order, hubOrder, hubMatches, mappedStatus, hubProd
   if (hubSyncStatus === 'do_not_sync') warnings.push('hub order is do_not_sync');
   if (hubOrderIsExcluded(hubOrder)) warnings.push('hub order is excluded');
   if (hasProofOrDrop(order, hubOrder)) warnings.push('proof/drop fields are present while proof/drop are out of scope');
+  if (customerDataPresent) warnings.push('customer contact/address fields are present');
   if (providerPaymentGuard.blocked) warnings.push('provider/payment identifiers are present');
   if (dryRun && providerPaymentGuard.syntheticAllowed) warnings.push('synthetic_nonprovider_id_allowed_for_test');
   if (hubMatches.length > 1) warnings.push('multiple matching Hub orders found');
@@ -572,10 +665,11 @@ Deno.serve(async (req) => {
 
     if (!liveAllowed) {
       const hubGuardUnavailable = warnings.includes(HUB_GUARD_UNAVAILABLE_WARNING);
+      const customerDataPresent = warnings.includes('customer contact/address fields are present');
       const providerLinkageBlocked = warnings.includes('provider/payment identifiers are present');
       return Response.json({
         error: 'Scoped delivered sync guard failed',
-        error_code: hubGuardUnavailable ? 'hub_guard_fields_unavailable' : providerLinkageBlocked ? 'provider_linkage_blocked' : 'scoped_delivered_sync_guard_failed',
+        error_code: hubGuardUnavailable ? 'hub_guard_fields_unavailable' : customerDataPresent ? 'customer_data_present' : providerLinkageBlocked ? 'provider_linkage_blocked' : 'scoped_delivered_sync_guard_failed',
         warnings: warnings.map((warning) => sanitizeText(warning, 160)).filter(Boolean),
       }, { status: 409 });
     }
