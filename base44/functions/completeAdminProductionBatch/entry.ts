@@ -150,6 +150,8 @@ function sanitizeHubCommandResponse(data, requestId) {
     skipped: data?.skipped === true,
     updated_at: sanitizeText(data?.updated_at, 80) || null,
     fake_test_only: data?.fake_test_only === true,
+    real_complete_enabled: data?.real_complete_enabled === true,
+    real_batch_allowlisted: data?.real_batch_allowlisted === true,
     verification_excluded: data?.verification_excluded === true,
     linked_manual_batch_updated: data?.linked_manual_batch_updated === true,
     linked_manual_batch_updated_count: Number(data?.linked_manual_batch_updated_count) || 0,
