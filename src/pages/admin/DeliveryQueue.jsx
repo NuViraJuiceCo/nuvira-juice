@@ -101,6 +101,12 @@ function outForDeliveryRequestId(taskId) {
   return `fulfillment_out_for_delivery_${taskId}_${Date.now()}_${randomId}`;
 }
 
+function deliveredRequestId(taskId) {
+  const fallback = Math.random().toString(36).slice(2);
+  const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+  return `fulfillment_delivered_${taskId}_${Date.now()}_${randomId}`;
+}
+
 function BagReturnsValue({ value }) {
   if (value === null || value === undefined) return <span className="text-xs font-semibold">Not tracked</span>;
   return <span className="text-lg font-bold">{value}</span>;
@@ -247,29 +253,32 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
   const status = normalizedStatus(stop.task_status);
   const assignedDriver = trimDriverLabel(stop.assigned_driver);
   const hasDriver = Boolean(assignedDriver);
-  const eligibleStatus = status === 'scheduled' || status === 'packed' || status === 'in transit';
+  const eligibleOutForDeliveryStatus = status === 'scheduled' || status === 'packed' || status === 'in transit';
   const isOutForDelivery = status === 'out for delivery';
+  const isCompleted = status === 'completed';
 
-  const [pendingTaskId, setPendingTaskId] = useState(null);
+  const [pendingOutForDeliveryTaskId, setPendingOutForDeliveryTaskId] = useState(null);
+  const [pendingDeliveredTaskId, setPendingDeliveredTaskId] = useState(null);
   const [message, setMessage] = useState(null);
-  const pending = pendingTaskId === taskId;
+  const outForDeliveryPending = pendingOutForDeliveryTaskId === taskId;
+  const deliveredPending = pendingDeliveredTaskId === taskId;
 
-  if (isOutForDelivery) {
+  if (isCompleted) {
     return (
-      <div className="rounded-lg border border-blue-100 bg-blue-50 p-2">
-        <p className="text-[10px] uppercase tracking-wider text-blue-700 font-semibold">Operational Status</p>
-        <p className="text-xs font-semibold text-blue-800 mt-1">Out For Delivery</p>
+      <div className="rounded-lg border border-green-100 bg-green-50 p-2">
+        <p className="text-[10px] uppercase tracking-wider text-green-700 font-semibold">Operational Status</p>
+        <p className="text-xs font-semibold text-green-800 mt-1">Delivered</p>
       </div>
     );
   }
 
-  if (!taskId || !eligibleStatus) return null;
+  if (!taskId || (!eligibleOutForDeliveryStatus && !isOutForDelivery)) return null;
 
   async function markOutForDelivery() {
     if (!hasDriver) return;
     if (!window.confirm('Mark this task as Out For Delivery in Operations? This will not notify the customer.')) return;
 
-    setPendingTaskId(taskId);
+    setPendingOutForDeliveryTaskId(taskId);
     setMessage(null);
 
     try {
@@ -285,7 +294,31 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
     } catch {
       setMessage({ type: 'error', text: 'Unable to mark task out for delivery.' });
     } finally {
-      setPendingTaskId(null);
+      setPendingOutForDeliveryTaskId(null);
+    }
+  }
+
+  async function markDelivered() {
+    if (!hasDriver) return;
+    if (!window.confirm('Mark this task Delivered in Operations? This will not notify the customer.')) return;
+
+    setPendingDeliveredTaskId(taskId);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('recordAdminFulfillmentTaskDelivered', {
+        fulfillment_task_id: taskId,
+        request_id: deliveredRequestId(taskId),
+        reason: 'Marked delivered from Delivery Queue.',
+      });
+      const result = res?.data || res;
+      if (!result?.success) throw new Error('delivered_failed');
+      setMessage({ type: 'success', text: 'Task marked Delivered.' });
+      await onStatusSuccess?.();
+    } catch {
+      setMessage({ type: 'error', text: 'Unable to mark task delivered.' });
+    } finally {
+      setPendingDeliveredTaskId(null);
     }
   }
 
@@ -296,16 +329,29 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
         <p className="text-[10px] text-muted-foreground">Operations-only status update. No customer notification.</p>
       </div>
 
-      {hasDriver ? (
+      {isOutForDelivery && hasDriver && (
+        <button
+          type="button"
+          onClick={markDelivered}
+          disabled={deliveredPending}
+          className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {deliveredPending ? 'Saving...' : 'Mark Delivered'}
+        </button>
+      )}
+
+      {eligibleOutForDeliveryStatus && hasDriver && (
         <button
           type="button"
           onClick={markOutForDelivery}
-          disabled={pending}
+          disabled={outForDeliveryPending}
           className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
         >
-          {pending ? 'Saving...' : 'Mark Out For Delivery'}
+          {outForDeliveryPending ? 'Saving...' : 'Mark Out For Delivery'}
         </button>
-      ) : (
+      )}
+
+      {!hasDriver && (
         <p className="text-xs font-semibold text-muted-foreground">Assign driver first</p>
       )}
 
@@ -550,7 +596,7 @@ export default function DeliveryQueue() {
           <p className="text-xs text-muted-foreground">
             Showing Hub delivery route summary for {formatDate(deliveryDate)}.
           </p>
-          <p className="text-[10px] text-muted-foreground">Hub data · Driver assignment and operational Out For Delivery only for eligible active tasks.</p>
+          <p className="text-[10px] text-muted-foreground">Hub data · Driver assignment and operational status actions only for eligible active tasks.</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -568,7 +614,7 @@ export default function DeliveryQueue() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Driver Portal route view</p>
-            <p className="text-[10px] text-muted-foreground">Delivery status, proof, route, and bag return actions remain omitted.</p>
+            <p className="text-[10px] text-muted-foreground">Proof, route, bag return, and customer notification actions remain omitted.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
