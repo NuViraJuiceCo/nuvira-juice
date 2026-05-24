@@ -92,6 +92,8 @@ function sanitizeHubCommandResponse(data, requestId) {
     linked_manual_batch_updated: data?.linked_manual_batch_updated === true,
     linked_manual_batch_updated_count: Number(data?.linked_manual_batch_updated_count) || 0,
     fake_test_only: data?.fake_test_only === true,
+    real_start_enabled: data?.real_start_enabled === true,
+    real_batch_allowlisted: data?.real_batch_allowlisted === true,
   };
 }
 
