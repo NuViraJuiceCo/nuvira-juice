@@ -1,0 +1,711 @@
+{
+  "generated_at": "2026-05-25T20:27:12.403Z",
+  "extraction_mode": "read_only_redacted_export",
+  "max_samples_approved": 10,
+  "samples_exported": 6,
+  "samples": [
+    {
+      "sample_id": "real_redacted_001_clean_delivery_created",
+      "category": "clean_recent_one_time_delivery_order",
+      "source": "customer_app",
+      "source_log_summary": {
+        "source_type": "OrderSyncLog",
+        "status": "success",
+        "hub_action": "created",
+        "triggered_by": "stripe_webhook",
+        "date": "2026-05-14"
+      },
+      "idempotency_key": "evt_real_redacted_001",
+      "starting_order": null,
+      "incoming_payload": {
+        "shopify_order_number": "REAL_ORDER_001",
+        "customer_email": "sample-001@example.test",
+        "customer_name": "Sample Customer 1",
+        "customer_phone": "REDACTED_PHONE",
+        "address_line1": "REDACTED_STREET",
+        "address_city": "REDACTED_CITY",
+        "address_state": "MO",
+        "address_postal_code": "REDACTED_ZIP",
+        "address_country": "US",
+        "line_items": [
+          {
+            "title": "Pineapple Juice",
+            "quantity": 1,
+            "price": 15
+          },
+          {
+            "title": "Watermelon Juice",
+            "quantity": 1,
+            "price": 12
+          },
+          {
+            "title": "RE-NU",
+            "quantity": 1,
+            "price": 13
+          }
+        ],
+        "total_price": 43.99,
+        "subtotal": 40,
+        "fulfillment_method": "delivery",
+        "source_channel": "online",
+        "source_type": "customer_app",
+        "payment_status": "paid",
+        "sync_status": "synced",
+        "customer_order_date": "2026-05-14T18:01:24.576000",
+        "stripe_checkout_session_id": "cs_redacted_001",
+        "stripe_payment_intent_id": "pi_redacted_001",
+        "production_date": null,
+        "assigned_delivery_date": "2026-05-16"
+      },
+      "hub_result": {
+        "action": "created",
+        "fields_updated": [
+          "shopify_order_number",
+          "customer_email",
+          "customer_name",
+          "customer_phone",
+          "address_line1",
+          "address_city",
+          "address_state",
+          "address_postal_code",
+          "address_country",
+          "line_items",
+          "total_price",
+          "subtotal",
+          "fulfillment_method",
+          "source_channel",
+          "source_type",
+          "payment_status",
+          "sync_status",
+          "customer_order_date",
+          "stripe_checkout_session_id",
+          "stripe_payment_intent_id",
+          "production_date",
+          "assigned_delivery_date",
+          "stripe_event_id_applied",
+          "order_type",
+          "fulfillment_mode"
+        ],
+        "fields_rejected": [],
+        "error_code": null,
+        "order_sync_log_draft": {
+          "action": "created",
+          "success": true,
+          "fields_updated": [
+            "shopify_order_number",
+            "customer_email",
+            "customer_name",
+            "customer_phone",
+            "address_line1",
+            "address_city",
+            "address_state",
+            "address_postal_code",
+            "address_country",
+            "line_items",
+            "total_price",
+            "subtotal",
+            "fulfillment_method",
+            "source_channel",
+            "source_type",
+            "payment_status",
+            "sync_status",
+            "customer_order_date",
+            "stripe_checkout_session_id",
+            "stripe_payment_intent_id",
+            "production_date",
+            "assigned_delivery_date",
+            "stripe_event_id_applied",
+            "order_type",
+            "fulfillment_mode"
+          ],
+          "fields_rejected": [],
+          "error_code": null
+        },
+        "order_review_queue_draft": null
+      },
+      "redaction_notes": [
+        "order number, email, phone, address, Stripe ids, and customer name replaced with stable synthetic values"
+      ],
+      "hub_result_basis": "golden_summary_inferred_from_current_native_planner_and_G21_contract; real source status/action retained in source_log_summary because live bridge logs do not store full field-level safeSync plans"
+    },
+    {
+      "sample_id": "real_redacted_002_duplicate_dedupe_event",
+      "category": "duplicate_idempotency_related_event",
+      "source": "customer_app",
+      "source_log_summary": {
+        "source_type": "OrderSyncLog",
+        "status": "deduped",
+        "hub_action": "dedupe_exact_match",
+        "triggered_by": "stripe_webhook",
+        "date": "2026-05-14"
+      },
+      "idempotency_key": "evt_real_redacted_002",
+      "starting_order": {
+        "id": "existing_order_002",
+        "shopify_order_number": "REAL_ORDER_002",
+        "customer_email": "sample-002@example.test",
+        "customer_name": "Sample Customer 2",
+        "customer_phone": "REDACTED_PHONE",
+        "address_line1": "REDACTED_STREET",
+        "address_city": "REDACTED_CITY",
+        "address_state": "MO",
+        "address_postal_code": "REDACTED_ZIP",
+        "address_country": "US",
+        "line_items": [
+          {
+            "title": "Pineapple Juice",
+            "quantity": 1,
+            "price": 15
+          },
+          {
+            "title": "Watermelon Juice",
+            "quantity": 1,
+            "price": 12
+          },
+          {
+            "title": "RE-NU",
+            "quantity": 1,
+            "price": 13
+          }
+        ],
+        "total_price": 43.99,
+        "subtotal": 40,
+        "fulfillment_method": "delivery",
+        "source_channel": "online",
+        "source_type": "customer_app",
+        "payment_status": "paid",
+        "sync_status": "synced",
+        "customer_order_date": "2026-05-14T18:01:24.576000",
+        "stripe_checkout_session_id": "cs_redacted_002",
+        "stripe_payment_intent_id": "pi_redacted_002",
+        "production_date": null,
+        "assigned_delivery_date": "2026-05-16",
+        "stripe_event_id_applied": "evt_real_redacted_002",
+        "order_lock_status": "unlocked"
+      },
+      "incoming_payload": {
+        "shopify_order_number": "REAL_ORDER_002",
+        "customer_email": "sample-002@example.test",
+        "customer_name": "Sample Customer 2",
+        "customer_phone": "REDACTED_PHONE",
+        "address_line1": "REDACTED_STREET",
+        "address_city": "REDACTED_CITY",
+        "address_state": "MO",
+        "address_postal_code": "REDACTED_ZIP",
+        "address_country": "US",
+        "line_items": [
+          {
+            "title": "Pineapple Juice",
+            "quantity": 1,
+            "price": 15
+          },
+          {
+            "title": "Watermelon Juice",
+            "quantity": 1,
+            "price": 12
+          },
+          {
+            "title": "RE-NU",
+            "quantity": 1,
+            "price": 13
+          }
+        ],
+        "total_price": 43.99,
+        "subtotal": 40,
+        "fulfillment_method": "delivery",
+        "source_channel": "online",
+        "source_type": "customer_app",
+        "payment_status": "paid",
+        "sync_status": "synced",
+        "customer_order_date": "2026-05-14T18:01:24.576000",
+        "stripe_checkout_session_id": "cs_redacted_002",
+        "stripe_payment_intent_id": "pi_redacted_002",
+        "production_date": null,
+        "assigned_delivery_date": "2026-05-16"
+      },
+      "hub_result": {
+        "action": "skipped",
+        "order_sync_log_draft": {
+          "action": "skipped",
+          "success": true
+        },
+        "order_review_queue_draft": null
+      },
+      "redaction_notes": [
+        "Hub dedupe_exact_match summarized as skipped/no second write for comparator compatibility",
+        "order number, email, phone, address, Stripe ids, and customer name replaced with stable synthetic values"
+      ],
+      "hub_result_basis": "golden_summary_inferred_from_current_native_planner_and_G21_contract; real source status/action retained in source_log_summary because live bridge logs do not store full field-level safeSync plans"
+    },
+    {
+      "sample_id": "real_redacted_003_paid_delivery_snapshot",
+      "category": "clean_paid_delivery_order_snapshot",
+      "source": "customer_app",
+      "source_log_summary": {
+        "source_type": "Order",
+        "status": "bottled_packed",
+        "payment_status": "paid",
+        "date": "2026-05-14"
+      },
+      "idempotency_key": "evt_real_redacted_003",
+      "starting_order": null,
+      "incoming_payload": {
+        "shopify_order_number": "REAL_ORDER_003",
+        "customer_email": "sample-003@example.test",
+        "customer_name": "Sample Customer 3",
+        "customer_phone": "REDACTED_PHONE",
+        "address_line1": "REDACTED_STREET",
+        "address_city": "REDACTED_CITY",
+        "address_state": "MO",
+        "address_postal_code": "REDACTED_ZIP",
+        "address_country": "US",
+        "line_items": [
+          {
+            "title": "Pineapple Juice",
+            "quantity": 1,
+            "price": 15
+          },
+          {
+            "title": "Watermelon Juice",
+            "quantity": 1,
+            "price": 12
+          },
+          {
+            "title": "RE-NU",
+            "quantity": 1,
+            "price": 13
+          }
+        ],
+        "total_price": 43.99,
+        "subtotal": 40,
+        "fulfillment_method": "delivery",
+        "source_channel": "online",
+        "source_type": "customer_app",
+        "payment_status": "paid",
+        "sync_status": "synced",
+        "customer_order_date": "2026-05-14T18:01:24.576000",
+        "stripe_checkout_session_id": "cs_redacted_003",
+        "stripe_payment_intent_id": "pi_redacted_003",
+        "production_date": null,
+        "assigned_delivery_date": "2026-05-16"
+      },
+      "hub_result": {
+        "action": "created",
+        "fields_updated": [
+          "shopify_order_number",
+          "customer_email",
+          "customer_name",
+          "customer_phone",
+          "address_line1",
+          "address_city",
+          "address_state",
+          "address_postal_code",
+          "address_country",
+          "line_items",
+          "total_price",
+          "subtotal",
+          "fulfillment_method",
+          "source_channel",
+          "source_type",
+          "payment_status",
+          "sync_status",
+          "customer_order_date",
+          "stripe_checkout_session_id",
+          "stripe_payment_intent_id",
+          "production_date",
+          "assigned_delivery_date",
+          "stripe_event_id_applied",
+          "order_type",
+          "fulfillment_mode"
+        ],
+        "fields_rejected": [],
+        "error_code": null,
+        "order_sync_log_draft": {
+          "action": "created",
+          "success": true,
+          "fields_updated": [
+            "shopify_order_number",
+            "customer_email",
+            "customer_name",
+            "customer_phone",
+            "address_line1",
+            "address_city",
+            "address_state",
+            "address_postal_code",
+            "address_country",
+            "line_items",
+            "total_price",
+            "subtotal",
+            "fulfillment_method",
+            "source_channel",
+            "source_type",
+            "payment_status",
+            "sync_status",
+            "customer_order_date",
+            "stripe_checkout_session_id",
+            "stripe_payment_intent_id",
+            "production_date",
+            "assigned_delivery_date",
+            "stripe_event_id_applied",
+            "order_type",
+            "fulfillment_mode"
+          ],
+          "fields_rejected": [],
+          "error_code": null
+        },
+        "order_review_queue_draft": null
+      },
+      "redaction_notes": [
+        "sample built from read-only Customer App Order snapshot because no additional safe non-refund bridge log was available",
+        "order number, email, phone, address, Stripe ids, and customer name replaced with stable synthetic values"
+      ],
+      "hub_result_basis": "golden_summary_inferred_from_current_native_planner_and_G21_contract; real source status/action retained in source_log_summary because live bridge logs do not store full field-level safeSync plans"
+    },
+    {
+      "sample_id": "real_redacted_004_paid_delivery_snapshot",
+      "category": "clean_paid_delivery_order_snapshot",
+      "source": "customer_app",
+      "source_log_summary": {
+        "source_type": "Order",
+        "status": "delivered",
+        "payment_status": "paid",
+        "date": "2026-05-03"
+      },
+      "idempotency_key": "evt_real_redacted_004",
+      "starting_order": null,
+      "incoming_payload": {
+        "shopify_order_number": "REAL_ORDER_004",
+        "customer_email": "sample-004@example.test",
+        "customer_name": "Sample Customer 4",
+        "customer_phone": "REDACTED_PHONE",
+        "address_line1": "REDACTED_STREET",
+        "address_city": "REDACTED_CITY",
+        "address_state": "MO",
+        "address_postal_code": "REDACTED_ZIP",
+        "address_country": "US",
+        "line_items": [
+          {
+            "title": "Reset Shot",
+            "quantity": 2,
+            "price": 6
+          },
+          {
+            "title": "The NuVira Trio",
+            "quantity": 1,
+            "price": 36
+          }
+        ],
+        "total_price": 51.99,
+        "subtotal": 48,
+        "fulfillment_method": "delivery",
+        "source_channel": "online",
+        "source_type": "customer_app",
+        "payment_status": "paid",
+        "sync_status": "synced",
+        "customer_order_date": "2026-05-03T14:23:58.649000",
+        "stripe_checkout_session_id": "cs_redacted_004",
+        "stripe_payment_intent_id": "pi_redacted_004",
+        "production_date": null,
+        "assigned_delivery_date": "2026-05-09"
+      },
+      "hub_result": {
+        "action": "created",
+        "fields_updated": [
+          "shopify_order_number",
+          "customer_email",
+          "customer_name",
+          "customer_phone",
+          "address_line1",
+          "address_city",
+          "address_state",
+          "address_postal_code",
+          "address_country",
+          "line_items",
+          "total_price",
+          "subtotal",
+          "fulfillment_method",
+          "source_channel",
+          "source_type",
+          "payment_status",
+          "sync_status",
+          "customer_order_date",
+          "stripe_checkout_session_id",
+          "stripe_payment_intent_id",
+          "production_date",
+          "assigned_delivery_date",
+          "stripe_event_id_applied",
+          "order_type",
+          "fulfillment_mode"
+        ],
+        "fields_rejected": [],
+        "error_code": null,
+        "order_sync_log_draft": {
+          "action": "created",
+          "success": true,
+          "fields_updated": [
+            "shopify_order_number",
+            "customer_email",
+            "customer_name",
+            "customer_phone",
+            "address_line1",
+            "address_city",
+            "address_state",
+            "address_postal_code",
+            "address_country",
+            "line_items",
+            "total_price",
+            "subtotal",
+            "fulfillment_method",
+            "source_channel",
+            "source_type",
+            "payment_status",
+            "sync_status",
+            "customer_order_date",
+            "stripe_checkout_session_id",
+            "stripe_payment_intent_id",
+            "production_date",
+            "assigned_delivery_date",
+            "stripe_event_id_applied",
+            "order_type",
+            "fulfillment_mode"
+          ],
+          "fields_rejected": [],
+          "error_code": null
+        },
+        "order_review_queue_draft": null
+      },
+      "redaction_notes": [
+        "sample built from read-only Customer App Order snapshot because no additional safe non-refund bridge log was available",
+        "order number, email, phone, address, Stripe ids, and customer name replaced with stable synthetic values"
+      ],
+      "hub_result_basis": "golden_summary_inferred_from_current_native_planner_and_G21_contract; real source status/action retained in source_log_summary because live bridge logs do not store full field-level safeSync plans"
+    },
+    {
+      "sample_id": "real_redacted_005_subscription_event_shape",
+      "category": "subscription_order_event_shape",
+      "source": "rebuild_subscriptions",
+      "source_log_summary": {
+        "source_type": "Subscription",
+        "status": "cancelled",
+        "date": "2026-05-09"
+      },
+      "idempotency_key": "evt_real_redacted_005",
+      "starting_order": null,
+      "incoming_payload": {
+        "shopify_order_number": "REAL_SUB_ORDER_005",
+        "customer_email": "sample-005@example.test",
+        "customer_name": "Sample Customer 5",
+        "customer_phone": "REDACTED_PHONE",
+        "address_line1": "REDACTED_STREET",
+        "address_city": "REDACTED_CITY",
+        "address_state": "MO",
+        "address_postal_code": "REDACTED_ZIP",
+        "address_country": "US",
+        "line_items": [
+          {
+            "title": "Subscription Bundle",
+            "quantity": 1,
+            "price": 0
+          }
+        ],
+        "fulfillments": [
+          {
+            "fulfillment_number": 1,
+            "status": "scheduled",
+            "delivery_date": "DATE_REDACTED"
+          }
+        ],
+        "total_price": 0,
+        "subtotal": 0,
+        "fulfillment_method": "delivery",
+        "source_channel": "subscription",
+        "source_type": "customer_app_subscription",
+        "order_type": "subscription",
+        "fulfillment_mode": "multi_delivery",
+        "payment_status": "paid",
+        "stripe_subscription_id": "sub_redacted_005",
+        "stripe_customer_id": "cus_redacted_005",
+        "sync_status": "synced"
+      },
+      "hub_result": {
+        "action": "created",
+        "fields_updated": [
+          "shopify_order_number",
+          "customer_email",
+          "customer_name",
+          "customer_phone",
+          "address_line1",
+          "address_city",
+          "address_state",
+          "address_postal_code",
+          "address_country",
+          "line_items",
+          "fulfillments",
+          "total_price",
+          "subtotal",
+          "fulfillment_method",
+          "source_channel",
+          "source_type",
+          "payment_status",
+          "stripe_subscription_id",
+          "stripe_customer_id",
+          "sync_status",
+          "stripe_event_id_applied"
+        ],
+        "fields_rejected": [
+          "order_type",
+          "fulfillment_mode"
+        ],
+        "error_code": null,
+        "order_sync_log_draft": {
+          "action": "created",
+          "success": true,
+          "fields_updated": [
+            "shopify_order_number",
+            "customer_email",
+            "customer_name",
+            "customer_phone",
+            "address_line1",
+            "address_city",
+            "address_state",
+            "address_postal_code",
+            "address_country",
+            "line_items",
+            "fulfillments",
+            "total_price",
+            "subtotal",
+            "fulfillment_method",
+            "source_channel",
+            "source_type",
+            "payment_status",
+            "stripe_subscription_id",
+            "stripe_customer_id",
+            "sync_status",
+            "stripe_event_id_applied"
+          ],
+          "fields_rejected": [
+            "order_type",
+            "fulfillment_mode"
+          ],
+          "error_code": null
+        },
+        "order_review_queue_draft": null
+      },
+      "redaction_notes": [
+        "sample built from read-only Subscription shape; cancelled/financial state was not copied",
+        "email, phone, address, Stripe ids, subscription id, and customer name replaced with stable synthetic values"
+      ],
+      "hub_result_basis": "golden_summary_inferred_from_current_native_planner_and_G21_contract; real source status/action retained in source_log_summary because live bridge logs do not store full field-level safeSync plans"
+    },
+    {
+      "sample_id": "real_redacted_006_incomplete_delivery_address",
+      "category": "incomplete_review_like_order",
+      "source": "customer_app",
+      "source_log_summary": {
+        "source_type": "Order",
+        "status": "delivered",
+        "payment_status": "paid",
+        "date": "2026-05-24"
+      },
+      "idempotency_key": "evt_real_redacted_006",
+      "starting_order": null,
+      "incoming_payload": {
+        "shopify_order_number": "REAL_ORDER_006",
+        "customer_email": "sample-006@example.test",
+        "customer_name": "Sample Customer 6",
+        "customer_phone": "REDACTED_PHONE",
+        "address_city": "REDACTED_CITY",
+        "address_state": "MO",
+        "address_country": "US",
+        "line_items": [
+          {
+            "title": "G15E Test Juice - No Fulfillment",
+            "quantity": 1,
+            "price": 0
+          }
+        ],
+        "total_price": 0,
+        "subtotal": 0,
+        "fulfillment_method": "delivery",
+        "source_channel": "online",
+        "source_type": "customer_app",
+        "payment_status": "paid",
+        "sync_status": "synced",
+        "customer_order_date": "2026-05-24T14:56:52.813000",
+        "stripe_checkout_session_id": "cs_redacted_006",
+        "stripe_payment_intent_id": "pi_redacted_006",
+        "production_date": null,
+        "assigned_delivery_date": null
+      },
+      "hub_result": {
+        "action": "rejected",
+        "fields_updated": [
+          "shopify_order_number",
+          "customer_email",
+          "customer_name",
+          "customer_phone",
+          "address_city",
+          "address_state",
+          "address_country",
+          "line_items",
+          "total_price",
+          "subtotal",
+          "fulfillment_method",
+          "source_channel",
+          "source_type",
+          "payment_status",
+          "sync_status",
+          "customer_order_date",
+          "stripe_checkout_session_id",
+          "stripe_payment_intent_id",
+          "production_date",
+          "assigned_delivery_date",
+          "stripe_event_id_applied",
+          "order_type",
+          "fulfillment_mode"
+        ],
+        "fields_rejected": [],
+        "error_code": "delivery_order_missing_address",
+        "order_sync_log_draft": {
+          "action": "rejected",
+          "success": false,
+          "fields_updated": [
+            "shopify_order_number",
+            "customer_email",
+            "customer_name",
+            "customer_phone",
+            "address_city",
+            "address_state",
+            "address_country",
+            "line_items",
+            "total_price",
+            "subtotal",
+            "fulfillment_method",
+            "source_channel",
+            "source_type",
+            "payment_status",
+            "sync_status",
+            "customer_order_date",
+            "stripe_checkout_session_id",
+            "stripe_payment_intent_id",
+            "production_date",
+            "assigned_delivery_date",
+            "stripe_event_id_applied",
+            "order_type",
+            "fulfillment_mode"
+          ],
+          "fields_rejected": [],
+          "error_code": "delivery_order_missing_address"
+        },
+        "order_review_queue_draft": {
+          "incident_type": "missing_customer_info"
+        }
+      },
+      "redaction_notes": [
+        "sample built from read-only order snapshot with incomplete address context",
+        "order number, email, phone, Stripe ids, and customer name replaced with stable synthetic values"
+      ],
+      "hub_result_basis": "golden_summary_inferred_from_current_native_planner_and_G21_contract; real source status/action retained in source_log_summary because live bridge logs do not store full field-level safeSync plans"
+    }
+  ]
+}
