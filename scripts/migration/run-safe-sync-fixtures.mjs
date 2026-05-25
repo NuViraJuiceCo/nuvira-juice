@@ -106,4 +106,3 @@ if (failed > 0) {
 }
 
 console.log(`\n${fixtures.length}/${fixtures.length} safeSync fixtures passed.`);
-
