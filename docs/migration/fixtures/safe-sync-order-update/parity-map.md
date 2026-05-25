@@ -1,6 +1,6 @@
 # Native safeSyncOrderUpdate Fixture Parity Map
 
-This map links each G21F fixture to the Hub guardrail it is intended to preserve.
+This map links each fixture to the Hub guardrail it is intended to preserve. G21G adds `golden-output-index.md` as the fixture-by-fixture output expectation and `dark-launch-plan.md` as the future shadow comparison plan.
 
 | Fixture | Hub guardrail / behavior |
 | --- | --- |
@@ -31,11 +31,11 @@ This map links each G21F fixture to the Hub guardrail it is intended to preserve
 
 ## Current Parity Status
 
-These fixtures define expected native behavior based on Hub rules audited in G21B. They are not yet a live Hub-vs-native golden-output comparison.
+These fixtures define expected native behavior based on Hub rules audited in G21B and re-read in G21G. They are now checked as a native dry-run golden-output suite, but they are not yet produced by executing Hub in a dry-run mode because the Hub endpoint directly writes `ShopifyOrder`, `OrderSyncLog`, and `OrderReviewQueue` records.
 
 Future parity phases should:
 
-1. run Hub safeSync behavior against isolated synthetic inputs, or preserve Hub outputs as golden data
+1. add approved dark-launch instrumentation that compares Hub live writer results to native dry-run plans
 2. run native dry-run planner against the same fixture input
 3. compare accepted fields, rejected fields, proposed state, log drafts, queue drafts, and response codes
 4. add any discovered mismatch as a new fixture before enabling live native writes
