@@ -13,6 +13,8 @@ The fixtures are synthetic and must not be used as live records. They are design
 
 - `fixtures.json`: table-driven fixture inputs and expected dry-run outcomes.
 - `parity-map.md`: maps each fixture to the Hub guardrail it is intended to preserve.
+- `golden-output-index.md`: records the Hub-equivalent golden output expectation and source label for every fixture.
+- `dark-launch-plan.md`: defines the future Hub-vs-native shadow comparison plan without native writes.
 
 ## Required Coverage
 
@@ -65,7 +67,7 @@ Expected blocks intentionally assert high-signal behavior only, such as:
 - queue incident type, with dry-run queue drafts using payload summaries instead of raw payload values
 - untouched downstream entities
 
-They do not claim complete Hub parity yet. The G21F dry-run planner is an initial native planner foundation; parity must be expanded through future fixtures and dark-launch comparison before live writes are considered.
+They now form the G21G golden-output comparison layer for the native dry-run planner. Because the Hub endpoint has no safe dry-run mode, the golden outputs are code-derived or contract-derived and must still be validated through a future dark launch before live native writes are considered.
 
 ## Local Runner
 
@@ -76,3 +78,5 @@ node scripts/migration/run-safe-sync-fixtures.mjs
 ```
 
 The runner reads only this fixture file and performs pure in-memory assertions. It does not import Base44, call providers, or mutate records.
+
+The runner compares native planner output to the expected golden-output assertions in `fixtures.json`, including high-signal response flags, accepted fields, rejected fields, proposed state snippets, queue incidents, and sync-log draft actions.

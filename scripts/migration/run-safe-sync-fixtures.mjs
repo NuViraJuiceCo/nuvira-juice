@@ -58,6 +58,32 @@ function assertFixture(fixture, result) {
     }
   }
 
+  if ('order_sync_log_action' in expected) {
+    const actualAction = result.order_sync_log_draft?.action || null;
+    if (actualAction !== expected.order_sync_log_action) {
+      failures.push(`sync log action: expected ${expected.order_sync_log_action}, got ${actualAction}`);
+    }
+  }
+
+  if ('order_sync_log_success' in expected) {
+    const actualSuccess = result.order_sync_log_draft?.success;
+    if (actualSuccess !== expected.order_sync_log_success) {
+      failures.push(`sync log success: expected ${expected.order_sync_log_success}, got ${actualSuccess}`);
+    }
+  }
+
+  for (const field of expected.order_sync_log_fields_updated_include || []) {
+    if (!(result.order_sync_log_draft?.fields_updated || []).includes(field)) {
+      failures.push(`sync log fields_updated missing ${field}`);
+    }
+  }
+
+  for (const field of expected.order_sync_log_fields_rejected_include || []) {
+    if (!(result.order_sync_log_draft?.fields_rejected || []).includes(field)) {
+      failures.push(`sync log fields_rejected missing ${field}`);
+    }
+  }
+
   if (expected.proposed_order_state_include && !isSubset(expected.proposed_order_state_include, result.proposed_order_state || {})) {
     failures.push('proposed_order_state_include did not match');
   }
@@ -80,6 +106,12 @@ const fixtures = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 const planSafeSync = loadPlanner();
 
 let failed = 0;
+let createCount = 0;
+let updateCount = 0;
+let rejectCount = 0;
+let quarantineCount = 0;
+const actionCounts = new Map();
+const sourceCounts = new Map();
 for (const fixture of fixtures) {
   const result = planSafeSync({
     fixture_id: fixture.fixture_id,
@@ -90,6 +122,15 @@ for (const fixture of fixtures) {
     stripe_event_id: fixture.stripe_event_id,
     mode: 'dry_run',
   });
+  if (result.would_create_order) createCount += 1;
+  if (result.would_update_order) updateCount += 1;
+  if (result.would_reject) rejectCount += 1;
+  if (result.would_quarantine) quarantineCount += 1;
+  const logAction = result.order_sync_log_draft?.action || 'none';
+  actionCounts.set(logAction, (actionCounts.get(logAction) || 0) + 1);
+  const sourceLabel = fixture.hub_behavior_source || 'Unlabeled';
+  sourceCounts.set(sourceLabel, (sourceCounts.get(sourceLabel) || 0) + 1);
+
   const failures = assertFixture(fixture, result);
   if (failures.length > 0) {
     failed += 1;
@@ -106,3 +147,6 @@ if (failed > 0) {
 }
 
 console.log(`\n${fixtures.length}/${fixtures.length} safeSync fixtures passed.`);
+console.log(`Dry-run outcome summary: create=${createCount}, update=${updateCount}, reject=${rejectCount}, quarantine=${quarantineCount}`);
+console.log(`OrderSyncLog draft actions: ${Array.from(actionCounts.entries()).map(([action, count]) => `${action}=${count}`).join(', ')}`);
+console.log(`Hub behavior source labels: ${Array.from(sourceCounts.entries()).map(([source, count]) => `${source}=${count}`).join(', ')}`);
