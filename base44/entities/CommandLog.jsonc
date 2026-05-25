@@ -1,0 +1,116 @@
+{
+  "name": "CommandLog",
+  "type": "object",
+  "properties": {
+    "command_id": {
+      "type": "string"
+    },
+    "command_type": {
+      "type": "string"
+    },
+    "command_source": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "success",
+        "skipped",
+        "rejected",
+        "failed"
+      ]
+    },
+    "target_entity": {
+      "type": "string"
+    },
+    "target_id": {
+      "type": "string"
+    },
+    "target_display_id": {
+      "type": "string"
+    },
+    "actor_email": {
+      "type": "string"
+    },
+    "actor_role": {
+      "type": "string"
+    },
+    "actor_type": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Safe command metadata only. Runtime writers must not store secrets, auth headers, provider raw payload dumps, stack traces, or full raw records."
+    },
+    "result": {
+      "type": "object",
+      "description": "Safe result metadata only."
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "idempotent_skipped": {
+      "type": "boolean"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "submitted_at": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "number"
+    },
+    "function_name": {
+      "type": "string"
+    },
+    "related_stripe_event_id": {
+      "type": "string"
+    },
+    "related_order_id": {
+      "type": "string"
+    },
+    "related_order_number": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
