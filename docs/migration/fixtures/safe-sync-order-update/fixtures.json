@@ -1,0 +1,621 @@
+[
+  {
+    "fixture_id": "clean_new_one_time_delivery_order",
+    "description": "Complete paid one-time delivery order should create an operational order with no queue.",
+    "starting_order": null,
+    "incoming_payload": {
+      "shopify_order_id": "fixture:delivery:001",
+      "shopify_order_number": "FX-DEL-001",
+      "customer_name": "Fixture Customer",
+      "customer_email": "fixture.delivery@example.test",
+      "line_items": [{ "title": "2 x Re-Nu", "quantity": 2, "price": 12 }],
+      "total_price": 24,
+      "payment_status": "paid",
+      "source_channel": "online",
+      "source_type": "stripe_checkout",
+      "fulfillment_method": "delivery",
+      "address_line1": "100 Fixture St",
+      "address_city": "Chicago",
+      "address_state": "IL",
+      "address_postal_code": "60601"
+    },
+    "source": "stripe_webhook",
+    "idempotency_key": "evt_fixture_delivery_001",
+    "stripe_event_id": "evt_fixture_delivery_001",
+    "expected": {
+      "action": "would_create",
+      "would_create_order": true,
+      "would_update_order": false,
+      "would_quarantine": false,
+      "would_reject": false,
+      "accepted_fields_include": ["customer_email", "line_items", "payment_status", "address_line1"],
+      "rejected_fields_include": [],
+      "order_sync_log_action": "created",
+      "order_review_queue_incident_type": null,
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "clean_new_pos_order",
+    "description": "POS order bypasses delivery address requirement and is marked paid/fulfilled/not_required.",
+    "starting_order": null,
+    "incoming_payload": {
+      "shopify_order_id": "fixture:pos:001",
+      "shopify_order_number": "FX-POS-001",
+      "customer_email": "fixture.pos@example.test",
+      "customer_name": "POS Fixture",
+      "line_items": [{ "title": "Re-Nu", "quantity": 1 }],
+      "payment_status": "paid",
+      "source_channel": "pos",
+      "source_type": "shopify_pos",
+      "order_type": "pos",
+      "fulfillment_method": "pos"
+    },
+    "source": "stripe_webhook",
+    "idempotency_key": "evt_fixture_pos_001",
+    "stripe_event_id": "evt_fixture_pos_001",
+    "expected": {
+      "action": "would_create",
+      "would_create_order": true,
+      "would_quarantine": false,
+      "would_reject": false,
+      "accepted_fields_include": ["source_channel", "source_type", "fulfillment_status", "production_status", "order_lock_status"],
+      "rejected_fields_include": [],
+      "proposed_order_state_include": {
+        "production_status": "not_required",
+        "fulfillment_status": "fulfilled",
+        "order_lock_status": "fulfilled"
+      },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "incomplete_delivery_address",
+    "description": "New delivery order without complete address should be rejected and queued.",
+    "starting_order": null,
+    "incoming_payload": {
+      "shopify_order_id": "fixture:delivery:missing-address",
+      "shopify_order_number": "FX-ADDR-001",
+      "customer_name": "Missing Address",
+      "customer_email": "fixture.address@example.test",
+      "line_items": [{ "title": "Re-Nu", "quantity": 1 }],
+      "payment_status": "paid",
+      "fulfillment_method": "delivery",
+      "address_line1": "100 Fixture St"
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_missing_address",
+    "expected": {
+      "action": "rejected",
+      "would_create_order": false,
+      "would_quarantine": true,
+      "would_reject": true,
+      "error_code": "delivery_order_missing_address",
+      "order_review_queue_incident_type": "missing_customer_info",
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "low_quality_new_order",
+    "description": "New order below completeness threshold should be rejected and queued.",
+    "starting_order": null,
+    "incoming_payload": {
+      "shopify_order_number": "FX-LOW-001",
+      "customer_email": "fixture.low@example.test",
+      "payment_status": "paid",
+      "fulfillment_method": "delivery"
+    },
+    "source": "rebuild_subscriptions",
+    "idempotency_key": "evt_fixture_low_quality",
+    "expected": {
+      "action": "rejected",
+      "would_quarantine": true,
+      "would_reject": true,
+      "error_code": "low_quality_new_order",
+      "order_review_queue_incident_type": "low_quality_new_order",
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "duplicate_stripe_event",
+    "description": "Existing order with same applied Stripe event should skip.",
+    "starting_order": {
+      "id": "order_fixture_dup",
+      "shopify_order_id": "fixture:dup:001",
+      "shopify_order_number": "FX-DUP-001",
+      "customer_email": "fixture.dup@example.test",
+      "stripe_event_id_applied": "evt_duplicate"
+    },
+    "incoming_payload": {
+      "payment_status": "paid",
+      "sync_status": "synced"
+    },
+    "source": "stripe_webhook",
+    "idempotency_key": "evt_duplicate",
+    "stripe_event_id": "evt_duplicate",
+    "expected": {
+      "action": "duplicate_event",
+      "would_create_order": false,
+      "would_update_order": false,
+      "would_quarantine": false,
+      "would_reject": false,
+      "response_status": "skipped",
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "duplicate_order_number",
+    "description": "Incoming order number matching an existing order should update, not create duplicate.",
+    "starting_order": {
+      "id": "order_fixture_same_number",
+      "shopify_order_id": "fixture:existing:number",
+      "shopify_order_number": "FX-NUM-001",
+      "customer_email": "fixture.number@example.test",
+      "payment_status": "pending"
+    },
+    "incoming_payload": {
+      "shopify_order_id": "fixture:new:number",
+      "shopify_order_number": "FX-NUM-001",
+      "payment_status": "paid",
+      "customer_email": "fixture.number@example.test"
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_same_number",
+    "expected": {
+      "action": "would_update",
+      "would_create_order": false,
+      "would_update_order": true,
+      "accepted_fields_include": ["payment_status"],
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "paid_order_attempted_downgrade_to_pending",
+    "description": "Non-admin stale payload cannot downgrade paid status to pending.",
+    "starting_order": {
+      "id": "order_fixture_paid",
+      "shopify_order_number": "FX-PAID-001",
+      "customer_email": "fixture.paid@example.test",
+      "payment_status": "paid"
+    },
+    "incoming_payload": {
+      "payment_status": "pending",
+      "sync_status": "synced"
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_paid_downgrade",
+    "expected": {
+      "action": "would_update",
+      "accepted_fields_include": ["sync_status"],
+      "rejected_fields_include": ["payment_status"],
+      "proposed_order_state_include": { "payment_status": "paid" },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "pending_order_upgrade_to_paid",
+    "description": "Pending to paid upgrade is allowed even under production lock.",
+    "starting_order": {
+      "id": "order_fixture_pending",
+      "shopify_order_number": "FX-PENDING-001",
+      "customer_email": "fixture.pending@example.test",
+      "payment_status": "pending",
+      "order_lock_status": "production_scheduled"
+    },
+    "incoming_payload": {
+      "payment_status": "paid"
+    },
+    "source": "stripe_webhook",
+    "idempotency_key": "evt_fixture_pending_paid",
+    "stripe_event_id": "evt_fixture_pending_paid",
+    "expected": {
+      "action": "would_update",
+      "accepted_fields_include": ["payment_status", "stripe_event_id_applied"],
+      "rejected_fields_include": [],
+      "proposed_order_state_include": { "payment_status": "paid" },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "subscription_order_update",
+    "description": "Subscription update preserves subscription channel and identifiers.",
+    "starting_order": {
+      "id": "order_fixture_sub",
+      "shopify_order_number": "FX-SUB-001",
+      "customer_email": "fixture.sub@example.test",
+      "source_channel": "subscription",
+      "stripe_subscription_id": "sub_fixture_001",
+      "line_items": [{ "title": "Subscription Bundle", "quantity": 1 }],
+      "fulfillments": [{ "fulfillment_number": 1, "items": [] }]
+    },
+    "incoming_payload": {
+      "customer_notes": "Updated safe note",
+      "source_channel": "subscription",
+      "stripe_subscription_id": "sub_fixture_001"
+    },
+    "source": "rebuild_subscriptions",
+    "idempotency_key": "evt_fixture_sub_update",
+    "expected": {
+      "action": "would_update",
+      "accepted_fields_include": ["customer_notes", "source_channel", "stripe_subscription_id"],
+      "would_quarantine": false,
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "subscription_downgrade_attempt",
+    "description": "Attempt to downgrade subscription source_channel is queued and forced back to subscription.",
+    "starting_order": {
+      "id": "order_fixture_sub_down",
+      "shopify_order_number": "FX-SUB-002",
+      "customer_email": "fixture.subdown@example.test",
+      "source_channel": "subscription",
+      "stripe_subscription_id": "sub_fixture_002"
+    },
+    "incoming_payload": {
+      "source_channel": "online"
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_sub_downgrade",
+    "expected": {
+      "action": "would_update",
+      "would_quarantine": true,
+      "order_review_queue_incident_type": "subscription_downgrade_attempt",
+      "rejected_fields_include": ["source_channel"],
+      "proposed_order_state_include": { "source_channel": "subscription" },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "erase_stripe_subscription_id_attempt",
+    "description": "Empty incoming stripe_subscription_id is rejected for existing subscription order.",
+    "starting_order": {
+      "id": "order_fixture_sub_erase",
+      "shopify_order_number": "FX-SUB-003",
+      "customer_email": "fixture.suberase@example.test",
+      "source_channel": "subscription",
+      "stripe_subscription_id": "sub_fixture_003"
+    },
+    "incoming_payload": {
+      "stripe_subscription_id": ""
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_sub_erase",
+    "expected": {
+      "action": "would_update",
+      "rejected_fields_include": ["stripe_subscription_id"],
+      "proposed_order_state_include": { "stripe_subscription_id": "sub_fixture_003" },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "erase_line_items_attempt",
+    "description": "Empty incoming line_items is rejected for subscription order with existing line_items.",
+    "starting_order": {
+      "id": "order_fixture_line_erase",
+      "shopify_order_number": "FX-SUB-004",
+      "customer_email": "fixture.lineerase@example.test",
+      "source_channel": "subscription",
+      "stripe_subscription_id": "sub_fixture_004",
+      "line_items": [{ "title": "Subscription Bundle", "quantity": 1 }]
+    },
+    "incoming_payload": {
+      "line_items": []
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_line_erase",
+    "expected": {
+      "action": "would_update",
+      "rejected_fields_include": ["line_items"],
+      "proposed_order_state_include": { "line_items": [{ "title": "Subscription Bundle", "quantity": 1 }] },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "erase_fulfillments_attempt",
+    "description": "Empty incoming fulfillments is rejected for subscription order with existing fulfillments.",
+    "starting_order": {
+      "id": "order_fixture_fulfillment_erase",
+      "shopify_order_number": "FX-SUB-005",
+      "customer_email": "fixture.fulferase@example.test",
+      "source_channel": "subscription",
+      "stripe_subscription_id": "sub_fixture_005",
+      "fulfillments": [{ "fulfillment_number": 1, "items": [] }]
+    },
+    "incoming_payload": {
+      "fulfillments": []
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_fulfillment_erase",
+    "expected": {
+      "action": "would_update",
+      "rejected_fields_include": ["fulfillments"],
+      "proposed_order_state_include": { "fulfillments": [{ "fulfillment_number": 1, "items": [] }] },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "manual_override_protected_field_update",
+    "description": "Customer App cannot overwrite protected fields while manual_override is true.",
+    "starting_order": {
+      "id": "order_fixture_manual",
+      "shopify_order_number": "FX-MANUAL-001",
+      "customer_email": "fixture.manual@example.test",
+      "manual_override": true,
+      "production_status": "packed",
+      "assigned_delivery_date": "2026-05-30"
+    },
+    "incoming_payload": {
+      "production_status": "new",
+      "assigned_delivery_date": "2026-06-01",
+      "customer_notes": "Allowed note"
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_manual_override",
+    "expected": {
+      "action": "would_update",
+      "accepted_fields_include": ["customer_notes"],
+      "rejected_fields_include": ["production_status", "assigned_delivery_date"],
+      "proposed_order_state_include": { "production_status": "packed", "assigned_delivery_date": "2026-05-30" },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "production_scheduled_line_item_mismatch",
+    "description": "Snapshot line item mismatch after production scheduling is queued and line_items are rejected.",
+    "starting_order": {
+      "id": "order_fixture_snapshot_line",
+      "shopify_order_number": "FX-SNAP-001",
+      "customer_email": "fixture.snapline@example.test",
+      "order_lock_status": "production_scheduled",
+      "production_snapshot": {
+        "line_items": [{ "title": "Re-Nu", "quantity": 1 }],
+        "fulfillments": []
+      }
+    },
+    "incoming_payload": {
+      "line_items": [{ "title": "Detox Greens", "quantity": 1 }]
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_snapshot_line",
+    "expected": {
+      "action": "would_update",
+      "would_quarantine": true,
+      "order_review_queue_incident_type": "overwrite_rejection",
+      "rejected_fields_include": ["line_items"],
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "in_production_address_overwrite_attempt",
+    "description": "Address overwrite is rejected after in_production lock.",
+    "starting_order": {
+      "id": "order_fixture_addr_lock",
+      "shopify_order_number": "FX-ADDR-LOCK",
+      "customer_email": "fixture.addrlock@example.test",
+      "order_lock_status": "in_production",
+      "address_line1": "100 Fixture St",
+      "address_city": "Chicago",
+      "address_state": "IL",
+      "address_postal_code": "60601"
+    },
+    "incoming_payload": {
+      "address_line1": "200 Changed St",
+      "address_city": "Evanston",
+      "address_state": "IL",
+      "address_postal_code": "60201"
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_addr_lock",
+    "expected": {
+      "action": "would_update",
+      "rejected_fields_include": ["address_line1", "address_city", "address_state", "address_postal_code"],
+      "proposed_order_state_include": { "address_line1": "100 Fixture St", "address_city": "Chicago" },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "refunded_cancelled_order_exclusion",
+    "description": "Stale paid/scheduled update cannot revive a refunded/canceled order.",
+    "starting_order": {
+      "id": "order_fixture_refunded",
+      "shopify_order_number": "FX-REFUND-001",
+      "customer_email": "fixture.refund@example.test",
+      "payment_status": "refunded",
+      "production_status": "canceled",
+      "excluded_from_production": true
+    },
+    "incoming_payload": {
+      "payment_status": "paid",
+      "production_status": "awaiting_production"
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_refund_stale",
+    "expected": {
+      "action": "would_update",
+      "rejected_fields_include": ["payment_status", "production_status"],
+      "warnings_include": ["terminal_order_state_preserved"],
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "partial_refund_review_queue_case",
+    "description": "Partial refund requires review queue draft and no silent operational update.",
+    "starting_order": {
+      "id": "order_fixture_partial_refund",
+      "shopify_order_number": "FX-PARTIAL-001",
+      "customer_email": "fixture.partial@example.test",
+      "payment_status": "paid",
+      "total_price": 40
+    },
+    "incoming_payload": {
+      "refund_amount": 10,
+      "charge_amount": 40,
+      "payment_status": "partially_refunded"
+    },
+    "source": "stripe_webhook",
+    "idempotency_key": "evt_fixture_partial_refund",
+    "expected": {
+      "action": "rejected",
+      "would_quarantine": true,
+      "would_reject": true,
+      "error_code": "partial_refund_requires_review",
+      "order_review_queue_incident_type": "partial_refund_received",
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "unknown_order_attempt",
+    "description": "Unknown/incomplete payload attempting to overwrite good order is rejected and queued.",
+    "starting_order": {
+      "id": "order_fixture_unknown",
+      "shopify_order_number": "FX-UNKNOWN-001",
+      "customer_email": "fixture.unknown@example.test",
+      "customer_name": "Known Fixture",
+      "line_items": [{ "title": "Re-Nu", "quantity": 1 }],
+      "total_price": 12
+    },
+    "incoming_payload": {
+      "shopify_order_number": "#unknown",
+      "production_status": "new",
+      "sync_status": "synced",
+      "tags": ["unknown"]
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_unknown",
+    "expected": {
+      "action": "rejected",
+      "would_quarantine": true,
+      "would_reject": true,
+      "error_code": "unknown_quality_would_overwrite_verified_order",
+      "order_review_queue_incident_type": "unknown_order_attempt",
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "subscription_ghost_duplicate_scenario",
+    "description": "Subscription duplicate with matching subscription id updates existing order instead of creating ghost duplicate.",
+    "starting_order": {
+      "id": "order_fixture_ghost",
+      "shopify_order_number": "FX-GHOST-001",
+      "customer_email": "fixture.ghost@example.test",
+      "source_channel": "subscription",
+      "stripe_subscription_id": "sub_fixture_ghost"
+    },
+    "incoming_payload": {
+      "shopify_order_number": "FX-GHOST-NEW",
+      "customer_email": "fixture.ghost@example.test",
+      "source_channel": "subscription",
+      "stripe_subscription_id": "sub_fixture_ghost"
+    },
+    "source": "rebuild_subscriptions",
+    "idempotency_key": "evt_fixture_ghost",
+    "expected": {
+      "action": "would_update",
+      "would_create_order": false,
+      "accepted_fields_include": ["stripe_subscription_id", "source_channel"],
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "pos_order_address_bypass",
+    "description": "POS order with blank address bypasses delivery address gate.",
+    "starting_order": null,
+    "incoming_payload": {
+      "shopify_order_id": "fixture:pos:blank-address",
+      "shopify_order_number": "FX-POS-002",
+      "customer_email": "fixture.posblank@example.test",
+      "customer_name": "POS Blank Fixture",
+      "payment_status": "paid",
+      "source_channel": "pos",
+      "source_type": "shopify_pos",
+      "fulfillment_method": "pos",
+      "line_items": [{ "title": "Shot", "quantity": 1 }]
+    },
+    "source": "stripe_webhook",
+    "idempotency_key": "evt_fixture_pos_blank",
+    "expected": {
+      "action": "would_create",
+      "would_quarantine": false,
+      "would_reject": false,
+      "proposed_order_state_include": { "order_lock_status": "fulfilled", "production_status": "not_required" },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "production_snapshot_fulfillment_mismatch",
+    "description": "Fulfillment count mismatch against production snapshot is queued and fulfillments rejected.",
+    "starting_order": {
+      "id": "order_fixture_snapshot_fulfillments",
+      "shopify_order_number": "FX-SNAP-002",
+      "customer_email": "fixture.snapfulfill@example.test",
+      "order_lock_status": "production_scheduled",
+      "production_snapshot": {
+        "line_items": [{ "title": "Re-Nu", "quantity": 1 }],
+        "fulfillments": [{ "fulfillment_number": 1, "items": [] }]
+      }
+    },
+    "incoming_payload": {
+      "fulfillments": [
+        { "fulfillment_number": 1, "items": [] },
+        { "fulfillment_number": 2, "items": [] }
+      ]
+    },
+    "source": "rebuild_subscriptions",
+    "idempotency_key": "evt_fixture_snapshot_fulfillments",
+    "expected": {
+      "action": "would_update",
+      "would_quarantine": true,
+      "order_review_queue_incident_type": "overwrite_rejection",
+      "rejected_fields_include": ["fulfillments"],
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "field_ownership_rejection",
+    "description": "Unauthorized source field is filtered by FIELD_OWNERSHIP.",
+    "starting_order": {
+      "id": "order_fixture_field_ownership",
+      "shopify_order_number": "FX-FIELD-001",
+      "customer_email": "fixture.field@example.test"
+    },
+    "incoming_payload": {
+      "repair_status": "fixed",
+      "customer_notes": "Allowed note"
+    },
+    "source": "customer_app",
+    "idempotency_key": "evt_fixture_field_ownership",
+    "expected": {
+      "action": "would_update",
+      "accepted_fields_include": ["customer_notes"],
+      "rejected_fields_include": ["repair_status"],
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  },
+  {
+    "fixture_id": "lock_frozen_fields_rejection",
+    "description": "Frozen fields are rejected under fulfilled lock.",
+    "starting_order": {
+      "id": "order_fixture_lock",
+      "shopify_order_number": "FX-LOCK-001",
+      "customer_email": "fixture.lock@example.test",
+      "customer_name": "Locked Customer",
+      "payment_status": "paid",
+      "order_lock_status": "fulfilled"
+    },
+    "incoming_payload": {
+      "customer_name": "Changed Name",
+      "payment_status": "pending",
+      "internal_notes": "Allowed operational note"
+    },
+    "source": "operations",
+    "idempotency_key": "evt_fixture_lock",
+    "expected": {
+      "action": "would_update",
+      "accepted_fields_include": ["internal_notes"],
+      "rejected_fields_include": ["customer_name", "payment_status"],
+      "proposed_order_state_include": { "customer_name": "Locked Customer", "payment_status": "paid" },
+      "untouched": ["FulfillmentTask", "ProductionBatch"]
+    }
+  }
+]
