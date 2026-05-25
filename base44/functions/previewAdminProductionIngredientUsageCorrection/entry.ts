@@ -112,6 +112,12 @@ function sanitizePreviewRow(row) {
     proposed_deduction_quantity: safeNumber(row.proposed_deduction_quantity),
     projected_stock_after_deduction: safeNumber(row.projected_stock_after_deduction),
     shortfall_quantity: safeNumber(row.shortfall_quantity),
+    usage_row_ready: row.usage_row_ready === true,
+    inventory_match_found: row.inventory_match_found === true,
+    yield_match_found: row.yield_match_found === true,
+    stock_available: row.stock_available === true,
+    procurement_needed: row.procurement_needed === true,
+    inventory_deduction_ready: row.inventory_deduction_ready === true,
     inventory_match_count: safeNumber(row.inventory_match_count) || 0,
     inventory_matches: Array.isArray(row.inventory_matches)
       ? row.inventory_matches.slice(0, 10).map(sanitizeInventoryMatch).filter(Boolean)
@@ -121,6 +127,8 @@ function sanitizePreviewRow(row) {
       ? row.yield_matches.slice(0, 10).map(sanitizeYieldMatch).filter(Boolean)
       : [],
     status: sanitizeText(row.status, 60),
+    correction_blockers: sanitizeStringArray(row.correction_blockers, 20),
+    deduction_blockers: sanitizeStringArray(row.deduction_blockers, 20),
     blockers: sanitizeStringArray(row.blockers, 20),
     warnings: sanitizeStringArray(row.warnings, 20),
   };
@@ -149,6 +157,9 @@ function sanitizeHubResponse(data, hubStatus) {
     recipe_product_name: sanitizeText(data?.recipe_product_name, 180),
     recipe_yield_factor: safeNumber(data?.recipe_yield_factor),
     recipe_ingredients_count: safeNumber(data?.recipe_ingredients_count) || 0,
+    usage_correction_preview_count: safeNumber(data?.usage_correction_preview_count) || 0,
+    usage_correction_ready_count: safeNumber(data?.usage_correction_ready_count) || 0,
+    usage_correction_allowed: data?.usage_correction_allowed === true,
     proposed_ingredient_usage_count: safeNumber(data?.proposed_ingredient_usage_count) || 0,
     proposed_ingredient_usage_ready_count: safeNumber(data?.proposed_ingredient_usage_ready_count) || 0,
     proposed_ingredient_usage_rows: Array.isArray(data?.proposed_ingredient_usage_rows)
@@ -162,8 +173,12 @@ function sanitizeHubResponse(data, hubStatus) {
     batch_compliance_log_changes_deferred: data?.batch_compliance_log_changes_deferred === true,
     customer_app_sync_deferred: data?.customer_app_sync_deferred === true,
     notifications_deferred: data?.notifications_deferred === true,
+    procurement_needed: data?.procurement_needed === true,
+    procurement_needed_count: safeNumber(data?.procurement_needed_count) || 0,
     live_allowed: data?.live_allowed === true,
     inventory_deduction_ready: data?.inventory_deduction_ready === true,
+    deduction_blockers: sanitizeStringArray(data?.deduction_blockers, 60),
+    correction_blockers: sanitizeStringArray(data?.correction_blockers, 60),
     blockers: sanitizeStringArray(data?.blockers, 60),
     warnings: sanitizeStringArray(data?.warnings, 60),
     error: sanitizeText(data?.error, 180),
