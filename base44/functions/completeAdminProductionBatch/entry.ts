@@ -26,6 +26,7 @@ const ALLOWED_BODY_KEYS = new Set([
   'sanitation_verification_complete',
   'labels_applied',
   'passed_failed',
+  'staff_on_duty',
   'notes',
   'reason',
 ]);
@@ -125,6 +126,18 @@ function normalizePassedFailed(value, fieldName, required = true) {
     throw new Error(`${fieldName} must be passed or failed`);
   }
   return text;
+}
+
+function normalizeStaffOnDuty(value) {
+  if (value === null || value === undefined || value === '') return [];
+  if (!Array.isArray(value)) throw new Error('staff_on_duty must be an array');
+
+  const staff = value
+    .map((entry) => sanitizeText(entry, 80))
+    .filter(Boolean)
+    .slice(0, 12);
+
+  return [...new Set(staff)];
 }
 
 function findUnsupportedBodyKey(body) {
@@ -248,6 +261,9 @@ Deno.serve(async (req) => {
       if (pHMeterId) hubBody.pH_meter_id = pHMeterId;
       if (notes) hubBody.notes = notes;
       if (reason) hubBody.reason = reason;
+
+      const staffOnDuty = normalizeStaffOnDuty(body.staff_on_duty);
+      if (staffOnDuty.length > 0) hubBody.staff_on_duty = staffOnDuty;
 
       hubBody.calibration_checked = normalizeBoolean(body.calibration_checked);
       hubBody.ccp_check_complete = normalizeBoolean(body.ccp_check_complete);
