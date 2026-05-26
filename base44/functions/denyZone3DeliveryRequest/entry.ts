@@ -36,6 +36,15 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (user?.role !== 'admin') return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
 
+    if (Deno.env.get('ENABLE_ZONE3_ROUTE_REVIEW_DECISIONS') !== 'true') {
+      return Response.json({
+        success: false,
+        skipped: true,
+        reason: 'zone3_route_review_decisions_disabled',
+        message: 'Zone 3 route review denials are disabled for May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const { dar_id, admin_decision_reason } = await req.json();
 
     if (!dar_id) return Response.json({ error: 'dar_id is required' }, { status: 400 });

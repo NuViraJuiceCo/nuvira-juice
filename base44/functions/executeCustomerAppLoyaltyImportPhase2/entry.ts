@@ -19,6 +19,11 @@ const HELD_ORDER_PREFIXES = ['NV-MOB2D3P0'];
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user || user.role !== 'admin') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     const { hub_loyalty_payload, dry_run = true, approved_by } = await req.json();
 
     if (!hub_loyalty_payload) {
@@ -34,6 +39,15 @@ Deno.serve(async (req) => {
         { error: 'Live mode requires approved_by field' },
         { status: 403 }
       );
+    }
+
+    if (!dry_run && Deno.env.get('ENABLE_LOYALTY_IMPORT_PHASE2_LIVE') !== 'true') {
+      return Response.json({
+        success: false,
+        skipped: true,
+        reason: 'loyalty_import_phase2_live_disabled',
+        message: 'Loyalty import live mode is disabled for May 30 launch freeze.',
+      }, { status: 409 });
     }
 
     console.log(`[Phase2] Starting ${dry_run ? 'DRY-RUN' : 'LIVE'} import. Approved by: ${approved_by || 'N/A'}`);

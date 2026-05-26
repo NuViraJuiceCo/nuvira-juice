@@ -32,6 +32,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
+    if (Deno.env.get('ENABLE_STRIPE_EVENT_CLEANUP') !== 'true') {
+      return Response.json({
+        success: false,
+        skipped: true,
+        reason: 'stripe_event_cleanup_disabled',
+        message: 'Stripe event cleanup is disabled for May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     console.log(`[StripeEventCleanup] Starting approved event selection update on ${CANONICAL_ID}...`);
 
     // ── Step 1: Read current state ────────────────────────────────────────
