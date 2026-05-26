@@ -44,6 +44,15 @@ const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_producti
 
 // Orders that are NOT operational — never show in active/completed views
 function isAbandonedOrUnpaid(o) {
+  if (
+    o.is_hub_order &&
+    !['pending_payment', 'cancelled', 'refunded'].includes(o.status) &&
+    !['pending', 'unpaid', 'requires_payment_method'].includes(o.payment_status) &&
+    !['pending', 'unpaid'].includes(o.financial_status)
+  ) {
+    return false;
+  }
+
   return (
     o.status === 'pending_payment' ||
     o.is_abandoned_checkout === true ||
