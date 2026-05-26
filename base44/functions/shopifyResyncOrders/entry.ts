@@ -6,6 +6,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 Deno.serve(async (req) => {
+  if (Deno.env.get('ENABLE_ADMIN_SHOPIFY_RESYNC') !== 'true') {
+    return Response.json({
+      success: true,
+      skipped: true,
+      reason: 'admin_shopify_resync_disabled',
+      message: 'Admin Shopify order resync is disabled for May 30 launch freeze.',
+    }, { status: 409 });
+  }
+
   const base44 = createClientFromRequest(req);
   const user = await base44.auth.me();
   if (user?.role !== 'admin') {

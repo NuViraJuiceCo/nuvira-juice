@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { ArrowLeft, RefreshCw, Package, ShoppingCart, BarChart3, Settings, Bell, CheckCircle, AlertTriangle, XCircle, Zap } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 
 const NAV_TABS = [
@@ -575,6 +574,7 @@ function SettingsTab() {
   const [resyncingProducts, setResyncingProducts] = useState(false);
   const [manualOrderId, setManualOrderId] = useState('');
   const [resyncResult, setResyncResult] = useState(null);
+  const adminResyncFrozen = true;
 
   const { data: syncLogs = [] } = useQuery({
     queryKey: ['sync-logs'],
@@ -615,12 +615,15 @@ function SettingsTab() {
       {/* Actions */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sync Actions</p>
-        <button onClick={handleResyncOrders} disabled={resyncing}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Admin Shopify resync is frozen for May 30 launch. Use the Hub POS fallback/read-only checks for event monitoring unless a one-off provider resync is explicitly approved.
+        </div>
+        <button onClick={handleResyncOrders} disabled={adminResyncFrozen || resyncing}
           className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50">
           <RefreshCw className={`w-4 h-4 ${resyncing ? 'animate-spin' : ''}`} />
           {resyncing ? 'Syncing...' : 'Sync Recent Orders (50)'}
         </button>
-        <button onClick={handleResyncProducts} disabled={resyncingProducts}
+        <button onClick={handleResyncProducts} disabled={adminResyncFrozen || resyncingProducts}
           className="w-full flex items-center justify-center gap-2 py-2.5 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50">
           <RefreshCw className={`w-4 h-4 ${resyncingProducts ? 'animate-spin' : ''}`} />
           {resyncingProducts ? 'Syncing...' : 'Sync All Products'}
@@ -630,7 +633,7 @@ function SettingsTab() {
             placeholder="Shopify Order ID (numeric)"
             className="flex-1 h-9 px-3 rounded-lg border border-border bg-secondary/30 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          <button onClick={handleManualOrderSync} disabled={resyncing || !manualOrderId}
+          <button onClick={handleManualOrderSync} disabled={adminResyncFrozen || resyncing || !manualOrderId}
             className="px-3 h-9 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-50">
             Sync
           </button>
