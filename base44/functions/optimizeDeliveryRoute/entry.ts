@@ -27,6 +27,17 @@ const QUEUED_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_producti
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_DELIVERY_ROUTE_OPTIMIZATION') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        orders: [],
+        optimized_orders: null,
+        reason: 'delivery_route_optimization_disabled',
+        message: 'Delivery route optimization is disabled for May 30 launch freeze. Use Delivery Queue read-only route summaries and controlled task actions.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user || (user.role !== 'driver' && user.role !== 'admin')) {

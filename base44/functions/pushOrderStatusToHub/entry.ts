@@ -27,6 +27,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_LEGACY_DRIVER_STATUS_HUB_PUSH') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'legacy_driver_status_hub_push_disabled',
+        message: 'Legacy driver status Hub push is disabled for May 30 launch freeze. Use the controlled Delivery Queue task wrappers.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (user?.role !== 'admin') {
