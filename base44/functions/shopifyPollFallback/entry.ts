@@ -6,6 +6,17 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 Deno.serve(async (req) => {
+  if (Deno.env.get('ENABLE_SHOPIFY_POLL_FALLBACK') !== 'true') {
+    return Response.json({
+      ok: true,
+      skipped: true,
+      polled: 0,
+      new_created: 0,
+      reason: 'shopify_poll_fallback_disabled',
+      message: 'Shopify poll fallback is disabled for May 30 launch freeze.',
+    });
+  }
+
   const SHOPIFY_API_TOKEN = Deno.env.get('SHOPIFY_API_TOKEN');
   const SHOPIFY_STORE_URL = Deno.env.get('SHOPIFY_STORE_URL');
 
