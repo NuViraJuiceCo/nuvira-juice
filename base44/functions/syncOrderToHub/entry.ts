@@ -630,6 +630,7 @@ Deno.serve(async (req) => {
       log_status: logStatus,
       hub_action: hubAction,
       hub_response: hubResponse,
+      safe_sync_dark_launch: undefined,
     };
 
     // G21U: explicit one-order debug return for no-persistence dark launch.
