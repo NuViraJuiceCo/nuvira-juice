@@ -77,6 +77,11 @@ Deno.serve(async (req) => {
       if (o.is_preorder && !o.payment_captured && !o.stripe_payment_intent_id) return false;
       return true;
     });
+
+    const nativeShopifyOrders = await base44.asServiceRole.entities.ShopifyOrder.list('-created_date', 500).catch(error => {
+      console.warn('[AdminOrders] Native ShopifyOrder unavailable, skipping native operational records:', error.message);
+      return [];
+    });
     console.log(`[AdminOrders] Local: ${allLocalOrders.length} total, ${localOrders.length} after filtering. Cancelled order numbers: ${[...cancelledOrderNumbers].join(', ')}`);
 
     // 2. Fetch ALL UserProfiles to get every customer — including those whose only local
@@ -342,6 +347,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Native May 30 operational records are visible in Customer App admin even while
+    // Hub remains the operational fallback. Hub still wins if the same order exists.
+    for (const order of nativeShopifyOrders.map(mapNativeShopifyOrderToAdminOrder).filter(Boolean)) {
+      const key = normalizeOrderNum(order.order_number);
+      if (!key) continue;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, order);
+      }
+    }
+
     // Local orders fill in only where Hub has no record
     for (const order of expandedLocalOrders) {
       const key = normalizeOrderNum(order.order_number);
@@ -365,6 +380,7 @@ Deno.serve(async (req) => {
       total: merged.length,
       local_count: localOrders.length,
       hub_count: allHubOrders.length,
+      native_shopify_order_count: nativeShopifyOrders.length,
       orders: merged,
     });
   } catch (error) {
@@ -402,4 +418,46 @@ function mapHubStatus(hubStatus) {
     picked_up: 'picked_up',
   };
   return map[hubStatus] || 'order_received';
+}
+
+function mapNativeShopifyOrderToAdminOrder(order) {
+  if (!order || !order.shopify_order_number) return null;
+  if (order.is_subscription === true || order.order_type === 'subscription' || order.source_channel === 'subscription') return null;
+
+  const fulfillmentMethod = order.fulfillment_method || (order.source_channel === 'pos' ? 'pos' : 'delivery');
+  const isPos = order.source_channel === 'pos' || order.order_type === 'pos' || fulfillmentMethod === 'pos' || order.is_pos_order === true;
+  const mappedStatus = isPos
+    ? 'picked_up'
+    : mapHubStatus(order.production_status || order.order_status || order.fulfillment_status || 'order_received');
+  const items = Array.isArray(order.line_items) ? order.line_items : [];
+
+  return {
+    id: `native_${order.id}`,
+    native_shopify_order_id: order.id,
+    order_number: (order.shopify_order_number || '').toString().replace(/^#/, ''),
+    customer_email: order.customer_email || '',
+    customer_name: order.customer_name || '',
+    status: mappedStatus,
+    operational_order_status: order.order_status || null,
+    native_production_status: order.production_status || null,
+    native_fulfillment_status: order.fulfillment_status || null,
+    native_sync_status: order.sync_status || null,
+    native_review_status: order.data_quality_status || null,
+    payment_status: order.payment_status || order.financial_status || null,
+    source_channel: order.source_channel || null,
+    source_type: order.source_type || null,
+    order_type: order.order_type || null,
+    order_lock_status: order.order_lock_status || null,
+    total: Number(order.total_price || 0),
+    subtotal: Number(order.subtotal || 0),
+    delivery_fee: Number(order.delivery_fee || 0),
+    fulfillment_type: isPos ? 'pickup' : (fulfillmentMethod === 'pickup' ? 'pickup' : 'delivery'),
+    delivery_address: order.delivery_address || [order.address_line1, order.address_city, order.address_state, order.address_postal_code].filter(Boolean).join(', '),
+    contact_phone: order.customer_phone || '',
+    estimated_delivery_date: order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date || null,
+    created_date: order.customer_order_date || order.created_date || order.last_sync_at || null,
+    items,
+    notes: order.internal_notes || order.customer_notes || null,
+    is_native_order: true,
+  };
 }

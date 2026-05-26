@@ -103,6 +103,63 @@ function sanitizeOrder(order) {
   };
 }
 
+function dateInRange(value, from, to) {
+  if (!from || !to) return true;
+  const date = safeString(value, 40)?.slice(0, 10);
+  if (!date) return true;
+  return date >= from && date <= to;
+}
+
+function resolvePresetRange(preset) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (preset === 'today') return { from: today, to: today };
+  if (preset === 'last_30_days') {
+    const start = new Date(`${today}T00:00:00.000Z`);
+    start.setUTCDate(start.getUTCDate() - 29);
+    return { from: start.toISOString().slice(0, 10), to: today };
+  }
+  const start = new Date(`${today}T00:00:00.000Z`);
+  start.setUTCDate(start.getUTCDate() - 6);
+  return { from: start.toISOString().slice(0, 10), to: today };
+}
+
+function sanitizeNativePosOrder(order) {
+  const sanitized = sanitizeOrder({
+    ...order,
+    id: order.id,
+    order_number: order.shopify_order_number || order.order_number,
+    item_count: Array.isArray(order.line_items)
+      ? order.line_items.reduce((sum, item) => sum + safeNumber(item?.quantity), 0)
+      : 0,
+    customer_order_date: order.customer_order_date || order.created_date,
+    location_label: order.event_location || order.event_name || order.source_channel || 'POS',
+    requires_delivery: false,
+    requires_production: false,
+    requires_fulfillment_task: false,
+    internal_note_summary: order.internal_notes || 'Native May 30 POS operational mirror',
+  });
+  return {
+    ...sanitized,
+    source_type: sanitized.source_type || 'shopify_pos',
+    source_channel: sanitized.source_channel || 'pos',
+    order_type: sanitized.order_type || 'pos',
+    fulfillment_method: sanitized.fulfillment_method || 'pos',
+  };
+}
+
+function summarizeOrders(orders) {
+  return {
+    total: orders.length,
+    shown: orders.length,
+    paid: orders.filter(order => order.payment_status === 'paid').length,
+    fulfilled: orders.filter(order => order.fulfillment_status === 'fulfilled').length,
+    production_not_required: orders.filter(order => order.production_status === 'not_required').length,
+    requires_delivery: orders.filter(order => order.requires_delivery === true).length,
+    requires_production: orders.filter(order => order.requires_production === true).length,
+    requires_fulfillment_task: orders.filter(order => order.requires_fulfillment_task === true).length,
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -159,57 +216,89 @@ Deno.serve(async (req) => {
       dateTo = null;
     }
 
-    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub POS order service is not configured' }, { status: 503 });
-    }
+    const range = preset === 'custom' ? { from: dateFrom, to: dateTo } : resolvePresetRange(preset);
 
-    const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-    const params = new URLSearchParams({ limit: limit.toString() });
-    if (preset === 'custom') {
-      params.set('date_from', dateFrom);
-      params.set('date_to', dateTo);
-    } else {
-      params.set('preset', preset);
-    }
-
-    const hubResponse = await fetch(`${hubBase}/functions/getPOSOrdersForCustomerApp?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
+    const nativePosOrdersRaw = await base44.asServiceRole.entities.ShopifyOrder.list('-created_date', MAX_LIMIT).catch(error => {
+      console.warn('[getAdminPOSOrdersSummary] Native ShopifyOrder unavailable, skipping native POS records:', error.message);
+      return [];
     });
+    const nativePosOrders = nativePosOrdersRaw
+      .filter(order => (
+        order?.source_channel === 'pos' ||
+        order?.order_type === 'pos' ||
+        order?.fulfillment_method === 'pos' ||
+        order?.is_pos_order === true ||
+        order?.source_type === 'shopify_pos'
+      ))
+      .filter(order => dateInRange(order.customer_order_date || order.created_date || order.last_sync_at, range.from, range.to))
+      .map(sanitizeNativePosOrder);
 
-    if (!hubResponse.ok) {
-      return Response.json({
-        error: 'Unable to load POS orders summary',
-        hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
+    let hubOrders = [];
+    let hubSummary = null;
+    let hubGeneratedAt = null;
+    let hubCount = 0;
+    let hubTruncated = false;
+
+    if (HUB_API_URL && CUSTOMER_APP_SYNC_SECRET) {
+      const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
+      const params = new URLSearchParams({ limit: limit.toString() });
+      if (preset === 'custom') {
+        params.set('date_from', dateFrom);
+        params.set('date_to', dateTo);
+      } else {
+        params.set('preset', preset);
+      }
+
+      const hubResponse = await fetch(`${hubBase}/functions/getPOSOrdersForCustomerApp?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        },
+      });
+
+      if (!hubResponse.ok) {
+        console.warn(`[getAdminPOSOrdersSummary] Hub POS summary unavailable: ${hubResponse.status}`);
+      } else {
+        const hubData = await hubResponse.json().catch(() => null);
+        if (!hubData || hubData.success !== true || !Array.isArray(hubData.orders)) {
+          console.warn('[getAdminPOSOrdersSummary] Hub POS summary response malformed; using native records only');
+        } else {
+          hubOrders = hubData.orders.map(sanitizeOrder);
+          hubSummary = hubData.summary || null;
+          hubGeneratedAt = hubData.generated_at || null;
+          hubCount = safeNumber(hubData.count);
+          hubTruncated = hubData.truncated === true;
+          if (hubData.date_from) range.from = hubData.date_from;
+          if (hubData.date_to) range.to = hubData.date_to;
+        }
+      }
     }
 
-    const hubData = await hubResponse.json().catch(() => null);
-    if (!hubData || hubData.success !== true || !Array.isArray(hubData.orders)) {
-      return Response.json({ error: 'Malformed POS orders summary response' }, { status: 502 });
+    const mergedByOrderNumber = new Map();
+    for (const order of hubOrders) {
+      const key = (order.order_number || order.id || '').toString().toLowerCase();
+      if (key) mergedByOrderNumber.set(key, order);
     }
+    for (const order of nativePosOrders) {
+      const key = (order.order_number || order.id || '').toString().toLowerCase();
+      if (key && !mergedByOrderNumber.has(key)) mergedByOrderNumber.set(key, order);
+    }
+    const orders = Array.from(mergedByOrderNumber.values()).slice(0, limit);
+    const summary = summarizeOrders(orders);
 
     return Response.json({
       success: true,
       source: 'customer_app_admin_pos_orders_summary',
-      generated_at: hubData.generated_at || null,
-      date_from: hubData.date_from || dateFrom,
-      date_to: hubData.date_to || dateTo,
-      summary: {
-        total: safeNumber(hubData.summary?.total),
-        shown: safeNumber(hubData.summary?.shown),
-        paid: safeNumber(hubData.summary?.paid),
-        fulfilled: safeNumber(hubData.summary?.fulfilled),
-        production_not_required: safeNumber(hubData.summary?.production_not_required),
-        requires_delivery: safeNumber(hubData.summary?.requires_delivery),
-        requires_production: safeNumber(hubData.summary?.requires_production),
-        requires_fulfillment_task: safeNumber(hubData.summary?.requires_fulfillment_task),
-      },
-      count: safeNumber(hubData.count),
-      truncated: hubData.truncated === true,
-      orders: hubData.orders.map(sanitizeOrder),
+      generated_at: hubGeneratedAt || new Date().toISOString(),
+      date_from: range.from,
+      date_to: range.to,
+      summary,
+      hub_summary: hubSummary,
+      hub_count: hubCount,
+      native_count: nativePosOrders.length,
+      count: orders.length,
+      truncated: hubTruncated || orders.length < hubOrders.length + nativePosOrders.length,
+      orders,
     });
   } catch (error) {
     console.error('[getAdminPOSOrdersSummary] Error:', error.message);

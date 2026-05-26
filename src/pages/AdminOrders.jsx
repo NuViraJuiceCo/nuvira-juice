@@ -121,6 +121,41 @@ function SectionLabel({ title, description, badge }) {
   );
 }
 
+function statusSummary(order) {
+  return [
+    order.payment_status ? `Payment: ${formatStatusLabel(order.payment_status)}` : null,
+    order.native_production_status ? `Production: ${formatStatusLabel(order.native_production_status)}` : null,
+    order.native_fulfillment_status ? `Fulfillment: ${formatStatusLabel(order.native_fulfillment_status)}` : null,
+    order.native_sync_status ? `Sync: ${formatStatusLabel(order.native_sync_status)}` : null,
+    order.native_review_status ? `Review: ${formatStatusLabel(order.native_review_status)}` : null,
+    order.order_lock_status ? `Lock: ${formatStatusLabel(order.order_lock_status)}` : null,
+  ].filter(Boolean).join(' · ');
+}
+
+function NativeOperationsPanel({ order }) {
+  if (!order.is_native_order) return null;
+
+  return (
+    <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Native Operations</p>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">Customer App</span>
+      </div>
+      <InfoRow label="Payment" value={formatStatusLabel(order.payment_status)} />
+      <InfoRow label="Production" value={formatStatusLabel(order.native_production_status)} />
+      <InfoRow label="Fulfillment" value={formatStatusLabel(order.native_fulfillment_status)} />
+      <InfoRow label="Sync" value={formatStatusLabel(order.native_sync_status)} />
+      <InfoRow label="Review" value={formatStatusLabel(order.native_review_status)} />
+      <InfoRow label="Source" value={formatStatusLabel(order.source_type || order.source_channel)} />
+      <InfoRow label="Order Type" value={formatStatusLabel(order.order_type)} />
+      <InfoRow label="Lock" value={formatStatusLabel(order.order_lock_status)} />
+      <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+        Native mirror remains parallel to the Hub bridge for May 30. Use Delivery Queue and Production views for operational actions.
+      </p>
+    </div>
+  );
+}
+
 function HubOperationsPanel({ order, customerAppStatusLabel }) {
   if (!order.is_hub_order) return null;
 
@@ -471,6 +506,9 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
             {order.is_hub_order && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Hub</span>
             )}
+            {order.is_native_order && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Native Ops</span>
+            )}
           </div>
           {/* Row 2: customer name (always shown if available) */}
           <p className="text-sm font-semibold text-foreground">
@@ -490,6 +528,9 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               <p className="text-xs text-muted-foreground truncate max-w-[180px]">{itemsSummary}</p>
             )}
           </div>
+          {statusSummary(order) && (
+            <p className="text-[10px] text-muted-foreground truncate">{statusSummary(order)}</p>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0 pt-0.5">
           <p className="text-sm font-bold">${(order.total || 0).toFixed(2)}</p>
@@ -553,6 +594,17 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                     <FulfillmentTasksPanel order={order} />
                     <HubTimelinePanel order={order} />
                   </div>
+                </section>
+              )}
+
+              {order.is_native_order && (
+                <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
+                  <SectionLabel
+                    title="Native Customer App Context"
+                    description="Operational mirror created in Customer App for May 30 launch processing."
+                    badge="Parallel"
+                  />
+                  <NativeOperationsPanel order={order} />
                 </section>
               )}
 

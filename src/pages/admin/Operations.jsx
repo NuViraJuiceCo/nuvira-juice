@@ -82,9 +82,9 @@ const sections = [
       {
         title: 'Delivery Queue',
         route: '/admin/delivery-queue',
-        description: 'Read-only delivery stops, proof visibility, drop locations, and completed deliveries.',
+        description: 'Delivery stops plus approved driver assignment, Out For Delivery, and operational Delivered actions.',
         icon: Truck,
-        badges: ['Read-only', 'Hub-backed'],
+        badges: ['Controlled actions', 'Hub-backed'],
       },
     ],
   },
