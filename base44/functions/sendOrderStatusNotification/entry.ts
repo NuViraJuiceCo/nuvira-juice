@@ -49,6 +49,15 @@ const STATUS_NOTIF_MAP = {
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_ORDER_STATUS_NOTIFICATIONS') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'order_status_notifications_disabled',
+        message: 'Order status notifications are disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const body = await req.json();
 
