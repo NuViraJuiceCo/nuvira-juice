@@ -41,6 +41,14 @@ const ALWAYS_SEND = new Set([
   'delivered',
 ]);
 
+const MAY30_DEFAULT_ALLOWED_SUBTYPES = new Set([
+  'order_confirmation',
+]);
+
+function nonConfirmationNotificationsEnabled() {
+  return Deno.env.get('ENABLE_NON_CONFIRMATION_CUSTOMER_NOTIFICATIONS') === 'true';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -59,6 +67,16 @@ Deno.serve(async (req) => {
 
     if (!customer_email || !title || !message) {
       return Response.json({ error: 'Missing required fields: customer_email, title, message' }, { status: 400 });
+    }
+
+    if (!MAY30_DEFAULT_ALLOWED_SUBTYPES.has(notification_subtype) && !nonConfirmationNotificationsEnabled()) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'non_confirmation_customer_notifications_disabled',
+        message: 'Non-confirmation customer notifications are disabled for the May 30 launch freeze.',
+        notification_subtype,
+      }, { status: 409 });
     }
 
     // ── STEP 1: Resolve all identity emails for this customer ────────────────
