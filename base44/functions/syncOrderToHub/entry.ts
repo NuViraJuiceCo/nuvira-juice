@@ -6,6 +6,7 @@ const ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH = Deno.env.get('ENABLE_NATIVE_SAFE_SYN
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE') || '0';
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES') || '';
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS') || '';
+const NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST') || '';
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE') || 'none';
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH') === 'true';
 
@@ -77,8 +78,12 @@ function normalizeFinalScheduleSource(source) {
   return LOCKED_FINAL_SCHEDULE_SOURCES.has(source) ? source : 'unknown';
 }
 
+function normalizeAllowlistValue(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function parseCsvSet(value) {
-  return new Set(String(value || '').split(',').map((item) => item.trim()).filter(Boolean));
+  return new Set(String(value || '').split(',').map(normalizeAllowlistValue).filter(Boolean));
 }
 
 function parseSampleRate(value) {
@@ -105,6 +110,25 @@ function normalizeDarkLaunchAction(action) {
   if (['dedupe_exact_match', 'skipped', 'duplicate_event'].includes(value)) return 'skipped';
   if (['queued_for_review', 'rejected', 'reject', 'failed', 'error'].includes(value)) return 'rejected';
   return value || null;
+}
+
+function getDarkLaunchOrderIdentifiers(order) {
+  return [
+    order?.id,
+    order?.order_number,
+    order?.shopify_order_number,
+    order?.stripe_checkout_session_id,
+  ].map(normalizeAllowlistValue).filter(Boolean);
+}
+
+function hasDarkLaunchOrderAllowlistMatch(order) {
+  const allowedOrders = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST);
+  if (allowedOrders.size === 0) return false;
+
+  const identifiers = getDarkLaunchOrderIdentifiers(order);
+  if (identifiers.length === 0) return false;
+
+  return identifiers.some((identifier) => allowedOrders.has(identifier));
 }
 
 function summarizeDarkLaunchComparison(comparison, skippedReason = null) {
@@ -138,11 +162,14 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
 
   const source = payload?.source || 'customer_app';
   const event = payload?.event || 'order.created';
+  const normalizedSource = normalizeAllowlistValue(source);
+  const normalizedEvent = normalizeAllowlistValue(event);
   const allowedSources = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES);
   const allowedEvents = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS);
-  if (!allowedSources.has(source)) return summarizeDarkLaunchComparison(null, 'source_not_allowlisted');
-  if (!allowedEvents.has(event)) return summarizeDarkLaunchComparison(null, 'event_not_allowlisted');
-  if (event !== 'order.created') return summarizeDarkLaunchComparison(null, 'event_out_of_scope');
+  if (!allowedSources.has(normalizedSource)) return summarizeDarkLaunchComparison(null, 'source_not_allowlisted');
+  if (!allowedEvents.has(normalizedEvent)) return summarizeDarkLaunchComparison(null, 'event_not_allowlisted');
+  if (normalizedEvent !== 'order.created') return summarizeDarkLaunchComparison(null, 'event_out_of_scope');
+  if (!hasDarkLaunchOrderAllowlistMatch(payload?.order)) return summarizeDarkLaunchComparison(null, 'no_order_allowlist_match');
 
   const sampleRate = parseSampleRate(NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE);
   const sampleKey = payload?.order?.id || payload?.order?.order_number || payload?.order?.stripe_checkout_session_id || '';
