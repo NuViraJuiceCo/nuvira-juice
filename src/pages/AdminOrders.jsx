@@ -692,6 +692,15 @@ export default function AdminOrders() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ order, stage }) => {
+      if (ORDER_WORKFLOW_CONTROLS_FROZEN) {
+        return {
+          skipped: true,
+          reason: 'may30_order_workflow_controls_frozen',
+          order_number: order.order_number,
+          requested_status: stage.key,
+        };
+      }
+
       if (order.is_hub_order) {
         // Hub-managed: send status-only update to Hub. Never touch local DB order structure.
         return base44.functions.invoke('pushOrderStatusToHub', {
@@ -713,8 +722,13 @@ export default function AdminOrders() {
         });
       }
     },
-    onSuccess: (_, { stage, direction }) => {
+    onSuccess: (result, { stage, direction }) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+      if (result?.skipped) {
+        toast.info('Order workflow controls are paused for the May 30 launch freeze.');
+        setAdvancingId(null);
+        return;
+      }
       toast.success(direction === 'back' ? `Reverted to "${stage.label}"` : `Advanced to "${stage.label}"`);
       setAdvancingId(null);
     },
