@@ -1,5 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+const HUB_ORDER_FETCH_TIMEOUT_MS = 2500;
+const HUB_ORDER_TOTAL_BUDGET_MS = 8000;
+
 /**
  * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
  * 
@@ -168,8 +171,14 @@ Deno.serve(async (req) => {
       // Fetch in batches of 5 to avoid Hub rate limiting
       const emailList = Array.from(hubQueryEmails);
       const BATCH_SIZE = 5;
+      const hubStartedAt = Date.now();
+      let hubFetchTruncated = false;
 
       const fetchOne = async (hubEmail) => {
+        if (Date.now() - hubStartedAt > HUB_ORDER_TOTAL_BUDGET_MS) {
+          hubFetchTruncated = true;
+          return [];
+        }
         // Skip entirely for customers whose only local orders are cancelled
         // Check both the hub email itself AND its resolved auth email
         const normalizedHub = hubEmail.toLowerCase();
@@ -180,9 +189,13 @@ Deno.serve(async (req) => {
         }
         try {
           const url = `${hubBase}/functions/getOrderUpdatesForCustomerApp?email=${encodeURIComponent(hubEmail)}`;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), HUB_ORDER_FETCH_TIMEOUT_MS);
           const res = await fetch(url, {
             headers: { 'Authorization': `Bearer ${hubSecret}` },
+            signal: controller.signal,
           });
+          clearTimeout(timeoutId);
           if (!res.ok) {
             console.warn(`[AdminOrders] Hub fetch failed for ${hubEmail}: ${res.status}`);
             return [];
@@ -283,16 +296,28 @@ Deno.serve(async (req) => {
           }
           return expanded;
         } catch (err) {
-          console.warn(`[AdminOrders] Hub error for ${hubEmail}: ${err.message}`);
+          if (err?.name === 'AbortError') {
+            console.warn(`[AdminOrders] Hub fetch timed out for ${hubEmail}`);
+          } else {
+            console.warn(`[AdminOrders] Hub error for ${hubEmail}: ${err.message}`);
+          }
           return [];
         }
       };
 
       // Process in batches of 5 to avoid Hub rate limiting
       for (let i = 0; i < emailList.length; i += BATCH_SIZE) {
+        if (Date.now() - hubStartedAt > HUB_ORDER_TOTAL_BUDGET_MS) {
+          hubFetchTruncated = true;
+          console.warn(`[AdminOrders] Hub fetch budget exceeded after ${i} of ${emailList.length} customer lookups`);
+          break;
+        }
         const batch = emailList.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(batch.map(fetchOne));
         allHubOrders.push(...batchResults.flat());
+      }
+      if (hubFetchTruncated) {
+        console.warn('[AdminOrders] Returning partial Hub expansion so admin page remains usable');
       }
       console.log(`[AdminOrders] Hub returned ${allHubOrders.length} expanded orders across ${hubQueryEmails.size} customers`);
     }
