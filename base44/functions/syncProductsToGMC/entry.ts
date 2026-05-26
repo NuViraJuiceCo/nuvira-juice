@@ -159,6 +159,15 @@ async function deleteProduct(accessToken, offerId) {
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_GOOGLE_MERCHANT_PRODUCT_SYNC') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'google_merchant_product_sync_disabled',
+        message: 'Google Merchant product sync is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const body = await req.json().catch(() => ({}));
 

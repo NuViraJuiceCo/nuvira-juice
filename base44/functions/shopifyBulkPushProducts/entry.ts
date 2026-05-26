@@ -6,6 +6,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 Deno.serve(async (req) => {
+  if (Deno.env.get('ENABLE_SHOPIFY_BULK_PRODUCT_PUSH') !== 'true') {
+    return Response.json({
+      success: true,
+      skipped: true,
+      reason: 'shopify_bulk_product_push_disabled',
+      message: 'Bulk Shopify product push is disabled for May 30 launch freeze.',
+    });
+  }
+
   const base44 = createClientFromRequest(req);
   const user = await base44.auth.me();
   if (user?.role !== 'admin') {

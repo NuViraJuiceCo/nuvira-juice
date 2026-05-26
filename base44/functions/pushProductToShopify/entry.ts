@@ -6,6 +6,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 Deno.serve(async (req) => {
+  if (Deno.env.get('ENABLE_PRODUCT_SHOPIFY_AUTOMATION') !== 'true') {
+    return Response.json({
+      success: true,
+      skipped: true,
+      reason: 'product_shopify_automation_disabled',
+      message: 'Product Shopify automation is disabled for May 30 launch freeze.',
+    });
+  }
+
   const base44 = createClientFromRequest(req);
 
   const SHOPIFY_API_TOKEN = Deno.env.get('SHOPIFY_API_TOKEN');
