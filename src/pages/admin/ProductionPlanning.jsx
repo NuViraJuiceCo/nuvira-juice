@@ -116,9 +116,10 @@ function StatCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefr
 }
 
 function StatusBadge({ status }) {
+  const label = status === 'short' ? 'Procurement Needed' : formatLabel(status);
   return (
     <span className={`inline-flex px-2.5 py-0.5 rounded-full border text-xs font-medium ${statusClass(status)}`}>
-      {formatLabel(status)}
+      {label}
     </span>
   );
 }
@@ -193,7 +194,7 @@ function IngredientTable({ ingredients }) {
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Ingredient</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Required</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Available</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Shortage</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Procurement Need</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Source Products</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Production Dates</th>
@@ -417,7 +418,7 @@ export default function ProductionPlanning() {
           <StatCard icon={Package} label="Batches" value={formatNumber(summary.batch_count, 0)} />
           <StatCard label="Planned Units" value={formatNumber(summary.planned_units, 0)} />
           <StatCard icon={FlaskConical} label="Ingredients" value={formatNumber(summary.ingredient_count, 0)} />
-          <StatCard icon={AlertTriangle} label="Shortages" value={formatNumber(summary.shortage_count, 0)} tone={Number(summary.shortage_count || 0) > 0 ? 'danger' : 'default'} />
+          <StatCard icon={AlertTriangle} label="Procurement Needs" value={formatNumber(summary.shortage_count, 0)} tone={Number(summary.shortage_count || 0) > 0 ? 'danger' : 'default'} />
           <StatCard
             icon={RefreshCw}
             label="Missing Recipes / Yields"
@@ -429,7 +430,7 @@ export default function ProductionPlanning() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Production Planning view</p>
-            <p className="text-[10px] text-muted-foreground">Read-only production batch demand and ingredient coverage. No planning actions are available here.</p>
+            <p className="text-[10px] text-muted-foreground">Read-only production batch demand and ingredient coverage. Make-to-order shortfalls are procurement needs, not inventory deduction approval.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
@@ -479,7 +480,7 @@ export default function ProductionPlanning() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Ingredient Demand</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Sanitized ingredient requirements and stock coverage</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Sanitized ingredient requirements, stock coverage, and make-to-order procurement needs. No inventory is deducted here.</p>
               </div>
               {ingredients.length > 0 ? (
                 <>

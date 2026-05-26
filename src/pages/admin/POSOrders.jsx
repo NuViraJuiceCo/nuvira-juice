@@ -282,10 +282,13 @@ export default function POSOrders() {
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-foreground">Event Sales Snapshot</h2>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground border border-border/50">
-                  Read-only
+                  Hub + Native mirror
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">POS orders should stay paid, fulfilled, and out of production/delivery queues.</p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Hub rows: {data?.hub_count ?? 0} · Native Customer App rows: {data?.native_count ?? 0}
+              </p>
             </div>
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Range</p>
