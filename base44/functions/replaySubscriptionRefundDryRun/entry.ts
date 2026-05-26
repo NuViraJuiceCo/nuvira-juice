@@ -13,6 +13,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_LEGACY_PAYMENT_SUBSCRIPTION_TOOLS') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'legacy_payment_subscription_tools_disabled',
+        message: 'Legacy payment/subscription tools are disabled for May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
 
     const STRIPE_SUBSCRIPTION_ID = 'sub_1TUah0IrzYHaHkt24AVgUtNY';

@@ -36,6 +36,15 @@ function generateRequestNumber() {
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_SUBSCRIPTION_CHECKOUTS') !== 'true') {
+      return Response.json({
+        success: false,
+        skipped: true,
+        reason: 'subscription_checkouts_disabled',
+        message: 'Subscription checkout is currently unavailable. One-time orders are still available.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
 
     const {
