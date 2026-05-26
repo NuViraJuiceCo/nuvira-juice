@@ -10,6 +10,7 @@ const NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST = Deno.env.get('NATIVE_SAFE_S
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE') || 'none';
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH') === 'true';
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG') === 'true';
+const ENABLE_MAY30_NATIVE_ORDER_OPS = Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
 
 /**
  * Syncs an app-originated order to the operations hub.
@@ -437,6 +438,45 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
   }
 }
 
+async function maybeRunMay30NativeOrderOps({ base44, payload, body }) {
+  if (!ENABLE_MAY30_NATIVE_ORDER_OPS) return null;
+  if (payload?.event !== 'order.created') return { skipped: true, reason: 'event_out_of_scope' };
+  if (payload?.order?.order_type === 'subscription' || payload?.order?.stripe_subscription_id) {
+    return { skipped: true, reason: 'subscription_out_of_scope' };
+  }
+
+  try {
+    const response = await base44.asServiceRole.functions.invoke('processMay30NativeOrderOps', {
+      mode: 'live',
+      source: 'customer_app_one_time',
+      event_type: payload.event,
+      order: payload.order,
+      request_id: `syncOrderToHub:${payload?.order?.id || payload?.order?.order_number || Date.now()}`,
+      idempotency_key: `may30_native_order_ops:customer_app_one_time:${payload?.order?.order_number || payload?.order?.id || 'unknown'}`,
+      internal_secret: CUSTOMER_APP_SYNC_SECRET,
+    });
+    const result = response?.data || response;
+    console.log(`[May30 native order ops] order=${payload?.order?.order_number || 'unknown'} action=${result?.action || 'unknown'} success=${result?.success === true}`);
+    return {
+      attempted: true,
+      success: result?.success === true,
+      action: result?.action || null,
+      error_code: result?.error_code || null,
+      order_number: payload?.order?.order_number || null,
+      triggered_by: body?.triggered_by || 'stripe_webhook',
+    };
+  } catch (error) {
+    console.warn(`[May30 native order ops] failed safely for order=${payload?.order?.order_number || 'unknown'}: ${error?.message || 'unknown error'}`);
+    return {
+      attempted: true,
+      success: false,
+      action: 'failed_safely',
+      error_code: 'may30_native_order_ops_invoke_failed',
+      order_number: payload?.order?.order_number || null,
+    };
+  }
+}
+
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
   const body   = await req.json();
@@ -657,6 +697,11 @@ Deno.serve(async (req) => {
   console.log(`syncOrderToHub: PAYLOAD for ${order.order_number}: ${payloadSummary}`);
 
   try {
+    // M30A: default-off native operational mirror for one-time app orders.
+    // Hub remains the live bridge/fallback. This call is isolated so native
+    // mirror errors never alter the payload sent to Hub or the Hub response.
+    await maybeRunMay30NativeOrderOps({ base44, payload, body });
+
     // Log refund-specific details
     if (eventType === 'order.refunded') {
       console.log(`[syncOrderToHub:REFUND] Sending order.refunded event for ${order.order_number}`);
