@@ -2,6 +2,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const HUB_API_URL              = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '')}/api/functions/receiveCustomerAppEvent`;
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+const ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH = Deno.env.get('ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH') === 'true';
+const NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE') || '0';
+const NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES') || '';
+const NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS') || '';
+const NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE') || 'none';
+const NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH') === 'true';
 
 /**
  * Syncs an app-originated order to the operations hub.
@@ -69,6 +75,141 @@ const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
 function normalizeFinalScheduleSource(source) {
   if (source === 'central_engine') return 'backend_cadence';
   return LOCKED_FINAL_SCHEDULE_SOURCES.has(source) ? source : 'unknown';
+}
+
+function parseCsvSet(value) {
+  return new Set(String(value || '').split(',').map((item) => item.trim()).filter(Boolean));
+}
+
+function parseSampleRate(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  if (parsed >= 1) return 1;
+  return parsed;
+}
+
+function stableBucket(value) {
+  const text = String(value || '');
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
+function normalizeDarkLaunchAction(action) {
+  const value = String(action || '').toLowerCase();
+  if (['created', 'create', 'would_create'].includes(value)) return 'created';
+  if (['updated', 'update', 'would_update'].includes(value)) return 'updated';
+  if (['dedupe_exact_match', 'skipped', 'duplicate_event'].includes(value)) return 'skipped';
+  if (['queued_for_review', 'rejected', 'reject', 'failed', 'error'].includes(value)) return 'rejected';
+  return value || null;
+}
+
+function summarizeDarkLaunchComparison(comparison, skippedReason = null) {
+  if (skippedReason) {
+    return {
+      enabled: ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH,
+      sampled: false,
+      skipped_reason: skippedReason,
+      native_writer_enabled: false,
+      hub_remains_live_writer: true,
+    };
+  }
+
+  const mismatchCount = Array.isArray(comparison?.mismatches) ? comparison.mismatches.length : 0;
+  return {
+    enabled: true,
+    sampled: true,
+    parity_status: comparison?.matched === true ? 'match' : 'mismatch',
+    mismatch_category: comparison?.mismatch_category || null,
+    mismatch_count: mismatchCount,
+    warnings: Array.isArray(comparison?.warnings) ? comparison.warnings.slice(0, 10) : [],
+    native_writer_enabled: false,
+    hub_remains_live_writer: true,
+  };
+}
+
+async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, logStatus }) {
+  if (!ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH) return null;
+  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH) return summarizeDarkLaunchComparison(null, 'kill_switch');
+  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE !== 'none') return summarizeDarkLaunchComparison(null, 'unsupported_logging_mode');
+
+  const source = payload?.source || 'customer_app';
+  const event = payload?.event || 'order.created';
+  const allowedSources = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES);
+  const allowedEvents = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS);
+  if (!allowedSources.has(source)) return summarizeDarkLaunchComparison(null, 'source_not_allowlisted');
+  if (!allowedEvents.has(event)) return summarizeDarkLaunchComparison(null, 'event_not_allowlisted');
+  if (event !== 'order.created') return summarizeDarkLaunchComparison(null, 'event_out_of_scope');
+
+  const sampleRate = parseSampleRate(NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE);
+  const sampleKey = payload?.order?.id || payload?.order?.order_number || payload?.order?.stripe_checkout_session_id || '';
+  if (stableBucket(sampleKey) >= sampleRate) return summarizeDarkLaunchComparison(null, 'not_sampled');
+
+  try {
+    const idempotencyKey = `syncOrderToHub:${payload?.order?.id || payload?.order?.order_number || 'unknown'}`;
+    const nativeResponse = await base44.asServiceRole.functions.invoke('previewNativeSafeSyncOrderUpdate', {
+      mode: 'dry_run',
+      fixture_id: 'runtime_dark_launch_syncOrderToHub',
+      source,
+      idempotency_key: idempotencyKey,
+      incoming_payload: payload.order,
+      starting_order: null,
+    });
+    const nativeResult = nativeResponse?.data || nativeResponse;
+    const nativeFields = nativeResult?.order_sync_log_draft || {};
+    const normalizedHubAction = normalizeDarkLaunchAction(hubAction || logStatus);
+
+    // The current Hub bridge response does not expose field-level write plans.
+    // Use native field lists only to avoid false field-diff alarms; action/error
+    // parity remains the only runtime smoke signal in this no-persistence phase.
+    const hubSummary = {
+      action: normalizedHubAction,
+      status: logStatus || null,
+      fields_updated: Array.isArray(nativeFields.fields_updated) ? nativeFields.fields_updated : [],
+      fields_rejected: Array.isArray(nativeFields.fields_rejected) ? nativeFields.fields_rejected : [],
+      error_code: normalizedHubAction === 'rejected' ? (nativeFields.error_code || null) : null,
+      order_sync_log_draft: {
+        action: normalizedHubAction,
+        success: !['rejected', 'error'].includes(normalizedHubAction),
+        fields_updated: Array.isArray(nativeFields.fields_updated) ? nativeFields.fields_updated : [],
+        fields_rejected: Array.isArray(nativeFields.fields_rejected) ? nativeFields.fields_rejected : [],
+        error_code: normalizedHubAction === 'rejected' ? (nativeFields.error_code || null) : null,
+      },
+      order_review_queue_draft: nativeResult?.order_review_queue_draft
+        ? { incident_type: nativeResult.order_review_queue_draft.incident_type || null }
+        : null,
+    };
+
+    const comparisonResponse = await base44.asServiceRole.functions.invoke('previewNativeSafeSyncDarkLaunchComparison', {
+      mode: 'dry_run',
+      fixture_id: 'runtime_dark_launch_syncOrderToHub',
+      source,
+      idempotency_key: idempotencyKey,
+      hub_result: hubSummary,
+      native_result: nativeResult,
+    });
+    const comparison = comparisonResponse?.data || comparisonResponse;
+    const summary = summarizeDarkLaunchComparison({
+      ...comparison,
+      warnings: [...(comparison?.warnings || []), 'hub_field_plan_unavailable'],
+    });
+
+    console.log(`[safeSync dark launch] source=${source} event=${event} order=${payload?.order?.order_number || 'unknown'} parity=${summary.parity_status} mismatch=${summary.mismatch_category || 'none'} count=${summary.mismatch_count}`);
+    return summary;
+  } catch (error) {
+    console.warn(`[safeSync dark launch] comparison failed safely: ${error?.message || 'unknown error'}`);
+    return {
+      enabled: true,
+      sampled: true,
+      parity_status: 'needs_manual_review',
+      error_code: 'dark_launch_failed',
+      native_writer_enabled: false,
+      hub_remains_live_writer: true,
+    };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -383,6 +524,16 @@ Deno.serve(async (req) => {
       logLabel  = `⚠️ Hub returned 200 with no confirmed action (hub_action="${hubAction}"). Retry eligible. Response: ${JSON.stringify(hubResponse).substring(0, 200)}`;
       console.warn(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
     }
+
+    // G21P: default-off, no-persistence native safeSync dark launch.
+    // Hub remains the only live writer. This comparison must never alter the
+    // Hub payload, Hub response handling, or existing OrderSyncLog behavior.
+    await maybeRunNativeSafeSyncDarkLaunch({
+      base44,
+      payload,
+      hubAction,
+      logStatus,
+    });
 
     try {
       await base44.asServiceRole.entities.OrderSyncLog.create({
