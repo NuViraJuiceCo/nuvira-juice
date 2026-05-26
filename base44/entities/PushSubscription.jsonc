@@ -1,0 +1,79 @@
+{
+  "name": "PushSubscription",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string",
+      "description": "Authenticated customer email that owns this browser push subscription"
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "Browser Push API endpoint URL"
+    },
+    "p256dh": {
+      "type": "string",
+      "description": "Push subscription p256dh key"
+    },
+    "auth": {
+      "type": "string",
+      "description": "Push subscription auth secret"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "permission": {
+      "type": "string",
+      "enum": [
+        "default",
+        "granted",
+        "denied"
+      ],
+      "default": "default"
+    },
+    "platform": {
+      "type": "string",
+      "description": "Browser/platform descriptor captured during registration"
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "Browser user agent captured during registration"
+    },
+    "last_seen_at": {
+      "type": "string",
+      "description": "Last successful registration or push send timestamp"
+    },
+    "revoked_at": {
+      "type": "string",
+      "description": "Timestamp when this subscription was disabled locally or expired remotely"
+    }
+  },
+  "required": [
+    "customer_email",
+    "endpoint",
+    "p256dh",
+    "auth"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
