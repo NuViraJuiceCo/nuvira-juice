@@ -170,7 +170,7 @@ function shouldReturnDarkLaunchDebug({ body, payload, summary }) {
   if (!summary) return false;
   if (!ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH) return false;
   if (NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH) return false;
-  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE !== 'none') return false;
+  if (!['none', 'persistent'].includes(NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE)) return false;
   if (!hasDarkLaunchOrderAllowlistMatch(payload?.order)) return false;
 
   const source = payload?.source || 'customer_app';
@@ -198,7 +198,8 @@ function sanitizeDarkLaunchDebugSummary(summary, payload) {
     order_identifier: getSafeDarkLaunchOrderIdentifier(payload?.order),
     native_writer_enabled: false,
     hub_remains_live_writer: true,
-    persistent_logging_enabled: false,
+    persistent_logging_enabled: NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE === 'persistent',
+    persistent_logging_status: summary?.persistent_logging_status || 'not_attempted',
   };
 }
 
@@ -250,12 +251,16 @@ function getSafeRejectedFields(nativeResult) {
 }
 
 async function persistSafeSyncParityLog({ base44, payload, source, event, hubAction, logStatus, summary, comparison, nativeResult, idempotencyKey }) {
-  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE !== 'persistent') return;
-  if (!summary?.sampled) return;
+  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE !== 'persistent') {
+    return { attempted: false, status: 'disabled' };
+  }
+  if (!summary?.sampled) {
+    return { attempted: false, status: 'not_sampled' };
+  }
 
   try {
     const createdAt = new Date().toISOString();
-    await base44.asServiceRole.entities.SafeSyncParityLog.create({
+    const created = await base44.asServiceRole.entities.SafeSyncParityLog.create({
       sample_id: `runtime_dark_launch_syncOrderToHub:${createdAt}`,
       request_id: idempotencyKey,
       correlation_id: idempotencyKey,
@@ -280,8 +285,11 @@ async function persistSafeSyncParityLog({ base44, payload, source, event, hubAct
       native_writer_enabled: false,
       created_at: createdAt,
     });
+    console.log(`[safeSync dark launch] parity log persisted status=created id=${created?.id || 'unknown'} order=${payload?.order?.order_number || payload?.order?.id || 'unknown'}`);
+    return { attempted: true, status: 'created', id: created?.id || null };
   } catch (error) {
     console.warn(`[safeSync dark launch] parity log write failed safely: ${error?.message || 'unknown error'}`);
+    return { attempted: true, status: 'failed', error_code: 'parity_log_write_failed' };
   }
 }
 
@@ -328,7 +336,7 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
         warnings: ['hub_dedupe_without_native_starting_order', 'hub_field_plan_unavailable'],
       });
 
-      await persistSafeSyncParityLog({
+      const persistence = await persistSafeSyncParityLog({
         base44,
         payload,
         source,
@@ -340,6 +348,8 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
         nativeResult,
         idempotencyKey,
       });
+      summary.persistent_logging_status = persistence.status;
+      if (persistence.error_code) summary.error_code = persistence.error_code;
 
       console.log(`[safeSync dark launch] source=${source} event=${event} order=${payload?.order?.order_number || 'unknown'} parity=${summary.parity_status} mismatch=none count=${summary.mismatch_count}`);
       return summary;
@@ -380,7 +390,7 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
       warnings: [...(comparison?.warnings || []), 'hub_field_plan_unavailable'],
     });
 
-    await persistSafeSyncParityLog({
+    const persistence = await persistSafeSyncParityLog({
       base44,
       payload,
       source,
@@ -392,6 +402,8 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
       nativeResult,
       idempotencyKey,
     });
+    summary.persistent_logging_status = persistence.status;
+    if (persistence.error_code) summary.error_code = persistence.error_code;
 
     console.log(`[safeSync dark launch] source=${source} event=${event} order=${payload?.order?.order_number || 'unknown'} parity=${summary.parity_status} mismatch=${summary.mismatch_category || 'none'} count=${summary.mismatch_count}`);
     return summary;
@@ -407,7 +419,7 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
       native_writer_enabled: false,
       hub_remains_live_writer: true,
     };
-    await persistSafeSyncParityLog({
+    const persistence = await persistSafeSyncParityLog({
       base44,
       payload,
       source,
@@ -419,6 +431,8 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
       nativeResult: null,
       idempotencyKey: `syncOrderToHub:${payload?.order?.id || payload?.order?.order_number || 'unknown'}`,
     });
+    summary.persistent_logging_status = persistence.status;
+    if (persistence.error_code) summary.error_code = persistence.error_code;
     return summary;
   }
 }
