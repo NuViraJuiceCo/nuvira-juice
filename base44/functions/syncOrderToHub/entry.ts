@@ -202,10 +202,93 @@ function sanitizeDarkLaunchDebugSummary(summary, payload) {
   };
 }
 
+function toSafeStringArray(value, limit = 20) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean).slice(0, limit);
+  }
+  if (typeof value === 'object') {
+    return Object.keys(value).map((item) => String(item || '').trim()).filter(Boolean).slice(0, limit);
+  }
+  const normalized = String(value || '').trim();
+  return normalized ? [normalized] : [];
+}
+
+function getSafeMismatchCategories({ summary, comparison }) {
+  const categories = [
+    ...toSafeStringArray(comparison?.mismatch_categories),
+    ...toSafeStringArray(summary?.mismatch_categories),
+  ];
+
+  if (comparison?.mismatch_category) categories.push(String(comparison.mismatch_category));
+  if (summary?.mismatch_category) categories.push(String(summary.mismatch_category));
+
+  if (Array.isArray(comparison?.mismatches)) {
+    for (const mismatch of comparison.mismatches) {
+      const label = mismatch?.category || mismatch?.type || mismatch?.field || null;
+      if (label) categories.push(String(label));
+    }
+  }
+
+  return [...new Set(categories.map((item) => item.trim()).filter(Boolean))].slice(0, 20);
+}
+
+function getSafeAcceptedFields(nativeResult) {
+  return toSafeStringArray(
+    nativeResult?.accepted_fields ||
+    nativeResult?.order_sync_log_draft?.fields_updated ||
+    [],
+  );
+}
+
+function getSafeRejectedFields(nativeResult) {
+  return toSafeStringArray(
+    nativeResult?.rejected_fields ||
+    nativeResult?.order_sync_log_draft?.fields_rejected ||
+    [],
+  );
+}
+
+async function persistSafeSyncParityLog({ base44, payload, source, event, hubAction, logStatus, summary, comparison, nativeResult, idempotencyKey }) {
+  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE !== 'persistent') return;
+  if (!summary?.sampled) return;
+
+  try {
+    const createdAt = new Date().toISOString();
+    await base44.asServiceRole.entities.SafeSyncParityLog.create({
+      sample_id: `runtime_dark_launch_syncOrderToHub:${createdAt}`,
+      request_id: idempotencyKey,
+      correlation_id: idempotencyKey,
+      order_id: payload?.order?.id || null,
+      order_number: payload?.order?.order_number || null,
+      source,
+      event_type: event,
+      bridge_action: hubAction || logStatus || null,
+      hub_result_status: logStatus || null,
+      native_parity_status: summary?.parity_status || null,
+      mismatch_categories: getSafeMismatchCategories({ summary, comparison }),
+      mismatch_count: Number.isFinite(Number(summary?.mismatch_count)) ? Number(summary.mismatch_count) : 0,
+      warnings: toSafeStringArray(summary?.warnings, 10),
+      native_would_create_order: nativeResult?.would_create_order === true,
+      native_would_update_order: nativeResult?.would_update_order === true,
+      native_would_quarantine: nativeResult?.would_quarantine === true,
+      native_would_reject: nativeResult?.would_reject === true,
+      accepted_fields_summary: getSafeAcceptedFields(nativeResult),
+      rejected_fields_summary: getSafeRejectedFields(nativeResult),
+      redaction_applied: true,
+      logging_mode: 'persistent',
+      native_writer_enabled: false,
+      created_at: createdAt,
+    });
+  } catch (error) {
+    console.warn(`[safeSync dark launch] parity log write failed safely: ${error?.message || 'unknown error'}`);
+  }
+}
+
 async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, logStatus }) {
   if (!ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH) return null;
   if (NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH) return summarizeDarkLaunchComparison(null, 'kill_switch');
-  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE !== 'none') return summarizeDarkLaunchComparison(null, 'unsupported_logging_mode');
+  if (!['none', 'persistent'].includes(NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE)) return summarizeDarkLaunchComparison(null, 'unsupported_logging_mode');
 
   const source = payload?.source || 'customer_app';
   const event = payload?.event || 'order.created';
@@ -245,13 +328,26 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
         warnings: ['hub_dedupe_without_native_starting_order', 'hub_field_plan_unavailable'],
       });
 
+      await persistSafeSyncParityLog({
+        base44,
+        payload,
+        source,
+        event,
+        hubAction,
+        logStatus,
+        summary,
+        comparison: null,
+        nativeResult,
+        idempotencyKey,
+      });
+
       console.log(`[safeSync dark launch] source=${source} event=${event} order=${payload?.order?.order_number || 'unknown'} parity=${summary.parity_status} mismatch=none count=${summary.mismatch_count}`);
       return summary;
     }
 
     // The current Hub bridge response does not expose field-level write plans.
     // Use native field lists only to avoid false field-diff alarms; action/error
-    // parity remains the only runtime smoke signal in this no-persistence phase.
+    // parity remains the only runtime smoke signal in this dark-launch phase.
     const hubSummary = {
       action: normalizedHubAction,
       status: logStatus || null,
@@ -284,18 +380,46 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
       warnings: [...(comparison?.warnings || []), 'hub_field_plan_unavailable'],
     });
 
+    await persistSafeSyncParityLog({
+      base44,
+      payload,
+      source,
+      event,
+      hubAction,
+      logStatus,
+      summary,
+      comparison,
+      nativeResult,
+      idempotencyKey,
+    });
+
     console.log(`[safeSync dark launch] source=${source} event=${event} order=${payload?.order?.order_number || 'unknown'} parity=${summary.parity_status} mismatch=${summary.mismatch_category || 'none'} count=${summary.mismatch_count}`);
     return summary;
   } catch (error) {
     console.warn(`[safeSync dark launch] comparison failed safely: ${error?.message || 'unknown error'}`);
-    return {
+    const summary = {
       enabled: true,
       sampled: true,
       parity_status: 'needs_manual_review',
       error_code: 'dark_launch_failed',
+      mismatch_count: 0,
+      warnings: ['dark_launch_failed'],
       native_writer_enabled: false,
       hub_remains_live_writer: true,
     };
+    await persistSafeSyncParityLog({
+      base44,
+      payload,
+      source,
+      event,
+      hubAction,
+      logStatus,
+      summary,
+      comparison: null,
+      nativeResult: null,
+      idempotencyKey: `syncOrderToHub:${payload?.order?.id || payload?.order?.order_number || 'unknown'}`,
+    });
+    return summary;
   }
 }
 
@@ -612,9 +736,10 @@ Deno.serve(async (req) => {
       console.warn(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
     }
 
-    // G21P: default-off, no-persistence native safeSync dark launch.
-    // Hub remains the only live writer. This comparison must never alter the
-    // Hub payload, Hub response handling, or existing OrderSyncLog behavior.
+    // G21P/G21Y: default-off native safeSync dark launch.
+    // Hub remains the only live writer. Persistent parity logging is allowed
+    // only by explicit gated mode and must never alter the Hub payload, Hub
+    // response handling, or existing OrderSyncLog behavior.
     const darkLaunchSummary = await maybeRunNativeSafeSyncDarkLaunch({
       base44,
       payload,
