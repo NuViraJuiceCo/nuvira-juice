@@ -13,6 +13,11 @@ function sanitizeUserAgent(value: unknown): string {
   return text.length > 300 ? `${text.slice(0, 299).trim()}...` : text;
 }
 
+function isMissingSchemaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return message.includes('Entity schema') && message.includes('not found');
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
@@ -60,7 +65,15 @@ Deno.serve(async (req) => {
       subscription_id: record.id,
       push_enabled: true,
     });
-  } catch {
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn('[registerPushSubscription] PushSubscription schema unavailable');
+      return Response.json({
+        success: false,
+        push_enabled: false,
+        reason: 'push_subscription_storage_unavailable',
+      });
+    }
     console.error('[registerPushSubscription] Error');
     return Response.json({ error: 'Unable to register push subscription' }, { status: 500 });
   }

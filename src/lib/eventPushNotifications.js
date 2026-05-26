@@ -67,6 +67,16 @@ export async function subscribeToEventPushNotifications() {
 
   const data = response?.data || response || {};
   if (data.error) throw new Error(data.error);
+  if (data.success === false) {
+    if (!existing) {
+      await subscription.unsubscribe().catch(() => {});
+    }
+    return {
+      success: false,
+      status: permission,
+      reason: data.reason || 'push_subscription_registration_unavailable',
+    };
+  }
 
   return {
     success: true,

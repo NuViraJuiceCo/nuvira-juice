@@ -25,6 +25,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || 'unknown');
 }
 
+function isMissingSchemaError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return message.includes('Entity schema') && message.includes('not found');
+}
+
 function envFlag(name: string): boolean {
   return Deno.env.get(name) === 'true';
 }
@@ -116,32 +121,48 @@ function hasAwardHistory(pointsRecord: PointsRecord, idempotencyKey: string, eve
 }
 
 async function findExistingCommandLog(base44: Base44Client, idempotencyKey: string): Promise<CommandLogRecord> {
-  const logs = await base44.asServiceRole.entities.CommandLog.filter({ idempotency_key: idempotencyKey }, '-created_date', 5);
-  return logs.find((log: Record<string, any>) => ['success', 'skipped', 'pending', 'running'].includes(log.status)) || null;
+  try {
+    const logs = await base44.asServiceRole.entities.CommandLog.filter({ idempotency_key: idempotencyKey }, '-created_date', 5);
+    return logs.find((log: Record<string, any>) => ['success', 'skipped', 'pending', 'running'].includes(log.status)) || null;
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn('[redeemMay30EventBonus] CommandLog schema unavailable; using UserPoints history idempotency');
+      return null;
+    }
+    throw error;
+  }
 }
 
 async function createCommandLog(base44: Base44Client, idempotencyKey: string, user: Base44User, eventKey: string) {
-  return base44.asServiceRole.entities.CommandLog.create({
-    command_id: idempotencyKey,
-    command_type: 'may30_event_bonus',
-    command_source: 'customer_app_event_page',
-    status: 'running',
-    target_entity: 'User',
-    target_id: normalizeSafeId(user.id || user.user_id || user.uid, 'user_id'),
-    target_display_id: eventKey,
-    actor_email: normalizeEmail(user.email),
-    actor_role: normalizeSingleLine(user.role || 'user'),
-    actor_type: 'customer',
-    payload: {
-      event_key: eventKey,
-      points_requested: envNumber('MAY30_EVENT_BONUS_POINTS', DEFAULT_BONUS_POINTS),
-    },
-    idempotency_key: idempotencyKey,
-    request_id: idempotencyKey,
-    submitted_at: new Date().toISOString(),
-    started_at: new Date().toISOString(),
-    function_name: 'redeemMay30EventBonus',
-  });
+  try {
+    return await base44.asServiceRole.entities.CommandLog.create({
+      command_id: idempotencyKey,
+      command_type: 'may30_event_bonus',
+      command_source: 'customer_app_event_page',
+      status: 'running',
+      target_entity: 'User',
+      target_id: normalizeSafeId(user.id || user.user_id || user.uid, 'user_id'),
+      target_display_id: eventKey,
+      actor_email: normalizeEmail(user.email),
+      actor_role: normalizeSingleLine(user.role || 'user'),
+      actor_type: 'customer',
+      payload: {
+        event_key: eventKey,
+        points_requested: envNumber('MAY30_EVENT_BONUS_POINTS', DEFAULT_BONUS_POINTS),
+      },
+      idempotency_key: idempotencyKey,
+      request_id: idempotencyKey,
+      submitted_at: new Date().toISOString(),
+      started_at: new Date().toISOString(),
+      function_name: 'redeemMay30EventBonus',
+    });
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn('[redeemMay30EventBonus] CommandLog schema unavailable; continuing without command audit log');
+      return null;
+    }
+    throw error;
+  }
 }
 
 async function updateCommandLog(base44: Base44Client, commandLog: CommandLogRecord, patch: Record<string, any>) {
