@@ -12,6 +12,15 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_ADMIN_SUBSCRIPTION_CANCEL_REFUND') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'admin_subscription_cancel_refund_disabled',
+        message: 'Admin subscription cancel/refund is disabled for May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user || user.role !== 'admin') {
