@@ -9,6 +9,7 @@ const NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS = Deno.env.get('NATIVE_SAFE_SY
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST') || '';
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE') || 'none';
 const NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH') === 'true';
+const NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG') === 'true';
 
 /**
  * Syncs an app-originated order to the operations hub.
@@ -131,6 +132,10 @@ function hasDarkLaunchOrderAllowlistMatch(order) {
   return identifiers.some((identifier) => allowedOrders.has(identifier));
 }
 
+function getSafeDarkLaunchOrderIdentifier(order) {
+  return order?.order_number || order?.id || null;
+}
+
 function summarizeDarkLaunchComparison(comparison, skippedReason = null) {
   if (skippedReason) {
     return {
@@ -152,6 +157,48 @@ function summarizeDarkLaunchComparison(comparison, skippedReason = null) {
     warnings: Array.isArray(comparison?.warnings) ? comparison.warnings.slice(0, 10) : [],
     native_writer_enabled: false,
     hub_remains_live_writer: true,
+  };
+}
+
+function hasExplicitDarkLaunchDebugRequest(body) {
+  return body?.debug_dark_launch === true || body?.debug_safe_sync_dark_launch === true;
+}
+
+function shouldReturnDarkLaunchDebug({ body, payload, summary }) {
+  if (!NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG) return false;
+  if (!hasExplicitDarkLaunchDebugRequest(body)) return false;
+  if (!summary) return false;
+  if (!ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH) return false;
+  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH) return false;
+  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE !== 'none') return false;
+  if (!hasDarkLaunchOrderAllowlistMatch(payload?.order)) return false;
+
+  const source = payload?.source || 'customer_app';
+  const event = payload?.event || 'order.created';
+  const allowedSources = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES);
+  const allowedEvents = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS);
+  if (!allowedSources.has(normalizeAllowlistValue(source))) return false;
+  if (!allowedEvents.has(normalizeAllowlistValue(event))) return false;
+
+  return true;
+}
+
+function sanitizeDarkLaunchDebugSummary(summary, payload) {
+  return {
+    enabled: summary?.enabled === true,
+    sampled: summary?.sampled === true,
+    skipped_reason: summary?.skipped_reason || null,
+    parity_status: summary?.parity_status || null,
+    mismatch_category: summary?.mismatch_category || null,
+    mismatch_count: Number.isFinite(Number(summary?.mismatch_count)) ? Number(summary.mismatch_count) : 0,
+    warnings: Array.isArray(summary?.warnings) ? summary.warnings.slice(0, 10).map(String) : [],
+    error_code: summary?.error_code || null,
+    source: payload?.source || 'customer_app',
+    event_type: payload?.event || 'order.created',
+    order_identifier: getSafeDarkLaunchOrderIdentifier(payload?.order),
+    native_writer_enabled: false,
+    hub_remains_live_writer: true,
+    persistent_logging_enabled: false,
   };
 }
 
@@ -555,7 +602,7 @@ Deno.serve(async (req) => {
     // G21P: default-off, no-persistence native safeSync dark launch.
     // Hub remains the only live writer. This comparison must never alter the
     // Hub payload, Hub response handling, or existing OrderSyncLog behavior.
-    await maybeRunNativeSafeSyncDarkLaunch({
+    const darkLaunchSummary = await maybeRunNativeSafeSyncDarkLaunch({
       base44,
       payload,
       hubAction,
@@ -578,7 +625,22 @@ Deno.serve(async (req) => {
       console.warn(`syncOrderToHub: failed to write log: ${logErr.message}`);
     }
 
-    return Response.json({ success: logStatus === 'success' || logStatus === 'deduped', log_status: logStatus, hub_action: hubAction, hub_response: hubResponse });
+    const responseBody = {
+      success: logStatus === 'success' || logStatus === 'deduped',
+      log_status: logStatus,
+      hub_action: hubAction,
+      hub_response: hubResponse,
+      safe_sync_dark_launch: undefined,
+    };
+
+    // G21U: explicit one-order debug return for no-persistence dark launch.
+    // This never enables native writes and only returns a sanitized comparison
+    // summary when both server env and request-level debug gates are present.
+    if (shouldReturnDarkLaunchDebug({ body, payload, summary: darkLaunchSummary })) {
+      responseBody.safe_sync_dark_launch = sanitizeDarkLaunchDebugSummary(darkLaunchSummary, payload);
+    }
+
+    return Response.json(responseBody);
 
   } catch (fetchErr) {
     console.error(`syncOrderToHub: fetch error for ${order.order_number}: ${fetchErr.message}`);
