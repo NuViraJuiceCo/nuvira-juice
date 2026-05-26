@@ -2,6 +2,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_UPCOMING_DELIVERY_NOTIFICATIONS') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'upcoming_delivery_notifications_disabled',
+        message: 'Upcoming delivery notifications are disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
 
     // This is a scheduled/admin function — no user auth needed
