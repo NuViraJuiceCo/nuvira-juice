@@ -151,7 +151,7 @@ function summarizeDarkLaunchComparison(comparison, skippedReason = null) {
   return {
     enabled: true,
     sampled: true,
-    parity_status: comparison?.matched === true ? 'match' : 'mismatch',
+    parity_status: comparison?.parity_status || (comparison?.matched === true ? 'match' : 'mismatch'),
     mismatch_category: comparison?.mismatch_category || null,
     mismatch_count: mismatchCount,
     warnings: Array.isArray(comparison?.warnings) ? comparison.warnings.slice(0, 10) : [],
@@ -235,6 +235,19 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
     const nativeResult = nativeResponse?.data || nativeResponse;
     const nativeFields = nativeResult?.order_sync_log_draft || {};
     const normalizedHubAction = normalizeDarkLaunchAction(hubAction || logStatus);
+
+    if (normalizedHubAction === 'skipped') {
+      const summary = summarizeDarkLaunchComparison({
+        parity_status: 'unsupported',
+        matched: false,
+        mismatch_category: null,
+        mismatches: [],
+        warnings: ['hub_dedupe_without_native_starting_order', 'hub_field_plan_unavailable'],
+      });
+
+      console.log(`[safeSync dark launch] source=${source} event=${event} order=${payload?.order?.order_number || 'unknown'} parity=${summary.parity_status} mismatch=none count=${summary.mismatch_count}`);
+      return summary;
+    }
 
     // The current Hub bridge response does not expose field-level write plans.
     // Use native field lists only to avoid false field-diff alarms; action/error
