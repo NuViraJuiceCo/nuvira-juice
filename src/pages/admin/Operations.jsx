@@ -13,6 +13,7 @@ import {
   Package,
   ShieldCheck,
   ShoppingCart,
+  Store,
   Truck,
   UsersRound,
 } from 'lucide-react';
@@ -37,6 +38,13 @@ const sections = [
         description: 'Order operations, Hub panels, fulfillment context, timeline visibility, and internal notes.',
         icon: ClipboardList,
         badges: ['Hub-backed', 'Internal note write available'],
+      },
+      {
+        title: 'POS / Event Orders',
+        route: '/admin/pos-orders',
+        description: 'Read-only Hub POS sales list with fulfillment, production, location, and item context.',
+        icon: Store,
+        badges: ['Read-only', 'Hub-backed', 'May 30 event'],
       },
     ],
   },
