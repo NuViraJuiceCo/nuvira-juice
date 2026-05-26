@@ -4,6 +4,11 @@ function normalizeEmail(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }
 
+function isMissingSchemaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return message.includes('Entity schema') && message.includes('not found');
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
@@ -38,7 +43,15 @@ Deno.serve(async (req) => {
     }
 
     return Response.json({ success: true, revoked });
-  } catch {
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn('[unregisterPushSubscription] PushSubscription schema unavailable');
+      return Response.json({
+        success: true,
+        revoked: 0,
+        reason: 'push_subscription_storage_unavailable',
+      });
+    }
     console.error('[unregisterPushSubscription] Error');
     return Response.json({ error: 'Unable to unregister push subscription' }, { status: 500 });
   }

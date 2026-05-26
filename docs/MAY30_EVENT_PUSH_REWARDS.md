@@ -9,6 +9,7 @@ This is an isolated event activation feature for the May 30 event. It does not m
 Native App Store push is not feasible before May 30 from the current app state unless a separate native shell/binary already exists outside this repo and can be updated/tested/released in time.
 
 Web Push is feasible as a best-effort event path for supported browsers and installed PWAs.
+On the current Base44-managed app, the CLI cannot sync new entity schemas, so `PushSubscription` may be unavailable until the entity is created through a Base44-supported schema path. In that case, the app keeps the in-app notification plus points fallback and reports push as unavailable.
 
 Current stack:
 
@@ -23,6 +24,7 @@ For May 30, the implemented primary path is:
 
 - in-app notification plus the one-time points bonus for everyone who redeems.
 - event-only Web Push only when the user's browser/device supports Push API, the user enables it, and VAPID secrets are configured.
+- if the managed app does not expose `PushSubscription`, push registration is skipped safely.
 
 If push cannot send, points and in-app notification still succeed. The response reports a safe `push_skipped_reason`.
 
@@ -67,7 +69,7 @@ event_visit_bonus_may30_${user_id}
 
 Duplicate protection checks:
 
-- `CommandLog.idempotency_key`
+- `CommandLog.idempotency_key` when that schema exists
 - existing `UserPoints.points_history[].idempotency_key`
 - existing `Notification.idempotency_key`
 
