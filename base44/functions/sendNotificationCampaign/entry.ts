@@ -15,6 +15,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_NOTIFICATION_CAMPAIGN_SENDS') !== 'true') {
+      return Response.json({
+        error: 'notification_campaign_sends_disabled',
+        message: 'Notification campaign sends are disabled during the May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user || user.role !== 'admin') {

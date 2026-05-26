@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, Plus, Bell, Users, CheckCircle2, AlertCircle, Loader2, FlaskConical } from 'lucide-react';
@@ -36,6 +36,8 @@ const DEEP_LINK_OPTIONS = [
   { label: 'Subscribe', value: '/subscribe' },
 ];
 
+const CAMPAIGN_SENDS_ENABLED = false;
+
 export default function NotificationCampaigns() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -61,6 +63,11 @@ export default function NotificationCampaigns() {
   });
 
   const handleCreateAndSend = async () => {
+    if (!CAMPAIGN_SENDS_ENABLED) {
+      toast.error('Notification campaigns are disabled during the May 30 launch freeze.');
+      return;
+    }
+
     if (!form.title || !form.message) {
       toast.error('Title and message are required.');
       return;
@@ -102,6 +109,11 @@ export default function NotificationCampaigns() {
   };
 
   const handleConfirmedSend = async () => {
+    if (!CAMPAIGN_SENDS_ENABLED) {
+      toast.error('Notification campaigns are disabled during the May 30 launch freeze.');
+      return;
+    }
+
     if (!pendingCampaignId) return;
     setSending(true);
     setShowConfirm(false);
@@ -139,6 +151,18 @@ export default function NotificationCampaigns() {
       </div>
 
       <div className="px-4 mt-5">
+        {!CAMPAIGN_SENDS_ENABLED && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900">Campaign sending disabled</p>
+              <p className="text-xs text-amber-800 mt-1">
+                Notification campaign creation and sends are frozen for May 30 launch operations unless explicitly re-enabled.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Compose Card */}
         <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
           <h2 className="font-semibold text-sm mb-4 flex items-center gap-2">
@@ -211,7 +235,7 @@ export default function NotificationCampaigns() {
 
             <Button
               onClick={handleCreateAndSend}
-              disabled={sending || !form.title || !form.message}
+              disabled={!CAMPAIGN_SENDS_ENABLED || sending || !form.title || !form.message}
               className="w-full h-11 rounded-xl font-semibold gap-2"
             >
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : form.audience === 'test_only' ? <FlaskConical className="w-4 h-4" /> : <Send className="w-4 h-4" />}
@@ -263,7 +287,7 @@ export default function NotificationCampaigns() {
             </p>
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setShowConfirm(false)} className="flex-1 rounded-xl">Cancel</Button>
-              <Button onClick={handleConfirmedSend} disabled={sending} className="flex-1 rounded-xl gap-2">
+              <Button onClick={handleConfirmedSend} disabled={!CAMPAIGN_SENDS_ENABLED || sending} className="flex-1 rounded-xl gap-2">
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 Send Now
               </Button>
