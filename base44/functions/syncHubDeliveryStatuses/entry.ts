@@ -47,6 +47,17 @@ function mapHubStatus(hubStatus) {
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_HUB_DELIVERY_STATUS_SYNC') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        active_orders: 0,
+        updated: 0,
+        reason: 'hub_delivery_status_sync_disabled',
+        message: 'Hub delivery status sync is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
 
     if (!HUB_BASE || !SYNC_SECRET) {
