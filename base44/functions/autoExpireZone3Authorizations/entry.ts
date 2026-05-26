@@ -10,6 +10,16 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_ZONE3_AUTO_EXPIRE_AUTHORIZATIONS') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        expired_count: 0,
+        reason: 'zone3_auto_expire_disabled',
+        message: 'Zone 3 auto-expire authorization cleanup is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
 
     // Allow both admin-triggered and scheduled (no user) calls
