@@ -3,6 +3,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const ADMIN_APP_URL = Deno.env.get('ADMIN_APP_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
+function legacyLoyaltyEventBridgeEnabled() {
+  return Deno.env.get('ENABLE_LEGACY_LOYALTY_EVENT_BRIDGE_SYNC') === 'true';
+}
+
 // Pre-order bonus: 250 pts for signing up April 23–30
 const PREORDER_BONUS_POINTS = 250;
 const PREORDER_START = new Date('2026-04-23T00:00:00');
@@ -20,6 +24,15 @@ function isPreorderWindow() {
  */
 Deno.serve(async (req) => {
   try {
+    if (!legacyLoyaltyEventBridgeEnabled()) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'legacy_loyalty_event_bridge_sync_disabled',
+        message: 'Legacy loyalty/event bridge sync is disabled for the May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
     const body = await req.json();
     const { email, full_name, phone, signup_date } = body;

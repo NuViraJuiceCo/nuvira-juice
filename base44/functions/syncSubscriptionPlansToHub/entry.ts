@@ -3,6 +3,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const HUB_API_URL = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '')}/functions/receiveCustomerAppEvent`;
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
+function legacyLoyaltyEventBridgeEnabled() {
+  return Deno.env.get('ENABLE_LEGACY_LOYALTY_EVENT_BRIDGE_SYNC') === 'true';
+}
+
 /**
  * Syncs SubscriptionPlan entity changes to the hub app.
  * Triggered by entity automation on create/update, or called manually.
@@ -10,6 +14,15 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
  */
 Deno.serve(async (req) => {
   try {
+    if (!legacyLoyaltyEventBridgeEnabled()) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'legacy_loyalty_event_bridge_sync_disabled',
+        message: 'Legacy loyalty/event bridge sync is disabled for the May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
     const body = await req.json();
 
