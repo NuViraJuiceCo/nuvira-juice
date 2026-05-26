@@ -2,6 +2,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_MERCH_SHOPIFY_BULK_SYNC') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'merch_shopify_bulk_sync_disabled',
+        message: 'Merch Shopify bulk sync is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 

@@ -6,6 +6,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 Deno.serve(async (req) => {
+  if (Deno.env.get('ENABLE_SHOPIFY_FULFILLMENT_PUSH') !== 'true') {
+    return Response.json({
+      success: true,
+      skipped: true,
+      reason: 'shopify_fulfillment_push_disabled',
+      message: 'Shopify fulfillment push is disabled for May 30 launch freeze.',
+    });
+  }
+
   const base44 = createClientFromRequest(req);
   const user = await base44.auth.me();
   if (user?.role !== 'admin') {
