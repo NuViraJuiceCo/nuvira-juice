@@ -14,6 +14,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_ADMIN_STUCK_ORDER_RECOVERY') !== 'true') {
+      return Response.json({
+        error: 'stuck_order_recovery_disabled',
+        message: 'Manual stuck-order recovery is disabled during the May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
