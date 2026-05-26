@@ -2,6 +2,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_LOYALTY_FROM_HUB_SYNC') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'loyalty_from_hub_sync_disabled',
+        message: 'Loyalty pull from Hub is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 

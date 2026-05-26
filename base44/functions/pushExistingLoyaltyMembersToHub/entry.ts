@@ -9,6 +9,15 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_LOYALTY_BULK_HUB_PUSH') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'loyalty_bulk_hub_push_disabled',
+        message: 'Bulk loyalty Hub push is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 

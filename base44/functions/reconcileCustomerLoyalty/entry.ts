@@ -10,6 +10,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_LOYALTY_RECONCILIATION') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'loyalty_reconciliation_disabled',
+        message: 'Loyalty reconciliation is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const { customer_email } = await req.json();
 
