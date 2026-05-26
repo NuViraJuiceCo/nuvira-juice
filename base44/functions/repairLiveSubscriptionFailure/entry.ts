@@ -11,6 +11,15 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_LEGACY_REPAIR_TOOLS') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'legacy_repair_tools_disabled',
+        message: 'Legacy repair tools are disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const { stripe_subscription_id, stripe_customer_id, stripe_invoice_id } = await req.json();
 

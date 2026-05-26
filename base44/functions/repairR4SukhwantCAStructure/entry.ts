@@ -24,6 +24,15 @@ const RECORD_TO_CREATE = {
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_LEGACY_REPAIR_TOOLS') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'legacy_repair_tools_disabled',
+        message: 'Legacy repair tools are disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
