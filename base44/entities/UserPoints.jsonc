@@ -41,6 +41,14 @@
           "description": {
             "type": "string"
           },
+          "event_key": {
+            "type": "string",
+            "description": "Optional event key for one-time event bonus awards"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Optional idempotency key used to prevent duplicate point awards"
+          },
           "timestamp": {
             "type": "string"
           }
