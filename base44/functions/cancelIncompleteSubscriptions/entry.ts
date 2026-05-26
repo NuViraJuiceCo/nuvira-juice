@@ -19,6 +19,17 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_INCOMPLETE_SUBSCRIPTION_CLEANUP') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        cancelled: 0,
+        errors: 0,
+        reason: 'incomplete_subscription_cleanup_disabled',
+        message: 'Incomplete subscription cleanup is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
 
     // Allow scheduled (no auth) or admin-only manual invocations
