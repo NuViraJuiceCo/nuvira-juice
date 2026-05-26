@@ -6,6 +6,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_LOYALTY_MANUAL_HUB_PUSH') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'loyalty_manual_hub_push_disabled',
+        message: 'Manual loyalty Hub push is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
