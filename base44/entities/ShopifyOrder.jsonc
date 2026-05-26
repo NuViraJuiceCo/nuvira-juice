@@ -177,6 +177,7 @@
         "in_cold_storage",
         "assigned_for_pickup",
         "assigned_for_delivery",
+        "not_required",
         "fulfilled",
         "canceled",
         "refunded"
