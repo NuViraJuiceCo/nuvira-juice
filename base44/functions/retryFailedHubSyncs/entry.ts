@@ -39,6 +39,16 @@ async function writeRetryFailureLog(base44, { orderNumber, startTime, descriptio
  * Deduplicates by stripe_checkout_session_id / order_number.
  */
 Deno.serve(async (req) => {
+  if (Deno.env.get('ENABLE_FAILED_HUB_SYNC_RETRY') !== 'true') {
+    return Response.json({
+      success: true,
+      skipped: true,
+      retried: 0,
+      reason: 'failed_hub_sync_retry_disabled',
+      message: 'Failed Hub sync retry sweep is disabled for May 30 launch freeze.',
+    });
+  }
+
   const base44 = createClientFromRequest(req);
 
   const startTime = new Date().toISOString();

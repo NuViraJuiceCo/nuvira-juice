@@ -110,6 +110,16 @@ Deno.serve(async (req) => {
 
     // ── MODE: run_sync — trigger syncHubDeliveryStatuses and report changes ───
     if (mode === 'run_sync') {
+      if (Deno.env.get('ENABLE_OUT_FOR_DELIVERY_NOTIFICATION_RUN_SYNC') !== 'true') {
+        return Response.json({
+          success: true,
+          skipped: true,
+          mode: 'run_sync',
+          reason: 'out_for_delivery_notification_run_sync_disabled',
+          message: 'Out-for-delivery notification run_sync test is disabled for May 30 launch freeze.',
+        });
+      }
+
       console.log('[verifyOutForDeliveryNotification] Triggering syncHubDeliveryStatuses...');
       const syncResult = await base44.asServiceRole.functions.invoke('syncHubDeliveryStatuses', {});
       const syncData = syncResult?.data || syncResult || {};
