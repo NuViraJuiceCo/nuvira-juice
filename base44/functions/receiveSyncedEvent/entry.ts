@@ -2,8 +2,21 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const HUB_SYNC_SECRET = Deno.env.get('HUB_SYNC_SECRET');
 
+function legacyLoyaltyEventBridgeEnabled() {
+  return Deno.env.get('ENABLE_LEGACY_LOYALTY_EVENT_BRIDGE_SYNC') === 'true';
+}
+
 Deno.serve(async (req) => {
   try {
+    if (!legacyLoyaltyEventBridgeEnabled()) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'legacy_loyalty_event_bridge_sync_disabled',
+        message: 'Legacy loyalty/event bridge sync is disabled for the May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     // Validate Bearer token
     const authHeader = req.headers.get('Authorization') || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;

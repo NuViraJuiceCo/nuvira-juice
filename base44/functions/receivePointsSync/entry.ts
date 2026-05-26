@@ -2,6 +2,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const HUB_SYNC_SECRET = Deno.env.get('HUB_SYNC_SECRET');
 
+function legacyLoyaltyEventBridgeEnabled() {
+  return Deno.env.get('ENABLE_LEGACY_LOYALTY_EVENT_BRIDGE_SYNC') === 'true';
+}
+
 /**
  * Receives individual loyalty point transactions from hub and appends to UserPoints
  * Called by: Hub app pushing transaction updates to customer app
@@ -9,6 +13,15 @@ const HUB_SYNC_SECRET = Deno.env.get('HUB_SYNC_SECRET');
  * Payload: { customers: [{ customer_email, amount, type, description, order_id, reward_id, timestamp }] }
  */
 Deno.serve(async (req) => {
+  if (!legacyLoyaltyEventBridgeEnabled()) {
+    return Response.json({
+      success: true,
+      skipped: true,
+      reason: 'legacy_loyalty_event_bridge_sync_disabled',
+      message: 'Legacy loyalty/event bridge sync is disabled for the May 30 launch freeze.',
+    }, { status: 409 });
+  }
+
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
