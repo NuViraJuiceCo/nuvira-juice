@@ -41,6 +41,7 @@ const STATUS_COLORS = {
 };
 
 const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
+const ORDER_WORKFLOW_CONTROLS_FROZEN = true;
 
 // Orders that are NOT operational — never show in active/completed views
 function isAbandonedOrUnpaid(o) {
@@ -560,8 +561,8 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
                 <SectionLabel
                   title="Customer App Order Controls"
-                  description="These controls update the order workflow and are separate from the read-only Hub panels."
-                  badge="Order workflow"
+                  description="Order workflow buttons are paused for the May 30 launch freeze. Use the dedicated Operations, Production, and Delivery Queue views for operational actions."
+                  badge="Launch freeze"
                 />
 
                 {/* Progress */}
@@ -576,11 +577,16 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                 </div>
 
                 {/* Action buttons */}
+                {ORDER_WORKFLOW_CONTROLS_FROZEN && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Generic order status buttons are disabled during launch hardening to avoid accidental customer-facing status changes. Operational fulfillment actions remain available in Delivery Queue.
+                  </div>
+                )}
                 <div className="flex gap-2">
                   {prevStage && (
                     <button
                       onClick={() => onGoBack(order, prevStage)}
-                      disabled={isAdvancing}
+                      disabled={ORDER_WORKFLOW_CONTROLS_FROZEN || isAdvancing}
                       className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
                     >
                       ← Back
@@ -589,7 +595,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                   {!isComplete ? (
                     <button
                       onClick={() => onAdvance(order, nextStage)}
-                      disabled={isAdvancing}
+                      disabled={ORDER_WORKFLOW_CONTROLS_FROZEN || isAdvancing}
                       className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
                     >
                       {isAdvancing ? 'Updating...' : `→ ${nextStage.label}`}
