@@ -16,6 +16,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_FAILED_DRIVER_SYNC_RETRY') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        total: 0,
+        retried: 0,
+        succeeded: 0,
+        reason: 'failed_driver_sync_retry_disabled',
+        message: 'Failed driver sync retry is disabled for May 30 launch freeze.',
+      });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
