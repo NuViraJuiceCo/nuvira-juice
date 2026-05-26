@@ -14,6 +14,8 @@ const NAV_TABS = [
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
+const SHOPIFY_WORKFLOW_ADVANCE_FROZEN = true;
+
 export default function ShopifyDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -139,7 +141,10 @@ function ShopifyOrdersTab() {
   });
 
   const advanceMutation = useMutation({
-    mutationFn: ({ id, status }) => base44.entities.ShopifyOrder.update(id, { production_status: status }),
+    mutationFn: async () => ({
+      skipped: SHOPIFY_WORKFLOW_ADVANCE_FROZEN,
+      reason: 'may30_shopify_workflow_frozen',
+    }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shopify-orders'] }); },
   });
 
@@ -251,7 +256,6 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
   const [notes, setNotes] = useState(order.internal_notes || '');
   const [notesEdited, setNotesEdited] = useState(false);
   const [showFulfillConfirm, setShowFulfillConfirm] = useState(false);
-
   const currentIdx = WORKFLOW_STEPS.findIndex(s => s.key === order.production_status);
   const nextStep = WORKFLOW_STEPS[currentIdx + 1];
   const checklist = order.workflow_checklist || {};
@@ -350,6 +354,9 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
       {/* Workflow Advance */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Production Status</p>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-3">
+          Legacy Shopify production-status buttons are paused for the May 30 launch freeze. Use Delivery Queue, Production Queue, and Hub-backed operations pages for controlled fulfillment and production actions.
+        </div>
         <div className="flex gap-1 mb-3">
           {WORKFLOW_STEPS.map((step, i) => (
             <div key={step.key} className={`h-1.5 flex-1 rounded-full ${i <= currentIdx ? 'bg-primary' : 'bg-border'}`} />
@@ -358,7 +365,8 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
         {nextStep && nextStep.key !== 'fulfilled' && (
           <button
             onClick={() => onAdvance(order.id, nextStep.key)}
-            className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold active:scale-95 transition-transform"
+            disabled={SHOPIFY_WORKFLOW_ADVANCE_FROZEN}
+            className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
           >
             → Mark as "{nextStep.label}"
           </button>
@@ -367,7 +375,8 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
           <>
             {!showFulfillConfirm ? (
               <button onClick={() => setShowFulfillConfirm(true)}
-                className="w-full py-3 bg-green-600 text-white rounded-xl text-sm font-semibold">
+                disabled={SHOPIFY_WORKFLOW_ADVANCE_FROZEN}
+                className="w-full py-3 bg-green-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50">
                 ✓ Mark as Fulfilled
               </button>
             ) : (
