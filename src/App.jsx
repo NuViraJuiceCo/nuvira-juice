@@ -43,6 +43,7 @@ import DeliveryQueue from '@/pages/admin/DeliveryQueue';
 import InventoryStatus from '@/pages/admin/InventoryStatus';
 import OpsAlerts from '@/pages/admin/OpsAlerts';
 import Operations from '@/pages/admin/Operations';
+import POSOrders from '@/pages/admin/POSOrders';
 import Resources from '@/pages/admin/Resources';
 import AdminProducts from '@/pages/admin/AdminProducts';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
@@ -165,6 +166,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/delivery-queue" element={<ProtectedRoute element={<DeliveryQueue />} user={user} />} />
           <Route path="/admin/inventory-status" element={<ProtectedRoute element={<InventoryStatus />} user={user} />} />
           <Route path="/admin/ops-alerts" element={<ProtectedRoute element={<OpsAlerts />} user={user} />} />
+          <Route path="/admin/pos-orders" element={<ProtectedRoute element={<POSOrders />} user={user} />} />
           <Route path="/admin/resources" element={<ProtectedRoute element={<Resources />} user={user} />} />
           <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
           <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
