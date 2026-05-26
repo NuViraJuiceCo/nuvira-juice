@@ -16,6 +16,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
+    if (Deno.env.get('ENABLE_ADMIN_MANUAL_REFUNDS') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'admin_manual_refunds_disabled',
+        message: 'Admin manual refunds are disabled for May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
 
     // Admin-only: this is a sensitive repair tool that processes refunds

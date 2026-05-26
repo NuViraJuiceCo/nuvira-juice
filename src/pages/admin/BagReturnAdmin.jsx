@@ -30,7 +30,7 @@ function bagSummary(r) {
   return parts.join(' + ') || '—';
 }
 
-function ReturnCard({ ret, onVerify, credits }) {
+function ReturnCard({ ret, onVerify, credits, verificationFrozen }) {
   const [expanded, setExpanded] = useState(false);
   const [smallStatus, setSmallStatus] = useState('accepted');
   const [toteStatus, setToteStatus] = useState('accepted');
@@ -48,6 +48,11 @@ function ReturnCard({ ret, onVerify, credits }) {
   };
 
   const handleSubmit = async () => {
+    if (verificationFrozen) {
+      toast.error('Bag return verification is disabled during the May 30 launch freeze.');
+      return;
+    }
+
     setSaving(true);
     const credit = calcCredit();
     const smallAcc = smallStatus === 'accepted' ? ret.small_bags_requested : 0;
@@ -166,12 +171,17 @@ function ReturnCard({ ret, onVerify, credits }) {
                     <p className="text-sm font-medium">Credit to Issue</p>
                     <p className="font-heading text-xl font-bold text-primary">${calcCredit().toFixed(2)}</p>
                   </div>
+                  {verificationFrozen && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      Bag return verification, credits, and customer emails are frozen for May 30 launch operations unless explicitly approved.
+                    </div>
+                  )}
                   <button
                     onClick={handleSubmit}
-                    disabled={saving}
+                    disabled={saving || verificationFrozen}
                     className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
                   >
-                    {saving ? 'Saving...' : 'Submit Verification'}
+                    {saving ? 'Saving...' : verificationFrozen ? 'Verification Frozen' : 'Submit Verification'}
                   </button>
                 </>
               )}
@@ -189,6 +199,7 @@ export default function BagReturnAdmin() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('pending');
   const [search, setSearch] = useState('');
+  const verificationFrozen = true;
 
   const { data: returns = [], isLoading } = useQuery({
     queryKey: ['admin-bag-returns'],
@@ -302,6 +313,12 @@ export default function BagReturnAdmin() {
         <p className="text-primary-foreground/60 text-xs">Verify bag returns · Issue NuVira Credits</p>
       </div>
 
+      <div className="px-4 mt-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Bag return verification, credits, and customer emails are frozen for May 30 launch operations. This page remains read-only for review.
+        </div>
+      </div>
+
       {/* Analytics */}
       <div className="px-4 mt-5">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Program Analytics</p>
@@ -361,6 +378,7 @@ export default function BagReturnAdmin() {
               key={ret.id}
               ret={ret}
               credits={allCredits}
+              verificationFrozen={verificationFrozen}
               onVerify={(ret, data, credits) => verifyMutation.mutateAsync({ ret, data, credits: allCredits })}
             />
           ))
