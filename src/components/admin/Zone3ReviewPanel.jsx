@@ -27,6 +27,8 @@ const STATUS_LABELS = {
   cancelled: 'Cancelled',
 };
 
+const ROUTE_REVIEW_DECISIONS_FROZEN = true;
+
 function DARCard({ dar, onApprove, onDeny, isProcessing }) {
   const [expanded, setExpanded] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState(dar.estimated_delivery_fee ?? 12.99);
@@ -127,6 +129,11 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
               {/* Approve / Deny actions — only for pending_review */}
               {isPendingReview && (
                 <div className="space-y-3 pt-1">
+                  {ROUTE_REVIEW_DECISIONS_FROZEN && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      Route review approval/denial actions are paused for the May 30 launch freeze. Existing requests remain visible for admin review.
+                    </div>
+                  )}
                   <div>
                     <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1.5">Delivery Fee to Capture</label>
                     <div className="flex gap-2 flex-wrap">
@@ -168,7 +175,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
                   <div className="flex gap-2">
                     <Button
                       onClick={() => onDeny(dar.id, reason)}
-                      disabled={isProcessing || !reason.trim()}
+                      disabled={ROUTE_REVIEW_DECISIONS_FROZEN || isProcessing || !reason.trim()}
                       variant="outline"
                       className="flex-1 h-10 rounded-xl text-sm font-semibold border-destructive/30 text-destructive hover:bg-destructive/10"
                     >
@@ -177,7 +184,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
                     </Button>
                     <Button
                       onClick={() => onApprove(dar.id, deliveryFee, reason, isSubscriptionReview)}
-                      disabled={isProcessing || !reason.trim()}
+                      disabled={ROUTE_REVIEW_DECISIONS_FROZEN || isProcessing || !reason.trim()}
                       className="flex-1 h-10 rounded-xl text-sm font-semibold bg-green-700 hover:bg-green-800 text-white"
                     >
                       <CheckCircle className="w-4 h-4 mr-1.5" />

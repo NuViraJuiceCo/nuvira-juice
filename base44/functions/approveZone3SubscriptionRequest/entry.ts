@@ -12,6 +12,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
+    if (Deno.env.get('ENABLE_ZONE3_ROUTE_REVIEW_DECISIONS') !== 'true') {
+      return Response.json({
+        success: false,
+        skipped: true,
+        reason: 'zone3_route_review_decisions_disabled',
+        message: 'Zone 3 subscription route review approvals are disabled for May 30 launch freeze.',
+      }, { status: 409 });
+    }
+
     const {
       dar_id,
       approved_delivery_fee,
