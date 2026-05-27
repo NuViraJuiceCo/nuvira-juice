@@ -26,6 +26,9 @@ const SAFE_RESPONSE_KEYS = new Set([
   'deduction_preview_count',
   'deduction_preview_rows',
   'prior_deduction_log_present',
+  'real_inventory_deduction_enabled',
+  'actor_allowed',
+  'batch_allowlisted',
   'projected_writes_if_approved',
   'purchase_order_changes_deferred',
   'customer_app_sync_deferred',
@@ -120,6 +123,9 @@ function sanitizeHubResponse(data, hubStatus) {
     ? data.deduction_preview_rows.slice(0, MAX_PREVIEW_ROWS).map(sanitizePreviewRow)
     : [];
   safe.prior_deduction_log_present = data?.prior_deduction_log_present === true;
+  safe.real_inventory_deduction_enabled = data?.real_inventory_deduction_enabled === true;
+  safe.actor_allowed = data?.actor_allowed === true;
+  safe.batch_allowlisted = data?.batch_allowlisted === true;
   safe.projected_writes_if_approved = sanitizeStringArray(data?.projected_writes_if_approved, 10);
   safe.purchase_order_changes_deferred = data?.purchase_order_changes_deferred === true;
   safe.customer_app_sync_deferred = data?.customer_app_sync_deferred === true;
@@ -135,9 +141,12 @@ function sanitizeHubResponse(data, hubStatus) {
   return safe;
 }
 
-function buildHubBody(body) {
+function buildHubBody(body, user) {
   const hubBody = {
     production_batch_id: normalizeText(body.production_batch_id),
+    actor_email: normalizeText(user?.email).toLowerCase(),
+    actor_role: normalizeText(user?.role),
+    source: 'customer_app_admin',
   };
 
   if (normalizeText(body.batch_id)) hubBody.batch_id = normalizeText(body.batch_id);
@@ -197,7 +206,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
       },
-      body: JSON.stringify(buildHubBody(body)),
+      body: JSON.stringify(buildHubBody(body, user)),
     });
 
     const hubData = await hubResponse.json().catch(() => null);
