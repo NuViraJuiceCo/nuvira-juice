@@ -6,6 +6,8 @@ const DEFAULT_EVENT_KEY = 'may30_event_visit';
 const DEFAULT_BONUS_POINTS = 250;
 const NOTIFICATION_TITLE = 'Welcome To NuVira';
 const NOTIFICATION_BODY = 'Your 250 point event visit bonus has been added.';
+const DEFAULT_LOCATION_RADIUS_METERS = 230;
+const EVENT_CODE_ALLOWS_NO_LOCATION = Deno.env.get('MAY30_EVENT_CODE_ALLOWS_NO_LOCATION') !== 'false';
 const VAPID_PUBLIC_KEY = Deno.env.get('WEB_PUSH_VAPID_PUBLIC_KEY')
   || 'BHmr7cCgm_eL3ckBL91ZKnvCqXvLax8pahXxpFCY8qwFXi0alWve4tDDJaaSDTuLwA-4VSEWBHMMlE_BixdHWaM';
 const VAPID_PRIVATE_KEY = Deno.env.get('WEB_PUSH_VAPID_PRIVATE_KEY');
@@ -25,6 +27,39 @@ const APNS_PRIMARY_ENVIRONMENT = (Deno.env.get('APNS_PRIMARY_ENVIRONMENT') || 'p
   : 'production';
 const APNS_ALLOW_ENV_FALLBACK = Deno.env.get('APNS_ALLOW_ENV_FALLBACK') !== 'false';
 
+const EVENT_CHECKIN_SESSIONS = [
+  {
+    id: 'simply_wurth_grand_opening',
+    title: 'Simply Wurth It Grand Opening',
+    code: 'swi-grand-opening-nvj-4f8k',
+    claim_starts_at: '2026-05-30T11:30:00-05:00',
+    claim_ends_at: '2026-05-30T14:30:00-05:00',
+    latitude: 38.7213287,
+    longitude: -90.6976938,
+    radius_meters: DEFAULT_LOCATION_RADIUS_METERS,
+  },
+  {
+    id: 'missouri_spirit_festival',
+    title: 'Missouri Spirit Festival',
+    code: 'missouri-spirit-nvj-9p2m',
+    claim_starts_at: '2026-05-30T14:30:00-05:00',
+    claim_ends_at: '2026-05-30T19:30:00-05:00',
+    latitude: 38.5705055,
+    longitude: -90.8803494,
+    radius_meters: DEFAULT_LOCATION_RADIUS_METERS,
+  },
+  {
+    id: 'goddard_school',
+    title: 'Goddard School',
+    code: 'goddard-school-nvj-7xq3',
+    claim_starts_at: '2026-06-01T17:00:00-05:00',
+    claim_ends_at: '2026-06-01T19:00:00-05:00',
+    latitude: 38.7506149,
+    longitude: -90.7390200,
+    radius_meters: DEFAULT_LOCATION_RADIUS_METERS,
+  },
+];
+
 type Base44Client = any;
 type Base44User = {
   id?: string;
@@ -37,6 +72,14 @@ type PointsRecord = Record<string, any> | null;
 type CommandLogRecord = Record<string, any> | null;
 type EventClaimRecord = Record<string, any> | null;
 type PushSubscriptionRecord = Record<string, any>;
+type EventCheckInSession = typeof EVENT_CHECKIN_SESSIONS[number];
+type CheckInVerification = {
+  ok: boolean;
+  reason?: string;
+  session?: EventCheckInSession;
+  method?: 'event_code' | 'geofence';
+  distance_meters?: number | null;
+};
 type FirebaseServiceAccount = {
   project_id?: string;
   client_email?: string;
@@ -185,6 +228,10 @@ function normalizeSingleLine(value: unknown): string {
   return (value ?? '').toString().trim().replace(/\s+/g, ' ');
 }
 
+function normalizeEventCode(value: unknown): string {
+  return normalizeSingleLine(value).toLowerCase();
+}
+
 function normalizeEmail(value: unknown): string {
   const email = normalizeSingleLine(value).toLowerCase();
   if (!email || email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -211,6 +258,111 @@ function normalizeSafeId(value: unknown, fieldName: string): string {
     throw new Error(`${fieldName} is unavailable`);
   }
   return text;
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function requestLocation(body: Record<string, any>): { latitude: number; longitude: number; accuracy_meters: number | null } | null {
+  const raw = body?.location && typeof body.location === 'object' ? body.location : body;
+  const latitude = numberFromUnknown(raw?.latitude ?? raw?.lat);
+  const longitude = numberFromUnknown(raw?.longitude ?? raw?.lng ?? raw?.lon);
+  const accuracy = numberFromUnknown(raw?.accuracy_meters ?? raw?.accuracy);
+
+  if (latitude === null || longitude === null) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+
+  return {
+    latitude,
+    longitude,
+    accuracy_meters: accuracy === null ? null : Math.max(0, Math.round(accuracy)),
+  };
+}
+
+function distanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
+  const earthRadiusMeters = 6371000;
+  const toRadians = (degrees: number) => degrees * Math.PI / 180;
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+  const hav =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(hav), Math.sqrt(1 - hav));
+}
+
+function isSessionOpen(session: EventCheckInSession, now = Date.now()): boolean {
+  return now >= Date.parse(session.claim_starts_at) && now <= Date.parse(session.claim_ends_at);
+}
+
+function publicSession(session: EventCheckInSession | undefined) {
+  if (!session) return null;
+  return {
+    id: session.id,
+    title: session.title,
+    claim_starts_at: session.claim_starts_at,
+    claim_ends_at: session.claim_ends_at,
+  };
+}
+
+function validateEventCheckIn(body: Record<string, any>): CheckInVerification {
+  const now = Date.now();
+  const activeSessions = EVENT_CHECKIN_SESSIONS.filter((session) => isSessionOpen(session, now));
+  const eventCode = normalizeEventCode(body?.event_code || body?.code);
+  const location = requestLocation(body);
+
+  if (eventCode) {
+    const session = EVENT_CHECKIN_SESSIONS.find((candidate) => candidate.code === eventCode);
+    if (!session) {
+      return { ok: false, reason: 'invalid_event_checkin_code' };
+    }
+
+    if (!isSessionOpen(session, now)) {
+      return { ok: false, reason: 'event_checkin_closed', session };
+    }
+
+    if (EVENT_CODE_ALLOWS_NO_LOCATION) {
+      const distance = location
+        ? Math.round(distanceMeters(location, { latitude: session.latitude, longitude: session.longitude }))
+        : null;
+      return { ok: true, session, method: 'event_code', distance_meters: distance };
+    }
+  }
+
+  if (location && activeSessions.length > 0) {
+    const candidates = activeSessions.map((session) => ({
+      session,
+      distance: distanceMeters(location, { latitude: session.latitude, longitude: session.longitude }),
+    })).sort((a, b) => a.distance - b.distance);
+    const nearest = candidates[0];
+    const allowedDistance = nearest.session.radius_meters + Math.max(0, location.accuracy_meters || 0);
+
+    if (nearest.distance <= allowedDistance) {
+      return {
+        ok: true,
+        session: nearest.session,
+        method: eventCode ? 'event_code' : 'geofence',
+        distance_meters: Math.round(nearest.distance),
+      };
+    }
+
+    return {
+      ok: false,
+      reason: 'event_location_mismatch',
+      session: nearest.session,
+      distance_meters: Math.round(nearest.distance),
+    };
+  }
+
+  if (activeSessions.length === 0) {
+    const nextSession = EVENT_CHECKIN_SESSIONS.find((session) => now < Date.parse(session.claim_starts_at));
+    return { ok: false, reason: 'event_checkin_closed', session: nextSession || EVENT_CHECKIN_SESSIONS[EVENT_CHECKIN_SESSIONS.length - 1] };
+  }
+
+  return { ok: false, reason: 'event_verification_required', session: activeSessions[0] };
 }
 
 function safeError(message: string, code = 'event_bonus_error') {
@@ -522,7 +674,13 @@ async function findExistingEventClaim(
   }
 }
 
-async function createCommandLog(base44: Base44Client, idempotencyKey: string, user: Base44User, eventKey: string) {
+async function createCommandLog(
+  base44: Base44Client,
+  idempotencyKey: string,
+  user: Base44User,
+  eventKey: string,
+  verification: CheckInVerification,
+) {
   try {
     return await base44.asServiceRole.entities.CommandLog.create({
       command_id: idempotencyKey,
@@ -538,6 +696,10 @@ async function createCommandLog(base44: Base44Client, idempotencyKey: string, us
       payload: {
         event_key: eventKey,
         points_requested: envNumber('MAY30_EVENT_BONUS_POINTS', DEFAULT_BONUS_POINTS),
+        event_session_id: verification.session?.id || null,
+        event_session_title: verification.session?.title || null,
+        verification_method: verification.method || null,
+        location_distance_meters: verification.distance_meters ?? null,
       },
       idempotency_key: idempotencyKey,
       request_id: idempotencyKey,
@@ -563,6 +725,7 @@ async function createEventClaim(
     userEmail,
     customerEmail,
     bonusPoints,
+    verification,
   }: {
     eventKey: string;
     idempotencyKey: string;
@@ -570,10 +733,11 @@ async function createEventClaim(
     userEmail: string;
     customerEmail: string;
     bonusPoints: number;
+    verification: CheckInVerification;
   },
 ): Promise<EventClaimRecord> {
   try {
-    return await base44.asServiceRole.entities.EventBonusRedemption.create({
+    const payload: Record<string, any> = {
       event_key: eventKey,
       user_id: userId,
       auth_email: userEmail,
@@ -582,7 +746,16 @@ async function createEventClaim(
       points_awarded: bonusPoints,
       status: 'awarded',
       claimed_at: new Date().toISOString(),
-    });
+      event_session_id: verification.session?.id || null,
+      event_session_title: verification.session?.title || null,
+      verification_method: verification.method || null,
+    };
+
+    if (typeof verification.distance_meters === 'number') {
+      payload.location_distance_meters = verification.distance_meters;
+    }
+
+    return await base44.asServiceRole.entities.EventBonusRedemption.create(payload);
   } catch (error) {
     if (isMissingSchemaError(error)) {
       return null;
@@ -1105,12 +1278,33 @@ Deno.serve(async (req) => {
       });
     }
 
-    commandLog = await createCommandLog(base44, idempotencyKey, user, eventKey);
+    const verification = validateEventCheckIn(body);
+    if (!verification.ok) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        already_claimed: false,
+        reason: verification.reason || 'event_verification_required',
+        points_awarded: 0,
+        event_key: eventKey,
+        event_session_id: verification.session?.id || null,
+        event_session_title: verification.session?.title || null,
+        event_session: publicSession(verification.session),
+        verification_method: null,
+        notification_created: false,
+        push_attempted: false,
+        push_sent: false,
+        push_skipped_reason: 'not_attempted',
+        location_distance_meters: verification.distance_meters ?? null,
+      });
+    }
+
+    commandLog = await createCommandLog(base44, idempotencyKey, user, eventKey, verification);
 
     const historyEntry = {
       amount: bonusPoints,
       type: 'bonus',
-      description: `May 30 event visit bonus (${eventKey})`,
+      description: `${verification.session?.title || 'Event'} visit bonus (${eventKey})`,
       event_key: eventKey,
       idempotency_key: idempotencyKey,
       timestamp: new Date().toISOString(),
@@ -1142,6 +1336,7 @@ Deno.serve(async (req) => {
       userEmail,
       customerEmail,
       bonusPoints,
+      verification,
     });
 
     const notification = await createNotificationOnce(base44, customerEmail, identityEmails, idempotencyKeys);
@@ -1154,6 +1349,10 @@ Deno.serve(async (req) => {
       target_id: pointsRecord?.id || userId,
       result: {
         event_key: eventKey,
+        event_session_id: verification.session?.id || null,
+        event_session_title: verification.session?.title || null,
+        verification_method: verification.method || null,
+        location_distance_meters: verification.distance_meters ?? null,
         points_awarded: bonusPoints,
         notification_created: notification.created,
         push_attempted: push.push_attempted,
@@ -1168,6 +1367,11 @@ Deno.serve(async (req) => {
       already_claimed: false,
       points_awarded: bonusPoints,
       event_key: eventKey,
+      event_session_id: verification.session?.id || null,
+      event_session_title: verification.session?.title || null,
+      event_session: publicSession(verification.session),
+      verification_method: verification.method || null,
+      location_distance_meters: verification.distance_meters ?? null,
       notification_created: notification.created,
       push_attempted: push.push_attempted,
       push_sent: push.push_sent,

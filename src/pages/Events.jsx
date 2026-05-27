@@ -5,6 +5,7 @@ import { ArrowLeft, MapPin, Calendar, Users, ExternalLink, Gift } from 'lucide-r
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import SEO from '@/components/SEO';
+import { isEventCheckInVisible } from '@/lib/eventCheckIn';
 
 // Convert a "YYYY-MM-DD" date + optional "HH:MM" time string to ISO 8601
 function toISO(date, time) {
@@ -75,6 +76,7 @@ export default function Events() {
   ];
 
   const eventSchema = buildEventSchema(events);
+  const showEventCheckIn = isEventCheckInVisible();
 
   return (
     <div className="min-h-screen bg-background">
@@ -128,6 +130,7 @@ export default function Events() {
           </div>
         </motion.div>
 
+        {showEventCheckIn && (
         <Link
           to="/event/may30"
           className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left"
@@ -136,12 +139,13 @@ export default function Events() {
             <Gift className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-foreground">May 30 Event Check-In</span>
+            <span className="block text-sm font-bold text-foreground">Event Check-In</span>
             <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
               Claim the one-time 250 point event visit bonus.
             </span>
           </span>
         </Link>
+        )}
 
         {/* Events List */}
         <div className="space-y-4">

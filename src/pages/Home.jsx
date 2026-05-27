@@ -17,6 +17,7 @@ import MerchTeaser from '@/components/home/MerchTeaser';
 import SustainabilityTeaser from '@/components/home/SustainabilityTeaser';
 import SubscriptionCard from '@/components/home/SubscriptionCard';
 import NotificationPrompt from '@/components/home/NotificationPrompt';
+import { isEventCheckInVisible } from '@/lib/eventCheckIn';
 
 
 import ProgramCards from '@/components/home/ProgramCards';
@@ -106,6 +107,7 @@ export default function Home() {
   const bundles = products.filter(p => p.category === 'bundle');
   const lastOrder = orders[0];
   const unreadCount = notifications.length;
+  const showEventCheckIn = isEventCheckInVisible();
 
   // Pull refetch handles from the queries already registered above — no duplicate registration
   const { refetch: refetchProducts } = useQuery({ queryKey: ['products'] });
@@ -168,6 +170,7 @@ export default function Home() {
         </div>
       </motion.div>
 
+      {showEventCheckIn && (
       <div className="mt-4 px-5">
         <Link
           to="/event/may30"
@@ -177,13 +180,14 @@ export default function Home() {
             <Gift className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-foreground">May 30 Event Check-In</span>
+            <span className="block text-sm font-bold text-foreground">Event Check-In</span>
             <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
               Claim the one-time 250 point event visit bonus.
             </span>
           </span>
         </Link>
       </div>
+      )}
 
       <HeroBanner banners={banners} scheduleRules={scheduleRules} heroHeadline="Build Your Routine" heroSubtext="Choose your goal. We'll handle the rest." />
 
