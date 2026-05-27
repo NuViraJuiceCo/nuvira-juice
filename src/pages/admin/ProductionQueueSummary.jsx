@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { ArrowLeft, CalendarDays, Lock, Package, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, Database, Lock, Package, RefreshCw } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -102,6 +102,207 @@ function isShotCategory(category) {
   return (category || '').toString().toLowerCase() === 'shot';
 }
 
+function requestIdFor(prefix, batch) {
+  const fallback = Math.random().toString(36).slice(2);
+  const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+  return `${prefix}_${batch.id || batch.batch_id || 'batch'}_${Date.now()}_${randomId}`;
+}
+
+function formatNumber(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return Math.round(parsed * 1000) / 1000;
+}
+
+function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
+  const [preview, setPreview] = useState(null);
+  const [previewPending, setPreviewPending] = useState(false);
+  const [deductPending, setDeductPending] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  async function previewDeduction() {
+    setPreviewPending(true);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('previewAdminProductionInventoryDeduction', {
+        production_batch_id: batch.id,
+        batch_id: batch.batch_id,
+        expected_status: batch.status,
+        request_id: requestIdFor('inventory_preview', batch),
+      });
+      const result = res?.data || res;
+      if (result?.error && result?.success !== true) throw new Error(result.error);
+      setPreview(result);
+      setMessage({
+        type: result?.live_allowed ? 'success' : 'warn',
+        text: result?.live_allowed
+          ? 'Inventory deduction is allowed for this batch.'
+          : 'Inventory deduction is not currently allowed. Review blockers below.',
+      });
+    } catch {
+      setMessage({ type: 'error', text: 'Unable to preview inventory deduction.' });
+    } finally {
+      setPreviewPending(false);
+    }
+  }
+
+  async function deductInventory() {
+    if (!preview?.live_allowed) return;
+    if (!window.confirm(`Deduct inventory for ${batch.batch_id || batch.product_name}? This updates Hub inventory stock and cannot be previewed again as a new deduction.`)) {
+      return;
+    }
+
+    setDeductPending(true);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('deductAdminProductionInventory', {
+        production_batch_id: batch.id,
+        batch_id: batch.batch_id,
+        expected_status: batch.status,
+        request_id: requestIdFor('inventory_deduct', batch),
+        reason: 'Admin Production Queue inventory deduction.',
+      });
+      const result = res?.data || res;
+      if (!result?.success) throw new Error(result?.error || 'deduction_failed');
+      setMessage({
+        type: result.skipped ? 'warn' : 'success',
+        text: result.skipped ? 'Inventory deduction was already recorded.' : 'Inventory deduction completed.',
+      });
+      await onDeductionSuccess?.();
+    } catch {
+      setMessage({ type: 'error', text: 'Unable to deduct inventory. Hub gates may still be closed.' });
+    } finally {
+      setDeductPending(false);
+    }
+  }
+
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const rows = Array.isArray(preview?.deduction_preview_rows) ? preview.deduction_preview_rows : [];
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-background p-3 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-primary" />
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Inventory Deduction</p>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Preview-first Hub action. No purchase orders or Customer App records are updated.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={previewDeduction}
+          disabled={previewPending || !batch.id}
+          className="h-8 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground disabled:opacity-60"
+        >
+          {previewPending ? 'Previewing...' : 'Preview'}
+        </button>
+      </div>
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-amber-700'
+              : 'text-green-700'
+        }`}>
+          {message.text}
+        </p>
+      )}
+
+      {preview && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Rows</p>
+              <p className="text-sm font-bold">{preview.deduction_preview_count ?? rows.length}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Used</p>
+              <p className="text-sm font-bold">{preview.ingredients_used_count ?? '-'}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Allowed</p>
+              <p className="text-sm font-bold">{preview.live_allowed ? 'Yes' : 'No'}</p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="space-y-1">
+              {blockers.map(blocker => (
+                <div key={`blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{formatLabel(blocker)}</span>
+                </div>
+              ))}
+              {warnings.map(warning => (
+                <div key={`warning-${warning}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{formatLabel(warning)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div className="space-y-1.5">
+              {rows.slice(0, 8).map(row => (
+                <div
+                  key={`${row.ingredient_name}-${row.inventory_item_id}`}
+                  className="rounded-md bg-card px-2 py-1.5 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground truncate">{row.ingredient_name || 'Ingredient'}</p>
+                      <p className="text-muted-foreground">
+                        Deduct {formatNumber(row.quantity_to_deduct)} {row.inventory_unit || row.unit || ''}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-semibold text-foreground">{formatLabel(row.status)}</p>
+                      <p className="text-muted-foreground">
+                        {formatNumber(row.current_stock)} → {formatNumber(row.projected_stock)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {rows.length > 8 && (
+                <p className="text-[10px] text-muted-foreground">Showing 8 of {rows.length} preview rows.</p>
+              )}
+            </div>
+          )}
+
+          {preview.live_allowed && (
+            <button
+              type="button"
+              onClick={deductInventory}
+              disabled={deductPending}
+              className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+            >
+              {deductPending ? 'Deducting...' : 'Deduct Inventory'}
+            </button>
+          )}
+
+          {!preview.live_allowed && (
+            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>Live deduction remains gated until the Hub preview allows this exact batch.</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getBatchTab(batch, today) {
   if (isNeedsVerificationStatus(batch.status)) return 'verify';
   if (isInProgressStatus(batch.status)) return 'in_progress';
@@ -123,7 +324,7 @@ function groupByProductionDate(items) {
   }, {});
 }
 
-function BatchCard({ batch }) {
+function BatchCard({ batch, onDeductionSuccess }) {
   const categoryAccent = isShotCategory(batch.product_category) ? 'border-l-amber-400' : 'border-l-primary';
 
   return (
@@ -181,11 +382,13 @@ function BatchCard({ batch }) {
           Last Hub update: {formatDateTime(batch.updated_date)}
         </p>
       )}
+
+      <InventoryDeductionPanel batch={batch} onDeductionSuccess={onDeductionSuccess} />
     </div>
   );
 }
 
-function ProductionDateSection({ date, batches, today }) {
+function ProductionDateSection({ date, batches, today, onDeductionSuccess }) {
   const isToday = date === today;
   const isPast = date !== 'unscheduled' && date < today;
   const neededUnits = batches.reduce((total, batch) => total + (Number(batch.planned_units) || 0), 0);
@@ -222,7 +425,11 @@ function ProductionDateSection({ date, batches, today }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {batches.map(batch => (
-          <BatchCard key={batch.id || batch.batch_id} batch={batch} />
+          <BatchCard
+            key={batch.id || batch.batch_id}
+            batch={batch}
+            onDeductionSuccess={onDeductionSuccess}
+          />
         ))}
       </div>
     </section>
@@ -242,7 +449,7 @@ export default function ProductionQueueSummary() {
   const rangeDays = dateFrom && dateTo ? daysInclusive(dateFrom, dateTo) : null;
   const rangeInvalid = Boolean(!dateFrom || !dateTo || dateTo < dateFrom || rangeDays > 31);
 
-  const { data, isLoading, isError, error, isFetching } = useQuery({
+  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ['admin-production-queue-summary', dateFrom, dateTo],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminProductionQueueSummary', {
@@ -298,9 +505,9 @@ export default function ProductionQueueSummary() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="font-heading text-2xl font-bold text-primary-foreground">Production Queue</h1>
-            <p className="text-primary-foreground/70 text-xs mt-0.5">Read-only Hub production summary</p>
+            <p className="text-primary-foreground/70 text-xs mt-0.5">Hub production summary with gated inventory actions</p>
           </div>
-          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">Read-only</span>
+          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">Ops v1</span>
         </div>
       </div>
 
@@ -338,7 +545,7 @@ export default function ProductionQueueSummary() {
             </p>
           )}
           <p className="text-[10px] text-muted-foreground">
-            Read-only Hub data · No actions available here. Production Queue shows batch/date execution visibility; Production Planning shows ingredient demand and shortage visibility.
+            Hub data · Inventory deduction is preview-first and remains blocked unless the Hub gates allow the exact batch.
           </p>
         </div>
 
@@ -440,6 +647,7 @@ export default function ProductionQueueSummary() {
                 date={date}
                 batches={groupedBatches[date]}
                 today={defaultFrom}
+                onDeductionSuccess={refetch}
               />
             ))}
           </div>

@@ -10,6 +10,7 @@ import {
   Clock,
   Image as ImageIcon,
   MapPin,
+  Navigation,
   Package,
   RefreshCw,
   Truck,
@@ -107,6 +108,35 @@ function deliveredRequestId(taskId) {
   return `fulfillment_delivered_${taskId}_${Date.now()}_${randomId}`;
 }
 
+function routeStopPayload(stop) {
+  return {
+    task_id: stop.task_id || null,
+    order_number: stop.order_number || null,
+    fulfillment_number: stop.fulfillment_number ?? null,
+    customer_name: stop.customer_name || null,
+    delivery_address: stop.delivery_address || null,
+    delivery_window_label: stop.delivery_window_label || null,
+    items_summary: stop.items_summary || null,
+    assigned_driver: stop.assigned_driver || null,
+    task_status: stop.task_status || null,
+    delivery_status: stop.delivery_status || null,
+    source_type: stop.source_type || null,
+    missing_address: stop.missing_address === true,
+  };
+}
+
+function formatDistanceMeters(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return `${Math.round((parsed / 1609.344) * 10) / 10} mi`;
+}
+
+function formatDurationSeconds(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return `${Math.round(parsed / 60)} min`;
+}
+
 function BagReturnsValue({ value }) {
   if (value === null || value === undefined) return <span className="text-xs font-semibold">Not tracked</span>;
   return <span className="text-lg font-bold">{value}</span>;
@@ -119,6 +149,144 @@ function StatCard({ icon: Icon, label, value, sublabel, isRefreshing }) {
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
       {React.isValidElement(value) ? value : <p className="text-lg font-bold">{value}</p>}
       {sublabel && <p className="text-[10px] text-muted-foreground">{sublabel}</p>}
+    </div>
+  );
+}
+
+function RouteOptimizationPanel({ deliveryDate, stops }) {
+  const eligibleStops = stops.filter(stop => stop.delivery_address && !stop.missing_address);
+  const missingAddressCount = stops.length - eligibleStops.length;
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState(null);
+  const [message, setMessage] = useState(null);
+
+  async function previewRoute() {
+    setPending(true);
+    setMessage(null);
+    setResult(null);
+
+    try {
+      const res = await base44.functions.invoke('optimizeDeliveryRoute', {
+        date: deliveryDate,
+        optimize: true,
+        stops: stops.map(routeStopPayload),
+      });
+      const payload = res?.data || res;
+      if (payload?.error) throw new Error(payload.error);
+
+      if (payload?.skipped) {
+        setMessage({
+          type: 'warn',
+          text: payload.message || 'Route optimization is disabled.',
+        });
+        setResult(payload);
+        return;
+      }
+
+      setResult(payload);
+      setMessage({
+        type: 'success',
+        text: 'Route preview calculated. No route order was saved.',
+      });
+    } catch {
+      setMessage({
+        type: 'error',
+        text: 'Unable to preview optimized route.',
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const optimizedStops = Array.isArray(result?.optimized_orders) ? result.optimized_orders : [];
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-card p-3 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Navigation className="w-4 h-4 text-primary" />
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Route Optimization</p>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Admin preview only. Uses active Hub delivery stops and does not save route order.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={previewRoute}
+          disabled={pending || stops.length === 0 || eligibleStops.length < 2}
+          className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {pending ? 'Optimizing...' : 'Preview Route'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg bg-secondary/50 p-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Stops</p>
+          <p className="text-sm font-bold">{stops.length}</p>
+        </div>
+        <div className="rounded-lg bg-secondary/50 p-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Addressable</p>
+          <p className="text-sm font-bold">{eligibleStops.length}</p>
+        </div>
+        <div className="rounded-lg bg-secondary/50 p-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Missing</p>
+          <p className="text-sm font-bold">{missingAddressCount}</p>
+        </div>
+      </div>
+
+      {eligibleStops.length < 2 && (
+        <p className="text-xs text-muted-foreground">
+          At least two active stops with delivery addresses are required to optimize a route.
+        </p>
+      )}
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-amber-700'
+              : 'text-green-700'
+        }`}>
+          {message.text}
+        </p>
+      )}
+
+      {optimizedStops.length > 0 && (
+        <div className="rounded-lg border border-border/50 bg-background p-2 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Previewed Stop Order</p>
+            <p className="text-[10px] text-muted-foreground">
+              {result?.total_distance_miles ? `${result.total_distance_miles} mi` : 'Distance pending'}
+              {result?.total_duration_minutes ? ` · ${result.total_duration_minutes} min` : ''}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            {optimizedStops.map((stop, index) => (
+              <div
+                key={stop.task_id || stop.order_number || `route-stop-${index}`}
+                className="rounded-md bg-card px-2 py-1.5 text-xs"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground">
+                      {index + 1}. {stop.is_return_stop ? 'Return to NuVira Base' : stop.order_number || 'Order pending'}
+                    </p>
+                    <p className="text-muted-foreground truncate">{stop.delivery_address || 'Address pending'}</p>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground shrink-0">
+                    {[formatDistanceMeters(stop.leg_distance_meters), formatDurationSeconds(stop.leg_duration_seconds)].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground">This preview does not persist route order or notify customers.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -405,6 +573,16 @@ function StopCard({ stop, completed, onAssignmentSuccess }) {
       </div>
 
       <div className="space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Customer</p>
+        <p className="text-xs text-foreground break-words">{stop.customer_name || 'Customer pending'}</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Delivery Address</p>
+        <p className="text-xs text-foreground break-words">{stop.delivery_address || 'Address pending'}</p>
+      </div>
+
+      <div className="space-y-1.5">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Items</p>
         <p className="text-xs text-foreground break-words">{stop.items_summary || 'Items pending'}</p>
       </div>
@@ -614,10 +792,12 @@ export default function DeliveryQueue() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Driver Portal route view</p>
-            <p className="text-[10px] text-muted-foreground">Proof, route, bag return, and customer notification actions remain omitted.</p>
+            <p className="text-[10px] text-muted-foreground">Proof, bag return, and customer notification actions remain omitted. Route optimization is preview-only.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        <RouteOptimizationPanel deliveryDate={deliveryDate} stops={deliveryStops} />
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">

@@ -25,6 +25,47 @@ const ORIGIN = '619 N Main St Unit 3, O\'Fallon, MO 63366';
 
 const QUEUED_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon'];
 
+function normalizeText(value) {
+  return (value ?? '').toString().trim();
+}
+
+function safeText(value, maxLength = 160) {
+  const text = normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted email]')
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]');
+
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
+function safeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sanitizeRouteStop(stop) {
+  return {
+    task_id: safeText(stop?.task_id, 120) || null,
+    order_number: safeText(stop?.order_number, 120) || null,
+    fulfillment_number: stop?.fulfillment_number ?? null,
+    customer_name: safeText(stop?.customer_name, 120) || null,
+    delivery_address: safeText(stop?.delivery_address, 240) || null,
+    delivery_window_label: safeText(stop?.delivery_window_label, 120) || null,
+    items_summary: safeText(stop?.items_summary, 240) || null,
+    assigned_driver: safeText(stop?.assigned_driver, 120) || null,
+    task_status: safeText(stop?.task_status, 80) || null,
+    delivery_status: safeText(stop?.delivery_status, 80) || null,
+    source_type: safeText(stop?.source_type, 80) || null,
+    missing_address: stop?.missing_address === true,
+    is_return_stop: stop?.is_return_stop === true,
+    leg_distance_meters: safeNumber(stop?.leg_distance_meters),
+    leg_duration_seconds: safeNumber(stop?.leg_duration_seconds),
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     if (Deno.env.get('ENABLE_DELIVERY_ROUTE_OPTIMIZATION') !== 'true') {
@@ -34,7 +75,7 @@ Deno.serve(async (req) => {
         orders: [],
         optimized_orders: null,
         reason: 'delivery_route_optimization_disabled',
-        message: 'Delivery route optimization is disabled for May 30 launch freeze. Use Delivery Queue read-only route summaries and controlled task actions.',
+        message: 'Delivery route optimization is disabled. Enable the route optimization gate to calculate an admin route preview.',
       });
     }
 
@@ -44,7 +85,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { date, optimize, stops: explicitStops } = body; // stops: pre-filtered Hub stops from frontend
 
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
@@ -56,20 +97,21 @@ Deno.serve(async (req) => {
     // When the Driver Portal passes `stops`, use ONLY those stops.
     // Never re-fetch from local Customer App DB — that would leak stale/cancelled orders.
     if (Array.isArray(explicitStops) && explicitStops.length > 0) {
-      console.log(`[Route] Using ${explicitStops.length} explicit Hub stops — skipping local DB fetch`);
+      const safeExplicitStops = explicitStops.slice(0, 100).map(sanitizeRouteStop);
+      console.log(`[Route] Using ${safeExplicitStops.length} explicit Hub stops — skipping local DB fetch`);
 
       if (!optimize) {
-        return Response.json({ orders: explicitStops, optimized_orders: null });
+        return Response.json({ success: true, orders: safeExplicitStops, optimized_orders: null });
       }
-      if (explicitStops.length === 1) {
-        return Response.json({ orders: explicitStops, optimized_orders: explicitStops, total_distance_miles: null, total_duration_minutes: null });
+      if (safeExplicitStops.length === 1) {
+        return Response.json({ success: true, orders: safeExplicitStops, optimized_orders: safeExplicitStops, total_distance_miles: null, total_duration_minutes: null });
       }
 
-      const withAddr = explicitStops.filter(s => s.delivery_address);
-      const withoutAddr = explicitStops.filter(s => !s.delivery_address);
+      const withAddr = safeExplicitStops.filter(s => s.delivery_address);
+      const withoutAddr = safeExplicitStops.filter(s => !s.delivery_address);
 
       if (withAddr.length < 2) {
-        return Response.json({ orders: explicitStops, optimized_orders: explicitStops, total_distance_miles: null, total_duration_minutes: null });
+        return Response.json({ success: true, orders: safeExplicitStops, optimized_orders: safeExplicitStops, total_distance_miles: null, total_duration_minutes: null });
       }
 
       const routePayload = {
@@ -94,9 +136,9 @@ Deno.serve(async (req) => {
       const routeData = await routeRes.json();
 
       if (!routeData.routes || routeData.routes.length === 0) {
-        console.error('[Route] Google Maps API error (explicit stops):', JSON.stringify(routeData));
+        console.error('[Route] Google Maps API returned no explicit-stop route');
         // Fall back to original order on Maps API failure
-        return Response.json({ orders: explicitStops, optimized_orders: explicitStops, total_distance_miles: null, total_duration_minutes: null });
+        return Response.json({ success: true, orders: safeExplicitStops, optimized_orders: safeExplicitStops, total_distance_miles: null, total_duration_minutes: null });
       }
 
       const route = routeData.routes[0];
@@ -124,15 +166,24 @@ Deno.serve(async (req) => {
       const totalDurationSeconds = route.duration ? parseInt(route.duration.replace('s', '')) : 0;
 
       console.log(`[Route] Explicit stops optimized: ${orderedStops.length} delivery stops`);
-      orderedStops.forEach((s, i) => console.log(`  ${i + 1}. task_id=${s.task_id} customer=${s.customer_name}`));
+      orderedStops.forEach((s, i) => console.log(`  ${i + 1}. task_id=${s.task_id || 'missing'} order=${s.order_number || 'missing'}`));
 
       return Response.json({
-        orders: explicitStops,
-        optimized_orders: [...orderedStops, returnStop],
+        success: true,
+        orders: safeExplicitStops,
+        optimized_orders: [...orderedStops, returnStop].map(sanitizeRouteStop),
         total_distance_miles: Math.round((totalDistanceMeters / 1609.344) * 10) / 10,
         total_duration_minutes: Math.round(totalDurationSeconds / 60),
         customer_delivery_count: orderedStops.length,
       });
+    }
+
+    if (Deno.env.get('ENABLE_DELIVERY_ROUTE_LEGACY_FETCH') !== 'true') {
+      return Response.json({
+        success: false,
+        error: 'Explicit delivery stops are required for route optimization',
+        error_code: 'explicit_stops_required',
+      }, { status: 400 });
     }
 
     // ── LEGACY PATH: no explicit stops — fetch from local DB (kept for non-driver callers) ──
@@ -424,10 +475,10 @@ Deno.serve(async (req) => {
       if (!enriched.task_id) {
         // Fallback: if no task_id, generate from hub_order_id or use order id as last resort
         if (enriched.hub_order_id) {
-          console.warn(`[Route] task_id missing for ${enriched.customer_name}, using hub_order_id fallback`);
+          console.warn(`[Route] task_id missing for order=${enriched.order_number || 'missing'}, using hub_order_id fallback`);
           enriched.task_id = enriched.hub_order_id;
         } else {
-          console.warn(`[Route] task_id AND hub_order_id missing for ${enriched.customer_name}, using id fallback`);
+          console.warn(`[Route] task_id AND hub_order_id missing for order=${enriched.order_number || 'missing'}, using id fallback`);
           enriched.task_id = enriched.id;
         }
       }
@@ -455,14 +506,14 @@ Deno.serve(async (req) => {
     // Final validation: all optimized stops must have real task_ids
     const taskIdCheck = optimizedOrdersWithReturn.filter(o => !o.is_return_stop && !o.task_id);
     if (taskIdCheck.length > 0) {
-      console.error(`[Route] ⚠️ ${taskIdCheck.length} stops missing task_id after optimization:`, taskIdCheck.map(o => o.customer_name));
+      console.error(`[Route] ${taskIdCheck.length} stops missing task_id after optimization:`, taskIdCheck.map(o => o.order_number || 'missing'));
     } else {
       console.log(`✓ All ${optimizedOrders.length} delivery stops have task_ids`);
     }
 
     console.log('Optimized stop order (with task_ids):');
     optimizedOrders.forEach((o, i) => {
-      console.log(`  ${i + 1}. task_id=${o.task_id}, customer=${o.customer_name}, addr=${o.delivery_address}`);
+      console.log(`  ${i + 1}. task_id=${o.task_id || 'missing'}, order=${o.order_number || 'missing'}`);
     });
 
     return Response.json({

@@ -20,6 +20,27 @@ function sanitizeAssignedDriver(value) {
   return text.length > 120 ? `${text.slice(0, 119).trim()}...` : text;
 }
 
+function sanitizeCustomerName(value) {
+  const text = normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]');
+
+  if (!text) return null;
+  return text.length > 120 ? `${text.slice(0, 119).trim()}...` : text;
+}
+
+function sanitizeAddress(value) {
+  const text = normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]');
+
+  if (!text) return null;
+  return text.length > 240 ? `${text.slice(0, 239).trim()}...` : text;
+}
+
 function todayChicagoDate() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: CHICAGO_TZ,
@@ -63,6 +84,7 @@ function sanitizeStop(stop) {
   return {
     task_id: stop.task_id || null,
     order_number: stop.order_number || null,
+    customer_name: sanitizeCustomerName(stop.customer_name),
     fulfillment_number: stop.fulfillment_number ?? null,
     source_type: stop.source_type || null,
     assigned_driver: sanitizeAssignedDriver(stop.assigned_driver),
@@ -71,6 +93,7 @@ function sanitizeStop(stop) {
     fulfillment_status: stop.fulfillment_status || null,
     delivery_date: stop.delivery_date || null,
     delivery_window_label: stop.delivery_window_label || null,
+    delivery_address: sanitizeAddress(stop.delivery_address),
     items_summary: stop.items_summary || null,
     delivered_at: stop.delivered_at || null,
     proof_available: stop.proof_available === true,
