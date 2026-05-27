@@ -20,7 +20,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 // Map notification subtype → preference field
-const PREF_MAP = {
+const PREF_MAP: Record<string, string> = {
   order_confirmation:           'order_updates',
   production_reminder:          'production_reminders',
   delivery_reminder:            'delivery_updates',
@@ -49,10 +49,30 @@ function nonConfirmationNotificationsEnabled() {
   return Deno.env.get('ENABLE_NON_CONFIRMATION_CUSTOMER_NOTIFICATIONS') === 'true';
 }
 
+function customerPushNotificationsEnabled() {
+  return Deno.env.get('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS') === 'true';
+}
+
+async function sendCustomerPush(base44: any, payload: Record<string, any>) {
+  try {
+    const result = await base44.asServiceRole.functions.invoke('sendCustomerPushNotification', payload);
+    return result?.data || result || {};
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'unknown');
+    console.warn(`[sendCustomerNotification] Push delivery skipped: ${message}`);
+    return {
+      success: true,
+      push_attempted: false,
+      push_sent: false,
+      push_skipped_reason: 'push_function_unavailable',
+    };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const body = await req.json();
+    const body: Record<string, any> = await req.json();
 
     const {
       customer_email,
@@ -94,7 +114,8 @@ Deno.serve(async (req) => {
         if (p.contact_email) identities.add(p.contact_email);
       }
     } catch (err) {
-      console.warn(`[sendCustomerNotification] Identity resolution failed: ${err.message}`);
+      const message = err instanceof Error ? err.message : String(err || 'unknown');
+      console.warn(`[sendCustomerNotification] Identity resolution failed: ${message}`);
     }
 
     const identityList = [...identities];
@@ -106,7 +127,7 @@ Deno.serve(async (req) => {
       // Query directly by idempotency_key — efficient and race-condition resistant
       const existing = await base44.asServiceRole.entities.Notification.filter({
         idempotency_key,
-      }, null, 1);
+      }, undefined, 1);
       if (existing[0]) {
         console.log(`[sendCustomerNotification] Duplicate detected (key=${idempotency_key}). Skipping.`);
         return Response.json({ success: true, skipped: true, reason: 'duplicate_idempotency_key', existing_id: existing[0].id });
@@ -148,21 +169,39 @@ Deno.serve(async (req) => {
     const created = await base44.asServiceRole.entities.Notification.create(notifPayload);
     console.log(`[sendCustomerNotification] ✅ Notification created: ${created.id} for ${canonicalEmail} (type=${notification_subtype})`);
 
-    // NOTE: Native push (APNs/FCM) not available in Base44-hosted web app environment.
-    // Architecture is push-ready: when native tokens are available, send here.
-    // For now, in-app notification feed is the delivery mechanism.
+    const push = customerPushNotificationsEnabled()
+      ? await sendCustomerPush(base44, {
+        customer_email: canonicalEmail,
+        notification_id: created.id,
+        title,
+        message,
+        type,
+        notification_subtype,
+        order_id: order_id || null,
+        deep_link: deep_link || '/notifications',
+        idempotency_key: idempotency_key || created.id,
+      })
+      : {
+        push_attempted: false,
+        push_sent: false,
+        push_skipped_reason: 'customer_push_disabled',
+        token_count: 0,
+      };
 
     return Response.json({
       success: true,
       notification_id: created.id,
       customer_email: canonicalEmail,
       identities_resolved: identityList,
-      push_sent: false,
-      push_note: 'In-app notification created. Native push requires APNs/FCM integration.',
+      push_attempted: Boolean(push.push_attempted),
+      push_sent: Boolean(push.push_sent),
+      push_skipped_reason: push.push_skipped_reason || null,
+      push_token_count: Number(push.token_count || 0),
     });
 
   } catch (error) {
-    console.error('[sendCustomerNotification] Error:', error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error || 'unknown');
+    console.error('[sendCustomerNotification] Error:', message);
+    return Response.json({ error: message }, { status: 500 });
   }
 });
