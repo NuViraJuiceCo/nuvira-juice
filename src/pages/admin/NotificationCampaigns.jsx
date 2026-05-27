@@ -45,8 +45,23 @@ const DEEP_LINK_OPTIONS = [
 
 const CAMPAIGN_SENDS_ENABLED = false;
 
+async function readAdminPushDiagnostics() {
+  try {
+    const response = await base44.functions.invoke('getAdminPushDiagnostics', {});
+    return response?.data || response || null;
+  } catch (err) {
+    return {
+      success: false,
+      ready: false,
+      blocked_reasons: ['diagnostics_unavailable'],
+      error: err.message,
+    };
+  }
+}
+
 async function readAdminPushStatus() {
   const support = getEventPushSupportStatus();
+  const diagnostics = await readAdminPushDiagnostics();
   if (!support.supported) {
     return {
       loading: false,
@@ -56,6 +71,7 @@ async function readAdminPushStatus() {
       mode: support.mode || null,
       reason: support.reason || 'push_unavailable',
       action: null,
+      diagnostics,
     };
   }
 
@@ -72,6 +88,7 @@ async function readAdminPushStatus() {
     mode: support.mode || null,
     reason: null,
     action: null,
+    diagnostics,
   };
 }
 
@@ -112,7 +129,9 @@ export default function NotificationCampaigns() {
     mode: null,
     reason: null,
     action: null,
+    diagnostics: null,
   });
+  const [adminPushTestResult, setAdminPushTestResult] = useState(null);
 
   const setField = (key, val) => setForm(p => ({ ...p, [key]: val }));
 
@@ -183,6 +202,33 @@ export default function NotificationCampaigns() {
     } catch (err) {
       await refreshAdminPushStatus();
       toast.error(`Unable to disable admin push: ${err.message}`);
+    }
+  };
+
+  const handleSendAdminPushTest = async () => {
+    setAdminPushStatus(prev => ({ ...prev, action: 'test' }));
+    setAdminPushTestResult(null);
+    try {
+      const res = await base44.functions.invoke('sendAdminPushTestNotification', {
+        client_request_id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      });
+      const data = res?.data || res || {};
+      setAdminPushTestResult(data);
+      await refreshAdminPushStatus();
+
+      if (data.push_sent) {
+        toast.success('Admin push test sent.');
+      } else {
+        toast.info(`Push test skipped: ${data.push_skipped_reason || data.reason || 'not sent'}.`);
+      }
+    } catch (err) {
+      await refreshAdminPushStatus();
+      setAdminPushTestResult({
+        success: false,
+        push_sent: false,
+        push_skipped_reason: 'admin_push_test_error',
+      });
+      toast.error(`Unable to send admin push test: ${err.message}`);
     }
   };
 
@@ -305,6 +351,52 @@ export default function NotificationCampaigns() {
             </p>
           )}
 
+          {adminPushStatus.diagnostics && (
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2">
+                <p className="text-[10px] text-muted-foreground">Saved</p>
+                <p className="text-sm font-semibold">{adminPushStatus.diagnostics.active_subscription_count || 0}</p>
+              </div>
+              <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2">
+                <p className="text-[10px] text-muted-foreground">Transport</p>
+                <p className="text-sm font-semibold truncate">
+                  {adminPushStatus.diagnostics.active_token_types?.length
+                    ? adminPushStatus.diagnostics.active_token_types.join(', ')
+                    : 'None'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2">
+                <p className="text-[10px] text-muted-foreground">Backend</p>
+                <p className={`text-sm font-semibold ${adminPushStatus.diagnostics.ready ? 'text-primary' : 'text-amber-700'}`}>
+                  {adminPushStatus.diagnostics.ready ? 'Ready' : 'Check'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {adminPushStatus.diagnostics?.blocked_reasons?.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-3">
+              {adminPushStatus.diagnostics.blocked_reasons.map(formatStatusReason).join(' + ')}
+            </p>
+          )}
+
+          {adminPushTestResult && (
+            <div className={`mt-4 rounded-xl border px-3 py-2 ${
+              adminPushTestResult.push_sent
+                ? 'border-primary/20 bg-primary/5'
+                : 'border-amber-200 bg-amber-50'
+            }`}>
+              <p className={`text-xs font-semibold ${adminPushTestResult.push_sent ? 'text-primary' : 'text-amber-900'}`}>
+                {adminPushTestResult.push_sent ? 'Test sent' : 'Test skipped'}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {adminPushTestResult.push_sent
+                  ? `${adminPushTestResult.push_sent_count || 1} sent from ${adminPushTestResult.push_token_count || 0} saved token(s).`
+                  : formatStatusReason(adminPushTestResult.push_skipped_reason || adminPushTestResult.reason || 'not_sent')}
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-2 mt-4">
             {adminPushStatus.subscribed ? (
               <Button
@@ -328,6 +420,19 @@ export default function NotificationCampaigns() {
                 Enable
               </Button>
             )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSendAdminPushTest}
+              disabled={adminPushStatus.action === 'test' || (
+                !adminPushStatus.subscribed
+                && (adminPushStatus.diagnostics?.active_subscription_count || 0) === 0
+              )}
+              className="flex-1 h-10 rounded-xl gap-2"
+            >
+              {adminPushStatus.action === 'test' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Test
+            </Button>
             <Button
               type="button"
               variant="outline"
