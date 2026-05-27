@@ -10,6 +10,7 @@ import {
   getEventPushPermission,
   getEventPushSupportStatus,
   getExistingEventPushSubscription,
+  getEventNativePushRequestPayload,
   subscribeToEventPushNotifications,
 } from '@/lib/eventPushNotifications';
 
@@ -146,8 +147,10 @@ export default function EventMay30() {
 
   const redeem = useMutation({
     mutationFn: async () => {
+      const nativePushTarget = await getEventNativePushRequestPayload().catch(() => null);
       const response = await base44.functions.invoke('redeemMay30EventBonus', {
         event_key: EVENT_KEY,
+        ...(nativePushTarget ? { event_push_target: nativePushTarget } : {}),
       });
       const data = response?.data || response || {};
       console.info('[EventMay30] redeemMay30EventBonus response', {
@@ -206,7 +209,10 @@ export default function EventMay30() {
 
   const testPush = useMutation({
     mutationFn: async () => {
-      const response = await base44.functions.invoke('sendMay30PushTest', {});
+      const nativePushTarget = await getEventNativePushRequestPayload().catch(() => null);
+      const response = await base44.functions.invoke('sendMay30PushTest', nativePushTarget
+        ? { event_push_target: nativePushTarget }
+        : {});
       const data = response?.data || response || {};
       console.info('[EventMay30] sendMay30PushTest response', {
         success: data.success,
