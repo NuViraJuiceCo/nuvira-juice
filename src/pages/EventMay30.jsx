@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, CheckCircle2, Gift, Sparkles } from 'lucide-react';
+import { ArrowLeft, Bell, CheckCircle2, Gift, Send, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -82,6 +82,7 @@ export default function EventMay30() {
     permission: 'unsupported',
     subscribed: false,
   });
+  const [pushTestResult, setPushTestResult] = useState(null);
 
   const { data: existingClaim, isLoading: isLoadingClaimStatus } = useQuery({
     queryKey: ['may30-event-claim-status', user?.email],
@@ -183,6 +184,7 @@ export default function EventMay30() {
   const enablePush = useMutation({
     mutationFn: subscribeToEventPushNotifications,
     onSuccess: async (data) => {
+      setPushTestResult(null);
       setPushStatus(current => ({
         ...current,
         loading: false,
@@ -199,6 +201,33 @@ export default function EventMay30() {
     },
     onError: () => {
       toast.error('Unable to enable push on this device.');
+    },
+  });
+
+  const testPush = useMutation({
+    mutationFn: async () => {
+      const response = await base44.functions.invoke('sendMay30PushTest', {});
+      const data = response?.data || response || {};
+      console.info('[EventMay30] sendMay30PushTest response', {
+        success: data.success,
+        push_attempted: data.push_attempted,
+        push_sent: data.push_sent,
+        push_skipped_reason: data.push_skipped_reason || null,
+        token_count: data.token_count || 0,
+      });
+      if (data.error) throw new Error(data.message || data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      setPushTestResult(data);
+      if (data.push_sent) {
+        toast.success('Test push sent.');
+      } else {
+        toast.info(`Push test skipped: ${data.push_skipped_reason || 'not sent'}.`);
+      }
+    },
+    onError: () => {
+      toast.error('Unable to send test push.');
     },
   });
 
@@ -269,6 +298,35 @@ export default function EventMay30() {
                 >
                   {enablePush.isPending ? 'Enabling...' : 'Enable Event Push'}
                 </button>
+              )}
+              {!pushStatus.loading && pushStatus.subscribed && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => enablePush.mutate()}
+                    disabled={enablePush.isPending}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary/30 px-3 text-xs font-semibold text-primary disabled:opacity-50"
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    {enablePush.isPending ? 'Refreshing...' : 'Refresh Push'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => testPush.mutate()}
+                    disabled={testPush.isPending}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary/30 px-3 text-xs font-semibold text-primary disabled:opacity-50"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {testPush.isPending ? 'Sending...' : 'Send Test Push'}
+                  </button>
+                </div>
+              )}
+              {pushTestResult && (
+                <p className="text-[10px] text-muted-foreground">
+                  {pushTestResult.push_sent
+                    ? 'Test push was handed to Firebase for this device.'
+                    : `Test push skipped: ${pushTestResult.push_skipped_reason || 'not sent'}.`}
+                </p>
               )}
               {!pushStatus.loading && !pushStatus.supported && (
                 <p className="text-[10px] text-muted-foreground">
