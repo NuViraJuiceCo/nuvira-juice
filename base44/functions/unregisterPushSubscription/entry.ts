@@ -17,13 +17,74 @@ function isMissingSchemaError(error: unknown): boolean {
   return message.includes('Entity schema') && message.includes('not found');
 }
 
+function isFallbackSubscriptionLog(record: Record<string, any>): boolean {
+  return record.channel === 'push'
+    && (
+      record.message_type === 'may30_event_push_subscription'
+      || record.metadata?.purpose === 'may30_event_push_subscription'
+    );
+}
+
+function fallbackMatchesSelector(
+  metadata: Record<string, any>,
+  selectors: { endpoint: string; fcmToken: string; apnsToken: string },
+): boolean {
+  if (selectors.apnsToken) {
+    return normalizeApnsToken(metadata.apns_token) === selectors.apnsToken;
+  }
+  if (selectors.fcmToken) {
+    return normalizeSingleLine(metadata.fcm_token) === selectors.fcmToken;
+  }
+  if (selectors.endpoint) {
+    return normalizeSingleLine(metadata.endpoint) === selectors.endpoint;
+  }
+  return true;
+}
+
+async function revokeFallbackPushSubscriptions(
+  base44: any,
+  customerEmail: string,
+  selectors: { endpoint: string; fcmToken: string; apnsToken: string },
+) {
+  const rows = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({ customer_email: customerEmail });
+  let revoked = 0;
+  const revokedAt = new Date().toISOString();
+
+  for (const row of rows) {
+    if (!isFallbackSubscriptionLog(row)) continue;
+    const metadata = row.metadata || {};
+    if (metadata.enabled === false || metadata.revoked_at) continue;
+    if (!fallbackMatchesSelector(metadata, selectors)) continue;
+
+    await base44.asServiceRole.entities.CustomerMessageDeliveryLog.update(row.id, {
+      status: 'skipped',
+      metadata: {
+        ...metadata,
+        enabled: false,
+        permission: 'default',
+        revoked_at: revokedAt,
+      },
+    });
+    revoked += 1;
+  }
+
+  return revoked;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
+  let requestBase44: any = null;
+  let customerEmail = '';
+  let endpoint = '';
+  let fcmToken = '';
+  let apnsToken = '';
+
   try {
     const base44 = createClientFromRequest(req);
+    requestBase44 = base44;
     const user = await base44.auth.me().catch(() => null);
 
     if (!user?.email) {
@@ -31,10 +92,10 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const endpoint = normalizeSingleLine(body.endpoint);
-    const fcmToken = normalizeSingleLine(body.fcm_token);
-    const apnsToken = normalizeApnsToken(body.apns_token);
-    const customerEmail = normalizeEmail(user.email);
+    endpoint = normalizeSingleLine(body.endpoint);
+    fcmToken = normalizeSingleLine(body.fcm_token);
+    apnsToken = normalizeApnsToken(body.apns_token);
+    customerEmail = normalizeEmail(user.email);
     const candidates = apnsToken
       ? await base44.asServiceRole.entities.PushSubscription.filter({ apns_token: apnsToken })
       : fcmToken
@@ -61,10 +122,21 @@ Deno.serve(async (req) => {
   } catch (error) {
     if (isMissingSchemaError(error)) {
       console.warn('[unregisterPushSubscription] PushSubscription schema unavailable');
+      try {
+        const revoked = await revokeFallbackPushSubscriptions(requestBase44, customerEmail, { endpoint, fcmToken, apnsToken });
+        return Response.json({
+          success: true,
+          revoked,
+          storage: 'CustomerMessageDeliveryLog',
+        });
+      } catch (fallbackError) {
+        console.warn('[unregisterPushSubscription] Fallback push subscription storage unavailable');
+        console.warn(fallbackError instanceof Error ? fallbackError.message : String(fallbackError || 'unknown'));
+      }
       return Response.json({
         success: true,
         revoked: 0,
-        reason: 'push_subscription_storage_unavailable',
+        reason: 'push_subscription_fallback_storage_unavailable',
       });
     }
     console.error('[unregisterPushSubscription] Error');
