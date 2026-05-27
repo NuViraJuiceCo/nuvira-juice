@@ -40,6 +40,16 @@ function normalizeSingleLine(value: unknown): string {
   return (value ?? '').toString().trim().replace(/\s+/g, ' ');
 }
 
+function sanitizeToken(value: unknown): string {
+  const text = normalizeSingleLine(value);
+  return text.length > 4096 ? '' : text;
+}
+
+function sanitizeApnsToken(value: unknown): string {
+  const text = normalizeSingleLine(value).replace(/[^a-fA-F0-9]/g, '');
+  return text.length >= 32 && text.length <= 512 ? text.toLowerCase() : '';
+}
+
 function normalizeEmail(value: unknown): string {
   const email = normalizeSingleLine(value).toLowerCase();
   if (!email || email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -112,11 +122,44 @@ async function findPushSubscriptionRows(base44: Base44Client, email: string): Pr
   return rows;
 }
 
+function directNativeSubscriptionFromBody(body: Record<string, any>, customerEmail: string): PushSubscriptionRecord | null {
+  const target = body?.event_push_target && typeof body.event_push_target === 'object'
+    ? body.event_push_target
+    : body;
+  const apnsToken = sanitizeApnsToken(target?.apns_token);
+  const fcmToken = sanitizeToken(target?.fcm_token);
+
+  if (!apnsToken && !fcmToken) return null;
+
+  const tokenType = apnsToken ? 'apns' : 'fcm';
+  const apnsEnvironment = target?.apns_environment === 'sandbox' || target?.apns_environment === 'production'
+    ? target.apns_environment
+    : 'unknown';
+
+  return {
+    id: `request_direct:${tokenType}`,
+    customer_email: customerEmail,
+    token_type: tokenType,
+    fcm_token: tokenType === 'fcm' ? fcmToken : null,
+    apns_token: tokenType === 'apns' ? apnsToken : null,
+    apns_environment: tokenType === 'apns' ? apnsEnvironment : null,
+    app_bundle_id: normalizeSingleLine(target?.app_bundle_id).slice(0, 160) || APNS_BUNDLE_ID,
+    enabled: true,
+    permission: target?.permission === 'denied' ? 'denied' : target?.permission === 'default' ? 'default' : 'granted',
+    device_platform: normalizeSingleLine(target?.device_platform).slice(0, 40),
+    platform: normalizeSingleLine(target?.platform).slice(0, 120),
+    app_shell: normalizeSingleLine(target?.app_shell).slice(0, 80),
+    _storage: 'request_direct',
+  };
+}
+
 async function updatePushSubscriptionRecord(
   base44: Base44Client,
   record: PushSubscriptionRecord,
   updates: Record<string, any>,
 ) {
+  if (record._storage === 'request_direct') return;
+
   if (record._storage !== 'CustomerMessageDeliveryLog') {
     await base44.asServiceRole.entities.PushSubscription.update(record.id, updates);
     return;
@@ -573,8 +616,10 @@ Deno.serve(async (req) => {
     }
 
     const identityEmails = await resolveIdentityEmails(base44, targetEmail);
+    const directSubscription = directNativeSubscriptionFromBody(body, targetEmail);
     let fcmSubscriptions: PushSubscriptionRecord[] = [];
     let apnsSubscriptions: PushSubscriptionRecord[] = [];
+    let storageUnavailable = false;
     try {
       [fcmSubscriptions, apnsSubscriptions] = await Promise.all([
         findFcmSubscriptions(base44, identityEmails),
@@ -582,18 +627,23 @@ Deno.serve(async (req) => {
       ]);
     } catch (error) {
       if (isMissingSchemaError(error)) {
-        return Response.json({
-          success: true,
-          push_attempted: false,
-          push_sent: false,
-          push_skipped_reason: 'push_subscription_storage_unavailable',
-          token_count: 0,
-          fcm_sent: 0,
-          fcm_failed: 0,
-          fcm_revoked: 0,
-        });
+        storageUnavailable = true;
+        console.warn('[sendMay30PushTest] Persistent push subscription storage unavailable; using direct request token if present');
+      } else {
+        throw error;
       }
-      throw error;
+    }
+
+    if (directSubscription?.token_type === 'apns') {
+      const directToken = normalizeSingleLine(directSubscription.apns_token);
+      if (!apnsSubscriptions.some((record) => normalizeSingleLine(record.apns_token) === directToken)) {
+        apnsSubscriptions.unshift(directSubscription);
+      }
+    } else if (directSubscription?.token_type === 'fcm') {
+      const directToken = normalizeSingleLine(directSubscription.fcm_token);
+      if (!fcmSubscriptions.some((record) => normalizeSingleLine(record.fcm_token) === directToken)) {
+        fcmSubscriptions.unshift(directSubscription);
+      }
     }
 
     const tokenCount = fcmSubscriptions.length + apnsSubscriptions.length;
@@ -602,7 +652,9 @@ Deno.serve(async (req) => {
         success: true,
         push_attempted: false,
         push_sent: false,
-        push_skipped_reason: 'no_active_native_subscription',
+        push_skipped_reason: storageUnavailable
+          ? 'push_subscription_storage_unavailable'
+          : 'no_active_native_subscription',
         token_count: 0,
         fcm_sent: 0,
         fcm_failed: 0,

@@ -5,6 +5,7 @@ import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 const VAPID_PUBLIC_KEY = 'BHmr7cCgm_eL3ckBL91ZKnvCqXvLax8pahXxpFCY8qwFXi0alWve4tDDJaaSDTuLwA-4VSEWBHMMlE_BixdHWaM';
 const SERVICE_WORKER_PATH = '/push-sw.js';
 const NUVIRA_APP_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
+const EVENT_NATIVE_PUSH_TARGET_KEY = 'nuvira_may30_native_push_target_v1';
 
 function isNativeApp() {
   return typeof window !== 'undefined' && Capacitor.isNativePlatform();
@@ -61,6 +62,62 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+function canUseEventNativePushFallback(reason) {
+  return [
+    'push_subscription_fallback_storage_unavailable',
+    'push_subscription_storage_unavailable',
+    'push_subscription_registration_unavailable',
+  ].includes(reason);
+}
+
+function eventNativePushPayload({ status, tokenResult, apnsToken }) {
+  const fcmToken = tokenResult?.token || null;
+  const nativeApnsToken = apnsToken || null;
+
+  if (!fcmToken && !nativeApnsToken) return null;
+
+  return {
+    token_type: nativeApnsToken ? 'apns' : 'fcm',
+    fcm_token: fcmToken,
+    apns_token: nativeApnsToken,
+    apns_environment: 'unknown',
+    app_bundle_id: NUVIRA_APP_BUNDLE_ID,
+    permission: status,
+    device_platform: Capacitor.getPlatform(),
+    platform: Capacitor.getPlatform(),
+    app_shell: 'capacitor',
+    user_agent: navigator.userAgent || '',
+  };
+}
+
+function saveEventNativePushTarget(pushTarget) {
+  if (typeof window === 'undefined' || !pushTarget) return;
+
+  try {
+    window.localStorage.setItem(EVENT_NATIVE_PUSH_TARGET_KEY, JSON.stringify({
+      ...pushTarget,
+      saved_at: new Date().toISOString(),
+    }));
+  } catch {
+    // Local storage is only a convenience for the event-only direct-token fallback.
+  }
+}
+
+function readEventNativePushTarget() {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(EVENT_NATIVE_PUSH_TARGET_KEY) || 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (parsed.token_type === 'apns' && parsed.apns_token) return parsed;
+    if (parsed.token_type === 'fcm' && parsed.fcm_token) return parsed;
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export function getEventPushSupportStatus() {
   if (typeof window === 'undefined') return { supported: false, reason: 'server' };
   if (isNativeApp()) return { supported: true, reason: null, mode: 'native_push' };
@@ -88,13 +145,35 @@ export async function getExistingEventPushSubscription() {
     const permission = await FirebaseMessaging.checkPermissions();
     if (permission.receive !== 'granted') return null;
     const tokenResult = await FirebaseMessaging.getToken().catch(() => null);
-    return tokenResult?.token ? { token_type: 'native_push', device_platform: Capacitor.getPlatform() } : null;
+    const savedTarget = readEventNativePushTarget();
+    return tokenResult?.token || savedTarget
+      ? { token_type: savedTarget?.token_type || 'native_push', device_platform: Capacitor.getPlatform() }
+      : null;
   }
 
   const registration = await navigator.serviceWorker.getRegistration(SERVICE_WORKER_PATH)
     || await navigator.serviceWorker.getRegistration('/');
 
   return registration?.pushManager.getSubscription() || null;
+}
+
+export async function getEventNativePushRequestPayload() {
+  if (!isNativeApp()) return null;
+
+  const permission = await FirebaseMessaging.checkPermissions().catch(() => null);
+  const status = normalizeNativePermission(permission?.receive);
+  if (status !== 'granted') return null;
+
+  const tokenResult = await FirebaseMessaging.getToken().catch(() => null);
+  const apnsToken = await waitForApnsToken(1500).catch(() => null);
+  const pushTarget = eventNativePushPayload({ status, tokenResult, apnsToken });
+
+  if (pushTarget) {
+    saveEventNativePushTarget(pushTarget);
+    return pushTarget;
+  }
+
+  return readEventNativePushTarget();
 }
 
 export async function subscribeToEventPushNotifications() {
@@ -118,30 +197,35 @@ export async function subscribeToEventPushNotifications() {
 
     const tokenResult = await FirebaseMessaging.getToken();
     const apnsToken = await apnsTokenPromise;
-    if (!tokenResult?.token && !apnsToken) {
+    const pushTarget = eventNativePushPayload({ status, tokenResult, apnsToken });
+    if (!pushTarget) {
       return { success: false, status, reason: 'native_push_token_unavailable' };
     }
 
+    saveEventNativePushTarget(pushTarget);
+
     const response = await base44.functions.invoke('registerPushSubscription', {
-      token_type: apnsToken ? 'apns' : 'fcm',
-      fcm_token: tokenResult?.token || null,
-      apns_token: apnsToken || null,
-      apns_environment: 'unknown',
-      app_bundle_id: NUVIRA_APP_BUNDLE_ID,
-      permission: status,
-      device_platform: Capacitor.getPlatform(),
-      platform: Capacitor.getPlatform(),
-      app_shell: 'capacitor',
-      user_agent: navigator.userAgent || '',
+      ...pushTarget,
     });
 
     const data = response?.data || response || {};
     if (data.error) throw new Error(data.error);
     if (data.success === false) {
+      const reason = data.reason || 'push_subscription_registration_unavailable';
+      if (canUseEventNativePushFallback(reason)) {
+        return {
+          success: true,
+          status,
+          reason,
+          mode: pushTarget.token_type === 'apns' ? 'native_apns_direct' : 'native_fcm_direct',
+          persistent_storage: false,
+        };
+      }
+
       return {
         success: false,
         status,
-        reason: data.reason || 'push_subscription_registration_unavailable',
+        reason,
         mode: 'native_push',
       };
     }
@@ -149,7 +233,7 @@ export async function subscribeToEventPushNotifications() {
     return {
       success: true,
       status,
-      mode: apnsToken ? 'native_apns' : 'native_fcm',
+      mode: pushTarget.token_type === 'apns' ? 'native_apns' : 'native_fcm',
       server: data,
     };
   }

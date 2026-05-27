@@ -114,11 +114,45 @@ async function findPushSubscriptionRows(base44: Base44Client, email: string): Pr
   return rows;
 }
 
+function directNativeSubscriptionFromBody(body: Record<string, any>, customerEmail: string): PushSubscriptionRecord | null {
+  const target = body?.event_push_target && typeof body.event_push_target === 'object'
+    ? body.event_push_target
+    : body;
+  const apnsToken = normalizeSingleLine(target?.apns_token).replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+  const rawFcmToken = normalizeSingleLine(target?.fcm_token);
+  const fcmToken = rawFcmToken.length <= 4096 ? rawFcmToken : '';
+
+  if ((apnsToken.length < 32 || apnsToken.length > 512) && !fcmToken) return null;
+
+  const tokenType = apnsToken.length >= 32 && apnsToken.length <= 512 ? 'apns' : 'fcm';
+  const apnsEnvironment = target?.apns_environment === 'sandbox' || target?.apns_environment === 'production'
+    ? target.apns_environment
+    : 'unknown';
+
+  return {
+    id: `request_direct:${tokenType}`,
+    customer_email: customerEmail,
+    token_type: tokenType,
+    fcm_token: tokenType === 'fcm' ? fcmToken : null,
+    apns_token: tokenType === 'apns' ? apnsToken : null,
+    apns_environment: tokenType === 'apns' ? apnsEnvironment : null,
+    app_bundle_id: normalizeSingleLine(target?.app_bundle_id).slice(0, 160) || APNS_BUNDLE_ID,
+    enabled: true,
+    permission: target?.permission === 'denied' ? 'denied' : target?.permission === 'default' ? 'default' : 'granted',
+    device_platform: normalizeSingleLine(target?.device_platform).slice(0, 40),
+    platform: normalizeSingleLine(target?.platform).slice(0, 120),
+    app_shell: normalizeSingleLine(target?.app_shell).slice(0, 80),
+    _storage: 'request_direct',
+  };
+}
+
 async function updatePushSubscriptionRecord(
   base44: Base44Client,
   record: PushSubscriptionRecord,
   updates: Record<string, any>,
 ) {
+  if (record._storage === 'request_direct') return;
+
   if (record._storage !== 'CustomerMessageDeliveryLog') {
     await base44.asServiceRole.entities.PushSubscription.update(record.id, updates);
     return;
@@ -874,7 +908,12 @@ async function sendApnsSubscriptions(
   return { sent, failed, revoked, skipped_reason: null };
 }
 
-async function sendEventPush(base44: Base44Client, identityEmails: string[], idempotencyKey: string) {
+async function sendEventPush(
+  base44: Base44Client,
+  identityEmails: string[],
+  idempotencyKey: string,
+  directSubscription: PushSubscriptionRecord | null,
+) {
   if (!envFlag('ENABLE_MAY30_EVENT_PUSH')) {
     return {
       push_attempted: false,
@@ -883,16 +922,27 @@ async function sendEventPush(base44: Base44Client, identityEmails: string[], ide
     };
   }
 
-  let subscriptions = [];
+  let subscriptions = directSubscription ? [directSubscription] : [];
   try {
-    subscriptions = await findPushSubscriptions(base44, identityEmails);
+    const storedSubscriptions = await findPushSubscriptions(base44, identityEmails);
+    const seen = new Set(subscriptions.map((record) =>
+      `${record.token_type}:${normalizeSingleLine(record.apns_token || record.fcm_token || record.endpoint)}`
+    ));
+    for (const record of storedSubscriptions) {
+      const dedupeKey = `${record.token_type}:${normalizeSingleLine(record.apns_token || record.fcm_token || record.endpoint)}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      subscriptions.push(record);
+    }
   } catch (error) {
     console.warn(`[redeemMay30EventBonus] Push subscription lookup failed: ${errorMessage(error)}`);
-    return {
-      push_attempted: false,
-      push_sent: false,
-      push_skipped_reason: 'push_subscription_lookup_failed',
-    };
+    if (subscriptions.length === 0) {
+      return {
+        push_attempted: false,
+        push_sent: false,
+        push_skipped_reason: 'push_subscription_lookup_failed',
+      };
+    }
   }
 
   if (subscriptions.length === 0) {
@@ -1010,6 +1060,7 @@ Deno.serve(async (req) => {
 
     const identityEmails = await resolveIdentityEmails(base44, userEmail);
     const customerEmail = primaryCustomerEmail(userEmail, identityEmails);
+    const directSubscription = directNativeSubscriptionFromBody(body, customerEmail);
     const idempotencyKey = `event_visit_bonus_may30_${userId}`;
     const idempotencyKeys = uniqueStrings([
       idempotencyKey,
@@ -1094,7 +1145,7 @@ Deno.serve(async (req) => {
     });
 
     const notification = await createNotificationOnce(base44, customerEmail, identityEmails, idempotencyKeys);
-    const push = await sendEventPush(base44, identityEmails, idempotencyKey);
+    const push = await sendEventPush(base44, identityEmails, idempotencyKey, directSubscription);
 
     await updateCommandLog(base44, commandLog, {
       status: 'success',
