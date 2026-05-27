@@ -45,12 +45,27 @@ const MAY30_DEFAULT_ALLOWED_SUBTYPES = new Set([
   'order_confirmation',
 ]);
 
+const MAY30_DELIVERY_STATUS_SUBTYPES = new Set([
+  'out_for_delivery',
+  'delivered',
+]);
+
 function nonConfirmationNotificationsEnabled() {
   return Deno.env.get('ENABLE_NON_CONFIRMATION_CUSTOMER_NOTIFICATIONS') === 'true';
 }
 
+function deliveryStatusNotificationsEnabled() {
+  return Deno.env.get('ENABLE_CUSTOMER_DELIVERY_STATUS_NOTIFICATIONS') === 'true';
+}
+
 function customerPushNotificationsEnabled() {
   return Deno.env.get('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS') === 'true';
+}
+
+function customerNotificationSubtypeAllowed(notificationSubtype: string) {
+  if (MAY30_DEFAULT_ALLOWED_SUBTYPES.has(notificationSubtype)) return true;
+  if (nonConfirmationNotificationsEnabled()) return true;
+  return MAY30_DELIVERY_STATUS_SUBTYPES.has(notificationSubtype) && deliveryStatusNotificationsEnabled();
 }
 
 async function sendCustomerPush(base44: any, payload: Record<string, any>) {
@@ -89,13 +104,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing required fields: customer_email, title, message' }, { status: 400 });
     }
 
-    if (!MAY30_DEFAULT_ALLOWED_SUBTYPES.has(notification_subtype) && !nonConfirmationNotificationsEnabled()) {
+    if (!customerNotificationSubtypeAllowed(notification_subtype)) {
       return Response.json({
         success: true,
         skipped: true,
         reason: 'non_confirmation_customer_notifications_disabled',
         message: 'Non-confirmation customer notifications are disabled for the May 30 launch freeze.',
         notification_subtype,
+        delivery_status_notifications_enabled: deliveryStatusNotificationsEnabled(),
       }, { status: 409 });
     }
 

@@ -47,19 +47,59 @@ const STATUS_NOTIF_MAP = {
   },
 };
 
+const DELIVERY_STATUS_SUBTYPES = new Set([
+  'out_for_delivery',
+  'delivered',
+]);
+
+function envEnabled(name: string) {
+  return Deno.env.get(name) === 'true';
+}
+
+function deliveryStatusNotificationsEnabled() {
+  return envEnabled('ENABLE_CUSTOMER_DELIVERY_STATUS_NOTIFICATIONS');
+}
+
+function deliveredCustomerEmailEnabled() {
+  return envEnabled('ENABLE_DELIVERED_CUSTOMER_EMAIL');
+}
+
+function customerPushNotificationsEnabled() {
+  return envEnabled('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS');
+}
+
+function allowedDeliveryStatuses() {
+  const configured = Deno.env.get('CUSTOMER_DELIVERY_STATUS_NOTIFICATION_STATUSES');
+  const rawValues = configured ? configured.split(',') : ['out_for_delivery', 'delivered'];
+  return new Set(
+    rawValues
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function isDeliveryStatus(status: string) {
+  const notifConfig = STATUS_NOTIF_MAP[status];
+  return Boolean(notifConfig && DELIVERY_STATUS_SUBTYPES.has(notifConfig.subtype));
+}
+
+function statusNotificationsEnabledFor(status: string) {
+  if (envEnabled('ENABLE_ORDER_STATUS_NOTIFICATIONS')) return true;
+  return deliveryStatusNotificationsEnabled() && isDeliveryStatus(status) && allowedDeliveryStatuses().has(status);
+}
+
+function maskEmail(email: string | null | undefined) {
+  if (!email || typeof email !== 'string' || !email.includes('@')) return null;
+  const [local, domain] = email.split('@');
+  const safeLocal = local.length <= 2 ? `${local[0] || '*'}***` : `${local.slice(0, 2)}***`;
+  return `${safeLocal}@${domain}`;
+}
+
 Deno.serve(async (req) => {
   try {
-    if (Deno.env.get('ENABLE_ORDER_STATUS_NOTIFICATIONS') !== 'true') {
-      return Response.json({
-        success: true,
-        skipped: true,
-        reason: 'order_status_notifications_disabled',
-        message: 'Order status notifications are disabled for May 30 launch freeze.',
-      });
-    }
-
     const base44 = createClientFromRequest(req);
-    const body = await req.json();
+    const bodyText = await req.text();
+    const body = bodyText ? JSON.parse(bodyText) : {};
 
     // Support entity automation payload format: { event, data, old_data, changed_fields }
     // AND direct call format: { order_id, new_status, customer_email, order_number }
@@ -87,6 +127,21 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: `No notification configured for status: ${new_status}` });
     }
 
+    const dryRun = body.dry_run === true || body.mode === 'dry_run';
+    const enabledForStatus = statusNotificationsEnabledFor(new_status);
+
+    if (!enabledForStatus && !dryRun) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'order_status_notifications_disabled',
+        message: 'Order status notifications are disabled for May 30 launch freeze.',
+        status: new_status,
+        delivery_status_notifications_enabled: deliveryStatusNotificationsEnabled(),
+        delivery_status_allowed: isDeliveryStatus(new_status) && allowedDeliveryStatuses().has(new_status),
+      });
+    }
+
     // Fetch order if email not provided
     let email = customer_email;
     let orderNum = order_number;
@@ -100,6 +155,28 @@ Deno.serve(async (req) => {
 
     // Build deep link for order tracker
     const deepLink = notifConfig.deep_link ?? `/order-tracker/${orderNum}`;
+    const idempotencyKey = `order_status_${order_id}_${new_status}`;
+
+    if (dryRun) {
+      return Response.json({
+        success: true,
+        dry_run: true,
+        status: new_status,
+        order_number: orderNum || null,
+        customer_email: maskEmail(email),
+        notification_subtype: notifConfig.subtype,
+        enabled_for_status: enabledForStatus,
+        delivery_status_notifications_enabled: deliveryStatusNotificationsEnabled(),
+        order_status_notifications_enabled: envEnabled('ENABLE_ORDER_STATUS_NOTIFICATIONS'),
+        customer_push_notifications_enabled: customerPushNotificationsEnabled(),
+        delivered_customer_email_enabled: deliveredCustomerEmailEnabled(),
+        would_create_in_app_notification: enabledForStatus,
+        would_attempt_push: enabledForStatus && customerPushNotificationsEnabled(),
+        would_send_delivered_email: enabledForStatus && new_status === 'delivered' && deliveredCustomerEmailEnabled(),
+        idempotency_key: idempotencyKey,
+        deep_link: deepLink,
+      });
+    }
 
     // Delegate to sendCustomerNotification (handles identity resolution, prefs, idempotency)
     const result = await base44.asServiceRole.functions.invoke('sendCustomerNotification', {
@@ -110,7 +187,7 @@ Deno.serve(async (req) => {
       message: notifConfig.message,
       order_id,
       deep_link: deepLink,
-      idempotency_key: `order_status_${order_id}_${new_status}`,
+      idempotency_key: idempotencyKey,
     });
 
     console.log(`[sendOrderStatusNotification] Status "${new_status}" notif for order ${orderNum}: ${JSON.stringify(result.data)}`);
@@ -120,10 +197,18 @@ Deno.serve(async (req) => {
       new_status === 'delivered' &&
       notifData?.skipped === true &&
       notifData?.reason === 'duplicate_idempotency_key';
+    const deliveredNotificationCreated =
+      new_status === 'delivered' &&
+      notifData?.success === true &&
+      notifData?.skipped !== true;
 
     // ── Delivery confirmation email ───────────────────────────────────────────
     if (new_status === 'delivered' && deliveredNotificationAlreadyExists) {
       console.log('[sendOrderStatusNotification] Delivered email already sent; skipping duplicate');
+    } else if (new_status === 'delivered' && !deliveredCustomerEmailEnabled()) {
+      console.log('[sendOrderStatusNotification] Delivered email disabled; skipping');
+    } else if (new_status === 'delivered' && !deliveredNotificationCreated) {
+      console.log('[sendOrderStatusNotification] Delivered notification was not created; skipping delivered email');
     } else if (new_status === 'delivered') {
       try {
         // Fetch full order for email details
