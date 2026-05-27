@@ -64,6 +64,10 @@ function deliveredCustomerEmailEnabled() {
   return envEnabled('ENABLE_DELIVERED_CUSTOMER_EMAIL');
 }
 
+function deliveredProofDetailsEmailEnabled() {
+  return envEnabled('ENABLE_DELIVERED_PROOF_DETAILS_IN_EMAIL');
+}
+
 function customerPushNotificationsEnabled() {
   return envEnabled('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS');
 }
@@ -170,9 +174,14 @@ Deno.serve(async (req) => {
         order_status_notifications_enabled: envEnabled('ENABLE_ORDER_STATUS_NOTIFICATIONS'),
         customer_push_notifications_enabled: customerPushNotificationsEnabled(),
         delivered_customer_email_enabled: deliveredCustomerEmailEnabled(),
+        delivered_proof_details_email_enabled: deliveredProofDetailsEmailEnabled(),
         would_create_in_app_notification: enabledForStatus,
         would_attempt_push: enabledForStatus && customerPushNotificationsEnabled(),
         would_send_delivered_email: enabledForStatus && new_status === 'delivered' && deliveredCustomerEmailEnabled(),
+        would_include_delivery_proof_details: enabledForStatus &&
+          new_status === 'delivered' &&
+          deliveredCustomerEmailEnabled() &&
+          deliveredProofDetailsEmailEnabled(),
         idempotency_key: idempotencyKey,
         deep_link: deepLink,
       });
@@ -224,11 +233,14 @@ Deno.serve(async (req) => {
             .map(i => `<div class="row"><span class="label">${i.title} ×${i.quantity}</span><span class="value">$${((i.price || 0) * (i.quantity || 1)).toFixed(2)}</span></div>`)
             .join('');
 
-          const dropLocationLine = fullOrder.delivery_drop_location
+          // Proof/drop evidence is gated separately from delivered email status.
+          // Keep May 30 delivered email status-only unless proof visibility is explicitly approved.
+          const includeProofDetails = deliveredProofDetailsEmailEnabled();
+          const dropLocationLine = includeProofDetails && fullOrder.delivery_drop_location
             ? `<div class="detail-row">📍 Left at: <strong>${fullOrder.delivery_drop_location}</strong></div>`
             : '';
 
-          const photoLine = fullOrder.delivery_photo_url
+          const photoLine = includeProofDetails && fullOrder.delivery_photo_url
             ? `<div style="margin-top:16px;"><p style="font-size:13px;color:#555;margin-bottom:8px;">Delivery photo:</p><img src="${fullOrder.delivery_photo_url}" alt="Delivery proof" style="width:100%;border-radius:8px;border:1px solid #d8f3e6;max-height:220px;object-fit:cover;" /></div>`
             : '';
 
