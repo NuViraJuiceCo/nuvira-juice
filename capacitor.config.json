@@ -1,0 +1,10 @@
+{
+  "appId": "com.base69d48d0c39891f7945481152.app",
+  "appName": "NuVira Juice",
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseMessaging": {
+      "presentationOptions": ["alert", "badge", "sound"]
+    }
+  }
+}

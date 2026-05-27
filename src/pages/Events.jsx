@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin, Calendar, Users, ExternalLink } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Users, ExternalLink, Gift } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import SEO from '@/components/SEO';
@@ -55,17 +55,22 @@ const typeColors = {
   'Festival': 'bg-purple-100 text-purple-700',
 };
 
+function asList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export default function Events() {
   const { data: dbEvents = [] } = useQuery({
     queryKey: ['events'],
     queryFn: () => base44.entities.Event.filter({ is_active: true }, 'date', 50),
   });
+  const dbEventsList = asList(dbEvents);
 
   // Merge: hub-synced events take precedence, hardcoded ones fill in if not already covered
-  const hubEventTitles = new Set(dbEvents.map(e => e.title));
+  const hubEventTitles = new Set(dbEventsList.map(e => e.title));
   const hardcodedFiltered = HARDCODED_EVENTS.filter(e => !hubEventTitles.has(e.title));
   const events = [
-    ...dbEvents.map(e => ({ ...e, id: e.id })),
+    ...dbEventsList.map(e => ({ ...e, id: e.id })),
     ...hardcodedFiltered,
   ];
 
@@ -122,6 +127,21 @@ export default function Events() {
             </div>
           </div>
         </motion.div>
+
+        <Link
+          to="/event/may30"
+          className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Gift className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-foreground">May 30 Event Check-In</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+              Claim the one-time 250 point event visit bonus.
+            </span>
+          </span>
+        </Link>
 
         {/* Events List */}
         <div className="space-y-4">

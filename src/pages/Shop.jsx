@@ -19,6 +19,10 @@ const ALL_CATEGORIES = [
   { key: 'seasonal', label: 'Seasonal' },
 ];
 
+function asList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export default function Shop() {
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
@@ -32,15 +36,18 @@ export default function Shop() {
     setSearch('');
   }, []);
 
-  const { data: products = [], isLoading, refetch } = useQuery({
+  const { data: productsData = [], isLoading, refetch } = useQuery({
     queryKey: ['products'],
     queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 100),
   });
 
-  const { data: bundles = [] } = useQuery({
+  const { data: bundlesData = [] } = useQuery({
     queryKey: ['bundles'],
     queryFn: () => base44.entities.SubscriptionBundle.list('sort_order', 100),
   });
+
+  const products = asList(productsData);
+  const bundles = asList(bundlesData);
 
 
 
@@ -93,7 +100,7 @@ export default function Shop() {
     }
 
     return result;
-  }, [products, category, search, filterParam]);
+  }, [products, bundles, category, search, filterParam]);
 
   return (
     <PullToRefresh onRefresh={refetch}>

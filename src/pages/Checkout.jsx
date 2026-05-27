@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { base44 } from '@/api/base44Client';
+import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import DeliveryDatePicker from '@/components/checkout/DeliveryDatePicker';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -500,7 +501,7 @@ export default function Checkout() {
           Create a free account or sign in to place your order. It only takes a moment!
         </p>
         <Button
-          onClick={() => base44.auth.redirectToLogin('/checkout')}
+          onClick={() => redirectToLogin('/checkout')}
           className="w-full max-w-xs h-12 rounded-xl font-semibold"
         >
           Sign In / Create Account

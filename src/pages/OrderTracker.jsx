@@ -1,9 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle } from 'lucide-react';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -194,7 +195,7 @@ export default function OrderTracker() {
         <AlertCircle className="w-10 h-10 text-muted-foreground mb-3" />
         <h2 className="font-heading text-lg font-bold mb-2">Sign In Required</h2>
         <p className="text-sm text-muted-foreground mb-4">Please sign in to view your order.</p>
-        <button onClick={() => base44.auth.redirectToLogin(window.location.pathname)} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm">
+        <button onClick={() => redirectToLogin(window.location.pathname)} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm">
           Sign In
         </button>
       </div>

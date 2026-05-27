@@ -4,6 +4,10 @@ function normalizeEmail(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeSingleLine(value: unknown): string {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
 function isMissingSchemaError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || '');
   return message.includes('Entity schema') && message.includes('not found');
@@ -22,9 +26,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const { endpoint = null } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const endpoint = normalizeSingleLine(body.endpoint);
+    const fcmToken = normalizeSingleLine(body.fcm_token);
     const customerEmail = normalizeEmail(user.email);
-    const candidates = endpoint
+    const candidates = fcmToken
+      ? await base44.asServiceRole.entities.PushSubscription.filter({ fcm_token: fcmToken })
+      : endpoint
       ? await base44.asServiceRole.entities.PushSubscription.filter({ endpoint })
       : await base44.asServiceRole.entities.PushSubscription.filter({ customer_email: customerEmail });
 

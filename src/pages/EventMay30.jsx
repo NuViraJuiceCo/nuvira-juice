@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bell, CheckCircle2, Gift, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
@@ -14,6 +14,25 @@ import {
 } from '@/lib/eventPushNotifications';
 
 const EVENT_KEY = 'may30_event_visit';
+const EVENT_IDEMPOTENCY_PREFIX = 'event_visit_bonus_may30_';
+const EVENT_NOTIFICATION_TITLE = 'Welcome To NuVira';
+const EVENT_NOTIFICATION_BODY = 'Your 250 point event visit bonus has been added.';
+
+function entryMatchesEventBonus(entry) {
+  const eventKey = String(entry?.event_key || '').trim();
+  const idempotencyKey = String(entry?.idempotency_key || '').trim();
+  const description = String(entry?.description || '').toLowerCase();
+  return eventKey === EVENT_KEY ||
+    idempotencyKey.startsWith(EVENT_IDEMPOTENCY_PREFIX) ||
+    description.includes(EVENT_KEY) ||
+    description.includes('may 30 event visit bonus');
+}
+
+function notificationMatchesEventBonus(notification) {
+  const idempotencyKey = String(notification?.idempotency_key || '').trim();
+  return idempotencyKey.startsWith(EVENT_IDEMPOTENCY_PREFIX) ||
+    (notification?.title === EVENT_NOTIFICATION_TITLE && notification?.message === EVENT_NOTIFICATION_BODY);
+}
 
 function ResultPanel({ result }) {
   if (!result) return null;
@@ -64,12 +83,48 @@ export default function EventMay30() {
     subscribed: false,
   });
 
+  const { data: existingClaim, isLoading: isLoadingClaimStatus } = useQuery({
+    queryKey: ['may30-event-claim-status', user?.email],
+    enabled: !!user?.email,
+    staleTime: 0,
+    queryFn: async () => {
+      const [pointRows, notifications] = await Promise.all([
+        base44.entities.UserPoints.filter({ customer_email: user.email }, '-created_date', 20),
+        base44.entities.Notification.filter({ customer_email: user.email }, '-created_date', 20).catch(() => []),
+      ]);
+      const claimedByPoints = pointRows.some((row) =>
+        Array.isArray(row.points_history) && row.points_history.some(entryMatchesEventBonus)
+      );
+      const claimedByNotification = notifications.some(notificationMatchesEventBonus);
+      return { claimed: claimedByPoints || claimedByNotification };
+    },
+  });
+
+  const hasClaimed = Boolean(result && (!result.skipped || result.already_claimed)) || Boolean(existingClaim?.claimed);
+
+  useEffect(() => {
+    if (existingClaim?.claimed && !result) {
+      setResult({
+        success: true,
+        skipped: true,
+        already_claimed: true,
+        reason: 'existing_event_bonus_detected',
+        points_awarded: 0,
+        event_key: EVENT_KEY,
+        notification_created: false,
+        push_attempted: false,
+        push_sent: false,
+        push_skipped_reason: 'duplicate_redemption',
+      });
+    }
+  }, [existingClaim?.claimed, result]);
+
   useEffect(() => {
     let mounted = true;
 
     async function loadPushStatus() {
       const support = getEventPushSupportStatus();
-      const permission = getEventPushPermission();
+      const permission = await getEventPushPermission();
       const existing = support.supported ? await getExistingEventPushSubscription().catch(() => null) : null;
 
       if (!mounted) return;
@@ -94,6 +149,13 @@ export default function EventMay30() {
         event_key: EVENT_KEY,
       });
       const data = response?.data || response || {};
+      console.info('[EventMay30] redeemMay30EventBonus response', {
+        success: data.success,
+        skipped: data.skipped,
+        already_claimed: data.already_claimed,
+        points_awarded: data.points_awarded,
+        reason: data.reason || null,
+      });
       if (data.error) throw new Error(data.message || data.error);
       return data;
     },
@@ -103,6 +165,7 @@ export default function EventMay30() {
         queryClient.invalidateQueries({ queryKey: ['account-dashboard', user?.email] }),
         queryClient.invalidateQueries({ queryKey: ['notifications', user?.email] }),
         queryClient.invalidateQueries({ queryKey: ['unread-notifications'] }),
+        queryClient.invalidateQueries({ queryKey: ['may30-event-claim-status', user?.email] }),
       ]);
       if (data.already_claimed) {
         toast.info('Event bonus already claimed.');
@@ -119,12 +182,12 @@ export default function EventMay30() {
 
   const enablePush = useMutation({
     mutationFn: subscribeToEventPushNotifications,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setPushStatus(current => ({
         ...current,
         loading: false,
         supported: data.success ? true : current.supported,
-        permission: data.status || getEventPushPermission(),
+        permission: data.status || current.permission,
         subscribed: data.success,
         reason: data.reason || null,
       }));
@@ -190,7 +253,7 @@ export default function EventMay30() {
                         ? 'This device is ready for event push.'
                         : pushStatus.supported
                           ? 'Enable push before claiming if you want the event alert on this device.'
-                          : 'This device/browser does not support web push here.'}
+                          : 'This device cannot receive event push here.'}
                   </p>
                 </div>
                 {pushStatus.subscribed && (
@@ -209,7 +272,7 @@ export default function EventMay30() {
               )}
               {!pushStatus.loading && !pushStatus.supported && (
                 <p className="text-[10px] text-muted-foreground">
-                  iPhone web push usually requires opening NuVira from an installed Home Screen app.
+                  On iPhone, use the NuVira app shell or an installed Home Screen app.
                 </p>
               )}
             </div>
@@ -217,10 +280,16 @@ export default function EventMay30() {
             <button
               type="button"
               onClick={() => redeem.mutate()}
-              disabled={redeem.isPending}
+              disabled={redeem.isPending || isLoadingClaimStatus || hasClaimed}
               className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm active:scale-[0.99] transition-transform disabled:opacity-60"
             >
-              {redeem.isPending ? 'Adding points...' : 'Claim Event Bonus'}
+              {redeem.isPending
+                ? 'Adding points...'
+                : isLoadingClaimStatus
+                  ? 'Checking bonus...'
+                  : hasClaimed
+                    ? 'Bonus Claimed'
+                    : 'Claim Event Bonus'}
             </button>
 
             <ResultPanel result={result} />

@@ -2,10 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import SEO from '@/components/SEO';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import { base44 } from '@/api/base44Client';
+import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
-import { Star, Lock, Gift, ShoppingBag, Users, Cake, ChevronRight, Flame, Sparkles, ArrowRight } from 'lucide-react';
+import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 
@@ -262,7 +263,7 @@ function GuestView() {
             Earn points on every order. Unlock free bottles, discounts, and exclusive drops.
           </p>
           <button
-            onClick={() => base44.auth.redirectToLogin(window.location.pathname)}
+            onClick={() => redirectToLogin(window.location.pathname)}
             className="w-full h-12 rounded-2xl font-bold text-sm"
             style={{ background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)`, color: '#062A20' }}
           >

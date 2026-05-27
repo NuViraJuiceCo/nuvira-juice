@@ -1,6 +1,7 @@
 import React from 'react';
 import { HelmetProvider } from 'react-helmet-async';
-import { Toaster } from "@/components/ui/toaster"
+import { Toaster as AppToaster } from "@/components/ui/toaster"
+import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
@@ -61,13 +62,29 @@ import Shop from '@/pages/Shop';
 import Cart from '@/pages/Cart';
 import ProgramDetail from '@/pages/ProgramDetail';
 import AccountSetup from '@/pages/AccountSetup';
+import NativeLogin from '@/pages/NativeLogin';
 import { base44 } from '@/api/base44Client';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 
 // Protected route wrapper—redirect to login if not authenticated
+const getLoginReturnRoute = () => {
+  if (typeof window === 'undefined') return '/';
+  return `${window.location.pathname}${window.location.search || ''}`;
+};
+
 const ProtectedRoute = ({ element, user }) => {
+  const location = useLocation();
+
+  React.useEffect(() => {
+    if (!user) {
+      redirectToLogin(getLoginReturnRoute()).catch((error) => {
+        console.error('[ProtectedRoute] Login redirect failed', error);
+      });
+    }
+  }, [user, location.pathname, location.search]);
+
   if (!user) {
-    base44.auth.redirectToLogin(window.location.pathname);
     return null;
   }
   return element;
@@ -78,7 +95,6 @@ const AuthenticatedApp = () => {
   const [showSplash, setShowSplash] = React.useState(() => !sessionStorage.getItem('splashShown'));
 
   const location = useLocation();
-  const navigate = useNavigate();
 
   // Fetch user profile for onboarding check (must be at top level)
   const { data: userProfileForOnboarding, isLoading: isLoadingProfile } = useQuery({
@@ -184,6 +200,7 @@ const AuthenticatedApp = () => {
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
         <Route path="/order-incomplete" element={<OrderIncomplete />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
+        <Route path="/native-login" element={<NativeLogin />} />
         <Route path="/account-setup" element={<AccountSetup />} />
         <Route path="/zone3-review-submitted" element={<Zone3ReviewSubmitted />} />
         {/* Redirect old/invalid routes to correct pages */}
@@ -210,7 +227,8 @@ function App() {
         <Router>
           <AuthenticatedApp />
         </Router>
-        <Toaster />
+        <AppToaster />
+        <SonnerToaster position="top-center" richColors />
       </QueryClientProvider>
     </AuthProvider>
     </HelmetProvider>
