@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+// @deno-types="npm:@types/web-push@3.6.4"
 import webpush from 'npm:web-push@3.6.7';
 
 const DEFAULT_EVENT_KEY = 'may30_event_visit';
@@ -14,6 +15,15 @@ const FIREBASE_MESSAGING_SCOPE = 'https://www.googleapis.com/auth/firebase.messa
 const FIREBASE_SERVICE_ACCOUNT_JSON = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON') || '';
 const FIREBASE_SERVICE_ACCOUNT_B64 = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_B64') || '';
 const FIREBASE_PROJECT_ID = (Deno.env.get('FIREBASE_PROJECT_ID') || Deno.env.get('FCM_PROJECT_ID') || '').trim();
+const APNS_AUTH_KEY = Deno.env.get('APNS_AUTH_KEY') || '';
+const APNS_AUTH_KEY_B64 = Deno.env.get('APNS_AUTH_KEY_B64') || '';
+const APNS_KEY_ID = (Deno.env.get('APNS_KEY_ID') || '').trim();
+const APNS_TEAM_ID = (Deno.env.get('APNS_TEAM_ID') || '').trim();
+const APNS_BUNDLE_ID = (Deno.env.get('APNS_BUNDLE_ID') || 'com.base69d48d0c39891f7945481152.app').trim();
+const APNS_PRIMARY_ENVIRONMENT = (Deno.env.get('APNS_PRIMARY_ENVIRONMENT') || 'production').trim() === 'sandbox'
+  ? 'sandbox'
+  : 'production';
+const APNS_ALLOW_ENV_FALLBACK = Deno.env.get('APNS_ALLOW_ENV_FALLBACK') !== 'false';
 
 type Base44Client = any;
 type Base44User = {
@@ -125,6 +135,12 @@ function decodeBase64(input: string): Uint8Array {
   return bytes;
 }
 
+function readApnsPrivateKey(): string {
+  if (APNS_AUTH_KEY.trim()) return APNS_AUTH_KEY.trim().replace(/\\n/g, '\n');
+  if (!APNS_AUTH_KEY_B64.trim()) return '';
+  return new TextDecoder().decode(decodeBase64(APNS_AUTH_KEY_B64)).trim().replace(/\\n/g, '\n');
+}
+
 function pemToPkcs8(privateKey: string): ArrayBuffer {
   const normalized = privateKey.replace(/\\n/g, '\n');
   const base64 = normalized
@@ -135,6 +151,33 @@ function pemToPkcs8(privateKey: string): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return copy.buffer;
+}
+
+async function createApnsJwt(): Promise<string> {
+  const privateKey = readApnsPrivateKey();
+  if (!privateKey || !APNS_KEY_ID || !APNS_TEAM_ID) {
+    throw new Error('APNs credentials are incomplete');
+  }
+
+  const header = base64UrlEncode(JSON.stringify({ alg: 'ES256', kid: APNS_KEY_ID }));
+  const payload = base64UrlEncode(JSON.stringify({
+    iss: APNS_TEAM_ID,
+    iat: Math.floor(Date.now() / 1000),
+  }));
+  const unsignedJwt = `${header}.${payload}`;
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToPkcs8(privateKey),
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    key,
+    new TextEncoder().encode(unsignedJwt),
+  );
+  return `${unsignedJwt}.${base64UrlEncode(signature)}`;
 }
 
 function readFirebaseServiceAccount(): FirebaseServiceAccount | null {
@@ -491,6 +534,18 @@ async function findPushSubscriptions(base44: Base44Client, identityEmails: strin
         continue;
       }
 
+      if (tokenType === 'apns') {
+        const apnsToken = normalizeSingleLine(row.apns_token).replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+        if (!apnsToken) continue;
+
+        const dedupeKey = `apns:${apnsToken}`;
+        if (seenSubscriptions.has(dedupeKey)) continue;
+
+        seenSubscriptions.add(dedupeKey);
+        subscriptions.push({ ...row, apns_token: apnsToken, token_type: 'apns' });
+        continue;
+      }
+
       if (!row.endpoint || !row.p256dh || !row.auth) continue;
       const dedupeKey = `web:${row.endpoint}`;
       if (seenSubscriptions.has(dedupeKey)) continue;
@@ -631,6 +686,115 @@ async function sendFcmSubscriptions(
   return { sent, failed, revoked, skipped_reason: null };
 }
 
+function apnsEnvironments(record: PushSubscriptionRecord): string[] {
+  const recordEnvironment = normalizeSingleLine(record.apns_environment);
+  const preferred = recordEnvironment === 'sandbox' || recordEnvironment === 'production'
+    ? recordEnvironment
+    : APNS_PRIMARY_ENVIRONMENT;
+  const environments = [preferred];
+  const fallback = preferred === 'production' ? 'sandbox' : 'production';
+  if (APNS_ALLOW_ENV_FALLBACK) environments.push(fallback);
+  return environments;
+}
+
+function shouldRevokeApnsToken(statusCode: number, reason: string): boolean {
+  return statusCode === 410 || reason === 'Unregistered' || reason === 'BadDeviceToken' || reason === 'DeviceTokenNotForTopic';
+}
+
+async function sendApnsSubscriptions(
+  base44: Base44Client,
+  subscriptions: PushSubscriptionRecord[],
+  idempotencyKey: string,
+) {
+  if (!APNS_KEY_ID || !APNS_TEAM_ID || !APNS_BUNDLE_ID || !readApnsPrivateKey()) {
+    return { sent: 0, failed: 0, revoked: 0, skipped_reason: 'apns_credentials_missing' };
+  }
+
+  let jwt = '';
+  try {
+    jwt = await createApnsJwt();
+  } catch (error) {
+    console.warn(`[redeemMay30EventBonus] APNs JWT unavailable: ${errorMessage(error)}`);
+    return { sent: 0, failed: 0, revoked: 0, skipped_reason: 'apns_jwt_unavailable' };
+  }
+
+  let sent = 0;
+  let failed = 0;
+  let revoked = 0;
+
+  for (const record of subscriptions) {
+    const apnsToken = normalizeSingleLine(record.apns_token).replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+    if (!apnsToken) continue;
+
+    let delivered = false;
+    let lastStatus = 0;
+    let lastReason = '';
+
+    for (const environment of apnsEnvironments(record)) {
+      const host = environment === 'sandbox' ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
+      let response: Response;
+      try {
+        response = await fetch(`https://${host}/3/device/${apnsToken}`, {
+          method: 'POST',
+          headers: {
+            authorization: `bearer ${jwt}`,
+            'apns-topic': normalizeSingleLine(record.app_bundle_id || APNS_BUNDLE_ID),
+            'apns-push-type': 'alert',
+            'apns-priority': '10',
+            'apns-collapse-id': idempotencyKey.slice(0, 64),
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            aps: {
+              alert: {
+                title: NOTIFICATION_TITLE,
+                body: NOTIFICATION_BODY,
+              },
+              sound: 'default',
+            },
+            url: '/rewards',
+            tag: idempotencyKey,
+            type: 'general',
+            notification_subtype: 'loyalty_credit',
+          }),
+        });
+      } catch (error) {
+        lastReason = 'apns_request_failed';
+        console.warn(`[redeemMay30EventBonus] APNs request failed: ${errorMessage(error)}`);
+        continue;
+      }
+
+      if (response.ok) {
+        sent += 1;
+        delivered = true;
+        await base44.asServiceRole.entities.PushSubscription.update(record.id, {
+          last_seen_at: new Date().toISOString(),
+          apns_environment: environment,
+        });
+        break;
+      }
+
+      lastStatus = response.status;
+      const errorBody = await response.json().catch(() => ({}));
+      lastReason = normalizeSingleLine(errorBody?.reason || response.statusText);
+      console.warn(`[redeemMay30EventBonus] APNs push failed for a subscription: ${response.status} ${lastReason || 'unknown'}`);
+    }
+
+    if (delivered) continue;
+
+    failed += 1;
+    if (shouldRevokeApnsToken(lastStatus, lastReason)) {
+      revoked += 1;
+      await base44.asServiceRole.entities.PushSubscription.update(record.id, {
+        enabled: false,
+        revoked_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  return { sent, failed, revoked, skipped_reason: null };
+}
+
 async function sendEventPush(base44: Base44Client, identityEmails: string[], idempotencyKey: string) {
   if (!envFlag('ENABLE_MAY30_EVENT_PUSH')) {
     return {
@@ -670,23 +834,37 @@ async function sendEventPush(base44: Base44Client, identityEmails: string[], ide
   });
 
   const webSubscriptions = subscriptions.filter((record) => record.token_type !== 'fcm');
+  const apnsSubscriptions = subscriptions.filter((record) => record.token_type === 'apns');
   const fcmSubscriptions = subscriptions.filter((record) => record.token_type === 'fcm');
+  const browserSubscriptions = webSubscriptions.filter((record) => record.token_type !== 'apns');
   const skippedReasons = [];
   let sent = 0;
   let failed = 0;
   let revoked = 0;
   let attempted = false;
 
-  if (webSubscriptions.length > 0) {
+  if (browserSubscriptions.length > 0) {
     if (VAPID_PRIVATE_KEY) {
       attempted = true;
-      const result = await sendWebPushSubscriptions(base44, webSubscriptions, payload);
+      const result = await sendWebPushSubscriptions(base44, browserSubscriptions, payload);
       sent += result.sent;
       failed += result.failed;
       revoked += result.revoked;
     } else {
       skippedReasons.push('vapid_private_key_missing');
     }
+  }
+
+  if (apnsSubscriptions.length > 0) {
+    const result = await sendApnsSubscriptions(base44, apnsSubscriptions, idempotencyKey);
+    if (result.skipped_reason) {
+      skippedReasons.push(result.skipped_reason);
+    } else {
+      attempted = true;
+    }
+    sent += result.sent;
+    failed += result.failed;
+    revoked += result.revoked;
   }
 
   if (fcmSubscriptions.length > 0) {
