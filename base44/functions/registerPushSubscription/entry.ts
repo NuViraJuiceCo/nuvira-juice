@@ -28,20 +28,74 @@ function isMissingSchemaError(error: unknown): boolean {
   return message.includes('Entity schema') && message.includes('not found');
 }
 
+function fallbackIdempotencyKey(customerEmail: string): string {
+  return `may30_event_push_subscription:${customerEmail}`;
+}
+
+async function upsertFallbackPushSubscription(base44: any, payload: Record<string, any>) {
+  const now = new Date().toISOString();
+  const idempotencyKey = fallbackIdempotencyKey(payload.customer_email);
+  const metadata = {
+    purpose: 'may30_event_push_subscription',
+    token_type: payload.token_type,
+    endpoint: payload.endpoint || null,
+    p256dh: payload.p256dh || null,
+    auth: payload.auth || null,
+    fcm_token: payload.fcm_token || null,
+    apns_token: payload.apns_token || null,
+    apns_environment: payload.apns_environment || null,
+    app_bundle_id: payload.app_bundle_id || null,
+    enabled: true,
+    permission: payload.permission || 'granted',
+    device_platform: payload.device_platform || '',
+    platform: payload.platform || '',
+    app_shell: payload.app_shell || '',
+    user_agent: payload.user_agent || '',
+    last_seen_at: now,
+    revoked_at: null,
+  };
+  const fallbackPayload = {
+    idempotency_key: idempotencyKey,
+    channel: 'push',
+    message_type: 'may30_event_push_subscription',
+    customer_email: payload.customer_email,
+    provider: 'internal',
+    status: 'sent',
+    sent_at: now,
+    metadata,
+  };
+  const existing = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter(
+    { idempotency_key: idempotencyKey },
+    undefined,
+    1,
+  );
+
+  return existing[0]
+    ? await base44.asServiceRole.entities.CustomerMessageDeliveryLog.update(existing[0].id, fallbackPayload)
+    : await base44.asServiceRole.entities.CustomerMessageDeliveryLog.create(fallbackPayload);
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
+  let requestBody: Record<string, any> = {};
+  let requestBase44: any = null;
+  let requestUser: any = null;
+
   try {
     const base44 = createClientFromRequest(req);
+    requestBase44 = base44;
     const user = await base44.auth.me().catch(() => null);
+    requestUser = user;
 
     if (!user?.email) {
       return Response.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const body = await req.json().catch(() => ({}));
+    requestBody = body;
     const subscription = body.subscription || {};
     const fcmToken = sanitizeToken(body.fcm_token);
     const apnsToken = sanitizeApnsToken(body.apns_token);
@@ -97,10 +151,49 @@ Deno.serve(async (req) => {
   } catch (error) {
     if (isMissingSchemaError(error)) {
       console.warn('[registerPushSubscription] PushSubscription schema unavailable');
+      try {
+        const base44 = requestBase44 || createClientFromRequest(req);
+        const user = requestUser || await base44.auth.me().catch(() => null);
+        const body = requestBody || {};
+        const subscription = body.subscription || {};
+        const fcmToken = sanitizeToken(body.fcm_token);
+        const apnsToken = sanitizeApnsToken(body.apns_token);
+        const tokenType = apnsToken ? 'apns' : fcmToken ? 'fcm' : 'web_push';
+        const fallbackRecord = await upsertFallbackPushSubscription(base44, {
+          customer_email: normalizeEmail(user?.email),
+          token_type: tokenType,
+          endpoint: normalizeSingleLine(subscription.endpoint) || null,
+          p256dh: normalizeSingleLine(subscription.keys?.p256dh) || null,
+          auth: normalizeSingleLine(subscription.keys?.auth) || null,
+          fcm_token: fcmToken || null,
+          apns_token: apnsToken || null,
+          apns_environment: apnsToken && (body.apns_environment === 'sandbox' || body.apns_environment === 'production')
+            ? body.apns_environment
+            : apnsToken
+              ? 'unknown'
+              : null,
+          app_bundle_id: normalizeSingleLine(body.app_bundle_id).slice(0, 160) || null,
+          permission: body.permission === 'denied' ? 'denied' : body.permission === 'default' ? 'default' : 'granted',
+          device_platform: normalizeSingleLine(body.device_platform).slice(0, 40),
+          platform: normalizeSingleLine(body.platform).slice(0, 120),
+          app_shell: normalizeSingleLine(body.app_shell).slice(0, 80),
+          user_agent: sanitizeUserAgent(body.user_agent),
+        });
+        return Response.json({
+          success: true,
+          subscription_id: fallbackRecord.id,
+          push_enabled: true,
+          token_type: tokenType,
+          storage: 'CustomerMessageDeliveryLog',
+        });
+      } catch (fallbackError) {
+        console.warn('[registerPushSubscription] Fallback push subscription storage unavailable');
+        console.warn(fallbackError instanceof Error ? fallbackError.message : String(fallbackError || 'unknown'));
+      }
       return Response.json({
         success: false,
         push_enabled: false,
-        reason: 'push_subscription_storage_unavailable',
+        reason: 'push_subscription_fallback_storage_unavailable',
       });
     }
     console.error('[registerPushSubscription] Error');

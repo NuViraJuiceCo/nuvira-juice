@@ -55,6 +55,85 @@ function isMissingSchemaError(error: unknown): boolean {
   return message.includes('Entity schema') && message.includes('not found');
 }
 
+function isFallbackSubscriptionLog(record: Record<string, any>): boolean {
+  return record.channel === 'push'
+    && (
+      record.message_type === 'may30_event_push_subscription'
+      || record.metadata?.purpose === 'may30_event_push_subscription'
+    );
+}
+
+function fallbackLogToSubscription(row: Record<string, any>): PushSubscriptionRecord | null {
+  if (!isFallbackSubscriptionLog(row)) return null;
+  const metadata = row.metadata || {};
+  return {
+    ...metadata,
+    id: row.id,
+    customer_email: row.customer_email,
+    _storage: 'CustomerMessageDeliveryLog',
+    _metadata: metadata,
+  };
+}
+
+async function findFallbackPushSubscriptions(base44: Base44Client, identityEmails: string[]): Promise<PushSubscriptionRecord[]> {
+  const subscriptions: PushSubscriptionRecord[] = [];
+  const seenRows = new Set<string>();
+
+  for (const email of identityEmails) {
+    const rows = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({ customer_email: email });
+    for (const row of rows) {
+      if (!row.id || seenRows.has(row.id)) continue;
+      const subscription = fallbackLogToSubscription(row);
+      if (!subscription) continue;
+
+      seenRows.add(row.id);
+      subscriptions.push(subscription);
+    }
+  }
+
+  return subscriptions;
+}
+
+async function findPushSubscriptionRows(base44: Base44Client, email: string): Promise<PushSubscriptionRecord[]> {
+  const rows: PushSubscriptionRecord[] = [];
+
+  try {
+    rows.push(...await base44.asServiceRole.entities.PushSubscription.filter({ customer_email: email }));
+  } catch (error) {
+    if (!isMissingSchemaError(error)) throw error;
+    console.warn('[redeemMay30EventBonus] PushSubscription schema unavailable; checking fallback storage');
+  }
+
+  try {
+    rows.push(...await findFallbackPushSubscriptions(base44, [email]));
+  } catch (error) {
+    if (rows.length === 0) throw error;
+    console.warn(`[redeemMay30EventBonus] Fallback subscription lookup skipped: ${errorMessage(error)}`);
+  }
+
+  return rows;
+}
+
+async function updatePushSubscriptionRecord(
+  base44: Base44Client,
+  record: PushSubscriptionRecord,
+  updates: Record<string, any>,
+) {
+  if (record._storage !== 'CustomerMessageDeliveryLog') {
+    await base44.asServiceRole.entities.PushSubscription.update(record.id, updates);
+    return;
+  }
+
+  await base44.asServiceRole.entities.CustomerMessageDeliveryLog.update(record.id, {
+    status: updates.enabled === false ? 'skipped' : 'sent',
+    sent_at: new Date().toISOString(),
+    metadata: {
+      ...(record._metadata || {}),
+      ...updates,
+    },
+  });
+}
+
 function envFlag(name: string): boolean {
   return Deno.env.get(name) === 'true';
 }
@@ -517,7 +596,7 @@ async function findPushSubscriptions(base44: Base44Client, identityEmails: strin
   const seenSubscriptions = new Set<string>();
 
   for (const email of identityEmails) {
-    const rows = await base44.asServiceRole.entities.PushSubscription.filter({ customer_email: email });
+    const rows = await findPushSubscriptionRows(base44, email);
     for (const row of rows) {
       if (row.enabled === false || row.revoked_at) continue;
 
@@ -580,7 +659,7 @@ async function sendWebPushSubscriptions(
       }, payload);
 
       sent += 1;
-      await base44.asServiceRole.entities.PushSubscription.update(record.id, {
+      await updatePushSubscriptionRecord(base44, record, {
         last_seen_at: new Date().toISOString(),
       });
     } catch (error) {
@@ -589,7 +668,7 @@ async function sendWebPushSubscriptions(
       const statusCode = pushError?.statusCode || pushError?.status;
       if (statusCode === 404 || statusCode === 410) {
         revoked += 1;
-        await base44.asServiceRole.entities.PushSubscription.update(record.id, {
+        await updatePushSubscriptionRecord(base44, record, {
           enabled: false,
           revoked_at: new Date().toISOString(),
         });
@@ -664,7 +743,7 @@ async function sendFcmSubscriptions(
 
     if (response.ok) {
       sent += 1;
-      await base44.asServiceRole.entities.PushSubscription.update(record.id, {
+      await updatePushSubscriptionRecord(base44, record, {
         last_seen_at: new Date().toISOString(),
       });
       continue;
@@ -675,7 +754,7 @@ async function sendFcmSubscriptions(
     const errorCode = fcmErrorCode(errorBody);
     if (shouldRevokeFcmToken(response.status, errorCode)) {
       revoked += 1;
-      await base44.asServiceRole.entities.PushSubscription.update(record.id, {
+      await updatePushSubscriptionRecord(base44, record, {
         enabled: false,
         revoked_at: new Date().toISOString(),
       });
@@ -767,7 +846,7 @@ async function sendApnsSubscriptions(
       if (response.ok) {
         sent += 1;
         delivered = true;
-        await base44.asServiceRole.entities.PushSubscription.update(record.id, {
+        await updatePushSubscriptionRecord(base44, record, {
           last_seen_at: new Date().toISOString(),
           apns_environment: environment,
         });
@@ -785,7 +864,7 @@ async function sendApnsSubscriptions(
     failed += 1;
     if (shouldRevokeApnsToken(lastStatus, lastReason)) {
       revoked += 1;
-      await base44.asServiceRole.entities.PushSubscription.update(record.id, {
+      await updatePushSubscriptionRecord(base44, record, {
         enabled: false,
         revoked_at: new Date().toISOString(),
       });
