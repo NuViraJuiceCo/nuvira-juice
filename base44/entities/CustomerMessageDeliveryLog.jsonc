@@ -23,8 +23,7 @@
         "subscription_upcoming_delivery",
         "refund",
         "zone3_approval",
-        "zone3_denial",
-        "may30_event_push_subscription"
+        "zone3_denial"
       ]
     },
     "order_id": {

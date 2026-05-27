@@ -28,6 +28,8 @@ function isMissingSchemaError(error: unknown): boolean {
   return message.includes('Entity schema') && message.includes('not found');
 }
 
+const FALLBACK_MESSAGE_TYPE = 'order_status';
+
 function fallbackIdempotencyKey(customerEmail: string): string {
   return `may30_event_push_subscription:${customerEmail}`;
 }
@@ -57,7 +59,7 @@ async function upsertFallbackPushSubscription(base44: any, payload: Record<strin
   const fallbackPayload = {
     idempotency_key: idempotencyKey,
     channel: 'push',
-    message_type: 'may30_event_push_subscription',
+    message_type: FALLBACK_MESSAGE_TYPE,
     customer_email: payload.customer_email,
     provider: 'internal',
     status: 'sent',
@@ -66,7 +68,7 @@ async function upsertFallbackPushSubscription(base44: any, payload: Record<strin
   };
   const existing = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter(
     { idempotency_key: idempotencyKey },
-    undefined,
+    null,
     1,
   );
 
