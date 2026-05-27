@@ -30,6 +30,26 @@
       ],
       "default": "awarded"
     },
+    "event_session_id": {
+      "type": "string",
+      "description": "Safe event-session identifier used for the check-in"
+    },
+    "event_session_title": {
+      "type": "string",
+      "description": "Display title of the event session used for the check-in"
+    },
+    "verification_method": {
+      "type": "string",
+      "enum": [
+        "event_code",
+        "geofence"
+      ],
+      "description": "Safe verification method used to approve the event bonus"
+    },
+    "location_distance_meters": {
+      "type": "number",
+      "description": "Rounded distance from event location when location was provided; raw coordinates are not stored"
+    },
     "claimed_at": {
       "type": "string"
     }

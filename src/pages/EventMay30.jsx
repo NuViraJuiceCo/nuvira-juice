@@ -1,11 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bell, CheckCircle2, Gift, Send, Sparkles } from 'lucide-react';
+import { ArrowLeft, Bell, CalendarDays, CheckCircle2, Gift, MapPin, Send, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
+import {
+  EVENT_CHECKIN_BONUS_POINTS,
+  EVENT_CHECKIN_KEY,
+  EVENT_CHECKIN_SESSIONS,
+  getEventCheckInSessionByCode,
+  getEventCheckInStatus,
+  normalizeEventCheckInCode,
+} from '@/lib/eventCheckIn';
 import {
   getEventPushPermission,
   getEventPushSupportStatus,
@@ -14,7 +22,7 @@ import {
   subscribeToEventPushNotifications,
 } from '@/lib/eventPushNotifications';
 
-const EVENT_KEY = 'may30_event_visit';
+const EVENT_KEY = EVENT_CHECKIN_KEY;
 const EVENT_IDEMPOTENCY_PREFIX = 'event_visit_bonus_may30_';
 const EVENT_NOTIFICATION_TITLE = 'Welcome To NuVira';
 const EVENT_NOTIFICATION_BODY = 'Your 250 point event visit bonus has been added.';
@@ -51,10 +59,17 @@ function ResultPanel({ result }) {
   }
 
   if (result.skipped) {
+    const messageByReason = {
+      event_checkin_closed: 'Check-in is not open for an active event right now.',
+      event_verification_required: 'Use the booth QR code or allow location while you are at the event.',
+      invalid_event_checkin_code: 'This event code is not valid. Check with the NuVira team at the booth.',
+      event_location_mismatch: 'Your location is outside the event check-in area.',
+    };
+
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
-        <p className="font-semibold text-sm">Event bonus is not active yet.</p>
-        <p className="text-xs mt-1">Check with the NuVira team at the event if this continues.</p>
+        <p className="font-semibold text-sm">Check-in not completed</p>
+        <p className="text-xs mt-1">{messageByReason[result.reason] || 'Check with the NuVira team at the event if this continues.'}</p>
       </div>
     );
   }
@@ -63,7 +78,7 @@ function ResultPanel({ result }) {
     <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-green-800">
       <div className="flex items-center gap-2 font-semibold text-sm">
         <CheckCircle2 className="w-4 h-4" />
-        250 points added
+        {EVENT_CHECKIN_BONUS_POINTS} points added
       </div>
       <p className="text-xs mt-1">
         Your event visit bonus has been added. You will also see it in your notifications.
@@ -72,9 +87,37 @@ function ResultPanel({ result }) {
   );
 }
 
+function getCurrentCoordinates() {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy_meters: position.coords.accuracy,
+        });
+      },
+      () => resolve(null),
+      {
+        enableHighAccuracy: true,
+        timeout: 7000,
+        maximumAge: 60000,
+      },
+    );
+  });
+}
+
 export default function EventMay30() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const initialCode = normalizeEventCheckInCode(searchParams.get('code'));
+  const [eventCode, setEventCode] = useState(initialCode);
+  const [locationStatus, setLocationStatus] = useState('idle');
   const [result, setResult] = useState(null);
   const [pushStatus, setPushStatus] = useState({
     loading: true,
@@ -84,6 +127,10 @@ export default function EventMay30() {
     subscribed: false,
   });
   const [pushTestResult, setPushTestResult] = useState(null);
+  const checkInStatus = getEventCheckInStatus();
+  const codeSession = getEventCheckInSessionByCode(eventCode);
+  const displaySession = codeSession || checkInStatus.activeSession || checkInStatus.nextSession;
+  const canAttemptClaim = Boolean(checkInStatus.activeSession || normalizeEventCheckInCode(eventCode));
 
   const { data: existingClaim, isLoading: isLoadingClaimStatus } = useQuery({
     queryKey: ['may30-event-claim-status', user?.email],
@@ -148,8 +195,18 @@ export default function EventMay30() {
   const redeem = useMutation({
     mutationFn: async () => {
       const nativePushTarget = await getEventNativePushRequestPayload().catch(() => null);
+      let location = null;
+
+      if (!normalizeEventCheckInCode(eventCode)) {
+        setLocationStatus('checking');
+        location = await getCurrentCoordinates();
+        setLocationStatus(location ? 'ready' : 'unavailable');
+      }
+
       const response = await base44.functions.invoke('redeemMay30EventBonus', {
         event_key: EVENT_KEY,
+        event_code: normalizeEventCheckInCode(eventCode) || undefined,
+        ...(location ? { location } : {}),
         ...(nativePushTarget ? { event_push_target: nativePushTarget } : {}),
       });
       const data = response?.data || response || {};
@@ -159,6 +216,8 @@ export default function EventMay30() {
         already_claimed: data.already_claimed,
         points_awarded: data.points_awarded,
         reason: data.reason || null,
+        event_session_id: data.event_session_id || null,
+        verification_method: data.verification_method || null,
       });
       if (data.error) throw new Error(data.message || data.error);
       return data;
@@ -174,9 +233,9 @@ export default function EventMay30() {
       if (data.already_claimed) {
         toast.info('Event bonus already claimed.');
       } else if (data.skipped) {
-        toast.info('Event bonus is not active yet.');
+        toast.info('Event check-in was not completed.');
       } else {
-        toast.success('250 points added.');
+        toast.success(`${EVENT_CHECKIN_BONUS_POINTS} points added.`);
       }
     },
     onError: () => {
@@ -239,7 +298,7 @@ export default function EventMay30() {
 
   return (
     <div className="min-h-screen bg-background">
-      <SEO title="May 30 Event Bonus" description="Claim your NuVira May 30 event visit rewards bonus." />
+      <SEO title="Event Check-In Bonus" description="Claim your NuVira event visit rewards bonus." />
 
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/events">
@@ -247,7 +306,7 @@ export default function EventMay30() {
             <ArrowLeft className="w-4 h-4" />
           </button>
         </Link>
-        <span className="font-heading text-base font-semibold">May 30 Event</span>
+        <span className="font-heading text-base font-semibold">Event Check-In</span>
       </div>
 
       <main className="px-4 py-6 space-y-5 max-w-xl mx-auto">
@@ -259,22 +318,64 @@ export default function EventMay30() {
             <p className="text-xs font-semibold uppercase tracking-wider text-primary-foreground/75">Event check-in</p>
             <h1 className="font-heading text-3xl font-bold mt-1">Welcome To NuVira</h1>
             <p className="text-sm text-primary-foreground/80 mt-2 leading-relaxed">
-              Check in at the May 30 event and add your one-time 250 point visit bonus.
+              Check in at a NuVira event and add your one-time {EVENT_CHECKIN_BONUS_POINTS} point visit bonus.
             </p>
           </div>
 
           <div className="p-5 space-y-4">
+            {displaySession && (
+              <div className="rounded-xl border border-border/50 bg-secondary/30 p-3">
+                <div className="flex items-start gap-3">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold">{displaySession.title}</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{displaySession.address}</p>
+                    <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <CalendarDays className="h-3 w-3" />
+                      {displaySession.date_label} · {displaySession.time_label}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-secondary/50 p-3">
                 <Gift className="w-4 h-4 text-primary mb-2" />
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Bonus</p>
-                <p className="text-xl font-bold">250 pts</p>
+                <p className="text-xl font-bold">{EVENT_CHECKIN_BONUS_POINTS} pts</p>
               </div>
               <div className="rounded-xl bg-secondary/50 p-3">
                 <Bell className="w-4 h-4 text-primary mb-2" />
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notice</p>
                 <p className="text-sm font-semibold">In app</p>
               </div>
+            </div>
+
+            <div className="rounded-xl border border-border/50 bg-secondary/30 p-3 space-y-2">
+              <label htmlFor="event-code" className="text-xs font-semibold">Event code</label>
+              <input
+                id="event-code"
+                value={eventCode}
+                onChange={(event) => setEventCode(normalizeEventCheckInCode(event.target.value))}
+                placeholder="Scan booth QR or enter code"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                {codeSession
+                  ? `${codeSession.title} code ready.`
+                  : checkInStatus.activeSession
+                    ? 'No code needed if location is allowed at the event.'
+                    : checkInStatus.nextSession
+                      ? `Check-in opens ${checkInStatus.nextSession.date_label}.`
+                      : 'Event check-in is closed.'}
+              </p>
+              {locationStatus === 'checking' && (
+                <p className="text-[10px] text-muted-foreground">Checking event location...</p>
+              )}
             </div>
 
             <div className="rounded-xl border border-border/50 bg-secondary/30 p-3 space-y-2">
@@ -344,19 +445,30 @@ export default function EventMay30() {
             <button
               type="button"
               onClick={() => redeem.mutate()}
-              disabled={redeem.isPending || isLoadingClaimStatus || hasClaimed}
+              disabled={redeem.isPending || isLoadingClaimStatus || hasClaimed || !canAttemptClaim}
               className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm active:scale-[0.99] transition-transform disabled:opacity-60"
             >
               {redeem.isPending
-                ? 'Adding points...'
+                ? 'Checking in...'
                 : isLoadingClaimStatus
                   ? 'Checking bonus...'
                   : hasClaimed
                     ? 'Bonus Claimed'
-                    : 'Claim Event Bonus'}
+                    : !canAttemptClaim
+                      ? checkInStatus.hasEnded ? 'Check-In Closed' : 'Check-In Opens Soon'
+                      : `Check In & Claim ${EVENT_CHECKIN_BONUS_POINTS} Points`}
             </button>
 
             <ResultPanel result={result} />
+
+            <div className="space-y-2 pt-1">
+              {EVENT_CHECKIN_SESSIONS.map((session) => (
+                <div key={session.id} className="rounded-lg border border-border/40 px-3 py-2">
+                  <p className="text-xs font-semibold">{session.title}</p>
+                  <p className="text-[10px] text-muted-foreground">{session.date_label} · {session.time_label}</p>
+                </div>
+              ))}
+            </div>
 
             <div className="flex justify-center gap-4 pt-1">
               <Link to="/rewards" className="text-xs font-semibold text-primary underline underline-offset-4">View rewards</Link>
