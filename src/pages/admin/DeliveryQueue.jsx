@@ -444,7 +444,7 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
 
   async function markOutForDelivery() {
     if (!hasDriver) return;
-    if (!window.confirm('Mark this task as Out For Delivery in Operations? This will not notify the customer.')) return;
+    if (!window.confirm('Mark this task as Out For Delivery in Operations? Customer delivery notifications are controlled by separate backend gates and are not sent directly by this button.')) return;
 
     setPendingOutForDeliveryTaskId(taskId);
     setMessage(null);
@@ -468,7 +468,7 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
 
   async function markDelivered() {
     if (!hasDriver) return;
-    if (!window.confirm('Mark this task Delivered in Operations? This will not notify the customer.')) return;
+    if (!window.confirm('Mark this task Delivered in Operations? Customer delivery notifications are controlled by separate backend gates and are not sent directly by this button.')) return;
 
     setPendingDeliveredTaskId(taskId);
     setMessage(null);
@@ -494,7 +494,7 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
     <div className="rounded-lg border border-border/50 bg-background p-2 space-y-2">
       <div>
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Operational Status</p>
-        <p className="text-[10px] text-muted-foreground">Operations-only status update. No customer notification.</p>
+        <p className="text-[10px] text-muted-foreground">Operations status update. Customer delivery notifications are separately gated.</p>
       </div>
 
       {isOutForDelivery && hasDriver && (
@@ -792,7 +792,7 @@ export default function DeliveryQueue() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Driver Portal route view</p>
-            <p className="text-[10px] text-muted-foreground">Proof, bag return, and customer notification actions remain omitted. Route optimization is preview-only.</p>
+            <p className="text-[10px] text-muted-foreground">Proof, bag return, and manual notification actions remain omitted. Route optimization is preview-only.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
