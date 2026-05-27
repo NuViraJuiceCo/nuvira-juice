@@ -65,7 +65,7 @@ import AccountSetup from '@/pages/AccountSetup';
 import NativeLogin from '@/pages/NativeLogin';
 import { base44 } from '@/api/base44Client';
 import { useLocation } from 'react-router-dom';
-import { redirectToLogin } from '@/lib/nativeAuthRedirect';
+import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
 
 // Protected route wrapper—redirect to login if not authenticated
 const getLoginReturnRoute = () => {
@@ -91,10 +91,16 @@ const ProtectedRoute = ({ element, user }) => {
 };
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, checkAppState } = useAuth();
   const [showSplash, setShowSplash] = React.useState(() => !sessionStorage.getItem('splashShown'));
 
   const location = useLocation();
+
+  React.useEffect(() => {
+    if (hasBase44AuthParamsInUrl()) {
+      checkAppState();
+    }
+  }, [location.search, checkAppState]);
 
   // Fetch user profile for onboarding check (must be at top level)
   const { data: userProfileForOnboarding, isLoading: isLoadingProfile } = useQuery({

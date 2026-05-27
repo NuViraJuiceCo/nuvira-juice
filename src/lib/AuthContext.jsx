@@ -1,9 +1,13 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
-import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
-import { getStoredBase44Token, redirectToLogin } from '@/lib/nativeAuthRedirect';
+import {
+  consumeBase44AuthFromUrl,
+  getStoredBase44Token,
+  hasBase44AuthParamsInUrl,
+  redirectToLogin,
+} from '@/lib/nativeAuthRedirect';
 
 const AuthContext = createContext();
 
@@ -11,18 +15,37 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
 
-  useEffect(() => {
-    checkAppState();
+  const checkUserAuth = useCallback(async () => {
+    try {
+      consumeBase44AuthFromUrl();
+      setIsLoadingAuth(true);
+      setAuthError(null);
+      const currentUser = await base44.auth.me();
+      setUser(currentUser);
+      setIsAuthenticated(true);
+      setAuthChecked(true);
+      setIsLoadingAuth(false);
+      return currentUser;
+    } catch (error) {
+      // For public apps, 401 is expected when user isn't logged in — don't treat as error.
+      setUser(null);
+      setIsAuthenticated(false);
+      setAuthChecked(true);
+      setIsLoadingAuth(false);
+      return null;
+    }
   }, []);
 
-  const checkAppState = async () => {
+  const checkAppState = useCallback(async () => {
     try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
+      consumeBase44AuthFromUrl();
       
       // Skip app public settings check entirely for public apps
       // The app is already running, so it's accessible
@@ -35,6 +58,7 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setIsLoadingAuth(false);
         setIsAuthenticated(false);
+        setAuthChecked(true);
       }
       setIsLoadingPublicSettings(false);
       return currentUser;
@@ -42,27 +66,32 @@ export const AuthProvider = ({ children }) => {
       console.error('Unexpected error:', error);
       setIsLoadingPublicSettings(false);
       setIsLoadingAuth(false);
+      setAuthChecked(true);
       return null;
     }
-  };
+  }, [checkUserAuth]);
 
-  const checkUserAuth = async () => {
-    try {
-      // Now check if the user is authenticated
-      setIsLoadingAuth(true);
-      const currentUser = await base44.auth.me();
-      setUser(currentUser);
-      setIsAuthenticated(true);
-      setIsLoadingAuth(false);
-      return currentUser;
-    } catch (error) {
-      // For public apps, 401 is expected when user isn't logged in — don't treat as error
-      setUser(null);
-      setIsLoadingAuth(false);
-      setIsAuthenticated(false);
-      return null;
-    }
-  };
+  useEffect(() => {
+    checkAppState();
+  }, [checkAppState]);
+
+  useEffect(() => {
+    const handlePossibleAuthReturn = () => {
+      if (hasBase44AuthParamsInUrl()) {
+        checkAppState();
+      }
+    };
+
+    window.addEventListener('focus', handlePossibleAuthReturn);
+    window.addEventListener('pageshow', handlePossibleAuthReturn);
+    document.addEventListener('visibilitychange', handlePossibleAuthReturn);
+
+    return () => {
+      window.removeEventListener('focus', handlePossibleAuthReturn);
+      window.removeEventListener('pageshow', handlePossibleAuthReturn);
+      document.removeEventListener('visibilitychange', handlePossibleAuthReturn);
+    };
+  }, [checkAppState]);
 
   const needsOnboarding = () => {
     if (!user?.email) return false;
@@ -91,12 +120,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const navigateToLogin = () => {
-    redirectToLogin(window.location.pathname);
+    redirectToLogin(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
   };
 
   const refreshUser = async () => {
     const currentUser = await base44.auth.me();
     setUser(currentUser);
+    setIsAuthenticated(Boolean(currentUser));
+    setAuthChecked(true);
   };
 
   return (
@@ -104,12 +135,14 @@ export const AuthProvider = ({ children }) => {
       user, 
       isAuthenticated, 
       isLoadingAuth,
+      authChecked,
       isLoadingPublicSettings,
       authError,
       appPublicSettings,
       logout,
       navigateToLogin,
       checkAppState,
+      checkUserAuth,
       refreshUser,
       needsOnboarding
     }}>
