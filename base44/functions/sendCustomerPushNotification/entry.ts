@@ -360,6 +360,12 @@ async function updatePushSubscriptionRecord(
 }
 
 function pushSubtypeEnabled(notificationSubtype: string, type: string): { enabled: boolean; reason: string | null } {
+  if (notificationSubtype === 'admin_order_processed') {
+    return envFlag('ENABLE_ADMIN_PUSH_NOTIFICATIONS') && envFlag('ENABLE_ADMIN_ORDER_PROCESSED_PUSH')
+      ? { enabled: true, reason: null }
+      : { enabled: false, reason: 'admin_order_processed_push_disabled' };
+  }
+
   if (!envFlag('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS')) {
     return { enabled: false, reason: 'customer_push_disabled' };
   }

@@ -1,15 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Plus, Bell, Users, CheckCircle2, AlertCircle, Loader2, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Send, Plus, Bell, BellOff, Users, CheckCircle2, AlertCircle, Loader2, FlaskConical, Smartphone, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
+import {
+  getEventPushPermission,
+  getEventPushSupportStatus,
+  getExistingEventPushSubscription,
+  subscribeToEventPushNotifications,
+  unsubscribeFromEventPushNotifications,
+} from '@/lib/eventPushNotifications';
 
 const AUDIENCE_LABELS = {
   test_only: 'Test Only (admin)',
@@ -38,6 +45,50 @@ const DEEP_LINK_OPTIONS = [
 
 const CAMPAIGN_SENDS_ENABLED = false;
 
+async function readAdminPushStatus() {
+  const support = getEventPushSupportStatus();
+  if (!support.supported) {
+    return {
+      loading: false,
+      supported: false,
+      subscribed: false,
+      permission: 'unsupported',
+      mode: support.mode || null,
+      reason: support.reason || 'push_unavailable',
+      action: null,
+    };
+  }
+
+  const [permission, subscription] = await Promise.all([
+    getEventPushPermission().catch(() => 'default'),
+    getExistingEventPushSubscription().catch(() => null),
+  ]);
+
+  return {
+    loading: false,
+    supported: true,
+    subscribed: Boolean(subscription),
+    permission,
+    mode: support.mode || null,
+    reason: null,
+    action: null,
+  };
+}
+
+function adminPushStatusLabel(status) {
+  if (status.loading) return 'Checking';
+  if (!status.supported) return 'Unavailable';
+  if (status.permission === 'denied') return 'Blocked';
+  if (status.subscribed) return 'Enabled';
+  return 'Ready';
+}
+
+function formatStatusReason(reason) {
+  return String(reason || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function NotificationCampaigns() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -53,14 +104,87 @@ export default function NotificationCampaigns() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [sending, setSending] = useState(false);
   const [pendingCampaignId, setPendingCampaignId] = useState(null);
+  const [adminPushStatus, setAdminPushStatus] = useState({
+    loading: true,
+    supported: false,
+    subscribed: false,
+    permission: 'default',
+    mode: null,
+    reason: null,
+    action: null,
+  });
 
   const setField = (key, val) => setForm(p => ({ ...p, [key]: val }));
+
+  const refreshAdminPushStatus = async () => {
+    setAdminPushStatus(prev => ({ ...prev, loading: true, action: null }));
+    const nextStatus = await readAdminPushStatus();
+    setAdminPushStatus(nextStatus);
+    return nextStatus;
+  };
+
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+
+    let active = true;
+    setAdminPushStatus(prev => ({ ...prev, loading: true }));
+    readAdminPushStatus()
+      .then((nextStatus) => {
+        if (active) setAdminPushStatus(nextStatus);
+      })
+      .catch(() => {
+        if (active) {
+          setAdminPushStatus({
+            loading: false,
+            supported: false,
+            subscribed: false,
+            permission: 'unsupported',
+            mode: null,
+            reason: 'status_check_failed',
+            action: null,
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.role]);
 
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ['notification-campaigns'],
     queryFn: () => base44.entities.NotificationCampaign.list('-created_date', 30),
     enabled: user?.role === 'admin',
   });
+
+  const handleEnableAdminPush = async () => {
+    setAdminPushStatus(prev => ({ ...prev, action: 'enable' }));
+    try {
+      const result = await subscribeToEventPushNotifications();
+      await refreshAdminPushStatus();
+
+      if (result.success) {
+        toast.success('Admin order push enabled on this device.');
+      } else {
+        toast.error(`Unable to enable admin push: ${result.reason || result.status || 'not available'}.`);
+      }
+    } catch (err) {
+      await refreshAdminPushStatus();
+      toast.error(`Unable to enable admin push: ${err.message}`);
+    }
+  };
+
+  const handleDisableAdminPush = async () => {
+    setAdminPushStatus(prev => ({ ...prev, action: 'disable' }));
+    try {
+      await unsubscribeFromEventPushNotifications();
+      await refreshAdminPushStatus();
+      toast.success('Admin order push disabled on this device.');
+    } catch (err) {
+      await refreshAdminPushStatus();
+      toast.error(`Unable to disable admin push: ${err.message}`);
+    }
+  };
 
   const handleCreateAndSend = async () => {
     if (!CAMPAIGN_SENDS_ENABLED) {
@@ -151,6 +275,73 @@ export default function NotificationCampaigns() {
       </div>
 
       <div className="px-4 mt-5">
+        <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Smartphone className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-sm">Admin Order Alerts</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Enables paid-order push alerts for this admin device. Customer campaign sends stay frozen.
+                </p>
+              </div>
+            </div>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${
+              adminPushStatus.subscribed
+                ? 'bg-primary/10 text-primary'
+                : adminPushStatus.permission === 'denied'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-secondary text-muted-foreground'
+            }`}>
+              {adminPushStatusLabel(adminPushStatus)}
+            </span>
+          </div>
+
+          {!adminPushStatus.loading && adminPushStatus.reason && (
+            <p className="text-xs text-muted-foreground mt-3">
+              {formatStatusReason(adminPushStatus.reason)}
+            </p>
+          )}
+
+          <div className="flex gap-2 mt-4">
+            {adminPushStatus.subscribed ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDisableAdminPush}
+                disabled={adminPushStatus.action === 'disable'}
+                className="flex-1 h-10 rounded-xl gap-2"
+              >
+                {adminPushStatus.action === 'disable' ? <Loader2 className="w-4 h-4 animate-spin" /> : <BellOff className="w-4 h-4" />}
+                Disable
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={handleEnableAdminPush}
+                disabled={!adminPushStatus.supported || adminPushStatus.permission === 'denied' || adminPushStatus.action === 'enable'}
+                className="flex-1 h-10 rounded-xl gap-2"
+              >
+                {adminPushStatus.action === 'enable' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
+                Enable
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={refreshAdminPushStatus}
+              disabled={adminPushStatus.loading || Boolean(adminPushStatus.action)}
+              className="w-10 h-10 rounded-xl p-0"
+              aria-label="Refresh admin push status"
+              title="Refresh admin push status"
+            >
+              {adminPushStatus.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+
         {!CAMPAIGN_SENDS_ENABLED && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
             <AlertCircle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />

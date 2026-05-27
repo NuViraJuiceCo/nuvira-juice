@@ -1,6 +1,42 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+const ADMIN_PUSH_INTERNAL_SECRET = Deno.env.get('ADMIN_PUSH_INTERNAL_SECRET')
+  || Deno.env.get('HUB_SYNC_SECRET')
+  || Deno.env.get('CUSTOMER_APP_SYNC_SECRET')
+  || '';
+
+type OrderNotificationItem = {
+  title?: string;
+  quantity?: number;
+  price?: number;
+};
+
+type OrderNotificationPayload = {
+  order_id?: string;
+  order_number?: string;
+  customer_email?: string;
+  items?: OrderNotificationItem[];
+  total?: number;
+  delivery_address?: string;
+};
+
+type AdminPushSummary = {
+  attempted: boolean;
+  sent: boolean;
+  skipped_reason: string | null;
+  notification_created_count?: number;
+  push_token_count?: number;
+};
+
+function adminPushEnabled() {
+  return Deno.env.get('ENABLE_ADMIN_PUSH_NOTIFICATIONS') === 'true'
+    && Deno.env.get('ENABLE_ADMIN_ORDER_PROCESSED_PUSH') === 'true';
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || 'unknown');
+}
 
 /**
  * Sends order processed notification to operations@nuvirajuice.com
@@ -10,7 +46,7 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { order_id, order_number, customer_email, items, total, delivery_address } = await req.json();
+    const { order_id, order_number, customer_email, items, total, delivery_address } = await req.json() as OrderNotificationPayload;
 
     if (!RESEND_API_KEY) {
       console.error('notifyOrderProcessed: RESEND_API_KEY not set');
@@ -18,9 +54,11 @@ Deno.serve(async (req) => {
     }
 
     // Format items list
-    const itemsHtml = items?.map(item => 
-      `<tr><td style="padding: 8px;">${item.title}</td><td style="padding: 8px;">x${item.quantity}</td><td style="padding: 8px;">$${(item.price * item.quantity).toFixed(2)}</td></tr>`
-    ).join('') || '';
+    const itemsHtml = items?.map((item: OrderNotificationItem) => {
+      const quantity = Number(item.quantity || 0);
+      const price = Number(item.price || 0);
+      return `<tr><td style="padding: 8px;">${item.title}</td><td style="padding: 8px;">x${quantity}</td><td style="padding: 8px;">$${(price * quantity).toFixed(2)}</td></tr>`;
+    }).join('') || '';
 
     const html = `
 <!DOCTYPE html>
@@ -104,9 +142,63 @@ Deno.serve(async (req) => {
 
     const result = await response.json();
     console.log(`Order processed notification sent to operations:`, result.id);
-    return Response.json({ success: true, email_id: result.id });
+
+    let admin_push: AdminPushSummary = {
+      attempted: false,
+      sent: false,
+      skipped_reason: 'admin_order_processed_push_disabled',
+    };
+
+    if (adminPushEnabled() && !ADMIN_PUSH_INTERNAL_SECRET) {
+      admin_push = {
+        attempted: false,
+        sent: false,
+        skipped_reason: 'admin_push_internal_secret_missing',
+      };
+    } else if (adminPushEnabled() && !order_id) {
+      admin_push = {
+        attempted: false,
+        sent: false,
+        skipped_reason: 'order_id_missing',
+      };
+    } else if (adminPushEnabled() && ADMIN_PUSH_INTERNAL_SECRET && order_id) {
+      try {
+        const pushResult = await base44.asServiceRole.functions.invoke('sendAdminOrderProcessedNotification', {
+          order_id,
+          order_number,
+          customer_email,
+          internal_secret: ADMIN_PUSH_INTERNAL_SECRET,
+        });
+        const data = pushResult?.data || pushResult || {};
+        console.log(`[notifyOrderProcessed] Admin push result: ${JSON.stringify({
+          success: Boolean(data.success),
+          skipped: Boolean(data.skipped),
+          push_attempted: Boolean(data.push_attempted),
+          push_sent: Boolean(data.push_sent),
+          push_token_count: Number(data.push_token_count || 0),
+          push_skipped_reason: data.push_skipped_reason || data.reason || null,
+        })}`);
+        admin_push = {
+          attempted: Boolean(data.push_attempted),
+          sent: Boolean(data.push_sent),
+          skipped_reason: data.push_skipped_reason || data.reason || null,
+          notification_created_count: Number(data.notification_created_count || 0),
+          push_token_count: Number(data.push_token_count || 0),
+        };
+      } catch (pushError) {
+        const message = pushError instanceof Error ? pushError.message : String(pushError || 'unknown');
+        console.warn(`[notifyOrderProcessed] Admin push skipped: ${message}`);
+        admin_push = {
+          attempted: true,
+          sent: false,
+          skipped_reason: 'admin_push_function_error',
+        };
+      }
+    }
+
+    return Response.json({ success: true, email_id: result.id, admin_push });
   } catch (error) {
-    console.error('notifyOrderProcessed error:', error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('notifyOrderProcessed error:', errorMessage(error));
+    return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 });
