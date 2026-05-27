@@ -10,6 +10,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 const SHOPIFY_WEBHOOK_SECRET = Deno.env.get('SHOPIFY_WEBHOOK_SECRET') || '';
+const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
+const ENABLE_MAY30_NATIVE_ORDER_OPS = Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
 
 async function verifyShopifyHmac(req, bodyText) {
   const hmacHeader = req.headers.get('x-shopify-hmac-sha256');
@@ -55,12 +57,31 @@ function extractRequestedDate(order) {
   return attrs['delivery_date'] || attrs['pickup_date'] || attrs['requested_date'] || '';
 }
 
+function noteAttributes(order) {
+  return (order.note_attributes || []).reduce((acc, attr) => {
+    if (attr?.name) acc[attr.name] = attr.value;
+    return acc;
+  }, {});
+}
+
 function mapToShopifyOrder(order) {
   const channel = detectSourceChannel(order);
+  const isPosOrder = order.source_name === 'pos' || channel === 'pos';
+  const attrs = noteAttributes(order);
   return {
     shopify_order_id: String(order.id),
     shopify_order_number: String(order.order_number || order.name || order.id),
     source_channel: channel,
+    ...(isPosOrder ? {
+      source_type: 'shopify_pos',
+      order_type: 'pos',
+      fulfillment_mode: 'single_delivery',
+      fulfillment_status: 'fulfilled',
+      production_status: 'not_required',
+      order_lock_status: 'fulfilled',
+      data_quality_status: 'complete',
+      sync_status: 'native_pos_ready',
+    } : {}),
     customer_name: [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ') || 'Guest',
     customer_email: order.email || order.customer?.email || '',
     customer_phone: order.phone || order.customer?.phone || order.billing_address?.phone || '',
@@ -89,6 +110,10 @@ function mapToShopifyOrder(order) {
     customer_notes: order.note || '',
     tags: (order.tags || '').split(',').map(t => t.trim()).filter(Boolean),
     is_pos_order: order.source_name === 'pos',
+    event_name: attrs.event_name || attrs.event || '',
+    event_date: attrs.event_date || attrs.pickup_date || '',
+    event_location: attrs.event_location || attrs.location || attrs.location_name || '',
+    customer_order_date: order.created_at || new Date().toISOString(),
     is_subscription: (order.tags || '').toLowerCase().includes('subscription'),
     subscription_cadence: '',
     shopify_synced_at: new Date().toISOString(),
@@ -182,6 +207,7 @@ Deno.serve(async (req) => {
     }
 
     await logSync(base44, 'webhook', 'success', 1, 0);
+    await maybeRunMay30NativePosOps(base44, record, topic);
     console.log(`Created ShopifyOrder for #${orderNumber}`);
 
   } else if (topic === 'orders/updated') {
@@ -290,4 +316,29 @@ async function logSync(base44, syncType, status, synced, failed) {
     completed_at: new Date().toISOString(),
     triggered_by: 'webhook',
   });
+}
+
+async function maybeRunMay30NativePosOps(base44, record, topic) {
+  if (!ENABLE_MAY30_NATIVE_ORDER_OPS) return null;
+  if (record?.source_channel !== 'pos' && record?.source_type !== 'shopify_pos' && record?.fulfillment_method !== 'pos') {
+    return null;
+  }
+
+  try {
+    const response = await base44.asServiceRole.functions.invoke('processMay30NativeOrderOps', {
+      mode: 'live',
+      source: 'shopify_pos',
+      event_type: 'order.created',
+      order: record,
+      request_id: `shopifyWebhookReceiver:${topic}:${record.shopify_order_number || record.shopify_order_id || Date.now()}`,
+      idempotency_key: `may30_native_order_ops:shopify_pos:${record.shopify_order_number || record.shopify_order_id || 'unknown'}`,
+      internal_secret: CUSTOMER_APP_SYNC_SECRET,
+    });
+    const result = response?.data || response;
+    console.log(`[May30 native POS ops] order=${record.shopify_order_number || 'unknown'} action=${result?.action || 'unknown'} success=${result?.success === true}`);
+    return result;
+  } catch (error) {
+    console.warn(`[May30 native POS ops] failed safely for order=${record?.shopify_order_number || 'unknown'}: ${error?.message || 'unknown error'}`);
+    return null;
+  }
 }
