@@ -34,7 +34,8 @@ If `ADMIN_PUSH_INTERNAL_SECRET` is not set, the backend uses the existing `HUB_S
 1. Open the native app as an admin.
 2. Go to `/admin/notifications`.
 3. Use the `Admin Order Alerts` control to enable push on that device.
-4. Place a paid test order after flags are enabled.
+4. Use `Test` to send a push only to the logged-in admin.
+5. Place a paid test order after flags are enabled.
 
 Expected result:
 
@@ -42,3 +43,14 @@ Expected result:
 - One admin notification is created per recipient.
 - Push is attempted only for recipients with stored push subscriptions.
 - Duplicate order events do not create duplicate admin notifications.
+
+## Diagnostics
+
+`/admin/notifications` shows a small admin-only diagnostic summary:
+
+- number of saved push subscriptions for the logged-in admin
+- active token transport types, without exposing raw tokens
+- backend readiness based on flags, token presence, and provider credentials
+- skipped reason from the last admin push test
+
+The self-test function creates a single admin-only test notification only after at least one active subscription exists.
