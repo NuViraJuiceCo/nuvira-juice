@@ -8,6 +8,10 @@ function normalizeSingleLine(value: unknown): string {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+function normalizeApnsToken(value: unknown): string {
+  return normalizeSingleLine(value).replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+}
+
 function isMissingSchemaError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || '');
   return message.includes('Entity schema') && message.includes('not found');
@@ -29,12 +33,15 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const endpoint = normalizeSingleLine(body.endpoint);
     const fcmToken = normalizeSingleLine(body.fcm_token);
+    const apnsToken = normalizeApnsToken(body.apns_token);
     const customerEmail = normalizeEmail(user.email);
-    const candidates = fcmToken
-      ? await base44.asServiceRole.entities.PushSubscription.filter({ fcm_token: fcmToken })
-      : endpoint
-      ? await base44.asServiceRole.entities.PushSubscription.filter({ endpoint })
-      : await base44.asServiceRole.entities.PushSubscription.filter({ customer_email: customerEmail });
+    const candidates = apnsToken
+      ? await base44.asServiceRole.entities.PushSubscription.filter({ apns_token: apnsToken })
+      : fcmToken
+        ? await base44.asServiceRole.entities.PushSubscription.filter({ fcm_token: fcmToken })
+        : endpoint
+          ? await base44.asServiceRole.entities.PushSubscription.filter({ endpoint })
+          : await base44.asServiceRole.entities.PushSubscription.filter({ customer_email: customerEmail });
 
     let revoked = 0;
     const revokedAt = new Date().toISOString();

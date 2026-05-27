@@ -4,6 +4,7 @@ import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 
 const VAPID_PUBLIC_KEY = 'BHmr7cCgm_eL3ckBL91ZKnvCqXvLax8pahXxpFCY8qwFXi0alWve4tDDJaaSDTuLwA-4VSEWBHMMlE_BixdHWaM';
 const SERVICE_WORKER_PATH = '/push-sw.js';
+const NUVIRA_APP_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
 
 function isNativeApp() {
   return typeof window !== 'undefined' && Capacitor.isNativePlatform();
@@ -13,6 +14,38 @@ function normalizeNativePermission(value) {
   if (value === 'granted') return 'granted';
   if (value === 'denied') return 'denied';
   return 'default';
+}
+
+function isIosNativeApp() {
+  return isNativeApp() && Capacitor.getPlatform() === 'ios';
+}
+
+async function waitForApnsToken(timeoutMs = 5000) {
+  if (!isIosNativeApp()) return null;
+
+  let listenerHandle = null;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = async (token) => {
+      if (settled) return;
+      settled = true;
+      if (listenerHandle?.remove) {
+        await listenerHandle.remove().catch(() => {});
+      }
+      resolve(token || null);
+    };
+
+    const timeout = window.setTimeout(() => finish(null), timeoutMs);
+    FirebaseMessaging.addListener('apnsTokenReceived', (event) => {
+      window.clearTimeout(timeout);
+      finish(event?.token || null);
+    }).then((handle) => {
+      listenerHandle = handle;
+    }).catch(() => {
+      window.clearTimeout(timeout);
+      finish(null);
+    });
+  });
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -30,7 +63,7 @@ function urlBase64ToUint8Array(base64String) {
 
 export function getEventPushSupportStatus() {
   if (typeof window === 'undefined') return { supported: false, reason: 'server' };
-  if (isNativeApp()) return { supported: true, reason: null, mode: 'native_fcm' };
+  if (isNativeApp()) return { supported: true, reason: null, mode: 'native_push' };
   if (!('Notification' in window)) return { supported: false, reason: 'notifications_unavailable' };
   if (!('serviceWorker' in navigator)) return { supported: false, reason: 'service_worker_unavailable' };
   if (!('PushManager' in window)) return { supported: false, reason: 'push_unavailable' };
@@ -55,7 +88,7 @@ export async function getExistingEventPushSubscription() {
     const permission = await FirebaseMessaging.checkPermissions();
     if (permission.receive !== 'granted') return null;
     const tokenResult = await FirebaseMessaging.getToken().catch(() => null);
-    return tokenResult?.token ? { token_type: 'fcm', device_platform: Capacitor.getPlatform() } : null;
+    return tokenResult?.token ? { token_type: 'native_push', device_platform: Capacitor.getPlatform() } : null;
   }
 
   const registration = await navigator.serviceWorker.getRegistration(SERVICE_WORKER_PATH)
@@ -76,6 +109,7 @@ export async function subscribeToEventPushNotifications() {
       return { success: false, status: 'unsupported', reason: 'native_fcm_unavailable' };
     }
 
+    const apnsTokenPromise = waitForApnsToken();
     const permission = await FirebaseMessaging.requestPermissions();
     const status = normalizeNativePermission(permission.receive);
     if (status !== 'granted') {
@@ -83,13 +117,17 @@ export async function subscribeToEventPushNotifications() {
     }
 
     const tokenResult = await FirebaseMessaging.getToken();
-    if (!tokenResult?.token) {
-      return { success: false, status, reason: 'native_fcm_token_unavailable' };
+    const apnsToken = await apnsTokenPromise;
+    if (!tokenResult?.token && !apnsToken) {
+      return { success: false, status, reason: 'native_push_token_unavailable' };
     }
 
     const response = await base44.functions.invoke('registerPushSubscription', {
-      token_type: 'fcm',
-      fcm_token: tokenResult.token,
+      token_type: apnsToken ? 'apns' : 'fcm',
+      fcm_token: tokenResult?.token || null,
+      apns_token: apnsToken || null,
+      apns_environment: 'unknown',
+      app_bundle_id: NUVIRA_APP_BUNDLE_ID,
       permission: status,
       device_platform: Capacitor.getPlatform(),
       platform: Capacitor.getPlatform(),
@@ -104,14 +142,14 @@ export async function subscribeToEventPushNotifications() {
         success: false,
         status,
         reason: data.reason || 'push_subscription_registration_unavailable',
-        mode: 'native_fcm',
+        mode: 'native_push',
       };
     }
 
     return {
       success: true,
       status,
-      mode: 'native_fcm',
+      mode: apnsToken ? 'native_apns' : 'native_fcm',
       server: data,
     };
   }

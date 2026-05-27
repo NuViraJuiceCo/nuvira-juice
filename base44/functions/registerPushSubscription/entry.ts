@@ -18,6 +18,11 @@ function sanitizeToken(value: unknown): string {
   return text.length > 4096 ? '' : text;
 }
 
+function sanitizeApnsToken(value: unknown): string {
+  const text = normalizeSingleLine(value).replace(/[^a-fA-F0-9]/g, '');
+  return text.length >= 32 && text.length <= 512 ? text.toLowerCase() : '';
+}
+
 function isMissingSchemaError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || '');
   return message.includes('Entity schema') && message.includes('not found');
@@ -39,7 +44,8 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const subscription = body.subscription || {};
     const fcmToken = sanitizeToken(body.fcm_token);
-    const tokenType = fcmToken ? 'fcm' : 'web_push';
+    const apnsToken = sanitizeApnsToken(body.apns_token);
+    const tokenType = apnsToken ? 'apns' : fcmToken ? 'fcm' : 'web_push';
     const endpoint = normalizeSingleLine(subscription.endpoint);
     const p256dh = normalizeSingleLine(subscription.keys?.p256dh);
     const auth = normalizeSingleLine(subscription.keys?.auth);
@@ -48,6 +54,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Invalid push subscription payload' }, { status: 400 });
     }
 
+    const apnsEnvironment = body.apns_environment === 'sandbox' || body.apns_environment === 'production'
+      ? body.apns_environment
+      : 'unknown';
     const now = new Date().toISOString();
     const payload = {
       customer_email: normalizeEmail(user.email),
@@ -56,6 +65,9 @@ Deno.serve(async (req) => {
       p256dh: p256dh || null,
       auth: auth || null,
       fcm_token: fcmToken || null,
+      apns_token: apnsToken || null,
+      apns_environment: apnsToken ? apnsEnvironment : null,
+      app_bundle_id: normalizeSingleLine(body.app_bundle_id).slice(0, 160) || null,
       enabled: true,
       permission: body.permission === 'denied' ? 'denied' : body.permission === 'default' ? 'default' : 'granted',
       device_platform: normalizeSingleLine(body.device_platform).slice(0, 40),
@@ -66,9 +78,11 @@ Deno.serve(async (req) => {
       revoked_at: null,
     };
 
-    const existing = tokenType === 'fcm'
-      ? await base44.asServiceRole.entities.PushSubscription.filter({ fcm_token: fcmToken }, undefined, 1)
-      : await base44.asServiceRole.entities.PushSubscription.filter({ endpoint }, undefined, 1);
+    const existing = tokenType === 'apns'
+      ? await base44.asServiceRole.entities.PushSubscription.filter({ apns_token: apnsToken }, undefined, 1)
+      : tokenType === 'fcm'
+        ? await base44.asServiceRole.entities.PushSubscription.filter({ fcm_token: fcmToken }, undefined, 1)
+        : await base44.asServiceRole.entities.PushSubscription.filter({ endpoint }, undefined, 1);
     const record = existing[0]
       ? await base44.asServiceRole.entities.PushSubscription.update(existing[0].id, payload)
       : await base44.asServiceRole.entities.PushSubscription.create(payload);

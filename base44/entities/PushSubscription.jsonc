@@ -10,7 +10,8 @@
       "type": "string",
       "enum": [
         "web_push",
-        "fcm"
+        "fcm",
+        "apns"
       ],
       "default": "web_push",
       "description": "Transport used by this subscription"
@@ -30,6 +31,24 @@
     "fcm_token": {
       "type": "string",
       "description": "Firebase Cloud Messaging registration token for native iOS/Android shells"
+    },
+    "apns_token": {
+      "type": "string",
+      "description": "Apple Push Notification service device token for native iOS shells"
+    },
+    "apns_environment": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "sandbox",
+        "production"
+      ],
+      "default": "unknown",
+      "description": "APNs environment when known"
+    },
+    "app_bundle_id": {
+      "type": "string",
+      "description": "Native app bundle identifier for APNs topic routing"
     },
     "device_platform": {
       "type": "string",
