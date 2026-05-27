@@ -13,6 +13,11 @@ function sanitizeUserAgent(value: unknown): string {
   return text.length > 300 ? `${text.slice(0, 299).trim()}...` : text;
 }
 
+function sanitizeToken(value: unknown): string {
+  const text = normalizeSingleLine(value);
+  return text.length > 4096 ? '' : text;
+}
+
 function isMissingSchemaError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || '');
   return message.includes('Entity schema') && message.includes('not found');
@@ -33,29 +38,37 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const subscription = body.subscription || {};
+    const fcmToken = sanitizeToken(body.fcm_token);
+    const tokenType = fcmToken ? 'fcm' : 'web_push';
     const endpoint = normalizeSingleLine(subscription.endpoint);
     const p256dh = normalizeSingleLine(subscription.keys?.p256dh);
     const auth = normalizeSingleLine(subscription.keys?.auth);
 
-    if (!endpoint || !p256dh || !auth) {
+    if (tokenType === 'web_push' && (!endpoint || !p256dh || !auth)) {
       return Response.json({ error: 'Invalid push subscription payload' }, { status: 400 });
     }
 
     const now = new Date().toISOString();
     const payload = {
       customer_email: normalizeEmail(user.email),
-      endpoint,
-      p256dh,
-      auth,
+      token_type: tokenType,
+      endpoint: endpoint || null,
+      p256dh: p256dh || null,
+      auth: auth || null,
+      fcm_token: fcmToken || null,
       enabled: true,
       permission: body.permission === 'denied' ? 'denied' : body.permission === 'default' ? 'default' : 'granted',
+      device_platform: normalizeSingleLine(body.device_platform).slice(0, 40),
       platform: normalizeSingleLine(body.platform).slice(0, 120),
+      app_shell: normalizeSingleLine(body.app_shell).slice(0, 80),
       user_agent: sanitizeUserAgent(body.user_agent),
       last_seen_at: now,
       revoked_at: null,
     };
 
-    const existing = await base44.asServiceRole.entities.PushSubscription.filter({ endpoint }, undefined, 1);
+    const existing = tokenType === 'fcm'
+      ? await base44.asServiceRole.entities.PushSubscription.filter({ fcm_token: fcmToken }, undefined, 1)
+      : await base44.asServiceRole.entities.PushSubscription.filter({ endpoint }, undefined, 1);
     const record = existing[0]
       ? await base44.asServiceRole.entities.PushSubscription.update(existing[0].id, payload)
       : await base44.asServiceRole.entities.PushSubscription.create(payload);
@@ -64,6 +77,8 @@ Deno.serve(async (req) => {
       success: true,
       subscription_id: record.id,
       push_enabled: true,
+      token_type: tokenType,
+      device_platform: payload.device_platform || undefined,
     });
   } catch (error) {
     if (isMissingSchemaError(error)) {

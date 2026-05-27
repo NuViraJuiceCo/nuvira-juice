@@ -4,7 +4,16 @@
   "properties": {
     "customer_email": {
       "type": "string",
-      "description": "Authenticated customer email that owns this browser push subscription"
+      "description": "Authenticated customer email that owns this push subscription"
+    },
+    "token_type": {
+      "type": "string",
+      "enum": [
+        "web_push",
+        "fcm"
+      ],
+      "default": "web_push",
+      "description": "Transport used by this subscription"
     },
     "endpoint": {
       "type": "string",
@@ -17,6 +26,18 @@
     "auth": {
       "type": "string",
       "description": "Push subscription auth secret"
+    },
+    "fcm_token": {
+      "type": "string",
+      "description": "Firebase Cloud Messaging registration token for native iOS/Android shells"
+    },
+    "device_platform": {
+      "type": "string",
+      "description": "Native platform such as ios or android"
+    },
+    "app_shell": {
+      "type": "string",
+      "description": "App shell that registered the token"
     },
     "enabled": {
       "type": "boolean",
@@ -49,10 +70,7 @@
     }
   },
   "required": [
-    "customer_email",
-    "endpoint",
-    "p256dh",
-    "auth"
+    "customer_email"
   ],
   "rls": {
     "create": {

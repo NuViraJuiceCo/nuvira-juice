@@ -22,10 +22,14 @@ import NotificationPrompt from '@/components/home/NotificationPrompt';
 import ProgramCards from '@/components/home/ProgramCards';
 import DeliveryAvailabilityCard from '@/components/delivery/DeliveryAvailabilityCard';
 import { Link } from 'react-router-dom';
-import { Bell } from 'lucide-react';
+import { Bell, Gift } from 'lucide-react';
 
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
+
+function asList(value) {
+  return Array.isArray(value) ? value : [];
+}
 
 export default function Home() {
   const { user } = useAuth();
@@ -41,22 +45,22 @@ export default function Home() {
 
   const displayFirstName = cachedFirstName || user?.first_name;
 
-  const { data: products = [] } = useQuery({
+  const { data: productsData = [] } = useQuery({
     queryKey: ['products'],
     queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 50),
   });
 
-  const { data: schedules = [] } = useQuery({
+  const { data: schedulesData = [] } = useQuery({
     queryKey: ['delivery-schedule'],
     queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
   });
 
-  const { data: banners = [] } = useQuery({
+  const { data: bannersData = [] } = useQuery({
     queryKey: ['banners'],
     queryFn: () => base44.entities.Banner.filter({ is_active: true }, 'sort_order', 10),
   });
 
-  const { data: orders = [] } = useQuery({
+  const { data: ordersData = [] } = useQuery({
     queryKey: ['my-orders'],
     queryFn: () => base44.entities.Order.filter(
       { customer_email: user?.email },
@@ -66,7 +70,7 @@ export default function Home() {
     enabled: !!user?.email,
   });
 
-  const { data: notifications = [] } = useQuery({
+  const { data: notificationsData = [] } = useQuery({
     queryKey: ['unread-notifications'],
     queryFn: () => base44.entities.Notification.filter(
       { customer_email: user?.email, is_read: false },
@@ -75,6 +79,12 @@ export default function Home() {
     ),
     enabled: !!user?.email,
   });
+
+  const products = asList(productsData);
+  const schedules = asList(schedulesData);
+  const banners = asList(bannersData);
+  const orders = asList(ordersData);
+  const notifications = asList(notificationsData);
 
   const scheduleRules = schedules[0]?.rules || [];
   const productionInfo = getProductionInfo(scheduleRules);
@@ -157,6 +167,23 @@ export default function Home() {
           </Link>
         </div>
       </motion.div>
+
+      <div className="mt-4 px-5">
+        <Link
+          to="/event/may30"
+          className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Gift className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-foreground">May 30 Event Check-In</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+              Claim the one-time 250 point event visit bonus.
+            </span>
+          </span>
+        </Link>
+      </div>
 
       <HeroBanner banners={banners} scheduleRules={scheduleRules} heroHeadline="Build Your Routine" heroSubtext="Choose your goal. We'll handle the rest." />
 

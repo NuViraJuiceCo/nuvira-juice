@@ -1,14 +1,13 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PROGRAMS } from '@/components/home/ProgramCards';
-import { isPreLaunch } from '@/lib/launchConfig';
 
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle, Zap, Gift } from 'lucide-react';
-import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import CartDeliveryCheckPrompt from '@/components/delivery/CartDeliveryCheckPrompt';
 import { getProductionInfo, getEligibleDeliveryOptions } from '@/lib/deliveryUtils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -376,7 +375,7 @@ export default function Cart() {
             onClick={() => {
               if (!meetsMinimum) return;
               if (!user) {
-                base44.auth.redirectToLogin('/checkout');
+                redirectToLogin('/checkout');
                 return;
               }
               navigate('/checkout');

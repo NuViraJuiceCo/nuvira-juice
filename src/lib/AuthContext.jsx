@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
+import { getStoredBase44Token, redirectToLogin } from '@/lib/nativeAuthRedirect';
 
 const AuthContext = createContext();
 
@@ -27,17 +28,21 @@ export const AuthProvider = ({ children }) => {
       // The app is already running, so it's accessible
       setAppPublicSettings({ id: appParams.appId, public_settings: {} });
       
-      if (appParams.token) {
-        await checkUserAuth();
+      let currentUser = null;
+      if (getStoredBase44Token()) {
+        currentUser = await checkUserAuth();
       } else {
+        setUser(null);
         setIsLoadingAuth(false);
         setIsAuthenticated(false);
       }
       setIsLoadingPublicSettings(false);
+      return currentUser;
     } catch (error) {
       console.error('Unexpected error:', error);
       setIsLoadingPublicSettings(false);
       setIsLoadingAuth(false);
+      return null;
     }
   };
 
@@ -49,10 +54,13 @@ export const AuthProvider = ({ children }) => {
       setUser(currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
+      return currentUser;
     } catch (error) {
       // For public apps, 401 is expected when user isn't logged in — don't treat as error
+      setUser(null);
       setIsLoadingAuth(false);
       setIsAuthenticated(false);
+      return null;
     }
   };
 
@@ -83,8 +91,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const navigateToLogin = () => {
-    // Use the SDK's redirectToLogin method
-    base44.auth.redirectToLogin(window.location.href);
+    redirectToLogin(window.location.pathname);
   };
 
   const refreshUser = async () => {

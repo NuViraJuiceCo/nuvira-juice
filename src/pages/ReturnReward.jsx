@@ -6,6 +6,7 @@ import SEO from '@/components/SEO';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 
 const steps = [
   {
@@ -253,7 +254,7 @@ export default function ReturnReward() {
           </Link>
         ) : (
           <button
-            onClick={() => base44.auth.redirectToLogin('/return-reward')}
+            onClick={() => redirectToLogin('/return-reward')}
             className="w-full bg-primary rounded-2xl p-5 flex items-center gap-4 text-left"
           >
             <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center shrink-0">
