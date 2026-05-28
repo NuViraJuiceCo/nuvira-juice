@@ -77,6 +77,23 @@ function noteAttributes(order) {
   }, {});
 }
 
+function hasTag(order, expectedTag) {
+  return String(order.tags || '')
+    .split(',')
+    .map(tag => tag.trim().toLowerCase())
+    .includes(expectedTag);
+}
+
+function isAppOriginatedShopifyMirror(order) {
+  const source = String(order.source_name || '').toLowerCase();
+  const note = String(order.note || '').toLowerCase();
+  if (source === 'pos') return false;
+  return (
+    hasTag(order, 'base44-app') ||
+    note.includes('base44 order #')
+  );
+}
+
 function mapToShopifyOrder(order) {
   const channel = detectSourceChannel(order);
   const isPosOrder = order.source_name === 'pos' || channel === 'pos';
@@ -193,6 +210,16 @@ Deno.serve(async (req) => {
       error_message: 'missing_shopify_order_id',
     });
     return Response.json({ ok: true });
+  }
+
+  if (topic.startsWith('orders/') && isAppOriginatedShopifyMirror(payload)) {
+    await updateWebhookLog(base44, webhookLog, {
+      status: 'processed',
+      description: 'App-originated Shopify mirror skipped. Customer App Order plus syncOrderToHub remain the operational path.',
+      payload_preview: 'app_originated_shopify_mirror_suppressed',
+    });
+    console.log(`Skipped app-originated Shopify mirror for #${orderNumber}`);
+    return Response.json({ ok: true, skipped: true, reason: 'app_originated_shopify_mirror' });
   }
 
   // Idempotency: check for existing record
