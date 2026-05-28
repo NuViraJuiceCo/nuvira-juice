@@ -606,10 +606,21 @@ function SettingsTab() {
   const handleManualOrderSync = async () => {
     if (!manualOrderId.trim()) return;
     setResyncing(true);
-    const res = await base44.functions.invoke('shopifyResyncOrders', { order_id: manualOrderId.trim() });
-    setResyncResult(res.data);
-    queryClient.invalidateQueries();
-    setResyncing(false);
+    try {
+      const res = await base44.functions.invoke('shopifyResyncOrders', {
+        exact_order_identifier: manualOrderId.trim(),
+      });
+      setResyncResult(res.data);
+      queryClient.invalidateQueries();
+    } catch (error) {
+      setResyncResult({
+        success: false,
+        reason: 'exact_order_import_request_failed',
+        message: error?.message || 'Exact Shopify order import request failed.',
+      });
+    } finally {
+      setResyncing(false);
+    }
   };
 
   return (
@@ -618,7 +629,7 @@ function SettingsTab() {
       <div className="bg-card rounded-2xl border border-border/50 p-4 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sync Actions</p>
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Admin Shopify resync is frozen for May 30 launch. Use the Hub POS fallback/read-only checks for event monitoring unless a one-off provider resync is explicitly approved.
+          Broad Shopify resync is frozen for May 30 launch. Exact order import is a gated fallback: it requires a server flag and an exact allowlisted Shopify order id, name, or number.
         </div>
         <button onClick={handleResyncOrders} disabled={adminResyncFrozen || resyncing}
           className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50">
@@ -632,17 +643,31 @@ function SettingsTab() {
         </button>
         <div className="flex gap-2">
           <input value={manualOrderId} onChange={e => setManualOrderId(e.target.value)}
-            placeholder="Shopify Order ID (numeric)"
+            placeholder="Exact order id, #name, or number"
             className="flex-1 h-9 px-3 rounded-lg border border-border bg-secondary/30 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          <button onClick={handleManualOrderSync} disabled={adminResyncFrozen || resyncing || !manualOrderId}
+          <button onClick={handleManualOrderSync} disabled={resyncing || !manualOrderId.trim()}
             className="px-3 h-9 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-50">
-            Sync
+            Import
           </button>
         </div>
+        <p className="text-[10px] text-muted-foreground">
+          This does not enable bulk polling. If the gate or allowlist is closed, the server will refuse the import without contacting Shopify.
+        </p>
         {resyncResult && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs">
-            <p className="font-semibold text-green-800">Sync complete: {resyncResult.synced} synced, {resyncResult.failed} failed</p>
+          <div className={`rounded-xl p-3 text-xs ${resyncResult.success === false ? 'bg-amber-50 border border-amber-200' : 'bg-green-50 border border-green-200'}`}>
+            <p className={`font-semibold ${resyncResult.success === false ? 'text-amber-800' : 'text-green-800'}`}>
+              {resyncResult.success === false
+                ? `Import not run: ${resyncResult.reason || resyncResult.error || 'blocked'}`
+                : resyncResult.action
+                  ? `Exact import ${resyncResult.action}: ${resyncResult.order_number || manualOrderId}`
+                  : `Sync complete: ${resyncResult.synced ?? 0} synced, ${resyncResult.failed ?? 0} failed`}
+            </p>
+            {resyncResult.message && (
+              <p className={resyncResult.success === false ? 'text-amber-700 mt-1' : 'text-green-700 mt-1'}>
+                {resyncResult.message}
+              </p>
+            )}
           </div>
         )}
       </div>
