@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import {
-  ArrowLeft,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -196,18 +195,11 @@ export default function Resources() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      <div className="bg-primary px-4 pt-10 pb-5">
-        <Link to="/admin/operations" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </Link>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="font-heading text-2xl font-bold text-primary-foreground">Resources</h1>
-            <p className="text-primary-foreground/70 text-xs mt-0.5">Read-only Hub resources</p>
-          </div>
-          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">Read-only</span>
-        </div>
-      </div>
+      <AdminOpsHeader
+        title="Resources"
+        subtitle="Read-only Hub resources"
+        badge="Read-only"
+      />
 
       <div className="px-4 mt-4 space-y-4">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">

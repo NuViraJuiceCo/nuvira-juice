@@ -3,13 +3,14 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Plus, Bell, BellOff, Users, CheckCircle2, AlertCircle, Loader2, FlaskConical, Smartphone, RotateCw } from 'lucide-react';
+import { Send, Plus, Bell, BellOff, Users, CheckCircle2, AlertCircle, Loader2, FlaskConical, Smartphone, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import {
   getEventPushPermission,
   getEventPushSupportStatus,
@@ -310,15 +311,14 @@ export default function NotificationCampaigns() {
 
   return (
     <div className="pb-20">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
-        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <div>
-          <h1 className="font-heading text-lg font-bold">Notification Campaigns</h1>
-          <p className="text-xs text-muted-foreground">Send in-app notifications to customers</p>
-        </div>
-      </div>
+      <AdminOpsHeader
+        title="Notification Campaigns"
+        subtitle="Customer campaign sends frozen for launch"
+        badge="Frozen"
+        badgeTone="warning"
+        onBack={() => navigate(-1)}
+        actions={<Bell className="h-4 w-4 text-muted-foreground" />}
+      />
 
       <div className="px-4 mt-5">
         <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">

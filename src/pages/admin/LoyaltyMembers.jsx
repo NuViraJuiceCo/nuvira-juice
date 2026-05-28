@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Search, Mail, Phone, Calendar } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Search, Mail, Phone, Calendar } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 
 export default function LoyaltyMembers() {
   const { user } = useAuth();
@@ -36,16 +36,12 @@ export default function LoyaltyMembers() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
-        <Link to="/admin/orders">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-        </Link>
-        <span className="font-heading text-base font-semibold">Loyalty Members</span>
-        <span className="ml-auto text-xs text-muted-foreground">{filteredMembers.length} members</span>
-      </div>
+      <AdminOpsHeader
+        title="Loyalty Members"
+        subtitle={`${filteredMembers.length} members`}
+        badge="Read-only"
+        backTo="/admin/orders"
+      />
 
       <div className="p-4 space-y-4">
         {/* Search */}
