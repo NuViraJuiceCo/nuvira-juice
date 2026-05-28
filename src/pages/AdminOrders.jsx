@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import Zone3ReviewPanel from '@/components/admin/Zone3ReviewPanel';
+import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -27,18 +28,6 @@ const PICKUP_STAGES = [
   { key: 'ready_for_pickup', label: 'Ready for Pickup' },
   { key: 'picked_up', label: 'Picked Up' },
 ];
-
-const STATUS_COLORS = {
-  order_received: 'bg-blue-100 text-blue-700',
-  scheduled_for_juicing: 'bg-purple-100 text-purple-700',
-  in_production: 'bg-amber-100 text-amber-700',
-  bottled_packed: 'bg-orange-100 text-orange-700',
-  out_for_delivery: 'bg-cyan-100 text-cyan-700',
-  arriving_soon: 'bg-teal-100 text-teal-700',
-  delivered: 'bg-green-100 text-green-700',
-  ready_for_pickup: 'bg-teal-100 text-teal-700',
-  picked_up: 'bg-green-100 text-green-700',
-};
 
 const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
 const ORDER_WORKFLOW_CONTROLS_FROZEN = true;
@@ -139,7 +128,7 @@ function NativeOperationsPanel({ order }) {
     <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2 mb-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Native Operations</p>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">Customer App</span>
+        <AdminStatusPill label="Customer App" tone="native" />
       </div>
       <InfoRow label="Payment" value={formatStatusLabel(order.payment_status)} />
       <InfoRow label="Production" value={formatStatusLabel(order.native_production_status)} />
@@ -189,7 +178,7 @@ function HubOperationsPanel({ order, customerAppStatusLabel }) {
     <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2 mb-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hub Operations</p>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Read-only</span>
+        <AdminStatusPill label="Read-only" tone="hub" />
       </div>
       {hasHubOpsData ? (
         <>
@@ -249,7 +238,7 @@ function FulfillmentTasksPanel({ order }) {
     <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fulfillment Tasks</p>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Read-only</span>
+        <AdminStatusPill label="Read-only" tone="hub" />
       </div>
 
       {!shouldFetchTasks ? (
@@ -330,7 +319,7 @@ function HubTimelinePanel({ order }) {
     <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hub Timeline</p>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Read-only</span>
+        <AdminStatusPill label="Read-only" tone="hub" />
       </div>
 
       {!shouldFetchTimeline ? (
@@ -497,17 +486,13 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
           {/* Row 1: order # + status badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-bold">#{order.order_number}</p>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[order.status] || 'bg-muted text-muted-foreground'}`}>
-              {customerAppStatusLabel}
-            </span>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
-              {order.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'}
-            </span>
+            <AdminStatusPill value={order.status} label={customerAppStatusLabel} />
+            <AdminStatusPill value={order.fulfillment_type} label={order.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'} context="source" />
             {order.is_hub_order && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Hub</span>
+              <AdminStatusPill label="Hub" tone="hub" />
             )}
             {order.is_native_order && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Native Ops</span>
+              <AdminStatusPill label="Native Ops" tone="native" />
             )}
           </div>
           {/* Row 2: customer name (always shown if available) */}
@@ -616,6 +601,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                   description="Order workflow buttons are paused for the May 30 launch freeze. Use the dedicated Operations, Production, and Delivery Queue views for operational actions."
                   badge="Launch freeze"
                 />
+                <AdminStatusLegend />
 
                 {/* Progress */}
                 <div>

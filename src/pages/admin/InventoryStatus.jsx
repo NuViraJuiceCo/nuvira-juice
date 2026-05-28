@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { AlertTriangle, ArrowLeft, MapPin, Package, RefreshCw, Search, TrendingDown } from 'lucide-react';
+import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -23,14 +24,6 @@ function formatStatus(value) {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ') || 'Not set';
-}
-
-function statusClass(status) {
-  if (status === 'out_of_stock') return 'bg-red-100 text-red-800';
-  if (status === 'critical') return 'bg-red-50 text-red-700';
-  if (status === 'low') return 'bg-amber-50 text-amber-700';
-  if (status === 'ok') return 'bg-emerald-50 text-emerald-700';
-  return 'bg-muted text-muted-foreground';
 }
 
 function categorySelectOptions(items, selectedCategory) {
@@ -56,11 +49,7 @@ function StatCard({ icon: Icon, label, value, sublabel, isRefreshing }) {
 }
 
 function StatusBadge({ status }) {
-  return (
-    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass(status)}`}>
-      {formatStatus(status)}
-    </span>
-  );
+  return <AdminStatusPill value={status} label={formatStatus(status)} size="md" />;
 }
 
 function InventoryTable({ items }) {
@@ -261,6 +250,7 @@ export default function InventoryStatus() {
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Inventory view</p>
             <p className="text-[10px] text-muted-foreground">Read-only Hub data · No actions available here.</p>
+            <AdminStatusLegend className="mt-2" />
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>

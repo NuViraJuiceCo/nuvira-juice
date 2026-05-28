@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, Database, Lock, Package, RefreshCw } from 'lucide-react';
+import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -73,14 +74,6 @@ function compactOrderNumbers(orderNumbers) {
   const visible = orderNumbers.slice(0, 8);
   const remaining = orderNumbers.length - visible.length;
   return remaining > 0 ? `${visible.join(', ')} +${remaining} more` : visible.join(', ');
-}
-
-function statusClass(status) {
-  const key = (status || '').toString().toLowerCase();
-  if (key.includes('complete') || key.includes('ready')) return 'bg-green-100 text-green-700';
-  if (key.includes('progress') || key.includes('production')) return 'bg-blue-100 text-blue-700';
-  if (key.includes('hold') || key.includes('blocked')) return 'bg-amber-100 text-amber-800';
-  return 'bg-muted text-muted-foreground';
 }
 
 function isDoneStatus(status) {
@@ -266,7 +259,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="font-semibold text-foreground">{formatLabel(row.status)}</p>
+                      <AdminStatusPill value={row.status} label={formatLabel(row.status)} />
                       <p className="text-muted-foreground">
                         {formatNumber(row.current_stock)} → {formatNumber(row.projected_stock)}
                       </p>
@@ -336,14 +329,12 @@ function BatchCard({ batch, onDeductionSuccess }) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {batch.is_locked && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground border border-border/60">
               <Lock className="w-3 h-3" />
               Locked
             </span>
           )}
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusClass(batch.status)}`}>
-            {formatLabel(batch.status)}
-          </span>
+          <AdminStatusPill value={batch.status} label={formatLabel(batch.status)} />
         </div>
       </div>
 
@@ -547,6 +538,7 @@ export default function ProductionQueueSummary() {
           <p className="text-[10px] text-muted-foreground">
             Hub data · Inventory deduction is preview-first and remains blocked unless the Hub gates allow the exact batch.
           </p>
+          <AdminStatusLegend />
         </div>
 
         <div className="grid grid-cols-3 gap-2">

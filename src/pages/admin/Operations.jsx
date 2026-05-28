@@ -17,6 +17,7 @@ import {
   Truck,
   UsersRound,
 } from 'lucide-react';
+import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -446,16 +447,17 @@ function OperationsSnapshot({ user }) {
 }
 
 function Badge({ label }) {
-  const isWriteBadge = label.includes('write');
-  return (
-    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-      isWriteBadge
-        ? 'bg-amber-50 text-amber-800 border border-amber-200'
-        : 'bg-secondary text-secondary-foreground border border-border/50'
-    }`}>
-      {label}
-    </span>
-  );
+  const lower = label.toLowerCase();
+  const tone = lower.includes('hub')
+    ? 'hub'
+    : lower.includes('controlled') || lower.includes('write')
+      ? 'warning'
+      : lower.includes('may 30')
+        ? 'source'
+        : lower.includes('read-only')
+          ? 'neutral'
+          : 'neutral';
+  return <AdminStatusPill label={label} tone={tone} />;
 }
 
 function OperationCard({ card }) {
@@ -542,6 +544,7 @@ export default function Operations() {
           <p className="text-[10px] text-muted-foreground mt-0.5">
             Navigation-only workspace for existing Customer App admin operations pages.
           </p>
+          <AdminStatusLegend className="mt-2" />
         </div>
 
         {sections.map(section => (
