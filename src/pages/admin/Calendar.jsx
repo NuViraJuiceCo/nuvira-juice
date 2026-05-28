@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Package,
   RefreshCw,
@@ -37,6 +39,28 @@ function lastDayOfMonth(dateStr) {
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 }
 
+function addDays(dateStr, days) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return [
+    date.getFullYear(),
+    `${date.getMonth() + 1}`.padStart(2, '0'),
+    `${date.getDate()}`.padStart(2, '0'),
+  ].join('-');
+}
+
+function addMonths(dateStr, months) {
+  const [year, month] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, 1);
+  date.setMonth(date.getMonth() + months);
+  return [
+    date.getFullYear(),
+    `${date.getMonth() + 1}`.padStart(2, '0'),
+    '01',
+  ].join('-');
+}
+
 function daysInclusive(from, to) {
   if (!from || !to) return 0;
   const fromDate = new Date(`${from}T00:00:00.000Z`);
@@ -53,6 +77,27 @@ function formatDate(value) {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+function formatMonthLabel(from, to) {
+  if (!from || !to) return 'Calendar';
+  const [fromYear, fromMonth] = from.split('-').map(Number);
+  const [toYear, toMonth] = to.split('-').map(Number);
+  const startLabel = new Date(fromYear, fromMonth - 1, 1).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
+  if (fromYear === toYear && fromMonth === toMonth) return startLabel;
+  const endLabel = new Date(toYear, toMonth - 1, 1).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
+  return `${startLabel} - ${endLabel}`;
+}
+
+function dayOfWeek(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).getDay();
 }
 
 function formatDateTime(value) {
@@ -207,6 +252,10 @@ function CalendarItem({ item }) {
   return null;
 }
 
+function groupLookup(dates) {
+  return new Map((dates || []).map(group => [group.date, group]));
+}
+
 function DateGroup({ group }) {
   return (
     <section className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
@@ -236,32 +285,148 @@ function DateGroup({ group }) {
   );
 }
 
-function MonthGrid({ dates }) {
-  if (!Array.isArray(dates) || dates.length === 0) {
+function CalendarCell({ cell, selectedDate, onSelectDate }) {
+  const group = cell.group;
+  const items = group?.items || [];
+  const hasItems = items.length > 0;
+  const isSelected = cell.date === selectedDate;
+  const today = todayDate();
+  const isToday = cell.date === today;
+
+  return (
+    <button
+      type="button"
+      disabled={!cell.inRange}
+      onClick={() => onSelectDate(cell.date)}
+      className={`min-h-[112px] rounded-xl border p-2 text-left transition ${
+        !cell.inRange
+          ? 'border-transparent bg-muted/20 opacity-40'
+          : isSelected
+            ? 'border-primary bg-primary/10 shadow-sm'
+            : hasItems
+              ? 'border-cyan-300 bg-cyan-50/70 hover:border-primary'
+              : 'border-border/60 bg-card hover:border-primary/60'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className={`text-xs font-black ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+            {cell.dayNumber}
+          </p>
+          {isToday && (
+            <span className="mt-0.5 inline-flex rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-black text-emerald-950">
+              Today
+            </span>
+          )}
+        </div>
+        {hasItems && (
+          <span className="rounded-full bg-slate-950 px-1.5 py-0.5 text-[9px] font-black text-white">
+            {items.length}
+          </span>
+        )}
+      </div>
+
+      {cell.inRange && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {Number(group?.counts?.events || 0) > 0 && <TypeChip label={`${group.counts.events} event`} />}
+          {Number(group?.counts?.production || 0) > 0 && <TypeChip label={`${group.counts.production} production`} />}
+          {Number(group?.counts?.delivery || 0) > 0 && <TypeChip label={`${group.counts.delivery} delivery`} />}
+          {Number(group?.counts?.compliance || 0) > 0 && <TypeChip label={`${group.counts.compliance} compliance`} />}
+        </div>
+      )}
+
+      {cell.inRange && hasItems && (
+        <div className="mt-2 space-y-1">
+          {items.slice(0, 2).map((item, index) => (
+            <p key={`${item.type}-${item.id || index}`} className="truncate text-[10px] font-semibold text-muted-foreground">
+              {formatLabel(item.type)} · {item.title || item.batch_id || item.product_name || item.order_number || 'Scheduled'}
+            </p>
+          ))}
+          {items.length > 2 && (
+            <p className="text-[10px] font-semibold text-primary">+{items.length - 2} more</p>
+          )}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function buildCalendarCells(from, to, dates) {
+  if (!from || !to) return [];
+  const groups = groupLookup(dates);
+  const start = addDays(from, -dayOfWeek(from));
+  const endOffset = 6 - dayOfWeek(to);
+  const end = addDays(to, endOffset);
+  const cells = [];
+  let current = start;
+  while (current <= end) {
+    const [, , day] = current.split('-');
+    cells.push({
+      date: current,
+      dayNumber: Number(day),
+      inRange: current >= from && current <= to,
+      group: groups.get(current),
+    });
+    current = addDays(current, 1);
+  }
+  return cells;
+}
+
+function MonthGrid({ dates, rangeFrom, rangeTo, selectedDate, onSelectDate }) {
+  const cells = buildCalendarCells(rangeFrom, rangeTo, dates);
+  const selectedGroup = (dates || []).find(group => group.date === selectedDate);
+
+  if (cells.length === 0) {
     return (
       <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
-        <p className="text-sm font-semibold text-foreground">No calendar items to place on the month grid</p>
+        <p className="text-sm font-semibold text-foreground">No calendar range to display</p>
         <p className="text-xs text-muted-foreground mt-1">Try another preset or a valid custom range.</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-      {dates.map(group => (
-        <div key={group.date} className="rounded-xl border border-border/50 bg-card p-3 min-h-[120px]">
-          <p className="text-xs font-bold text-foreground">{formatDate(group.date)}</p>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {Number(group.counts?.events || 0) > 0 && <TypeChip label={`${group.counts.events} events`} />}
-            {Number(group.counts?.production || 0) > 0 && <TypeChip label={`${group.counts.production} production`} />}
-            {Number(group.counts?.delivery || 0) > 0 && <TypeChip label={`${group.counts.delivery} delivery`} />}
-            {Number(group.counts?.compliance || 0) > 0 && <TypeChip label={`${group.counts.compliance} compliance`} />}
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <div className="min-w-[760px] space-y-2">
+          <div className="grid grid-cols-7 gap-2">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="px-2 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                {day}
+              </div>
+            ))}
           </div>
-          <p className="text-[10px] text-muted-foreground mt-3">
-            {(group.items || []).length} read-only item{(group.items || []).length === 1 ? '' : 's'}
-          </p>
+          <div className="grid grid-cols-7 gap-2">
+            {cells.map(cell => (
+              <CalendarCell
+                key={cell.date}
+                cell={cell}
+                selectedDate={selectedDate}
+                onSelectDate={onSelectDate}
+              />
+            ))}
+          </div>
         </div>
-      ))}
+      </div>
+
+      <section className="rounded-xl border border-border/60 bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Selected Day</p>
+            <h2 className="mt-0.5 text-sm font-black text-foreground">{formatDate(selectedDate)}</h2>
+          </div>
+          <TypeChip label={`${selectedGroup?.items?.length || 0} items`} />
+        </div>
+        {selectedGroup?.items?.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {selectedGroup.items.map((item, index) => (
+              <CalendarItem key={`${selectedGroup.date}-${item.type}-${item.id || index}`} item={item} />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-muted-foreground">No read-only operations items returned for this day.</p>
+        )}
+      </section>
     </div>
   );
 }
@@ -277,7 +442,8 @@ export default function Calendar() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [viewMode, setViewMode] = useState('agenda');
+  const [viewMode, setViewMode] = useState('month');
+  const [selectedDate, setSelectedDate] = useState(today);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -335,6 +501,31 @@ export default function Calendar() {
     return presetOptions.find(option => option.value === preset)?.label || 'Current Month';
   })();
 
+  const visibleDateFrom = data?.date_from || (isCustom ? appliedDateFrom : firstDayOfMonth(today));
+  const visibleDateTo = data?.date_to || (isCustom ? appliedDateTo : lastDayOfMonth(today));
+
+  const applyMonthRange = (monthStart) => {
+    const from = firstDayOfMonth(monthStart);
+    const to = lastDayOfMonth(monthStart);
+    setDateFrom(from);
+    setDateTo(to);
+    setAppliedDateFrom(from);
+    setAppliedDateTo(to);
+    setPreset('custom');
+    setSelectedDate(from);
+  };
+
+  const applyPreset = (value) => {
+    setPreset(value);
+    if (value === 'today') {
+      setSelectedDate(today);
+    } else if (value === 'current_month') {
+      setSelectedDate(today);
+    } else if (value === 'next_30_days') {
+      setSelectedDate(today);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background pb-10">
       <AdminOpsHeader
@@ -364,7 +555,7 @@ export default function Calendar() {
               <button
                 key={option.value}
                 type="button"
-                onClick={() => setPreset(option.value)}
+                onClick={() => applyPreset(option.value)}
                 className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
                   preset === option.value
                     ? 'bg-primary text-primary-foreground border-primary'
@@ -472,9 +663,33 @@ export default function Calendar() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Calendar view</p>
-            <p className="text-[10px] text-muted-foreground">Read-only schedule visibility. Event, production, delivery, and order actions are not available here.</p>
+            <p className="text-[10px] text-muted-foreground">Read-only schedule visibility. Use the month controls to move the calendar; event, production, delivery, and order actions are not available here.</p>
+            <p className="text-[10px] font-semibold text-primary mt-1">{formatMonthLabel(visibleDateFrom, visibleDateTo)}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => applyMonthRange(addMonths(visibleDateFrom, -1))}
+              className="h-8 w-8 rounded-lg border border-border bg-background text-muted-foreground hover:text-foreground"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="mx-auto h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => applyMonthRange(today)}
+              className="h-8 px-3 rounded-lg border border-border bg-background text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => applyMonthRange(addMonths(visibleDateFrom, 1))}
+              className="h-8 w-8 rounded-lg border border-border bg-background text-muted-foreground hover:text-foreground"
+              aria-label="Next month"
+            >
+              <ChevronRight className="mx-auto h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={() => setViewMode('agenda')}
@@ -520,7 +735,13 @@ export default function Calendar() {
             <p className="text-xs text-muted-foreground mt-1">Try another preset, filter, or valid custom date range.</p>
           </div>
         ) : !showError && viewMode === 'month' ? (
-          <MonthGrid dates={dates} />
+          <MonthGrid
+            dates={dates}
+            rangeFrom={visibleDateFrom}
+            rangeTo={visibleDateTo}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+          />
         ) : !showError ? (
           <div className="space-y-3">
             {dates.map(group => (
