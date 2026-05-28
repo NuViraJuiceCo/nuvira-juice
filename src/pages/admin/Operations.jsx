@@ -198,19 +198,19 @@ function validateRange(from, to) {
 
 function SnapshotMetricCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefreshing }) {
   const toneClass = {
-    default: 'border-border/50 bg-card',
-    info: 'border-blue-100 bg-blue-50/60',
-    success: 'border-emerald-100 bg-emerald-50/60',
-    warning: 'border-amber-100 bg-amber-50/60',
-    danger: 'border-red-100 bg-red-50/60',
-  }[tone] || 'border-border/50 bg-card';
+    default: 'border-slate-300 bg-slate-100 text-slate-950 border-l-slate-600',
+    info: 'border-sky-300 bg-sky-100 text-sky-950 border-l-sky-600',
+    success: 'border-emerald-300 bg-emerald-100 text-emerald-950 border-l-emerald-600',
+    warning: 'border-amber-300 bg-amber-100 text-amber-950 border-l-amber-500',
+    danger: 'border-rose-300 bg-rose-100 text-rose-950 border-l-rose-600',
+  }[tone] || 'border-slate-300 bg-slate-100 text-slate-950 border-l-slate-600';
 
   return (
-    <div className={`rounded-xl border p-3 ${toneClass}`}>
-      {Icon && <Icon className={`w-4 h-4 text-primary mb-1 ${isRefreshing ? 'animate-spin' : ''}`} />}
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
-      <p className="text-lg font-bold text-foreground">{formatNumber(value)}</p>
-      {sublabel && <p className="text-[10px] text-muted-foreground">{sublabel}</p>}
+    <div className={`rounded-xl border border-l-4 p-3 shadow-sm ${toneClass}`}>
+      {Icon && <Icon className={`w-4 h-4 mb-1 ${isRefreshing ? 'animate-spin' : ''}`} />}
+      <p className="text-[10px] uppercase tracking-wider font-black opacity-75">{label}</p>
+      <p className="text-xl font-black">{formatNumber(value)}</p>
+      {sublabel && <p className="text-[10px] font-semibold opacity-75">{sublabel}</p>}
     </div>
   );
 }
@@ -282,22 +282,22 @@ function OperationsSnapshot({ user }) {
   ].every(value => Number(value || 0) === 0);
 
   return (
-    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+    <section className="rounded-xl border border-slate-700 bg-slate-950 p-4 space-y-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-foreground">Operations Snapshot</h2>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground border border-border/50">
+            <h2 className="text-sm font-black text-white">Operations Snapshot</h2>
+            <span className="rounded-full border border-cyan-500 bg-cyan-600 px-2 py-0.5 text-[10px] font-black text-white">
               Read-only
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">Aggregate Hub summary</p>
+          <p className="text-xs font-medium text-slate-300 mt-0.5">Aggregate Hub summary</p>
         </div>
         <div className="text-right">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Range</p>
-          <p className="text-xs font-semibold text-foreground">{contextLabel}</p>
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-black">Range</p>
+          <p className="text-xs font-bold text-white">{contextLabel}</p>
           {data?.generated_at && (
-            <p className="text-[10px] text-muted-foreground mt-0.5">
+            <p className="text-[10px] text-slate-400 mt-0.5">
               Generated: {formatDateTime(data.generated_at)}
             </p>
           )}
@@ -314,8 +314,8 @@ function OperationsSnapshot({ user }) {
             }}
             className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
               preset === option.value
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-background text-muted-foreground border-border hover:text-foreground'
+                ? 'bg-emerald-500 text-emerald-950 border-emerald-400'
+                : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-emerald-500 hover:text-white'
             }`}
           >
             {option.label}
@@ -325,25 +325,25 @@ function OperationsSnapshot({ user }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Custom From</span>
+          <span className="text-[10px] uppercase tracking-wider text-slate-400 font-black">Custom From</span>
           <input
             type="date"
             value={dateFrom}
             onChange={(event) => {
               setDateFrom(event.target.value);
             }}
-            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            className="w-full h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white"
           />
         </label>
         <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Custom To</span>
+          <span className="text-[10px] uppercase tracking-wider text-slate-400 font-black">Custom To</span>
           <input
             type="date"
             value={dateTo}
             onChange={(event) => {
               setDateTo(event.target.value);
             }}
-            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            className="w-full h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white"
           />
         </label>
       </div>
@@ -362,8 +362,8 @@ function OperationsSnapshot({ user }) {
             rangeError
               ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
               : preset === 'custom' && appliedDateFrom === dateFrom && appliedDateTo === dateTo
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-background text-muted-foreground border-border hover:text-foreground'
+                ? 'bg-emerald-500 text-emerald-950 border-emerald-400'
+                : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-emerald-500 hover:text-white'
           }`}
         >
           Apply Range
@@ -397,7 +397,7 @@ function OperationsSnapshot({ user }) {
       ) : (
         <div className="space-y-4">
           {allZero && !showError && (
-            <div className="rounded-lg border border-border/50 bg-background p-3 text-xs text-muted-foreground">
+            <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-medium text-slate-300">
               No aggregate activity found for this range.
             </div>
           )}
@@ -460,23 +460,40 @@ function Badge({ label }) {
   return <AdminStatusPill label={label} tone={tone} />;
 }
 
+function cardVisibilityTone(title) {
+  const key = title.toLowerCase();
+  if (key.includes('order')) return { border: 'border-sky-500', gradient: 'from-sky-500 to-blue-700' };
+  if (key.includes('pos') || key.includes('event')) return { border: 'border-fuchsia-500', gradient: 'from-fuchsia-500 to-purple-700' };
+  if (key.includes('production')) return { border: 'border-amber-400', gradient: 'from-amber-400 to-orange-700' };
+  if (key.includes('inventory')) return { border: 'border-rose-500', gradient: 'from-rose-500 to-red-700' };
+  if (key.includes('delivery')) return { border: 'border-emerald-500', gradient: 'from-emerald-500 to-green-700' };
+  if (key.includes('calendar')) return { border: 'border-cyan-500', gradient: 'from-cyan-500 to-teal-700' };
+  if (key.includes('resource')) return { border: 'border-indigo-500', gradient: 'from-indigo-500 to-blue-700' };
+  if (key.includes('alert')) return { border: 'border-red-500', gradient: 'from-red-500 to-rose-700' };
+  if (key.includes('sync')) return { border: 'border-violet-500', gradient: 'from-violet-500 to-indigo-700' };
+  return { border: 'border-slate-600', gradient: 'from-slate-600 to-slate-800' };
+}
+
 function OperationCard({ card }) {
   const Icon = card.icon;
+  const tone = cardVisibilityTone(card.title);
 
   return (
     <Link to={card.route} className="block">
-      <div className="group rounded-xl border border-border/50 bg-card p-4 active:scale-[0.99] transition-all hover:border-primary/30 hover:shadow-sm">
+      <div className={`group overflow-hidden rounded-xl border bg-card active:scale-[0.99] transition-all hover:-translate-y-0.5 hover:shadow-md ${tone.border}`}>
+        <div className={`h-1.5 bg-gradient-to-r ${tone.gradient}`} />
+        <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20">
-            <Icon className="w-5 h-5 text-primary" />
+          <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${tone.gradient} flex items-center justify-center shrink-0 shadow-sm`}>
+            <Icon className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <h3 className="text-sm font-bold text-foreground">{card.title}</h3>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{card.description}</p>
+                <h3 className="text-sm font-black text-foreground">{card.title}</h3>
+                <p className="text-xs font-medium text-muted-foreground mt-1 leading-relaxed">{card.description}</p>
               </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+              <ChevronRight className="w-4 h-4 text-muted-foreground/70 shrink-0 group-hover:translate-x-0.5 transition-transform" />
             </div>
 
             <div className="flex flex-wrap gap-1.5 mt-3">
@@ -485,6 +502,7 @@ function OperationCard({ card }) {
               ))}
             </div>
           </div>
+        </div>
         </div>
       </div>
     </Link>
@@ -495,8 +513,8 @@ function OperationSection({ section }) {
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-sm font-bold text-foreground">{section.title}</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">{section.description}</p>
+        <h2 className="text-sm font-black text-foreground">{section.title}</h2>
+        <p className="text-xs font-medium text-muted-foreground mt-0.5">{section.description}</p>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {section.cards.map(card => (
@@ -532,9 +550,9 @@ export default function Operations() {
       <div className="px-4 mt-4 space-y-5">
         <OperationsSnapshot user={user} />
 
-        <div className="rounded-xl border border-border/50 bg-card p-3">
-          <p className="text-xs font-semibold text-foreground">Migrated Hub surfaces</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950 p-3 shadow-sm">
+          <p className="text-xs font-black text-white">Migrated Hub surfaces</p>
+          <p className="text-[10px] font-medium text-emerald-100 mt-0.5">
             Navigation-only workspace for existing Customer App admin operations pages.
           </p>
           <AdminStatusLegend className="mt-2" />
