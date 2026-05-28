@@ -5,6 +5,19 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 
+async function authorizeCheckoutCustomer(base44, customerEmail) {
+  const user = await base44.auth.me().catch(() => null);
+  const requested = String(customerEmail || '').trim().toLowerCase();
+  const requester = String(user?.email || '').trim().toLowerCase();
+  if (!user?.email || !requested) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (user.role === 'admin' || requester === requested) {
+    return null;
+  }
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
 // ── Inline zone classifier (mirrors validateDeliveryEligibility, no inter-function call needed) ──
 const ORIGIN_ADDRESS = "619 N Main St, O'Fallon, MO 63366";
 const ZONE_RULES = [
@@ -211,6 +224,8 @@ Deno.serve(async (req) => {
       // Zone eligibility (may be pre-validated by frontend; we re-validate server-side)
       zone_key: clientZoneKey,
     } = await req.json();
+    const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
+    if (unauthorized) return unauthorized;
 
     // ── SERVER-SIDE ELIGIBILITY GUARD ────────────────────────────────────────
     // Always re-validate delivery eligibility on the backend before creating a PI.

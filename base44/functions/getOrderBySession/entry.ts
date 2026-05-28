@@ -3,6 +3,23 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function requireAuthenticatedUser(base44) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user?.email) {
+    return { response: Response.json({ error: 'unauthorized' }, { status: 401 }) };
+  }
+  return { user };
+}
+
+function authorizeOrderAccess(user, order) {
+  const requester = String(user?.email || '').trim().toLowerCase();
+  const owner = String(order?.customer_email || '').trim().toLowerCase();
+  if (user?.role === 'admin' || requester === owner) {
+    return null;
+  }
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
 /**
  * Look up an order by Stripe session_id.
  * 1. Check local Order entity by stripe_checkout_session_id
@@ -18,6 +35,8 @@ Deno.serve(async (req) => {
     if (!session_id) {
       return Response.json({ error: 'session_id is required' }, { status: 400 });
     }
+    const auth = await requireAuthenticatedUser(base44);
+    if (auth.response) return auth.response;
 
     console.log(`[getOrderBySession] Looking up session: ${session_id}`);
 
@@ -28,6 +47,8 @@ Deno.serve(async (req) => {
       });
       if (ordersBySession.length > 0) {
         console.log(`[getOrderBySession] Found order by stripe_checkout_session_id: ${ordersBySession[0].order_number}`);
+        const forbidden = authorizeOrderAccess(auth.user, ordersBySession[0]);
+        if (forbidden) return forbidden;
         return Response.json({ order: ordersBySession[0], found: true });
       }
     } catch (e) {
@@ -70,6 +91,8 @@ Deno.serve(async (req) => {
         const orders = await base44.asServiceRole.entities.Order.filter({ order_number: orderNumber });
         if (orders.length > 0) {
           console.log(`[getOrderBySession] Found order by order_number: ${orderNumber}`);
+          const forbidden = authorizeOrderAccess(auth.user, orders[0]);
+          if (forbidden) return forbidden;
           return Response.json({
             order: orders[0],
             found: true,

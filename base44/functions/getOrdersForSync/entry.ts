@@ -1,7 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+function authorizeInternalSync(req) {
+  const expected = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '';
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!expected || !token || token !== expected) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   try {
+    const unauthorized = authorizeInternalSync(req);
+    if (unauthorized) return unauthorized;
+
     const base44 = createClientFromRequest(req);
     const body = await req.json();
     const { date } = body;

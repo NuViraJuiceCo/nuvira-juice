@@ -17,6 +17,13 @@ const HUB_API_URL = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '')}/a
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function requireAdmin(base44) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user?.email) return Response.json({ error: 'unauthorized' }, { status: 401 });
+  if (user.role !== 'admin') return Response.json({ error: 'forbidden' }, { status: 403 });
+  return null;
+}
+
 Deno.serve(async (req) => {
   try {
     if (Deno.env.get('ENABLE_LEGACY_PAYMENT_SUBSCRIPTION_TOOLS') !== 'true') {
@@ -29,6 +36,8 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
+    const unauthorized = await requireAdmin(base44);
+    if (unauthorized) return unauthorized;
     const { subscription_id, stripe_subscription_id, force = false } = await req.json();
 
     if (!subscription_id && !stripe_subscription_id) {

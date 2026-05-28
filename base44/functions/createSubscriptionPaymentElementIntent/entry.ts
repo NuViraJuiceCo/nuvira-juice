@@ -69,6 +69,17 @@ async function getSubDeliveryEligibility(address, cartSubtotal, orderType) {
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function authorizeCheckoutCustomer(base44, customerEmail) {
+  const user = await base44.auth.me().catch(() => null);
+  const requested = String(customerEmail || '').trim().toLowerCase();
+  const requester = String(user?.email || '').trim().toLowerCase();
+  if (!user?.email || !requested) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (user.role === 'admin' || requester === requested) return null;
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
 
 
 Deno.serve(async (req) => {
@@ -96,6 +107,8 @@ Deno.serve(async (req) => {
       address_postal_code,
       delivery_address,
     } = await req.json();
+    const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
+    if (unauthorized) return unauthorized;
 
     if (!plan_id || !customer_email) {
       return Response.json({ error_code: 'MISSING_PARAMS', error: 'Missing plan_id or customer_email' }, { status: 400 });

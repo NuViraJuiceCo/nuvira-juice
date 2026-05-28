@@ -3,6 +3,13 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function requireAdmin(base44) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user?.email) return Response.json({ error: 'unauthorized' }, { status: 401 });
+  if (user.role !== 'admin') return Response.json({ error: 'forbidden' }, { status: 403 });
+  return null;
+}
+
 /**
  * Monitors subscription loyalty behavior during/after purchase.
  * Verifies:
@@ -30,6 +37,8 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
+    const unauthorized = await requireAdmin(base44);
+    if (unauthorized) return unauthorized;
     const { customer_email, stripe_subscription_id } = await req.json();
 
     if (!customer_email) {
