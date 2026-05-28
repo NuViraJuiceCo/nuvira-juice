@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     console.log(`[syncRefundToHub] Refund details: amount=$${order.refund_amount}, id=${order.refund_id}, full=${!order.is_partial_refund}`);
 
     // Delegate to syncOrderToHub with refund event
-    const syncResult = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+    const syncInvokeResult = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
       order_id: order.id,
       stripe_session: {
         payment_status: 'refunded',
@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
       },
       triggered_by: triggered_by || 'refund_sync_helper',
     });
+    const syncResult = syncInvokeResult?.data || syncInvokeResult || {};
 
     console.log(`[syncRefundToHub] Sync result status: ${syncResult?.success ? 'success' : 'failed'}`);
     console.log(`[syncRefundToHub] Hub action: ${syncResult?.hub_action}`);

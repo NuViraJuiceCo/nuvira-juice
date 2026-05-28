@@ -702,6 +702,8 @@ Deno.serve(async (req) => {
       // Refund-specific fields
       refunded_at:      order.refunded_at      || null,
       refund_id:        order.refund_id        || null,
+      stripe_charge_id:  order.stripe_charge_id || order.refund_id || null,
+      stripe_refund_id:  order.stripe_refund_id || null,
       refund_amount:    order.refund_amount    || null,
       is_partial_refund: order.is_partial_refund || false,
     },
@@ -771,32 +773,40 @@ Deno.serve(async (req) => {
     }
 
     // --- Interpret Hub response contract ---
-    // Hub should return: { action, hub_order_id?, matched_hub_order_id?, status?, note? }
-    const hubAction = typeof hubResponse === 'object' ? (hubResponse?.action || hubResponse?.status || null) : null;
+    // Hub create/update returns { action }, while refund cascades return
+    // { status: "success", refund_status }. Treat confirmed refund statuses
+    // as operational sync outcomes so refund cascades do not look retryable.
+    const rawHubAction = typeof hubResponse === 'object' ? (hubResponse?.action || hubResponse?.status || null) : null;
+    const hubRefundStatus = eventType === 'order.refunded' && typeof hubResponse === 'object'
+      ? hubResponse?.refund_status
+      : null;
+    const hubAction = hubRefundStatus || rawHubAction;
     const hubOrderId = typeof hubResponse === 'object' ? (hubResponse?.hub_order_id || hubResponse?.order_id || null) : null;
     const matchedHubOrderId = typeof hubResponse === 'object' ? (hubResponse?.matched_hub_order_id || null) : null;
 
     let logStatus;
     let logLabel;
 
-    if (hubAction === 'created' || hubAction === 'updated') {
+    if (hubAction === 'created' || hubAction === 'updated' || hubAction === 'refund_processed') {
       // Confirmed operational sync — Hub created or updated a record
       logStatus = 'success';
       logLabel  = `✅ Hub ${hubAction} order. hub_order_id=${hubOrderId}`;
       console.log(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
 
-    } else if (hubAction === 'dedupe_exact_match') {
+    } else if (hubAction === 'dedupe_exact_match' || (eventType === 'order.refunded' && hubAction === 'skipped')) {
       // Hub matched an identical existing order — no new record created but order IS in Hub
       logStatus = 'deduped';
-      logLabel  = `🔁 Hub dedupe_exact_match. matched_hub_order_id=${matchedHubOrderId}`;
+      logLabel  = hubAction === 'skipped'
+        ? `🔁 Hub refund cascade already applied. hub_order_id=${hubOrderId}`
+        : `🔁 Hub dedupe_exact_match. matched_hub_order_id=${matchedHubOrderId}`;
       console.log(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
 
-    } else if (hubAction === 'queued_for_review') {
+    } else if (hubAction === 'queued_for_review' || hubAction === 'partial_refund_flagged_for_review') {
       logStatus = 'queued_for_review';
       logLabel  = `⏳ Hub queued_for_review. No operational record yet.`;
       console.warn(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
 
-    } else if (hubAction === 'rejected') {
+    } else if (hubAction === 'rejected' || hubAction === 'order_not_found') {
       logStatus = 'rejected';
       logLabel  = `🚫 Hub rejected order. Response: ${JSON.stringify(hubResponse).substring(0, 200)}`;
       console.error(`syncOrderToHub: ${logLabel} for ${order.order_number}`);
