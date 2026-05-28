@@ -86,6 +86,7 @@ export default function Checkout() {
   const [publishableKey, setPublishableKey] = useState(null);
   const [pendingOrderNumber, setPendingOrderNumber] = useState(null);
   const [paymentTotal, setPaymentTotal] = useState(0);
+  const [confirmedDeliverySchedule, setConfirmedDeliverySchedule] = useState(null);
   const [usePoints, setUsePoints] = useState(false);
   const [smsConsent, setSmsConsent] = useState(false);
   const [showOutOfArea, setShowOutOfArea] = useState(false);
@@ -464,6 +465,7 @@ export default function Checkout() {
       setPublishableKey(res.data.publishableKey);
       setPendingOrderNumber(res.data.orderNumber);
       setPaymentTotal(res.data.effectiveTotal ?? total);
+      setConfirmedDeliverySchedule(res.data.confirmedDeliverySchedule || null);
       setIsSubmitting(false);
     } else {
       if (res.data?.error_code === 'STALE_DELIVERY_SELECTION') {
@@ -840,6 +842,19 @@ export default function Checkout() {
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Payment</h3>
             <p className="text-[11px] text-muted-foreground">Secure checkout — card, Link, and wallet payments accepted where available.</p>
           </div>
+          {confirmedDeliverySchedule?.delivery_date && (
+            <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-1">
+                Confirmed Delivery
+              </p>
+              <p className="text-sm font-semibold text-foreground">
+                {format(new Date(confirmedDeliverySchedule.delivery_date + 'T12:00:00'), 'EEEE, MMMM d')}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {confirmedDeliverySchedule.delivery_window_label || 'Delivery window confirmed'} · Fresh made the day before
+              </p>
+            </div>
+          )}
           <EmbeddedPayment
             clientSecret={clientSecret}
             publishableKey={publishableKey}
@@ -856,7 +871,7 @@ export default function Checkout() {
             }}
           />
           <button
-            onClick={() => { setClientSecret(null); setPendingOrderNumber(null); }}
+            onClick={() => { setClientSecret(null); setPendingOrderNumber(null); setConfirmedDeliverySchedule(null); }}
             className="w-full text-center text-xs text-muted-foreground underline mt-3"
           >
             ← Edit order details
