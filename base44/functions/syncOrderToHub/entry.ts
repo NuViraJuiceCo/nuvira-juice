@@ -478,8 +478,17 @@ async function maybeRunMay30NativeOrderOps({ base44, payload, body }) {
 }
 
 Deno.serve(async (req) => {
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+  }
+
   const base44 = createClientFromRequest(req);
-  const body   = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: 'invalid_json' }, { status: 400 });
+  }
 
   let order = body.data;
   const stripeSession = body.stripe_session || null;
