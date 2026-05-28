@@ -17,6 +17,21 @@ function isPreorderWindow() {
   return now >= PREORDER_START && now <= PREORDER_END;
 }
 
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+async function requireOwnerOrAdmin(base44, email) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user) return { response: Response.json({ error: 'unauthorized' }, { status: 401 }) };
+  const targetEmail = normalizeEmail(email);
+  const requesterEmail = normalizeEmail(user.email);
+  if (user.role !== 'admin' && requesterEmail !== targetEmail) {
+    return { response: Response.json({ error: 'forbidden' }, { status: 403 }) };
+  }
+  return { user };
+}
+
 /**
  * Sends a loyalty member signup to the admin hub app.
  * Called after customer completes checkout/signup on rewards page.
@@ -24,6 +39,12 @@ function isPreorderWindow() {
  */
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+
     if (!legacyLoyaltyEventBridgeEnabled()) {
       return Response.json({
         success: true,
@@ -33,7 +54,6 @@ Deno.serve(async (req) => {
       }, { status: 409 });
     }
 
-    const base44 = createClientFromRequest(req);
     const body = await req.json();
     const { email, full_name, phone, signup_date } = body;
 
@@ -41,6 +61,9 @@ Deno.serve(async (req) => {
       console.error('sendLoyaltySignup: missing required fields');
       return Response.json({ error: 'Missing email or full_name' }, { status: 400 });
     }
+
+    const auth = await requireOwnerOrAdmin(base44, email);
+    if (auth.response) return auth.response;
 
     if (!ADMIN_APP_URL) {
       console.log('sendLoyaltySignup: ADMIN_APP_URL not set, skipping');
@@ -64,11 +87,7 @@ Deno.serve(async (req) => {
       'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
     };
 
-    console.log(`sendLoyaltySignup: HTTP Request Details`);
-    console.log(`  Method: POST`);
-    console.log(`  URL: ${url}`);
-    console.log(`  Headers:`, JSON.stringify(requestHeaders));
-    console.log(`  Body:`, JSON.stringify(payload));
+    console.log(`sendLoyaltySignup: POST ${url} for ${email}`);
 
     const response = await fetch(url, {
       method: 'POST',

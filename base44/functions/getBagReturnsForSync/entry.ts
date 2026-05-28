@@ -1,8 +1,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+function bearerToken(req) {
+  const header = req.headers.get('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : '';
+}
+
+function hasInternalSyncAuth(req) {
+  const token = bearerToken(req);
+  const allowed = [
+    Deno.env.get('CUSTOMER_APP_SYNC_SECRET'),
+    Deno.env.get('HUB_SYNC_SECRET'),
+  ].filter(Boolean);
+  return Boolean(token && allowed.includes(token));
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const user = hasInternalSyncAuth(req) ? null : await base44.auth.me().catch(() => null);
+    if (!hasInternalSyncAuth(req) && user?.role !== 'admin') {
+      return Response.json({ error: user ? 'forbidden' : 'unauthorized' }, { status: user ? 403 : 401 });
+    }
+
     const body = await req.json();
     const { status } = body;
 
