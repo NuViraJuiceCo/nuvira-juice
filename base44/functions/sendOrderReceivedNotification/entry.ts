@@ -37,8 +37,20 @@ async function findSentDeliveryLog(base44, idempotencyKey) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { order_id, customer_email, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label } = await req.json();
+    const { order_id, customer_email, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label, refund_notification } = await req.json();
     const idempotencyKey = buildOrderConfirmationEmailKey(order_id, order_number);
+
+    // May 30 launch freeze: this function is only approved for order
+    // confirmations. Refund/cancel notifications need a separately audited
+    // template and idempotency key so a refund can never send confirmation copy.
+    if (refund_notification === true) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'refund_customer_email_disabled',
+        message: 'Refund customer emails are disabled until the refund notification template is separately approved.',
+      }, { status: 409 });
+    }
 
     if (!customer_email) {
       return Response.json({ error: 'Missing customer_email' }, { status: 400 });

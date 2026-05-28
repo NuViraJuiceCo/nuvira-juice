@@ -34,6 +34,10 @@ function safeStringArray(values, limit = 20) {
   return values.map(value => sanitizeText(value, 80)).filter(Boolean).slice(0, limit);
 }
 
+function uniqueStrings(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : []).map(value => sanitizeText(value, 80)).filter(Boolean)));
+}
+
 function normalizeOrderNumber(order) {
   return normalizeText(order?.shopify_order_number || order?.order_number || order?.name).replace(/^#/, '');
 }
@@ -122,6 +126,10 @@ function isRefundLike(order, eventType) {
     ['refunded', 'partially_refunded'].includes(normalizePaymentStatus(order, ''));
 }
 
+function isRefundEvent(eventType) {
+  return normalizeLower(eventType) === 'order.refunded';
+}
+
 function buildProductionDemand(lineItems) {
   const byTitle = new Map();
   for (const item of lineItems) {
@@ -186,6 +194,15 @@ async function findExistingOrder(base44, record) {
   }
 
   return null;
+}
+
+async function findExistingOrderForIncoming(base44, order) {
+  const record = {
+    base44_order_id: sanitizeText(order?.id, 120),
+    shopify_order_id: sanitizeText(order?.shopify_order_id, 140),
+    shopify_order_number: sanitizeText(normalizeOrderNumber(order), 120),
+  };
+  return findExistingOrder(base44, record);
 }
 
 function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus }) {
@@ -438,6 +455,203 @@ async function createCommandLog({ base44, record, action, status, idempotencyKey
   });
 }
 
+async function handleNativeRefundMirror({ base44, source, eventType, order, idempotencyKey, requestId, mode }) {
+  const orderNumber = normalizeOrderNumber(order);
+  if (!SUPPORTED_SOURCES.has(source)) {
+    return Response.json({
+      success: false,
+      dry_run: mode !== 'live',
+      action: 'queued_for_review',
+      error_code: 'unsupported_source',
+      order_number: orderNumber || null,
+      hub_bridge_fallback: true,
+    }, { status: 202 });
+  }
+  if (isSubscriptionLike(order)) {
+    return Response.json({
+      success: true,
+      skipped: true,
+      dry_run: mode !== 'live',
+      action: 'skipped',
+      error_code: 'subscription_refund_out_of_scope',
+      order_number: orderNumber || null,
+      hub_bridge_fallback: true,
+    });
+  }
+
+  const existing = await findExistingOrderForIncoming(base44, order);
+  const now = new Date().toISOString();
+  const refundId = sanitizeText(order?.refund_id, 160) || sanitizeText(order?.stripe_charge_id, 160) || 'stripe_refund';
+  const refundAmount = order?.refund_amount === undefined || order?.refund_amount === null ? null : safeNumber(order.refund_amount, 0);
+
+  if (!existing) {
+    const review = await createOrUpdateReviewQueue({
+      base44,
+      incidentType: 'native_refund_mirror_missing_order',
+      errorCode: 'native_refund_mirror_missing_order',
+      source,
+      eventType,
+      order,
+      lineItems: sanitizeLineItems(order?.line_items || order?.items),
+      paymentStatus: 'refunded',
+      fulfillmentMethod: normalizeLower(order?.fulfillment_method || order?.fulfillment_type) || 'delivery',
+      idempotencyKey,
+      mode,
+    });
+    await createOrderSyncLog({
+      base44,
+      record: { shopify_order_number: orderNumber },
+      action: 'rejected',
+      status: 'rejected',
+      reason: 'native refund mirror could not find existing ShopifyOrder mirror',
+      fieldsUpdated: [],
+      fieldsRejected: ['native_refund_mirror_missing_order'],
+      errorCode: 'native_refund_mirror_missing_order',
+      idempotencyKey,
+      requestId,
+      source,
+      eventType,
+      mode,
+    });
+
+    return Response.json({
+      success: false,
+      dry_run: mode !== 'live',
+      action: 'queued_for_review',
+      error_code: 'native_refund_mirror_missing_order',
+      order_number: orderNumber || null,
+      review_queue_action: review.action,
+      order_review_queue_draft: mode === 'live' ? null : review.draft,
+      hub_bridge_fallback: true,
+    }, { status: 202 });
+  }
+
+  const alreadyRefunded = normalizeLower(existing.payment_status) === 'refunded' &&
+    ['canceled', 'cancelled', 'refunded'].includes(normalizeLower(existing.production_status || existing.order_status));
+  const existingLogs = mode === 'live'
+    ? await base44.asServiceRole.entities.OrderSyncLog.filter({ idempotency_key: idempotencyKey }, '-created_date', 1).catch(() => [])
+    : [];
+
+  if (alreadyRefunded && existingLogs.length > 0) {
+    return Response.json({
+      success: true,
+      skipped: true,
+      dry_run: mode !== 'live',
+      action: 'skipped',
+      order_id: existing.id,
+      order_number: existing.shopify_order_number || orderNumber,
+      reason: 'already_refunded_idempotent',
+      native_refund_mirror: { order_updated: false, fulfillment_tasks_cancelled: 0 },
+      hub_bridge_fallback: true,
+    });
+  }
+
+  const tags = uniqueStrings([...(existing.tags || []), 'may30_native_ops', 'refunded', 'excluded']);
+  const auditEntry = {
+    at: now,
+    source: 'processMay30NativeOrderOps',
+    action: 'native_refund_mirror_applied',
+    event_type: eventType,
+    request_id: requestId,
+    refund_id: refundId,
+  };
+  const fulfillments = Array.isArray(existing.fulfillments)
+    ? existing.fulfillments.map(fulfillment => ({ ...fulfillment, status: 'cancelled', payment_status: 'refunded' }))
+    : existing.fulfillments;
+  const patch = compactObject({
+    payment_status: 'refunded',
+    financial_status: 'refunded',
+    production_status: 'canceled',
+    fulfillment_status: 'cancelled',
+    order_status: 'refunded',
+    operational_visibility: 'archived',
+    sync_status: 'native_may30_refunded',
+    data_quality_status: existing.data_quality_status || 'complete',
+    excluded_from_production: true,
+    refunded_at: sanitizeText(order?.refunded_at, 80) || now,
+    cancel_type: 'stripe_refund',
+    stripe_charge_id: sanitizeText(order?.refund_id, 160) || existing.stripe_charge_id,
+    stripe_payment_intent_id: sanitizeText(order?.stripe_payment_intent_id, 160) || existing.stripe_payment_intent_id,
+    tags,
+    fulfillments,
+    internal_notes: sanitizeText(`${existing.internal_notes || ''}\n[May30 native refund mirror] ${refundId} on ${now}`, 1200),
+    audit_trail: [...(existing.audit_trail || []), auditEntry],
+    last_sync_at: now,
+  });
+
+  let writtenRecord = existing;
+  let taskUpdateResult = { action: mode === 'live' ? 'not_run' : 'would_cancel', count: 0 };
+
+  if (mode === 'live') {
+    writtenRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing.id, patch);
+    const tasks = await base44.asServiceRole.entities.FulfillmentTask.filter({ order_id: existing.id }, '-created_date', 20).catch(() => []);
+    let cancelledCount = 0;
+    for (const task of tasks || []) {
+      if (normalizeLower(task.status) === 'cancelled' || normalizeLower(task.status) === 'delivered') continue;
+      await base44.asServiceRole.entities.FulfillmentTask.update(task.id, {
+        status: 'cancelled',
+        notes: sanitizeText(`${task.notes || ''}\nCancelled by native May 30 refund mirror for ${orderNumber || existing.shopify_order_number}.`, 500),
+      });
+      cancelledCount += 1;
+    }
+    taskUpdateResult = { action: 'cancelled', count: cancelledCount };
+
+    await createOrderSyncLog({
+      base44,
+      record: writtenRecord,
+      action: 'refund_mirrored',
+      status: 'success',
+      reason: `Native May 30 refund mirror applied. Refund amount=${refundAmount ?? 'unknown'}.`,
+      fieldsUpdated: ['payment_status', 'financial_status', 'production_status', 'fulfillment_status', 'order_status', 'sync_status', 'excluded_from_production', 'refunded_at'],
+      fieldsRejected: [],
+      errorCode: null,
+      idempotencyKey,
+      requestId,
+      source,
+      eventType,
+      mode,
+    });
+
+    await createCommandLog({
+      base44,
+      record: writtenRecord,
+      action: 'refund_mirrored',
+      status: 'success',
+      idempotencyKey,
+      requestId,
+      source,
+      eventType,
+      outputs: {
+        production_demand: { product_count: 0, total_units: 0 },
+        fulfillment_need: { status: 'cancelled_by_refund' },
+        ingredient_procurement_need: { status: 'not_required_refunded' },
+      },
+      mode,
+    });
+  }
+
+  return Response.json({
+    success: true,
+    dry_run: mode !== 'live',
+    action: mode === 'live' ? 'refund_mirrored' : 'would_mirror_refund',
+    order_id: writtenRecord.id,
+    order_number: writtenRecord.shopify_order_number || orderNumber,
+    native_refund_mirror: {
+      payment_status: 'refunded',
+      production_status: 'canceled',
+      fulfillment_status: 'cancelled',
+      excluded_from_production: true,
+      fulfillment_tasks_cancelled: taskUpdateResult.count,
+      fulfillment_task_action: taskUpdateResult.action,
+    },
+    inventory_deduction_deferred: true,
+    purchase_order_deferred: true,
+    notifications_deferred: true,
+    provider_calls_deferred: true,
+    hub_bridge_fallback: true,
+  });
+}
+
 async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outputs, idempotencyKey, requestId, source, eventType, mode }) {
   const fulfillmentNeed = outputs?.fulfillment_need || {};
   if (!fulfillmentNeed.requires_fulfillment_task) {
@@ -547,6 +761,10 @@ Deno.serve(async (req) => {
     const requestId = sanitizeText(body?.request_id, 120) || `may30_native_ops:${Date.now()}`;
     const orderNumber = normalizeOrderNumber(order);
     const idempotencyKey = sanitizeText(body?.idempotency_key, 180) || `may30_native_order_ops:${source}:${orderNumber || order?.id || 'unknown'}`;
+
+    if (isRefundEvent(eventType)) {
+      return handleNativeRefundMirror({ base44, source, eventType, order, idempotencyKey, requestId, mode });
+    }
 
     const validation = validationError({ source, eventType, order, lineItems, paymentStatus, fulfillmentMethod });
     if (validation) {
