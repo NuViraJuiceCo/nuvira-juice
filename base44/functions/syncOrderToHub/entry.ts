@@ -440,19 +440,24 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
 
 async function maybeRunMay30NativeOrderOps({ base44, payload, body }) {
   if (!ENABLE_MAY30_NATIVE_ORDER_OPS) return null;
-  if (payload?.event !== 'order.created') return { skipped: true, reason: 'event_out_of_scope' };
+  const eventType = payload?.event || 'order.created';
+  if (eventType !== 'order.created' && eventType !== 'order.refunded') return { skipped: true, reason: 'event_out_of_scope' };
   if (payload?.order?.order_type === 'subscription' || payload?.order?.stripe_subscription_id) {
     return { skipped: true, reason: 'subscription_out_of_scope' };
   }
+  const orderNumber = payload?.order?.order_number || payload?.order?.id || 'unknown';
+  const refundSuffix = eventType === 'order.refunded'
+    ? `:${payload?.order?.refund_id || payload?.order?.refunded_at || 'refund'}`
+    : '';
 
   try {
     const response = await base44.asServiceRole.functions.invoke('processMay30NativeOrderOps', {
       mode: 'live',
       source: 'customer_app_one_time',
-      event_type: payload.event,
+      event_type: eventType,
       order: payload.order,
-      request_id: `syncOrderToHub:${payload?.order?.id || payload?.order?.order_number || Date.now()}`,
-      idempotency_key: `may30_native_order_ops:customer_app_one_time:${payload?.order?.order_number || payload?.order?.id || 'unknown'}`,
+      request_id: `syncOrderToHub:${eventType}:${payload?.order?.id || payload?.order?.order_number || Date.now()}`,
+      idempotency_key: `may30_native_order_ops:customer_app_one_time:${eventType}:${orderNumber}${refundSuffix}`,
       internal_secret: CUSTOMER_APP_SYNC_SECRET,
     });
     const result = response?.data || response;
