@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, Database, Lock, Package, RefreshCw } from 'lucide-react';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import { AlertTriangle, CalendarDays, CheckCircle2, Database, Lock, Package, RefreshCw } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -489,18 +489,12 @@ export default function ProductionQueueSummary() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      <div className="bg-primary px-4 pt-10 pb-5">
-        <Link to="/admin/operations" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </Link>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="font-heading text-2xl font-bold text-primary-foreground">Production Queue</h1>
-            <p className="text-primary-foreground/70 text-xs mt-0.5">Hub production summary with gated inventory actions</p>
-          </div>
-          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">Ops v1</span>
-        </div>
-      </div>
+      <AdminOpsHeader
+        title="Production Queue"
+        subtitle="Hub production summary with gated inventory actions"
+        badge="Ops v1"
+        badgeTone="warning"
+      />
 
       <div className="px-4 mt-4 space-y-4">
         <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">

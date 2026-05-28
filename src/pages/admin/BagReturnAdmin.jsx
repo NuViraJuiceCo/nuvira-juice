@@ -4,9 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Leaf, ChevronDown, ChevronRight, Search, Package } from 'lucide-react';
+import { Leaf, ChevronDown, ChevronRight, Search, Package } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 
 const STATUS_COLOR = {
   requested: 'bg-amber-50 text-amber-700',
@@ -302,16 +303,14 @@ export default function BagReturnAdmin() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      <div className="bg-primary px-4 pt-10 pb-6">
-        <button onClick={() => navigate('/account')} className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center mb-4">
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </button>
-        <div className="flex items-center gap-2 mb-1">
-          <Leaf className="w-5 h-5 text-primary-foreground/70" />
-          <h1 className="font-heading text-2xl font-bold text-primary-foreground">Return + Reward</h1>
-        </div>
-        <p className="text-primary-foreground/60 text-xs">Verify bag returns · Issue NuVira Credits</p>
-      </div>
+      <AdminOpsHeader
+        title="Return + Reward"
+        subtitle="Verify bag returns · Issue NuVira Credits"
+        badge="Frozen"
+        badgeTone="warning"
+        onBack={() => navigate('/account')}
+        actions={<Leaf className="h-4 w-4 text-muted-foreground" />}
+      />
 
       <div className="px-4 mt-4">
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">

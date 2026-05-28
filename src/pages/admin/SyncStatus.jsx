@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, ShieldCheck } from 'lucide-react';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 
@@ -17,13 +18,12 @@ export default function SyncStatus() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      <div className="bg-primary px-4 pt-10 pb-5">
-        <Link to="/admin/operations" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </Link>
-        <h1 className="font-heading text-2xl font-bold text-primary-foreground">Order Sync Status</h1>
-        <p className="text-primary-foreground/70 text-xs mt-0.5">Legacy recovery tools disabled for launch freeze</p>
-      </div>
+      <AdminOpsHeader
+        title="Order Sync Status"
+        subtitle="Legacy recovery tools disabled for launch freeze"
+        badge="Disabled tools"
+        badgeTone="warning"
+      />
 
       <div className="px-4 mt-5 max-w-3xl mx-auto space-y-4">
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">

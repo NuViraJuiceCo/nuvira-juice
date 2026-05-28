@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import {
   Activity,
   AlertTriangle,
-  ArrowLeft,
   BarChart3,
   Bell,
   CalendarDays,
@@ -520,21 +520,14 @@ export default function Operations() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      <div className="bg-primary px-4 pt-10 pb-5">
-        <Link to="/account" className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </Link>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="font-heading text-2xl font-bold text-primary-foreground">Operations</h1>
-            <p className="text-primary-foreground/70 text-xs mt-0.5">Hub-backed admin tools</p>
-          </div>
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white">
-            <ShieldCheck className="w-3 h-3" />
-            Admin-only
-          </span>
-        </div>
-      </div>
+      <AdminOpsHeader
+        title="Operations"
+        subtitle="Hub-backed admin tools"
+        badge="Admin-only"
+        badgeTone="native"
+        backTo="/account"
+        actions={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
+      />
 
       <div className="px-4 mt-4 space-y-5">
         <OperationsSnapshot user={user} />

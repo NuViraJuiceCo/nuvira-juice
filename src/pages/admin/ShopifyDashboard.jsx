@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { ArrowLeft, RefreshCw, Package, ShoppingCart, BarChart3, Settings, Bell, CheckCircle, AlertTriangle, XCircle, Zap } from 'lucide-react';
 import { format } from 'date-fns';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 
 const NAV_TABS = [
   { key: 'orders', label: 'Orders', icon: ShoppingCart },
@@ -27,21 +28,13 @@ export default function ShopifyDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="bg-primary px-4 pt-10 pb-5">
-        <button onClick={() => navigate('/account')} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </button>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <h1 className="font-heading text-xl font-bold text-white">Shopify Integration</h1>
-            <p className="text-primary-foreground/70 text-xs">Operations Hub</p>
-          </div>
-        </div>
-      </div>
+      <AdminOpsHeader
+        title="Shopify Integration"
+        subtitle="Operations Hub"
+        badge="Hub-backed"
+        onBack={() => navigate('/account')}
+        actions={<Zap className="h-4 w-4 text-muted-foreground" />}
+      />
 
       {/* Tab Nav */}
       <div className="flex overflow-x-auto gap-1 px-4 py-3 border-b border-border bg-card no-scrollbar">

@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import Zone3ReviewPanel from '@/components/admin/Zone3ReviewPanel';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { format } from 'date-fns';
-import { ChevronRight, ChevronDown, ArrowLeft, Search } from 'lucide-react';
+import { ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -798,14 +799,12 @@ export default function AdminOrders() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      {/* Header */}
-      <div className="bg-primary px-4 pt-10 pb-5">
-        <button onClick={() => navigate('/account')} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-3">
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </button>
-        <h1 className="font-heading text-2xl font-bold text-primary-foreground">Order Management</h1>
-        <p className="text-primary-foreground/70 text-xs mt-0.5">{orders.length} total orders</p>
-      </div>
+      <AdminOpsHeader
+        title="Order Management"
+        subtitle={`${orders.length} total orders`}
+        badge="Hub + Native"
+        onBack={() => navigate('/account')}
+      />
 
       {/* Search */}
       <div className="px-4 mt-4 mb-3">
