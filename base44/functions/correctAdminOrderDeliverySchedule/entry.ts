@@ -270,6 +270,35 @@ function findExistingCommandLog(snapshot, requestId) {
   ) || null;
 }
 
+function isMissingEntitySchemaError(error, entityName) {
+  return normalizeLower(error?.message || error).includes(`entity schema ${normalizeLower(entityName)} not found`);
+}
+
+async function createOrReuseCommandLog(base44, existingLog, commandLogPatch) {
+  try {
+    if (existingLog) {
+      await base44.asServiceRole.entities.CommandLog.update(existingLog.id, commandLogPatch);
+      return { commandLog: existingLog, warning: null };
+    }
+
+    const commandLog = await base44.asServiceRole.entities.CommandLog.create({
+      ...commandLogPatch,
+      submitted_at: new Date().toISOString(),
+    });
+    return { commandLog, warning: null };
+  } catch (error) {
+    if (isMissingEntitySchemaError(error, 'CommandLog')) {
+      return { commandLog: null, warning: 'customer_app_command_log_entity_unavailable' };
+    }
+    throw error;
+  }
+}
+
+async function updateCommandLogIfAvailable(base44, commandLog, patch) {
+  if (!commandLog?.id) return;
+  await base44.asServiceRole.entities.CommandLog.update(commandLog.id, patch);
+}
+
 async function callHubCorrection(body, user) {
   if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
     return { success: false, error_code: 'hub_not_configured' };
@@ -350,6 +379,28 @@ Deno.serve(async (req) => {
       validation.blockers.push(`hub_preview_failed:${hubPreview.error_code || hubPreview.status || 'unknown'}`);
     }
 
+    if (!dryRun && hubPreview.skipped === true) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        dry_run: false,
+        reason: hubPreview.reason || 'duplicate_request_id',
+        request_id: requestId,
+        command_log_id: existingLog?.id || null,
+        hub_command_log_id: hubPreview.hub_command_log_id || null,
+        before,
+        side_effects: {
+          notifications_sent: false,
+          provider_calls: false,
+          stripe_calls: false,
+          shopify_calls: false,
+          inventory_or_po_mutation: false,
+          status_history_written: false,
+          sync_retry_repair_run: false,
+        },
+      });
+    }
+
     if (validation.blockers.length > 0) {
       return Response.json({
         success: false,
@@ -406,7 +457,6 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error_code: 'confirmation_required' }, { status: 400 });
     }
 
-    let commandLog = existingLog;
     const commandLogPatch = {
       command_type: 'correct_order_delivery_schedule',
       command_source: 'customer_app_admin',
@@ -433,14 +483,7 @@ Deno.serve(async (req) => {
       notes: 'One-record correction for checkout schedule mismatch. No notifications/provider/inventory/PO actions.',
     };
 
-    if (commandLog) {
-      await base44.asServiceRole.entities.CommandLog.update(commandLog.id, commandLogPatch);
-    } else {
-      commandLog = await base44.asServiceRole.entities.CommandLog.create({
-        ...commandLogPatch,
-        submitted_at: new Date().toISOString(),
-      });
-    }
+    const { commandLog, warning: commandLogWarning } = await createOrReuseCommandLog(base44, existingLog, commandLogPatch);
 
     await base44.asServiceRole.entities.Order.update(snapshot.order.id, buildCustomerAppOrderPatch(snapshot.order));
 
@@ -458,7 +501,7 @@ Deno.serve(async (req) => {
 
     const hubResult = await callHubCorrection({ ...body, dry_run: false }, user);
     if (hubResult.success !== true) {
-      await base44.asServiceRole.entities.CommandLog.update(commandLog.id, {
+      await updateCommandLogIfAvailable(base44, commandLog, {
         status: 'failed',
         error_code: hubResult.error_code || 'hub_correction_failed',
         error_message: sanitizeText(hubResult.error || hubResult.message || 'Hub correction failed', 240),
@@ -468,7 +511,8 @@ Deno.serve(async (req) => {
       return Response.json({
         success: false,
         error_code: 'hub_correction_failed_after_customer_app_update',
-        command_log_id: commandLog.id,
+        command_log_id: commandLog?.id || null,
+        command_log_warning: commandLogWarning,
         hub_result: hubResult,
       }, { status: 502 });
     }
@@ -480,7 +524,7 @@ Deno.serve(async (req) => {
       native_fulfillment_tasks: afterSnapshot.nativeTasks.map(safeTaskSnapshot),
     };
 
-    await base44.asServiceRole.entities.CommandLog.update(commandLog.id, {
+    await updateCommandLogIfAvailable(base44, commandLog, {
       status: 'success',
       result: {
         customer_app_order_updated: true,
@@ -501,7 +545,8 @@ Deno.serve(async (req) => {
       skipped: false,
       dry_run: false,
       request_id: requestId,
-      command_log_id: commandLog.id,
+      command_log_id: commandLog?.id || null,
+      command_log_warning: commandLogWarning,
       before,
       after,
       native_shopify_order_action: nativeOrderAction,
