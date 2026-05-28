@@ -124,6 +124,15 @@ function safeTaskSnapshot(task) {
   };
 }
 
+async function safeListCommandLogs(base44) {
+  try {
+    return await base44.asServiceRole.entities.CommandLog.filter({ target_display_id: TARGET.ca_order_number });
+  } catch (error) {
+    if (isMissingEntitySchemaError(error, 'CommandLog')) return [];
+    throw error;
+  }
+}
+
 async function resolveAdmin(base44) {
   const user = await base44.auth.me().catch(() => null);
   if (!user) return { ok: false, status: 401, error: 'Unauthorized' };
@@ -140,7 +149,7 @@ async function loadSnapshot(base44) {
     base44.asServiceRole.entities.Order.filter({ order_number: TARGET.ca_order_number }).catch(() => []),
     base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_number: TARGET.ca_order_number }).catch(() => []),
     base44.asServiceRole.entities.FulfillmentTask.list('-created_date', 200).catch(() => []),
-    base44.asServiceRole.entities.CommandLog.filter({ target_display_id: TARGET.ca_order_number }).catch(() => []),
+    safeListCommandLogs(base44),
   ]);
 
   const order = ordersByNumber?.[0] || null;
