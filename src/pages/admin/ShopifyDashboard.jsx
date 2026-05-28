@@ -702,15 +702,22 @@ function SettingsTab() {
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Recent Webhook Events</p>
         <div className="space-y-2">
           {webhookLogs.slice(0, 15).map(log => (
-            <div key={log.id} className="flex items-center gap-2 text-xs">
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${
-                log.status === 'processed' ? 'bg-green-100 text-green-700' :
-                log.status === 'duplicate' ? 'bg-gray-100 text-gray-600' :
-                log.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-              }`}>{log.status}</span>
-              <span className="font-medium truncate">{log.topic}</span>
-              <span className="text-muted-foreground shrink-0">#{log.shopify_order_number}</span>
-              <span className="text-muted-foreground shrink-0">{log.created_date ? format(new Date(log.created_date), 'h:mm a') : ''}</span>
+            <div key={log.id} className="rounded-lg border border-border/60 bg-secondary/20 px-2.5 py-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${
+                  log.status === 'processed' ? 'bg-green-100 text-green-700' :
+                  log.status === 'duplicate' ? 'bg-gray-100 text-gray-600' :
+                  log.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                }`}>{log.status}</span>
+                <span className="font-medium truncate">{log.topic}</span>
+                <span className="text-muted-foreground shrink-0">#{log.shopify_order_number}</span>
+                <span className="text-muted-foreground shrink-0">{log.created_date ? format(new Date(log.created_date), 'h:mm a') : ''}</span>
+              </div>
+              {(log.description || log.error_message) && (
+                <p className={`mt-1 leading-snug ${log.status === 'failed' ? 'text-red-700' : 'text-muted-foreground'}`}>
+                  {log.error_message || log.description}
+                </p>
+              )}
             </div>
           ))}
           {webhookLogs.length === 0 && <p className="text-xs text-muted-foreground">No webhook events yet.</p>}
