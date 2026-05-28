@@ -124,6 +124,46 @@ function safeTaskSnapshot(task) {
   };
 }
 
+function isTargetDeliveryDate(value) {
+  return normalizeText(value) === TARGET.target_delivery_date;
+}
+
+function isTargetProductionDate(value) {
+  return normalizeText(value) === TARGET.target_production_date;
+}
+
+function isCustomerAppOrderCorrected(order) {
+  if (!order) return false;
+  return (
+    isTargetDeliveryDate(order.estimated_delivery_date) &&
+    isTargetDeliveryDate(order.assigned_delivery_date) &&
+    isTargetProductionDate(order.production_date)
+  );
+}
+
+function isNativeOrderCorrected(order) {
+  if (!order) return true;
+  return (
+    isTargetDeliveryDate(order.requested_delivery_date) &&
+    isTargetDeliveryDate(order.selected_delivery_date) &&
+    isTargetDeliveryDate(order.assigned_delivery_date) &&
+    isTargetProductionDate(order.production_date)
+  );
+}
+
+function isTaskCorrected(task) {
+  if (!task) return false;
+  return isTargetDeliveryDate(task.delivery_date);
+}
+
+function isMirrorCorrected(snapshot) {
+  return (
+    isCustomerAppOrderCorrected(snapshot.order) &&
+    isNativeOrderCorrected(snapshot.nativeOrder) &&
+    snapshot.nativeTasks.every(isTaskCorrected)
+  );
+}
+
 async function resolveAdmin(base44) {
   const user = await base44.auth.me().catch(() => null);
   if (!user) return { ok: false, status: 401, error: 'Unauthorized' };
@@ -144,10 +184,11 @@ async function loadSnapshot(base44) {
 
   const order = ordersByNumber?.[0] || null;
   const nativeOrder = nativeByNumber?.[0] || null;
+  const allowedDeliveryDates = new Set([TARGET.current_delivery_date, TARGET.target_delivery_date]);
   const nativeTasks = (taskList || []).filter((task) =>
     task.order_id === nativeOrder?.id ||
     task.order_id === order?.id ||
-    task.customer_email === TARGET.customer_email && task.delivery_date === TARGET.current_delivery_date
+    (task.customer_email === TARGET.customer_email && allowedDeliveryDates.has(task.delivery_date))
   );
 
   return { order, nativeOrder, nativeTasks };
@@ -164,7 +205,9 @@ function validateSnapshot(snapshot) {
     if (normalizeLower(order.customer_email) !== normalizeLower(TARGET.customer_email)) blockers.push('customer_email_mismatch');
     if (order.payment_status !== 'paid' || order.payment_captured !== true) blockers.push('order_not_paid');
     if (TERMINAL_CA_ORDER_STATUSES.has(normalizeLower(order.status))) blockers.push('customer_app_order_terminal');
-    if (order.assigned_delivery_date !== TARGET.current_delivery_date && order.estimated_delivery_date !== TARGET.current_delivery_date) {
+    if (isCustomerAppOrderCorrected(order)) {
+      warnings.push('customer_app_order_already_corrected');
+    } else if (order.assigned_delivery_date !== TARGET.current_delivery_date && order.estimated_delivery_date !== TARGET.current_delivery_date) {
       warnings.push('current_customer_app_delivery_date_not_expected');
     }
   }
@@ -329,7 +372,7 @@ Deno.serve(async (req) => {
       validation.blockers.push(`hub_preview_failed:${hubPreview.error_code || hubPreview.status || 'unknown'}`);
     }
 
-    if (!dryRun && hubPreview.skipped === true) {
+    if (!dryRun && hubPreview.skipped === true && isMirrorCorrected(snapshot)) {
       return Response.json({
         success: true,
         skipped: true,
