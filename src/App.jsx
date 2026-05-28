@@ -47,6 +47,7 @@ import OpsAlerts from '@/pages/admin/OpsAlerts';
 import Operations from '@/pages/admin/Operations';
 import POSOrders from '@/pages/admin/POSOrders';
 import Resources from '@/pages/admin/Resources';
+import ComplianceOps from '@/pages/admin/ComplianceOps';
 import AdminProducts from '@/pages/admin/AdminProducts';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
@@ -192,6 +193,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/ops-alerts" element={<ProtectedRoute element={<OpsAlerts />} user={user} />} />
           <Route path="/admin/pos-orders" element={<ProtectedRoute element={<POSOrders />} user={user} />} />
           <Route path="/admin/resources" element={<ProtectedRoute element={<Resources />} user={user} />} />
+          <Route path="/admin/compliance-ops" element={<ProtectedRoute element={<ComplianceOps />} user={user} />} />
           <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
           <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
           <Route path="/admin/bag-returns" element={<ProtectedRoute element={<BagReturnAdmin />} user={user} />} />

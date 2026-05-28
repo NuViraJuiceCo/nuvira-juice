@@ -74,6 +74,13 @@ const sections = [
         icon: Package,
         badges: ['Read-only', 'Hub-backed'],
       },
+      {
+        title: 'Compliance Ops',
+        route: '/admin/compliance-ops',
+        description: 'Hub-backed compliance visibility for batch, temperature, sanitation, checklist, and corrective records.',
+        icon: ShieldCheck,
+        badges: ['Read-only', 'Hub-backed', 'May 30'],
+      },
     ],
   },
   {
