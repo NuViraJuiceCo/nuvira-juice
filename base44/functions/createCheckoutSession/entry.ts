@@ -3,6 +3,19 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function authorizeCheckoutCustomer(base44, customerEmail) {
+  const user = await base44.auth.me().catch(() => null);
+  const requested = String(customerEmail || '').trim().toLowerCase();
+  const requester = String(user?.email || '').trim().toLowerCase();
+  if (!user?.email || !requested) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (user.role === 'admin' || requester === requested) {
+    return null;
+  }
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
 /**
  * Calculate next delivery date using NuVira's exact rules.
  * Timezone: America/Chicago
@@ -70,6 +83,8 @@ Deno.serve(async (req) => {
       delivery_window_label, delivery_window_start, delivery_window_end,
       delivery_schedule_source,
     } = await req.json();
+    const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
+    if (unauthorized) return unauthorized;
 
     // Resolve customer_name from best available source: UserProfile > checkout > fallback
     let customer_name = checkoutCustomerName?.trim() || '';

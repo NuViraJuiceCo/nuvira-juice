@@ -1,5 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+async function requireAdmin(base44) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user?.email) return Response.json({ error: 'unauthorized' }, { status: 401 });
+  if (user.role !== 'admin') return Response.json({ error: 'forbidden' }, { status: 403 });
+  return null;
+}
+
 /**
  * Replay-safe dry-run: simulates the charge.refunded subscription path
  * against Amar Kahlon's already-settled refund WITHOUT writing anything.
@@ -23,6 +30,8 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
+    const unauthorized = await requireAdmin(base44);
+    if (unauthorized) return unauthorized;
 
     const STRIPE_SUBSCRIPTION_ID = 'sub_1TUah0IrzYHaHkt24AVgUtNY';
     const CUSTOMER_EMAIL = 'amark@nuvisionarymedia.com';

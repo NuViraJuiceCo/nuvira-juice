@@ -3,6 +3,17 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function authorizeCheckoutCustomer(base44, customerEmail) {
+  const user = await base44.auth.me().catch(() => null);
+  const requested = String(customerEmail || '').trim().toLowerCase();
+  const requester = String(user?.email || '').trim().toLowerCase();
+  if (!user?.email || !requested) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (user.role === 'admin' || requester === requested) return null;
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
 /**
  * Create Stripe Subscription Checkout Session
  * 
@@ -44,6 +55,8 @@ Deno.serve(async (req) => {
       profile_address_postal_code,
       delivery_zone_id,
     } = await req.json();
+    const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
+    if (unauthorized) return unauthorized;
 
     if (!plan_id || !customer_email) {
       return Response.json({ error: 'Missing plan_id or customer_email' }, { status: 400 });

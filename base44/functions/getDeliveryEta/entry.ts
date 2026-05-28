@@ -6,6 +6,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const ORIGIN = "619 N Main St Unit 3, O'Fallon, MO 63366";
 
+async function authorizeOrderAccess(base44, order) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user?.email) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  const requester = String(user.email || '').trim().toLowerCase();
+  const owner = String(order?.customer_email || '').trim().toLowerCase();
+  if (user.role === 'admin' || user.role === 'driver' || requester === owner) {
+    return null;
+  }
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -23,6 +36,8 @@ Deno.serve(async (req) => {
     if (!targetOrder) {
       return Response.json({ error: 'Order not found' }, { status: 404 });
     }
+    const unauthorized = await authorizeOrderAccess(base44, targetOrder);
+    if (unauthorized) return unauthorized;
 
     // Only show ETA when driver is actively delivering
     const ON_ROUTE_STATUSES = ['out_for_delivery', 'arriving_soon'];

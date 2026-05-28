@@ -3,6 +3,17 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function authorizeCheckoutCustomer(base44, customerEmail) {
+  const user = await base44.auth.me().catch(() => null);
+  const requested = String(customerEmail || '').trim().toLowerCase();
+  const requester = String(user?.email || '').trim().toLowerCase();
+  if (!user?.email || !requested) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (user.role === 'admin' || requester === requested) return null;
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
 const ORIGIN_ADDRESS = "619 N Main St, O'Fallon, MO 63366";
 const ZONE_RULES = [
   { zone_key: 'zone_1_core',         zone_type: 'core',         min: 0,     max: 15,    delivery_fee: 5.99  },
@@ -60,6 +71,8 @@ Deno.serve(async (req) => {
       delivery_address,
       save_payment_method,  // optional: true = create SetupIntent
     } = await req.json();
+    const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
+    if (unauthorized) return unauthorized;
 
     if (!plan_id || !customer_email || !delivery_address) {
       return Response.json({ error: 'Missing required fields: plan_id, customer_email, delivery_address' }, { status: 400 });

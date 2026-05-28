@@ -3,6 +3,17 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+async function authorizeCheckoutCustomer(base44, customerEmail) {
+  const user = await base44.auth.me().catch(() => null);
+  const requested = String(customerEmail || '').trim().toLowerCase();
+  const requester = String(user?.email || '').trim().toLowerCase();
+  if (!user?.email || !requested) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (user.role === 'admin' || requester === requested) return null;
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
 const ORIGIN_ADDRESS = "619 N Main St, O'Fallon, MO 63366";
 const ALL_ZONE_RULES = [
   { zone_key: 'zone_1a_core_0_5',          zone_name: 'Core Delivery',               zone_tier_label: 'Core Delivery',         zone_type: 'core',         min: 0,     max: 5,     delivery_fee: 3.99,  minimum_order: null },
@@ -67,6 +78,8 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
 
     const body = await req.json();
+    const unauthorized = await authorizeCheckoutCustomer(base44, body.customer_email);
+    if (unauthorized) return unauthorized;
 
     // Normalize input keys — accept both frontend contract and legacy/test variants
     const items = body.items ?? body.cart_items ?? [];

@@ -1,6 +1,14 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+
+async function requireAdmin(base44) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user?.email) return Response.json({ error: 'unauthorized' }, { status: 401 });
+  if (user.role !== 'admin') return Response.json({ error: 'forbidden' }, { status: 403 });
+  return null;
+}
 
 Deno.serve(async (req) => {
   try {
@@ -12,6 +20,9 @@ Deno.serve(async (req) => {
         message: 'Legacy payment/subscription tools are disabled for May 30 launch freeze.',
       }, { status: 409 });
     }
+    const base44 = createClientFromRequest(req);
+    const unauthorized = await requireAdmin(base44);
+    if (unauthorized) return unauthorized;
 
     // Audit the newest succeeded Stripe transaction for amark@nuvisionarymedia.com
     // without relying on Customer App records
