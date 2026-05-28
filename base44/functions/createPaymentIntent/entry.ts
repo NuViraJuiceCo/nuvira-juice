@@ -194,6 +194,23 @@ function optionMatchesSubmittedFields(option, selectedOption) {
   );
 }
 
+function optionConflictsWithSubmittedFields(option, selectedOption) {
+  if (!option || !selectedOption) return false;
+
+  const submittedProductionDate = selectedOption.production_date || selectedOption.assigned_production_day || null;
+  const submittedDeliveryDate = selectedOption.delivery_date || selectedOption.assigned_delivery_date || null;
+  const submittedWindowStart = selectedOption.delivery_window_start || selectedOption.assigned_delivery_window_start || null;
+  const submittedWindowEnd = selectedOption.delivery_window_end || selectedOption.assigned_delivery_window_end || null;
+
+  return Boolean(
+    (submittedProductionDate && submittedProductionDate !== option.production_date) ||
+    (submittedDeliveryDate && submittedDeliveryDate !== option.delivery_date) ||
+    (selectedOption.delivery_window_label && selectedOption.delivery_window_label !== option.delivery_window_label) ||
+    (submittedWindowStart && submittedWindowStart !== option.delivery_window_start) ||
+    (submittedWindowEnd && submittedWindowEnd !== option.delivery_window_end)
+  );
+}
+
 /**
  * Creates a Stripe PaymentIntent for embedded in-app checkout.
  * Returns { clientSecret, orderNumber, effectiveTotal, ... } — NO redirect URL.
@@ -341,9 +358,17 @@ Deno.serve(async (req) => {
 
     if (submittedOptionId) {
       selectedBackendOption = latestOptions.find((option) => option.option_id === submittedOptionId);
-    } else if (selectedOption) {
+      if (selectedBackendOption && optionConflictsWithSubmittedFields(selectedBackendOption, selectedOption)) {
+        console.warn(`[PI] Delivery selection conflict: option_id=${submittedOptionId}, selected_delivery_date=${selectedOption?.delivery_date || selected_delivery_date || ''}`);
+        selectedBackendOption = null;
+      }
+    }
+
+    if (!selectedBackendOption && selectedOption) {
       selectedBackendOption = latestOptions.find((option) => optionMatchesSubmittedFields(option, selectedOption));
-    } else {
+    }
+
+    if (!selectedBackendOption && !selectedOption) {
       selectedBackendOption = latestOptions.find((option) => option.is_default) || latestOptions[0];
     }
 
@@ -548,6 +573,14 @@ Deno.serve(async (req) => {
       subFreeDelivery,
       subDiscountPct,
       subDiscountAmt,
+      confirmedDeliverySchedule: {
+        delivery_date: deliveryDate,
+        production_date: resolvedProdDate,
+        delivery_window_label: resolvedWindowLabel,
+        delivery_window_start: resolvedWindowStart,
+        delivery_window_end: resolvedWindowEnd,
+        final_schedule_source: canonicalSchedule.finalScheduleSource,
+      },
     });
 
   } catch (error) {
