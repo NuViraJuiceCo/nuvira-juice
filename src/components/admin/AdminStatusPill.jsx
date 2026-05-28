@@ -1,14 +1,14 @@
 import React from 'react';
 
 const toneClasses = {
-  success: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-  progress: 'bg-blue-50 text-blue-800 border-blue-200',
-  warning: 'bg-amber-50 text-amber-800 border-amber-200',
-  danger: 'bg-red-50 text-red-800 border-red-200',
-  source: 'bg-violet-50 text-violet-800 border-violet-200',
-  native: 'bg-teal-50 text-teal-800 border-teal-200',
-  hub: 'bg-slate-100 text-slate-700 border-slate-200',
-  neutral: 'bg-secondary text-secondary-foreground border-border/60',
+  success: 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-950/10',
+  progress: 'bg-sky-600 text-white border-sky-500 shadow-sm shadow-sky-950/10',
+  warning: 'bg-amber-400 text-amber-950 border-amber-300 shadow-sm shadow-amber-950/10',
+  danger: 'bg-rose-600 text-white border-rose-500 shadow-sm shadow-rose-950/10',
+  source: 'bg-fuchsia-600 text-white border-fuchsia-500 shadow-sm shadow-fuchsia-950/10',
+  native: 'bg-cyan-600 text-white border-cyan-500 shadow-sm shadow-cyan-950/10',
+  hub: 'bg-slate-700 text-white border-slate-600 shadow-sm shadow-slate-950/10',
+  neutral: 'bg-zinc-200 text-zinc-950 border-zinc-300 shadow-sm shadow-zinc-950/5',
 };
 
 const sizeClasses = {
@@ -118,7 +118,7 @@ export function AdminStatusPill({
 }) {
   const resolvedTone = tone || adminStatusTone(value ?? label, context);
   return (
-    <span className={`inline-flex items-center rounded-full border font-semibold whitespace-nowrap ${sizeClasses[size] || sizeClasses.sm} ${toneClasses[resolvedTone] || toneClasses.neutral} ${className}`}>
+    <span className={`inline-flex items-center rounded-full border font-bold tracking-wide whitespace-nowrap ${sizeClasses[size] || sizeClasses.sm} ${toneClasses[resolvedTone] || toneClasses.neutral} ${className}`}>
       {label || formatAdminLabel(value)}
     </span>
   );
