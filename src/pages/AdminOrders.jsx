@@ -6,7 +6,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { format } from 'date-fns';
-import { ChevronRight, ChevronDown, Search } from 'lucide-react';
+import { ChevronRight, ChevronDown, Mail, Search, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -95,6 +95,25 @@ function formatDateTime(value) {
   }
 }
 
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  });
+}
+
+function itemSummary(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return 'Items pending';
+  return items
+    .slice(0, 2)
+    .map(item => {
+      const quantity = Number(item.quantity || item.qty || 1);
+      const name = item.title || item.name || item.product_name || item.variant_title || 'Item';
+      return `${quantity}x ${name}`;
+    })
+    .join(' · ') + (items.length > 2 ? ` +${items.length - 2} more` : '');
+}
+
 function SectionLabel({ title, description, badge }) {
   return (
     <div className="flex items-start justify-between gap-2">
@@ -120,6 +139,118 @@ function statusSummary(order) {
     order.native_review_status ? `Review: ${formatStatusLabel(order.native_review_status)}` : null,
     order.order_lock_status ? `Lock: ${formatStatusLabel(order.order_lock_status)}` : null,
   ].filter(Boolean).join(' · ');
+}
+
+function orderSourceTone(order) {
+  const source = `${order.source_type || ''} ${order.source_channel || ''} ${order.order_type || ''}`.toLowerCase();
+  if (source.includes('pos') || order.fulfillment_type === 'pickup') return 'source';
+  if (order.is_native_order) return 'native';
+  if (order.is_hub_order) return 'hub';
+  return 'neutral';
+}
+
+function LiveCustomerContextPanel({ orders, isLoading, nameMap }) {
+  const recentOrders = useMemo(() => {
+    return orders
+      .filter(order => {
+        if (!order) return false;
+        if (order.is_test_order || order.do_not_recover) return false;
+        if (order.status === 'cancelled' || order.payment_status === 'refunded' || order.financial_status === 'refunded') return false;
+        return true;
+      })
+      .slice(0, 3);
+  }, [orders]);
+
+  const deliveryCount = orders.filter(order => order.fulfillment_type === 'delivery').length;
+  const pickupCount = orders.filter(order => order.fulfillment_type === 'pickup').length;
+  const reviewCount = orders.filter(order => order.native_review_status || order.sync_status === 'review' || order.approval_status === 'review_required').length;
+
+  return (
+    <section className="px-4 mb-4">
+      <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-black text-white">Live Customer Context</h2>
+              <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-black text-emerald-950">Admin</span>
+            </div>
+            <p className="mt-0.5 text-[11px] font-medium text-slate-300">
+              Recent operational customer/order context lives here, not on the Operations launchpad.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-1 text-right">
+            <div>
+              <p className="text-sm font-black text-white">{deliveryCount}</p>
+              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Delivery</p>
+            </div>
+            <div>
+              <p className="text-sm font-black text-white">{pickupCount}</p>
+              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Pickup/POS</p>
+            </div>
+            <div>
+              <p className="text-sm font-black text-white">{reviewCount}</p>
+              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Review</p>
+            </div>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+            ))}
+          </div>
+        ) : recentOrders.length === 0 ? (
+          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs font-semibold text-slate-300">
+            No recent operational customer orders yet. New app, website, and POS orders will appear in this Orders view.
+          </div>
+        ) : (
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {recentOrders.map(order => {
+              const customerName = nameMap[order.customer_email] || order.customer_name || 'Customer name pending';
+              const sourceLabel = order.source_type || order.source_channel || (order.is_native_order ? 'Customer App' : order.is_hub_order ? 'Hub' : 'Order');
+              return (
+                <article key={order.id || order.order_number} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                        #{order.order_number || 'pending'}
+                      </p>
+                      <p className="mt-0.5 truncate text-sm font-black text-white">{customerName}</p>
+                      {order.customer_email && (
+                        <p className="mt-1 flex items-center gap-1 truncate text-[11px] font-medium text-slate-300">
+                          <Mail className="h-3 w-3 shrink-0 text-slate-500" />
+                          {order.customer_email}
+                        </p>
+                      )}
+                    </div>
+                    <p className="shrink-0 text-xs font-black text-white">{formatCurrency(order.total)}</p>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <AdminStatusPill label={formatStatusLabel(sourceLabel)} tone={orderSourceTone(order)} />
+                    <AdminStatusPill
+                      label={order.fulfillment_type === 'pickup' ? 'Pickup / POS' : formatStatusLabel(order.fulfillment_type) || 'Fulfillment'}
+                      tone={order.fulfillment_type === 'pickup' ? 'source' : 'progress'}
+                    />
+                  </div>
+                  <p className="mt-2 line-clamp-2 border-t border-slate-800 pt-2 text-[11px] font-medium text-slate-300">
+                    {itemSummary(order.items)}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-cyan-500/40 bg-cyan-950/50 p-2.5">
+          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-300" />
+          <p className="text-[10px] font-medium text-cyan-100">
+            Read-only admin context only. No provider payloads, payment secrets, fulfillment writes, inventory actions, notifications, or sync actions are triggered here.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function NativeOperationsPanel({ order }) {
@@ -804,6 +935,12 @@ export default function AdminOrders() {
         subtitle={`${orders.length} total orders`}
         badge="Hub + Native"
         onBack={() => navigate('/account')}
+      />
+
+      <LiveCustomerContextPanel
+        orders={operationalOrders}
+        isLoading={isLoading}
+        nameMap={nameMap}
       />
 
       {/* Search */}
