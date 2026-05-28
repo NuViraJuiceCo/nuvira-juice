@@ -3,6 +3,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 /**
  * Syncs customer profile data to the operations hub.
  * Called by: AccountSettings on save, onboarding completion.
@@ -10,11 +14,20 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
  */
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
     const body = await req.json();
     const { email, first_name, last_name, phone, address, birthday } = body;
 
     if (!email) {
       return Response.json({ error: 'Missing email' }, { status: 400 });
+    }
+
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin' && normalizeEmail(user.email) !== normalizeEmail(email)) {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
     }
 
     if (!HUB_API_URL) {

@@ -3,9 +3,30 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
+function bearerToken(req) {
+  const header = req.headers.get('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : '';
+}
+
+function hasInternalSyncAuth(req) {
+  const token = bearerToken(req);
+  const allowed = [
+    Deno.env.get('CUSTOMER_APP_SYNC_SECRET'),
+    Deno.env.get('HUB_SYNC_SECRET'),
+  ].filter(Boolean);
+  return Boolean(token && allowed.includes(token));
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const internalAuth = hasInternalSyncAuth(req);
+    const user = internalAuth ? null : await base44.auth.me().catch(() => null);
+    if (!internalAuth && user?.role !== 'admin') {
+      return Response.json({ error: user ? 'forbidden' : 'unauthorized' }, { status: user ? 403 : 401 });
+    }
+
     const body = await req.json();
     // Support both entity automation payload (body.data) and direct call
     const shopifyOrder = body.data || body;

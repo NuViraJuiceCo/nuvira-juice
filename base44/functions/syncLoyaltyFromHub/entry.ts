@@ -1,7 +1,18 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     if (Deno.env.get('ENABLE_LOYALTY_FROM_HUB_SYNC') !== 'true') {
       return Response.json({
         success: true,
@@ -11,18 +22,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { email } = await req.json();
     const targetEmail = email || user.email;
 
     if (!targetEmail) {
       return Response.json({ error: 'Email required' }, { status: 400 });
+    }
+
+    if (user.role !== 'admin' && normalizeEmail(user.email) !== normalizeEmail(targetEmail)) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Fetch loyalty data from hub

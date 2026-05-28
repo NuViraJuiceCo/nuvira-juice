@@ -1,5 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+async function requireOwnerOrAdmin(base44, email) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user) return { response: Response.json({ error: 'unauthorized' }, { status: 401 }) };
+  const targetEmail = normalizeEmail(email);
+  const requesterEmail = normalizeEmail(user.email);
+  if (user.role !== 'admin' && requesterEmail !== targetEmail) {
+    return { response: Response.json({ error: 'forbidden' }, { status: 403 }) };
+  }
+  return { user };
+}
+
 /**
  * Single source of truth for loyalty enrollment.
  * 1. Pushes to hub first
@@ -14,6 +29,9 @@ Deno.serve(async (req) => {
     if (!email || !first_name || !last_name) {
       return Response.json({ error: 'Email, first name, and last name are required' }, { status: 400 });
     }
+
+    const auth = await requireOwnerOrAdmin(base44, email);
+    if (auth.response) return auth.response;
 
     // Check if already enrolled
     const existing = await base44.asServiceRole.entities.LoyaltyMember.filter({ email });
