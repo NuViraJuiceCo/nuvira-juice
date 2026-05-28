@@ -186,7 +186,6 @@ function buildCustomerAppOrderPatch(order) {
   return {
     estimated_delivery_date: TARGET.target_delivery_date,
     assigned_delivery_date: TARGET.target_delivery_date,
-    selected_delivery_date: TARGET.target_delivery_date,
     production_date: TARGET.target_production_date,
     assigned_production_day: TARGET.target_production_date,
     assigned_delivery_day: 'Wednesday',
@@ -367,7 +366,6 @@ Deno.serve(async (req) => {
       customer_app_order_patch: {
         estimated_delivery_date: TARGET.target_delivery_date,
         assigned_delivery_date: TARGET.target_delivery_date,
-        selected_delivery_date: TARGET.target_delivery_date,
         production_date: TARGET.target_production_date,
         assigned_production_day: TARGET.target_production_date,
         delivery_window_label: TARGET.target_window_label,
@@ -408,7 +406,8 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error_code: 'confirmation_required' }, { status: 400 });
     }
 
-    const commandLog = await base44.asServiceRole.entities.CommandLog.create({
+    let commandLog = existingLog;
+    const commandLogPatch = {
       command_type: 'correct_order_delivery_schedule',
       command_source: 'customer_app_admin',
       status: 'running',
@@ -427,13 +426,21 @@ Deno.serve(async (req) => {
       },
       idempotency_key: requestId,
       request_id: requestId,
-      submitted_at: new Date().toISOString(),
       started_at: new Date().toISOString(),
       function_name: 'correctAdminOrderDeliverySchedule',
       related_order_id: snapshot.order.id,
       related_order_number: TARGET.ca_order_number,
       notes: 'One-record correction for checkout schedule mismatch. No notifications/provider/inventory/PO actions.',
-    });
+    };
+
+    if (commandLog) {
+      await base44.asServiceRole.entities.CommandLog.update(commandLog.id, commandLogPatch);
+    } else {
+      commandLog = await base44.asServiceRole.entities.CommandLog.create({
+        ...commandLogPatch,
+        submitted_at: new Date().toISOString(),
+      });
+    }
 
     await base44.asServiceRole.entities.Order.update(snapshot.order.id, buildCustomerAppOrderPatch(snapshot.order));
 
