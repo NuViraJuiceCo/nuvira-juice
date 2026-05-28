@@ -10,6 +10,7 @@ import {
   CalendarDays,
   ChevronRight,
   ClipboardList,
+  Mail,
   Package,
   ShieldCheck,
   ShoppingCart,
@@ -189,6 +190,22 @@ function formatNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function formatCurrency(value) {
+  const amount = Number(value || 0);
+  return amount.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  });
+}
+
+function formatStatusLabel(value) {
+  if (!value) return 'Unknown';
+  return value
+    .toString()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
 function validateRange(from, to) {
   if (!from || !to) return 'Choose a start and end date.';
   if (to < from) return 'End date must be on or after start date.';
@@ -224,6 +241,158 @@ function SnapshotGroup({ title, description, children }) {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {children}
+      </div>
+    </section>
+  );
+}
+
+function itemSummary(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return 'Items pending';
+  return items
+    .slice(0, 2)
+    .map(item => {
+      const quantity = Number(item.quantity || item.qty || 1);
+      const name = item.name || item.title || item.product_name || item.variant_title || 'Item';
+      return `${quantity}x ${name}`;
+    })
+    .join(' · ') + (items.length > 2 ? ` +${items.length - 2} more` : '');
+}
+
+function orderSourceTone(order) {
+  const source = `${order.source_type || ''} ${order.source_channel || ''} ${order.order_type || ''}`.toLowerCase();
+  if (source.includes('pos') || order.fulfillment_type === 'pickup') return 'source';
+  if (order.is_native_order) return 'native';
+  if (order.is_hub_order) return 'hub';
+  return 'neutral';
+}
+
+function RecentCustomerOrderCard({ order }) {
+  const customerName = order.customer_name || 'Customer name pending';
+  const orderNumber = order.order_number ? `#${order.order_number.toString().replace(/^#/, '')}` : 'Order number pending';
+  const sourceLabel = order.source_type || order.source_channel || (order.is_native_order ? 'Customer App' : order.is_hub_order ? 'Hub' : 'Order');
+  const deliveryLabel = order.fulfillment_type === 'pickup'
+    ? 'Pickup / POS'
+    : order.fulfillment_type === 'delivery'
+      ? 'Delivery'
+      : formatStatusLabel(order.fulfillment_type);
+  const opsStatus = order.status || order.operational_order_status || order.native_production_status || order.native_fulfillment_status;
+
+  return (
+    <Link to="/admin/orders" className="block">
+      <article className="rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-sm transition hover:border-emerald-400 hover:bg-slate-900/90">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wider text-cyan-300">{orderNumber}</p>
+            <h3 className="mt-1 truncate text-sm font-black text-white">{customerName}</h3>
+            {order.customer_email && (
+              <p className="mt-1 flex items-center gap-1 truncate text-[11px] font-medium text-slate-300">
+                <Mail className="h-3 w-3 shrink-0 text-slate-400" />
+                {order.customer_email}
+              </p>
+            )}
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-sm font-black text-white">{formatCurrency(order.total)}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total</p>
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <AdminStatusPill label={formatStatusLabel(sourceLabel)} tone={orderSourceTone(order)} />
+          <AdminStatusPill label={deliveryLabel} tone={order.fulfillment_type === 'pickup' ? 'source' : 'progress'} />
+          <AdminStatusPill label={formatStatusLabel(opsStatus)} tone={opsStatus === 'delivered' || opsStatus === 'picked_up' ? 'success' : 'progress'} />
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 border-t border-slate-700 pt-3 text-[11px] font-medium text-slate-300 sm:grid-cols-2">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Items</p>
+            <p className="mt-0.5 line-clamp-2">{itemSummary(order.items)}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Need Date</p>
+            <p className="mt-0.5">{formatDate(order.estimated_delivery_date || order.assigned_delivery_date || order.production_date)}</p>
+          </div>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+function LiveCustomerContext({ user }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin-operations-live-customer-context'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminOrdersWithHub', {});
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result || { orders: [] };
+    },
+    enabled: user?.role === 'admin',
+    staleTime: 60000,
+  });
+
+  const orders = useMemo(() => {
+    const source = Array.isArray(data?.orders) ? data.orders : [];
+    return source
+      .filter(order => {
+        if (!order) return false;
+        if (order.is_test_order || order.do_not_recover) return false;
+        if (order.status === 'cancelled' || order.payment_status === 'refunded' || order.financial_status === 'refunded') return false;
+        return true;
+      })
+      .slice(0, 6);
+  }, [data?.orders]);
+
+  return (
+    <section className="rounded-xl border border-slate-700 bg-slate-950 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-black text-white">Live Customer Context</h2>
+            <span className="rounded-full border border-emerald-500 bg-emerald-600 px-2 py-0.5 text-[10px] font-black text-white">
+              Admin-only
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs font-medium text-slate-300">
+            Recent operational orders with customer, source, fulfillment, and item context.
+          </p>
+        </div>
+        <Link
+          to="/admin/orders"
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-2 text-xs font-black text-emerald-950 transition hover:bg-emerald-400"
+        >
+          Open Orders
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      {isLoading ? (
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-36 animate-pulse rounded-xl border border-slate-700 bg-slate-900" />
+          ))}
+        </div>
+      ) : isError ? (
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-100 p-3 text-xs font-semibold text-amber-950">
+          Live order context is temporarily unavailable. Use Admin Orders for the full operational view.
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-semibold text-slate-300">
+          No recent operational orders are available yet. New paid app, website, and POS orders will appear here.
+        </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {orders.map(order => (
+            <RecentCustomerOrderCard key={order.id || order.order_number} order={order} />
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-cyan-500/40 bg-cyan-950/50 p-3">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
+        <p className="text-[11px] font-medium text-cyan-100">
+          This is a read-only admin summary. It does not expose provider payloads, Stripe/Shopify secrets, or trigger fulfillment, inventory, notification, or sync actions.
+        </p>
       </div>
     </section>
   );
@@ -549,6 +718,7 @@ export default function Operations() {
 
       <div className="px-4 mt-4 space-y-5">
         <OperationsSnapshot user={user} />
+        <LiveCustomerContext user={user} />
 
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-950 p-3 shadow-sm">
           <p className="text-xs font-black text-white">Migrated Hub surfaces</p>
