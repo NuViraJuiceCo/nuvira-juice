@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Store,
 } from 'lucide-react';
+import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -88,10 +89,6 @@ function formatNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
-function statusLabel(value) {
-  return value ? value.toString().replace(/_/g, ' ') : 'unknown';
-}
-
 function SummaryCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefreshing }) {
   const toneClass = {
     default: 'border-border/50 bg-card',
@@ -111,18 +108,8 @@ function SummaryCard({ icon: Icon, label, value, sublabel, tone = 'default', isR
 }
 
 function Badge({ children, tone = 'default' }) {
-  const toneClass = {
-    default: 'bg-secondary text-secondary-foreground border-border/50',
-    success: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-    warning: 'bg-amber-50 text-amber-800 border-amber-200',
-    danger: 'bg-red-50 text-red-700 border-red-100',
-  }[tone] || 'bg-secondary text-secondary-foreground border-border/50';
-
-  return (
-    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${toneClass}`}>
-      {children}
-    </span>
-  );
+  const mappedTone = tone === 'success' ? 'source' : tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : 'neutral';
+  return <AdminStatusPill label={children} tone={mappedTone} />;
 }
 
 function OrderCard({ order }) {
@@ -154,15 +141,15 @@ function OrderCard({ order }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="rounded-lg border border-border/50 bg-background p-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Payment</p>
-          <p className="text-xs font-semibold text-foreground">{statusLabel(order.payment_status)}</p>
+          <AdminStatusPill value={order.payment_status} size="md" />
         </div>
         <div className="rounded-lg border border-border/50 bg-background p-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fulfillment</p>
-          <p className="text-xs font-semibold text-foreground">{statusLabel(order.fulfillment_status)}</p>
+          <AdminStatusPill value={order.fulfillment_status} size="md" />
         </div>
         <div className="rounded-lg border border-border/50 bg-background p-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Production</p>
-          <p className="text-xs font-semibold text-foreground">{statusLabel(order.production_status)}</p>
+          <AdminStatusPill value={order.production_status} size="md" />
         </div>
       </div>
 
@@ -289,6 +276,7 @@ export default function POSOrders() {
               <p className="text-[10px] text-muted-foreground mt-1">
                 Hub rows: {data?.hub_count ?? 0} · Native Customer App rows: {data?.native_count ?? 0}
               </p>
+              <AdminStatusLegend className="mt-2" />
             </div>
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Range</p>

@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Truck,
 } from 'lucide-react';
+import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -59,14 +60,6 @@ function formatLabel(value) {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-}
-
-function statusClass(status) {
-  const key = (status || '').toString().toLowerCase();
-  if (key.includes('delivered') || key.includes('complete')) return 'bg-green-100 text-green-700';
-  if (key.includes('out') || key.includes('transit')) return 'bg-blue-100 text-blue-700';
-  if (key.includes('unable') || key.includes('missing')) return 'bg-amber-100 text-amber-800';
-  return 'bg-muted text-muted-foreground';
 }
 
 function sourceTypeLabel(value) {
@@ -548,12 +541,8 @@ function StopCard({ stop, completed, onAssignmentSuccess }) {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusClass(stop.task_status)}`}>
-            {formatLabel(stop.task_status)}
-          </span>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusClass(stop.delivery_status)}`}>
-            {formatLabel(stop.delivery_status)}
-          </span>
+          <AdminStatusPill value={stop.task_status} label={formatLabel(stop.task_status)} />
+          <AdminStatusPill value={stop.delivery_status} label={formatLabel(stop.delivery_status)} />
         </div>
       </div>
 
@@ -774,6 +763,7 @@ export default function DeliveryQueue() {
           <p className="text-xs text-muted-foreground">
             Showing Hub delivery route summary for {formatDate(deliveryDate)}.
           </p>
+          <AdminStatusLegend />
           <p className="text-[10px] text-muted-foreground">Hub data · Driver assignment and operational status actions only for eligible active tasks.</p>
         </div>
 

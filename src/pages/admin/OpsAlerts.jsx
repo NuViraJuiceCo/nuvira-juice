@@ -12,6 +12,7 @@ import {
   Search,
   ShieldAlert,
 } from 'lucide-react';
+import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -31,22 +32,6 @@ function formatLabel(value) {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-}
-
-function severityClass(severity) {
-  const key = (severity || '').toString().toLowerCase();
-  if (key === 'critical' || key === 'high') return 'bg-red-100 text-red-800';
-  if (key === 'warning' || key === 'medium') return 'bg-amber-100 text-amber-800';
-  if (key === 'info' || key === 'low') return 'bg-blue-100 text-blue-700';
-  return 'bg-muted text-muted-foreground';
-}
-
-function statusClass(status) {
-  const key = (status || '').toString().toLowerCase();
-  if (key.includes('resolved') || key.includes('dismissed')) return 'bg-green-100 text-green-700';
-  if (key.includes('ack')) return 'bg-blue-100 text-blue-700';
-  if (key.includes('open') || key.includes('active') || key.includes('new')) return 'bg-red-50 text-red-700';
-  return 'bg-muted text-muted-foreground';
 }
 
 function categorySelectOptions(alerts, selectedCategory) {
@@ -92,12 +77,8 @@ function StatCard({ icon: Icon, label, value, sublabel, isRefreshing }) {
   );
 }
 
-function Chip({ value, classNameFor }) {
-  return (
-    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${classNameFor(value)}`}>
-      {formatLabel(value)}
-    </span>
-  );
+function Chip({ value, context = 'status' }) {
+  return <AdminStatusPill value={value} label={formatLabel(value)} context={context} />;
 }
 
 function ActionButton({ children, onClick, disabled, variant = 'default' }) {
@@ -138,8 +119,8 @@ function AlertCard({ alert, feedback, pendingAction, onAction }) {
           </h2>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <Chip value={alert.severity} classNameFor={severityClass} />
-          <Chip value={alert.status} classNameFor={statusClass} />
+          <Chip value={alert.severity} context="severity" />
+          <Chip value={alert.status} />
         </div>
       </div>
 
@@ -399,6 +380,7 @@ export default function OpsAlerts() {
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Alerts view</p>
             <p className="text-[10px] text-muted-foreground">Sanitized alert visibility only. Acknowledge, resolve, and dismiss are available for active alerts only.</p>
+            <AdminStatusLegend className="mt-2" />
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>

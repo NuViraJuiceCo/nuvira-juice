@@ -9,6 +9,7 @@ import {
   Package,
   RefreshCw,
 } from 'lucide-react';
+import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -89,14 +90,6 @@ function validateRange(from, to) {
   return null;
 }
 
-function statusClass(status) {
-  const key = (status || '').toString().toLowerCase();
-  if (key === 'covered') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
-  if (key === 'low') return 'bg-amber-50 text-amber-800 border-amber-100';
-  if (key === 'short') return 'bg-red-50 text-red-700 border-red-100';
-  return 'bg-muted text-muted-foreground border-border/50';
-}
-
 function StatCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefreshing }) {
   const toneClass = {
     default: 'border-border/50 bg-card',
@@ -117,11 +110,8 @@ function StatCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefr
 
 function StatusBadge({ status }) {
   const label = status === 'short' ? 'Procurement Needed' : formatLabel(status);
-  return (
-    <span className={`inline-flex px-2.5 py-0.5 rounded-full border text-xs font-medium ${statusClass(status)}`}>
-      {label}
-    </span>
-  );
+  const tone = status === 'short' ? 'warning' : undefined;
+  return <AdminStatusPill value={status} label={label} tone={tone} size="md" />;
 }
 
 function ProductGroupList({ groups }) {
@@ -338,6 +328,7 @@ export default function ProductionPlanning() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Planning date range</p>
                 <p className="text-xs font-semibold text-foreground mt-0.5">{contextLabel}</p>
+                <AdminStatusLegend className="mt-2" />
               </div>
             </div>
             <div className="text-right">
