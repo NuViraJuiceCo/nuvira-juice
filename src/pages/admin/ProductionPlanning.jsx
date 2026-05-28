@@ -126,7 +126,11 @@ function ProductGroupList({ groups }) {
           className="rounded-lg border border-border/50 bg-background p-3"
         >
           <p className="text-sm font-semibold text-foreground">{group.product_name || 'Unnamed product'}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{group.product_category || 'Uncategorized'}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {[group.product_category || 'Uncategorized', group.source === 'customer_app_native' ? 'Native May 30 mirror' : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
           <div className="grid grid-cols-3 gap-2 mt-3">
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Planned</p>
@@ -138,9 +142,14 @@ function ProductGroupList({ groups }) {
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Batches</p>
-              <p className="text-xs font-bold">{formatNumber(group.batch_count, 0)}</p>
+              <p className="text-xs font-bold">{group.source === 'customer_app_native' ? 'Native' : formatNumber(group.batch_count, 0)}</p>
             </div>
           </div>
+          {Number(group.source_order_count || 0) > 0 && (
+            <p className="text-[10px] text-muted-foreground mt-2">
+              {formatNumber(group.source_order_count, 0)} source order{Number(group.source_order_count) === 1 ? '' : 's'}
+            </p>
+          )}
         </div>
       ))}
     </div>
@@ -156,7 +165,7 @@ function DateGroup({ group }) {
           <h2 className="text-sm font-bold text-foreground mt-0.5">{formatDate(group.production_date)}</h2>
         </div>
         <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-secondary text-secondary-foreground border border-border/50">
-          Read-only planning
+          {group.source === 'customer_app_native' ? 'Native mirror' : 'Read-only planning'}
         </span>
       </div>
 
@@ -289,6 +298,8 @@ export default function ProductionPlanning() {
   const summary = data?.summary || {};
   const dateGroups = data?.dates || [];
   const ingredients = data?.ingredients || [];
+  const nativeOverlay = data?.native_overlay || {};
+  const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
   const hasResults = dateGroups.length > 0 || ingredients.length > 0;
   const showError = isError && !data && !isFetching;
   const contextLabel = (() => {
@@ -412,11 +423,24 @@ export default function ProductionPlanning() {
 
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-foreground">Hub Production Planning view</p>
-            <p className="text-[10px] text-muted-foreground">Read-only production batch demand and ingredient coverage. Make-to-order shortfalls are procurement needs, not inventory deduction approval.</p>
+            <p className="text-xs font-semibold text-foreground">Production Planning view</p>
+            <p className="text-[10px] text-muted-foreground">Hub batch and ingredient coverage plus native May 30 order mirrors. Make-to-order shortfalls are procurement needs, not inventory deduction approval.</p>
+            {Number(nativeOverlay.order_count || 0) > 0 && (
+              <p className="text-[10px] text-emerald-700 mt-1">
+                Native May 30 overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · read-only
+              </p>
+            )}
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        {warnings.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            {warnings.includes('hub_production_planning_service_not_configured') || warnings.some(warning => warning?.startsWith?.('hub_production_planning_unavailable'))
+              ? 'Hub production planning is unavailable, so this view is showing native Customer App order mirror demand only.'
+              : 'Production planning returned warnings. Review native and Hub planning context before batching.'}
+          </div>
+        )}
 
         {showError && (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
@@ -445,7 +469,7 @@ export default function ProductionPlanning() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Date-Grouped Production Summary</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Grouped production demand without raw batch records or order sources</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Grouped production demand from Hub batches and accepted native May 30 order mirrors</p>
               </div>
               {dateGroups.length > 0 ? (
                 <div className="space-y-3">
