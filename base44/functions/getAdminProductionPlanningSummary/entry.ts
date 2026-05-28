@@ -37,6 +37,37 @@ function daysInclusive(from, to) {
   return Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1;
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(dateStr, days) {
+  const date = new Date(`${dateStr}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function startOfWeekMonday(dateStr) {
+  const date = new Date(`${dateStr}T00:00:00.000Z`);
+  const day = date.getUTCDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function resolveRange({ preset, dateFrom, dateTo }) {
+  if (preset === 'custom') return { dateFrom, dateTo };
+
+  const today = todayIsoDate();
+  if (preset === 'today') return { dateFrom: today, dateTo: today };
+  if (preset === 'this_week') {
+    const weekStart = startOfWeekMonday(today);
+    return { dateFrom: weekStart, dateTo: addDays(weekStart, 6) };
+  }
+
+  return { dateFrom: today, dateTo: addDays(today, 6) };
+}
+
 function numberOrZero(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -74,6 +105,8 @@ function sanitizeSummary(summary) {
     shortage_count: numberOrZero(summary?.shortage_count),
     missing_recipe_count: numberOrZero(summary?.missing_recipe_count),
     missing_yield_count: numberOrZero(summary?.missing_yield_count),
+    native_order_count: numberOrZero(summary?.native_order_count),
+    skipped_missing_date_count: numberOrZero(summary?.skipped_missing_date_count),
   };
 }
 
@@ -84,6 +117,8 @@ function sanitizeProductGroup(group) {
     planned_units: numberOrZero(group?.planned_units),
     produced_units: numberOrZero(group?.produced_units),
     batch_count: numberOrZero(group?.batch_count),
+    source_order_count: numberOrZero(group?.source_order_count),
+    source: sanitizeText(group?.source, 80),
   };
 }
 
@@ -100,6 +135,164 @@ function sanitizeDateGroup(group) {
     product_groups: productGroups,
     ingredient_count: numberOrZero(group?.ingredient_count),
     shortage_count: numberOrZero(group?.shortage_count),
+    native_order_count: numberOrZero(group?.native_order_count),
+    source: sanitizeText(group?.source, 80),
+  };
+}
+
+function mergeSummaries(hubSummary, nativeSummary) {
+  return sanitizeSummary({
+    production_date_count: numberOrZero(hubSummary?.production_date_count) + numberOrZero(nativeSummary?.production_date_count),
+    batch_count: numberOrZero(hubSummary?.batch_count) + numberOrZero(nativeSummary?.batch_count),
+    planned_units: numberOrZero(hubSummary?.planned_units) + numberOrZero(nativeSummary?.planned_units),
+    produced_units: numberOrZero(hubSummary?.produced_units) + numberOrZero(nativeSummary?.produced_units),
+    ingredient_count: numberOrZero(hubSummary?.ingredient_count),
+    shortage_count: numberOrZero(hubSummary?.shortage_count),
+    missing_recipe_count: numberOrZero(hubSummary?.missing_recipe_count),
+    missing_yield_count: numberOrZero(hubSummary?.missing_yield_count),
+    native_order_count: numberOrZero(nativeSummary?.native_order_count),
+    skipped_missing_date_count: numberOrZero(nativeSummary?.skipped_missing_date_count),
+  });
+}
+
+function mergeDateGroups(hubDates, nativeDates) {
+  return [
+    ...(Array.isArray(hubDates) ? hubDates.map(sanitizeDateGroup) : []),
+    ...(Array.isArray(nativeDates) ? nativeDates.map(sanitizeDateGroup) : []),
+  ].sort((a, b) => {
+    const dateCompare = (a.production_date || '').localeCompare(b.production_date || '');
+    if (dateCompare !== 0) return dateCompare;
+    return (a.source || 'hub').localeCompare(b.source || 'hub');
+  });
+}
+
+function normalizeOrderDate(value) {
+  const text = normalizeText(value);
+  if (!text) return null;
+  const match = text.match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : null;
+}
+
+function isInRange(date, dateFrom, dateTo) {
+  return Boolean(date && date >= dateFrom && date <= dateTo);
+}
+
+function orderPlanningDate(order) {
+  return normalizeOrderDate(
+    order?.production_date ||
+    order?.assigned_delivery_date ||
+    order?.selected_delivery_date ||
+    order?.requested_delivery_date ||
+    order?.customer_order_date ||
+    order?.created_date,
+  );
+}
+
+function safeLineItems(order) {
+  return Array.isArray(order?.line_items)
+    ? order.line_items.slice(0, 60)
+    : [];
+}
+
+function isNativeMay30OperationalOrder(order) {
+  const tags = Array.isArray(order?.tags) ? order.tags.map(normalizeLower) : [];
+  const paymentStatus = normalizeLower(order?.payment_status || order?.financial_status);
+  const orderType = normalizeLower(order?.order_type);
+  const sourceChannel = normalizeLower(order?.source_channel);
+  const fulfillmentMethod = normalizeLower(order?.fulfillment_method);
+  const productionStatus = normalizeLower(order?.production_status);
+
+  if (!tags.includes('may30_native_ops') && normalizeLower(order?.sync_status) !== 'native_may30_ready') return false;
+  if (order?.excluded_from_production === true) return false;
+  if (['canceled', 'cancelled', 'refunded'].includes(productionStatus)) return false;
+  if (['refunded', 'partially_refunded'].includes(paymentStatus)) return false;
+  if (paymentStatus && paymentStatus !== 'paid') return false;
+  if (orderType === 'pos' || sourceChannel === 'pos' || fulfillmentMethod === 'pos') return false;
+  if (orderType === 'subscription' || sourceChannel === 'subscription' || order?.stripe_subscription_id) return false;
+  return safeLineItems(order).length > 0;
+}
+
+async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
+  const nativeOrders = await base44.asServiceRole.entities.ShopifyOrder
+    .filter({ sync_status: 'native_may30_ready' }, '-customer_order_date', 500)
+    .catch(() => []);
+
+  const productByDate = new Map();
+  const orderNumbersByDate = new Map();
+  let skippedDateCount = 0;
+
+  for (const order of nativeOrders) {
+    if (!isNativeMay30OperationalOrder(order)) continue;
+
+    const productionDate = orderPlanningDate(order);
+    if (!isInRange(productionDate, dateFrom, dateTo)) {
+      if (!productionDate) skippedDateCount += 1;
+      continue;
+    }
+
+    const orderNumber = sanitizeText(order.shopify_order_number || order.order_number, 80);
+    if (!productByDate.has(productionDate)) productByDate.set(productionDate, new Map());
+    if (!orderNumbersByDate.has(productionDate)) orderNumbersByDate.set(productionDate, new Set());
+    if (orderNumber) orderNumbersByDate.get(productionDate).add(orderNumber);
+
+    const productMap = productByDate.get(productionDate);
+    for (const item of safeLineItems(order)) {
+      const productName = sanitizeText(item?.title || item?.name || item?.product_title, 120);
+      if (!productName) continue;
+      const key = normalizeLower(productName);
+      const quantity = numberOrZero(item?.quantity);
+      const current = productMap.get(key) || {
+        product_name: productName,
+        product_category: 'Native May 30 Orders',
+        planned_units: 0,
+        produced_units: 0,
+        batch_count: 0,
+        source_order_count: 0,
+        source: 'customer_app_native',
+      };
+      current.planned_units += quantity;
+      productMap.set(key, current);
+    }
+  }
+
+  const dates = Array.from(productByDate.entries())
+    .map(([productionDate, productMap]) => {
+      const productGroups = Array.from(productMap.values()).map(group => ({
+        ...group,
+        source_order_count: orderNumbersByDate.get(productionDate)?.size || 0,
+      }));
+      const plannedUnits = productGroups.reduce((sum, group) => sum + numberOrZero(group.planned_units), 0);
+      return {
+        production_date: productionDate,
+        batch_count: 0,
+        planned_units: plannedUnits,
+        produced_units: 0,
+        product_groups: productGroups,
+        ingredient_count: 0,
+        shortage_count: 0,
+        native_order_count: orderNumbersByDate.get(productionDate)?.size || 0,
+        source: 'customer_app_native',
+      };
+    })
+    .sort((a, b) => (a.production_date || '').localeCompare(b.production_date || ''));
+
+  const plannedUnits = dates.reduce((sum, group) => sum + numberOrZero(group.planned_units), 0);
+  const nativeOrderCount = dates.reduce((sum, group) => sum + numberOrZero(group.native_order_count), 0);
+
+  return {
+    summary: {
+      production_date_count: dates.length,
+      batch_count: 0,
+      planned_units: plannedUnits,
+      produced_units: 0,
+      ingredient_count: 0,
+      shortage_count: 0,
+      missing_recipe_count: 0,
+      missing_yield_count: 0,
+      native_order_count: nativeOrderCount,
+      skipped_missing_date_count: skippedDateCount,
+    },
+    dates,
   };
 }
 
@@ -175,53 +368,78 @@ Deno.serve(async (req) => {
       return Response.json({ error: error.message }, { status: 400 });
     }
 
+    const resolvedRange = resolveRange({ preset, dateFrom, dateTo });
+    const warnings = [];
+    let hubData = {
+      success: true,
+      date_from: resolvedRange.dateFrom,
+      date_to: resolvedRange.dateTo,
+      generated_at: null,
+      summary: {},
+      dates: [],
+      ingredients: [],
+      truncated: false,
+    };
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub production planning service is not configured' }, { status: 503 });
-    }
-
-    const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-    const params = new URLSearchParams();
-    if (preset === 'custom') {
-      params.set('date_from', dateFrom);
-      params.set('date_to', dateTo);
+      warnings.push('hub_production_planning_service_not_configured');
     } else {
-      params.set('preset', preset);
+      const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
+      const params = new URLSearchParams();
+      if (preset === 'custom') {
+        params.set('date_from', dateFrom);
+        params.set('date_to', dateTo);
+      } else {
+        params.set('preset', preset);
+      }
+
+      const hubResponse = await fetch(`${hubBase}/functions/getProductionPlanningSummaryForCustomerApp?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        },
+      });
+
+      if (!hubResponse.ok) {
+        warnings.push(`hub_production_planning_unavailable:${hubResponse.status}`);
+      } else {
+        const parsedHubData = await hubResponse.json().catch(() => null);
+        if (
+          !parsedHubData ||
+          parsedHubData.success !== true ||
+          !parsedHubData.summary ||
+          !Array.isArray(parsedHubData.dates) ||
+          !Array.isArray(parsedHubData.ingredients)
+        ) {
+          warnings.push('hub_production_planning_malformed_response');
+        } else {
+          hubData = parsedHubData;
+        }
+      }
     }
 
-    const hubResponse = await fetch(`${hubBase}/functions/getProductionPlanningSummaryForCustomerApp?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-    });
-
-    if (!hubResponse.ok) {
-      return Response.json({
-        error: 'Unable to load production planning summary',
-        hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
-    }
-
-    const hubData = await hubResponse.json().catch(() => null);
-    if (
-      !hubData ||
-      hubData.success !== true ||
-      !hubData.summary ||
-      !Array.isArray(hubData.dates) ||
-      !Array.isArray(hubData.ingredients)
-    ) {
-      return Response.json({ error: 'Malformed production planning summary response' }, { status: 502 });
-    }
+    const nativePlanning = await loadNativeMay30Planning(base44, resolvedRange.dateFrom, resolvedRange.dateTo);
 
     return Response.json({
       success: true,
-      date_from: hubData.date_from || dateFrom || null,
-      date_to: hubData.date_to || dateTo || null,
-      generated_at: hubData.generated_at || null,
-      summary: sanitizeSummary(hubData.summary),
-      dates: hubData.dates.map(sanitizeDateGroup).slice(0, 31),
+      date_from: hubData.date_from || resolvedRange.dateFrom,
+      date_to: hubData.date_to || resolvedRange.dateTo,
+      generated_at: hubData.generated_at || new Date().toISOString(),
+      summary: mergeSummaries(hubData.summary, nativePlanning.summary),
+      dates: mergeDateGroups(hubData.dates, nativePlanning.dates).slice(0, 62),
       ingredients: hubData.ingredients.map(sanitizeIngredient).slice(0, 200),
       truncated: hubData.truncated === true,
+      native_overlay: {
+        source: 'customer_app_shopify_order_mirror',
+        read_only: true,
+        order_count: nativePlanning.summary.native_order_count,
+        planned_units: nativePlanning.summary.planned_units,
+        date_count: nativePlanning.summary.production_date_count,
+        skipped_missing_date_count: nativePlanning.summary.skipped_missing_date_count,
+        inventory_deduction_enabled: false,
+        purchase_order_automation_enabled: false,
+      },
+      warnings,
     });
   } catch (error) {
     console.error('[getAdminProductionPlanningSummary] Error:', error.message);
