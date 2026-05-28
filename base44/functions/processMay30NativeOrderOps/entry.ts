@@ -100,6 +100,17 @@ function addressFromOrder(order) {
   };
 }
 
+function deliveryDateForOrder(order) {
+  return sanitizeText(
+    order?.assigned_delivery_date ||
+    order?.estimated_delivery_date ||
+    order?.requested_delivery_date ||
+    order?.delivery_date ||
+    order?.selected_delivery_date,
+    40,
+  );
+}
+
 function isSubscriptionLike(order) {
   return normalizeLower(order?.order_type) === 'subscription' ||
     normalizeLower(order?.source_channel) === 'subscription' ||
@@ -187,7 +198,7 @@ function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus
     fulfillment_number: 1,
     status: 'pending',
     fulfillment_method: fulfillmentMethod,
-    delivery_date: sanitizeText(order?.assigned_delivery_date || order?.estimated_delivery_date || order?.requested_delivery_date, 40),
+    delivery_date: deliveryDateForOrder(order),
     production_date: sanitizeText(order?.production_date, 40),
     delivery_window_label: sanitizeText(order?.delivery_window_label, 120),
     line_items: lineItems,
@@ -220,7 +231,7 @@ function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus
       customer_order_date: sanitizeText(order?.created_date || order?.customer_order_date || now, 80),
       requested_delivery_date: sanitizeText(order?.requested_delivery_date || order?.estimated_delivery_date, 40),
       selected_delivery_date: sanitizeText(order?.selected_delivery_date || order?.assigned_delivery_date || order?.estimated_delivery_date, 40),
-      assigned_delivery_date: sanitizeText(order?.assigned_delivery_date || order?.estimated_delivery_date, 40),
+      assigned_delivery_date: deliveryDateForOrder(order),
       production_date: sanitizeText(order?.production_date, 40),
       delivery_window_label: sanitizeText(order?.delivery_window_label, 120),
       delivery_window_start: sanitizeText(order?.delivery_window_start, 80),
@@ -329,6 +340,9 @@ function validationError({ source, eventType, order, lineItems, paymentStatus, f
   if (source !== 'shopify_pos' && fulfillmentMethod === 'delivery' && !hasCompleteDeliveryAddress(order)) {
     return { code: 'delivery_order_missing_address', incident_type: 'missing_customer_info' };
   }
+  if (source !== 'shopify_pos' && fulfillmentMethod === 'delivery' && !deliveryDateForOrder(order)) {
+    return { code: 'delivery_order_missing_date', incident_type: 'missing_fulfillment_date' };
+  }
   return null;
 }
 
@@ -422,6 +436,62 @@ async function createCommandLog({ base44, record, action, status, idempotencyKey
     console.warn(`[processMay30NativeOrderOps] CommandLog write failed safely: ${error?.message || 'unknown'}`);
     return null;
   });
+}
+
+async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outputs, idempotencyKey, requestId, source, eventType, mode }) {
+  const fulfillmentNeed = outputs?.fulfillment_need || {};
+  if (!fulfillmentNeed.requires_fulfillment_task) {
+    return { action: 'not_required', record: null };
+  }
+
+  const deliveryDate = outputs?.record?.assigned_delivery_date || outputs?.record?.selected_delivery_date || outputs?.record?.requested_delivery_date;
+  if (!deliveryDate || !shopifyOrder?.id) {
+    return {
+      action: 'skipped',
+      record: null,
+      reason: !deliveryDate ? 'missing_delivery_date' : 'missing_native_order_id',
+    };
+  }
+
+  const draft = {
+    order_id: shopifyOrder.id,
+    customer_email: outputs.record.customer_email,
+    fulfillment_number: 1,
+    delivery_date: deliveryDate,
+    items: Array.isArray(outputs.record.line_items)
+      ? outputs.record.line_items.map(item => ({
+          product_id: item.shopify_line_item_id || '',
+          title: item.title || 'Item',
+          price: item.price ?? 0,
+          quantity: item.quantity ?? 0,
+        }))
+      : [],
+    status: 'pending',
+    notes: sanitizeText(
+      `Native May 30 delivery task mirror. Source=${source}; event=${eventType}; request=${requestId}; idempotency=${idempotencyKey}`,
+      500,
+    ),
+  };
+
+  if (mode !== 'live') return { action: 'would_create_or_update', draft };
+
+  const existing = await base44.asServiceRole.entities.FulfillmentTask.filter({
+    order_id: shopifyOrder.id,
+    fulfillment_number: 1,
+  }, '-created_date', 1).catch(() => []);
+
+  if (Array.isArray(existing) && existing.length > 0) {
+    const updated = await base44.asServiceRole.entities.FulfillmentTask.update(existing[0].id, {
+      customer_email: draft.customer_email,
+      delivery_date: draft.delivery_date,
+      items: draft.items,
+      notes: draft.notes,
+    });
+    return { action: 'updated', record: updated };
+  }
+
+  const created = await base44.asServiceRole.entities.FulfillmentTask.create(draft);
+  return { action: 'created', record: created };
 }
 
 async function runPlanner({ base44, source, record, existing, idempotencyKey }) {
@@ -580,6 +650,10 @@ Deno.serve(async (req) => {
     const fieldsUpdated = Object.keys(planner.accepted_fields || outputs.record);
     let writeAction = existing ? 'skipped' : 'created';
     let writtenRecord = existing || outputs.record;
+    let fulfillmentTaskResult = {
+      action: mode === 'live' ? 'not_run' : (outputs.fulfillment_need.requires_fulfillment_task ? 'would_create_or_update' : 'not_required'),
+      record: null,
+    };
 
     if (mode === 'live') {
       if (existing) {
@@ -598,6 +672,20 @@ Deno.serve(async (req) => {
       } else {
         writtenRecord = await base44.asServiceRole.entities.ShopifyOrder.create(outputs.record);
       }
+
+      fulfillmentTaskResult = await createOrUpdateNativeFulfillmentTask({
+        base44,
+        shopifyOrder: writtenRecord,
+        outputs,
+        idempotencyKey,
+        requestId,
+        source,
+        eventType,
+        mode,
+      }).catch(error => {
+        console.warn(`[processMay30NativeOrderOps] FulfillmentTask mirror failed safely: ${error?.message || 'unknown'}`);
+        return { action: 'failed', record: null, reason: 'fulfillment_task_write_failed' };
+      });
 
       await createOrderSyncLog({
         base44,
@@ -649,6 +737,12 @@ Deno.serve(async (req) => {
         order_lock_status: outputs.record.order_lock_status,
       },
       fulfillment_need: outputs.fulfillment_need,
+      native_fulfillment_task: {
+        action: fulfillmentTaskResult.action,
+        task_id: fulfillmentTaskResult.record?.id || null,
+        required: outputs.fulfillment_need.requires_fulfillment_task === true,
+        reason: fulfillmentTaskResult.reason || null,
+      },
       production_demand: outputs.production_demand,
       ingredient_procurement_need: outputs.ingredient_procurement_need,
       native_safe_sync: {
