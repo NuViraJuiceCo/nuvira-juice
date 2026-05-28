@@ -41,6 +41,10 @@ function sanitizeSummary(summary) {
     critical_count: Number(summary?.critical_count) || 0,
     out_of_stock_count: Number(summary?.out_of_stock_count) || 0,
     category_count: Number(summary?.category_count) || 0,
+    procurement_item_count: Number(summary?.procurement_item_count) || 0,
+    procurement_supplier_count: Number(summary?.procurement_supplier_count) || 0,
+    open_purchase_order_count: Number(summary?.open_purchase_order_count) || 0,
+    net_procurement_item_count: Number(summary?.net_procurement_item_count) || 0,
   };
 }
 
@@ -54,10 +58,67 @@ function sanitizeItem(item) {
     stock: numberOrNull(item.stock),
     reorder_point: numberOrNull(item.reorder_point),
     max_stock: numberOrNull(item.max_stock),
+    cost_per_unit: numberOrNull(item.cost_per_unit),
+    cost_per_supplier_unit: numberOrNull(item.cost_per_supplier_unit),
+    supplier_packaging_unit: item.supplier_packaging_unit || null,
+    supplier_packaging_qty: item.supplier_packaging_qty || null,
     supplier: item.supplier || null,
     location: item.location || null,
     status: VALID_STATUSES.has(status) ? status : null,
     updated_date: item.updated_date || null,
+  };
+}
+
+function sanitizeStringArray(values, max = 20) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map(value => normalizeText(value))
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+function sanitizeProcurementPlanItem(item) {
+  return {
+    inventory_item_id: item.inventory_item_id || null,
+    ingredient: item.ingredient || null,
+    category: item.category || null,
+    supplier: item.supplier || null,
+    status: VALID_STATUSES.has(normalizeText(item.status).toLowerCase()) ? normalizeText(item.status).toLowerCase() : null,
+    stock: numberOrNull(item.stock),
+    reorder_point: numberOrNull(item.reorder_point),
+    max_stock: numberOrNull(item.max_stock),
+    unit: item.unit || null,
+    supplier_packaging_unit: item.supplier_packaging_unit || null,
+    supplier_packaging_qty: item.supplier_packaging_qty || null,
+    suggested_quantity: numberOrNull(item.suggested_quantity),
+    open_po_quantity: numberOrNull(item.open_po_quantity),
+    open_po_numbers: sanitizeStringArray(item.open_po_numbers, 10),
+    net_suggested_quantity: numberOrNull(item.net_suggested_quantity),
+    estimated_cost: numberOrNull(item.estimated_cost),
+  };
+}
+
+function sanitizePurchaseOrder(po) {
+  const items = Array.isArray(po.items)
+    ? po.items.slice(0, 25).map(item => ({
+      ingredient: item?.ingredient || null,
+      quantity: numberOrNull(item?.quantity),
+      unit: item?.unit || null,
+      unit_cost: numberOrNull(item?.unit_cost),
+    })).filter(item => item.ingredient)
+    : [];
+
+  return {
+    id: po.id || null,
+    po_number: po.po_number || null,
+    supplier: po.supplier || null,
+    status: po.status || null,
+    item_count: numberOrNull(po.item_count) || items.length,
+    items,
+    total_amount: numberOrNull(po.total_amount),
+    order_date: po.order_date || null,
+    expected_date: po.expected_date || null,
+    updated_date: po.updated_date || null,
   };
 }
 
@@ -126,6 +187,12 @@ Deno.serve(async (req) => {
     }
 
     const sanitizedItems = hubData.items.map(sanitizeItem).slice(0, limit);
+    const procurementPlan = Array.isArray(hubData.procurement_plan)
+      ? hubData.procurement_plan.slice(0, 100).map(sanitizeProcurementPlanItem).filter(Boolean)
+      : [];
+    const openPurchaseOrders = Array.isArray(hubData.open_purchase_orders)
+      ? hubData.open_purchase_orders.slice(0, 50).map(sanitizePurchaseOrder).filter(Boolean)
+      : [];
     const truncated = hubData.truncated === true || sanitizedItems.length < hubData.items.length;
 
     return Response.json({
@@ -134,6 +201,8 @@ Deno.serve(async (req) => {
       count: sanitizedItems.length,
       truncated,
       items: sanitizedItems,
+      procurement_plan: procurementPlan,
+      open_purchase_orders: openPurchaseOrders,
     });
   } catch (error) {
     console.error('[getAdminInventoryStatusSummary] Error:', error.message);
