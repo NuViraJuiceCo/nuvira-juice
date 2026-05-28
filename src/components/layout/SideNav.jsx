@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, ShoppingBag, User, Star } from 'lucide-react';
+import { Home, Search, ShoppingBag, User, Star, ShieldCheck } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
+import { useAuth } from '@/lib/AuthContext';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -13,9 +14,13 @@ const navItems = [
   { path: '/account', icon: User, label: 'Account' },
 ];
 
+const adminNavItem = { path: '/admin/operations', icon: ShieldCheck, label: 'Admin', adminOnly: true };
+
 export default function SideNav() {
   const location = useLocation();
   const { itemCount } = useCart();
+  const { user } = useAuth();
+  const visibleNavItems = user?.role === 'admin' ? [...navItems, adminNavItem] : navItems;
 
   return (
     <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-border min-h-screen fixed left-0 top-0 h-screen overflow-y-auto">
@@ -27,11 +32,12 @@ export default function SideNav() {
 
       {/* Nav Items */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ path, icon: Icon, label }) => {
+        {visibleNavItems.map(({ path, icon: Icon, label }) => {
           const isActive =
             location.pathname === path ||
             (path === '/shop' && location.pathname.startsWith('/shop')) ||
-            (path === '/account' && location.pathname.startsWith('/account'));
+            (path === '/account' && location.pathname.startsWith('/account')) ||
+            (path === '/admin/operations' && location.pathname.startsWith('/admin'));
 
           return (
             <Link
@@ -39,7 +45,11 @@ export default function SideNav() {
               to={path}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors relative ${
                 isActive
-                  ? 'bg-primary text-primary-foreground'
+                  ? label === 'Admin'
+                    ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-950/20'
+                    : 'bg-primary text-primary-foreground'
+                  : label === 'Admin'
+                    ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
               }`}
             >

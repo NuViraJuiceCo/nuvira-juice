@@ -1,7 +1,8 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Search, ShoppingBag, User, Star } from 'lucide-react';
+import { Home, Search, ShoppingBag, User, Star, ShieldCheck } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
+import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
 
 const navItems = [
@@ -12,18 +13,23 @@ const navItems = [
   { path: '/account', icon: User, label: 'Account' },
 ];
 
+const adminNavItem = { path: '/admin/operations', icon: ShieldCheck, label: 'Admin', adminOnly: true };
+
 export default function MobileNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { itemCount } = useCart();
+  const { user } = useAuth();
+  const visibleNavItems = user?.role === 'admin' ? [...navItems, adminNavItem] : navItems;
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
-        {navItems.map(({ path, icon: Icon, label }) => {
+        {visibleNavItems.map(({ path, icon: Icon, label }) => {
           const isActive = location.pathname === path || 
             (path === '/shop' && location.pathname.startsWith('/shop')) ||
             (path === '/account' && location.pathname.startsWith('/account')) ||
+            (path === '/admin/operations' && location.pathname.startsWith('/admin')) ||
             (path === '/rewards' && location.pathname === '/rewards');
 
           return (
@@ -44,7 +50,9 @@ export default function MobileNav() {
               <div className="relative">
                 <Icon
                   className={`w-5 h-5 transition-colors ${
-                    isActive ? 'text-primary' : 'text-muted-foreground'
+                    isActive
+                      ? label === 'Admin' ? 'text-emerald-400' : 'text-primary'
+                      : label === 'Admin' ? 'text-emerald-500' : 'text-muted-foreground'
                   }`}
                   strokeWidth={isActive ? 2.5 : 1.5}
                 />
@@ -55,14 +63,16 @@ export default function MobileNav() {
                 )}
               </div>
               <span className={`text-[10px] font-medium transition-colors ${
-                isActive ? 'text-primary' : 'text-muted-foreground'
+                isActive
+                  ? label === 'Admin' ? 'text-emerald-400' : 'text-primary'
+                  : label === 'Admin' ? 'text-emerald-500' : 'text-muted-foreground'
               }`}>
                 {label}
               </span>
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
-                  className="absolute -top-px left-1/4 right-1/4 h-0.5 bg-primary rounded-full"
+                  className={`absolute -top-px left-1/4 right-1/4 h-0.5 rounded-full ${label === 'Admin' ? 'bg-emerald-400' : 'bg-primary'}`}
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                 />
               )}
