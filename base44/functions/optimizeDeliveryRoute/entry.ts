@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (!user || (user.role !== 'driver' && user.role !== 'admin')) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
