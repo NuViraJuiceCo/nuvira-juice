@@ -6,11 +6,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const ORIGIN = "619 N Main St Unit 3, O'Fallon, MO 63366";
 
-async function authorizeOrderAccess(base44, order) {
+async function requireAuthenticatedUser(base44) {
   const user = await base44.auth.me().catch(() => null);
   if (!user?.email) {
-    return Response.json({ error: 'unauthorized' }, { status: 401 });
+    return { response: Response.json({ error: 'unauthorized' }, { status: 401 }) };
   }
+  return { user };
+}
+
+function authorizeOrderAccess(user, order) {
   const requester = String(user.email || '').trim().toLowerCase();
   const owner = String(order?.customer_email || '').trim().toLowerCase();
   if (user.role === 'admin' || user.role === 'driver' || requester === owner) {
@@ -29,6 +33,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'order_id required' }, { status: 400 });
     }
 
+    const auth = await requireAuthenticatedUser(base44);
+    if (auth.response) return auth.response;
+
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     const orders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
     const targetOrder = orders.find(o => o.id === order_id);
@@ -36,7 +43,7 @@ Deno.serve(async (req) => {
     if (!targetOrder) {
       return Response.json({ error: 'Order not found' }, { status: 404 });
     }
-    const unauthorized = await authorizeOrderAccess(base44, targetOrder);
+    const unauthorized = authorizeOrderAccess(auth.user, targetOrder);
     if (unauthorized) return unauthorized;
 
     // Only show ETA when driver is actively delivering
