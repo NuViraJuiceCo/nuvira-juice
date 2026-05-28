@@ -4,7 +4,6 @@ import { appParams } from '@/lib/app-params';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
 import {
   consumeBase44AuthFromUrl,
-  getStoredBase44Token,
   hasBase44AuthParamsInUrl,
   redirectToLogin,
 } from '@/lib/nativeAuthRedirect';
@@ -51,15 +50,9 @@ export const AuthProvider = ({ children }) => {
       // The app is already running, so it's accessible
       setAppPublicSettings({ id: appParams.appId, public_settings: {} });
       
-      let currentUser = null;
-      if (getStoredBase44Token()) {
-        currentUser = await checkUserAuth();
-      } else {
-        setUser(null);
-        setIsLoadingAuth(false);
-        setIsAuthenticated(false);
-        setAuthChecked(true);
-      }
+      // Always ask Base44 for the current user. Some app/browser auth returns
+      // establish an HTTP-only session without a token visible in localStorage.
+      const currentUser = await checkUserAuth();
       setIsLoadingPublicSettings(false);
       return currentUser;
     } catch (error) {
