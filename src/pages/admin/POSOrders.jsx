@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
+import May30EventStockPlanPanel from '@/components/admin/May30EventStockPlanPanel';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -404,6 +405,8 @@ export default function POSOrders() {
             { label: 'Review / Sync Health', to: '/admin/sync-health' },
           ]}
         />
+
+        <May30EventStockPlanPanel />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
