@@ -5,6 +5,15 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_RANGE_DAYS = 31;
 const VALID_PRESETS = new Set(['today', 'last_7_days', 'last_30_days']);
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function normalizeText(value) {
   return (value || '').toString().trim();
 }
@@ -79,7 +88,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
     let dateFrom;
     let dateTo;
     let preset;

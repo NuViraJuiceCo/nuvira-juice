@@ -8,6 +8,15 @@ const RESOURCE_LIMITS = {
   zone3_reviews: 100,
 };
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function text(value: unknown, maxLength = 180): string | null {
   const normalized = (value ?? '').toString().trim().replace(/\s+/g, ' ');
   if (!normalized) return null;
@@ -153,7 +162,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
     const resource = text(body?.resource, 80) as keyof typeof RESOURCE_LIMITS;
     if (!resource || !(resource in RESOURCE_LIMITS)) {
       return Response.json({ error: 'unsupported_resource' }, { status: 400 });

@@ -3,6 +3,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function normalizeText(value) {
   return (value || '').toString().trim();
 }
@@ -50,7 +59,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
     const hubOrderId = normalizeText(body.hub_order_id);
     const orderNumber = normalizeText(body.order_number);
     const stripeSubscriptionId = normalizeText(body.stripe_subscription_id);

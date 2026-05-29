@@ -7,6 +7,15 @@ const DEFAULT_RANGE_DAYS_AHEAD = 14;
 const MAX_LIMIT = 100;
 const CHICAGO_TZ = 'America/Chicago';
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function normalizeText(value) {
   return (value || '').toString().trim();
 }
@@ -111,7 +120,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
     let dateFrom;
     let dateTo;
     let limit;
