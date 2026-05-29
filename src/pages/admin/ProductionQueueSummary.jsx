@@ -635,6 +635,444 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
   );
 }
 
+function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
+  const [preview, setPreview] = useState(null);
+  const [previewPending, setPreviewPending] = useState(false);
+  const [correctionPending, setCorrectionPending] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  async function previewCorrection() {
+    setPreviewPending(true);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('previewAdminProductionIngredientUsageCorrection', {
+        production_batch_id: batch.id,
+        batch_id: batch.batch_id,
+        expected_status: batch.status,
+        request_id: requestIdFor('ingredient_usage_preview', batch),
+      });
+      const result = res?.data || res;
+      if (result?.error && result?.success !== true) throw new Error(result.error);
+      setPreview(result);
+      setMessage({
+        type: result?.usage_correction_allowed ? 'success' : 'warn',
+        text: result?.usage_correction_allowed
+          ? 'Ingredient usage correction is ready for this batch.'
+          : 'Ingredient usage correction has blockers. Review the rows below.',
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to preview ingredient usage correction.' });
+    } finally {
+      setPreviewPending(false);
+    }
+  }
+
+  async function correctIngredientUsage() {
+    if (!preview?.usage_correction_allowed) return;
+    if (!window.confirm(`Correct ingredient usage for ${batch.batch_id || batch.product_name}? This writes batch ingredient usage only; it does not deduct inventory or create purchase orders.`)) {
+      return;
+    }
+
+    setCorrectionPending(true);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('correctAdminProductionIngredientUsage', {
+        production_batch_id: batch.id,
+        batch_id: batch.batch_id,
+        expected_status: batch.status,
+        request_id: requestIdFor('ingredient_usage_correct', batch),
+        reason: 'Admin Production Queue ingredient usage correction.',
+      });
+      const result = res?.data || res;
+      if (!result?.success) throw new Error(result?.error || 'ingredient_usage_correction_failed');
+      setMessage({
+        type: result.skipped ? 'warn' : 'success',
+        text: result.skipped ? 'Ingredient usage correction was already recorded.' : 'Ingredient usage correction completed.',
+      });
+      await onCorrectionSuccess?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to correct ingredient usage. Hub gates may still be closed.' });
+    } finally {
+      setCorrectionPending(false);
+    }
+  }
+
+  const rows = Array.isArray(preview?.proposed_ingredient_usage_rows) ? preview.proposed_ingredient_usage_rows : [];
+  const correctionBlockers = Array.isArray(preview?.correction_blockers) ? preview.correction_blockers : [];
+  const deductionBlockers = Array.isArray(preview?.deduction_blockers) ? preview.deduction_blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-background p-3 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-primary" />
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ingredient Usage</p>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Preview recipe-derived usage rows. Corrections do not deduct inventory or create purchase orders.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={previewCorrection}
+          disabled={previewPending || !batch.id}
+          className="h-8 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground disabled:opacity-60"
+        >
+          {previewPending ? 'Previewing...' : 'Preview'}
+        </button>
+      </div>
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-amber-700'
+              : 'text-green-700'
+        }`}>
+          {message.text}
+        </p>
+      )}
+
+      {preview && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Rows</p>
+              <p className="text-sm font-bold">{preview.usage_correction_preview_count ?? rows.length}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ready</p>
+              <p className="text-sm font-bold">{preview.usage_correction_ready_count ?? 0}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Procure</p>
+              <p className="text-sm font-bold">{preview.procurement_needed_count ?? 0}</p>
+            </div>
+          </div>
+
+          {(correctionBlockers.length > 0 || deductionBlockers.length > 0 || warnings.length > 0) && (
+            <div className="space-y-1">
+              {correctionBlockers.map(blocker => (
+                <div key={`correction-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Correction blocker: {formatLabel(blocker)}</span>
+                </div>
+              ))}
+              {deductionBlockers.map(blocker => (
+                <div key={`deduction-${blocker}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Deduction blocker: {formatLabel(blocker)}</span>
+                </div>
+              ))}
+              {warnings.map(warning => (
+                <div key={`ingredient-warning-${warning}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{formatLabel(warning)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div className="space-y-1.5">
+              {rows.slice(0, 8).map(row => {
+                const usage = row.proposed_ingredient_usage || {};
+                return (
+                  <div
+                    key={`${row.matched_recipe_ingredient_name || usage.ingredient_name}-${usage.unit || row.recipe_unit_label}`}
+                    className="rounded-md bg-card px-2 py-1.5 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-foreground truncate">
+                          {usage.ingredient_name || row.matched_recipe_ingredient_name || 'Ingredient'}
+                        </p>
+                        <p className="text-muted-foreground">
+                          Use {formatNumber(usage.quantity)} {usage.unit || ''}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0 space-y-0.5">
+                        <AdminStatusPill
+                          value={row.usage_row_ready ? 'ready' : 'blocked'}
+                          label={row.usage_row_ready ? 'Ready' : 'Blocked'}
+                        />
+                        {row.procurement_needed && (
+                          <p className="text-[10px] text-amber-700">Procurement needed</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {rows.length > 8 && (
+                <p className="text-[10px] text-muted-foreground">Showing 8 of {rows.length} proposed rows.</p>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={correctIngredientUsage}
+              disabled={!preview.usage_correction_allowed || correctionPending}
+              className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              {correctionPending ? 'Correcting...' : 'Correct Usage'}
+            </button>
+            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>Inventory deduction remains a separate gated action.</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
+  const [preview, setPreview] = useState(null);
+  const [previewPending, setPreviewPending] = useState(false);
+  const [actionPending, setActionPending] = useState(null);
+  const [message, setMessage] = useState(null);
+
+  async function previewCascades() {
+    setPreviewPending(true);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('previewAdminProductionVerifyCascades', {
+        production_batch_id: batch.id,
+        batch_id: batch.batch_id,
+        expected_status: batch.status,
+        request_id: requestIdFor('verify_cascade_preview', batch),
+      });
+      const result = res?.data || res;
+      if (result?.error && result?.success !== true) throw new Error(result.error);
+      setPreview(result);
+      setMessage({
+        type: result?.cascade_preview_allowed ? 'success' : 'warn',
+        text: result?.cascade_preview_allowed
+          ? 'Post-verify cascade preview is ready.'
+          : 'Post-verify cascades are not currently eligible.',
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to preview post-verify cascades.' });
+    } finally {
+      setPreviewPending(false);
+    }
+  }
+
+  async function packFulfillmentTasks() {
+    const taskIds = (preview?.task_update_summaries || [])
+      .filter(row => row?.will_update && row?.task_id)
+      .map(row => row.task_id);
+    if (!preview?.pack_cascade_allowed || taskIds.length === 0) return;
+    if (!window.confirm(`Pack ${taskIds.length} fulfillment task${taskIds.length === 1 ? '' : 's'} for ${batch.batch_id || batch.product_name}? Order status cascades remain deferred.`)) {
+      return;
+    }
+
+    setActionPending('pack');
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('packAdminProductionVerifyFulfillmentTasks', {
+        production_batch_id: batch.id,
+        batch_id: batch.batch_id,
+        expected_status: batch.status,
+        fulfillment_task_ids: taskIds,
+        request_id: requestIdFor('pack_tasks', batch),
+        reason: 'Admin Production Queue post-verify task pack.',
+      });
+      const result = res?.data || res;
+      if (!result?.success) throw new Error(result?.error || 'pack_tasks_failed');
+      setMessage({
+        type: result.skipped ? 'warn' : 'success',
+        text: result.skipped ? 'Task pack cascade was already recorded.' : `Packed ${result.packed_task_count || taskIds.length} task(s).`,
+      });
+      await onCascadeSuccess?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to pack fulfillment tasks. Hub gates may still be closed.' });
+    } finally {
+      setActionPending(null);
+    }
+  }
+
+  async function bottleSingleOrder() {
+    const eligibleOrders = (preview?.order_update_summaries || []).filter(row => row?.will_update && row?.order_id);
+    const order = eligibleOrders[0];
+    if (!preview?.bottled_order_cascade_allowed || eligibleOrders.length !== 1 || !order) return;
+    if (!window.confirm(`Mark order ${order.order_number || order.order_id} bottled for ${batch.batch_id || batch.product_name}? Customer App sync and notifications remain deferred by the Hub command.`)) {
+      return;
+    }
+
+    setActionPending('bottle');
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('bottleAdminProductionVerifyShopifyOrder', {
+        production_batch_id: batch.id,
+        batch_id: batch.batch_id,
+        expected_status: batch.status,
+        shopify_order_id: order.order_id,
+        expected_production_status: order.current_production_status || 'packed',
+        request_id: requestIdFor('bottle_order', batch),
+        reason: 'Admin Production Queue post-verify order bottled cascade.',
+      });
+      const result = res?.data || res;
+      if (!result?.success) throw new Error(result?.error || 'bottle_order_failed');
+      setMessage({
+        type: result.skipped ? 'warn' : 'success',
+        text: result.skipped ? 'Order bottled cascade was already recorded.' : 'Order marked bottled.',
+      });
+      await onCascadeSuccess?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to bottle order. Hub gates may still be closed.' });
+    } finally {
+      setActionPending(null);
+    }
+  }
+
+  const taskRows = Array.isArray(preview?.task_update_summaries) ? preview.task_update_summaries : [];
+  const orderRows = Array.isArray(preview?.order_update_summaries) ? preview.order_update_summaries : [];
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const eligibleOrders = orderRows.filter(row => row?.will_update && row?.order_id);
+  const packableTasks = taskRows.filter(row => row?.will_update && row?.task_id);
+  const canBottleOneOrder = preview?.bottled_order_cascade_allowed && eligibleOrders.length === 1;
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-background p-3 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <ClipboardCheck className="w-4 h-4 text-primary" />
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Post-Verify Cascades</p>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Preview linked task packing and one-order bottled cascade. Subscription and multi-order cascades remain guarded.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={previewCascades}
+          disabled={previewPending || !batch.id}
+          className="h-8 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground disabled:opacity-60"
+        >
+          {previewPending ? 'Previewing...' : 'Preview'}
+        </button>
+      </div>
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-amber-700'
+              : 'text-green-700'
+        }`}>
+          {message.text}
+        </p>
+      )}
+
+      {preview && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Tasks</p>
+              <p className="text-sm font-bold">{preview.packable_task_count || 0}/{preview.linked_task_count || 0}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Orders</p>
+              <p className="text-sm font-bold">{preview.eligible_bottled_order_count || 0}/{preview.linked_order_count || 0}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Subs</p>
+              <p className="text-sm font-bold">{preview.subscription_order_count || 0}</p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="space-y-1">
+              {blockers.map(blocker => (
+                <div key={`cascade-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Blocker: {formatLabel(blocker)}</span>
+                </div>
+              ))}
+              {warnings.map(warning => (
+                <div key={`cascade-warning-${warning}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{formatLabel(warning)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(taskRows.length > 0 || orderRows.length > 0) && (
+            <div className="space-y-2">
+              {taskRows.slice(0, 5).map(row => (
+                <div key={`task-${row.task_id || row.order_number}`} className="rounded-md bg-card px-2 py-1.5 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground truncate">{row.order_number || row.task_id || 'Fulfillment task'}</p>
+                      <p className="text-muted-foreground">{formatLabel(row.current_status)} → {formatLabel(row.projected_status)}</p>
+                    </div>
+                    <AdminStatusPill value={row.will_update ? 'ready' : 'blocked'} label={row.will_update ? 'Pack' : 'Blocked'} />
+                  </div>
+                </div>
+              ))}
+              {orderRows.slice(0, 5).map(row => (
+                <div key={`order-${row.order_id || row.order_number}`} className="rounded-md bg-card px-2 py-1.5 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground truncate">{row.order_number || row.order_id || 'Order'}</p>
+                      <p className="text-muted-foreground">
+                        {formatLabel(row.current_production_status)} → {formatLabel(row.projected_production_status)}
+                      </p>
+                    </div>
+                    <AdminStatusPill value={row.will_update ? 'ready' : 'blocked'} label={row.will_update ? 'Bottle' : 'Blocked'} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={packFulfillmentTasks}
+              disabled={!preview.pack_cascade_allowed || packableTasks.length === 0 || Boolean(actionPending)}
+              className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              {actionPending === 'pack' ? 'Packing...' : `Pack Tasks (${packableTasks.length})`}
+            </button>
+            <button
+              type="button"
+              onClick={bottleSingleOrder}
+              disabled={!canBottleOneOrder || Boolean(actionPending)}
+              className="h-9 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground disabled:opacity-50"
+            >
+              {actionPending === 'bottle' ? 'Bottling...' : 'Bottle One Order'}
+            </button>
+          </div>
+
+          {preview.bottled_order_cascade_allowed && eligibleOrders.length !== 1 && (
+            <p className="text-[10px] text-amber-700">
+              Bottled cascade requires exactly one eligible non-subscription order from this page. Use a narrower, approved command for multi-order cases.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getBatchTab(batch, today) {
   if (isNeedsVerificationStatus(batch.status)) return 'verify';
   if (isInProgressStatus(batch.status)) return 'in_progress';
@@ -714,6 +1152,10 @@ function BatchCard({ batch, onActionSuccess }) {
       )}
 
       <ProductionLifecyclePanel batch={batch} onActionSuccess={onActionSuccess} />
+      <IngredientUsageCorrectionPanel batch={batch} onCorrectionSuccess={onActionSuccess} />
+      {batch.status === 'verified_logged' && (
+        <PostVerifyCascadesPanel batch={batch} onCascadeSuccess={onActionSuccess} />
+      )}
       <InventoryDeductionPanel batch={batch} onDeductionSuccess={onActionSuccess} />
     </div>
   );
