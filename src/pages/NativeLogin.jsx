@@ -16,6 +16,17 @@ function errorMessage(error, fallback) {
   return error?.data?.message || error?.message || fallback;
 }
 
+function isEmailVerificationMessage(message) {
+  if (!message) return false;
+  const normalizedMessage = String(message).toLowerCase();
+  return normalizedMessage.includes('verify')
+    || normalizedMessage.includes('verification')
+    || normalizedMessage.includes('otp')
+    || normalizedMessage.includes('one-time')
+    || normalizedMessage.includes('not confirmed')
+    || normalizedMessage.includes('not verified');
+}
+
 async function authRequest(path, payload) {
   console.info(`[NativeLogin] ${path} request started`);
   const response = await fetch(`${appParams.appBaseUrl}/api/apps/${appParams.appId}/auth/${path}`, {
@@ -69,6 +80,13 @@ export default function NativeLogin() {
   const normalizedEmail = email.trim().toLowerCase();
   const isRegistering = mode === 'register';
   const isVerifying = mode === 'verify';
+
+  const switchToVerifyMode = (message = 'Enter the verification code from your email.') => {
+    setMode('verify');
+    setOtpCode('');
+    setStatusText(message);
+    setFormError('');
+  };
 
   const completeLogin = async () => {
     const currentUser = await checkAppState();
@@ -146,6 +164,11 @@ export default function NativeLogin() {
     } catch (error) {
       const message = errorMessage(error, 'Unable to sign in.');
       console.warn('[NativeLogin] Sign in failed', message);
+      if (!isRegistering && !isVerifying && isEmailVerificationMessage(message)) {
+        switchToVerifyMode('Enter the verification code sent to your email, then sign in.');
+        toast.info('Enter the verification code sent to your email.');
+        return;
+      }
       setFormError(message);
       toast.error(message);
     } finally {
@@ -322,13 +345,22 @@ export default function NativeLogin() {
 
         <div className="mt-5 flex flex-col items-center gap-3 text-xs">
           {!isVerifying && (
-            <button
-              type="button"
-              onClick={() => setMode(isRegistering ? 'login' : 'register')}
-              className="font-semibold text-primary"
-            >
-              {isRegistering ? 'Already have an account? Sign in' : 'New to NuVira? Create an account'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setMode(isRegistering ? 'login' : 'register')}
+                className="font-semibold text-primary"
+              >
+                {isRegistering ? 'Already have an account? Sign in' : 'New to NuVira? Create an account'}
+              </button>
+              <button
+                type="button"
+                onClick={() => switchToVerifyMode()}
+                className="text-muted-foreground underline underline-offset-4"
+              >
+                I have a verification code
+              </button>
+            </>
           )}
           {isVerifying ? (
             <button type="button" onClick={handleResendOtp} className="font-semibold text-primary">
