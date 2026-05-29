@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,13 +31,12 @@ function bagSummary(r) {
   return parts.join(' + ') || '—';
 }
 
-function ReturnCard({ ret, onVerify, credits, verificationFrozen }) {
+function ReturnCard({ ret, verificationFrozen }) {
   const [expanded, setExpanded] = useState(false);
   const [smallStatus, setSmallStatus] = useState('accepted');
   const [toteStatus, setToteStatus] = useState('accepted');
   const [reason, setReason] = useState('dirty_stained');
   const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
 
   const isPending = ret.verification_status === 'requested';
 
@@ -49,31 +48,7 @@ function ReturnCard({ ret, onVerify, credits, verificationFrozen }) {
   };
 
   const handleSubmit = async () => {
-    if (verificationFrozen) {
-      toast.error('Bag return verification is disabled during the May 30 launch freeze.');
-      return;
-    }
-
-    setSaving(true);
-    const credit = calcCredit();
-    const smallAcc = smallStatus === 'accepted' ? ret.small_bags_requested : 0;
-    const toteAcc = toteStatus === 'accepted' ? ret.tote_bags_requested : 0;
-    let vStatus = 'verified';
-    if (credit === 0) vStatus = (smallStatus === 'not_found' || toteStatus === 'not_found') ? 'not_found' : 'not_eligible';
-    else if (smallAcc < ret.small_bags_requested || toteAcc < ret.tote_bags_requested) vStatus = 'partially_verified';
-
-    await onVerify(ret, {
-      small_bag_status: smallStatus,
-      tote_bag_status: toteStatus,
-      small_bags_accepted: smallAcc,
-      tote_bags_accepted: toteAcc,
-      rejection_reason: (smallStatus === 'not_eligible' || toteStatus === 'not_eligible') ? reason : '',
-      driver_notes: notes,
-      verification_status: vStatus,
-      credit_issued: credit,
-    }, credits);
-    setSaving(false);
-    setExpanded(false);
+    toast.error('Bag return verification, credits, and customer emails are disabled during the May 30 launch freeze.');
   };
 
   return (
@@ -179,10 +154,10 @@ function ReturnCard({ ret, onVerify, credits, verificationFrozen }) {
                   )}
                   <button
                     onClick={handleSubmit}
-                    disabled={saving || verificationFrozen}
+                    disabled={verificationFrozen}
                     className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
                   >
-                    {saving ? 'Saving...' : verificationFrozen ? 'Verification Frozen' : 'Submit Verification'}
+                    {verificationFrozen ? 'Verification Frozen' : 'Submit Verification'}
                   </button>
                 </>
               )}
@@ -197,7 +172,6 @@ function ReturnCard({ ret, onVerify, credits, verificationFrozen }) {
 export default function BagReturnAdmin() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [filter, setFilter] = useState('pending');
   const [search, setSearch] = useState('');
   const verificationFrozen = true;
@@ -206,73 +180,6 @@ export default function BagReturnAdmin() {
     queryKey: ['admin-bag-returns'],
     queryFn: () => base44.entities.BagReturn.list('-created_date', 300),
     enabled: user?.role === 'admin',
-  });
-
-  const { data: allCredits = [] } = useQuery({
-    queryKey: ['admin-all-credits'],
-    queryFn: () => base44.entities.NuViraCredit.list('-created_date', 500),
-    enabled: user?.role === 'admin',
-  });
-
-  const verifyMutation = useMutation({
-    mutationFn: async ({ ret, data, credits }) => {
-      await base44.entities.BagReturn.update(ret.id, {
-        ...data,
-        verified_by: user.email,
-        verified_at: new Date().toISOString(),
-        credit_applied: data.credit_issued > 0,
-      });
-
-      if (data.credit_issued > 0) {
-        const existing = credits.find(c => c.customer_email === ret.customer_email);
-        const entry = {
-          amount: data.credit_issued,
-          type: 'earned',
-          description: `Return + Reward${data.verification_status === 'partially_verified' ? ' (Partial)' : ''}`,
-          bag_return_id: ret.id,
-          order_id: ret.order_id,
-          timestamp: new Date().toISOString(),
-        };
-        if (existing) {
-          await base44.entities.NuViraCredit.update(existing.id, {
-            balance: (existing.balance || 0) + data.credit_issued,
-            lifetime_issued: (existing.lifetime_issued || 0) + data.credit_issued,
-            history: [...(existing.history || []), entry],
-          });
-        } else {
-          await base44.entities.NuViraCredit.create({
-            customer_email: ret.customer_email,
-            balance: data.credit_issued,
-            lifetime_issued: data.credit_issued,
-            lifetime_used: 0,
-            history: [entry],
-          });
-        }
-        await base44.integrations.Core.SendEmail({
-          to: ret.customer_email,
-          subject: 'Return Verified — NuVira Credits Added',
-          body: `Your NuVira return has been verified and $${data.credit_issued.toFixed(2)} in NuVira Credits has been added to your account.\n\nSustainability, The NuVira Way.`,
-        });
-      } else if (data.verification_status === 'not_eligible') {
-        await base44.integrations.Core.SendEmail({
-          to: ret.customer_email,
-          subject: 'Return Not Eligible',
-          body: `Your bag was not eligible for reuse this time. Bags must be clean, odor-free, and free of damage to qualify.`,
-        });
-      } else if (data.verification_status === 'not_found') {
-        await base44.integrations.Core.SendEmail({
-          to: ret.customer_email,
-          subject: 'Return Not Located',
-          body: `We were unable to locate a bag at your delivery address. If you believe this is an error, please contact us.`,
-        });
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-bag-returns'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-all-credits'] });
-      toast.success('Verification saved');
-    },
-    onError: () => toast.error('Verification failed'),
   });
 
   if (user?.role !== 'admin') return null;
@@ -376,9 +283,7 @@ export default function BagReturnAdmin() {
             <ReturnCard
               key={ret.id}
               ret={ret}
-              credits={allCredits}
               verificationFrozen={verificationFrozen}
-              onVerify={(ret, data, credits) => verifyMutation.mutateAsync({ ret, data, credits: allCredits })}
             />
           ))
         )}
