@@ -13,6 +13,9 @@ import CCPLogForm from '@/components/compliance/CCPLogForm';
 import SanitationLogForm from '@/components/compliance/SanitationLogForm';
 import CorrectiveActionForm from '@/components/compliance/CorrectiveActionForm';
 import DailyChecklistForm from '@/components/compliance/DailyChecklistForm';
+import ComplianceMonitor from '@/components/compliance/ComplianceMonitor';
+import ComplianceLogsParity from '@/components/compliance/ComplianceLogsParity';
+import ComplianceDocumentsTab from '@/components/compliance/ComplianceDocumentsTab';
 import LabelAllergenTab from '@/components/compliance/LabelAllergenTab';
 import HACCPPlanTab from '@/components/compliance/HACCPPlanTab';
 
@@ -73,13 +76,14 @@ export default function ComplianceOps() {
 
       <div className="border-b border-border bg-card p-4">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-2xl font-bold text-foreground">Operations, Audit Readiness & Compliance Tracking</h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Create and review official Customer App compliance records. Hub compliance remains available as fallback while native records are proven.
               </p>
             </div>
+            <ComplianceMonitor />
           </div>
 
           {(criticalAlerts.length > 0 || incompleteChecklists.length > 0) && (
@@ -112,6 +116,8 @@ export default function ComplianceOps() {
           <div className="overflow-x-auto pb-1 mb-6">
             <TabsList className="inline-flex w-max min-w-full">
               <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+              <TabsTrigger value="hub-parity">🗂️ Audit Packets & Binder</TabsTrigger>
+              <TabsTrigger value="documents">📋 Documents</TabsTrigger>
               <TabsTrigger value="temperature">🌡️ Temperature</TabsTrigger>
               <TabsTrigger value="pH">🧪 pH</TabsTrigger>
               <TabsTrigger value="CCP">⚠️ CCP</TabsTrigger>
@@ -127,6 +133,14 @@ export default function ComplianceOps() {
 
           <TabsContent value="dashboard">
             <ComplianceDashboard />
+          </TabsContent>
+
+          <TabsContent value="hub-parity">
+            <ComplianceLogsParity />
+          </TabsContent>
+
+          <TabsContent value="documents">
+            <ComplianceDocumentsTab />
           </TabsContent>
 
           <TabsContent value="temperature">
