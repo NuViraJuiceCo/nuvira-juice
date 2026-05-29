@@ -155,7 +155,7 @@ export default function ComplianceOps() {
                 </Button>
               </div>
               {showNewEntry === 'temperature' && <TemperatureLogForm onClose={() => setShowNewEntry(null)} />}
-              <TemperatureLogsList />
+              <TemperatureLogsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
 
@@ -168,7 +168,7 @@ export default function ComplianceOps() {
                 </Button>
               </div>
               {showNewEntry === 'pH' && <PHLogForm onClose={() => setShowNewEntry(null)} />}
-              <PHLogsList />
+              <PHLogsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
 
@@ -181,7 +181,7 @@ export default function ComplianceOps() {
                 </Button>
               </div>
               {showNewEntry === 'CCP' && <CCPLogForm onClose={() => setShowNewEntry(null)} />}
-              <CCPLogsList />
+              <CCPLogsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
 
@@ -194,7 +194,7 @@ export default function ComplianceOps() {
                 </Button>
               </div>
               {showNewEntry === 'sanitation' && <SanitationLogForm onClose={() => setShowNewEntry(null)} />}
-              <SanitationLogsList />
+              <SanitationLogsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
 
@@ -207,7 +207,7 @@ export default function ComplianceOps() {
                 </Button>
               </div>
               {showNewEntry === 'corrective' && <CorrectiveActionForm onClose={() => setShowNewEntry(null)} />}
-              <CorrectiveActionsList />
+              <CorrectiveActionsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
 
@@ -217,7 +217,7 @@ export default function ComplianceOps() {
                 <h2 className="text-2xl font-bold">Daily Checklists</h2>
               </div>
               <DailyChecklistForm />
-              <DailyChecklistsList />
+              <DailyChecklistsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
 
@@ -229,7 +229,7 @@ export default function ComplianceOps() {
                   Batch verification logs created by production workflows. Create/verify batch logs from the production lifecycle action, not from this tab.
                 </p>
               </div>
-              <BatchComplianceLogsList />
+              <BatchComplianceLogsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
 
@@ -251,13 +251,10 @@ export default function ComplianceOps() {
 }
 
 // Placeholder components for log lists (will be created separately)
-function TemperatureLogsList() {
-  const { data: logs } = useQuery({
-    queryKey: ['temperature_logs'],
-    queryFn: () => base44.entities.TemperatureLog.list('-log_date', 50),
-  });
+function TemperatureLogsList({ nativeCompliance }) {
+  const logs = nativeCompliance?.records?.temperature || [];
 
-  if (!logs?.length) return <p className="text-muted-foreground">No temperature logs yet.</p>;
+  if (!logs.length) return <p className="text-muted-foreground">No temperature logs in the current compliance range.</p>;
 
   return (
     <div className="space-y-2">
@@ -266,7 +263,7 @@ function TemperatureLogsList() {
           <div>
             <p className="font-semibold">{log.location}</p>
             <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
-            <p className="text-sm mt-1">{log.temperature}°C {log.within_range ? '✓' : '⚠️'}</p>
+            <p className="text-sm mt-1">{log.temperature}{log.unit || ''} {log.within_range ? '✓' : '⚠️'}</p>
           </div>
           <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
         </div>
@@ -275,13 +272,10 @@ function TemperatureLogsList() {
   );
 }
 
-function PHLogsList() {
-  const { data: logs } = useQuery({
-    queryKey: ['pH_logs'],
-    queryFn: () => base44.entities.pHLog.list('-log_date', 50),
-  });
+function PHLogsList({ nativeCompliance }) {
+  const logs = nativeCompliance?.records?.ph || [];
 
-  if (!logs?.length) return <p className="text-muted-foreground">No pH logs yet.</p>;
+  if (!logs.length) return <p className="text-muted-foreground">No pH logs in the current compliance range.</p>;
 
   return (
     <div className="space-y-2">
@@ -299,13 +293,10 @@ function PHLogsList() {
   );
 }
 
-function CCPLogsList() {
-  const { data: logs } = useQuery({
-    queryKey: ['CCP_logs'],
-    queryFn: () => base44.entities.CCPLog.list('-log_date', 50),
-  });
+function CCPLogsList({ nativeCompliance }) {
+  const logs = nativeCompliance?.records?.ccp || [];
 
-  if (!logs?.length) return <p className="text-muted-foreground">No CCP logs yet.</p>;
+  if (!logs.length) return <p className="text-muted-foreground">No CCP logs in the current compliance range.</p>;
 
   return (
     <div className="space-y-2">
@@ -323,13 +314,10 @@ function CCPLogsList() {
   );
 }
 
-function SanitationLogsList() {
-  const { data: logs } = useQuery({
-    queryKey: ['sanitation_logs'],
-    queryFn: () => base44.entities.SanitationLog.list('-log_date', 50),
-  });
+function SanitationLogsList({ nativeCompliance }) {
+  const logs = nativeCompliance?.records?.sanitation || [];
 
-  if (!logs?.length) return <p className="text-muted-foreground">No sanitation logs yet.</p>;
+  if (!logs.length) return <p className="text-muted-foreground">No sanitation logs in the current compliance range.</p>;
 
   return (
     <div className="space-y-2">
@@ -347,13 +335,10 @@ function SanitationLogsList() {
   );
 }
 
-function CorrectiveActionsList() {
-  const { data: logs } = useQuery({
-    queryKey: ['corrective_logs'],
-    queryFn: () => base44.entities.CorrectiveActionLog.list('-log_date', 50),
-  });
+function CorrectiveActionsList({ nativeCompliance }) {
+  const logs = nativeCompliance?.records?.corrective_actions || [];
 
-  if (!logs?.length) return <p className="text-muted-foreground">No corrective actions yet.</p>;
+  if (!logs.length) return <p className="text-muted-foreground">No corrective actions in the current compliance range.</p>;
 
   return (
     <div className="space-y-2">
@@ -372,14 +357,10 @@ function CorrectiveActionsList() {
   );
 }
 
-function DailyChecklistsList() {
-  const today = new Date().toISOString().split('T')[0];
-  const { data: checklists } = useQuery({
-    queryKey: ['checklists_today'],
-    queryFn: () => base44.entities.DailyChecklist.filter({ checklist_date: today }),
-  });
+function DailyChecklistsList({ nativeCompliance }) {
+  const checklists = nativeCompliance?.records?.daily_checklists || [];
 
-  if (!checklists?.length) return <p className="text-muted-foreground">No checklists yet today.</p>;
+  if (!checklists.length) return <p className="text-muted-foreground">No checklists in the current compliance range.</p>;
 
   return (
     <div className="space-y-2">
@@ -396,13 +377,10 @@ function DailyChecklistsList() {
   );
 }
 
-function BatchComplianceLogsList() {
-  const { data: logs } = useQuery({
-    queryKey: ['batch_compliance_logs'],
-    queryFn: () => base44.entities.BatchComplianceLog.list('-date', 50),
-  });
+function BatchComplianceLogsList({ nativeCompliance }) {
+  const logs = nativeCompliance?.records?.batch_compliance || [];
 
-  if (!logs?.length) return <p className="text-muted-foreground">No batch compliance logs yet.</p>;
+  if (!logs.length) return <p className="text-muted-foreground">No batch compliance logs in the current compliance range.</p>;
 
   return (
     <div className="space-y-2">

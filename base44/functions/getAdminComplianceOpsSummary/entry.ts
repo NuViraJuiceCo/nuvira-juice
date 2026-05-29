@@ -104,6 +104,113 @@ function sanitizeLog(log) {
   };
 }
 
+function sanitizeRecord(row, fields) {
+  return Object.fromEntries(
+    fields.map(([outputName, sourceName, maxLength = 160]) => {
+      const value = row?.[sourceName];
+      if (typeof value === 'boolean' || typeof value === 'number') return [outputName, value];
+      return [outputName, sanitizeText(value, maxLength) || null];
+    })
+  );
+}
+
+function sanitizeTemperatureRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['location', 'location', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['temperature', 'temperature', 40],
+    ['unit', 'unit', 20],
+    ['within_range', 'within_range'],
+  ]);
+}
+
+function sanitizePhRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['batch_id', 'batch_id', 120],
+    ['product_name', 'product_name', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['ph_value', 'ph_value', 40],
+    ['within_range', 'within_range'],
+  ]);
+}
+
+function sanitizeCcpRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['ccp_point', 'ccp_point', 120],
+    ['batch_id', 'batch_id', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['measurement', 'measurement', 160],
+    ['critical_limit', 'critical_limit', 160],
+    ['result', 'result', 40],
+  ]);
+}
+
+function sanitizeSanitationRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['area', 'area', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['cleaned', 'cleaned'],
+    ['sanitized', 'sanitized'],
+    ['sanitizer_type', 'sanitizer_type', 120],
+    ['sanitizer_level', 'sanitizer_level', 80],
+  ]);
+}
+
+function sanitizeCorrectiveRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['issue_type', 'issue_type', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['corrective_action_taken', 'corrective_action_taken', 260],
+    ['status', 'status', 80],
+    ['verified_by', 'verified_by', 120],
+  ]);
+}
+
+function sanitizeChecklistRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['checklist_date', 'checklist_date', 40],
+    ['staff_member', 'staff_member', 120],
+    ['shift', 'shift', 40],
+    ['overall_status', 'overall_status', 80],
+    ['completed_at', 'completed_at', 80],
+    ['manager_reviewed', 'manager_reviewed'],
+  ]);
+}
+
+function sanitizeBatchComplianceRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['batch_id', 'batch_id', 120],
+    ['juice_flavor', 'juice_flavor', 120],
+    ['date', 'date', 40],
+    ['quantity_produced', 'quantity_produced', 40],
+    ['verified_by', 'verified_by', 120],
+    ['passed_failed', 'passed_failed', 80],
+  ]);
+}
+
+function newestFirst(rows, dateField, limit = 50) {
+  return [...(Array.isArray(rows) ? rows : [])]
+    .sort((a, b) => String(b?.[dateField] || b?.updated_date || b?.created_date || '').localeCompare(String(a?.[dateField] || a?.updated_date || a?.created_date || '')))
+    .slice(0, limit);
+}
+
 function inDateRange(value, dateFrom, dateTo) {
   const text = sanitizeText(value, 40);
   return Boolean(text && text >= dateFrom && text <= dateTo);
@@ -256,6 +363,15 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     },
     active_alerts: activeAlerts,
     recent_logs: recentLogs,
+    records: {
+      temperature: newestFirst(temperature, 'log_date').map(sanitizeTemperatureRecord),
+      ph: newestFirst(ph, 'log_date').map(sanitizePhRecord),
+      ccp: newestFirst(ccp, 'log_date').map(sanitizeCcpRecord),
+      sanitation: newestFirst(sanitation, 'log_date').map(sanitizeSanitationRecord),
+      corrective_actions: newestFirst(corrective, 'log_date').map(sanitizeCorrectiveRecord),
+      daily_checklists: newestFirst(checklists, 'checklist_date').map(sanitizeChecklistRecord),
+      batch_compliance: newestFirst(batch, 'date').map(sanitizeBatchComplianceRecord),
+    },
     warnings,
   };
 }
