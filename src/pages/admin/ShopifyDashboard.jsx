@@ -142,12 +142,18 @@ function ShopifyOrdersTab() {
   });
 
   const checklistMutation = useMutation({
-    mutationFn: ({ id, checklist }) => base44.entities.ShopifyOrder.update(id, { workflow_checklist: checklist }),
+    mutationFn: async () => ({
+      skipped: true,
+      reason: 'may30_shopify_dashboard_direct_writes_locked',
+    }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shopify-orders'] }); },
   });
 
   const notesMutation = useMutation({
-    mutationFn: ({ id, notes }) => base44.entities.ShopifyOrder.update(id, { internal_notes: notes }),
+    mutationFn: async () => ({
+      skipped: true,
+      reason: 'may30_shopify_dashboard_direct_writes_locked',
+    }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shopify-orders'] }); },
   });
 
@@ -328,6 +334,9 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
       {/* Production Checklist */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Production Checklist</p>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-3">
+          Legacy Shopify checklist writes are locked for launch. Use Production Queue and Delivery Queue actions for controlled operational updates.
+        </div>
         <div className="grid grid-cols-2 gap-2">
           {Object.entries(CHECKLIST_LABELS).map(([key, label]) => (
             <button
@@ -399,7 +408,7 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
         {notesEdited && (
           <button onClick={() => { onSaveNotes(order.id, notes); setNotesEdited(false); }}
             className="mt-2 w-full py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold">
-            Save Notes
+            Save Notes (Locked)
           </button>
         )}
       </div>
@@ -428,7 +437,8 @@ function AlertsTab() {
   });
 
   const markRead = (id) => {
-    base44.entities.OperationalAlert.update(id, { is_read: true }).then(() => queryClient.invalidateQueries({ queryKey: ['op-alerts'] }));
+    console.warn('[ShopifyDashboard] Alert dismiss is locked during launch operations:', id);
+    queryClient.invalidateQueries({ queryKey: ['op-alerts'] });
   };
 
   const unread = alerts.filter(a => !a.is_read);
@@ -571,7 +581,6 @@ function ReportsTab() {
 // ─── Settings Tab ─────────────────────────────────────────────────────────────
 
 function SettingsTab() {
-  const queryClient = useQueryClient();
   const [resyncing, setResyncing] = useState(false);
   const [resyncingProducts, setResyncingProducts] = useState(false);
   const [manualOrderId, setManualOrderId] = useState('');
@@ -590,37 +599,37 @@ function SettingsTab() {
 
   const handleResyncOrders = async () => {
     setResyncing(true);
-    const res = await base44.functions.invoke('shopifyResyncOrders', { limit: 50 });
-    setResyncResult(res.data);
-    queryClient.invalidateQueries();
+    setResyncResult({
+      success: false,
+      skipped: true,
+      reason: 'may30_shopify_resync_locked',
+      message: 'Broad Shopify resync is locked during launch operations.',
+    });
     setResyncing(false);
   };
 
   const handleResyncProducts = async () => {
     setResyncingProducts(true);
-    await base44.functions.invoke('shopifyResyncProducts', {});
-    queryClient.invalidateQueries();
+    setResyncResult({
+      success: false,
+      skipped: true,
+      reason: 'may30_shopify_product_resync_locked',
+      message: 'Shopify product resync is locked during launch operations.',
+    });
     setResyncingProducts(false);
   };
 
   const handleManualOrderSync = async () => {
     if (!manualOrderId.trim()) return;
     setResyncing(true);
-    try {
-      const res = await base44.functions.invoke('shopifyResyncOrders', {
-        exact_order_identifier: manualOrderId.trim(),
-      });
-      setResyncResult(res.data);
-      queryClient.invalidateQueries();
-    } catch (error) {
-      setResyncResult({
-        success: false,
-        reason: 'exact_order_import_request_failed',
-        message: error?.message || 'Exact Shopify order import request failed.',
-      });
-    } finally {
-      setResyncing(false);
-    }
+    setResyncResult({
+      success: false,
+      skipped: true,
+      reason: 'may30_exact_shopify_import_locked',
+      message: 'Exact Shopify import is locked here. Use the approved POS/order bridge path or a separately approved recovery command.',
+      requested_identifier: manualOrderId.trim(),
+    });
+    setResyncing(false);
   };
 
   return (
@@ -646,13 +655,13 @@ function SettingsTab() {
             placeholder="Exact order id, #name, or number"
             className="flex-1 h-9 px-3 rounded-lg border border-border bg-secondary/30 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          <button onClick={handleManualOrderSync} disabled={resyncing || !manualOrderId.trim()}
+          <button onClick={handleManualOrderSync} disabled={adminResyncFrozen || resyncing || !manualOrderId.trim()}
             className="px-3 h-9 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-50">
-            Import
+            Import Locked
           </button>
         </div>
         <p className="text-[10px] text-muted-foreground">
-          This does not enable bulk polling. If the gate or allowlist is closed, the server will refuse the import without contacting Shopify.
+          This does not enable bulk polling. Launch fallback imports are locked here and require a separately approved recovery command.
         </p>
         {resyncResult && (
           <div className={`rounded-xl p-3 text-xs ${resyncResult.success === false ? 'bg-amber-50 border border-amber-200' : 'bg-green-50 border border-green-200'}`}>
