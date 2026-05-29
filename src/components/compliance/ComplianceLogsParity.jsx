@@ -24,24 +24,27 @@ export default function ComplianceLogsParity() {
   const [activeTab, setActiveTab] = useState('audit');
   const { user } = useAuth();
 
-  // Fetch recent production batches for the audit tab date picker
-  const { data: recentBatches = [] } = useQuery({
-    queryKey: ['production_batches_dates'],
-    queryFn: () => base44.entities.ProductionBatch?.list('-production_date', 60).catch(() => []),
-  });
-
-  // Fetch all batch compliance logs (used by the grouped batch tab)
-  const { data: batchLogs = [] } = useQuery({
-    queryKey: ['batch_compliance_logs'],
-    queryFn: () => base44.entities.BatchComplianceLog?.list('-date', 500).catch(() => []),
-  });
-
-  // Fetch other compliance logs (manual: temp, pH, CCP, sanitation, corrective)
-  const { data: otherLogs = [], isLoading: otherLoading } = useQuery({
-    queryKey: ['other_compliance_logs', startDate, endDate, logTypeFilter, statusFilter],
+  const { data: complianceSummary, isLoading: complianceLoading } = useQuery({
+    queryKey: ['compliance_logs_parity_summary', startDate, endDate],
     queryFn: async () => {
-      const logs = await base44.entities.ComplianceLog?.list('-log_date', 500).catch(() => []);
-      return (logs || []).filter(log => {
+      const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {
+        date_from: startDate,
+        date_to: endDate,
+      });
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result;
+    },
+    enabled: user?.role === 'admin',
+    staleTime: 60000,
+  });
+
+  const nativeCompliance = complianceSummary?.native || {};
+  const recentBatches = nativeCompliance?.records?.production_batches || [];
+  const batchLogs = nativeCompliance?.records?.batch_compliance || [];
+
+  const otherLogs = (nativeCompliance?.records?.unified_logs || [])
+    .filter(log => {
         const matchDate = (log.log_date || '') >= startDate && (log.log_date || '') <= endDate;
         const matchType = logTypeFilter === 'all' || log.log_type === logTypeFilter;
         const pf = (log.passed_failed || log.status || '').toLowerCase();
@@ -51,9 +54,8 @@ export default function ComplianceLogsParity() {
           || (statusFilter === 'complete' && pf === 'complete')
           || (statusFilter === 'incomplete' && pf === 'incomplete');
         return matchDate && matchType && matchStatus;
-      }).sort((a, b) => new Date(b.log_date) - new Date(a.log_date));
-    },
-  });
+    })
+    .sort((a, b) => new Date(b.log_date) - new Date(a.log_date));
 
   const handleExportOtherLogs = () => {
     if (otherLogs.length === 0) {
@@ -283,7 +285,7 @@ export default function ComplianceLogsParity() {
 
           {/* Log list */}
           <div className="space-y-3">
-            {otherLoading ? (
+            {complianceLoading ? (
               <div className="flex items-center justify-center h-32">
                 <div className="w-6 h-6 border-2 border-muted border-t-primary rounded-full animate-spin" />
               </div>
