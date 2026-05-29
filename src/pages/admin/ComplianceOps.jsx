@@ -234,11 +234,11 @@ export default function ComplianceOps() {
           </TabsContent>
 
           <TabsContent value="labels">
-            <LabelAllergenTab />
+            <LabelAllergenTab nativeCompliance={nativeCompliance} />
           </TabsContent>
 
           <TabsContent value="haccp">
-            <HACCPPlanTab />
+            <HACCPPlanTab nativeCompliance={nativeCompliance} />
           </TabsContent>
 
           <TabsContent value="export">

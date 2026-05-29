@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,12 +34,13 @@ function HACCPForm({ existing, onClose }) {
   const handleSave = async () => {
     if (!form.plan_version || !form.review_date) return;
     setSaving(true);
-    if (existing?.id) {
-      await base44.entities.HACCPPlanReview.update(existing.id, form);
-    } else {
-      await base44.entities.HACCPPlanReview.create(form);
-    }
+    await base44.functions.invoke('saveAdminComplianceRecord', {
+      record_type: 'haccp_plan',
+      existing_id: existing?.id || null,
+      data: form,
+    });
     qc.invalidateQueries({ queryKey: ['haccp_plan_reviews'] });
+    qc.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
     setSaving(false);
     onClose();
   };
@@ -125,14 +126,11 @@ function HACCPForm({ existing, onClose }) {
   );
 }
 
-export default function HACCPPlanTab() {
+export default function HACCPPlanTab({ nativeCompliance }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-
-  const { data: records = [], isLoading } = useQuery({
-    queryKey: ['haccp_plan_reviews'],
-    queryFn: () => base44.entities.HACCPPlanReview.list('-review_date', 100),
-  });
+  const records = nativeCompliance?.records?.haccp_plan_reviews || [];
+  const isLoading = !nativeCompliance;
 
   if (showForm || editing) {
     return <HACCPForm existing={editing} onClose={() => { setShowForm(false); setEditing(null); }} />;
@@ -150,7 +148,7 @@ export default function HACCPPlanTab() {
         </Button>
       </div>
 
-      {isLoading && <p className="text-muted-foreground">Loading...</p>}
+      {isLoading && <p className="text-muted-foreground">Loading native compliance records...</p>}
 
       {!isLoading && records.length === 0 && (
         <Card className="border-dashed">
