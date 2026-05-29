@@ -48,6 +48,20 @@ const sections = [
         icon: Store,
         badges: ['Read-only', 'Hub-backed', 'May 30 event'],
       },
+      {
+        title: 'Shopify',
+        route: '/admin/shopify',
+        description: 'Shopify order/POS bridge visibility, webhook status, and exact-order gated fallback context.',
+        icon: ShoppingCart,
+        badges: ['Read-only', 'Gated tools', 'Hub fallback'],
+      },
+      {
+        title: 'Live Checkout Monitor',
+        route: '/admin/live-monitor',
+        description: 'One-order checkout trace visibility for app order smoke tests and bridge confirmation.',
+        icon: Activity,
+        badges: ['Read-only', 'Exact order'],
+      },
     ],
   },
   {
@@ -111,8 +125,8 @@ const sections = [
     ],
   },
   {
-    title: 'Resources',
-    description: 'Team and equipment visibility',
+    title: 'Resources / Catalog',
+    description: 'Team, equipment, and catalog controls',
     cards: [
       {
         title: 'Resources',
@@ -120,6 +134,13 @@ const sections = [
         description: 'Read-only team and equipment visibility from Hub resources.',
         icon: UsersRound,
         badges: ['Read-only', 'Hub-backed'],
+      },
+      {
+        title: 'Product Images',
+        route: '/admin/products',
+        description: 'Admin product photo management for keeping the customer-facing catalog usable.',
+        icon: Package,
+        badges: ['Controlled actions', 'Native'],
       },
     ],
   },
