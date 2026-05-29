@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
+  Database,
   RefreshCw,
   ShieldCheck,
   XCircle,
@@ -211,6 +212,110 @@ function DeprecatedTools({ tools }) {
   );
 }
 
+function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
+  const summary = preview?.summary || {};
+  const fetchStats = preview?.fetch_stats || {};
+  const rows = Array.isArray(preview?.preview_rows) ? preview.preview_rows : [];
+  const countsByAction = summary.counts_by_action || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <Database className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Historical Hub Backfill Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Read-only comparison of Hub historical orders against native Customer App operational records. No backfill writes run from this page.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-primary text-primary-foreground border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Read-Only Preview'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <StatCard label="Hub Orders Scanned" value={formatNumber(summary.hub_orders_scanned)} />
+        <StatCard label="Already Native" value={formatNumber(summary.already_native_count)} tone="success" />
+        <StatCard label="Create / Update" value={formatNumber(summary.candidate_create_or_update_count)} tone={Number(summary.candidate_create_or_update_count || 0) > 0 ? 'warning' : 'default'} />
+        <StatCard label="Blocked" value={formatNumber(summary.blocked_count)} tone={Number(summary.blocked_count || 0) > 0 ? 'warning' : 'default'} />
+        <StatCard label="Hub Fetches" value={formatNumber(fetchStats.hub_fetches_attempted)} sublabel={fetchStats.scope || preview?.scope || 'not run'} />
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+          Preview only. Live backfill remains disabled and requires a separate scoped approval with idempotency and snapshots.
+        </div>
+      )}
+
+      {Object.keys(countsByAction).length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(countsByAction).map(([action, count]) => (
+            <StatusChip key={action} value={`${formatLabel(action)}: ${formatNumber(count)}`} />
+          ))}
+        </div>
+      )}
+
+      {rows.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Preview Rows Requiring Attention</p>
+          {rows.slice(0, 12).map((row, index) => (
+            <div key={`${row.order?.order_number || index}-${row.reason}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">{row.order?.order_number || 'Order pending'}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {[
+                      row.order?.customer_name || row.order?.customer_email || null,
+                      row.order?.source_channel ? formatLabel(row.order.source_channel) : null,
+                      row.order?.payment_status ? formatLabel(row.order.payment_status) : null,
+                      row.order?.line_item_count ? `${row.order.line_item_count} item rows` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <StatusChip value={row.action} />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Reason: {formatLabel(row.reason)}
+                {row.diff_fields?.length > 0 ? ` · Diff: ${row.diff_fields.map(formatLabel).join(', ')}` : ''}
+              </p>
+              {row.order?.items?.length > 0 && (
+                <p className="text-[10px] text-muted-foreground">
+                  Items: {row.order.items.map(item => `${item.quantity}x ${item.title}`).join(', ')}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : preview ? (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          No missing or blocked historical rows returned by the preview.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Run the preview before approving any historical backfill. The preview reads Hub and Customer App records only.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function NativeCustomerAppContext({ context }) {
   const summary = context?.summary || {};
   const reviewIssues = Array.isArray(context?.recent_review_issues) ? context.recent_review_issues : [];
@@ -298,6 +403,9 @@ export default function SyncHealth() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
+  const [backfillPreview, setBackfillPreview] = useState(null);
+  const [backfillPreviewError, setBackfillPreviewError] = useState('');
+  const [isBackfillPreviewRunning, setIsBackfillPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -361,6 +469,26 @@ export default function SyncHealth() {
     }
     return presetOptions.find(option => option.value === preset)?.label || 'Last 7 Days';
   })();
+
+  const runHistoricalBackfillPreview = async () => {
+    setBackfillPreviewError('');
+    setIsBackfillPreviewRunning(true);
+    try {
+      const res = await base44.functions.invoke('previewAdminHistoricalHubBackfill', {
+        scope: 'hub_all',
+        hub_limit: 500,
+      });
+      const result = res?.data || res;
+      if (!result?.success) {
+        throw new Error(result?.message || result?.error_code || 'Backfill preview failed.');
+      }
+      setBackfillPreview(result);
+    } catch (previewError) {
+      setBackfillPreviewError(previewError?.message || 'Unable to run historical backfill preview.');
+    } finally {
+      setIsBackfillPreviewRunning(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-10">
@@ -513,6 +641,13 @@ export default function SyncHealth() {
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        <HistoricalBackfillPreview
+          preview={backfillPreview}
+          isRunning={isBackfillPreviewRunning}
+          error={backfillPreviewError}
+          onRun={runHistoricalBackfillPreview}
+        />
 
         {showError && (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
