@@ -501,7 +501,7 @@ export default function SyncHealth() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Sync Health view</p>
-            <p className="text-[10px] text-muted-foreground">Read-only bridge visibility. Sync, retry, recover, replay, repair, export, and raw-log actions are not available here.</p>
+            <p className="text-[10px] text-muted-foreground">Read-only bridge visibility. If Hub summary is unavailable, native Customer App review and sync context still loads below. Sync, retry, recover, replay, repair, export, and raw-log actions are not available here.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
@@ -516,7 +516,11 @@ export default function SyncHealth() {
         {data?.hub_available === false && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>{data.hub_error || 'Hub sync health is unavailable; native Customer App issue context is still shown.'}</span>
+            <span>
+              {data.hub_error
+                ? `Hub sync health summary unavailable (${data.hub_error}); native Customer App issue context is still shown.`
+                : 'Hub sync health summary unavailable; native Customer App issue context is still shown.'}
+            </span>
           </div>
         )}
 

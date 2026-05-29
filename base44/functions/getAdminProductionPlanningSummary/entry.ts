@@ -5,6 +5,8 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_RANGE_DAYS = 31;
 const VALID_PRESETS = new Set(['today', 'this_week', 'next_7_days']);
 const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data']);
+const DATE_PENDING = 'date_pending';
+const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
 
 async function readJsonBody(req) {
   try {
@@ -218,8 +220,17 @@ function orderPlanningDate(order) {
     order?.assigned_delivery_date ||
     order?.selected_delivery_date ||
     order?.requested_delivery_date ||
+    order?.scheduled_delivery_date ||
+    order?.delivery_date,
+  );
+}
+
+function orderReferenceDate(order) {
+  return normalizeOrderDate(
     order?.customer_order_date ||
-    order?.created_date,
+    order?.created_date ||
+    order?.shopify_synced_at ||
+    order?.updated_date,
   );
 }
 
@@ -313,11 +324,20 @@ function isNativeMay30OperationalOrder(order) {
   const tags = Array.isArray(order?.tags) ? order.tags.map(normalizeLower) : [];
   const paymentStatus = normalizeLower(order?.payment_status || order?.financial_status);
   const orderType = normalizeLower(order?.order_type);
+  const sourceType = normalizeLower(order?.source_type);
   const sourceChannel = normalizeLower(order?.source_channel);
   const fulfillmentMethod = normalizeLower(order?.fulfillment_method);
   const productionStatus = normalizeLower(order?.production_status);
+  const syncStatus = normalizeLower(order?.sync_status);
+  const referenceDate = orderReferenceDate(order);
+  const isRecentLaunchOrder = Boolean(referenceDate && referenceDate >= MAY30_NATIVE_ORDER_START_DATE);
+  const hasNativeOpsMarker =
+    tags.includes('may30_native_ops') ||
+    syncStatus === 'native_may30_ready' ||
+    ['customer_app_one_time', 'website_one_time'].includes(sourceType) ||
+    ((sourceChannel === 'online' || sourceChannel === 'customer_app' || sourceChannel === 'website') && isRecentLaunchOrder);
 
-  if (!tags.includes('may30_native_ops') && normalizeLower(order?.sync_status) !== 'native_may30_ready') return false;
+  if (!hasNativeOpsMarker) return false;
   if (order?.excluded_from_production === true) return false;
   if (['canceled', 'cancelled', 'refunded'].includes(productionStatus)) return false;
   if (['refunded', 'partially_refunded'].includes(paymentStatus)) return false;
@@ -329,7 +349,7 @@ function isNativeMay30OperationalOrder(order) {
 
 async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const nativeOrders = await base44.asServiceRole.entities.ShopifyOrder
-    .filter({ sync_status: 'native_may30_ready' }, '-customer_order_date', 500)
+    .list('-customer_order_date', 500)
     .catch(() => []);
   const recipes = await base44.asServiceRole.entities.Recipe.list('product_name', 500).catch(() => []);
   const bundles = await base44.asServiceRole.entities.Bundle.list('bundle_name', 500).catch(() => []);
@@ -362,11 +382,12 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   for (const order of nativeOrders) {
     if (!isNativeMay30OperationalOrder(order)) continue;
 
-    const productionDate = orderPlanningDate(order);
-    if (!isInRange(productionDate, dateFrom, dateTo)) {
-      if (!productionDate) skippedDateCount += 1;
+    const plannedProductionDate = orderPlanningDate(order);
+    const productionDate = plannedProductionDate || DATE_PENDING;
+    if (plannedProductionDate && !isInRange(plannedProductionDate, dateFrom, dateTo)) {
       continue;
     }
+    if (!plannedProductionDate) skippedDateCount += 1;
 
     const orderNumber = sanitizeText(order.shopify_order_number || order.order_number, 80);
     if (!productByDate.has(productionDate)) productByDate.set(productionDate, new Map());
