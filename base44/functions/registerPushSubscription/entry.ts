@@ -28,6 +28,15 @@ function isMissingSchemaError(error: unknown): boolean {
   return message.includes('Entity schema') && message.includes('not found');
 }
 
+async function readJsonBody(req: Request): Promise<Record<string, any> | null> {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 const FALLBACK_MESSAGE_TYPE = 'order_status';
 
 function fallbackIdempotencyKey(customerEmail: string): string {
@@ -96,7 +105,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (!body) {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
     requestBody = body;
     const subscription = body.subscription || {};
     const fcmToken = sanitizeToken(body.fcm_token);

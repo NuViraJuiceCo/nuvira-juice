@@ -32,6 +32,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || 'unknown');
 }
 
+async function readJsonBody(req: Request): Promise<Record<string, any> | null> {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function envFlag(name: string): boolean {
   return Deno.env.get(name) === 'true';
 }
@@ -605,7 +614,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (!body) {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
     const userEmail = normalizeEmail(user.email);
     const targetEmail = normalizeEmail(body.customer_email || userEmail);
     const isSelfTest = targetEmail === userEmail;

@@ -28,6 +28,15 @@ function isMissingSchemaError(error: unknown): boolean {
   return message.includes('Entity schema') && message.includes('not found');
 }
 
+async function readJsonBody(req: Request): Promise<Record<string, any> | null> {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function hasActivePushToken(row: Record<string, any>): boolean {
   if (row.enabled === false || row.revoked_at) return false;
   const tokenType = normalizeSingleLine(row.token_type || (row.fcm_token ? 'fcm' : row.apns_token ? 'apns' : 'web_push'));
@@ -137,7 +146,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (!body) {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
     const requestId = normalizeSingleLine(body.client_request_id)
       || crypto.randomUUID();
     const idempotencyKey = `admin_push_test_${adminEmail}_${requestId}`;

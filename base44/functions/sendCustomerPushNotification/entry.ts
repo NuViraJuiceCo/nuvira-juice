@@ -36,6 +36,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || 'unknown');
 }
 
+async function readJsonBody(req: Request): Promise<Record<string, any> | null> {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function envFlag(name: string): boolean {
   return Deno.env.get(name) === 'true';
 }
@@ -654,7 +663,10 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(req);
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (!body) {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
     const customerEmail = normalizeEmail(body.customer_email);
     const title = normalizeSingleLine(body.title);
     const message = normalizeSingleLine(body.message);
