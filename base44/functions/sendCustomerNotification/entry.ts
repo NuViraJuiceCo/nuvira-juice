@@ -68,6 +68,13 @@ function customerNotificationSubtypeAllowed(notificationSubtype: string) {
   return MAY30_DELIVERY_STATUS_SUBTYPES.has(notificationSubtype) && deliveryStatusNotificationsEnabled();
 }
 
+function maskEmail(email: string | null | undefined) {
+  if (!email || typeof email !== 'string' || !email.includes('@')) return null;
+  const [local, domain] = email.split('@');
+  const safeLocal = local.length <= 2 ? `${local[0] || '*'}***` : `${local.slice(0, 2)}***`;
+  return `${safeLocal}@${domain}`;
+}
+
 async function sendCustomerPush(base44: any, payload: Record<string, any>) {
   try {
     const result = await base44.asServiceRole.functions.invoke('sendCustomerPushNotification', payload);
@@ -86,8 +93,17 @@ async function sendCustomerPush(base44: any, payload: Record<string, any>) {
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+
     const base44 = createClientFromRequest(req);
-    const body: Record<string, any> = await req.json();
+    let body: Record<string, any> = {};
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
 
     const {
       customer_email,
@@ -136,7 +152,7 @@ Deno.serve(async (req) => {
 
     const identityList = [...identities];
     const canonicalEmail = identityList[0]; // First = the email passed in (may be relay)
-    console.log(`[sendCustomerNotification] Resolved identities for ${customer_email}: ${JSON.stringify(identityList)}`);
+    console.log(`[sendCustomerNotification] Resolved ${identityList.length} identities for ${maskEmail(customer_email)}`);
 
     // ── STEP 2: Idempotency check — prevent duplicate notifications ──────────
     if (idempotency_key) {
@@ -163,7 +179,7 @@ Deno.serve(async (req) => {
 
       // If prefs exist and this type is disabled, skip
       if (prefRecord && prefRecord[prefField] === false) {
-        console.log(`[sendCustomerNotification] Preference opt-out for ${notification_subtype} (${prefField}=false) for ${customer_email}. Skipping.`);
+        console.log(`[sendCustomerNotification] Preference opt-out for ${notification_subtype} (${prefField}=false) for ${maskEmail(customer_email)}. Skipping.`);
         return Response.json({ success: true, skipped: true, reason: 'preference_opt_out' });
       }
     }
@@ -183,7 +199,7 @@ Deno.serve(async (req) => {
     };
 
     const created = await base44.asServiceRole.entities.Notification.create(notifPayload);
-    console.log(`[sendCustomerNotification] ✅ Notification created: ${created.id} for ${canonicalEmail} (type=${notification_subtype})`);
+    console.log(`[sendCustomerNotification] ✅ Notification created: ${created.id} for ${maskEmail(canonicalEmail)} (type=${notification_subtype})`);
 
     const push = customerPushNotificationsEnabled()
       ? await sendCustomerPush(base44, {
@@ -218,6 +234,6 @@ Deno.serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error || 'unknown');
     console.error('[sendCustomerNotification] Error:', message);
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: 'customer_notification_failed' }, { status: 500 });
   }
 });
