@@ -66,7 +66,7 @@ function daysInclusive(from, to) {
 }
 
 function formatDate(value) {
-  if (!value) return 'Date pending';
+  if (!value || value === 'date_pending') return 'Date pending';
   const [year, month, day] = value.split('-').map(Number);
   if (!year || !month || !day) return value;
   return new Date(year, month - 1, day).toLocaleDateString('en-US', {
@@ -463,6 +463,11 @@ export default function ProductionPlanning() {
             {Number(nativeOverlay.missing_recipe_count || 0) + Number(nativeOverlay.ambiguous_recipe_count || 0) + Number(nativeOverlay.missing_inventory_count || 0) > 0 && (
               <p className="text-[10px] text-amber-700 mt-1">
                 Native master-data gaps: {formatNumber(nativeOverlay.missing_recipe_count, 0)} missing recipes · {formatNumber(nativeOverlay.ambiguous_recipe_count, 0)} ambiguous recipes · {formatNumber(nativeOverlay.missing_inventory_count, 0)} missing inventory matches
+              </p>
+            )}
+            {Number(nativeOverlay.skipped_missing_date_count || 0) > 0 && (
+              <p className="text-[10px] text-blue-700 mt-1">
+                Native orders needing date assignment: {formatNumber(nativeOverlay.skipped_missing_date_count, 0)}. These appear under Date pending so production and procurement demand stay visible.
               </p>
             )}
           </div>

@@ -821,7 +821,8 @@ export default function DeliveryQueue() {
   const summary = data?.summary || {};
   const deliveryStops = data?.sections?.delivery_stops || [];
   const completedStops = data?.sections?.completed || [];
-  const hasRows = deliveryStops.length > 0 || completedStops.length > 0;
+  const unscheduledStops = data?.sections?.unscheduled_delivery_orders || [];
+  const hasRows = deliveryStops.length > 0 || completedStops.length > 0 || unscheduledStops.length > 0;
 
   return (
     <div className="min-h-screen bg-background pb-10">
@@ -877,13 +878,14 @@ export default function DeliveryQueue() {
             Showing Hub delivery route summary for {formatDate(deliveryDate)}.
           </p>
           <AdminStatusLegend />
-          <p className="text-[10px] text-muted-foreground">Hub data · Driver assignment and operational status actions only for eligible active tasks.</p>
+          <p className="text-[10px] text-muted-foreground">Hub data plus native Customer App delivery orders missing dates. Driver assignment and operational status actions only for eligible active tasks.</p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
           <StatCard icon={Truck} label="Total Stops" value={summary.total_stops ?? 0} />
           <StatCard icon={Clock} label="Active" value={summary.active ?? 0} />
           <StatCard icon={CheckCircle2} label="Completed" value={summary.completed ?? 0} />
+          <StatCard icon={AlertTriangle} label="Date Pending" value={summary.unscheduled ?? 0} sublabel="needs review" />
           <StatCard
             icon={Package}
             label="Bag Returns"
@@ -895,7 +897,7 @@ export default function DeliveryQueue() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Hub Driver Portal route view</p>
-            <p className="text-[10px] text-muted-foreground">Proof, bag return, and manual notification actions remain omitted. Route optimization is preview-only.</p>
+            <p className="text-[10px] text-muted-foreground">Date-pending native orders are surfaced for review only. Proof, bag return, and manual notification actions remain omitted. Route optimization is preview-only.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
@@ -925,10 +927,19 @@ export default function DeliveryQueue() {
         ) : !hasRows ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
             <p className="text-sm font-semibold text-foreground">No delivery stops found</p>
-            <p className="text-xs text-muted-foreground mt-1">This date has no Hub delivery route summary yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">This date has no scheduled Hub delivery route summary or native date-pending delivery orders yet.</p>
           </div>
         ) : (
           <div className="space-y-6">
+            {unscheduledStops.length > 0 && (
+              <StopSection
+                title="Date Pending / Needs Review"
+                subtitle="Native delivery orders without a delivery date. Assign or fix the date from Orders before route actions."
+                stops={unscheduledStops}
+                completed={false}
+                onAssignmentSuccess={refetch}
+              />
+            )}
             <StopSection
               title="Delivery Stops"
               subtitle="Active Hub delivery tasks for this date"

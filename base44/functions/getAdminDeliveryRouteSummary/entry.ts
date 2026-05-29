@@ -4,6 +4,7 @@ const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const CHICAGO_TZ = 'America/Chicago';
 const MAX_LIMIT = 100;
+const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
 
 async function readJsonBody(req) {
   try {
@@ -143,24 +144,73 @@ function sanitizeSummary(summary) {
     total_stops: Number(summary?.total_stops) || 0,
     active: Number(summary?.active) || 0,
     completed: Number(summary?.completed) || 0,
+    unscheduled: Number(summary?.unscheduled) || 0,
     bag_returns: summary?.bag_returns === null || summary?.bag_returns === undefined
       ? null
       : Number(summary.bag_returns) || 0,
   };
 }
 
-function summarizeStops(active, completed) {
-  const bagReturnValues = [...active, ...completed]
+function summarizeStops(active, completed, unscheduled = []) {
+  const bagReturnValues = [...active, ...completed, ...unscheduled]
     .map(stop => stop.bag_return_count)
     .filter(value => value !== null && value !== undefined);
   return sanitizeSummary({
     total_stops: active.length + completed.length,
     active: active.length,
     completed: completed.length,
+    unscheduled: unscheduled.length,
     bag_returns: bagReturnValues.length
       ? bagReturnValues.reduce((sum, value) => sum + (Number(value) || 0), 0)
       : null,
   });
+}
+
+function orderReferenceDate(order) {
+  return normalizeDate(
+    order?.customer_order_date ||
+    order?.created_date ||
+    order?.shopify_synced_at ||
+    order?.updated_date,
+  );
+}
+
+function safeLineItems(order) {
+  return Array.isArray(order?.line_items) ? order.line_items.slice(0, 60) : [];
+}
+
+function hasNativeLaunchMarker(order) {
+  const tags = Array.isArray(order?.tags) ? order.tags.map(normalizeLower) : [];
+  const sourceType = normalizeLower(order?.source_type);
+  const sourceChannel = normalizeLower(order?.source_channel);
+  const syncStatus = normalizeLower(order?.sync_status);
+  const referenceDate = orderReferenceDate(order);
+  const isRecentLaunchOrder = Boolean(referenceDate && referenceDate >= MAY30_NATIVE_ORDER_START_DATE);
+
+  return (
+    tags.includes('may30_native_ops') ||
+    syncStatus === 'native_may30_ready' ||
+    ['customer_app_one_time', 'website_one_time'].includes(sourceType) ||
+    ((sourceChannel === 'online' || sourceChannel === 'customer_app' || sourceChannel === 'website') && isRecentLaunchOrder)
+  );
+}
+
+function isNativeMay30DeliveryOrder(order) {
+  const paymentStatus = normalizeLower(order?.payment_status || order?.financial_status);
+  const orderType = normalizeLower(order?.order_type);
+  const sourceChannel = normalizeLower(order?.source_channel);
+  const fulfillmentMethod = normalizeLower(order?.fulfillment_method);
+  const productionStatus = normalizeLower(order?.production_status);
+
+  if (!hasNativeLaunchMarker(order)) return false;
+  if (order?.excluded_from_production === true) return false;
+  if (['canceled', 'cancelled', 'refunded'].includes(productionStatus)) return false;
+  if (['refunded', 'partially_refunded'].includes(paymentStatus)) return false;
+  if (paymentStatus && paymentStatus !== 'paid') return false;
+  if (orderType === 'pos' || sourceChannel === 'pos' || fulfillmentMethod === 'pos') return false;
+  if (orderType === 'subscription' || sourceChannel === 'subscription' || order?.stripe_subscription_id) return false;
+  if (fulfillmentMethod && fulfillmentMethod !== 'delivery') return false;
+  return safeLineItems(order).length > 0;
 }
 
 async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
@@ -224,17 +274,45 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
       data_source: 'customer_app_native_order',
     }));
 
+  const scheduledOrderNumbers = new Set([
+    ...taskOrderNumbers,
+    ...fromOrders.map(stop => normalizeLower(stop.order_number)).filter(Boolean),
+  ]);
+  const unscheduled = orders
+    .filter(isNativeMay30DeliveryOrder)
+    .filter(order => !normalizeDate(order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date))
+    .filter(order => !scheduledOrderNumbers.has(normalizeLower(order.shopify_order_number || order.order_number)))
+    .map(order => sanitizeStop({
+      task_id: null,
+      order_number: order.shopify_order_number || order.order_number,
+      customer_name: order.customer_name,
+      fulfillment_number: 1,
+      source_type: order.source_type || order.source_channel || 'customer_app_native',
+      assigned_driver: order.assigned_driver,
+      task_status: 'date_pending',
+      delivery_status: order.fulfillment_status || 'date_pending',
+      fulfillment_status: order.fulfillment_status,
+      delivery_date: null,
+      delivery_window_label: order.delivery_window_label || order.requested_time_window,
+      delivery_address: order.delivery_address,
+      items_summary: lineItemsSummary(order.line_items),
+      missing_address: !normalizeText(order.delivery_address),
+      data_source: 'customer_app_native_order',
+    }))
+    .slice(0, limit);
+
   const allStops = [...fromTasks, ...fromOrders].slice(0, limit);
   const completed = allStops.filter(stop => ['delivered', 'completed', 'fulfilled'].includes(normalizeLower(stop.task_status || stop.delivery_status)));
   const active = allStops.filter(stop => !completed.includes(stop));
 
   return {
-    summary: summarizeStops(active, completed),
+    summary: summarizeStops(active, completed, unscheduled),
     sections: {
       delivery_stops: active,
       completed,
+      unscheduled_delivery_orders: unscheduled,
     },
-    source_available: allStops.length > 0,
+    source_available: allStops.length > 0 || unscheduled.length > 0,
   };
 }
 
@@ -314,8 +392,11 @@ Deno.serve(async (req) => {
     const hubOrderNumbers = new Set([...hubActive, ...hubCompleted].map(stop => normalizeLower(stop.order_number)).filter(Boolean));
     const nativeActive = nativeData.sections.delivery_stops.filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
     const nativeCompleted = nativeData.sections.completed.filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
+    const nativeUnscheduled = (nativeData.sections.unscheduled_delivery_orders || [])
+      .filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
     const deliveryStops = [...hubActive, ...nativeActive].slice(0, limit);
     const completedStops = [...hubCompleted, ...nativeCompleted].slice(0, limit);
+    const unscheduledStops = nativeUnscheduled.slice(0, limit);
 
     if (!hubData && !nativeData.source_available) {
       return Response.json({
@@ -327,10 +408,11 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       delivery_date: hubData?.delivery_date || deliveryDate,
-      summary: summarizeStops(deliveryStops, completedStops),
+      summary: summarizeStops(deliveryStops, completedStops, unscheduledStops),
       sections: {
         delivery_stops: deliveryStops,
         completed: completedStops,
+        unscheduled_delivery_orders: unscheduledStops,
       },
       data_sources: {
         hub_available: Boolean(hubData),
