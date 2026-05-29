@@ -93,6 +93,14 @@ function sanitizeText(value, maxLength = 160) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
+async function readJsonBody(req) {
+  try {
+    return { ok: true, body: await req.json() };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 function normalizeId(value, fieldName, required = true) {
   const text = normalizeSingleLine(value);
   if (!text) {
@@ -533,7 +541,11 @@ Deno.serve(async (req) => {
     if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
     if (req.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 });
 
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body;
     const forbiddenKey = findForbiddenBodyKey(body);
     if (forbiddenKey) {
       return Response.json({

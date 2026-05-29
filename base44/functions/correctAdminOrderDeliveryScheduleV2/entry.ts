@@ -38,6 +38,14 @@ function sanitizeText(value, maxLength = 180) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
+async function readJsonBody(req) {
+  try {
+    return { ok: true, body: await req.json() };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 function normalizeId(value, fieldName) {
   const text = normalizeText(value);
   if (!text) throw new Error(`${fieldName} is required`);
@@ -343,7 +351,11 @@ Deno.serve(async (req) => {
     const user = await resolveAdmin(base44);
     if (!user.ok) return Response.json({ error: user.error }, { status: user.status });
 
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body;
     const unsupported = unsupportedKeys(body);
     if (unsupported.length > 0) {
       return Response.json({ error: 'unsupported_fields', fields: unsupported.slice(0, 5) }, { status: 400 });
