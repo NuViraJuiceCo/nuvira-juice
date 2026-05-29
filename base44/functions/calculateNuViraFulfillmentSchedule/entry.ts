@@ -3,6 +3,16 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const TIMEZONE = 'America/Chicago';
 const FINAL_SCHEDULE_SOURCE = 'backend_cadence';
 
+async function readJsonBody(req) {
+  try {
+    const raw = await req.text();
+    if (!raw || raw.trim() === '') return { ok: true, body: {} };
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, response: Response.json({ ok: false, error: 'malformed_json' }, { status: 400 }) };
+  }
+}
+
 /**
  * CENTRAL FULFILLMENT SCHEDULE ENGINE
  *
@@ -269,7 +279,9 @@ Deno.serve(async (req) => {
       // Public call allowed for checkout scheduling and test execution.
     }
 
-    const body = await req.json();
+    const parsed = await readJsonBody(req);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.body || {};
     const { created_at, checkout_completed_at, paid_at, mode, option_count } = body;
     const inputTimestamp = created_at || checkout_completed_at || paid_at;
 

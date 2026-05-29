@@ -1,9 +1,21 @@
 // Address autocomplete using Google Places Autocomplete API
 // Biased toward O'Fallon, MO area
 
+async function readJsonBody(req) {
+  try {
+    const raw = await req.text();
+    if (!raw || raw.trim() === '') return { ok: true, body: {} };
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, response: Response.json({ error: 'malformed_json' }, { status: 400 }) };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
-    const { query } = await req.json();
+    const parsed = await readJsonBody(req);
+    if (!parsed.ok) return parsed.response;
+    const { query } = parsed.body || {};
     if (!query || query.length < 3) {
       return Response.json({ suggestions: [] });
     }

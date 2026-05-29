@@ -12,6 +12,16 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const ORIGIN_ADDRESS = "619 N Main St, O'Fallon, MO 63366";
 
+async function readJsonBody(req) {
+  try {
+    const raw = await req.text();
+    if (!raw || raw.trim() === '') return { ok: true, body: {} };
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, response: Response.json({ error: 'malformed_json' }, { status: 400 }) };
+  }
+}
+
 // Zone thresholds (driving miles) — Zone 1 has three fee sub-tiers
 const ZONES = [
   // ── Zone 1A: 0–5 miles — $3.99 ─────────────────────────────────────────────
@@ -163,7 +173,9 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    const body = await req.json();
+    const parsed = await readJsonBody(req);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.body || {};
     const {
       delivery_address,
       address_line1,
