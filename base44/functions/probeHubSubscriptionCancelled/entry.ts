@@ -17,6 +17,23 @@ async function requireAdmin(base44) {
   return null;
 }
 
+async function readJsonBody(req) {
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    return { ok: true, body: {} };
+  }
+
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: {} };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (Deno.env.get('ENABLE_LEGACY_PAYMENT_SUBSCRIPTION_TOOLS') !== 'true') {
@@ -31,7 +48,12 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const unauthorized = await requireAdmin(base44);
     if (unauthorized) return unauthorized;
-    const { dry_run = true } = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
+    const { dry_run = true } = body;
 
     const payload = {
       event: 'customer.subscription_cancelled',

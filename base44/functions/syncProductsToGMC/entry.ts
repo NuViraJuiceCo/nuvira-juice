@@ -157,6 +157,23 @@ async function deleteProduct(accessToken, offerId) {
   }
 }
 
+async function readJsonBody(req) {
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    return { ok: true, body: {} };
+  }
+
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: {} };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (Deno.env.get('ENABLE_GOOGLE_MERCHANT_PRODUCT_SYNC') !== 'true') {
@@ -169,7 +186,11 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
 
     // If triggered by entity automation, handle single product
     const { action, product_id } = body;
