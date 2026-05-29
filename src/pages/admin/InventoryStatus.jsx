@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
-import { AlertTriangle, ClipboardList, MapPin, Package, RefreshCw, Search, ShoppingCart, TrendingDown } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Copy, Download, MapPin, Package, RefreshCw, Search, ShoppingCart, TrendingDown } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -35,6 +35,71 @@ function categorySelectOptions(items, selectedCategory) {
 function formatQuantity(value, unit) {
   if (value === null || value === undefined) return '-';
   return unit ? `${value} ${unit}` : value;
+}
+
+function csvEscape(value) {
+  const text = value === null || value === undefined ? '' : value.toString();
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function procurementManifest(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return 'No procurement needs found.';
+  return items.map(item => [
+    item.supplier || 'Supplier pending',
+    item.ingredient || 'Ingredient pending',
+    formatQuantity(item.stock, item.unit),
+    formatQuantity(item.reorder_point, item.unit),
+    formatQuantity(item.max_stock, item.unit),
+    formatQuantity(item.open_po_quantity, item.unit),
+    formatQuantity(item.net_suggested_quantity, item.unit),
+    item.source === 'customer_app_native' ? 'Native' : 'Hub',
+  ].join(' | ')).join('\n');
+}
+
+function procurementCsv(items = []) {
+  const header = [
+    'supplier',
+    'ingredient',
+    'category',
+    'status',
+    'stock',
+    'reorder_point',
+    'max_stock',
+    'unit',
+    'open_po_quantity',
+    'open_po_numbers',
+    'net_suggested_quantity',
+    'estimated_cost',
+    'source',
+  ];
+  const rows = items.map(item => [
+    item.supplier || '',
+    item.ingredient || '',
+    item.category || '',
+    item.status || '',
+    item.stock ?? '',
+    item.reorder_point ?? '',
+    item.max_stock ?? '',
+    item.unit || '',
+    item.open_po_quantity ?? '',
+    Array.isArray(item.open_po_numbers) ? item.open_po_numbers.join('; ') : '',
+    item.net_suggested_quantity ?? '',
+    item.estimated_cost ?? '',
+    item.source || '',
+  ]);
+  return [header, ...rows].map(row => row.map(csvEscape).join(',')).join('\n');
+}
+
+function downloadTextFile(filename, text, type = 'text/plain') {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function StatCard({ icon: Icon, label, value, sublabel, isRefreshing }) {
@@ -283,6 +348,7 @@ export default function InventoryStatus() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [copyMessage, setCopyMessage] = useState(null);
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['admin-inventory-status-summary', search, statusFilter, categoryFilter],
@@ -310,6 +376,25 @@ export default function InventoryStatus() {
   const dataSources = data?.data_sources || {};
   const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
   const categoryOptions = useMemo(() => categorySelectOptions(items, categoryFilter), [items, categoryFilter]);
+  const procurementExportDate = format(new Date(), 'yyyy-MM-dd');
+
+  async function copyProcurementPlan() {
+    try {
+      await navigator.clipboard.writeText(procurementManifest(procurementPlan));
+      setCopyMessage({ type: 'success', text: 'Procurement plan copied. No purchase order was created.' });
+    } catch {
+      setCopyMessage({ type: 'error', text: 'Unable to copy procurement plan.' });
+    }
+  }
+
+  function downloadProcurementCsv() {
+    downloadTextFile(
+      `nuvira-procurement-plan-${procurementExportDate}.csv`,
+      procurementCsv(procurementPlan),
+      'text/csv'
+    );
+    setCopyMessage({ type: 'success', text: 'Procurement CSV downloaded. No purchase order was created.' });
+  }
 
   if (user?.role !== 'admin') {
     return (
@@ -390,8 +475,38 @@ export default function InventoryStatus() {
             </p>
             <AdminStatusLegend className="mt-2" />
           </div>
-          <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={copyProcurementPlan}
+              disabled={isLoading}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground disabled:opacity-60"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copy Plan
+            </button>
+            <button
+              type="button"
+              onClick={downloadProcurementCsv}
+              disabled={isLoading}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground disabled:opacity-60"
+            >
+              <Download className="h-3.5 w-3.5" />
+              CSV
+            </button>
+            <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
+          </div>
         </div>
+
+        {copyMessage && (
+          <div className={`rounded-lg border p-3 text-xs ${
+            copyMessage.type === 'error'
+              ? 'border-destructive/30 bg-destructive/5 text-destructive'
+              : 'border-green-200 bg-green-50 text-green-800'
+          }`}>
+            {copyMessage.text}
+          </div>
+        )}
 
         {warnings.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
