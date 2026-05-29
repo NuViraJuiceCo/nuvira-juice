@@ -101,9 +101,18 @@ function maskEmail(email: string | null | undefined) {
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+
     const base44 = createClientFromRequest(req);
     const bodyText = await req.text();
-    const body = bodyText ? JSON.parse(bodyText) : {};
+    let body = {};
+    try {
+      body = bodyText ? JSON.parse(bodyText) : {};
+    } catch {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
 
     // Support entity automation payload format: { event, data, old_data, changed_fields }
     // AND direct call format: { order_id, new_status, customer_email, order_number }
@@ -152,7 +161,7 @@ Deno.serve(async (req) => {
     if (!email || !orderNum) {
       const orders = await base44.asServiceRole.entities.Order.filter({ id: order_id });
       const order = orders[0];
-      if (!order) return Response.json({ error: `Order ${order_id} not found` }, { status: 404 });
+      if (!order) return Response.json({ error: 'order_not_found' }, { status: 404 });
       email = order.customer_email;
       orderNum = order.order_number;
     }
@@ -291,17 +300,19 @@ Deno.serve(async (req) => {
             body: html,
             from_name: 'NuVira Juice Co.',
           });
-          console.log(`[sendOrderStatusNotification] ✅ Delivery confirmation email sent to ${email} for order ${orderNum}`);
+          console.log(`[sendOrderStatusNotification] ✅ Delivery confirmation email sent to ${maskEmail(email)} for order ${orderNum}`);
         }
       } catch (emailErr) {
-        console.error(`[sendOrderStatusNotification] ❌ Delivery email failed: ${emailErr.message}`);
+        const emailMessage = emailErr instanceof Error ? emailErr.message : String(emailErr || 'unknown');
+        console.error(`[sendOrderStatusNotification] ❌ Delivery email failed: ${emailMessage}`);
       }
     }
 
     return Response.json({ success: true, order_number: orderNum, status: new_status });
 
   } catch (error) {
-    console.error('[sendOrderStatusNotification] Error:', error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error || 'unknown');
+    console.error('[sendOrderStatusNotification] Error:', message);
+    return Response.json({ error: 'order_status_notification_failed' }, { status: 500 });
   }
 });
