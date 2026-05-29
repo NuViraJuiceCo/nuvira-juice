@@ -646,6 +646,13 @@ Deno.serve(async (req) => {
 
   // Determine event type: refund vs. creation
   const eventType = payment_status === 'refunded' ? 'order.refunded' : 'order.created';
+  const isFullRefund = eventType === 'order.refunded' && (
+    stripeSession?.is_full_refund === true ||
+    order.is_partial_refund !== true
+  );
+  const refundAmount = eventType === 'order.refunded'
+    ? (order.refund_amount ?? stripeSession?.refund_amount ?? (isFullRefund ? order.total : null))
+    : null;
   
   const payload = {
     event:  eventType,
@@ -704,7 +711,9 @@ Deno.serve(async (req) => {
       refund_id:        order.refund_id        || null,
       stripe_charge_id:  order.stripe_charge_id || order.refund_id || null,
       stripe_refund_id:  order.stripe_refund_id || null,
-      refund_amount:    order.refund_amount    || null,
+      refund_amount:    refundAmount,
+      charge_amount:    order.total ?? null,
+      is_full_refund:   isFullRefund,
       is_partial_refund: order.is_partial_refund || false,
     },
   };
