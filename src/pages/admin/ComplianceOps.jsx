@@ -24,30 +24,25 @@ export default function ComplianceOps() {
   const [showNewEntry, setShowNewEntry] = useState(null);
   const [user, setUser] = useState(null);
 
-  const { data: alerts } = useQuery({
-    queryKey: ['compliance_alerts'],
+  const { data: complianceSummary, isFetching: complianceSummaryFetching, isError: complianceSummaryError } = useQuery({
+    queryKey: ['admin_compliance_ops_summary'],
     queryFn: async () => {
-      const result = await base44.entities.ComplianceAlert.list('-triggered_date', 50);
-      return result.filter(a => a.status === 'Active');
+      const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {});
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result;
     },
     enabled: user?.role === 'admin',
-  });
-
-  const { data: checklists } = useQuery({
-    queryKey: ['daily_checklists_today'],
-    queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
-      return base44.entities.DailyChecklist.filter({ checklist_date: today });
-    },
-    enabled: user?.role === 'admin',
+    staleTime: 60000,
   });
 
   useEffect(() => {
     base44.auth.me().then(u => setUser(u));
   }, []);
 
-  const criticalAlerts = alerts?.filter(a => a.severity === 'Critical') || [];
-  const incompleteChecklists = checklists?.filter(c => c.overall_status === 'Incomplete') || [];
+  const nativeCompliance = complianceSummary?.native || {};
+  const criticalAlerts = (nativeCompliance.active_alerts || []).filter(a => a.severity === 'Critical');
+  const incompleteChecklistCount = Number(nativeCompliance.issues?.incomplete_checklists || 0);
 
   if (!user) {
     return (
@@ -86,7 +81,7 @@ export default function ComplianceOps() {
             <ComplianceMonitor />
           </div>
 
-          {(criticalAlerts.length > 0 || incompleteChecklists.length > 0) && (
+          {(criticalAlerts.length > 0 || incompleteChecklistCount > 0) && (
             <div className="grid gap-2 mt-4">
               {criticalAlerts.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-3">
@@ -97,17 +92,25 @@ export default function ComplianceOps() {
                   </div>
                 </div>
               )}
-              {incompleteChecklists.length > 0 && (
+              {incompleteChecklistCount > 0 && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-3">
                   <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-semibold text-yellow-900">{incompleteChecklists.length} Incomplete Checklist{incompleteChecklists.length > 1 ? 's' : ''}</p>
+                    <p className="font-semibold text-yellow-900">{incompleteChecklistCount} Incomplete Checklist{incompleteChecklistCount === 1 ? '' : 's'}</p>
                     <p className="text-sm text-yellow-700">Daily checklists must be completed before end of shift.</p>
                   </div>
                 </div>
               )}
             </div>
           )}
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+            <p className="font-semibold">
+              Native compliance summary {complianceSummaryFetching ? 'refreshing' : complianceSummaryError ? 'unavailable' : 'ready'}
+            </p>
+            <p className="mt-0.5 text-emerald-800">
+              Native logs: {nativeCompliance.summary?.temperature || 0} temp · {nativeCompliance.summary?.ph || 0} pH · {nativeCompliance.summary?.ccp || 0} CCP · {nativeCompliance.summary?.sanitation || 0} sanitation · {nativeCompliance.summary?.daily_checklists || 0} checklists. Hub fallback remains available.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -132,7 +135,7 @@ export default function ComplianceOps() {
           </div>
 
           <TabsContent value="dashboard">
-            <ComplianceDashboard />
+            <ComplianceDashboard summary={complianceSummary} />
           </TabsContent>
 
           <TabsContent value="hub-parity">

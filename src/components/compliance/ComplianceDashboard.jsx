@@ -4,8 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 
-export default function ComplianceDashboard() {
+export default function ComplianceDashboard({ summary }) {
   const today = new Date().toISOString().split('T')[0];
+  const native = summary?.native || null;
 
   const { data: tempLogs } = useQuery({
     queryKey: ['temp_logs_today'],
@@ -13,6 +14,7 @@ export default function ComplianceDashboard() {
       const logs = await base44.entities.TemperatureLog.list('-log_date', 500);
       return logs.filter(l => l.log_date === today);
     },
+    enabled: !native,
   });
 
   const { data: phLogs } = useQuery({
@@ -21,6 +23,7 @@ export default function ComplianceDashboard() {
       const logs = await base44.entities.pHLog.list('-log_date', 500);
       return logs.filter(l => l.log_date === today);
     },
+    enabled: !native,
   });
 
   const { data: ccpLogs } = useQuery({
@@ -29,6 +32,7 @@ export default function ComplianceDashboard() {
       const logs = await base44.entities.CCPLog.list('-log_date', 500);
       return logs.filter(l => l.log_date === today);
     },
+    enabled: !native,
   });
 
   const { data: alerts } = useQuery({
@@ -37,35 +41,42 @@ export default function ComplianceDashboard() {
       const allAlerts = await base44.entities.ComplianceAlert.list('-triggered_date', 500);
       return allAlerts.filter(a => a.triggered_date === today && a.status === 'Active');
     },
+    enabled: !native,
   });
 
   const { data: checklists } = useQuery({
     queryKey: ['checklists_today'],
     queryFn: () => base44.entities.DailyChecklist.filter({ checklist_date: today }),
+    enabled: !native,
   });
 
-  const phFailures = phLogs?.filter(l => l.within_range === false) || [];
-  const tempOutOfRange = tempLogs?.filter(l => l.within_range === false) || [];
-  const ccpFailures = ccpLogs?.filter(l => l.result === 'Fail') || [];
-  const checklistsComplete = checklists?.filter(c => c.overall_status === 'Complete')?.length || 0;
-  const checklistsIncomplete = checklists?.filter(c => c.overall_status === 'Incomplete')?.length || 0;
+  const phFailures = native ? Array(native.issues?.ph_out_of_range || 0).fill({}) : (phLogs?.filter(l => l.within_range === false) || []);
+  const tempOutOfRange = native ? Array(native.issues?.temp_out_of_range || 0).fill({}) : (tempLogs?.filter(l => l.within_range === false) || []);
+  const ccpFailures = native ? Array(native.issues?.ccp_failed || 0).fill({}) : (ccpLogs?.filter(l => l.result === 'Fail') || []);
+  const checklistsComplete = native
+    ? Math.max(Number(native.summary?.daily_checklists || 0) - Number(native.issues?.incomplete_checklists || 0), 0)
+    : (checklists?.filter(c => c.overall_status === 'Complete')?.length || 0);
+  const checklistsIncomplete = native
+    ? Number(native.issues?.incomplete_checklists || 0)
+    : (checklists?.filter(c => c.overall_status === 'Incomplete')?.length || 0);
+  const activeAlerts = native ? (native.active_alerts || []) : (alerts || []);
 
   const metrics = [
     {
       label: 'Temperature Logs',
-      value: tempLogs?.length || 0,
+      value: native ? native.summary?.temperature || 0 : tempLogs?.length || 0,
       status: tempOutOfRange.length === 0 ? 'good' : 'warning',
       icon: '🌡️',
     },
     {
       label: 'pH Tests',
-      value: phLogs?.length || 0,
+      value: native ? native.summary?.ph || 0 : phLogs?.length || 0,
       status: phFailures.length === 0 ? 'good' : 'critical',
       icon: '🧪',
     },
     {
       label: 'CCP Checks',
-      value: ccpLogs?.length || 0,
+      value: native ? native.summary?.ccp || 0 : ccpLogs?.length || 0,
       status: ccpFailures.length === 0 ? 'good' : 'critical',
       icon: '⚠️',
     },
@@ -124,14 +135,14 @@ export default function ComplianceDashboard() {
         ))}
       </div>
 
-      {alerts && alerts.length > 0 && (
+      {activeAlerts && activeAlerts.length > 0 && (
         <Card className="border-red-200 bg-red-50">
           <CardHeader>
             <CardTitle className="text-red-900">🚨 Active Alerts</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {alerts.map((alert, i) => (
+              {activeAlerts.map((alert, i) => (
                 <div key={i} className="flex items-start gap-3 text-sm">
                   <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                   <div>
@@ -145,7 +156,7 @@ export default function ComplianceDashboard() {
         </Card>
       )}
 
-      {tempOutOfRange.length > 0 && (
+      {!native && tempOutOfRange.length > 0 && (
         <Card className="border-yellow-200 bg-yellow-50">
           <CardHeader>
             <CardTitle className="text-yellow-900">⚠️ Out of Range Values</CardTitle>
@@ -162,7 +173,7 @@ export default function ComplianceDashboard() {
         </Card>
       )}
 
-      {(phFailures.length > 0 || ccpFailures.length > 0) && (
+      {!native && (phFailures.length > 0 || ccpFailures.length > 0) && (
         <Card className="border-red-200 bg-red-50">
           <CardHeader>
             <CardTitle className="text-red-900">🔴 Critical Failures</CardTitle>
