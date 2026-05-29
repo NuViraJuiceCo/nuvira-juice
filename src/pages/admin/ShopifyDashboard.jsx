@@ -17,6 +17,17 @@ const NAV_TABS = [
 
 const SHOPIFY_WORKFLOW_ADVANCE_FROZEN = true;
 
+function useShopifyOpsSummary({ refetchInterval = 30000 } = {}) {
+  return useQuery({
+    queryKey: ['admin-shopify-ops-summary'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminShopifyOpsSummary', {});
+      return res.data || {};
+    },
+    refetchInterval,
+  });
+}
+
 export default function ShopifyDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -127,18 +138,17 @@ function ShopifyOrdersTab() {
   const [filterChannel, setFilterChannel] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  const { data: orders = [], isLoading } = useQuery({
-    queryKey: ['shopify-orders'],
-    queryFn: () => base44.entities.ShopifyOrder.list('-created_date', 200),
-    refetchInterval: 30000,
-  });
+  const { data: shopifyOps = {}, isLoading } = useShopifyOpsSummary({ refetchInterval: 30000 });
+  const orders = shopifyOps.orders || [];
 
   const advanceMutation = useMutation({
     mutationFn: async () => ({
       skipped: SHOPIFY_WORKFLOW_ADVANCE_FROZEN,
       reason: 'may30_shopify_workflow_frozen',
     }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shopify-orders'] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] });
+    },
   });
 
   const checklistMutation = useMutation({
@@ -146,7 +156,9 @@ function ShopifyOrdersTab() {
       skipped: true,
       reason: 'may30_shopify_dashboard_direct_writes_locked',
     }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shopify-orders'] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] });
+    },
   });
 
   const notesMutation = useMutation({
@@ -154,7 +166,9 @@ function ShopifyOrdersTab() {
       skipped: true,
       reason: 'may30_shopify_dashboard_direct_writes_locked',
     }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shopify-orders'] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] });
+    },
   });
 
   const ACTIVE_STATUSES = ['new', 'awaiting_production', 'in_production', 'bottled', 'labeled', 'qc_checked', 'packed', 'in_cold_storage', 'assigned_for_pickup', 'assigned_for_delivery'];
@@ -430,15 +444,12 @@ function InfoRow({ label, value }) {
 
 function AlertsTab() {
   const queryClient = useQueryClient();
-  const { data: alerts = [], isLoading } = useQuery({
-    queryKey: ['op-alerts'],
-    queryFn: () => base44.entities.OperationalAlert.list('-created_date', 100),
-    refetchInterval: 15000,
-  });
+  const { data: shopifyOps = {}, isLoading } = useShopifyOpsSummary({ refetchInterval: 15000 });
+  const alerts = shopifyOps.alerts || [];
 
   const markRead = (id) => {
     console.warn('[ShopifyDashboard] Alert dismiss is locked during launch operations:', id);
-    queryClient.invalidateQueries({ queryKey: ['op-alerts'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] });
   };
 
   const unread = alerts.filter(a => !a.is_read);
@@ -482,10 +493,8 @@ function AlertsTab() {
 // ─── Products Tab ─────────────────────────────────────────────────────────────
 
 function ProductsTab() {
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ['shopify-products'],
-    queryFn: () => base44.entities.ShopifyProduct.list('-created_date', 100),
-  });
+  const { data: shopifyOps = {}, isLoading } = useShopifyOpsSummary({ refetchInterval: 60000 });
+  const products = shopifyOps.products || [];
 
   return (
     <div>
@@ -522,10 +531,8 @@ function ProductsTab() {
 // ─── Reports Tab ─────────────────────────────────────────────────────────────
 
 function ReportsTab() {
-  const { data: orders = [] } = useQuery({
-    queryKey: ['shopify-orders-reports'],
-    queryFn: () => base44.entities.ShopifyOrder.list('-created_date', 500),
-  });
+  const { data: shopifyOps = {} } = useShopifyOpsSummary({ refetchInterval: 60000 });
+  const orders = shopifyOps.orders || [];
 
   const totalRevenue = orders.reduce((s, o) => s + (o.total_price || 0), 0);
   const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
@@ -587,15 +594,9 @@ function SettingsTab() {
   const [resyncResult, setResyncResult] = useState(null);
   const adminResyncFrozen = true;
 
-  const { data: syncLogs = [] } = useQuery({
-    queryKey: ['sync-logs'],
-    queryFn: () => base44.entities.ShopifySyncLog.list('-created_date', 20),
-  });
-
-  const { data: webhookLogs = [] } = useQuery({
-    queryKey: ['webhook-logs'],
-    queryFn: () => base44.entities.ShopifyWebhookLog.list('-created_date', 30),
-  });
+  const { data: shopifyOps = {} } = useShopifyOpsSummary({ refetchInterval: 30000 });
+  const syncLogs = shopifyOps.sync_logs || [];
+  const webhookLogs = shopifyOps.webhook_logs || [];
 
   const handleResyncOrders = async () => {
     setResyncing(true);
