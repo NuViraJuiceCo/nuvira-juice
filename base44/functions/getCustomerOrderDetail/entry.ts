@@ -1,5 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+async function readJsonBody(req) {
+  try {
+    return { ok: true, body: await req.json() };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -9,7 +17,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body;
     const {
       order_number,
       order_id,
