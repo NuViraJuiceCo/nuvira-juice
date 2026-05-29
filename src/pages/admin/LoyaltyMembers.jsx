@@ -13,7 +13,13 @@ export default function LoyaltyMembers() {
 
   const { data: members = [], isLoading } = useQuery({
     queryKey: ['loyalty-members'],
-    queryFn: () => base44.entities.LoyaltyMember.filter({}, 'created_date', 200),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
+        resource: 'loyalty_members',
+      });
+      const payload = res?.data || res;
+      return Array.isArray(payload?.rows) ? payload.rows : [];
+    },
     enabled: user?.role === 'admin',
   });
 

@@ -98,7 +98,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
                   <>
                     <div className="flex justify-between"><span className="text-muted-foreground">Plan</span><span className="font-semibold text-blue-700">{dar.selected_plan_name || '—'}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Plan Price</span><span className="font-medium">${(dar.selected_plan_price || 0).toFixed(2)}/{dar.selected_plan_frequency === 'weekly' ? 'wk' : 'mo'}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Setup Intent</span><span className="font-mono text-[10px] text-muted-foreground">{dar.stripe_setup_intent_id || 'Not saved'}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Provider ID</span><span className="font-medium text-[10px] text-muted-foreground">Hidden in admin summary</span></div>
                   </>
                 ) : (
                   <>
@@ -108,7 +108,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
                       <div className="flex justify-between"><span className="text-muted-foreground">Capturable</span><span className="font-medium">${(dar.amount_capturable || 0).toFixed(2)}</span></div>
                     )}
                     <div className="flex justify-between"><span className="text-muted-foreground">Auth Expires</span><span className="font-medium">{expiresAt}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Stripe PI</span><span className="font-mono text-[10px] text-muted-foreground">{dar.stripe_payment_intent_id || '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Provider ID</span><span className="font-medium text-[10px] text-muted-foreground">Hidden in admin summary</span></div>
                   </>
                 )}
               </div>
@@ -222,7 +222,13 @@ export default function Zone3ReviewPanel() {
 
   const { data: dars = [], isLoading } = useQuery({
     queryKey: ['zone3-dars'],
-    queryFn: () => base44.entities.DeliveryApprovalRequest.list('-created_date', 100),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
+        resource: 'zone3_reviews',
+      });
+      const payload = res?.data || res;
+      return Array.isArray(payload?.rows) ? payload.rows : [];
+    },
     refetchInterval: 30000,
   });
 

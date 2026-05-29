@@ -143,7 +143,13 @@ export default function AdminProducts() {
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['admin-products'],
-    queryFn: () => base44.entities.Product.list('sort_order', 200),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
+        resource: 'product_catalog',
+      });
+      const payload = res?.data || res;
+      return Array.isArray(payload?.rows) ? payload.rows : [];
+    },
     enabled: user?.role === 'admin',
   });
 
