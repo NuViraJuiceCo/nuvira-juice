@@ -104,6 +104,162 @@ function sanitizeLog(log) {
   };
 }
 
+function inDateRange(value, dateFrom, dateTo) {
+  const text = sanitizeText(value, 40);
+  return Boolean(text && text >= dateFrom && text <= dateTo);
+}
+
+function nativeComplianceLog(entityName, row, type) {
+  const valueMap = {
+    temperature: row?.temperature,
+    ph: row?.ph_value,
+    ccp: row?.measurement,
+    sanitation: row?.cleaned && row?.sanitized ? 'complete' : 'incomplete',
+    corrective: row?.status,
+    daily_checklist: row?.overall_status,
+    batch: row?.quantity_produced,
+    alert: row?.severity,
+    unified: row?.status,
+  };
+
+  return sanitizeLog({
+    id: row?.id,
+    type,
+    date: row?.log_date || row?.checklist_date || row?.date || row?.triggered_date,
+    time: row?.log_time || row?.triggered_time,
+    status: row?.status || row?.overall_status || row?.result || row?.passed_failed || (row?.within_range === false ? 'out_of_range' : 'ok'),
+    staff_member: row?.staff_member || row?.verified_by || row?.resolved_by,
+    batch_id: row?.batch_id,
+    product_name: row?.product_name || row?.juice_flavor,
+    location: row?.location || row?.area || row?.ccp_point || row?.alert_type,
+    value: valueMap[type],
+    within_range: typeof row?.within_range === 'boolean' ? row.within_range : null,
+    updated_date: row?.updated_date || row?.created_date,
+    entity: entityName,
+  });
+}
+
+function countWhere(rows, predicate) {
+  return (Array.isArray(rows) ? rows : []).filter(predicate).length;
+}
+
+async function safeEntityList(base44, entityName, sort, limit = 500) {
+  try {
+    const entity = base44.asServiceRole.entities?.[entityName];
+    if (!entity?.list) return { rows: [], warning: `${entityName}_unavailable` };
+    const rows = await entity.list(sort, limit);
+    return { rows: Array.isArray(rows) ? rows : [], warning: null };
+  } catch (error) {
+    return { rows: [], warning: `${entityName}_read_failed` };
+  }
+}
+
+async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
+  const [
+    temperatureResult,
+    phResult,
+    ccpResult,
+    sanitationResult,
+    checklistResult,
+    correctiveResult,
+    batchResult,
+    alertResult,
+    unifiedResult,
+  ] = await Promise.all([
+    safeEntityList(base44, 'TemperatureLog', '-log_date', 500),
+    safeEntityList(base44, 'pHLog', '-log_date', 500),
+    safeEntityList(base44, 'CCPLog', '-log_date', 500),
+    safeEntityList(base44, 'SanitationLog', '-log_date', 500),
+    safeEntityList(base44, 'DailyChecklist', '-checklist_date', 500),
+    safeEntityList(base44, 'CorrectiveActionLog', '-log_date', 500),
+    safeEntityList(base44, 'BatchComplianceLog', '-date', 500),
+    safeEntityList(base44, 'ComplianceAlert', '-triggered_date', 500),
+    safeEntityList(base44, 'ComplianceLog', '-log_date', 500),
+  ]);
+
+  const warnings = [
+    temperatureResult.warning,
+    phResult.warning,
+    ccpResult.warning,
+    sanitationResult.warning,
+    checklistResult.warning,
+    correctiveResult.warning,
+    batchResult.warning,
+    alertResult.warning,
+    unifiedResult.warning,
+  ].filter(Boolean);
+
+  const temperature = temperatureResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const ph = phResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const ccp = ccpResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const sanitation = sanitationResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const checklists = checklistResult.rows.filter(row => inDateRange(row.checklist_date, dateFrom, dateTo));
+  const corrective = correctiveResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const batch = batchResult.rows.filter(row => inDateRange(row.date, dateFrom, dateTo));
+  const alerts = alertResult.rows.filter(row => inDateRange(row.triggered_date, dateFrom, dateTo));
+  const unified = unifiedResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+
+  const recentLogs = [
+    ...temperature.map(row => nativeComplianceLog('TemperatureLog', row, 'temperature')),
+    ...ph.map(row => nativeComplianceLog('pHLog', row, 'ph')),
+    ...ccp.map(row => nativeComplianceLog('CCPLog', row, 'ccp')),
+    ...sanitation.map(row => nativeComplianceLog('SanitationLog', row, 'sanitation')),
+    ...checklists.map(row => nativeComplianceLog('DailyChecklist', row, 'daily_checklist')),
+    ...corrective.map(row => nativeComplianceLog('CorrectiveActionLog', row, 'corrective')),
+    ...batch.map(row => nativeComplianceLog('BatchComplianceLog', row, 'batch')),
+    ...unified.map(row => nativeComplianceLog('ComplianceLog', row, 'unified')),
+  ]
+    .sort((a, b) => String(b.updated_date || b.date || '').localeCompare(String(a.updated_date || a.date || '')))
+    .slice(0, 80);
+
+  const activeAlerts = alerts
+    .filter(row => String(row?.status || '').toLowerCase() === 'active')
+    .slice(0, 25)
+    .map(row => ({
+      id: sanitizeText(row?.id, 140) || null,
+      alert_type: sanitizeText(row?.alert_type, 80) || null,
+      severity: sanitizeText(row?.severity, 40) || null,
+      message: sanitizeText(row?.message, 220) || null,
+      triggered_date: sanitizeText(row?.triggered_date, 40) || null,
+      triggered_time: sanitizeText(row?.triggered_time, 40) || null,
+      status: sanitizeText(row?.status, 40) || null,
+    }));
+
+  const issues = {
+    temp_out_of_range: countWhere(temperature, row => row.within_range === false),
+    ph_out_of_range: countWhere(ph, row => row.within_range === false),
+    ccp_failed: countWhere(ccp, row => row.result === 'Fail'),
+    sanitation_issues: countWhere(sanitation, row => row.cleaned !== true || row.sanitized !== true),
+    incomplete_checklists: countWhere(checklists, row => row.overall_status === 'Incomplete'),
+    open_corrective_actions: countWhere(corrective, row => !['Completed', 'Verified'].includes(row.status)),
+    failed_batch_logs: countWhere(batch, row => row.passed_failed === 'failed'),
+    active_alerts: activeAlerts.length,
+  };
+
+  return {
+    read_only: true,
+    source: 'customer_app_native',
+    summary: {
+      temperature: temperature.length,
+      ph: ph.length,
+      ccp: ccp.length,
+      sanitation: sanitation.length,
+      daily_checklists: checklists.length,
+      corrective_actions: corrective.length,
+      batch_compliance_logs: batch.length,
+      compliance_alerts: alerts.length,
+      unified_logs: unified.length,
+    },
+    issues: {
+      ...issues,
+      total_attention_items: Object.values(issues).reduce((sum, value) => sum + safeNumber(value), 0),
+    },
+    active_alerts: activeAlerts,
+    recent_logs: recentLogs,
+    warnings,
+  };
+}
+
 function sanitizeBatch(batch) {
   return {
     id: sanitizeText(batch?.id, 140) || null,
@@ -222,13 +378,35 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
+    const native = await loadNativeComplianceSummary(base44, dateFrom, dateTo);
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json(fallbackHubUnavailableSummary(
+      const fallback = fallbackHubUnavailableSummary(
         dateFrom,
         dateTo,
         'Hub compliance ops summary service is not configured',
         503
-      ));
+      );
+      return Response.json({
+        ...fallback,
+        native,
+        summary: {
+          ...fallback.summary,
+          native_temperature: native.summary.temperature,
+          native_ph: native.summary.ph,
+          native_ccp: native.summary.ccp,
+          native_sanitation: native.summary.sanitation,
+          native_daily_checklists: native.summary.daily_checklists,
+          native_corrective_actions: native.summary.corrective_actions,
+          native_batch_compliance_logs: native.summary.batch_compliance_logs,
+        },
+        issues: {
+          ...fallback.issues,
+          native_attention_items: native.issues.total_attention_items,
+        },
+        recent_logs: native.recent_logs,
+        warnings: [...fallback.warnings, ...native.warnings],
+      });
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -246,15 +424,54 @@ Deno.serve(async (req) => {
 
     const hubData = await hubResponse.json().catch(() => null);
     if (!hubResponse.ok) {
-      return Response.json(fallbackHubUnavailableSummary(
+      const fallback = fallbackHubUnavailableSummary(
         dateFrom,
         dateTo,
         sanitizeText(hubData?.error, 160) || 'Unable to load Hub compliance ops summary',
         hubResponse.status
-      ));
+      );
+      return Response.json({
+        ...fallback,
+        native,
+        summary: {
+          ...fallback.summary,
+          native_temperature: native.summary.temperature,
+          native_ph: native.summary.ph,
+          native_ccp: native.summary.ccp,
+          native_sanitation: native.summary.sanitation,
+          native_daily_checklists: native.summary.daily_checklists,
+          native_corrective_actions: native.summary.corrective_actions,
+          native_batch_compliance_logs: native.summary.batch_compliance_logs,
+        },
+        issues: {
+          ...fallback.issues,
+          native_attention_items: native.issues.total_attention_items,
+        },
+        recent_logs: native.recent_logs,
+        warnings: [...fallback.warnings, ...native.warnings],
+      });
     }
 
-    return Response.json(sanitizeHubResponse(hubData, dateFrom, dateTo));
+    const hub = sanitizeHubResponse(hubData, dateFrom, dateTo);
+    return Response.json({
+      ...hub,
+      native,
+      summary: {
+        ...hub.summary,
+        native_temperature: native.summary.temperature,
+        native_ph: native.summary.ph,
+        native_ccp: native.summary.ccp,
+        native_sanitation: native.summary.sanitation,
+        native_daily_checklists: native.summary.daily_checklists,
+        native_corrective_actions: native.summary.corrective_actions,
+        native_batch_compliance_logs: native.summary.batch_compliance_logs,
+      },
+      issues: {
+        ...hub.issues,
+        native_attention_items: native.issues.total_attention_items,
+      },
+      warnings: [...safeStringArray(hub.warnings), ...native.warnings],
+    });
   } catch (error) {
     console.error('[getAdminComplianceOpsSummary] Error:', error.message);
     return Response.json({ error: 'Unable to load compliance ops summary' }, { status: 500 });
