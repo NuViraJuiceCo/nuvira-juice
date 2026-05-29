@@ -77,6 +77,11 @@ function safeStringArray(value, maxItems = 30) {
   return value.slice(0, maxItems).map(item => sanitizeText(item, 120)).filter(Boolean);
 }
 
+function safeArrayOfObjects(value, mapper, maxItems = 30) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).map(mapper).filter(Boolean);
+}
+
 function safeObjectNumberMap(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(
@@ -120,10 +125,14 @@ function sanitizeTemperatureRecord(row) {
     ['location', 'location', 120],
     ['log_date', 'log_date', 40],
     ['log_time', 'log_time', 40],
+    ['shift', 'shift', 40],
     ['staff_member', 'staff_member', 120],
     ['temperature', 'temperature', 40],
     ['unit', 'unit', 20],
+    ['min_range', 'min_range', 40],
+    ['max_range', 'max_range', 40],
     ['within_range', 'within_range'],
+    ['notes', 'notes', 1000],
   ]);
 }
 
@@ -151,6 +160,7 @@ function sanitizeCcpRecord(row) {
     ['measurement', 'measurement', 160],
     ['critical_limit', 'critical_limit', 160],
     ['result', 'result', 40],
+    ['notes', 'notes', 1000],
   ]);
 }
 
@@ -165,6 +175,9 @@ function sanitizeSanitationRecord(row) {
     ['sanitized', 'sanitized'],
     ['sanitizer_type', 'sanitizer_type', 120],
     ['sanitizer_level', 'sanitizer_level', 80],
+    ['verified_by', 'verified_by', 120],
+    ['batch_id', 'batch_id', 120],
+    ['notes', 'notes', 1000],
   ]);
 }
 
@@ -172,12 +185,14 @@ function sanitizeCorrectiveRecord(row) {
   return sanitizeRecord(row, [
     ['id', 'id', 140],
     ['issue_type', 'issue_type', 120],
+    ['issue_description', 'issue_description', 500],
     ['log_date', 'log_date', 40],
     ['log_time', 'log_time', 40],
     ['staff_member', 'staff_member', 120],
     ['corrective_action_taken', 'corrective_action_taken', 260],
     ['status', 'status', 80],
     ['verified_by', 'verified_by', 120],
+    ['notes', 'notes', 1000],
   ]);
 }
 
@@ -209,14 +224,46 @@ function sanitizeChecklistRecord(row) {
 }
 
 function sanitizeBatchComplianceRecord(row) {
+  return {
+    ...sanitizeRecord(row, [
+      ['id', 'id', 140],
+      ['batch_id', 'batch_id', 120],
+      ['juice_flavor', 'juice_flavor', 120],
+      ['product_name', 'product_name', 120],
+      ['date', 'date', 40],
+      ['log_date', 'log_date', 40],
+      ['quantity_produced', 'quantity_produced', 40],
+      ['pH_result', 'pH_result', 40],
+      ['passed_failed', 'passed_failed', 80],
+      ['start_time', 'start_time', 80],
+      ['end_time', 'end_time', 80],
+      ['verified_by', 'verified_by', 120],
+      ['verified_at', 'verified_at', 80],
+      ['notes', 'notes', 1000],
+    ]),
+    staff_on_duty: safeStringArray(row?.staff_on_duty),
+    ingredients: safeArrayOfObjects(row?.ingredients, ing => ({
+      ingredient_name: sanitizeText(ing?.ingredient_name, 120) || null,
+      quantity: typeof ing?.quantity === 'number' || typeof ing?.quantity === 'string' ? ing.quantity : null,
+      unit: sanitizeText(ing?.unit, 40) || null,
+      lot_number: sanitizeText(ing?.lot_number, 120) || null,
+    })),
+  };
+}
+
+function sanitizeUnifiedComplianceRecord(row) {
   return sanitizeRecord(row, [
     ['id', 'id', 140],
-    ['batch_id', 'batch_id', 120],
-    ['juice_flavor', 'juice_flavor', 120],
-    ['date', 'date', 40],
-    ['quantity_produced', 'quantity_produced', 40],
-    ['verified_by', 'verified_by', 120],
+    ['log_type', 'log_type', 80],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['shift', 'shift', 40],
+    ['status', 'status', 80],
     ['passed_failed', 'passed_failed', 80],
+    ['notes', 'notes', 1000],
+    ['verified_by', 'verified_by', 120],
+    ['verified_at', 'verified_at', 80],
   ]);
 }
 
@@ -362,6 +409,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     labelResult,
     haccpResult,
     documentResult,
+    productionBatchResult,
   ] = await Promise.all([
     safeEntityList(base44, 'TemperatureLog', '-log_date', 500),
     safeEntityList(base44, 'pHLog', '-log_date', 500),
@@ -375,6 +423,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     safeEntityList(base44, 'LabelAllergenReview', '-updated_date', 100),
     safeEntityList(base44, 'HACCPPlanReview', '-review_date', 100),
     safeEntityList(base44, 'ComplianceDoc', '-expiry_date', 100),
+    safeEntityList(base44, 'ProductionBatch', '-production_date', 500),
   ]);
 
   const warnings = [
@@ -390,6 +439,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     labelResult.warning,
     haccpResult.warning,
     documentResult.warning,
+    productionBatchResult.warning,
   ].filter(Boolean);
 
   const temperature = temperatureResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
@@ -404,6 +454,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
   const labelReviews = labelResult.rows;
   const haccpReviews = haccpResult.rows;
   const complianceDocuments = documentResult.rows;
+  const productionBatches = productionBatchResult.rows.filter(row => inDateRange(row.production_date, dateFrom, dateTo));
 
   const recentLogs = [
     ...temperature.map(row => nativeComplianceLog('TemperatureLog', row, 'temperature')),
@@ -458,6 +509,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
       label_allergen_reviews: labelReviews.length,
       haccp_plan_reviews: haccpReviews.length,
       compliance_documents: complianceDocuments.length,
+      production_batches: productionBatches.length,
     },
     issues: {
       ...issues,
@@ -473,6 +525,8 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
       corrective_actions: newestFirst(corrective, 'log_date').map(sanitizeCorrectiveRecord),
       daily_checklists: newestFirst(checklists, 'checklist_date').map(sanitizeChecklistRecord),
       batch_compliance: newestFirst(batch, 'date').map(sanitizeBatchComplianceRecord),
+      unified_logs: newestFirst(unified, 'log_date').map(sanitizeUnifiedComplianceRecord),
+      production_batches: newestFirst(productionBatches, 'production_date', 100).map(sanitizeBatch),
       label_allergen_reviews: newestFirst(labelReviews, 'updated_date', 100).map(sanitizeLabelAllergenReview),
       haccp_plan_reviews: newestFirst(haccpReviews, 'review_date', 100).map(sanitizeHaccpPlanReview),
       compliance_documents: newestFirst(complianceDocuments, 'expiry_date', 100).map(sanitizeComplianceDocument),
@@ -483,15 +537,68 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
 
 function sanitizeBatch(batch) {
   return {
-    id: sanitizeText(batch?.id, 140) || null,
-    batch_id: sanitizeText(batch?.batch_id, 120) || null,
-    product_name: sanitizeText(batch?.product_name, 120) || null,
-    production_date: sanitizeText(batch?.production_date, 40) || null,
-    status: sanitizeText(batch?.status, 80) || null,
+    ...sanitizeRecord(batch, [
+      ['id', 'id', 140],
+      ['batch_id', 'batch_id', 120],
+      ['product_name', 'product_name', 120],
+      ['production_date', 'production_date', 40],
+      ['status', 'status', 80],
+      ['assigned_to', 'assigned_to', 120],
+      ['planned_units', 'planned_units', 40],
+      ['actual_units', 'actual_units', 40],
+      ['actual_start_time', 'actual_start_time', 80],
+      ['actual_end_time', 'actual_end_time', 80],
+      ['started_by', 'started_by', 120],
+      ['completed_by', 'completed_by', 120],
+      ['formula_or_recipe_used', 'formula_or_recipe_used', 160],
+      ['bottle_size', 'bottle_size', 80],
+      ['bottles_produced', 'bottles_produced', 40],
+      ['bottles_rejected_or_wasted', 'bottles_rejected_or_wasted', 40],
+      ['final_usable_quantity', 'final_usable_quantity', 40],
+      ['storage_location', 'storage_location', 160],
+      ['use_by_date', 'use_by_date', 40],
+      ['pH_result', 'pH_result', 40],
+      ['pH_passed_failed', 'pH_passed_failed', 80],
+      ['pH_meter_id', 'pH_meter_id', 120],
+      ['passed_failed', 'passed_failed', 80],
+      ['verified_by', 'verified_by', 120],
+      ['verified_at', 'verified_at', 80],
+      ['issue_identified', 'issue_identified', 500],
+      ['detection_method', 'detection_method', 160],
+      ['action_taken', 'action_taken', 500],
+      ['quantity_disposed', 'quantity_disposed', 40],
+      ['preventive_steps', 'preventive_steps', 500],
+    ]),
     compliance_log_id_present: safeBoolean(batch?.compliance_log_id_present),
     corrective_action_required: safeBoolean(batch?.corrective_action_required),
     corrective_action_log_id_present: safeBoolean(batch?.corrective_action_log_id_present),
     is_locked: safeBoolean(batch?.is_locked),
+    calibration_checked: typeof batch?.calibration_checked === 'boolean' ? batch.calibration_checked : null,
+    pre_op_sanitation_confirmed: typeof batch?.pre_op_sanitation_confirmed === 'boolean' ? batch.pre_op_sanitation_confirmed : null,
+    ccp_check_complete: typeof batch?.ccp_check_complete === 'boolean' ? batch.ccp_check_complete : null,
+    disposed: typeof batch?.disposed === 'boolean' ? batch.disposed : null,
+    staff_on_duty: safeStringArray(batch?.staff_on_duty),
+    equipment_used: safeStringArray(batch?.equipment_used),
+    ingredients_used: safeArrayOfObjects(batch?.ingredients_used, ing => ({
+      ingredient_name: sanitizeText(ing?.ingredient_name, 120) || null,
+      quantity: typeof ing?.quantity === 'number' || typeof ing?.quantity === 'string' ? ing.quantity : null,
+      unit: sanitizeText(ing?.unit, 40) || null,
+      lot_number: sanitizeText(ing?.lot_number, 120) || null,
+    })),
+    order_sources: safeArrayOfObjects(batch?.order_sources, source => ({
+      order_number: sanitizeText(source?.order_number, 120) || null,
+      customer_name: sanitizeText(source?.customer_name, 120) || null,
+      quantity: typeof source?.quantity === 'number' || typeof source?.quantity === 'string' ? source.quantity : null,
+    }), 20),
+    audit_trail: safeArrayOfObjects(batch?.audit_trail, entry => ({
+      timestamp: sanitizeText(entry?.timestamp, 80) || null,
+      action: sanitizeText(entry?.action, 120) || null,
+      performed_by: sanitizeText(entry?.performed_by, 120) || null,
+      reason: sanitizeText(entry?.reason, 500) || null,
+      before: {
+        missing_checks: safeStringArray(entry?.before?.missing_checks, 20),
+      },
+    }), 20),
   };
 }
 

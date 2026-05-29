@@ -35,24 +35,24 @@ export default function MonthlyBinderExport({ user, onClose }) {
       setCountLoading(true);
       setCounts(null);
       try {
-        const [batchLogs, sanitationLogs, ccpLogs, tempLogs, correctiveLogs] = await Promise.all([
-          base44.entities.BatchComplianceLog?.list('-date', 500).catch(() => []),
-          base44.entities.SanitationLog?.list('-log_date', 500).catch(() => []),
-          base44.entities.CCPLog?.list('-log_date', 500).catch(() => []),
-          base44.entities.TemperatureLog?.list('-log_date', 500).catch(() => []),
-          base44.entities.CorrectiveActionLog?.list('-log_date', 500).catch(() => []),
-        ]);
+        const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {
+          date_from: startDate,
+          date_to: endDate,
+        });
+        const result = res?.data || res;
+        if (result?.error) throw new Error(result.error);
+        const records = result?.native?.records || {};
 
         if (cancelled) return;
 
         const inRange = (d) => d >= startDate && d <= endDate;
 
         const c = {
-          batch: batchLogs.filter(l => inRange(l.date || l.log_date)),
-          sanitation: sanitationLogs.filter(l => inRange(l.log_date)),
-          ccp: ccpLogs.filter(l => inRange(l.log_date)),
-          temperature: tempLogs.filter(l => inRange(l.log_date)),
-          corrective: correctiveLogs.filter(l => inRange(l.log_date)),
+          batch: (records.batch_compliance || []).filter(l => inRange(l.date || l.log_date)),
+          sanitation: (records.sanitation || []).filter(l => inRange(l.log_date)),
+          ccp: (records.ccp || []).filter(l => inRange(l.log_date)),
+          temperature: (records.temperature || []).filter(l => inRange(l.log_date)),
+          corrective: (records.corrective_actions || []).filter(l => inRange(l.log_date)),
         };
         setCounts(c);
       } finally {

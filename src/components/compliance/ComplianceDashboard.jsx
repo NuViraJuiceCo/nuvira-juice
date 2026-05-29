@@ -1,83 +1,34 @@
 import React from 'react';
-import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 
 export default function ComplianceDashboard({ summary }) {
-  const today = new Date().toISOString().split('T')[0];
-  const native = summary?.native || null;
+  const native = summary?.native || {};
 
-  const { data: tempLogs } = useQuery({
-    queryKey: ['temp_logs_today'],
-    queryFn: async () => {
-      const logs = await base44.entities.TemperatureLog.list('-log_date', 500);
-      return logs.filter(l => l.log_date === today);
-    },
-    enabled: !native,
-  });
-
-  const { data: phLogs } = useQuery({
-    queryKey: ['pH_logs_today'],
-    queryFn: async () => {
-      const logs = await base44.entities.pHLog.list('-log_date', 500);
-      return logs.filter(l => l.log_date === today);
-    },
-    enabled: !native,
-  });
-
-  const { data: ccpLogs } = useQuery({
-    queryKey: ['CCP_logs_today'],
-    queryFn: async () => {
-      const logs = await base44.entities.CCPLog.list('-log_date', 500);
-      return logs.filter(l => l.log_date === today);
-    },
-    enabled: !native,
-  });
-
-  const { data: alerts } = useQuery({
-    queryKey: ['alerts_today'],
-    queryFn: async () => {
-      const allAlerts = await base44.entities.ComplianceAlert.list('-triggered_date', 500);
-      return allAlerts.filter(a => a.triggered_date === today && a.status === 'Active');
-    },
-    enabled: !native,
-  });
-
-  const { data: checklists } = useQuery({
-    queryKey: ['checklists_today'],
-    queryFn: () => base44.entities.DailyChecklist.filter({ checklist_date: today }),
-    enabled: !native,
-  });
-
-  const phFailures = native ? Array(native.issues?.ph_out_of_range || 0).fill({}) : (phLogs?.filter(l => l.within_range === false) || []);
-  const tempOutOfRange = native ? Array(native.issues?.temp_out_of_range || 0).fill({}) : (tempLogs?.filter(l => l.within_range === false) || []);
-  const ccpFailures = native ? Array(native.issues?.ccp_failed || 0).fill({}) : (ccpLogs?.filter(l => l.result === 'Fail') || []);
-  const checklistsComplete = native
-    ? Math.max(Number(native.summary?.daily_checklists || 0) - Number(native.issues?.incomplete_checklists || 0), 0)
-    : (checklists?.filter(c => c.overall_status === 'Complete')?.length || 0);
-  const checklistsIncomplete = native
-    ? Number(native.issues?.incomplete_checklists || 0)
-    : (checklists?.filter(c => c.overall_status === 'Incomplete')?.length || 0);
-  const activeAlerts = native ? (native.active_alerts || []) : (alerts || []);
+  const phFailureCount = Number(native.issues?.ph_out_of_range || 0);
+  const tempOutOfRangeCount = Number(native.issues?.temp_out_of_range || 0);
+  const ccpFailureCount = Number(native.issues?.ccp_failed || 0);
+  const checklistsComplete = Math.max(Number(native.summary?.daily_checklists || 0) - Number(native.issues?.incomplete_checklists || 0), 0);
+  const checklistsIncomplete = Number(native.issues?.incomplete_checklists || 0);
+  const activeAlerts = native.active_alerts || [];
 
   const metrics = [
     {
       label: 'Temperature Logs',
-      value: native ? native.summary?.temperature || 0 : tempLogs?.length || 0,
-      status: tempOutOfRange.length === 0 ? 'good' : 'warning',
+      value: native.summary?.temperature || 0,
+      status: tempOutOfRangeCount === 0 ? 'good' : 'warning',
       icon: '🌡️',
     },
     {
       label: 'pH Tests',
-      value: native ? native.summary?.ph || 0 : phLogs?.length || 0,
-      status: phFailures.length === 0 ? 'good' : 'critical',
+      value: native.summary?.ph || 0,
+      status: phFailureCount === 0 ? 'good' : 'critical',
       icon: '🧪',
     },
     {
       label: 'CCP Checks',
-      value: native ? native.summary?.ccp || 0 : ccpLogs?.length || 0,
-      status: ccpFailures.length === 0 ? 'good' : 'critical',
+      value: native.summary?.ccp || 0,
+      status: ccpFailureCount === 0 ? 'good' : 'critical',
       icon: '⚠️',
     },
     {
@@ -156,40 +107,16 @@ export default function ComplianceDashboard({ summary }) {
         </Card>
       )}
 
-      {!native && tempOutOfRange.length > 0 && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardHeader>
-            <CardTitle className="text-yellow-900">⚠️ Out of Range Values</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {tempOutOfRange.map((log, i) => (
-                <p key={i} className="text-sm text-yellow-800">
-                  {log.location}: {log.temperature}°C
-                </p>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!native && (phFailures.length > 0 || ccpFailures.length > 0) && (
+      {(tempOutOfRangeCount > 0 || phFailureCount > 0 || ccpFailureCount > 0) && (
         <Card className="border-red-200 bg-red-50">
           <CardHeader>
-            <CardTitle className="text-red-900">🔴 Critical Failures</CardTitle>
+            <CardTitle className="text-red-900">🔴 Compliance Attention</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {phFailures.map((log, i) => (
-                <p key={i} className="text-sm text-red-800">
-                  pH Failure: Batch {log.batch_id} pH {log.ph_value}
-                </p>
-              ))}
-              {ccpFailures.map((log, i) => (
-                <p key={i} className="text-sm text-red-800">
-                  CCP Failure: {log.ccp_point} (Batch {log.batch_id})
-                </p>
-              ))}
+              {tempOutOfRangeCount > 0 && <p className="text-sm text-red-800">{tempOutOfRangeCount} temperature log{tempOutOfRangeCount === 1 ? '' : 's'} out of range.</p>}
+              {phFailureCount > 0 && <p className="text-sm text-red-800">{phFailureCount} pH log{phFailureCount === 1 ? '' : 's'} out of range.</p>}
+              {ccpFailureCount > 0 && <p className="text-sm text-red-800">{ccpFailureCount} CCP failure{ccpFailureCount === 1 ? '' : 's'} recorded.</p>}
             </div>
           </CardContent>
         </Card>

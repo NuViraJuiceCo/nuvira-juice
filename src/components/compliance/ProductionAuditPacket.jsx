@@ -201,34 +201,26 @@ export default function ProductionAuditPacket({ productionDate, onClose }) {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [
-        sanitationLogs,
-        dailyChecklists,
-        temperatureLogs,
-        ccpLogs,
-        batchLogs,
-        complianceLogs,
-        batches,
-      ] = await Promise.all([
-        base44.entities.SanitationLog?.list('-log_date', 200).catch(() => []),
-        base44.entities.DailyChecklist?.list('-checklist_date', 50).catch(() => []),
-        base44.entities.TemperatureLog?.list('-log_date', 200).catch(() => []),
-        base44.entities.CCPLog?.list('-log_date', 200).catch(() => []),
-        base44.entities.BatchComplianceLog?.list('-date', 200).catch(() => []),
-        base44.entities.ComplianceLog?.list('-log_date', 200).catch(() => []),
-        base44.entities.ProductionBatch?.filter({ production_date: productionDate }).catch(() => []),
-      ]);
+      const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {
+        date_from: productionDate,
+        date_to: productionDate,
+      });
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      const records = result?.native?.records || {};
 
-      // Filter all to this production date
       const today = productionDate;
       const filtered = {
-        sanitationLogs: (sanitationLogs || []).filter(l => l.log_date === today),
-        dailyChecklists: (dailyChecklists || []).filter(l => l.checklist_date === today),
-        temperatureLogs: (temperatureLogs || []).filter(l => l.log_date === today),
-        ccpLogs: (ccpLogs || []).filter(l => l.log_date === today),
-        batchLogs: (batchLogs || []).filter(l => l.date === today),
-        correctiveActions: (complianceLogs || []).filter(l => l.log_date === today && l.log_type === 'corrective_action'),
-        batches: batches || [],
+        sanitationLogs: (records.sanitation || []).filter(l => l.log_date === today),
+        dailyChecklists: (records.daily_checklists || []).filter(l => l.checklist_date === today),
+        temperatureLogs: (records.temperature || []).filter(l => l.log_date === today),
+        ccpLogs: (records.ccp || []).filter(l => l.log_date === today),
+        batchLogs: (records.batch_compliance || []).filter(l => l.date === today),
+        correctiveActions: [
+          ...(records.corrective_actions || []).filter(l => l.log_date === today),
+          ...(records.unified_logs || []).filter(l => l.log_date === today && l.log_type === 'corrective_action'),
+        ],
+        batches: records.production_batches || [],
       };
 
       setData(filtered);
@@ -275,27 +267,9 @@ export default function ProductionAuditPacket({ productionDate, onClose }) {
     window.print();
   };
 
-  const handleSignOff = async () => {
-    // Record sign-off on all batches for this date
-    if (data?.batches?.length) {
-      for (const batch of data.batches) {
-        try {
-          const existing = Array.isArray(batch.audit_trail) ? batch.audit_trail : [];
-          await base44.entities.ProductionBatch.update(batch.id, {
-            audit_trail: [...existing, {
-              timestamp: new Date().toISOString(),
-              action: 'AdminSignOff',
-              performed_by: user?.email,
-              reason: signOffNote || 'Audit packet reviewed and signed off.',
-              before: {},
-              after: { signed_off: true },
-            }],
-          });
-        } catch (e) {
-          console.warn('Sign-off save failed:', e.message);
-        }
-      }
-    }
+  const handleSignOff = () => {
+    // Launch-safe: acknowledge review in the current packet view only.
+    // Persistent batch audit-trail sign-off needs a dedicated backend command before it is re-enabled.
     setSigned(true);
   };
 
@@ -592,8 +566,10 @@ export default function ProductionAuditPacket({ productionDate, onClose }) {
                 <div className="flex items-center gap-2 py-3 px-4 bg-green-50 border border-green-200 rounded-xl">
                   <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
                   <div>
-                    <p className="text-sm font-bold text-green-800">Packet Signed Off</p>
-                    <p className="text-xs text-green-700">By {user?.email} at {moment().format('h:mm A')} — {signOffNote || 'Audit packet reviewed.'}</p>
+                    <p className="text-sm font-bold text-green-800">Packet Review Acknowledged</p>
+                    <p className="text-xs text-green-700">
+                      Local print-session acknowledgement by {user?.email} at {moment().format('h:mm A')} — {signOffNote || 'Audit packet reviewed.'}
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -612,12 +588,15 @@ export default function ProductionAuditPacket({ productionDate, onClose }) {
                     value={signOffNote}
                     onChange={e => setSignOffNote(e.target.value)}
                     rows={2}
-                    placeholder="Optional sign-off note (e.g. All logs reviewed and compliant...)"
+                    placeholder="Optional review note for this print/export session"
                     className="w-full text-sm border border-border rounded-xl px-3 py-2.5 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                   />
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Persistent ProductionBatch audit-trail sign-off is locked until a dedicated backend command is approved.
+                  </p>
                   <Button onClick={handleSignOff} className="w-full gap-2">
                     <CheckCircle2 className="w-4 h-4" />
-                    Sign Off Audit Packet
+                    Acknowledge Review For Print
                   </Button>
                 </div>
               )}
