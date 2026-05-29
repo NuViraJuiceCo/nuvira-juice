@@ -166,6 +166,24 @@ function summarizeStops(active, completed, unscheduled = []) {
   });
 }
 
+async function fetchHubJson(url, headers) {
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      return { ok: false, warning: `hub_delivery_queue_unavailable:${response.status}`, data: null };
+    }
+
+    const data = await response.json().catch(() => null);
+    return { ok: true, warning: null, data };
+  } catch {
+    return { ok: false, warning: 'hub_delivery_queue_unavailable:fetch_failed', data: null };
+  }
+}
+
 function orderReferenceDate(order) {
   return normalizeDate(
     order?.customer_order_date ||
@@ -362,17 +380,15 @@ Deno.serve(async (req) => {
         limit: limit.toString(),
       });
 
-      const hubResponse = await fetch(`${hubBase}/functions/getDeliveryRouteSummaryForCustomerApp?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-        },
-      });
+      const hubResult = await fetchHubJson(
+        `${hubBase}/functions/getDeliveryRouteSummaryForCustomerApp?${params.toString()}`,
+        { Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}` },
+      );
 
-      if (!hubResponse.ok) {
-        hubWarning = `hub_delivery_queue_unavailable:${hubResponse.status}`;
+      if (!hubResult.ok) {
+        hubWarning = hubResult.warning;
       } else {
-        const parsedHubData = await hubResponse.json().catch(() => null);
+        const parsedHubData = hubResult.data;
         if (
           !parsedHubData ||
           parsedHubData.success !== true ||

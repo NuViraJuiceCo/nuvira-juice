@@ -169,6 +169,26 @@ function summarizeOrders(orders) {
   };
 }
 
+async function fetchHubJson(url, headers, warningPrefix) {
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      console.warn(`[getAdminPOSOrdersSummary] ${warningPrefix}: ${response.status}`);
+      return { ok: false, warning: `${warningPrefix}:${response.status}`, data: null };
+    }
+
+    const data = await response.json().catch(() => null);
+    return { ok: true, warning: null, data };
+  } catch {
+    console.warn(`[getAdminPOSOrdersSummary] ${warningPrefix}: fetch_failed`);
+    return { ok: false, warning: `${warningPrefix}:fetch_failed`, data: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -261,17 +281,14 @@ Deno.serve(async (req) => {
         params.set('preset', preset);
       }
 
-      const hubResponse = await fetch(`${hubBase}/functions/getPOSOrdersForCustomerApp?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-        },
-      });
+      const hubResult = await fetchHubJson(
+        `${hubBase}/functions/getPOSOrdersForCustomerApp?${params.toString()}`,
+        { Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}` },
+        'Hub POS summary unavailable',
+      );
 
-      if (!hubResponse.ok) {
-        console.warn(`[getAdminPOSOrdersSummary] Hub POS summary unavailable: ${hubResponse.status}`);
-      } else {
-        const hubData = await hubResponse.json().catch(() => null);
+      if (hubResult.ok) {
+        const hubData = hubResult.data;
         if (!hubData || hubData.success !== true || !Array.isArray(hubData.orders)) {
           console.warn('[getAdminPOSOrdersSummary] Hub POS summary response malformed; using native records only');
         } else {
