@@ -73,6 +73,15 @@ function normalizeLower(value) {
   return normalizeSingleLine(value).toLowerCase();
 }
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function sanitizeText(value, maxLength = 160) {
   const text = normalizeSingleLine(value)
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted email]')
@@ -167,7 +176,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Method not allowed' }, { status: 405 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
+
     const forbiddenKey = findForbiddenBodyKey(body);
     if (forbiddenKey) {
       return Response.json({ error: `Unsupported field: ${forbiddenKey}` }, { status: 400 });

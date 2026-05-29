@@ -34,6 +34,15 @@ function safeStringArray(values, limit = 20) {
   return values.map(value => sanitizeText(value, 80)).filter(Boolean).slice(0, limit);
 }
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function uniqueStrings(values) {
   return Array.from(new Set((Array.isArray(values) ? values : []).map(value => sanitizeText(value, 80)).filter(Boolean)));
 }
@@ -732,7 +741,11 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error_code: 'malformed_json', message: 'Malformed JSON body' }, { status: 400 });
+    }
+
     const mode = body?.mode === 'live' ? 'live' : 'dry_run';
     const auth = await resolveAuth({ base44, req, body, mode });
     if (!auth.ok) {

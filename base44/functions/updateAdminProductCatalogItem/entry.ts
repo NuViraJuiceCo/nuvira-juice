@@ -10,6 +10,15 @@ function safeString(value, maxLength = 240) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function normalizeId(value, fieldName) {
   const text = normalizeText(value);
   if (!text) throw new Error(`${fieldName} is required`);
@@ -88,7 +97,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
+
     const productId = normalizeId(body?.product_id, 'product_id');
     const patch = buildPatch(body);
 

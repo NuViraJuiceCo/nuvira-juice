@@ -16,6 +16,15 @@ function normalizeNote(value) {
   return normalizeSingleLine(value);
 }
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function sanitizeHubResponse(data, requestId) {
   return {
     success: data?.success === true,
@@ -47,7 +56,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
+
     const hubOrderId = normalizeText(body.hub_order_id);
     const orderNumber = normalizeText(body.order_number);
     const note = normalizeNote(body.note);
