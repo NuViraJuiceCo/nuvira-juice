@@ -849,22 +849,19 @@ export default function AdminOrders() {
   });
   const orders = ordersData.orders || [];
 
-  const { data: profiles = [] } = useQuery({
-    queryKey: ['admin-user-profiles'],
-    queryFn: () => base44.entities.UserProfile.list('-created_date', 500),
-    enabled: user?.role === 'admin',
-  });
-
-  // Build email → name map from UserProfile
+  // Build email -> name map from the admin orders wrapper payload.
+  // This avoids a browser-side UserProfile.list on the operational order page.
   const nameMap = useMemo(() => {
     const map = {};
-    profiles.forEach(p => {
-      if (p.customer_email) {
-        map[p.customer_email] = [p.first_name, p.last_name].filter(Boolean).join(' ') || null;
+    orders.forEach(order => {
+      const email = order.customer_email || order.hub_customer_email;
+      const name = order.customer_name || order.full_name || order.shipping_name || order.billing_name;
+      if (email && name) {
+        map[email] = name;
       }
     });
     return map;
-  }, [profiles]);
+  }, [orders]);
 
   // Split: pending/abandoned vs operational
   const pendingOrders = orders.filter(o => isAbandonedOrUnpaid(o));
