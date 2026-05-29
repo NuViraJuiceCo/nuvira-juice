@@ -2,13 +2,25 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+
     const base44 = createClientFromRequest(req);
 
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (!['admin', 'staff'].includes(user.role)) return Response.json({ error: 'Forbidden: Staff or Admin access required' }, { status: 403 });
 
-    const { log_type, data, min_value, max_value } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return Response.json({ error: 'invalid_json' }, { status: 400 });
+    }
+
+    const { log_type, data, min_value, max_value } = body;
+    if (!log_type || !data || typeof data !== 'object') {
+      return Response.json({ error: 'missing_required_payload' }, { status: 400 });
+    }
 
     // Validate required fields based on log type
     const requiredFields = {
@@ -19,7 +31,10 @@ Deno.serve(async (req) => {
       corrective: ['log_date', 'log_time', 'staff_member', 'issue_type', 'corrective_action_taken'],
     };
 
-    const required = requiredFields[log_type] || [];
+    const required = requiredFields[log_type];
+    if (!required) {
+      return Response.json({ error: 'unsupported_log_type' }, { status: 400 });
+    }
     const missing = required.filter(field => !data[field]);
 
     if (missing.length > 0) {

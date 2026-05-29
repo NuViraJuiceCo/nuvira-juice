@@ -3,7 +3,24 @@ import { jsPDF } from 'npm:jspdf@4.0.0';
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return Response.json({ error: 'invalid_json' }, { status: 400 });
+    }
+
     const {
       start_date,
       end_date,
@@ -18,11 +35,13 @@ Deno.serve(async (req) => {
         'haccp',
         'label_allergen',
       ],
-    } = await req.json();
+    } = body;
 
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end_date || '')) {
+      return Response.json({ error: 'date_range_required' }, { status: 400 });
+    }
+    if (end_date < start_date) {
+      return Response.json({ error: 'end_date_before_start_date' }, { status: 400 });
     }
 
     // Fetch all logs for date range
