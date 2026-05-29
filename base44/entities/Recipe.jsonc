@@ -1,0 +1,100 @@
+{
+  "name": "Recipe",
+  "type": "object",
+  "properties": {
+    "product_name": {
+      "type": "string",
+      "description": "Juice product name (must match line_item titles in orders)",
+      "required": true
+    },
+    "product_sku": {
+      "type": "string",
+      "description": "SKU of the product for matching with orders"
+    },
+    "bottle_size_oz": {
+      "type": "number",
+      "description": "Finished bottle size in oz",
+      "default": 12
+    },
+    "yield_factor": {
+      "type": "number",
+      "description": "Yield factor to account for waste/evaporation (e.g. 1.05 = 5% buffer)",
+      "default": 1.05
+    },
+    "ingredients": {
+      "type": "array",
+      "description": "List of ingredients and quantities per bottle",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ingredient_name": {
+            "type": "string",
+            "description": "Must match the ingredient field in InventoryItem"
+          },
+          "quantity_oz": {
+            "type": "number",
+            "description": "Amount needed per 12oz bottle in oz"
+          },
+          "unit": {
+            "type": "string",
+            "description": "Unit label for display (oz, g, pinch)"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional notes (e.g. freshly juiced, cold pressed)"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Production notes for this recipe"
+    },
+    "is_active": {
+      "type": "boolean",
+      "description": "Whether this recipe is currently in production",
+      "default": true
+    }
+  },
+  "required": [
+    "product_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager"
+          ]
+        }
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "staff"
+          ]
+        }
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager"
+          ]
+        }
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
