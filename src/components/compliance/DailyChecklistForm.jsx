@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertCircle } from 'lucide-react';
 
-export default function DailyChecklistForm() {
+export default function DailyChecklistForm({ nativeCompliance }) {
   const today = new Date().toISOString().split('T')[0];
   const [, setUser] = useState(null);
   const [existingChecklist, setExistingChecklist] = useState(null);
@@ -40,18 +40,17 @@ export default function DailyChecklistForm() {
       setFormData(prev => ({ ...prev, staff_member: u.full_name }));
       checkExistingChecklist(u.full_name);
     });
-  }, []);
+  }, [nativeCompliance]);
 
-  const checkExistingChecklist = async (staffName) => {
-    const existing = await base44.entities.DailyChecklist.filter({
-      checklist_date: today,
-      staff_member: staffName,
+  const checkExistingChecklist = (staffName) => {
+    const existing = (nativeCompliance?.records?.daily_checklists || []).find(checklist => {
+      return checklist.checklist_date === today && checklist.staff_member === staffName;
     });
-    if (existing && existing.length > 0) {
-      setExistingChecklist(existing[0]);
+    if (existing) {
+      setExistingChecklist(existing);
       setFormData(prev => ({
         ...prev,
-        ...existing[0],
+        ...existing,
       }));
     }
   };
@@ -95,6 +94,7 @@ export default function DailyChecklistForm() {
 
       queryClient.invalidateQueries({ queryKey: ['checklists_today'] });
       queryClient.invalidateQueries({ queryKey: ['daily_checklists_today'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
     } finally {
       setIsSubmitting(false);
     }
