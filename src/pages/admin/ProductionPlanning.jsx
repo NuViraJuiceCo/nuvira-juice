@@ -12,6 +12,7 @@ import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStat
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
+import May30EventStockPlanPanel from '@/components/admin/May30EventStockPlanPanel';
 
 const MAX_RANGE_DAYS = 31;
 const presetOptions = [
@@ -137,6 +138,13 @@ function StatusBadge({ status }) {
   return <AdminStatusPill value={status} label={label} tone={tone} size="md" />;
 }
 
+function sourceLabel(source) {
+  if (source === 'customer_app_native') return 'Native Customer App';
+  if (source === 'may30_pos_event_stock_plan') return 'May 30 POS Event Stock';
+  if (source === 'mixed_native_and_event_plan') return 'Native + POS Event Stock';
+  return 'Hub';
+}
+
 function ProductGroupList({ groups }) {
   if (!Array.isArray(groups) || groups.length === 0) {
     return <p className="text-xs text-muted-foreground">No product groups returned for this date.</p>;
@@ -151,7 +159,7 @@ function ProductGroupList({ groups }) {
         >
           <p className="text-sm font-semibold text-foreground">{group.product_name || 'Unnamed product'}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {[group.product_category || 'Uncategorized', group.source === 'customer_app_native' ? 'Native May 30 mirror' : null]
+            {[group.product_category || 'Uncategorized', group.source ? sourceLabel(group.source) : null]
               .filter(Boolean)
               .join(' · ')}
           </p>
@@ -166,7 +174,7 @@ function ProductGroupList({ groups }) {
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Batches</p>
-              <p className="text-xs font-bold">{group.source === 'customer_app_native' ? 'Native' : formatNumber(group.batch_count, 0)}</p>
+              <p className="text-xs font-bold">{group.source === 'customer_app_native' || group.source === 'may30_pos_event_stock_plan' ? 'Plan' : formatNumber(group.batch_count, 0)}</p>
             </div>
           </div>
           {Number(group.source_order_count || 0) > 0 && (
@@ -189,7 +197,11 @@ function DateGroup({ group }) {
           <h2 className="text-sm font-bold text-foreground mt-0.5">{formatDate(group.production_date)}</h2>
         </div>
         <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-secondary text-secondary-foreground border border-border/50">
-          {group.source === 'customer_app_native' ? 'Native mirror' : 'Read-only planning'}
+          {group.source === 'customer_app_native'
+            ? 'Native mirror'
+            : group.source === 'may30_pos_event_stock_plan'
+              ? 'POS event stock'
+              : 'Read-only planning'}
         </span>
       </div>
 
@@ -231,7 +243,7 @@ function IngredientTable({ ingredients }) {
                 <td className="px-4 py-3.5 text-muted-foreground">{item.available_stock === null ? 'No data' : `${formatNumber(item.available_stock)} ${item.unit || ''}`}</td>
                 <td className="px-4 py-3.5 text-muted-foreground">{formatNumber(item.shortage_amount)} {item.unit || ''}</td>
                 <td className="px-4 py-3.5"><StatusBadge status={item.status} /></td>
-                <td className="px-4 py-3.5 text-muted-foreground">{item.source === 'customer_app_native' ? 'Native Customer App' : 'Hub'}</td>
+                <td className="px-4 py-3.5 text-muted-foreground">{sourceLabel(item.source)}</td>
                 <td className="px-4 py-3.5 text-muted-foreground max-w-[220px]">{(item.source_products || []).join(', ') || '-'}</td>
                 <td className="px-4 py-3.5 text-muted-foreground max-w-[180px]">{(item.production_dates || []).map(formatDate).join(', ') || '-'}</td>
               </tr>
@@ -273,7 +285,7 @@ function IngredientCards({ ingredients }) {
 
           <div className="space-y-1.5 pt-2 border-t border-border/30">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source</p>
-            <p className="text-xs text-foreground">{item.source === 'customer_app_native' ? 'Native Customer App' : 'Hub'}</p>
+            <p className="text-xs text-foreground">{sourceLabel(item.source)}</p>
           </div>
           <div className="space-y-1.5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source Products</p>
@@ -329,6 +341,7 @@ export default function ProductionPlanning() {
   const dateGroups = data?.dates || [];
   const ingredients = data?.ingredients || [];
   const nativeOverlay = data?.native_overlay || {};
+  const eventStockPlan = nativeOverlay?.event_stock_plan || {};
   const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
   const hasResults = dateGroups.length > 0 || ingredients.length > 0;
   const showError = isError && !data && !isFetching;
@@ -460,6 +473,11 @@ export default function ProductionPlanning() {
                 Native May 30 overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · read-only
               </p>
             )}
+            {eventStockPlan.included && (
+              <p className="text-[10px] text-fuchsia-700 mt-1">
+                POS event stock plan included: {formatNumber(eventStockPlan.total_units, 0)} units across {formatNumber(eventStockPlan.event_count, 0)} events · target sell-out · read-only
+              </p>
+            )}
             {Number(nativeOverlay.built_in_fallback_recipe_count || 0) > 0 && (
               <p className="text-[10px] text-blue-700 mt-1">
                 Built-in recipe fallback used for {formatNumber(nativeOverlay.built_in_fallback_recipe_count, 0)} product match{Number(nativeOverlay.built_in_fallback_recipe_count) === 1 ? '' : 'es'} where live Recipe master data was missing.
@@ -489,6 +507,8 @@ export default function ProductionPlanning() {
             { label: 'Admin Orders', to: '/admin/orders' },
           ]}
         />
+
+        <May30EventStockPlanPanel includedInPlanning={eventStockPlan.included === true} />
 
         {warnings.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">

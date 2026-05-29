@@ -7,6 +7,20 @@ const VALID_PRESETS = new Set(['today', 'this_week', 'next_7_days']);
 const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data']);
 const DATE_PENDING = 'date_pending';
 const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
+const MAY30_EVENT_DATE = '2026-05-30';
+const MAY30_POS_EVENT_STOCK_PLAN = {
+  event_date: MAY30_EVENT_DATE,
+  event_count: 2,
+  target: 'sell_out',
+  items: [
+    { product_name: 'Oasis', quantity: 45, product_category: 'May 30 POS Event Stock' },
+    { product_name: 'Aura', quantity: 45, product_category: 'May 30 POS Event Stock' },
+    { product_name: 'Re-Nu', quantity: 15, product_category: 'May 30 POS Event Stock' },
+    { product_name: 'Hydration Shot', quantity: 5, product_category: 'May 30 POS Event Stock' },
+    { product_name: 'Reset Shot', quantity: 5, product_category: 'May 30 POS Event Stock' },
+    { product_name: 'Radiance Shot', quantity: 5, product_category: 'May 30 POS Event Stock' },
+  ],
+};
 const BUILT_IN_RECIPE_FALLBACKS = {
   'Re-Nu': [
     { ingredient_name: 'Cucumber', quantity_oz: 3, unit: 'oz' },
@@ -178,6 +192,10 @@ function sanitizeStringList(values, maxItems = 12, maxLength = 80) {
     .map(value => sanitizeText(value, maxLength))
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : []).map(value => normalizeText(value)).filter(Boolean)));
 }
 
 function sanitizeSummary(summary) {
@@ -462,6 +480,9 @@ function aggregateNativeIngredient(ingredientMap, row) {
   if (row.available_stock !== null && row.available_stock !== undefined) {
     current.available_stock = row.available_stock;
   }
+  if (row.source && current.source !== row.source) {
+    current.source = 'mixed_native_and_event_plan';
+  }
   current.source_products = uniqueStrings([...current.source_products, ...(row.source_products || [])]).slice(0, 20);
   current.production_dates = uniqueStrings([...current.production_dates, ...(row.production_dates || [])]).slice(0, 31);
   ingredientMap.set(key, current);
@@ -524,6 +545,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const missingInventoryKeys = new Set();
   let skippedDateCount = 0;
   let builtInFallbackRecipeCount = 0;
+  let eventStockPlanIncluded = false;
 
   recipes
     .filter(recipe => recipe?.is_active !== false)
@@ -542,6 +564,59 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
 
   inventoryItems.forEach(item => addToIndex(inventoryIndex, item.ingredient, item));
 
+  function ensurePlanningDate(productionDate) {
+    if (!productByDate.has(productionDate)) productByDate.set(productionDate, new Map());
+    if (!orderNumbersByDate.has(productionDate)) orderNumbersByDate.set(productionDate, new Set());
+    return productByDate.get(productionDate);
+  }
+
+  function addProductDemand({ productionDate, productName, quantity, sourceCategory, source, sizeOz }) {
+    if (!productName || quantity <= 0) return;
+
+    const productMap = ensurePlanningDate(productionDate);
+    const key = normalizeLower(productName);
+    const recipeMatch = firstUnambiguous(recipeIndex, productName);
+    const fallbackRecipe = !recipeMatch ? builtInRecipeForProduct(productName, sizeOz) : null;
+    if (!recipeMatch && !fallbackRecipe) missingRecipeKeys.add(productName);
+    if (recipeMatch?.ambiguous) ambiguousRecipeKeys.add(productName);
+    if (fallbackRecipe) builtInFallbackRecipeCount += 1;
+    const effectiveRecipe = recipeMatch && !recipeMatch.ambiguous ? recipeMatch : fallbackRecipe;
+
+    if (effectiveRecipe && Array.isArray(effectiveRecipe.ingredients)) {
+      const recipeYieldFactor = numberOrZero(effectiveRecipe.yield_factor) || 1;
+      for (const recipeIngredient of effectiveRecipe.ingredients) {
+        const ingredientName = sanitizeText(recipeIngredient?.ingredient_name, 120);
+        if (!ingredientName) continue;
+        const requiredOz = quantity * numberOrZero(recipeIngredient?.quantity_oz) * recipeYieldFactor;
+        const inventoryMatch = firstUnambiguous(inventoryIndex, ingredientName);
+        const inventoryItem = inventoryMatch && !inventoryMatch.ambiguous ? inventoryMatch : null;
+        const availableOz = inventoryAvailableOz(inventoryItem);
+        if (!inventoryItem) missingInventoryKeys.add(ingredientName);
+        aggregateNativeIngredient(ingredientMap, {
+          ingredient: ingredientName,
+          unit: 'oz',
+          required_quantity: requiredOz,
+          available_stock: availableOz,
+          source_products: [productName],
+          production_dates: [productionDate],
+          source,
+        });
+      }
+    }
+
+    const current = productMap.get(key) || {
+      product_name: productName,
+      product_category: sourceCategory,
+      planned_units: 0,
+      produced_units: 0,
+      batch_count: 0,
+      source_order_count: 0,
+      source,
+    };
+    current.planned_units += quantity;
+    productMap.set(key, current);
+  }
+
   for (const order of nativeOrders) {
     if (!isNativeMay30OperationalOrder(order)) continue;
 
@@ -553,59 +628,38 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     if (!plannedProductionDate) skippedDateCount += 1;
 
     const orderNumber = sanitizeText(order.shopify_order_number || order.order_number, 80);
-    if (!productByDate.has(productionDate)) productByDate.set(productionDate, new Map());
-    if (!orderNumbersByDate.has(productionDate)) orderNumbersByDate.set(productionDate, new Set());
+    ensurePlanningDate(productionDate);
     if (orderNumber) orderNumbersByDate.get(productionDate).add(orderNumber);
 
-    const productMap = productByDate.get(productionDate);
     for (const item of safeLineItems(order)) {
       const expandedProducts = expandLineItemProducts(item, bundleIndex, productIndex);
       for (const product of expandedProducts) {
-        const productName = product.product_name;
-        const key = normalizeLower(productName);
-        const quantity = numberOrZero(product.quantity);
-        if (!productName || quantity <= 0) continue;
-
-        const recipeMatch = firstUnambiguous(recipeIndex, productName);
-        const fallbackRecipe = !recipeMatch ? builtInRecipeForProduct(productName, product.size_oz) : null;
-        if (!recipeMatch && !fallbackRecipe) missingRecipeKeys.add(productName);
-        if (recipeMatch?.ambiguous) ambiguousRecipeKeys.add(productName);
-        if (fallbackRecipe) builtInFallbackRecipeCount += 1;
-        const effectiveRecipe = recipeMatch && !recipeMatch.ambiguous ? recipeMatch : fallbackRecipe;
-
-        if (effectiveRecipe && Array.isArray(effectiveRecipe.ingredients)) {
-          const recipeYieldFactor = numberOrZero(effectiveRecipe.yield_factor) || 1;
-          for (const recipeIngredient of effectiveRecipe.ingredients) {
-            const ingredientName = sanitizeText(recipeIngredient?.ingredient_name, 120);
-            if (!ingredientName) continue;
-            const requiredOz = quantity * numberOrZero(recipeIngredient?.quantity_oz) * recipeYieldFactor;
-            const inventoryMatch = firstUnambiguous(inventoryIndex, ingredientName);
-            const inventoryItem = inventoryMatch && !inventoryMatch.ambiguous ? inventoryMatch : null;
-            const availableOz = inventoryAvailableOz(inventoryItem);
-            if (!inventoryItem) missingInventoryKeys.add(ingredientName);
-            aggregateNativeIngredient(ingredientMap, {
-              ingredient: ingredientName,
-              unit: 'oz',
-              required_quantity: requiredOz,
-              available_stock: availableOz,
-              source_products: [productName],
-              production_dates: [productionDate],
-            });
-          }
-        }
-
-      const current = productMap.get(key) || {
-        product_name: productName,
-        product_category: 'Native May 30 Orders',
-        planned_units: 0,
-        produced_units: 0,
-        batch_count: 0,
-        source_order_count: 0,
-        source: 'customer_app_native',
-      };
-      current.planned_units += quantity;
-      productMap.set(key, current);
+        addProductDemand({
+          productionDate,
+          productName: product.product_name,
+          quantity: numberOrZero(product.quantity),
+          sourceCategory: 'Native May 30 Orders',
+          source: 'customer_app_native',
+          sizeOz: product.size_oz,
+        });
       }
+    }
+  }
+
+  if (isInRange(MAY30_POS_EVENT_STOCK_PLAN.event_date, dateFrom, dateTo)) {
+    eventStockPlanIncluded = true;
+    ensurePlanningDate(MAY30_POS_EVENT_STOCK_PLAN.event_date);
+    orderNumbersByDate.get(MAY30_POS_EVENT_STOCK_PLAN.event_date).add('May 30 POS Event 1');
+    orderNumbersByDate.get(MAY30_POS_EVENT_STOCK_PLAN.event_date).add('May 30 POS Event 2');
+
+    for (const item of MAY30_POS_EVENT_STOCK_PLAN.items) {
+      addProductDemand({
+        productionDate: MAY30_POS_EVENT_STOCK_PLAN.event_date,
+        productName: item.product_name,
+        quantity: numberOrZero(item.quantity),
+        sourceCategory: item.product_category,
+        source: 'may30_pos_event_stock_plan',
+      });
     }
   }
 
@@ -616,6 +670,8 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
         source_order_count: orderNumbersByDate.get(productionDate)?.size || 0,
       }));
       const plannedUnits = productGroups.reduce((sum, group) => sum + numberOrZero(group.planned_units), 0);
+      const hasEventPlan = productGroups.some(group => group.source === 'may30_pos_event_stock_plan');
+      const hasNativeOrders = productGroups.some(group => group.source === 'customer_app_native');
       return {
         production_date: productionDate,
         batch_count: 0,
@@ -625,7 +681,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
         ingredient_count: 0,
         shortage_count: 0,
         native_order_count: orderNumbersByDate.get(productionDate)?.size || 0,
-        source: 'customer_app_native',
+        source: hasEventPlan && !hasNativeOrders ? 'may30_pos_event_stock_plan' : 'customer_app_native',
       };
     })
     .sort((a, b) => (a.production_date || '').localeCompare(b.production_date || ''));
@@ -681,6 +737,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
       missing_yield_count: 0,
       native_order_count: nativeOrderCount,
       skipped_missing_date_count: skippedDateCount,
+      event_stock_plan_count: eventStockPlanIncluded ? 1 : 0,
     },
     dates,
     ingredients,
@@ -692,6 +749,20 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     missing_recipe_count: missingRecipeKeys.size,
     ambiguous_recipe_count: ambiguousRecipeKeys.size,
     missing_inventory_count: missingInventoryKeys.size,
+    event_stock_plan: {
+      included: eventStockPlanIncluded,
+      event_date: MAY30_POS_EVENT_STOCK_PLAN.event_date,
+      event_count: MAY30_POS_EVENT_STOCK_PLAN.event_count,
+      target: MAY30_POS_EVENT_STOCK_PLAN.target,
+      total_units: MAY30_POS_EVENT_STOCK_PLAN.items.reduce((sum, item) => sum + numberOrZero(item.quantity), 0),
+      items: MAY30_POS_EVENT_STOCK_PLAN.items.map(item => ({
+        product_name: sanitizeText(item.product_name, 120),
+        quantity: numberOrZero(item.quantity),
+        product_category: sanitizeText(item.product_category, 80),
+      })),
+      inventory_deduction_enabled: false,
+      purchase_order_automation_enabled: false,
+    },
   };
 }
 
@@ -856,6 +927,7 @@ Deno.serve(async (req) => {
         ambiguous_recipe_count: nativePlanning.ambiguous_recipe_count,
         missing_inventory_count: nativePlanning.missing_inventory_count,
         skipped_missing_date_count: nativePlanning.summary.skipped_missing_date_count,
+        event_stock_plan: nativePlanning.event_stock_plan,
         inventory_deduction_enabled: false,
         purchase_order_automation_enabled: false,
       },
