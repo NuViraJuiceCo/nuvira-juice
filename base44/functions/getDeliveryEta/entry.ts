@@ -6,6 +6,17 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const ORIGIN = "619 N Main St Unit 3, O'Fallon, MO 63366";
 
+function safeErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return message
+    .replace(/\s+/g, ' ')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted email]')
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]')
+    .slice(0, 180);
+}
+
 async function requireAuthenticatedUser(base44) {
   const user = await base44.auth.me().catch(() => null);
   if (!user?.email) {
@@ -24,12 +35,16 @@ function authorizeOrderAccess(user, order) {
 }
 
 Deno.serve(async (req) => {
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+  }
+
   try {
     const base44 = createClientFromRequest(req);
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { order_id } = body;
 
-    if (!order_id) {
+    if (!order_id || typeof order_id !== 'string') {
       return Response.json({ error: 'order_id required' }, { status: 400 });
     }
 
@@ -184,7 +199,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('getDeliveryEta error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('getDeliveryEta error:', safeErrorMessage(error));
+    return Response.json({ error: 'delivery_eta_unavailable' }, { status: 500 });
   }
 });
