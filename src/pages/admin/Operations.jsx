@@ -18,6 +18,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
+import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -56,9 +57,9 @@ const sections = [
       {
         title: 'Production Queue',
         route: '/admin/production-queue',
-        description: 'Read-only production batches and demand grouped by production date.',
+        description: 'Production batches by date with preview-first start, complete, verify, ingredient usage, task pack, and inventory preview controls.',
         icon: Package,
-        badges: ['Read-only', 'Hub-backed'],
+        badges: ['Controlled actions', 'Hub-backed', 'Preview-first'],
       },
       {
         title: 'Production Planning',
@@ -77,9 +78,9 @@ const sections = [
       {
         title: 'Compliance Ops',
         route: '/admin/compliance-ops',
-        description: 'Hub-backed compliance visibility for batch, temperature, sanitation, checklist, and corrective records.',
+        description: 'Native compliance forms, batch log visibility, audit packet export, and Hub fallback context.',
         icon: ShieldCheck,
-        badges: ['Read-only', 'Hub-backed', 'May 30'],
+        badges: ['Controlled writes', 'Native', 'May 30'],
       },
     ],
   },
@@ -141,6 +142,39 @@ const sections = [
         badges: ['Read-only', 'Hub-backed'],
       },
     ],
+  },
+];
+
+const may30ReadinessItems = [
+  {
+    label: 'One-time orders',
+    status: 'ready',
+    detail: 'Admin Orders shows Customer App plus Hub operational context, native review status, fulfillment tasks, timeline, and notes.',
+  },
+  {
+    label: 'POS / event orders',
+    status: 'ready',
+    detail: 'POS/Event Orders separates event sales from delivery work and flags unexpected production, delivery, or task requirements.',
+  },
+  {
+    label: 'Production operations',
+    status: 'controlled',
+    detail: 'Production Queue exposes preview-first Hub-backed lifecycle actions for eligible exact batches.',
+  },
+  {
+    label: 'Ingredient / procurement',
+    status: 'ready',
+    detail: 'Production Planning and Inventory Status show recipe demand, make-to-order procurement needs, and missing master-data blockers.',
+  },
+  {
+    label: 'Compliance',
+    status: 'controlled',
+    detail: 'Compliance Ops can create native logs and export audit packets; batch logs remain tied to production verification.',
+  },
+  {
+    label: 'Delivery / fulfillment',
+    status: 'controlled',
+    detail: 'Delivery Queue supports driver assignment, Out For Delivery, Delivered, and route previews without customer notification expansion.',
   },
 ];
 
@@ -562,6 +596,12 @@ export default function Operations() {
           </p>
           <AdminStatusLegend className="mt-2" />
         </div>
+
+        <May30ReadinessPanel
+          items={may30ReadinessItems}
+          description="Launch-critical admin surfaces are visible here. Hub remains fallback where it is still the safest source of truth."
+          footnote="Frozen for event day: native safeSync writer, refunds, broad repair/replay, inventory deduction automation, proof/drop, route save, bag credits, and customer-facing status notification expansion."
+        />
 
         {sections.map(section => (
           <OperationSection key={section.title} section={section} />

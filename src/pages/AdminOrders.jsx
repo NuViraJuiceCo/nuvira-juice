@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import Zone3ReviewPanel from '@/components/admin/Zone3ReviewPanel';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
+import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -32,6 +33,29 @@ const PICKUP_STAGES = [
 
 const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
 const ORDER_WORKFLOW_CONTROLS_FROZEN = true;
+
+const orderOpsReadinessItems = [
+  {
+    label: 'One-time order visibility',
+    status: 'ready',
+    detail: 'Paid app/website orders show customer, item, payment, Hub, native, fulfillment, timeline, and review context.',
+  },
+  {
+    label: 'Native safety mirror',
+    status: 'ready',
+    detail: 'Native operational mirror and review status are visible while Hub remains the active bridge fallback.',
+  },
+  {
+    label: 'Bad order review',
+    status: 'ready',
+    detail: 'Review queue indicators and Sync Health expose incomplete or low-quality order issues without repair controls.',
+  },
+  {
+    label: 'Workflow buttons',
+    status: 'frozen',
+    detail: 'Generic order status buttons stay frozen; use Production Queue and Delivery Queue for approved operational actions.',
+  },
+];
 
 // Orders that are NOT operational — never show in active/completed views
 function isAbandonedOrUnpaid(o) {
@@ -956,6 +980,14 @@ export default function AdminOrders() {
         isLoading={isLoading}
         nameMap={nameMap}
       />
+
+      <div className="px-4 mt-4">
+        <May30ReadinessPanel
+          title="One-time order operational path"
+          description="Use this page to confirm future paid orders reached operations cleanly before moving to production or delivery queues."
+          items={orderOpsReadinessItems}
+        />
+      </div>
 
       {/* Search */}
       <div className="px-4 mt-4 mb-3">

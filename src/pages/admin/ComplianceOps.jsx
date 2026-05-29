@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { AlertCircle, AlertTriangle, Plus, Eye, Download } from 'lucide-react';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import ComplianceDashboard from '@/components/compliance/ComplianceDashboard';
 import TemperatureLogForm from '@/components/compliance/TemperatureLogForm';
 import PHLogForm from '@/components/compliance/pHLogForm';
@@ -18,6 +19,29 @@ import ComplianceLogsParity from '@/components/compliance/ComplianceLogsParity';
 import ComplianceDocumentsTab from '@/components/compliance/ComplianceDocumentsTab';
 import LabelAllergenTab from '@/components/compliance/LabelAllergenTab';
 import HACCPPlanTab from '@/components/compliance/HACCPPlanTab';
+
+const complianceReadinessItems = [
+  {
+    label: 'Native log entry',
+    status: 'controlled',
+    detail: 'Temperature, pH, CCP, sanitation, corrective action, daily checklist, label, and HACCP records write through the admin compliance wrapper.',
+  },
+  {
+    label: 'Batch compliance',
+    status: 'fallback',
+    detail: 'Batch logs stay tied to production verification so production and compliance records remain aligned.',
+  },
+  {
+    label: 'Audit packets',
+    status: 'ready',
+    detail: 'Audit packet and binder views use compliance summaries without broad repair or sync tools.',
+  },
+  {
+    label: 'Frozen tools',
+    status: 'frozen',
+    detail: 'Legacy diagnostic and repair endpoints remain disabled; use normal compliance forms and production lifecycle actions.',
+  },
+];
 
 export default function ComplianceOps() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -110,6 +134,13 @@ export default function ComplianceOps() {
             <p className="mt-0.5 text-emerald-800">
               Native logs: {nativeCompliance.summary?.temperature || 0} temp · {nativeCompliance.summary?.ph || 0} pH · {nativeCompliance.summary?.ccp || 0} CCP · {nativeCompliance.summary?.sanitation || 0} sanitation · {nativeCompliance.summary?.daily_checklists || 0} checklists. Hub fallback remains available.
             </p>
+          </div>
+          <div className="mt-4">
+            <May30ReadinessPanel
+              title="Compliance usability"
+              description="Compliance can be run from this Customer App page for event-day records while batch verification remains linked to production."
+              items={complianceReadinessItems}
+            />
           </div>
         </div>
       </div>

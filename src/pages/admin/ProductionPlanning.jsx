@@ -11,12 +11,36 @@ import {
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 
 const MAX_RANGE_DAYS = 31;
 const presetOptions = [
   { value: 'today', label: 'Today' },
   { value: 'this_week', label: 'This Week' },
   { value: 'next_7_days', label: 'Next 7 Days' },
+];
+
+const planningReadinessItems = [
+  {
+    label: 'Product demand',
+    status: 'ready',
+    detail: 'Date groups show Hub batches plus accepted native May 30 order mirror demand.',
+  },
+  {
+    label: 'Ingredient demand',
+    status: 'ready',
+    detail: 'Recipe-derived ingredient rows show quantity, stock coverage, and source dates without deducting stock.',
+  },
+  {
+    label: 'Procurement model',
+    status: 'ready',
+    detail: 'Make-to-order shortfalls are marked as procurement needs, not fatal blockers or automatic purchase orders.',
+  },
+  {
+    label: 'Production handoff',
+    status: 'fallback',
+    detail: 'Use Production Queue for preview-first start, complete, verify, ingredient correction, and post-verify task packing.',
+  },
 ];
 
 function todayDate() {
@@ -444,6 +468,12 @@ export default function ProductionPlanning() {
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        <May30ReadinessPanel
+          title="Production planning visibility"
+          description="This view is the planning layer: it tells operations what to make and what to procure before any production lifecycle action runs."
+          items={planningReadinessItems}
+        />
 
         {warnings.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
