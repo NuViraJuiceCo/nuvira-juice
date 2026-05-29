@@ -12,6 +12,7 @@ import {
   Store,
 } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
+import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -20,6 +21,29 @@ const presetOptions = [
   { value: 'today', label: 'Today' },
   { value: 'last_7_days', label: 'Last 7 Days' },
   { value: 'last_30_days', label: 'Last 30 Days' },
+];
+
+const posReadinessItems = [
+  {
+    label: 'Event source labeling',
+    status: 'ready',
+    detail: 'Cards label POS/event rows separately from app delivery orders and show Hub plus native mirror counts.',
+  },
+  {
+    label: 'No delivery blocker',
+    status: 'ready',
+    detail: 'POS rows are expected to stay fulfilled and outside delivery queues; delivery/task flags are surfaced as exceptions.',
+  },
+  {
+    label: 'Production impact',
+    status: 'watch',
+    detail: 'Event sales should not auto-create delivery production work. Any production flag is highlighted for immediate admin review.',
+  },
+  {
+    label: 'Fallback',
+    status: 'fallback',
+    detail: 'Official Shopify POS ingestion remains Hub-backed while Customer App visibility is proven.',
+  },
 ];
 
 function todayDate() {
@@ -369,6 +393,12 @@ export default function POSOrders() {
             <SummaryCard icon={ReceiptText} label="Shown" value={summary.shown ?? orders.length} />
           </div>
         </section>
+
+        <May30ReadinessPanel
+          title="POS / event readiness"
+          description="Use this page during the event to verify POS orders are captured as event sales and not accidentally treated as delivery orders."
+          items={posReadinessItems}
+        />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">

@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Database, Lock, Package, Play, RefreshCw } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
+import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -14,6 +15,29 @@ function todayDate() {
   const day = `${today.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+const productionOpsReadinessItems = [
+  {
+    label: 'Lifecycle actions',
+    status: 'controlled',
+    detail: 'Start, Complete, and Verify are preview-first Hub-backed actions for exact eligible batches.',
+  },
+  {
+    label: 'Ingredient correction',
+    status: 'controlled',
+    detail: 'Usage correction previews recipe rows first and does not deduct inventory or create purchase orders.',
+  },
+  {
+    label: 'Fulfillment packing',
+    status: 'controlled',
+    detail: 'Post-verify task packing is available through a guarded cascade preview; subscription/multi-order cascades stay blocked.',
+  },
+  {
+    label: 'Inventory deduction',
+    status: 'watch',
+    detail: 'Deduction remains separate and gated; make-to-order shortfall is procurement context, not automatic stock mutation.',
+  },
+];
 
 function addDays(dateStr, days) {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -1334,6 +1358,12 @@ export default function ProductionQueueSummary() {
             <p className="text-xs font-semibold">{isFetching ? 'Refreshing' : data?.truncated ? 'Truncated' : 'Current'}</p>
           </div>
         </div>
+
+        <May30ReadinessPanel
+          title="Production operations"
+          description="Use this page when operations is ready to act on a planned batch. Every write remains preview-first and exact-batch gated."
+          items={productionOpsReadinessItems}
+        />
 
         <div className="space-y-3">
           <div className="flex gap-0 border-b overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">

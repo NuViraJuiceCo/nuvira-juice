@@ -17,10 +17,39 @@ import {
   Truck,
 } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
+import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
 const NUVIRA_BASE_ADDRESS = '619 N Main St Unit 3, O\'Fallon, MO 63366';
+
+const deliveryReadinessItems = [
+  {
+    label: 'Driver assignment',
+    status: 'controlled',
+    detail: 'Eligible scheduled tasks can be assigned, reassigned, or unassigned with an internal driver label.',
+  },
+  {
+    label: 'Out For Delivery',
+    status: 'controlled',
+    detail: 'Eligible assigned tasks can be marked Out For Delivery without directly sending customer notifications.',
+  },
+  {
+    label: 'Delivered',
+    status: 'controlled',
+    detail: 'Out-for-delivery tasks can be marked Delivered as an operational update while notification gates stay separate.',
+  },
+  {
+    label: 'Route preview',
+    status: 'ready',
+    detail: 'Admins can copy a route manifest, open a static route, and preview optimization without saving route order.',
+  },
+  {
+    label: 'Frozen actions',
+    status: 'frozen',
+    detail: 'Proof/drop upload, unable-to-deliver, route save, bag credits, and customer-facing delivery notifications are not exposed here.',
+  },
+];
 
 function todayDate() {
   const today = new Date();
@@ -870,6 +899,12 @@ export default function DeliveryQueue() {
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        <May30ReadinessPanel
+          title="Fulfillment / delivery ops"
+          description="Use this page for approved operational delivery actions. Customer-facing notification expansion remains separate and gated."
+          items={deliveryReadinessItems}
+        />
 
         <RouteOptimizationPanel deliveryDate={deliveryDate} stops={deliveryStops} />
 
