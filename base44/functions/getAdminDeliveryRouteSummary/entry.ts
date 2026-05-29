@@ -9,6 +9,29 @@ function normalizeText(value) {
   return (value || '').toString().trim();
 }
 
+function normalizeLower(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function normalizeDate(value) {
+  const text = normalizeText(value);
+  const match = text.match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : null;
+}
+
+function lineItemsSummary(items) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  return items
+    .slice(0, 8)
+    .map(item => {
+      const title = normalizeText(item?.title || item?.name || item?.product_name);
+      const quantity = Number(item?.quantity) || 1;
+      return title ? `${quantity}x ${title}` : null;
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
 function sanitizeAssignedDriver(value) {
   const text = normalizeText(value)
     .replace(/\s+/g, ' ')
@@ -102,6 +125,7 @@ function sanitizeStop(stop) {
     missing_address: stop.missing_address === true,
     bag_return_required: stop.bag_return_required ?? null,
     bag_return_count: stop.bag_return_count ?? null,
+    data_source: stop.data_source || null,
   };
 }
 
@@ -113,6 +137,95 @@ function sanitizeSummary(summary) {
     bag_returns: summary?.bag_returns === null || summary?.bag_returns === undefined
       ? null
       : Number(summary.bag_returns) || 0,
+  };
+}
+
+function summarizeStops(active, completed) {
+  const bagReturnValues = [...active, ...completed]
+    .map(stop => stop.bag_return_count)
+    .filter(value => value !== null && value !== undefined);
+  return sanitizeSummary({
+    total_stops: active.length + completed.length,
+    active: active.length,
+    completed: completed.length,
+    bag_returns: bagReturnValues.length
+      ? bagReturnValues.reduce((sum, value) => sum + (Number(value) || 0), 0)
+      : null,
+  });
+}
+
+async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
+  const [tasks, orders] = await Promise.all([
+    base44.asServiceRole.entities.FulfillmentTask.list('-delivery_date', 500).catch(() => []),
+    base44.asServiceRole.entities.ShopifyOrder.list('-created_date', 500).catch(() => []),
+  ]);
+  const ordersById = new Map();
+  const ordersByBase44Id = new Map();
+  for (const order of orders) {
+    if (order.id) ordersById.set(order.id, order);
+    if (order.base44_order_id) ordersByBase44Id.set(order.base44_order_id, order);
+  }
+
+  const fromTasks = tasks
+    .filter(task => normalizeDate(task.delivery_date || task.scheduled_date) === deliveryDate)
+    .map(task => {
+      const order = ordersById.get(task.order_id) || ordersByBase44Id.get(task.order_id) || {};
+      return sanitizeStop({
+        task_id: task.id,
+        order_number: order.shopify_order_number || order.order_number || task.order_number,
+        customer_name: order.customer_name || task.customer_name,
+        fulfillment_number: task.fulfillment_number,
+        source_type: task.source_type || order.source_type || order.source_channel || 'customer_app_native',
+        assigned_driver: task.assigned_driver || order.assigned_driver,
+        task_status: task.status || 'pending',
+        delivery_status: task.delivery_status || order.fulfillment_status,
+        fulfillment_status: order.fulfillment_status,
+        delivery_date: normalizeDate(task.delivery_date || task.scheduled_date),
+        delivery_window_label: task.delivery_window_label || order.delivery_window_label || order.requested_time_window,
+        delivery_address: task.delivery_address || order.delivery_address,
+        items_summary: task.items_summary || lineItemsSummary(task.items || order.line_items),
+        delivered_at: task.delivered_at,
+        delivery_photo_url: task.delivery_photo_url,
+        delivery_drop_location: task.delivery_drop_location,
+        missing_address: !normalizeText(task.delivery_address || order.delivery_address),
+        data_source: 'customer_app_native_task',
+      });
+    });
+
+  const taskOrderNumbers = new Set(fromTasks.map(stop => normalizeLower(stop.order_number)).filter(Boolean));
+  const fromOrders = orders
+    .filter(order => normalizeDate(order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date) === deliveryDate)
+    .filter(order => normalizeLower(order.fulfillment_method) === 'delivery')
+    .filter(order => !taskOrderNumbers.has(normalizeLower(order.shopify_order_number || order.order_number)))
+    .map(order => sanitizeStop({
+      task_id: null,
+      order_number: order.shopify_order_number || order.order_number,
+      customer_name: order.customer_name,
+      fulfillment_number: 1,
+      source_type: order.source_type || order.source_channel || 'customer_app_native',
+      assigned_driver: order.assigned_driver,
+      task_status: order.fulfillment_status || 'pending',
+      delivery_status: order.fulfillment_status,
+      fulfillment_status: order.fulfillment_status,
+      delivery_date: normalizeDate(order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date),
+      delivery_window_label: order.delivery_window_label || order.requested_time_window,
+      delivery_address: order.delivery_address,
+      items_summary: lineItemsSummary(order.line_items),
+      missing_address: !normalizeText(order.delivery_address),
+      data_source: 'customer_app_native_order',
+    }));
+
+  const allStops = [...fromTasks, ...fromOrders].slice(0, limit);
+  const completed = allStops.filter(stop => ['delivered', 'completed', 'fulfilled'].includes(normalizeLower(stop.task_status || stop.delivery_status)));
+  const active = allStops.filter(stop => !completed.includes(stop));
+
+  return {
+    summary: summarizeStops(active, completed),
+    sections: {
+      delivery_stops: active,
+      completed,
+    },
+    source_available: allStops.length > 0,
   };
 }
 
@@ -146,49 +259,73 @@ Deno.serve(async (req) => {
       return Response.json({ error: error.message }, { status: 400 });
     }
 
+    const nativeData = await loadNativeDeliveryStops(base44, deliveryDate, limit);
+
+    let hubData = null;
+    let hubWarning = null;
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub delivery queue service is not configured' }, { status: 503 });
+      hubWarning = 'hub_delivery_queue_service_not_configured';
+    } else {
+      const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
+      const params = new URLSearchParams({
+        delivery_date: deliveryDate,
+        limit: limit.toString(),
+      });
+
+      const hubResponse = await fetch(`${hubBase}/functions/getDeliveryRouteSummaryForCustomerApp?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        },
+      });
+
+      if (!hubResponse.ok) {
+        hubWarning = `hub_delivery_queue_unavailable:${hubResponse.status}`;
+      } else {
+        const parsedHubData = await hubResponse.json().catch(() => null);
+        if (
+          !parsedHubData ||
+          parsedHubData.success !== true ||
+          !parsedHubData.sections ||
+          !Array.isArray(parsedHubData.sections.delivery_stops) ||
+          !Array.isArray(parsedHubData.sections.completed)
+        ) {
+          hubWarning = 'hub_delivery_queue_malformed_response';
+        } else {
+          hubData = parsedHubData;
+        }
+      }
     }
 
-    const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-    const params = new URLSearchParams({
-      delivery_date: deliveryDate,
-      limit: limit.toString(),
-    });
+    const hubActive = hubData ? hubData.sections.delivery_stops.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
+    const hubCompleted = hubData ? hubData.sections.completed.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
+    const hubOrderNumbers = new Set([...hubActive, ...hubCompleted].map(stop => normalizeLower(stop.order_number)).filter(Boolean));
+    const nativeActive = nativeData.sections.delivery_stops.filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
+    const nativeCompleted = nativeData.sections.completed.filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
+    const deliveryStops = [...hubActive, ...nativeActive].slice(0, limit);
+    const completedStops = [...hubCompleted, ...nativeCompleted].slice(0, limit);
 
-    const hubResponse = await fetch(`${hubBase}/functions/getDeliveryRouteSummaryForCustomerApp?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-    });
-
-    if (!hubResponse.ok) {
+    if (!hubData && !nativeData.source_available) {
       return Response.json({
         error: 'Unable to load delivery queue summary',
-        hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
-    }
-
-    const hubData = await hubResponse.json().catch(() => null);
-    if (
-      !hubData ||
-      hubData.success !== true ||
-      !hubData.sections ||
-      !Array.isArray(hubData.sections.delivery_stops) ||
-      !Array.isArray(hubData.sections.completed)
-    ) {
-      return Response.json({ error: 'Malformed delivery queue summary response' }, { status: 502 });
+        warning: hubWarning,
+      }, { status: 503 });
     }
 
     return Response.json({
       success: true,
-      delivery_date: hubData.delivery_date || deliveryDate,
-      summary: sanitizeSummary(hubData.summary),
+      delivery_date: hubData?.delivery_date || deliveryDate,
+      summary: summarizeStops(deliveryStops, completedStops),
       sections: {
-        delivery_stops: hubData.sections.delivery_stops.map(sanitizeStop).slice(0, limit),
-        completed: hubData.sections.completed.map(sanitizeStop).slice(0, limit),
+        delivery_stops: deliveryStops,
+        completed: completedStops,
       },
+      data_sources: {
+        hub_available: Boolean(hubData),
+        native_available: nativeData.source_available,
+        native_read_only: true,
+      },
+      warnings: [hubWarning].filter(Boolean),
     });
   } catch (error) {
     console.error('[getAdminDeliveryRouteSummary] Error:', error.message);
