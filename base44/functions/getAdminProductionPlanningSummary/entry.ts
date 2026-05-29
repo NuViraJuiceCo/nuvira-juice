@@ -251,6 +251,33 @@ function mergeDateGroups(hubDates, nativeDates) {
   });
 }
 
+function emptyNativePlanning() {
+  return {
+    summary: {
+      production_date_count: 0,
+      batch_count: 0,
+      planned_units: 0,
+      produced_units: 0,
+      ingredient_count: 0,
+      shortage_count: 0,
+      missing_recipe_count: 0,
+      missing_yield_count: 0,
+      native_order_count: 0,
+      skipped_missing_date_count: 0,
+    },
+    dates: [],
+    ingredients: [],
+    native_recipe_count: 0,
+    native_bundle_count: 0,
+    native_product_count: 0,
+    built_in_fallback_recipe_count: 0,
+    native_inventory_item_count: 0,
+    missing_recipe_count: 0,
+    ambiguous_recipe_count: 0,
+    missing_inventory_count: 0,
+  };
+}
+
 function normalizeOrderDate(value) {
   const text = normalizeText(value);
   if (!text) return null;
@@ -771,7 +798,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    const nativePlanning = await loadNativeMay30Planning(base44, resolvedRange.dateFrom, resolvedRange.dateTo);
+    let nativePlanning = emptyNativePlanning();
+    try {
+      nativePlanning = await loadNativeMay30Planning(base44, resolvedRange.dateFrom, resolvedRange.dateTo);
+    } catch (error) {
+      console.error('[getAdminProductionPlanningSummary] Native overlay error:', error.message);
+      warnings.push('native_production_planning_overlay_unavailable');
+    }
+
     const hubIngredients = Array.isArray(hubData.ingredients) ? hubData.ingredients.map(sanitizeIngredient) : [];
     const nativeIngredients = Array.isArray(nativePlanning.ingredients) ? nativePlanning.ingredients.map(sanitizeIngredient) : [];
 
