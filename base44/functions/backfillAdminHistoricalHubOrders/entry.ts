@@ -230,9 +230,11 @@ function buildNativeRecord({ hubOrder, localOrder, existing, requestId, action }
   const now = new Date().toISOString();
   const number = orderNumber(hubOrder);
   const lineItems = safeLineItems(hubOrder);
-  const archived = isCancelledOrRefunded(hubOrder);
   const pos = isPosLike(hubOrder);
+  const archived = isCancelledOrRefunded(hubOrder) || pos;
   const fulfillmentMethodValue = mapFulfillmentMethod(hubOrder);
+  const productionStatusValue = pos ? 'canceled' : mapProductionStatus(hubOrder);
+  const fulfillmentStatusValue = pos ? 'cancelled' : safeText(fulfillmentStatus(hubOrder) || 'pending', 80);
   const auditEntry = {
     at: now,
     source: 'backfillAdminHistoricalHubOrders',
@@ -261,10 +263,10 @@ function buildNativeRecord({ hubOrder, localOrder, existing, requestId, action }
     total_price: safeNumber(hubOrder?.total_price ?? hubOrder?.total, 0),
     payment_status: safeText(paymentStatus(hubOrder) || 'unknown', 80),
     financial_status: safeText(hubOrder?.financial_status || paymentStatus(hubOrder) || 'unknown', 80),
-    fulfillment_status: safeText(fulfillmentStatus(hubOrder) || (pos ? 'fulfilled' : 'pending'), 80),
+    fulfillment_status: fulfillmentStatusValue,
     shopify_fulfillment_status: safeText(hubOrder?.shopify_fulfillment_status, 80),
-    production_status: mapProductionStatus(hubOrder),
-    order_status: safeText(hubOrder?.order_status || hubOrder?.status, 80),
+    production_status: productionStatusValue,
+    order_status: pos ? 'canceled' : safeText(hubOrder?.order_status || hubOrder?.status, 80),
     order_lock_status: archived || pos ? 'fulfilled' : 'verified',
     operational_visibility: archived ? 'archived' : 'active',
     excluded_from_production: archived || pos,
@@ -278,11 +280,17 @@ function buildNativeRecord({ hubOrder, localOrder, existing, requestId, action }
     production_date: safeText(hubOrder?.production_date, 40),
     delivery_window_label: safeText(hubOrder?.delivery_window_label || hubOrder?.requested_time_window, 120),
     customer_notes: safeText(hubOrder?.customer_notes || hubOrder?.notes, 300),
-    internal_notes: safeText(`Historical Hub backfill ${archived ? 'archived ' : ''}mirror for ${number}.`, 300),
+    internal_notes: safeText(`Historical Hub backfill ${pos ? 'canceled POS test ' : archived ? 'archived ' : ''}mirror for ${number}.`, 300),
     event_name: safeText(hubOrder?.event_name, 120),
     event_date: safeText(hubOrder?.event_date, 40),
     event_location: safeText(hubOrder?.event_location || hubOrder?.location_name, 160),
-    tags: uniqueStrings([...(Array.isArray(hubOrder?.tags) ? hubOrder.tags : []), 'historical_hub_backfill', archived ? 'archived' : null, pos ? 'pos_sale' : null]),
+    tags: uniqueStrings([
+      ...(Array.isArray(hubOrder?.tags) ? hubOrder.tags : []),
+      'historical_hub_backfill',
+      archived ? 'archived' : null,
+      pos ? 'pos_test_cancelled' : null,
+      pos ? 'pos_sale' : null,
+    ]),
     is_pos_order: pos,
     is_subscription: false,
     fulfillments: buildFulfillments(hubOrder, lineItems),
@@ -292,7 +300,7 @@ function buildNativeRecord({ hubOrder, localOrder, existing, requestId, action }
 
   if (archived) {
     record.refunded_at = safeText(hubOrder?.refunded_at || hubOrder?.cancelled_at || hubOrder?.updated_date, 80);
-    record.cancel_type = paymentStatus(hubOrder).includes('refund') ? 'historical_refund' : 'historical_cancel';
+    record.cancel_type = pos ? 'historical_pos_test_cancel' : paymentStatus(hubOrder).includes('refund') ? 'historical_refund' : 'historical_cancel';
   }
 
   return record;
@@ -321,10 +329,30 @@ function existingNativeDiff(hubOrder, nativeOrder) {
   return fields;
 }
 
+function isHistoricalPosExcluded(nativeOrder) {
+  if (!nativeOrder) return false;
+  const status = normalizeLower(nativeOrder.production_status || nativeOrder.order_status);
+  return nativeOrder.excluded_from_production === true &&
+    normalizeLower(nativeOrder.operational_visibility) === 'archived' &&
+    (status === 'canceled' || status === 'cancelled' || status === 'refunded');
+}
+
 function classifyHubOrder({ hubOrder, nativeOrder }) {
   if (!orderKey(hubOrder)) return { action: 'blocked', reason: 'missing_order_number' };
   if (isSubscriptionLike(hubOrder)) return { action: 'blocked', reason: 'subscription_future_compatible_hold' };
   if (!hasLineItems(hubOrder)) return { action: 'blocked', reason: 'missing_line_items' };
+  if (isPosLike(hubOrder)) {
+    if (nativeOrder) {
+      return isHistoricalPosExcluded(nativeOrder)
+        ? { action: 'already_native', reason: 'historical_pos_test_order_already_cancelled' }
+        : {
+            action: 'would_update_native',
+            reason: 'historical_pos_test_order_needs_cancellation',
+            diff_fields: ['production_status', 'fulfillment_status', 'operational_visibility', 'excluded_from_production', 'cancel_type'],
+          };
+    }
+    return { action: 'would_create_archived_native', reason: 'historical_pos_test_order_cancelled' };
+  }
   if (nativeOrder) {
     const diffFields = existingNativeDiff(hubOrder, nativeOrder);
     return diffFields.length > 0
@@ -332,7 +360,7 @@ function classifyHubOrder({ hubOrder, nativeOrder }) {
       : { action: 'already_native', reason: 'native_record_present' };
   }
   if (isCancelledOrRefunded(hubOrder)) return { action: 'would_create_archived_native', reason: 'historical_cancelled_or_refunded' };
-  return { action: 'would_create_native_from_hub', reason: isPosLike(hubOrder) ? 'historical_pos_order_missing_native' : 'historical_one_time_order_missing_native' };
+  return { action: 'would_create_native_from_hub', reason: 'historical_one_time_order_missing_native' };
 }
 
 function safeSummary(order) {
@@ -362,9 +390,11 @@ function buildPlanRow({ key, hubOrder, nativeOrder, localOrder, includeArchived,
 
   const classification = classifyHubOrder({ hubOrder, nativeOrder, localOrder });
   const archived = classification.action === 'would_create_archived_native';
+  const posCancellation = classification.reason === 'historical_pos_test_order_cancelled' ||
+    classification.reason === 'historical_pos_test_order_needs_cancellation';
   const blocker = classification.action === 'blocked'
     ? classification.reason
-    : (archived && !includeArchived ? 'archived_order_requires_include_archived' : null);
+    : ((archived || posCancellation) && !includeArchived ? 'archived_order_requires_include_archived' : null);
   const liveEligible = !blocker && ['would_create_native_from_hub', 'would_update_native', 'would_create_archived_native', 'already_native'].includes(classification.action);
 
   return {
@@ -690,7 +720,7 @@ Deno.serve(async (req) => {
           requestId,
           result: {
             action,
-            archived: isCancelledOrRefunded(hubOrder),
+            archived: isCancelledOrRefunded(hubOrder) || isPosLike(hubOrder),
             source_channel: record.source_channel,
             line_item_count: Array.isArray(record.line_items) ? record.line_items.length : 0,
             writes_performed: true,
