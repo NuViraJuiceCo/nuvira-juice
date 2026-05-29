@@ -194,6 +194,7 @@ function IngredientTable({ ingredients }) {
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Available</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Procurement Need</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Source</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Source Products</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Production Dates</th>
             </tr>
@@ -206,6 +207,7 @@ function IngredientTable({ ingredients }) {
                 <td className="px-4 py-3.5 text-muted-foreground">{item.available_stock === null ? 'No data' : `${formatNumber(item.available_stock)} ${item.unit || ''}`}</td>
                 <td className="px-4 py-3.5 text-muted-foreground">{formatNumber(item.shortage_amount)} {item.unit || ''}</td>
                 <td className="px-4 py-3.5"><StatusBadge status={item.status} /></td>
+                <td className="px-4 py-3.5 text-muted-foreground">{item.source === 'customer_app_native' ? 'Native Customer App' : 'Hub'}</td>
                 <td className="px-4 py-3.5 text-muted-foreground max-w-[220px]">{(item.source_products || []).join(', ') || '-'}</td>
                 <td className="px-4 py-3.5 text-muted-foreground max-w-[180px]">{(item.production_dates || []).map(formatDate).join(', ') || '-'}</td>
               </tr>
@@ -246,6 +248,10 @@ function IngredientCards({ ingredients }) {
           </div>
 
           <div className="space-y-1.5 pt-2 border-t border-border/30">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source</p>
+            <p className="text-xs text-foreground">{item.source === 'customer_app_native' ? 'Native Customer App' : 'Hub'}</p>
+          </div>
+          <div className="space-y-1.5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source Products</p>
             <p className="text-xs text-foreground">{(item.source_products || []).join(', ') || '-'}</p>
           </div>
@@ -427,7 +433,12 @@ export default function ProductionPlanning() {
             <p className="text-[10px] text-muted-foreground">Hub batch and ingredient coverage plus native May 30 order mirrors. Make-to-order shortfalls are procurement needs, not inventory deduction approval.</p>
             {Number(nativeOverlay.order_count || 0) > 0 && (
               <p className="text-[10px] text-emerald-700 mt-1">
-                Native May 30 overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · read-only
+                Native May 30 overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · read-only
+              </p>
+            )}
+            {Number(nativeOverlay.missing_recipe_count || 0) + Number(nativeOverlay.ambiguous_recipe_count || 0) + Number(nativeOverlay.missing_inventory_count || 0) > 0 && (
+              <p className="text-[10px] text-amber-700 mt-1">
+                Native master-data gaps: {formatNumber(nativeOverlay.missing_recipe_count, 0)} missing recipes · {formatNumber(nativeOverlay.ambiguous_recipe_count, 0)} ambiguous recipes · {formatNumber(nativeOverlay.missing_inventory_count, 0)} missing inventory matches
               </p>
             )}
           </div>

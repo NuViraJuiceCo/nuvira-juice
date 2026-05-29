@@ -66,6 +66,13 @@ function sourceTypeLabel(value) {
   return formatLabel(value);
 }
 
+function dataSourceLabel(value) {
+  if (value === 'customer_app_native_task') return 'Native Task';
+  if (value === 'customer_app_native_order') return 'Native Order';
+  if (value === 'hub') return 'Hub';
+  return 'Source pending';
+}
+
 function normalizedStatus(value) {
   return (value || '').toString().trim().toLowerCase();
 }
@@ -553,6 +560,9 @@ function StopCard({ stop, completed, onAssignmentSuccess }) {
         <div className="rounded-lg bg-secondary/50 p-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source</p>
           <p className="text-sm font-bold">{sourceTypeLabel(stop.source_type)}</p>
+          {stop.data_source && (
+            <p className="text-[10px] text-muted-foreground mt-0.5">{dataSourceLabel(stop.data_source)}</p>
+          )}
         </div>
         <div className="rounded-lg bg-secondary/50 p-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Assigned Driver</p>
