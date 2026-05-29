@@ -203,6 +203,82 @@ function DeprecatedTools({ tools }) {
   );
 }
 
+function NativeCustomerAppContext({ context }) {
+  const summary = context?.summary || {};
+  const reviewIssues = Array.isArray(context?.recent_review_issues) ? context.recent_review_issues : [];
+  const syncLogs = Array.isArray(context?.recent_sync_logs) ? context.recent_sync_logs : [];
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div>
+        <h2 className="text-sm font-bold text-foreground">Native Customer App Review / Issues</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Native OrderReviewQueue and OrderSyncLog context. Read-only; no retry, repair, replay, or recovery controls.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <StatCard label="Native Sync Logs" value={formatNumber(summary.native_sync_events)} />
+        <StatCard label="Native Success" value={formatNumber(summary.native_success_count)} tone="success" />
+        <StatCard label="Native Failed" value={formatNumber(summary.native_failed_count)} tone={Number(summary.native_failed_count || 0) > 0 ? 'danger' : 'default'} />
+        <StatCard label="Native Pending" value={formatNumber(summary.native_pending_count)} tone={Number(summary.native_pending_count || 0) > 0 ? 'warning' : 'default'} />
+        <StatCard label="Active Reviews" value={formatNumber(summary.active_review_count)} tone={Number(summary.active_review_count || 0) > 0 ? 'warning' : 'default'} />
+      </div>
+
+      {reviewIssues.length === 0 ? (
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+          <p className="text-xs font-semibold text-emerald-800">No active native review issues returned.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Active Native Review Items</p>
+          {reviewIssues.map(issue => (
+            <div key={issue.id || `${issue.order_number}-${issue.incident_type}`} className="rounded-lg border border-amber-100 bg-amber-50/70 p-3 space-y-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-amber-950">{formatLabel(issue.incident_type)}</p>
+                  <p className="text-[10px] text-amber-800 mt-0.5">
+                    {[issue.order_number ? `Order ${issue.order_number}` : null, issue.source ? formatLabel(issue.source) : null, `Last seen ${formatDateTime(issue.last_seen_at)}`].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <StatusChip value={issue.status || 'pending'} />
+              </div>
+              {issue.issue && <p className="text-xs text-amber-900 leading-relaxed">{issue.issue}</p>}
+              {issue.recommended_action && (
+                <p className="text-[10px] font-semibold text-amber-900">Recommended: {formatLabel(issue.recommended_action)}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {syncLogs.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Recent Native Sync Logs</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            {syncLogs.slice(0, 8).map(log => (
+              <div key={log.id || `${log.order_number}-${log.timestamp}`} className="rounded-lg border border-border/50 bg-background p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-foreground">{log.order_number || 'Order pending'}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {[log.source ? formatLabel(log.source) : null, log.event_type ? formatLabel(log.event_type) : null, formatDateTime(log.timestamp)].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <StatusChip value={log.status || 'unknown'} />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  {[log.action ? `Action: ${formatLabel(log.action)}` : null, log.reason ? `Reason: ${log.reason}` : null].filter(Boolean).join(' · ') || 'No reason returned'}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SyncHealth() {
   const { user } = useAuth();
   const today = useMemo(() => todayDate(), []);
@@ -257,9 +333,14 @@ export default function SyncHealth() {
   const directions = data?.directions || {};
   const errorCategories = data?.error_categories || [];
   const deprecatedTools = data?.disabled_or_deprecated_tools || [];
+  const nativeCustomerApp = data?.native_customer_app || {};
   const pendingStale = Number(summary.pending_count || 0) + Number(summary.stale_count || 0);
   const showError = isError && !data && !isFetching;
-  const hasActivity = Number(summary.total_events || 0) > 0 || errorCategories.length > 0 || deprecatedTools.length > 0;
+  const nativeSummary = nativeCustomerApp.summary || {};
+  const nativeActivity =
+    Number(nativeSummary.native_sync_events || 0) > 0 ||
+    Number(nativeSummary.total_review_count || 0) > 0;
+  const hasActivity = Number(summary.total_events || 0) > 0 || errorCategories.length > 0 || deprecatedTools.length > 0 || nativeActivity;
   const contextLabel = (() => {
     if (isCustom) {
       const hasCurrentResponse = data?.date_from === appliedDateFrom && data?.date_to === appliedDateTo;
@@ -432,6 +513,13 @@ export default function SyncHealth() {
           </div>
         )}
 
+        {data?.hub_available === false && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{data.hub_error || 'Hub sync health is unavailable; native Customer App issue context is still shown.'}</span>
+          </div>
+        )}
+
         {data?.truncated && (
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
             Results are capped. Narrow the date range or filters for a more complete sync health view.
@@ -459,6 +547,7 @@ export default function SyncHealth() {
               description="Aggregate inbound status bridge activity"
               direction={directions.hub_to_customer_app}
             />
+            <NativeCustomerAppContext context={nativeCustomerApp} />
             <ErrorCategories categories={errorCategories} />
             <DeprecatedTools tools={deprecatedTools} />
           </div>
