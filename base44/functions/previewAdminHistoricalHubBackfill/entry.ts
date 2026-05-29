@@ -159,6 +159,14 @@ function existingNativeDiff(hubOrder, nativeOrder) {
   return fields;
 }
 
+function isHistoricalPosExcluded(nativeOrder) {
+  if (!nativeOrder) return false;
+  const status = normalizeLower(nativeOrder.production_status || nativeOrder.order_status);
+  return nativeOrder.excluded_from_production === true &&
+    normalizeLower(nativeOrder.operational_visibility) === 'archived' &&
+    (status === 'canceled' || status === 'cancelled' || status === 'refunded');
+}
+
 function classifyHubOrder({ hubOrder, nativeOrder, localOrder }) {
   if (!orderKey(hubOrder)) {
     return { action: 'blocked', reason: 'missing_order_number' };
@@ -170,6 +178,19 @@ function classifyHubOrder({ hubOrder, nativeOrder, localOrder }) {
 
   if (!hasLineItems(hubOrder)) {
     return { action: 'blocked', reason: 'missing_line_items' };
+  }
+
+  if (isPosLike(hubOrder)) {
+    if (nativeOrder) {
+      return isHistoricalPosExcluded(nativeOrder)
+        ? { action: 'already_native', reason: 'historical_pos_test_order_already_cancelled' }
+        : {
+            action: 'would_update_native',
+            reason: 'historical_pos_test_order_needs_cancellation',
+            diff_fields: ['production_status', 'fulfillment_status', 'operational_visibility', 'excluded_from_production', 'cancel_type'],
+          };
+    }
+    return { action: 'would_create_archived_native', reason: 'historical_pos_test_order_cancelled' };
   }
 
   if (nativeOrder) {
@@ -187,7 +208,7 @@ function classifyHubOrder({ hubOrder, nativeOrder, localOrder }) {
     return { action: 'would_create_native_from_hub', reason: 'customer_order_exists_native_operational_missing' };
   }
 
-  return { action: 'would_create_native_from_hub', reason: isPosLike(hubOrder) ? 'historical_pos_order_missing_native' : 'historical_one_time_order_missing_native' };
+  return { action: 'would_create_native_from_hub', reason: 'historical_one_time_order_missing_native' };
 }
 
 function buildPreviewRow({ hubOrder, nativeOrder, localOrder }) {
