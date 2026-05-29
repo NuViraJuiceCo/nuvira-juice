@@ -125,6 +125,97 @@ function sanitizeTool(tool) {
   };
 }
 
+function dateKey(value) {
+  const text = normalizeText(value);
+  if (!text) return '';
+  return text.slice(0, 10);
+}
+
+function inRange(value, from, to) {
+  const key = dateKey(value);
+  if (!key) return true;
+  if (from && key < from) return false;
+  if (to && key > to) return false;
+  return true;
+}
+
+function nativeLogTimestamp(log) {
+  return log.sync_timestamp || log.completed_at || log.created_date || null;
+}
+
+function nativeQueueTimestamp(item) {
+  return item.last_seen_at || item.first_seen_at || item.created_date || null;
+}
+
+function summarizeNativeReviewItem(item) {
+  const payload = item?.incoming_payload && typeof item.incoming_payload === 'object' ? item.incoming_payload : {};
+  return {
+    id: item?.id || null,
+    incident_type: sanitizeText(item?.incident_type, 100),
+    status: sanitizeText(item?.status, 60) || 'pending',
+    source: sanitizeText(item?.incoming_source, 80),
+    order_number: sanitizeText(item?.existing_order_number || payload.order_number, 100),
+    issue: sanitizeText(item?.issue_description, 240),
+    recommended_action: sanitizeText(item?.recommended_action, 160),
+    occurrence_count: numberOrZero(item?.occurrence_count || 1),
+    last_seen_at: sanitizeDate(nativeQueueTimestamp(item)),
+  };
+}
+
+function summarizeNativeSyncLog(log) {
+  return {
+    id: log?.id || null,
+    order_number: sanitizeText(log?.order_number, 100),
+    status: sanitizeText(log?.status, 60),
+    source: sanitizeText(log?.sync_source || log?.triggered_by, 80),
+    event_type: sanitizeText(log?.event_type, 100),
+    action: sanitizeText(log?.action || log?.hub_action, 100),
+    reason: sanitizeText(log?.reason || log?.error_code || log?.description, 220),
+    timestamp: sanitizeDate(nativeLogTimestamp(log)),
+  };
+}
+
+async function getNativeCustomerAppContext(base44, dateFrom, dateTo) {
+  const [orderSyncLogs, reviewQueueItems] = await Promise.all([
+    base44.asServiceRole.entities.OrderSyncLog.list('-created_date', 500).catch(error => {
+      console.warn('[getAdminSyncHealthSummary] Native OrderSyncLog unavailable:', error.message);
+      return [];
+    }),
+    base44.asServiceRole.entities.OrderReviewQueue.list('-created_date', 500).catch(error => {
+      console.warn('[getAdminSyncHealthSummary] Native OrderReviewQueue unavailable:', error.message);
+      return [];
+    }),
+  ]);
+
+  const nativeLogs = (Array.isArray(orderSyncLogs) ? orderSyncLogs : [])
+    .filter(log => inRange(nativeLogTimestamp(log), dateFrom, dateTo));
+  const reviewItems = (Array.isArray(reviewQueueItems) ? reviewQueueItems : [])
+    .filter(item => inRange(nativeQueueTimestamp(item), dateFrom, dateTo));
+  const activeReviewItems = reviewItems.filter(item => !['resolved', 'archived'].includes(normalizeLower(item.status)));
+  const failedLogs = nativeLogs.filter(log => ['error', 'failed', 'failure', 'rejected'].includes(normalizeLower(log.status)));
+  const pendingLogs = nativeLogs.filter(log => ['pending', 'queued_for_review'].includes(normalizeLower(log.status)));
+  const successfulLogs = nativeLogs.filter(log => ['success', 'deduped', 'skipped'].includes(normalizeLower(log.status)));
+
+  return {
+    summary: {
+      native_sync_events: nativeLogs.length,
+      native_success_count: successfulLogs.length,
+      native_failed_count: failedLogs.length,
+      native_pending_count: pendingLogs.length,
+      active_review_count: activeReviewItems.length,
+      total_review_count: reviewItems.length,
+    },
+    recent_review_issues: activeReviewItems
+      .sort((a, b) => new Date(nativeQueueTimestamp(b) || 0) - new Date(nativeQueueTimestamp(a) || 0))
+      .slice(0, 20)
+      .map(summarizeNativeReviewItem),
+    recent_sync_logs: nativeLogs
+      .sort((a, b) => new Date(nativeLogTimestamp(b) || 0) - new Date(nativeLogTimestamp(a) || 0))
+      .slice(0, 20)
+      .map(summarizeNativeSyncLog),
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -185,9 +276,36 @@ Deno.serve(async (req) => {
 
     const source = sanitizeText(body.source, 80) || '';
     const action = sanitizeText(body.action, 80) || '';
+    const responseDateFrom = preset === 'custom'
+      ? dateFrom
+      : preset === 'today'
+        ? new Date().toISOString().slice(0, 10)
+        : null;
+    const responseDateTo = preset === 'custom'
+      ? dateTo
+      : preset === 'today'
+        ? new Date().toISOString().slice(0, 10)
+        : null;
+    const nativeCustomerApp = await getNativeCustomerAppContext(base44, responseDateFrom, responseDateTo);
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub sync health service is not configured' }, { status: 503 });
+      return Response.json({
+        success: true,
+        hub_available: false,
+        hub_error: 'Hub sync health service is not configured',
+        date_from: dateFrom || null,
+        date_to: dateTo || null,
+        generated_at: new Date().toISOString(),
+        summary: sanitizeSummary({}),
+        directions: {
+          customer_app_to_hub: sanitizeDirection({}),
+          hub_to_customer_app: sanitizeDirection({}),
+        },
+        error_categories: [],
+        disabled_or_deprecated_tools: [],
+        native_customer_app: nativeCustomerApp,
+        truncated: false,
+      });
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -213,9 +331,23 @@ Deno.serve(async (req) => {
 
     if (!hubResponse.ok) {
       return Response.json({
-        error: 'Unable to load sync health summary',
+        success: true,
+        hub_available: false,
+        hub_error: 'Unable to load sync health summary',
         hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
+        date_from: dateFrom || null,
+        date_to: dateTo || null,
+        generated_at: new Date().toISOString(),
+        summary: sanitizeSummary({}),
+        directions: {
+          customer_app_to_hub: sanitizeDirection({}),
+          hub_to_customer_app: sanitizeDirection({}),
+        },
+        error_categories: [],
+        disabled_or_deprecated_tools: [],
+        native_customer_app: nativeCustomerApp,
+        truncated: false,
+      });
     }
 
     const hubData = await hubResponse.json().catch(() => null);
@@ -232,6 +364,7 @@ Deno.serve(async (req) => {
 
     return Response.json({
       success: true,
+      hub_available: true,
       date_from: hubData.date_from || dateFrom || null,
       date_to: hubData.date_to || dateTo || null,
       generated_at: hubData.generated_at || null,
@@ -242,6 +375,7 @@ Deno.serve(async (req) => {
       },
       error_categories: hubData.error_categories.map(sanitizeErrorCategory).slice(0, 30),
       disabled_or_deprecated_tools: hubData.disabled_or_deprecated_tools.map(sanitizeTool).slice(0, 30),
+      native_customer_app: nativeCustomerApp,
       truncated: hubData.truncated === true,
     });
   } catch (error) {
