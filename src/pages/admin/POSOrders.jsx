@@ -398,6 +398,11 @@ export default function POSOrders() {
           title="POS / event readiness"
           description="Use this page during the event to verify POS orders are captured as event sales and not accidentally treated as delivery orders."
           items={posReadinessItems}
+          actions={[
+            { label: 'Admin Orders', to: '/admin/orders' },
+            { label: 'Production Planning', to: '/admin/production-planning' },
+            { label: 'Review / Sync Health', to: '/admin/sync-health' },
+          ]}
         />
 
         <section className="space-y-3">

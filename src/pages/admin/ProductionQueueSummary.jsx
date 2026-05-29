@@ -38,6 +38,7 @@ const productionOpsReadinessItems = [
     detail: 'Deduction remains separate and gated; make-to-order shortfall is procurement context, not automatic stock mutation.',
   },
 ];
+const MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN = true;
 
 function addDays(dateStr, days) {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -548,7 +549,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Inventory Deduction</p>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1">
-            Preview-first Hub action. No purchase orders or Customer App records are updated.
+            Preview-only during May 30 launch mode. No stock deduction, purchase orders, or Customer App records are updated here.
           </p>
         </div>
         <button
@@ -640,11 +641,18 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
             <button
               type="button"
               onClick={deductInventory}
-              disabled={deductPending}
+              disabled={MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN || deductPending}
               className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
             >
-              {deductPending ? 'Deducting...' : 'Deduct Inventory'}
+              {MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN ? 'Deduction Frozen' : deductPending ? 'Deducting...' : 'Deduct Inventory'}
             </button>
+          )}
+
+          {preview.live_allowed && MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN && (
+            <div className="flex items-start gap-2 text-xs text-amber-800">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>Preview passed, but live inventory deduction stays frozen for May 30 operations. Use this as procurement context only.</span>
+            </div>
           )}
 
           {!preview.live_allowed && (
@@ -1363,6 +1371,12 @@ export default function ProductionQueueSummary() {
           title="Production operations"
           description="Use this page when operations is ready to act on a planned batch. Every write remains preview-first and exact-batch gated."
           items={productionOpsReadinessItems}
+          actions={[
+            { label: 'Production Planning', to: '/admin/production-planning' },
+            { label: 'Inventory Status', to: '/admin/inventory-status' },
+            { label: 'Compliance Ops', to: '/admin/compliance-ops' },
+            { label: 'Delivery Queue', to: '/admin/delivery-queue' },
+          ]}
         />
 
         <div className="space-y-3">

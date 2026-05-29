@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, ShieldCheck } from 'lucide-react';
 
 const statusConfig = {
@@ -56,10 +57,28 @@ function ReadinessItem({ item }) {
   );
 }
 
+function ActionLink({ action }) {
+  const className = 'inline-flex h-9 items-center justify-center rounded-lg border border-slate-300 bg-slate-950 px-3 text-xs font-black text-white transition-colors hover:border-emerald-500 hover:bg-slate-900';
+  if (action.to) {
+    return (
+      <Link to={action.to} className={className}>
+        {action.label}
+      </Link>
+    );
+  }
+
+  return (
+    <a href={action.href} className={className}>
+      {action.label}
+    </a>
+  );
+}
+
 export default function May30ReadinessPanel({
   title = 'May 30 operational readiness',
   description,
   items = [],
+  actions = [],
   footnote,
 }) {
   if (!items.length) return null;
@@ -75,6 +94,13 @@ export default function May30ReadinessPanel({
           <ReadinessItem key={item.label} item={item} />
         ))}
       </div>
+      {actions.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {actions.map(action => (
+            <ActionLink key={action.label} action={action} />
+          ))}
+        </div>
+      )}
       {footnote && <p className="mt-3 text-[10px] font-semibold text-slate-500">{footnote}</p>}
     </section>
   );

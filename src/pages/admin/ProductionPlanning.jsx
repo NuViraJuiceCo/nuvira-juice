@@ -473,6 +473,11 @@ export default function ProductionPlanning() {
           title="Production planning visibility"
           description="This view is the planning layer: it tells operations what to make and what to procure before any production lifecycle action runs."
           items={planningReadinessItems}
+          actions={[
+            { label: 'Production Queue', to: '/admin/production-queue' },
+            { label: 'Inventory Status', to: '/admin/inventory-status' },
+            { label: 'Admin Orders', to: '/admin/orders' },
+          ]}
         />
 
         {warnings.length > 0 && (

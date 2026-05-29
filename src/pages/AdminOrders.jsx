@@ -986,6 +986,11 @@ export default function AdminOrders() {
           title="One-time order operational path"
           description="Use this page to confirm future paid orders reached operations cleanly before moving to production or delivery queues."
           items={orderOpsReadinessItems}
+          actions={[
+            { label: 'Production Queue', to: '/admin/production-queue' },
+            { label: 'Delivery Queue', to: '/admin/delivery-queue' },
+            { label: 'Review / Sync Health', to: '/admin/sync-health' },
+          ]}
         />
       </div>
 
