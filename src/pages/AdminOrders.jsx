@@ -816,7 +816,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                   )}
                 </div>
                 {order.is_hub_order && (
-                  <p className="text-[10px] text-muted-foreground text-center">Status syncs to Hub through the existing order workflow controls.</p>
+                  <p className="text-[10px] text-muted-foreground text-center">Status workflow controls are locked for launch. Use the dedicated operational queues for approved actions.</p>
                 )}
               </section>
             </div>
@@ -832,7 +832,6 @@ export default function AdminOrders() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('active');
-  const [showPending, setShowPending] = useState(false);
   const [advancingId, setAdvancingId] = useState(null);
   const [showZone3, setShowZone3] = useState(false);
 
@@ -898,35 +897,14 @@ export default function AdminOrders() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ order, stage }) => {
-      if (ORDER_WORKFLOW_CONTROLS_FROZEN) {
-        return {
-          skipped: true,
-          reason: 'may30_order_workflow_controls_frozen',
-          order_number: order.order_number,
-          requested_status: stage.key,
-        };
-      }
-
-      if (order.is_hub_order) {
-        // Hub-managed: send status-only update to Hub. Never touch local DB order structure.
-        return base44.functions.invoke('pushOrderStatusToHub', {
-          hub_order_id: order.hub_order_id || null,
-          order_number: order.order_number,
-          customer_email: order.hub_customer_email || order.customer_email,
-          new_status: stage.key,
-          stage_label: stage.label,
-        });
-      } else {
-        // Local-only order: update status + history in local DB only
-        const newHistory = [
-          ...(order.status_history || []),
-          { status: stage.key, timestamp: new Date().toISOString(), message: stage.label }
-        ];
-        return base44.entities.Order.update(order.id, {
-          status: stage.key,
-          status_history: newHistory,
-        });
-      }
+      return {
+        skipped: true,
+        reason: ORDER_WORKFLOW_CONTROLS_FROZEN
+          ? 'may30_order_workflow_controls_frozen'
+          : 'admin_order_workflow_requires_dedicated_backend_command',
+        order_number: order.order_number,
+        requested_status: stage.key,
+      };
     },
     onSuccess: (result, { stage, direction }) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
@@ -938,7 +916,7 @@ export default function AdminOrders() {
       toast.success(direction === 'back' ? `Reverted to "${stage.label}"` : `Advanced to "${stage.label}"`);
       setAdvancingId(null);
     },
-    onError: (err) => {
+    onError: () => {
       toast.error('Failed to update status');
       setAdvancingId(null);
     },
