@@ -315,11 +315,40 @@ Deno.serve(async (req) => {
 
   } else if (topic === 'orders/refunded') {
     if (existing.length > 0) {
-      await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
-        production_status: 'refunded',
+      const now = new Date().toISOString();
+      const tags = uniqueTags([...(existing[0].tags || []), 'refunded', 'excluded']);
+      const updatedOrder = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
+        payment_status: 'refunded',
         financial_status: 'refunded',
-        shopify_synced_at: new Date().toISOString(),
+        production_status: 'canceled',
+        fulfillment_status: 'cancelled',
+        order_status: 'refunded',
+        operational_visibility: 'archived',
+        sync_status: 'native_may30_refunded',
+        excluded_from_production: true,
+        refunded_at: now,
+        cancel_type: 'shopify_refund',
+        tags,
+        shopify_synced_at: now,
+        last_sync_at: now,
+        internal_notes: `${existing[0].internal_notes || ''}\n[Shopify refund webhook] ${topic} marked order refunded on ${now}`.trim(),
+        audit_trail: [
+          ...(existing[0].audit_trail || []),
+          {
+            timestamp: now,
+            action: 'ShopifyRefundWebhook',
+            performed_by: 'shopifyWebhookReceiver',
+            before: {
+              payment_status: existing[0].payment_status || null,
+              production_status: existing[0].production_status || null,
+            },
+            after: { payment_status: 'refunded', production_status: 'canceled' },
+            reason: `Shopify ${topic} webhook`,
+          },
+        ],
       });
+      nativeOpsAttempted = Boolean(may30NativeRefundSourceForOrder(updatedOrder));
+      nativeOpsResult = await maybeRunMay30NativeRefundMirror(base44, updatedOrder, topic, payload);
       await createAlert(base44, 'refund', `Refund #${orderNumber}`, `Refund processed for ${payload.customer?.first_name || ''} — $${payload.total_price || '?'}`, shopifyOrderId, orderNumber, 'info');
     }
 
@@ -401,6 +430,57 @@ async function updateWebhookLog(base44, webhookLog, updates) {
   }).catch(error => {
     console.warn(`[shopifyWebhookReceiver] failed to update webhook log safely: ${error?.message || 'unknown error'}`);
   });
+}
+
+function uniqueTags(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : [])
+    .map(value => (value || '').toString().trim())
+    .filter(Boolean)));
+}
+
+function may30NativeRefundSourceForOrder(record) {
+  if (!ENABLE_MAY30_NATIVE_ORDER_OPS) return null;
+  if (record?.is_subscription || record?.source_channel === 'subscription' || record?.order_type === 'subscription') {
+    return null;
+  }
+  if (record?.source_channel === 'pos' || record?.source_type === 'shopify_pos' || record?.fulfillment_method === 'pos') {
+    return 'shopify_pos';
+  }
+  if (record?.source_channel === 'online' || record?.source_channel === 'event' || record?.order_type === 'one_time') {
+    return 'website_one_time';
+  }
+  return null;
+}
+
+async function maybeRunMay30NativeRefundMirror(base44, record, topic, payload) {
+  const source = may30NativeRefundSourceForOrder(record);
+  if (!source) return null;
+
+  const orderKey = record.shopify_order_number || record.shopify_order_id || 'unknown';
+  try {
+    const response = await base44.asServiceRole.functions.invoke('processMay30NativeOrderOps', {
+      mode: 'live',
+      source,
+      event_type: 'order.refunded',
+      order: {
+        ...record,
+        payment_status: 'refunded',
+        financial_status: 'refunded',
+        refund_id: payload?.refunds?.[0]?.id || `shopify_refund_${record.shopify_order_id || orderKey}`,
+        refund_amount: Number(payload?.total_price || record.total_price || 0),
+        refunded_at: new Date().toISOString(),
+      },
+      request_id: `shopifyWebhookReceiver:${topic}:${orderKey}`,
+      idempotency_key: `may30_native_order_ops:${source}:refund:${orderKey}`,
+      internal_secret: CUSTOMER_APP_SYNC_SECRET,
+    });
+    const result = response?.data || response;
+    console.log(`[May30 native refund mirror] source=${source} order=${orderKey} action=${result?.action || 'unknown'} success=${result?.success === true}`);
+    return result;
+  } catch (error) {
+    console.warn(`[May30 native refund mirror] failed safely for order=${orderKey}: ${error?.message || 'unknown error'}`);
+    return { success: false, error_code: 'native_refund_mirror_failed' };
+  }
 }
 
 function hasDeliveryAddress(record) {
@@ -662,7 +742,7 @@ function shouldAttemptMay30NativeOrderOps(record, topic) {
 }
 
 function webhookDescription({ topic, nativeOpsAttempted, nativeOpsResult }) {
-  if (!MAY30_NATIVE_ORDER_TOPICS.has(topic)) {
+  if (!MAY30_NATIVE_ORDER_TOPICS.has(topic) && topic !== 'orders/refunded') {
     return 'Webhook processed. May 30 native order ops not applicable for this topic.';
   }
 
