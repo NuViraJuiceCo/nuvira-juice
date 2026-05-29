@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, AlertTriangle, Plus, Eye, Download } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Plus, Download } from 'lucide-react';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import ComplianceDashboard from '@/components/compliance/ComplianceDashboard';
@@ -140,6 +140,11 @@ export default function ComplianceOps() {
               title="Compliance usability"
               description="Compliance can be run from this Customer App page for event-day records while batch verification remains linked to production."
               items={complianceReadinessItems}
+              actions={[
+                { label: 'Production Queue', to: '/admin/production-queue' },
+                { label: 'Production Planning', to: '/admin/production-planning' },
+                { label: 'Review / Sync Health', to: '/admin/sync-health' },
+              ]}
             />
           </div>
         </div>
@@ -281,7 +286,77 @@ export default function ComplianceOps() {
   );
 }
 
-// Placeholder components for log lists (will be created separately)
+const hiddenComplianceDetailFields = new Set([
+  'id',
+  'created_by',
+  'updated_by',
+  'created_date',
+  'updated_date',
+  'owner',
+]);
+
+const hiddenComplianceDetailPatterns = [
+  /auth/i,
+  /authorization/i,
+  /bearer/i,
+  /credential/i,
+  /password/i,
+  /payload/i,
+  /provider/i,
+  /secret/i,
+  /shopify/i,
+  /stack/i,
+  /stripe/i,
+  /token/i,
+];
+
+function isSafeComplianceDetailField(key) {
+  return !hiddenComplianceDetailFields.has(key) && !hiddenComplianceDetailPatterns.some(pattern => pattern.test(key));
+}
+
+function formatComplianceDetailLabel(value) {
+  return value
+    .toString()
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function formatComplianceDetailValue(value) {
+  if (value === null || value === undefined || value === '') return 'Not set';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) {
+    return value.length ? value.map(formatComplianceDetailValue).join(', ') : 'None';
+  }
+  if (typeof value === 'object') return 'Structured details available in audit export';
+  return value.toString();
+}
+
+function ComplianceRecordDetails({ record }) {
+  const entries = Object.entries(record || {})
+    .filter(([key, value]) => isSafeComplianceDetailField(key) && value !== null && value !== undefined && value !== '')
+    .slice(0, 28);
+
+  if (entries.length === 0) return null;
+
+  return (
+    <details className="mt-3 rounded-lg border border-border/50 bg-background p-2">
+      <summary className="cursor-pointer text-xs font-semibold text-foreground">View details</summary>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {entries.map(([key, value]) => (
+          <div key={key} className="rounded-md bg-card p-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{formatComplianceDetailLabel(key)}</p>
+            <p className="mt-0.5 break-words text-xs text-foreground">{formatComplianceDetailValue(value)}</p>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+// Compliance list cards stay read-only; record creation is handled by the form tabs above.
 function TemperatureLogsList({ nativeCompliance }) {
   const logs = nativeCompliance?.records?.temperature || [];
 
@@ -290,13 +365,15 @@ function TemperatureLogsList({ nativeCompliance }) {
   return (
     <div className="space-y-2">
       {logs.map(log => (
-        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
-          <div>
-            <p className="font-semibold">{log.location}</p>
-            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
-            <p className="text-sm mt-1">{log.temperature}{log.unit || ''} {log.within_range ? '✓' : '⚠️'}</p>
+        <div key={log.id} className="border rounded-lg p-3">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <p className="font-semibold">{log.location}</p>
+              <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+              <p className="text-sm mt-1">{log.temperature}{log.unit || ''} {log.within_range ? '✓' : '⚠️'}</p>
+            </div>
           </div>
-          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+          <ComplianceRecordDetails record={log} />
         </div>
       ))}
     </div>
@@ -311,13 +388,15 @@ function PHLogsList({ nativeCompliance }) {
   return (
     <div className="space-y-2">
       {logs.map(log => (
-        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
-          <div>
-            <p className="font-semibold">{log.batch_id} • {log.product_name}</p>
-            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
-            <p className="text-sm mt-1">pH {log.ph_value} {log.within_range ? '✓' : '⚠️'}</p>
+        <div key={log.id} className="border rounded-lg p-3">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <p className="font-semibold">{log.batch_id} • {log.product_name}</p>
+              <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+              <p className="text-sm mt-1">pH {log.ph_value} {log.within_range ? '✓' : '⚠️'}</p>
+            </div>
           </div>
-          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+          <ComplianceRecordDetails record={log} />
         </div>
       ))}
     </div>
@@ -332,13 +411,15 @@ function CCPLogsList({ nativeCompliance }) {
   return (
     <div className="space-y-2">
       {logs.map(log => (
-        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
-          <div>
-            <p className="font-semibold">{log.ccp_point}</p>
-            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
-            <p className={`text-sm mt-1 font-semibold ${log.result === 'Pass' ? 'text-green-600' : 'text-red-600'}`}>{log.result}</p>
+        <div key={log.id} className="border rounded-lg p-3">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <p className="font-semibold">{log.ccp_point}</p>
+              <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+              <p className={`text-sm mt-1 font-semibold ${log.result === 'Pass' ? 'text-green-600' : 'text-red-600'}`}>{log.result}</p>
+            </div>
           </div>
-          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+          <ComplianceRecordDetails record={log} />
         </div>
       ))}
     </div>
@@ -353,13 +434,15 @@ function SanitationLogsList({ nativeCompliance }) {
   return (
     <div className="space-y-2">
       {logs.map(log => (
-        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
-          <div>
-            <p className="font-semibold">{log.area}</p>
-            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
-            <p className="text-sm mt-1">{log.cleaned && log.sanitized ? '✓ Complete' : '⚠️ Incomplete'}</p>
+        <div key={log.id} className="border rounded-lg p-3">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <p className="font-semibold">{log.area}</p>
+              <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+              <p className="text-sm mt-1">{log.cleaned && log.sanitized ? '✓ Complete' : '⚠️ Incomplete'}</p>
+            </div>
           </div>
-          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+          <ComplianceRecordDetails record={log} />
         </div>
       ))}
     </div>
@@ -374,14 +457,16 @@ function CorrectiveActionsList({ nativeCompliance }) {
   return (
     <div className="space-y-2">
       {logs.map(log => (
-        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
-          <div>
-            <p className="font-semibold">{log.issue_type}</p>
-            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
-            <p className="text-sm mt-1">{log.corrective_action_taken}</p>
-            <span className={`inline-block text-xs px-2 py-1 rounded mt-2 ${log.status === 'Verified' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{log.status}</span>
+        <div key={log.id} className="border rounded-lg p-3">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <p className="font-semibold">{log.issue_type}</p>
+              <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+              <p className="text-sm mt-1">{log.corrective_action_taken}</p>
+              <span className={`inline-block text-xs px-2 py-1 rounded mt-2 ${log.status === 'Verified' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{log.status}</span>
+            </div>
           </div>
-          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+          <ComplianceRecordDetails record={log} />
         </div>
       ))}
     </div>
@@ -396,12 +481,14 @@ function DailyChecklistsList({ nativeCompliance }) {
   return (
     <div className="space-y-2">
       {checklists.map(checklist => (
-        <div key={checklist.id} className="border rounded-lg p-3 flex justify-between items-start">
-          <div>
-            <p className="font-semibold">{checklist.staff_member} • {checklist.shift} Shift</p>
-            <p className="text-sm text-muted-foreground">Completed: {checklist.overall_status === 'Complete' ? '✓' : '⚠️'}</p>
+        <div key={checklist.id} className="border rounded-lg p-3">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <p className="font-semibold">{checklist.staff_member} • {checklist.shift} Shift</p>
+              <p className="text-sm text-muted-foreground">Completed: {checklist.overall_status === 'Complete' ? '✓' : '⚠️'}</p>
+            </div>
           </div>
-          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+          <ComplianceRecordDetails record={checklist} />
         </div>
       ))}
     </div>
@@ -416,17 +503,19 @@ function BatchComplianceLogsList({ nativeCompliance }) {
   return (
     <div className="space-y-2">
       {logs.map(log => (
-        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
-          <div>
-            <p className="font-semibold">{log.batch_id} • {log.juice_flavor}</p>
-            <p className="text-sm text-muted-foreground">
-              {log.date} • {log.quantity_produced || 0} units • {log.verified_by || 'verification pending'}
-            </p>
-            <p className={`text-sm mt-1 font-semibold ${log.passed_failed === 'passed' ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {log.passed_failed || 'status pending'}
-            </p>
+        <div key={log.id} className="border rounded-lg p-3">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <p className="font-semibold">{log.batch_id} • {log.juice_flavor}</p>
+              <p className="text-sm text-muted-foreground">
+                {log.date} • {log.quantity_produced || 0} units • {log.verified_by || 'verification pending'}
+              </p>
+              <p className={`text-sm mt-1 font-semibold ${log.passed_failed === 'passed' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {log.passed_failed || 'status pending'}
+              </p>
+            </div>
           </div>
-          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+          <ComplianceRecordDetails record={log} />
         </div>
       ))}
     </div>

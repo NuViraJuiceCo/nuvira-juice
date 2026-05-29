@@ -904,6 +904,11 @@ export default function DeliveryQueue() {
           title="Fulfillment / delivery ops"
           description="Use this page for approved operational delivery actions. Customer-facing notification expansion remains separate and gated."
           items={deliveryReadinessItems}
+          actions={[
+            { label: 'Admin Orders', to: '/admin/orders' },
+            { label: 'Production Queue', to: '/admin/production-queue' },
+            { label: 'Review / Sync Health', to: '/admin/sync-health' },
+          ]}
         />
 
         <RouteOptimizationPanel deliveryDate={deliveryDate} stops={deliveryStops} />
