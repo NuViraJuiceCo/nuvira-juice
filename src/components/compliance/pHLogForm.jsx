@@ -51,21 +51,14 @@ export default function PHLogForm({ onClose }) {
       const ph = parseFloat(formData.ph_value);
       const isInRange = ph >= formData.min_ph && ph <= formData.max_ph;
 
-      await base44.entities.pHLog.create({
-        ...formData,
-        ph_value: ph,
-        within_range: isInRange,
+      await base44.functions.invoke('saveAdminComplianceRecord', {
+        record_type: 'ph',
+        data: {
+          ...formData,
+          ph_value: ph,
+          within_range: isInRange,
+        },
       });
-
-      // If pH fails, require corrective action
-      if (!isInRange) {
-        await base44.functions.invoke('validateComplianceEntry', {
-          log_type: 'pH',
-          data: formData,
-          min_value: formData.min_ph,
-          max_value: formData.max_ph,
-        });
-      }
 
       queryClient.invalidateQueries({ queryKey: ['pH_logs'] });
       queryClient.invalidateQueries({ queryKey: ['pH_logs_today'] });
