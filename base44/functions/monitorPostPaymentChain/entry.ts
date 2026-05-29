@@ -15,6 +15,23 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Payload: { minutes_ago: number (default 15), verbose: boolean (default false) }
  */
 
+async function readJsonBody(req) {
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    return { ok: true, body: {} };
+  }
+
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: {} };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -29,7 +46,11 @@ Deno.serve(async (req) => {
       // Scheduled — no auth header, allow
     }
 
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
     const minutesAgo = body.minutes_ago ?? 15;
     const verbose = body.verbose ?? false;
 

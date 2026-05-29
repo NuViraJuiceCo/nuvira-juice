@@ -22,6 +22,23 @@ const RECORD_TO_CREATE = {
   notes:                  'Parent subscription record. Hub order: 69ed51368b5ca93c33a1b0b4. 4-week plan. 1/4 delivered 2026-05-02. Next: 2026-05-09. Hub FulfillmentTasks are per-fulfillment source of truth.',
 };
 
+async function readJsonBody(req) {
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    return { ok: true, body: {} };
+  }
+
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: {} };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (Deno.env.get('ENABLE_LEGACY_REPAIR_TOOLS') !== 'true') {
@@ -37,7 +54,11 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
     const dry_run: boolean = body.dry_run !== false;
     const approved_by: string = body.approved_by || 'unknown';
 

@@ -5,6 +5,23 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Payload: { limit?: number, order_id?: string }
  */
 
+async function readJsonBody(req) {
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    return { ok: true, body: {} };
+  }
+
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: {} };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
@@ -28,7 +45,11 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Admin only' }, { status: 403 });
   }
 
-  const body = await req.json().catch(() => ({}));
+  const parsedBody = await readJsonBody(req);
+  if (!parsedBody.ok) {
+    return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+  }
+  const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
   const { limit = 50, order_id } = body;
   const exactIdentifier = normalizeIdentifier(
     body.exact_order_identifier ||

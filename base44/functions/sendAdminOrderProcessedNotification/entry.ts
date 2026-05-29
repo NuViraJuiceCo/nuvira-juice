@@ -177,6 +177,23 @@ async function sendPushForNotification(
   return result?.data || result || {};
 }
 
+async function readJsonBody(req) {
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    return { ok: true, body: {} };
+  }
+
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: {} };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
@@ -184,7 +201,11 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(req);
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
     const auth = await authorize(base44, req, body);
     if (!auth.ok) {
       return Response.json({ error: auth.error }, { status: auth.status || 403 });

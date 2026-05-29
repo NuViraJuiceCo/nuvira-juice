@@ -10,6 +10,23 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Kept in place temporarily so existing admin UI/hooks receive a clear
  * non-mutating redirect response instead of silently failing.
  */
+async function readJsonBody(req) {
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    return { ok: true, body: {} };
+  }
+
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: {} };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -25,7 +42,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
     const orderNumber = typeof body.order_number === 'string'
       ? body.order_number.trim().replace(/^#/, '').toUpperCase().slice(0, 80)
       : null;
