@@ -1,5 +1,18 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+async function readJsonBody(req) {
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: null };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -12,7 +25,12 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (!['admin', 'staff'].includes(user.role)) return Response.json({ error: 'Forbidden: Staff or Admin access required' }, { status: 403 });
 
-    const body = await req.json().catch(() => null);
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+
+    const body = parsedBody.body;
     if (!body || typeof body !== 'object') {
       return Response.json({ error: 'invalid_json' }, { status: 400 });
     }

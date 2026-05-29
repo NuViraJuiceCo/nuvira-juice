@@ -176,13 +176,31 @@ function compareSafeSyncDarkLaunch(body) {
   };
 }
 
+async function readJsonBody(req) {
+  const raw = await req.text();
+  if (!raw.trim()) {
+    return { ok: true, body: null };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
       return Response.json({ success: false, error_code: 'method_not_allowed', message: 'POST required' }, { status: 405 });
     }
 
-    const body = await req.json().catch(() => null);
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+
+    const body = parsedBody.body;
     if (!body || typeof body !== 'object') {
       return Response.json({ success: false, error_code: 'invalid_json', message: 'JSON body required' }, { status: 400 });
     }
