@@ -1,0 +1,160 @@
+{
+  "name": "DailyChecklist",
+  "type": "object",
+  "properties": {
+    "checklist_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of checklist"
+    },
+    "staff_member": {
+      "type": "string",
+      "description": "Staff member responsible for checklist"
+    },
+    "shift": {
+      "type": "string",
+      "enum": [
+        "Morning",
+        "Afternoon",
+        "Night"
+      ],
+      "description": "Shift"
+    },
+    "morning_fridge_temp_logged": {
+      "type": "boolean",
+      "description": "Morning refrigerator temperature logged?"
+    },
+    "morning_fridge_time": {
+      "type": "string",
+      "description": "Time of morning log (HH:MM)"
+    },
+    "evening_fridge_temp_logged": {
+      "type": "boolean",
+      "description": "Evening refrigerator temperature logged?"
+    },
+    "evening_fridge_time": {
+      "type": "string",
+      "description": "Time of evening log (HH:MM)"
+    },
+    "sanitizer_levels_checked": {
+      "type": "boolean",
+      "description": "Sanitizer levels checked?"
+    },
+    "sanitizer_check_time": {
+      "type": "string",
+      "description": "Time of check (HH:MM)"
+    },
+    "equipment_sanitized": {
+      "type": "boolean",
+      "description": "Equipment sanitized?"
+    },
+    "sanitization_time": {
+      "type": "string",
+      "description": "Time sanitization completed (HH:MM)"
+    },
+    "work_areas_cleaned": {
+      "type": "boolean",
+      "description": "Work areas cleaned?"
+    },
+    "cleaning_time": {
+      "type": "string",
+      "description": "Time cleaning completed (HH:MM)"
+    },
+    "batch_logs_completed": {
+      "type": "boolean",
+      "description": "All production batch logs completed?"
+    },
+    "batches_logged": {
+      "type": "string",
+      "description": "Which batches were logged (e.g., #101, #102)"
+    },
+    "ccp_logs_completed": {
+      "type": "boolean",
+      "description": "All CCP logs completed?"
+    },
+    "ccp_notes": {
+      "type": "string",
+      "description": "CCP details or notes"
+    },
+    "issues_reported": {
+      "type": "string",
+      "description": "Any issues or concerns reported"
+    },
+    "overall_status": {
+      "type": "string",
+      "enum": [
+        "Complete",
+        "Incomplete",
+        "Pending"
+      ],
+      "description": "Checklist completion status"
+    },
+    "completed_at": {
+      "type": "string",
+      "description": "When checklist was marked complete (timestamp)"
+    },
+    "manager_reviewed": {
+      "type": "boolean",
+      "description": "Has manager reviewed this checklist?"
+    },
+    "manager_comments": {
+      "type": "string",
+      "description": "Manager review comments"
+    }
+  },
+  "required": [
+    "checklist_date",
+    "staff_member",
+    "shift"
+  ],
+  "rls": {
+    "create": {
+      "data.staff_member": "{{user.full_name}}",
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff",
+            "staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "production_manager",
+                "operations_staff"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

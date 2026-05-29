@@ -1,0 +1,110 @@
+{
+  "name": "pHLog",
+  "type": "object",
+  "properties": {
+    "log_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of log entry"
+    },
+    "log_time": {
+      "type": "string",
+      "description": "Time of log entry (HH:MM format)"
+    },
+    "staff_member": {
+      "type": "string",
+      "description": "Name of staff member who logged"
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "Batch ID being tested"
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Product being tested"
+    },
+    "ph_value": {
+      "type": "number",
+      "description": "pH value measured"
+    },
+    "min_ph": {
+      "type": "number",
+      "description": "Minimum acceptable pH"
+    },
+    "max_ph": {
+      "type": "number",
+      "description": "Maximum acceptable pH"
+    },
+    "within_range": {
+      "type": "boolean",
+      "description": "Is pH within acceptable range?"
+    },
+    "corrective_action_id": {
+      "type": "string",
+      "description": "Link to corrective action if out of range"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "log_date",
+    "log_time",
+    "staff_member",
+    "batch_id",
+    "product_name",
+    "ph_value",
+    "within_range"
+  ],
+  "rls": {
+    "create": {
+      "data.staff_member": "{{user.full_name}}",
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff",
+            "staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "production_manager",
+                "operations_staff"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

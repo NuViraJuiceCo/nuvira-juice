@@ -1,0 +1,115 @@
+{
+  "name": "ComplianceLog",
+  "type": "object",
+  "properties": {
+    "log_type": {
+      "type": "string",
+      "enum": [
+        "temperature",
+        "pH",
+        "CCP",
+        "sanitation",
+        "corrective_action",
+        "daily_checklist"
+      ],
+      "description": "Type of compliance log"
+    },
+    "log_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of log entry"
+    },
+    "log_time": {
+      "type": "string",
+      "description": "Time of log entry (HH:MM format)"
+    },
+    "staff_member": {
+      "type": "string",
+      "description": "Name of staff member who logged"
+    },
+    "shift": {
+      "type": "string",
+      "enum": [
+        "Morning",
+        "Afternoon",
+        "Night"
+      ],
+      "description": "Shift when logged"
+    },
+    "data": {
+      "type": "object",
+      "description": "Flexible JSON object storing log-specific data"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "warning",
+        "complete",
+        "incomplete"
+      ],
+      "description": "Log status"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "log_type",
+    "log_date",
+    "log_time",
+    "staff_member"
+  ],
+  "rls": {
+    "create": {
+      "data.staff_member": "{{user.full_name}}",
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff",
+            "staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "production_manager",
+                "operations_staff"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

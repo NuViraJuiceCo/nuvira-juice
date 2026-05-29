@@ -1,0 +1,116 @@
+{
+  "name": "CCPLog",
+  "type": "object",
+  "properties": {
+    "log_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of log entry"
+    },
+    "log_time": {
+      "type": "string",
+      "description": "Time of log entry (HH:MM format)"
+    },
+    "staff_member": {
+      "type": "string",
+      "description": "Name of staff member who logged"
+    },
+    "ccp_point": {
+      "type": "string",
+      "enum": [
+        "Pasteurization",
+        "Cooling",
+        "pH Control",
+        "Microbial Test"
+      ],
+      "description": "Critical Control Point being monitored"
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "Batch ID for this CCP check"
+    },
+    "measurement": {
+      "type": "string",
+      "description": "Measurement value (temp, time, pH, etc.)"
+    },
+    "critical_limit": {
+      "type": "string",
+      "description": "Critical limit for this CCP"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "Pass",
+        "Fail"
+      ],
+      "description": "CCP result"
+    },
+    "corrective_action_id": {
+      "type": "string",
+      "description": "Link to corrective action if failed"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "log_date",
+    "log_time",
+    "staff_member",
+    "ccp_point",
+    "batch_id",
+    "measurement",
+    "result"
+  ],
+  "rls": {
+    "create": {
+      "data.staff_member": "{{user.full_name}}",
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff",
+            "staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "production_manager",
+                "operations_staff"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
