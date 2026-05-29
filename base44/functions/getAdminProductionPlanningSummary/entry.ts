@@ -7,6 +7,34 @@ const VALID_PRESETS = new Set(['today', 'this_week', 'next_7_days']);
 const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data']);
 const DATE_PENDING = 'date_pending';
 const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
+const BUILT_IN_RECIPE_FALLBACKS = {
+  'Re-Nu': [
+    { ingredient_name: 'Cucumber', quantity_oz: 3, unit: 'oz' },
+    { ingredient_name: 'Green Apple', quantity_oz: 3, unit: 'oz' },
+    { ingredient_name: 'Red Apple', quantity_oz: 2, unit: 'oz' },
+    { ingredient_name: 'Celery', quantity_oz: 2, unit: 'oz' },
+    { ingredient_name: 'Kale', quantity_oz: 2, unit: 'oz' },
+  ],
+  Aura: [
+    { ingredient_name: 'Carrot', quantity_oz: 3, unit: 'oz' },
+    { ingredient_name: 'Pineapple', quantity_oz: 2.5, unit: 'oz' },
+    { ingredient_name: 'Orange', quantity_oz: 2.5, unit: 'oz' },
+    { ingredient_name: 'Ginger', quantity_oz: 0.5, unit: 'oz' },
+    { ingredient_name: 'Cucumber', quantity_oz: 2, unit: 'oz' },
+    { ingredient_name: 'Coconut Water', quantity_oz: 1, unit: 'oz' },
+    { ingredient_name: 'Sea Salt', quantity_oz: 0.25, unit: 'oz' },
+  ],
+  Oasis: [
+    { ingredient_name: 'Watermelon', quantity_oz: 3.5, unit: 'oz' },
+    { ingredient_name: 'Pineapple', quantity_oz: 2, unit: 'oz' },
+    { ingredient_name: 'Orange', quantity_oz: 2, unit: 'oz' },
+    { ingredient_name: 'Lemon', quantity_oz: 1, unit: 'oz' },
+    { ingredient_name: 'Ginger', quantity_oz: 0.5, unit: 'oz' },
+    { ingredient_name: 'Coconut Water', quantity_oz: 1.5, unit: 'oz' },
+    { ingredient_name: 'Sea Salt', quantity_oz: 0.25, unit: 'oz' },
+    { ingredient_name: 'Black Pepper', quantity_oz: 0.1, unit: 'oz' },
+  ],
+};
 
 async function readJsonBody(req) {
   try {
@@ -44,6 +72,26 @@ function matchKeys(value) {
   const exact = normalizeMatchKey(value);
   const singular = singularMatchKey(value);
   return Array.from(new Set([exact, singular].filter(Boolean)));
+}
+
+function canonicalProductName(value) {
+  const text = normalizeText(value);
+  if (!text) return null;
+  if (/re[\s-]?nu/i.test(text)) return 'Re-Nu';
+  if (/oasis/i.test(text)) return 'Oasis';
+  if (/aura/i.test(text)) return 'Aura';
+  if (/pineapple/i.test(text)) return 'Pineapple Juice';
+  if (/orange/i.test(text)) return 'Orange Juice';
+  if (/watermelon/i.test(text)) return 'Watermelon Juice';
+  return text;
+}
+
+function parseOunces(value) {
+  const text = normalizeText(value);
+  const match = text.match(/(\d+(?:\.\d+)?)\s*oz\b/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function parseIsoDate(value, fieldName) {
@@ -272,7 +320,57 @@ function lineItemTitle(item) {
   return sanitizeText(item?.title || item?.name || item?.product_title || item?.variant_title, 120);
 }
 
-function expandLineItemProducts(item, bundleIndex) {
+function lineItemSizeOz(item, productRecord) {
+  return parseOunces(item?.size) ||
+    parseOunces(item?.variant_title) ||
+    parseOunces(item?.title) ||
+    parseOunces(productRecord?.size) ||
+    parseOunces(productRecord?.title) ||
+    null;
+}
+
+function builtInRecipeForProduct(productName, sizeOz) {
+  const canonicalName = canonicalProductName(productName);
+  if (!canonicalName) return null;
+
+  if (canonicalName === 'Orange Juice') {
+    return {
+      product_name: canonicalName,
+      yield_factor: 1,
+      ingredients: [{ ingredient_name: 'Orange', quantity_oz: sizeOz || 12, unit: 'oz' }],
+      source: 'built_in_recipe_fallback',
+    };
+  }
+
+  if (canonicalName === 'Pineapple Juice') {
+    return {
+      product_name: canonicalName,
+      yield_factor: 1,
+      ingredients: [{ ingredient_name: 'Pineapple', quantity_oz: sizeOz || 12, unit: 'oz' }],
+      source: 'built_in_recipe_fallback',
+    };
+  }
+
+  if (canonicalName === 'Watermelon Juice') {
+    return {
+      product_name: canonicalName,
+      yield_factor: 1,
+      ingredients: [{ ingredient_name: 'Watermelon', quantity_oz: sizeOz || 12, unit: 'oz' }],
+      source: 'built_in_recipe_fallback',
+    };
+  }
+
+  const recipe = BUILT_IN_RECIPE_FALLBACKS[canonicalName];
+  if (!recipe) return null;
+  return {
+    product_name: canonicalName,
+    yield_factor: 1,
+    ingredients: recipe,
+    source: 'built_in_recipe_fallback',
+  };
+}
+
+function expandLineItemProducts(item, bundleIndex, productIndex) {
   const title = lineItemTitle(item);
   const quantity = numberOrZero(item?.quantity);
   if (!title || quantity <= 0) return [];
@@ -289,11 +387,15 @@ function expandLineItemProducts(item, bundleIndex) {
       .filter(component => component.product_name && component.quantity > 0);
   }
 
+  const productRecord = firstUnambiguous(productIndex, title);
+  const matchedProduct = productRecord && !productRecord.ambiguous ? productRecord : null;
+
   return [{
     product_name: title,
     quantity,
     source_line_item: title,
     source_type: 'direct_line_item',
+    size_oz: lineItemSizeOz(item, matchedProduct),
   }];
 }
 
@@ -353,6 +455,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     .catch(() => []);
   const recipes = await base44.asServiceRole.entities.Recipe.list('product_name', 500).catch(() => []);
   const bundles = await base44.asServiceRole.entities.Bundle.list('bundle_name', 500).catch(() => []);
+  const products = await base44.asServiceRole.entities.Product.list('title', 500).catch(() => []);
   const inventoryItems = await base44.asServiceRole.entities.InventoryItem.list('ingredient', 500).catch(() => []);
 
   const productByDate = new Map();
@@ -360,11 +463,13 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const ingredientMap = new Map();
   const recipeIndex = new Map();
   const bundleIndex = new Map();
+  const productIndex = new Map();
   const inventoryIndex = new Map();
   const missingRecipeKeys = new Set();
   const ambiguousRecipeKeys = new Set();
   const missingInventoryKeys = new Set();
   let skippedDateCount = 0;
+  let builtInFallbackRecipeCount = 0;
 
   recipes
     .filter(recipe => recipe?.is_active !== false)
@@ -376,6 +481,10 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   bundles
     .filter(bundle => bundle?.is_active !== false)
     .forEach(bundle => addToIndex(bundleIndex, bundle.bundle_name, bundle));
+
+  products
+    .filter(product => product?.is_available !== false)
+    .forEach(product => addToIndex(productIndex, product.title, product));
 
   inventoryItems.forEach(item => addToIndex(inventoryIndex, item.ingredient, item));
 
@@ -396,7 +505,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
 
     const productMap = productByDate.get(productionDate);
     for (const item of safeLineItems(order)) {
-      const expandedProducts = expandLineItemProducts(item, bundleIndex);
+      const expandedProducts = expandLineItemProducts(item, bundleIndex, productIndex);
       for (const product of expandedProducts) {
         const productName = product.product_name;
         const key = normalizeLower(productName);
@@ -404,12 +513,15 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
         if (!productName || quantity <= 0) continue;
 
         const recipeMatch = firstUnambiguous(recipeIndex, productName);
-        if (!recipeMatch) missingRecipeKeys.add(productName);
+        const fallbackRecipe = !recipeMatch ? builtInRecipeForProduct(productName, product.size_oz) : null;
+        if (!recipeMatch && !fallbackRecipe) missingRecipeKeys.add(productName);
         if (recipeMatch?.ambiguous) ambiguousRecipeKeys.add(productName);
+        if (fallbackRecipe) builtInFallbackRecipeCount += 1;
+        const effectiveRecipe = recipeMatch && !recipeMatch.ambiguous ? recipeMatch : fallbackRecipe;
 
-        if (recipeMatch && !recipeMatch.ambiguous && Array.isArray(recipeMatch.ingredients)) {
-          const recipeYieldFactor = numberOrZero(recipeMatch.yield_factor) || 1;
-          for (const recipeIngredient of recipeMatch.ingredients) {
+        if (effectiveRecipe && Array.isArray(effectiveRecipe.ingredients)) {
+          const recipeYieldFactor = numberOrZero(effectiveRecipe.yield_factor) || 1;
+          for (const recipeIngredient of effectiveRecipe.ingredients) {
             const ingredientName = sanitizeText(recipeIngredient?.ingredient_name, 120);
             if (!ingredientName) continue;
             const requiredOz = quantity * numberOrZero(recipeIngredient?.quantity_oz) * recipeYieldFactor;
@@ -520,6 +632,8 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     ingredients,
     native_recipe_count: recipes.length,
     native_bundle_count: bundles.length,
+    native_product_count: products.length,
+    built_in_fallback_recipe_count: builtInFallbackRecipeCount,
     native_inventory_item_count: inventoryItems.length,
     missing_recipe_count: missingRecipeKeys.size,
     ambiguous_recipe_count: ambiguousRecipeKeys.size,
@@ -676,6 +790,8 @@ Deno.serve(async (req) => {
         shortage_count: nativePlanning.summary.shortage_count,
         native_recipe_count: nativePlanning.native_recipe_count,
         native_bundle_count: nativePlanning.native_bundle_count,
+        native_product_count: nativePlanning.native_product_count,
+        built_in_fallback_recipe_count: nativePlanning.built_in_fallback_recipe_count,
         native_inventory_item_count: nativePlanning.native_inventory_item_count,
         missing_recipe_count: nativePlanning.missing_recipe_count,
         ambiguous_recipe_count: nativePlanning.ambiguous_recipe_count,
