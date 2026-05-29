@@ -71,6 +71,12 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { date, optimize, stops: explicitStops } = body; // stops: pre-filtered Hub stops from frontend
 
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user || (user.role !== 'driver' && user.role !== 'admin')) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     if (Deno.env.get('ENABLE_DELIVERY_ROUTE_OPTIMIZATION') !== 'true') {
       const safeExplicitStops = Array.isArray(explicitStops)
         ? explicitStops.slice(0, 100).map(sanitizeRouteStop)
@@ -87,12 +93,6 @@ Deno.serve(async (req) => {
           ? 'Delivery route optimization is disabled. Static route manifest returned without calling Google Maps.'
           : 'Delivery route optimization is disabled. Enable the route optimization gate to calculate an admin route preview.',
       });
-    }
-
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me().catch(() => null);
-    if (!user || (user.role !== 'driver' && user.role !== 'admin')) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
