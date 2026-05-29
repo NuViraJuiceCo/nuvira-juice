@@ -169,7 +169,13 @@ export default function NotificationCampaigns() {
 
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ['notification-campaigns'],
-    queryFn: () => base44.entities.NotificationCampaign.list('-created_date', 30),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
+        resource: 'notification_campaigns',
+      });
+      const payload = res?.data || res;
+      return Array.isArray(payload?.rows) ? payload.rows : [];
+    },
     enabled: user?.role === 'admin',
   });
 

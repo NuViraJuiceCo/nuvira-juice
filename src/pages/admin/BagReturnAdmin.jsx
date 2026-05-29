@@ -178,7 +178,13 @@ export default function BagReturnAdmin() {
 
   const { data: returns = [], isLoading } = useQuery({
     queryKey: ['admin-bag-returns'],
-    queryFn: () => base44.entities.BagReturn.list('-created_date', 300),
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
+        resource: 'bag_returns',
+      });
+      const payload = res?.data || res;
+      return Array.isArray(payload?.rows) ? payload.rows : [];
+    },
     enabled: user?.role === 'admin',
   });
 
