@@ -460,6 +460,11 @@ export default function ProductionPlanning() {
                 Native May 30 overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · read-only
               </p>
             )}
+            {Number(nativeOverlay.built_in_fallback_recipe_count || 0) > 0 && (
+              <p className="text-[10px] text-blue-700 mt-1">
+                Built-in recipe fallback used for {formatNumber(nativeOverlay.built_in_fallback_recipe_count, 0)} product match{Number(nativeOverlay.built_in_fallback_recipe_count) === 1 ? '' : 'es'} where live Recipe master data was missing.
+              </p>
+            )}
             {Number(nativeOverlay.missing_recipe_count || 0) + Number(nativeOverlay.ambiguous_recipe_count || 0) + Number(nativeOverlay.missing_inventory_count || 0) > 0 && (
               <p className="text-[10px] text-amber-700 mt-1">
                 Native master-data gaps: {formatNumber(nativeOverlay.missing_recipe_count, 0)} missing recipes · {formatNumber(nativeOverlay.ambiguous_recipe_count, 0)} ambiguous recipes · {formatNumber(nativeOverlay.missing_inventory_count, 0)} missing inventory matches
