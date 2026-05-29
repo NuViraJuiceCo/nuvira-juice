@@ -216,7 +216,7 @@ export default function ComplianceOps() {
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Daily Checklists</h2>
               </div>
-              <DailyChecklistForm />
+              <DailyChecklistForm nativeCompliance={nativeCompliance} />
               <DailyChecklistsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
