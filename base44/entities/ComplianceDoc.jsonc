@@ -1,0 +1,97 @@
+{
+  "name": "ComplianceDoc",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Document/certification name"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "Certification",
+        "Permit",
+        "Audit",
+        "Inspection",
+        "Review",
+        "Log",
+        "License"
+      ],
+      "description": "Document type"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Valid",
+        "Due Soon",
+        "Overdue",
+        "Expired",
+        "Pending"
+      ],
+      "description": "Compliance status"
+    },
+    "expiry_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Expiry or renewal date"
+    },
+    "issued_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Issue date"
+    },
+    "owner": {
+      "type": "string",
+      "description": "Person or entity responsible"
+    },
+    "issuing_body": {
+      "type": "string",
+      "description": "Authority that issued the document"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL to uploaded document"
+    },
+    "reminder_days": {
+      "type": "number",
+      "description": "Days before expiry to alert"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "name",
+    "type",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff"
+          ]
+        }
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

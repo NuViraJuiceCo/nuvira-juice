@@ -1,319 +1,60 @@
-import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import {
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardCheck,
-  FileCheck2,
-  RefreshCw,
-  ShieldCheck,
-  Thermometer,
-} from 'lucide-react';
-import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
-import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useAuth } from '@/lib/AuthContext';
-
-const MAX_RANGE_DAYS = 31;
-
-function todayDate() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = `${today.getMonth() + 1}`.padStart(2, '0');
-  const day = `${today.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(dateStr, days) {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function daysInclusive(from, to) {
-  if (!from || !to) return 0;
-  const fromDate = new Date(`${from}T00:00:00.000Z`);
-  const toDate = new Date(`${to}T00:00:00.000Z`);
-  return Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1;
-}
-
-function formatDate(value) {
-  if (!value) return 'Date pending';
-  const [year, month, day] = value.split('-').map(Number);
-  if (!year || !month || !day) return value;
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatDateTime(value) {
-  if (!value) return null;
-  try {
-    return new Date(value).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  } catch {
-    return value;
-  }
-}
-
-function formatNumber(value) {
-  return Number(value || 0).toLocaleString();
-}
-
-function formatLabel(value) {
-  if (!value) return 'Not set';
-  return value
-    .toString()
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map(word => {
-      const lower = word.toLowerCase();
-      if (['ph', 'ccp', 'pos', 'id'].includes(lower)) return lower === 'ph' ? 'pH' : lower.toUpperCase();
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join(' ');
-}
-
-function validateRange(from, to) {
-  if (!from || !to) return 'Choose a start and end date.';
-  if (to < from) return 'End date must be on or after start date.';
-  if (daysInclusive(from, to) > MAX_RANGE_DAYS) return `Date range must be ${MAX_RANGE_DAYS} days or fewer.`;
-  return null;
-}
-
-function StatCard({ icon: Icon, label, value, sublabel, tone = 'neutral', isRefreshing }) {
-  const toneClass = {
-    neutral: 'border-slate-300 bg-slate-100 text-slate-950 border-l-slate-600',
-    success: 'border-emerald-300 bg-emerald-100 text-emerald-950 border-l-emerald-600',
-    warning: 'border-amber-300 bg-amber-100 text-amber-950 border-l-amber-500',
-    danger: 'border-rose-300 bg-rose-100 text-rose-950 border-l-rose-600',
-    info: 'border-sky-300 bg-sky-100 text-sky-950 border-l-sky-600',
-  }[tone] || 'border-slate-300 bg-slate-100 text-slate-950 border-l-slate-600';
-
-  return (
-    <div className={`rounded-xl border border-l-4 p-3 shadow-sm ${toneClass}`}>
-      {Icon && <Icon className={`w-4 h-4 mb-1 ${isRefreshing ? 'animate-spin' : ''}`} />}
-      <p className="text-[10px] uppercase tracking-wider font-black opacity-75">{label}</p>
-      <p className="text-xl font-black">{formatNumber(value)}</p>
-      {sublabel && <p className="text-[10px] font-semibold opacity-75">{sublabel}</p>}
-    </div>
-  );
-}
-
-function RangeControls({ dateFrom, dateTo, setDateFrom, setDateTo, rangeError }) {
-  return (
-    <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <CalendarDays className="w-4 h-4 text-primary" />
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Compliance date range</p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="space-y-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">From</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={event => setDateFrom(event.target.value)}
-            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </label>
-        <label className="space-y-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">To</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={event => setDateTo(event.target.value)}
-            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </label>
-      </div>
-      {rangeError ? (
-        <p className="text-xs text-destructive">{rangeError}</p>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          Showing Hub compliance records from {formatDate(dateFrom)} through {formatDate(dateTo)}.
-        </p>
-      )}
-      <AdminStatusLegend />
-    </div>
-  );
-}
-
-function AttentionList({ data }) {
-  const issues = data?.issues || {};
-
-  if (data?.hub_unavailable) {
-    return (
-      <div className="rounded-xl border border-amber-300 bg-amber-100 p-4 text-amber-950">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-black">Hub compliance summary is temporarily unavailable</p>
-            <p className="text-xs font-medium opacity-80 mt-0.5">
-              The page is still usable, but official compliance records should be checked in the Hub fallback workflow until this summary reconnects.
-            </p>
-            {Array.isArray(data?.warnings) && data.warnings.length > 0 && (
-              <p className="text-[10px] font-semibold opacity-75 mt-2">{data.warnings.join(' · ')}</p>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const entries = [
-    ['temp_out_of_range', 'Temperature out of range'],
-    ['ph_out_of_range', 'pH out of range'],
-    ['ccp_failed', 'CCP failures'],
-    ['sanitation_issues', 'Sanitation issues'],
-    ['incomplete_checklists', 'Incomplete checklists'],
-    ['open_corrective_actions', 'Open corrective actions'],
-    ['failed_batch_logs', 'Failed batch logs'],
-    ['batches_missing_compliance_log', 'Batches missing compliance log'],
-  ].filter(([key]) => Number(issues[key] || 0) > 0);
-
-  if (entries.length === 0) {
-    return (
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
-        <div className="flex items-start gap-2">
-          <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-black">No compliance attention items in this range</p>
-            <p className="text-xs font-medium opacity-80 mt-0.5">Keep logging temperature, sanitation, checklist, batch, and corrective records during production.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950 space-y-2">
-      <div className="flex items-start gap-2">
-        <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
-        <div>
-          <p className="text-sm font-black">{formatNumber(issues.total_attention_items)} compliance attention item{Number(issues.total_attention_items) === 1 ? '' : 's'}</p>
-          <p className="text-xs font-medium opacity-80 mt-0.5">Use the Hub-backed compliance workflow for corrections and official records.</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {entries.map(([key, label]) => (
-          <div key={key} className="rounded-lg border border-amber-300 bg-white/60 p-2">
-            <p className="text-[10px] uppercase tracking-wider font-black opacity-70">{label}</p>
-            <p className="text-lg font-black">{formatNumber(issues[key])}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LogList({ title, logs, emptyText }) {
-  return (
-    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-foreground">{title}</h2>
-        <AdminStatusPill label={`${logs.length} rows`} tone="hub" />
-      </div>
-      {logs.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{emptyText}</p>
-      ) : (
-        <div className="space-y-2">
-          {logs.slice(0, 20).map(log => (
-            <div key={`${log.type}-${log.id}-${log.date}-${log.time}`} className="rounded-lg border border-border/50 bg-background p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap gap-1.5 mb-1">
-                    <AdminStatusPill value={log.type} label={formatLabel(log.type)} tone="hub" />
-                    <AdminStatusPill value={log.status || (log.within_range === false ? 'out_of_range' : 'ok')} />
-                  </div>
-                  <p className="text-sm font-semibold text-foreground truncate">
-                    {log.product_name || log.batch_id || log.location || 'Compliance record'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(log.date)} {log.time ? `· ${log.time}` : ''}{log.staff_member ? ` · ${log.staff_member}` : ''}
-                  </p>
-                </div>
-                {log.value !== null && log.value !== undefined && (
-                  <p className="text-xs font-bold text-foreground shrink-0">{log.value}</p>
-                )}
-              </div>
-            </div>
-          ))}
-          {logs.length > 20 && <p className="text-[10px] text-muted-foreground">Showing 20 of {logs.length} records.</p>}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function BatchAttentionList({ batches }) {
-  return (
-    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-foreground">Batch Compliance Attention</h2>
-        <AdminStatusPill label={`${batches.length} batches`} tone={batches.length ? 'warning' : 'success'} />
-      </div>
-      {batches.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No Hub production batches in this range are missing compliance linkage or requiring corrective action.</p>
-      ) : (
-        <div className="space-y-2">
-          {batches.map(batch => (
-            <div key={batch.id || batch.batch_id} className="rounded-lg border border-border/50 bg-background p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground">{batch.product_name || 'Production batch'}</p>
-                  <p className="text-xs text-muted-foreground">{batch.batch_id || 'No batch id'} · {formatDate(batch.production_date)}</p>
-                </div>
-                <AdminStatusPill value={batch.status} label={formatLabel(batch.status)} />
-              </div>
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                <AdminStatusPill label={batch.compliance_log_id_present ? 'Compliance logged' : 'Missing compliance log'} tone={batch.compliance_log_id_present ? 'success' : 'warning'} />
-                {batch.corrective_action_required && (
-                  <AdminStatusPill label={batch.corrective_action_log_id_present ? 'Corrective linked' : 'Corrective needed'} tone={batch.corrective_action_log_id_present ? 'success' : 'danger'} />
-                )}
-                {batch.is_locked && <AdminStatusPill label="Locked" tone="hub" />}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+import { useQuery } from '@tanstack/react-query';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { AlertCircle, AlertTriangle, Plus, Eye, Download } from 'lucide-react';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import ComplianceDashboard from '@/components/compliance/ComplianceDashboard';
+import TemperatureLogForm from '@/components/compliance/TemperatureLogForm';
+import PHLogForm from '@/components/compliance/pHLogForm';
+import CCPLogForm from '@/components/compliance/CCPLogForm';
+import SanitationLogForm from '@/components/compliance/SanitationLogForm';
+import CorrectiveActionForm from '@/components/compliance/CorrectiveActionForm';
+import DailyChecklistForm from '@/components/compliance/DailyChecklistForm';
+import LabelAllergenTab from '@/components/compliance/LabelAllergenTab';
+import HACCPPlanTab from '@/components/compliance/HACCPPlanTab';
 
 export default function ComplianceOps() {
-  const { user } = useAuth();
-  const defaultTo = useMemo(() => todayDate(), []);
-  const defaultFrom = useMemo(() => addDays(defaultTo, -6), [defaultTo]);
-  const [dateFrom, setDateFrom] = useState(defaultFrom);
-  const [dateTo, setDateTo] = useState(defaultTo);
-  const rangeError = validateRange(dateFrom, dateTo);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [showNewEntry, setShowNewEntry] = useState(null);
+  const [user, setUser] = useState(null);
 
-  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
-    queryKey: ['admin-compliance-ops-summary', dateFrom, dateTo],
+  const { data: alerts } = useQuery({
+    queryKey: ['compliance_alerts'],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {
-        date_from: dateFrom,
-        date_to: dateTo,
-      });
-      const result = res?.data || res;
-      if (result?.error) throw new Error(result.error);
-      return result;
+      const result = await base44.entities.ComplianceAlert.list('-triggered_date', 50);
+      return result.filter(a => a.status === 'Active');
     },
-    enabled: user?.role === 'admin' && !rangeError,
-    staleTime: 60000,
+    enabled: user?.role === 'admin',
   });
 
-  if (user?.role !== 'admin') {
+  const { data: checklists } = useQuery({
+    queryKey: ['daily_checklists_today'],
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      return base44.entities.DailyChecklist.filter({ checklist_date: today });
+    },
+    enabled: user?.role === 'admin',
+  });
+
+  useEffect(() => {
+    base44.auth.me().then(u => setUser(u));
+  }, []);
+
+  const criticalAlerts = alerts?.filter(a => a.severity === 'Critical') || [];
+  const incompleteChecklists = checklists?.filter(c => c.overall_status === 'Incomplete') || [];
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (user.role !== 'admin') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -321,92 +62,394 @@ export default function ComplianceOps() {
     );
   }
 
-  const summary = data?.summary || {};
-  const issues = data?.issues || {};
-  const recentLogs = data?.recent_logs || [];
-  const batchLogs = data?.batch_compliance || [];
-  const attentionBatches = data?.attention_batches || [];
-
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background">
       <AdminOpsHeader
-        title="Compliance Ops"
-        subtitle="Hub-backed compliance visibility for production, sanitation, temperature, checklist, and corrective records"
-        badge="Hub fallback"
-        badgeTone="hub"
-        actions={(
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-emerald-300"
-          >
-            <RefreshCw className={`inline-block w-3.5 h-3.5 mr-1 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-        )}
+        title="Compliance Center"
+        subtitle="Native Customer App compliance logs, checklists, alerts, label review, HACCP review, and audit export"
+        badge="Native"
+        badgeTone="success"
       />
 
-      <div className="px-4 mt-4 space-y-4">
-        <RangeControls
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          setDateFrom={setDateFrom}
-          setDateTo={setDateTo}
-          rangeError={rangeError}
-        />
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : isError ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
-            <p className="text-sm font-semibold text-destructive">Unable to load compliance summary</p>
-            <p className="text-xs text-muted-foreground mt-1">{error?.message || 'Try again later.'}</p>
-          </div>
-        ) : !rangeError ? (
-          <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-              <StatCard icon={ShieldCheck} label="Attention" value={issues.total_attention_items} tone={issues.total_attention_items ? 'warning' : 'success'} />
-              <StatCard icon={Thermometer} label="Temperature" value={summary.temperature} sublabel={`${formatNumber(issues.temp_out_of_range)} out of range`} tone={issues.temp_out_of_range ? 'danger' : 'info'} />
-              <StatCard icon={ClipboardCheck} label="Checklists" value={summary.daily_checklists} sublabel={`${formatNumber(issues.incomplete_checklists)} incomplete`} tone={issues.incomplete_checklists ? 'warning' : 'info'} />
-              <StatCard icon={FileCheck2} label="Batch Logs" value={summary.batch_compliance_logs} sublabel={`${formatNumber(issues.batches_missing_compliance_log)} missing`} tone={issues.batches_missing_compliance_log ? 'warning' : 'success'} />
+      <div className="border-b border-border bg-card p-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-4">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Operations, Audit Readiness & Compliance Tracking</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Create and review official Customer App compliance records. Hub compliance remains available as fallback while native records are proven.
+              </p>
             </div>
+          </div>
 
-            <AttentionList data={data} />
-
-            <div className="rounded-xl border border-border/50 bg-card p-4">
-              <div className="flex items-start gap-2">
-                <ShieldCheck className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-foreground">Official compliance records remain Hub-backed for May 30</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Use this page for Customer App visibility. Create or correct official sanitation, temperature, checklist, corrective, pH, CCP, and binder records in the existing Hub compliance workflow until native compliance write contracts are migrated.
-                  </p>
-                  {data?.generated_at && (
-                    <p className="text-[10px] text-muted-foreground mt-2">Generated {formatDateTime(data.generated_at)}</p>
-                  )}
+          {(criticalAlerts.length > 0 || incompleteChecklists.length > 0) && (
+            <div className="grid gap-2 mt-4">
+              {criticalAlerts.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold text-red-900">{criticalAlerts.length} Critical Alert{criticalAlerts.length > 1 ? 's' : ''}</p>
+                    <p className="text-sm text-red-700">{criticalAlerts[0].message}</p>
+                  </div>
                 </div>
+              )}
+              {incompleteChecklists.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold text-yellow-900">{incompleteChecklists.length} Incomplete Checklist{incompleteChecklists.length > 1 ? 's' : ''}</p>
+                    <p className="text-sm text-yellow-700">Daily checklists must be completed before end of shift.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="overflow-x-auto pb-1 mb-6">
+            <TabsList className="inline-flex w-max min-w-full">
+              <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+              <TabsTrigger value="temperature">🌡️ Temperature</TabsTrigger>
+              <TabsTrigger value="pH">🧪 pH</TabsTrigger>
+              <TabsTrigger value="CCP">⚠️ CCP</TabsTrigger>
+              <TabsTrigger value="sanitation">🧹 Sanitation</TabsTrigger>
+              <TabsTrigger value="corrective">🔧 Corrective</TabsTrigger>
+              <TabsTrigger value="checklist">📋 Checklist</TabsTrigger>
+              <TabsTrigger value="batch">🧾 Batch Logs</TabsTrigger>
+              <TabsTrigger value="labels">🏷️ Labels & Allergens</TabsTrigger>
+              <TabsTrigger value="haccp">🛡️ HACCP Plan</TabsTrigger>
+              <TabsTrigger value="export">📊 Export</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="dashboard">
+            <ComplianceDashboard />
+          </TabsContent>
+
+          <TabsContent value="temperature">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Temperature Logs</h2>
+                <Button onClick={() => setShowNewEntry('temperature')} size="sm">
+                  <Plus className="w-4 h-4 mr-2" /> New Log
+                </Button>
               </div>
+              {showNewEntry === 'temperature' && <TemperatureLogForm onClose={() => setShowNewEntry(null)} />}
+              <TemperatureLogsList />
             </div>
+          </TabsContent>
 
-            <BatchAttentionList batches={attentionBatches} />
-
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <LogList
-                title="Recent Compliance Logs"
-                logs={recentLogs}
-                emptyText="No temperature, pH, CCP, sanitation, or corrective records returned for this date range."
-              />
-              <LogList
-                title="Recent Batch Compliance Logs"
-                logs={batchLogs}
-                emptyText="No batch compliance logs returned for this date range."
-              />
+          <TabsContent value="pH">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">pH Logs</h2>
+                <Button onClick={() => setShowNewEntry('pH')} size="sm">
+                  <Plus className="w-4 h-4 mr-2" /> New Log
+                </Button>
+              </div>
+              {showNewEntry === 'pH' && <PHLogForm onClose={() => setShowNewEntry(null)} />}
+              <PHLogsList />
             </div>
-          </>
-        ) : null}
+          </TabsContent>
+
+          <TabsContent value="CCP">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">CCP Logs</h2>
+                <Button onClick={() => setShowNewEntry('CCP')} size="sm">
+                  <Plus className="w-4 h-4 mr-2" /> New Log
+                </Button>
+              </div>
+              {showNewEntry === 'CCP' && <CCPLogForm onClose={() => setShowNewEntry(null)} />}
+              <CCPLogsList />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="sanitation">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Sanitation Logs</h2>
+                <Button onClick={() => setShowNewEntry('sanitation')} size="sm">
+                  <Plus className="w-4 h-4 mr-2" /> New Log
+                </Button>
+              </div>
+              {showNewEntry === 'sanitation' && <SanitationLogForm onClose={() => setShowNewEntry(null)} />}
+              <SanitationLogsList />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="corrective">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Corrective Actions</h2>
+                <Button onClick={() => setShowNewEntry('corrective')} size="sm">
+                  <Plus className="w-4 h-4 mr-2" /> New Action
+                </Button>
+              </div>
+              {showNewEntry === 'corrective' && <CorrectiveActionForm onClose={() => setShowNewEntry(null)} />}
+              <CorrectiveActionsList />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="checklist">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Daily Checklists</h2>
+              </div>
+              <DailyChecklistForm />
+              <DailyChecklistsList />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="batch">
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-2xl font-bold">Batch Compliance Logs</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Batch verification logs created by production workflows. Create/verify batch logs from the production lifecycle action, not from this tab.
+                </p>
+              </div>
+              <BatchComplianceLogsList />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="labels">
+            <LabelAllergenTab />
+          </TabsContent>
+
+          <TabsContent value="haccp">
+            <HACCPPlanTab />
+          </TabsContent>
+
+          <TabsContent value="export">
+            <ExportCenter />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
+  );
+}
+
+// Placeholder components for log lists (will be created separately)
+function TemperatureLogsList() {
+  const { data: logs } = useQuery({
+    queryKey: ['temperature_logs'],
+    queryFn: () => base44.entities.TemperatureLog.list('-log_date', 50),
+  });
+
+  if (!logs?.length) return <p className="text-muted-foreground">No temperature logs yet.</p>;
+
+  return (
+    <div className="space-y-2">
+      {logs.map(log => (
+        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
+          <div>
+            <p className="font-semibold">{log.location}</p>
+            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+            <p className="text-sm mt-1">{log.temperature}°C {log.within_range ? '✓' : '⚠️'}</p>
+          </div>
+          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PHLogsList() {
+  const { data: logs } = useQuery({
+    queryKey: ['pH_logs'],
+    queryFn: () => base44.entities.pHLog.list('-log_date', 50),
+  });
+
+  if (!logs?.length) return <p className="text-muted-foreground">No pH logs yet.</p>;
+
+  return (
+    <div className="space-y-2">
+      {logs.map(log => (
+        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
+          <div>
+            <p className="font-semibold">{log.batch_id} • {log.product_name}</p>
+            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+            <p className="text-sm mt-1">pH {log.ph_value} {log.within_range ? '✓' : '⚠️'}</p>
+          </div>
+          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CCPLogsList() {
+  const { data: logs } = useQuery({
+    queryKey: ['CCP_logs'],
+    queryFn: () => base44.entities.CCPLog.list('-log_date', 50),
+  });
+
+  if (!logs?.length) return <p className="text-muted-foreground">No CCP logs yet.</p>;
+
+  return (
+    <div className="space-y-2">
+      {logs.map(log => (
+        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
+          <div>
+            <p className="font-semibold">{log.ccp_point}</p>
+            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+            <p className={`text-sm mt-1 font-semibold ${log.result === 'Pass' ? 'text-green-600' : 'text-red-600'}`}>{log.result}</p>
+          </div>
+          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SanitationLogsList() {
+  const { data: logs } = useQuery({
+    queryKey: ['sanitation_logs'],
+    queryFn: () => base44.entities.SanitationLog.list('-log_date', 50),
+  });
+
+  if (!logs?.length) return <p className="text-muted-foreground">No sanitation logs yet.</p>;
+
+  return (
+    <div className="space-y-2">
+      {logs.map(log => (
+        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
+          <div>
+            <p className="font-semibold">{log.area}</p>
+            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+            <p className="text-sm mt-1">{log.cleaned && log.sanitized ? '✓ Complete' : '⚠️ Incomplete'}</p>
+          </div>
+          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CorrectiveActionsList() {
+  const { data: logs } = useQuery({
+    queryKey: ['corrective_logs'],
+    queryFn: () => base44.entities.CorrectiveActionLog.list('-log_date', 50),
+  });
+
+  if (!logs?.length) return <p className="text-muted-foreground">No corrective actions yet.</p>;
+
+  return (
+    <div className="space-y-2">
+      {logs.map(log => (
+        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
+          <div>
+            <p className="font-semibold">{log.issue_type}</p>
+            <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
+            <p className="text-sm mt-1">{log.corrective_action_taken}</p>
+            <span className={`inline-block text-xs px-2 py-1 rounded mt-2 ${log.status === 'Verified' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{log.status}</span>
+          </div>
+          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DailyChecklistsList() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data: checklists } = useQuery({
+    queryKey: ['checklists_today'],
+    queryFn: () => base44.entities.DailyChecklist.filter({ checklist_date: today }),
+  });
+
+  if (!checklists?.length) return <p className="text-muted-foreground">No checklists yet today.</p>;
+
+  return (
+    <div className="space-y-2">
+      {checklists.map(checklist => (
+        <div key={checklist.id} className="border rounded-lg p-3 flex justify-between items-start">
+          <div>
+            <p className="font-semibold">{checklist.staff_member} • {checklist.shift} Shift</p>
+            <p className="text-sm text-muted-foreground">Completed: {checklist.overall_status === 'Complete' ? '✓' : '⚠️'}</p>
+          </div>
+          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BatchComplianceLogsList() {
+  const { data: logs } = useQuery({
+    queryKey: ['batch_compliance_logs'],
+    queryFn: () => base44.entities.BatchComplianceLog.list('-date', 50),
+  });
+
+  if (!logs?.length) return <p className="text-muted-foreground">No batch compliance logs yet.</p>;
+
+  return (
+    <div className="space-y-2">
+      {logs.map(log => (
+        <div key={log.id} className="border rounded-lg p-3 flex justify-between items-start">
+          <div>
+            <p className="font-semibold">{log.batch_id} • {log.juice_flavor}</p>
+            <p className="text-sm text-muted-foreground">
+              {log.date} • {log.quantity_produced || 0} units • {log.verified_by || 'verification pending'}
+            </p>
+            <p className={`text-sm mt-1 font-semibold ${log.passed_failed === 'passed' ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {log.passed_failed || 'status pending'}
+            </p>
+          </div>
+          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExportCenter() {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleGenerateAudit = async () => {
+    if (!startDate || !endDate) return;
+    setIsLoading(true);
+    try {
+      const response = await base44.functions.invoke('generateAuditPacket', {
+        start_date: startDate,
+        end_date: endDate,
+      });
+      if (response.data.file_url) {
+        window.open(response.data.file_url, '_blank');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Generate Audit Packet</CardTitle>
+        <CardDescription>Compile all compliance logs into a single professional PDF</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium">Start Date</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full border rounded-md p-2 mt-1" />
+          </div>
+          <div>
+            <label className="text-sm font-medium">End Date</label>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full border rounded-md p-2 mt-1" />
+          </div>
+        </div>
+        <Button onClick={handleGenerateAudit} disabled={isLoading} className="w-full">
+          <Download className="w-4 h-4 mr-2" />
+          {isLoading ? 'Generating...' : 'Generate Audit Packet'}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
