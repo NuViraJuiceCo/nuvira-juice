@@ -16,7 +16,10 @@ const MAY30_NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
 
 async function verifyShopifyHmac(req, bodyText) {
   const hmacHeader = req.headers.get('x-shopify-hmac-sha256');
-  if (!SHOPIFY_WEBHOOK_SECRET || !hmacHeader) return true; // skip if not configured
+  if (!SHOPIFY_WEBHOOK_SECRET) {
+    throw new Error('SHOPIFY_WEBHOOK_SECRET not configured');
+  }
+  if (!hmacHeader) return false;
   const key = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(SHOPIFY_WEBHOOK_SECRET),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
@@ -161,7 +164,13 @@ Deno.serve(async (req) => {
   const bodyText = await req.text();
 
   // Verify HMAC
-  const valid = await verifyShopifyHmac(req, bodyText);
+  let valid = false;
+  try {
+    valid = await verifyShopifyHmac(req, bodyText);
+  } catch (error) {
+    console.error('Shopify HMAC verification unavailable:', error.message);
+    return Response.json({ error: 'shopify_webhook_verification_unavailable' }, { status: 500 });
+  }
   if (!valid) {
     console.error('Invalid Shopify HMAC signature');
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
