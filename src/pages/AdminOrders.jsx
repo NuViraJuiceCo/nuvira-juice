@@ -131,12 +131,15 @@ function SectionLabel({ title, description, badge }) {
 }
 
 function statusSummary(order) {
+  const nativeReviewStatus = (order.native_review_status || '').toString().toLowerCase();
   return [
     order.payment_status ? `Payment: ${formatStatusLabel(order.payment_status)}` : null,
     order.native_production_status ? `Production: ${formatStatusLabel(order.native_production_status)}` : null,
     order.native_fulfillment_status ? `Fulfillment: ${formatStatusLabel(order.native_fulfillment_status)}` : null,
+    order.native_fulfillment_task_summary?.count ? `Tasks: ${order.native_fulfillment_task_summary.count}` : null,
     order.native_sync_status ? `Sync: ${formatStatusLabel(order.native_sync_status)}` : null,
-    order.native_review_status ? `Review: ${formatStatusLabel(order.native_review_status)}` : null,
+    order.native_review_queue_summary ? `Review: ${formatStatusLabel(order.native_review_queue_summary.incident_type)}` : null,
+    !order.native_review_queue_summary && nativeReviewStatus && nativeReviewStatus !== 'complete' ? `Review: ${formatStatusLabel(order.native_review_status)}` : null,
     order.order_lock_status ? `Lock: ${formatStatusLabel(order.order_lock_status)}` : null,
   ].filter(Boolean).join(' · ');
 }
@@ -163,7 +166,12 @@ function LiveCustomerContextPanel({ orders, isLoading, nameMap }) {
 
   const deliveryCount = orders.filter(order => order.fulfillment_type === 'delivery').length;
   const pickupCount = orders.filter(order => order.fulfillment_type === 'pickup').length;
-  const reviewCount = orders.filter(order => order.native_review_status || order.sync_status === 'review' || order.approval_status === 'review_required').length;
+  const reviewCount = orders.filter(order =>
+    order.native_review_queue_summary ||
+    ['review', 'review_required', 'queued_for_review', 'rejected', 'incomplete'].includes((order.native_review_status || '').toString()) ||
+    order.sync_status === 'review' ||
+    order.approval_status === 'review_required'
+  ).length;
 
   return (
     <section className="px-4 mb-4">
@@ -255,6 +263,12 @@ function LiveCustomerContextPanel({ orders, isLoading, nameMap }) {
 
 function NativeOperationsPanel({ order }) {
   if (!order.is_native_order) return null;
+  const taskSummary = order.native_fulfillment_task_summary || {};
+  const latestSyncLog = order.native_latest_sync_log || null;
+  const reviewSummary = order.native_review_queue_summary || null;
+  const taskStatusSummary = Object.entries(taskSummary.status_counts || {})
+    .map(([status, count]) => `${formatStatusLabel(status)}: ${count}`)
+    .join(' · ');
 
   return (
     <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
@@ -270,6 +284,31 @@ function NativeOperationsPanel({ order }) {
       <InfoRow label="Source" value={formatStatusLabel(order.source_type || order.source_channel)} />
       <InfoRow label="Order Type" value={formatStatusLabel(order.order_type)} />
       <InfoRow label="Lock" value={formatStatusLabel(order.order_lock_status)} />
+      <div className="pt-2 mt-2 border-t border-border/40 space-y-1.5">
+        <InfoRow label="Task Count" value={taskSummary.count ? `${taskSummary.count}` : 'No native delivery task'} />
+        <InfoRow label="Task Status" value={taskStatusSummary} />
+        <InfoRow label="Task Delivery" value={formatDateOnly(taskSummary.next_delivery_date)} />
+        <InfoRow label="Task Production" value={formatDateOnly(taskSummary.production_date)} />
+      </div>
+      <div className="pt-2 mt-2 border-t border-border/40 space-y-1.5">
+        <InfoRow label="Latest Sync" value={latestSyncLog ? `${formatStatusLabel(latestSyncLog.status)}${latestSyncLog.action ? ` · ${formatStatusLabel(latestSyncLog.action)}` : ''}` : 'No native sync log'} />
+        <InfoRow label="Sync Source" value={formatStatusLabel(latestSyncLog?.source)} />
+        <InfoRow label="Sync Event" value={formatStatusLabel(latestSyncLog?.event_type)} />
+        <InfoRow label="Sync Reason" value={latestSyncLog?.reason} />
+        <InfoRow label="Sync Time" value={formatDateTime(latestSyncLog?.timestamp)} />
+      </div>
+      {reviewSummary && (
+        <div className="pt-2 mt-2 border-t border-border/40 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Native Review Queue</p>
+            <AdminStatusPill value={reviewSummary.status || 'pending'} size="sm" />
+          </div>
+          <InfoRow label="Issue" value={formatStatusLabel(reviewSummary.incident_type)} />
+          <InfoRow label="Details" value={reviewSummary.issue_description} />
+          <InfoRow label="Action" value={reviewSummary.recommended_action} />
+          <InfoRow label="Last Seen" value={formatDateTime(reviewSummary.last_seen_at)} />
+        </div>
+      )}
       <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
         Native mirror remains parallel to the Hub bridge for May 30. Use Delivery Queue and Production views for operational actions.
       </p>

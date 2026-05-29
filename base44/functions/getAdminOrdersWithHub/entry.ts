@@ -3,6 +3,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const HUB_ORDER_FETCH_TIMEOUT_MS = 2500;
 const HUB_ORDER_TOTAL_BUDGET_MS = 8000;
 
+function normalizeOrderNum(num) {
+  return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
+}
+
 /**
  * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
  * 
@@ -92,6 +96,19 @@ Deno.serve(async (req) => {
     const nativeShopifyOrders = await base44.asServiceRole.entities.ShopifyOrder.list('-created_date', 500).catch(error => {
       console.warn('[AdminOrders] Native ShopifyOrder unavailable, skipping native operational records:', error.message);
       return [];
+    });
+    const orderSyncLogs = await base44.asServiceRole.entities.OrderSyncLog.list('-created_date', 500).catch(error => {
+      console.warn('[AdminOrders] OrderSyncLog unavailable, skipping native sync context:', error.message);
+      return [];
+    });
+    const reviewQueueItems = await base44.asServiceRole.entities.OrderReviewQueue.list('-created_date', 500).catch(error => {
+      console.warn('[AdminOrders] OrderReviewQueue unavailable, skipping native review context:', error.message);
+      return [];
+    });
+    const nativeContext = buildNativeOperationalContext({
+      fulfillmentTasks,
+      orderSyncLogs,
+      reviewQueueItems,
     });
     console.log(`[AdminOrders] Local: ${allLocalOrders.length} total, ${localOrders.length} after filtering. Cancelled order numbers: ${[...cancelledOrderNumbers].join(', ')}`);
 
@@ -365,10 +382,6 @@ Deno.serve(async (req) => {
 
     // 4. Merge: Hub wins for any order_number it has; local wins otherwise
     // Normalize order numbers for comparison: strip leading #, lowercase, trim
-    function normalizeOrderNum(num) {
-      return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
-    }
-
     const mergedMap = new Map();
 
     // Seed with Hub orders first — deduplicate Hub side too (same order fetched via contact+auth email)
@@ -382,7 +395,7 @@ Deno.serve(async (req) => {
 
     // Native May 30 operational records are visible in Customer App admin even while
     // Hub remains the operational fallback. Hub still wins if the same order exists.
-    for (const order of nativeShopifyOrders.map(mapNativeShopifyOrderToAdminOrder).filter(Boolean)) {
+    for (const order of nativeShopifyOrders.map(order => mapNativeShopifyOrderToAdminOrder(order, nativeContext)).filter(Boolean)) {
       const key = normalizeOrderNum(order.order_number);
       if (!key) continue;
       if (!mergedMap.has(key)) {
@@ -453,7 +466,86 @@ function mapHubStatus(hubStatus) {
   return map[hubStatus] || 'order_received';
 }
 
-function mapNativeShopifyOrderToAdminOrder(order) {
+function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, reviewQueueItems }) {
+  const byOrderId = new Map();
+  const syncByOrderNumber = new Map();
+  const syncByOrderId = new Map();
+  const reviewByOrderNumber = new Map();
+  const reviewByOrderId = new Map();
+
+  for (const task of Array.isArray(fulfillmentTasks) ? fulfillmentTasks : []) {
+    const orderId = (task.order_id || '').toString();
+    if (!orderId) continue;
+    const existing = byOrderId.get(orderId) || [];
+    existing.push(task);
+    byOrderId.set(orderId, existing);
+  }
+
+  for (const log of Array.isArray(orderSyncLogs) ? orderSyncLogs : []) {
+    const orderNumber = normalizeOrderNum(log.order_number);
+    const orderId = (log.order_id || '').toString();
+    const summary = {
+      status: log.status || null,
+      action: log.action || log.hub_action || null,
+      source: log.sync_source || log.triggered_by || null,
+      event_type: log.event_type || null,
+      reason: log.reason || log.error_code || null,
+      timestamp: log.sync_timestamp || log.completed_at || log.created_date || null,
+    };
+    if (orderNumber && !syncByOrderNumber.has(orderNumber)) syncByOrderNumber.set(orderNumber, summary);
+    if (orderId && !syncByOrderId.has(orderId)) syncByOrderId.set(orderId, summary);
+  }
+
+  for (const item of Array.isArray(reviewQueueItems) ? reviewQueueItems : []) {
+    if (item.status === 'resolved' || item.status === 'archived') continue;
+    const payload = item.incoming_payload && typeof item.incoming_payload === 'object' ? item.incoming_payload : {};
+    const orderNumber = normalizeOrderNum(item.existing_order_number || payload.order_number);
+    const orderId = (item.existing_order_id || payload.order_id || '').toString();
+    const summary = {
+      status: item.status || null,
+      incident_type: item.incident_type || null,
+      issue_description: item.issue_description || null,
+      recommended_action: item.recommended_action || null,
+      occurrence_count: item.occurrence_count || null,
+      last_seen_at: item.last_seen_at || item.created_date || null,
+    };
+    if (orderNumber && !reviewByOrderNumber.has(orderNumber)) reviewByOrderNumber.set(orderNumber, summary);
+    if (orderId && !reviewByOrderId.has(orderId)) reviewByOrderId.set(orderId, summary);
+  }
+
+  return {
+    taskSummaryFor(orderId) {
+      const tasks = byOrderId.get((orderId || '').toString()) || [];
+      const statusCounts = {};
+      let nextDeliveryDate = null;
+      let productionDate = null;
+      for (const task of tasks) {
+        const status = task.status || 'unknown';
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+        const candidateDeliveryDate = task.delivery_date || task.scheduled_date || null;
+        if (candidateDeliveryDate && (!nextDeliveryDate || candidateDeliveryDate < nextDeliveryDate)) {
+          nextDeliveryDate = candidateDeliveryDate;
+        }
+        if (!productionDate && task.production_date) productionDate = task.production_date;
+      }
+      return {
+        count: tasks.length,
+        status_counts: statusCounts,
+        next_delivery_date: nextDeliveryDate,
+        production_date: productionDate,
+        task_ids: tasks.slice(0, 5).map(task => task.id).filter(Boolean),
+      };
+    },
+    latestSyncFor({ orderNumber, orderId }) {
+      return syncByOrderId.get((orderId || '').toString()) || syncByOrderNumber.get(normalizeOrderNum(orderNumber)) || null;
+    },
+    reviewFor({ orderNumber, orderId }) {
+      return reviewByOrderId.get((orderId || '').toString()) || reviewByOrderNumber.get(normalizeOrderNum(orderNumber)) || null;
+    },
+  };
+}
+
+function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
   if (!order || !order.shopify_order_number) return null;
   if (order.is_subscription === true || order.order_type === 'subscription' || order.source_channel === 'subscription') return null;
 
@@ -463,6 +555,21 @@ function mapNativeShopifyOrderToAdminOrder(order) {
     ? 'picked_up'
     : mapHubStatus(order.production_status || order.order_status || order.fulfillment_status || 'order_received');
   const items = Array.isArray(order.line_items) ? order.line_items : [];
+  const nativeTaskSummary = nativeContext?.taskSummaryFor(order.id) || {
+    count: 0,
+    status_counts: {},
+    next_delivery_date: null,
+    production_date: null,
+    task_ids: [],
+  };
+  const nativeLatestSyncLog = nativeContext?.latestSyncFor({
+    orderNumber: order.shopify_order_number,
+    orderId: order.id,
+  }) || null;
+  const nativeReviewQueueSummary = nativeContext?.reviewFor({
+    orderNumber: order.shopify_order_number,
+    orderId: order.id,
+  }) || null;
 
   return {
     id: `native_${order.id}`,
@@ -476,6 +583,9 @@ function mapNativeShopifyOrderToAdminOrder(order) {
     native_fulfillment_status: order.fulfillment_status || null,
     native_sync_status: order.sync_status || null,
     native_review_status: order.data_quality_status || null,
+    native_fulfillment_task_summary: nativeTaskSummary,
+    native_latest_sync_log: nativeLatestSyncLog,
+    native_review_queue_summary: nativeReviewQueueSummary,
     payment_status: order.payment_status || order.financial_status || null,
     source_channel: order.source_channel || null,
     source_type: order.source_type || null,
