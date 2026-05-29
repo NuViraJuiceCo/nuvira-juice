@@ -17,10 +17,13 @@ function ProductImageUploader({ product, onUpdated }) {
     setUploading(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      await base44.entities.Product.update(product.id, { image_url: file_url });
+      await base44.functions.invoke('updateAdminProductCatalogItem', {
+        product_id: product.id,
+        image_url: file_url,
+      });
       onUpdated();
       toast.success('Image updated!');
-    } catch (err) {
+    } catch {
       toast.error('Upload failed');
     } finally {
       setUploading(false);
@@ -57,7 +60,11 @@ function ProductRow({ product, onUpdated }) {
 
   const handleSave = async () => {
     setSaving(true);
-    await base44.entities.Product.update(product.id, { title, price: parseFloat(price) });
+    await base44.functions.invoke('updateAdminProductCatalogItem', {
+      product_id: product.id,
+      title,
+      price,
+    });
     setSaving(false);
     setEditing(false);
     onUpdated();
