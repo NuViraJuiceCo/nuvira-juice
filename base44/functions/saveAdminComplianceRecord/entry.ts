@@ -27,6 +27,15 @@ function bool(value) {
   return value === true;
 }
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function stringArray(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 30).map(item => text(item, 120)).filter(Boolean);
@@ -301,7 +310,11 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
+
     const recordType = text(body?.record_type || body?.type, 80).toLowerCase();
     if (!ALLOWED_TYPES.has(recordType)) {
       return Response.json({ success: false, error: 'unsupported_record_type' }, { status: 400 });
