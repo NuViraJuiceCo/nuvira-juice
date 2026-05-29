@@ -80,6 +80,14 @@ function formatNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function isPosCancellationPreviewRow(row) {
+  return [
+    'historical_pos_test_order_cancelled',
+    'historical_pos_test_order_needs_cancellation',
+    'historical_pos_test_order_already_cancelled',
+  ].includes(row?.reason);
+}
+
 function formatLabel(value) {
   if (!value) return 'Not set';
   return value
@@ -216,7 +224,18 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
   const summary = preview?.summary || {};
   const fetchStats = preview?.fetch_stats || {};
   const rows = Array.isArray(preview?.preview_rows) ? preview.preview_rows : [];
+  const posCancellationRows = rows.filter(isPosCancellationPreviewRow);
+  const nonPosRows = rows.filter(row => !isPosCancellationPreviewRow(row));
+  const posCancellationOrderNumbers = posCancellationRows
+    .map(row => row.order?.order_number)
+    .filter(Boolean)
+    .join(', ');
   const countsByAction = summary.counts_by_action || {};
+  const countsByReason = summary.counts_by_reason || {};
+  const posCancellationCount =
+    Number(countsByReason.historical_pos_test_order_cancelled || 0) +
+    Number(countsByReason.historical_pos_test_order_needs_cancellation || 0) +
+    Number(countsByReason.historical_pos_test_order_already_cancelled || 0);
 
   return (
     <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
@@ -264,6 +283,57 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
         </div>
       )}
 
+      {preview && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold text-amber-950">Historical POS test cancellation candidates</p>
+              <p className="text-[10px] text-amber-800 mt-0.5">
+                These rows are treated as archived/canceled historical POS tests and excluded from production demand. Live backfill still requires exact allowlisting and include_archived.
+              </p>
+            </div>
+            <StatusChip value={`${formatNumber(posCancellationCount)} POS test rows`} />
+          </div>
+          {posCancellationRows.length > 0 ? (
+            <div className="space-y-2">
+              {posCancellationOrderNumbers && (
+                <div className="rounded-lg border border-amber-200 bg-white/70 p-2">
+                  <p className="text-[10px] uppercase tracking-wider text-amber-800 font-semibold">Exact allowlist candidates</p>
+                  <p className="text-xs font-semibold text-amber-950 break-words mt-1">{posCancellationOrderNumbers}</p>
+                </div>
+              )}
+              {posCancellationRows.slice(0, 20).map((row, index) => (
+                <div key={`pos-${row.order?.order_number || index}-${row.reason}`} className="rounded-lg border border-amber-200 bg-white/80 p-3 space-y-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-amber-950">{row.order?.order_number || 'Order pending'}</p>
+                      <p className="text-[10px] text-amber-800 mt-0.5">
+                        {[
+                          row.order?.customer_name || row.order?.customer_email || null,
+                          row.order?.source_channel ? formatLabel(row.order.source_channel) : 'POS',
+                          row.order?.payment_status ? formatLabel(row.order.payment_status) : null,
+                          row.order?.total_price ? `$${Number(row.order.total_price).toFixed(2)}` : null,
+                        ].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                    <StatusChip value={row.reason} />
+                  </div>
+                  {row.order?.items?.length > 0 && (
+                    <p className="text-[10px] text-amber-900">
+                      Items: {row.order.items.map(item => `${item.quantity}x ${item.title}`).join(', ')}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-amber-900 rounded-lg border border-amber-200 bg-white/70 p-2">
+              No POS test cancellation rows were returned in the preview rows.
+            </p>
+          )}
+        </div>
+      )}
+
       {Object.keys(countsByAction).length > 0 && (
         <div className="flex flex-wrap gap-2">
           {Object.entries(countsByAction).map(([action, count]) => (
@@ -275,7 +345,7 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
       {rows.length > 0 ? (
         <div className="space-y-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Preview Rows Requiring Attention</p>
-          {rows.slice(0, 12).map((row, index) => (
+          {nonPosRows.slice(0, 12).map((row, index) => (
             <div key={`${row.order?.order_number || index}-${row.reason}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -302,6 +372,11 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
               )}
             </div>
           ))}
+          {nonPosRows.length === 0 && (
+            <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+              All returned attention rows are POS test cancellation candidates shown above.
+            </p>
+          )}
         </div>
       ) : preview ? (
         <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
