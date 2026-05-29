@@ -478,9 +478,14 @@ function isNativeMay30OperationalOrder(order) {
 
 async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const listEntity = async (entityName, sort, limit) => {
-    const entity = base44.asServiceRole?.entities?.[entityName];
-    if (!entity || typeof entity.list !== 'function') return [];
-    return entity.list(sort, limit).catch(() => []);
+    try {
+      const entity = base44.asServiceRole?.entities?.[entityName];
+      if (!entity || typeof entity.list !== 'function') return [];
+      const rows = await entity.list(sort, limit).catch(() => []);
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [];
+    }
   };
 
   const nativeOrders = await listEntity('ShopifyOrder', '-customer_order_date', 500);
