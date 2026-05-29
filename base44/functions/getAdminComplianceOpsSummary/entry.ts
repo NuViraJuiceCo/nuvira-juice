@@ -135,6 +135,47 @@ function sanitizeHubResponse(data, fallbackDateFrom, fallbackDateTo) {
   };
 }
 
+function fallbackHubUnavailableSummary(dateFrom, dateTo, reason, hubStatus = null) {
+  return {
+    success: true,
+    dry_run: true,
+    read_only: true,
+    hub_unavailable: true,
+    date_from: dateFrom,
+    date_to: dateTo,
+    generated_at: new Date().toISOString(),
+    summary: {
+      temperature: 0,
+      ph: 0,
+      ccp: 0,
+      sanitation: 0,
+      daily_checklists: 0,
+      corrective_actions: 0,
+      batch_compliance_logs: 0,
+      unified_logs: 0,
+      production_batches: 0,
+    },
+    issues: {
+      temp_out_of_range: 0,
+      ph_out_of_range: 0,
+      ccp_failed: 0,
+      sanitation_issues: 0,
+      incomplete_checklists: 0,
+      open_corrective_actions: 0,
+      failed_batch_logs: 0,
+      batches_missing_compliance_log: 0,
+      total_attention_items: 0,
+    },
+    recent_logs: [],
+    batch_compliance: [],
+    attention_batches: [],
+    warnings: [
+      sanitizeText(reason, 160) || 'Hub compliance summary is temporarily unavailable',
+      ...(hubStatus ? [`hub_status_${hubStatus}`] : []),
+    ],
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -182,10 +223,12 @@ Deno.serve(async (req) => {
     }
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({
-        error: 'Hub compliance ops summary service is not configured',
-        error_code: 'hub_not_configured',
-      }, { status: 503 });
+      return Response.json(fallbackHubUnavailableSummary(
+        dateFrom,
+        dateTo,
+        'Hub compliance ops summary service is not configured',
+        503
+      ));
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -203,10 +246,12 @@ Deno.serve(async (req) => {
 
     const hubData = await hubResponse.json().catch(() => null);
     if (!hubResponse.ok) {
-      return Response.json({
-        error: sanitizeText(hubData?.error, 160) || 'Unable to load Hub compliance ops summary',
-        hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
+      return Response.json(fallbackHubUnavailableSummary(
+        dateFrom,
+        dateTo,
+        sanitizeText(hubData?.error, 160) || 'Unable to load Hub compliance ops summary',
+        hubResponse.status
+      ));
     }
 
     return Response.json(sanitizeHubResponse(hubData, dateFrom, dateTo));
