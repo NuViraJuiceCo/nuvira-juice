@@ -89,6 +89,14 @@ function formatLabel(value) {
     .join(' ');
 }
 
+function sanitizeAdminText(value) {
+  if (!value) return '';
+  return value
+    .toString()
+    .replace(/\b(?:ch|re|pi|cs|cus|sub|evt|in|pm|seti|si|src|tok|po|li)_[A-Za-z0-9]{8,}\b/g, '[redacted]')
+    .replace(/\bgid:\/\/shopify\/[A-Za-z]+\/[A-Za-z0-9_-]+\b/g, '[redacted]');
+}
+
 function statusClass(value) {
   const key = (value || '').toString().toLowerCase();
   if (key.includes('success') || key.includes('active')) return 'bg-emerald-50 text-emerald-700 border-emerald-100';
@@ -268,7 +276,7 @@ function NativeCustomerAppContext({ context }) {
                   <StatusChip value={log.status || 'unknown'} />
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2">
-                  {[log.action ? `Action: ${formatLabel(log.action)}` : null, log.reason ? `Reason: ${log.reason}` : null].filter(Boolean).join(' · ') || 'No reason returned'}
+                  {[log.action ? `Action: ${formatLabel(log.action)}` : null, log.reason ? `Reason: ${sanitizeAdminText(log.reason)}` : null].filter(Boolean).join(' · ') || 'No reason returned'}
                 </p>
               </div>
             ))}
