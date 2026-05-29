@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Send, Plus, Bell, BellOff, Users, CheckCircle2, AlertCircle, Loader2, FlaskConical, Smartphone, RotateCw } from 'lucide-react';
@@ -110,7 +110,6 @@ function formatStatusReason(reason) {
 export default function NotificationCampaigns() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
     title: '',
@@ -119,9 +118,6 @@ export default function NotificationCampaigns() {
     notification_type: 'promotion',
     deep_link: '',
   });
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [pendingCampaignId, setPendingCampaignId] = useState(null);
   const [adminPushStatus, setAdminPushStatus] = useState({
     loading: true,
     supported: false,
@@ -234,75 +230,7 @@ export default function NotificationCampaigns() {
   };
 
   const handleCreateAndSend = async () => {
-    if (!CAMPAIGN_SENDS_ENABLED) {
-      toast.error('Notification campaigns are disabled during the May 30 launch freeze.');
-      return;
-    }
-
-    if (!form.title || !form.message) {
-      toast.error('Title and message are required.');
-      return;
-    }
-    setSending(true);
-    try {
-      // Step 1: Create campaign record
-      const campaign = await base44.entities.NotificationCampaign.create({
-        title: form.title,
-        message: form.message,
-        audience: form.audience,
-        notification_type: form.notification_type,
-        deep_link: form.deep_link || null,
-        status: 'draft',
-        created_by: user?.email,
-      });
-
-      if (form.audience !== 'test_only') {
-        // Non-test: show confirmation dialog first
-        setPendingCampaignId(campaign.id);
-        setShowConfirm(true);
-        setSending(false);
-        return;
-      }
-
-      // Test-only: send immediately
-      const res = await base44.functions.invoke('sendNotificationCampaign', {
-        campaign_id: campaign.id,
-        confirm: true,
-      });
-      toast.success(`Test notification sent to ${user?.email}`);
-      queryClient.invalidateQueries({ queryKey: ['notification-campaigns'] });
-      setForm({ title: '', message: '', audience: 'test_only', notification_type: 'promotion', deep_link: '' });
-    } catch (err) {
-      toast.error(`Failed: ${err.message}`);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleConfirmedSend = async () => {
-    if (!CAMPAIGN_SENDS_ENABLED) {
-      toast.error('Notification campaigns are disabled during the May 30 launch freeze.');
-      return;
-    }
-
-    if (!pendingCampaignId) return;
-    setSending(true);
-    setShowConfirm(false);
-    try {
-      const res = await base44.functions.invoke('sendNotificationCampaign', {
-        campaign_id: pendingCampaignId,
-        confirm: true,
-      });
-      const d = res.data;
-      toast.success(`Campaign sent! ${d.sent_count} notifications delivered.`);
-      queryClient.invalidateQueries({ queryKey: ['notification-campaigns'] });
-      setPendingCampaignId(null);
-      setForm({ title: '', message: '', audience: 'test_only', notification_type: 'promotion', deep_link: '' });
-    } catch (err) {
-      toast.error(`Send failed: ${err.message}`);
-    } finally {
-      setSending(false);
-    }
+    toast.error('Notification campaign creation and customer sends are disabled during the May 30 launch freeze.');
   };
 
   if (user?.role !== 'admin') {
@@ -531,11 +459,11 @@ export default function NotificationCampaigns() {
 
             <Button
               onClick={handleCreateAndSend}
-              disabled={!CAMPAIGN_SENDS_ENABLED || sending || !form.title || !form.message}
+              disabled={!CAMPAIGN_SENDS_ENABLED}
               className="w-full h-11 rounded-xl font-semibold gap-2"
             >
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : form.audience === 'test_only' ? <FlaskConical className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-              {sending ? 'Sending...' : form.audience === 'test_only' ? 'Send Test to Me' : 'Review & Send'}
+              {form.audience === 'test_only' ? <FlaskConical className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+              Campaign Sends Frozen
             </Button>
           </div>
         </div>
@@ -573,24 +501,6 @@ export default function NotificationCampaigns() {
         )}
       </div>
 
-      {/* Confirmation Modal */}
-      {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm p-4">
-          <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-card rounded-3xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="font-heading text-lg font-bold mb-2">Confirm Broadcast</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              You're about to send <strong>"{form.title}"</strong> to <strong>{AUDIENCE_LABELS[form.audience]}</strong>. This cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setShowConfirm(false)} className="flex-1 rounded-xl">Cancel</Button>
-              <Button onClick={handleConfirmedSend} disabled={!CAMPAIGN_SENDS_ENABLED || sending} className="flex-1 rounded-xl gap-2">
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Send Now
-              </Button>
-            </div>
-          </motion.div>
-        </div>
-      )}
     </div>
   );
 }
