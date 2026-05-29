@@ -68,14 +68,24 @@ function sanitizeRouteStop(stop) {
 
 Deno.serve(async (req) => {
   try {
+    const body = await req.json().catch(() => ({}));
+    const { date, optimize, stops: explicitStops } = body; // stops: pre-filtered Hub stops from frontend
+
     if (Deno.env.get('ENABLE_DELIVERY_ROUTE_OPTIMIZATION') !== 'true') {
+      const safeExplicitStops = Array.isArray(explicitStops)
+        ? explicitStops.slice(0, 100).map(sanitizeRouteStop)
+        : [];
+
       return Response.json({
         success: true,
         skipped: true,
-        orders: [],
+        orders: safeExplicitStops,
         optimized_orders: null,
+        static_route_available: safeExplicitStops.length > 0,
         reason: 'delivery_route_optimization_disabled',
-        message: 'Delivery route optimization is disabled. Enable the route optimization gate to calculate an admin route preview.',
+        message: safeExplicitStops.length > 0
+          ? 'Delivery route optimization is disabled. Static route manifest returned without calling Google Maps.'
+          : 'Delivery route optimization is disabled. Enable the route optimization gate to calculate an admin route preview.',
       });
     }
 
@@ -84,9 +94,6 @@ Deno.serve(async (req) => {
     if (!user || (user.role !== 'driver' && user.role !== 'admin')) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const body = await req.json().catch(() => ({}));
-    const { date, optimize, stops: explicitStops } = body; // stops: pre-filtered Hub stops from frontend
 
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     if (!apiKey) {

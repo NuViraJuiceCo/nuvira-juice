@@ -7,6 +7,8 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
+  Copy,
+  ExternalLink,
   Image as ImageIcon,
   MapPin,
   Navigation,
@@ -17,6 +19,8 @@ import {
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+
+const NUVIRA_BASE_ADDRESS = '619 N Main St Unit 3, O\'Fallon, MO 63366';
 
 function todayDate() {
   const today = new Date();
@@ -124,6 +128,36 @@ function routeStopPayload(stop) {
   };
 }
 
+function routeAddressStops(stops = []) {
+  return stops.filter(stop => stop?.delivery_address && !stop?.missing_address && !stop?.is_return_stop);
+}
+
+function routeManifestText(stops = []) {
+  const addressStops = routeAddressStops(stops);
+  return [
+    `Start: NuVira Base - ${NUVIRA_BASE_ADDRESS}`,
+    ...addressStops.map((stop, index) => (
+      `${index + 1}. ${stop.order_number || 'Order pending'} - ${stop.customer_name || 'Customer pending'} - ${stop.delivery_address}`
+    )),
+    `Return: NuVira Base - ${NUVIRA_BASE_ADDRESS}`,
+  ].join('\n');
+}
+
+function googleMapsRouteUrl(stops = []) {
+  const addressStops = routeAddressStops(stops);
+  if (addressStops.length === 0) return null;
+
+  const params = new URLSearchParams({
+    api: '1',
+    origin: NUVIRA_BASE_ADDRESS,
+    destination: NUVIRA_BASE_ADDRESS,
+    travelmode: 'driving',
+  });
+
+  params.set('waypoints', addressStops.map(stop => stop.delivery_address).join('|'));
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 function formatDistanceMeters(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
@@ -198,6 +232,19 @@ function RouteOptimizationPanel({ deliveryDate, stops }) {
   }
 
   const optimizedStops = Array.isArray(result?.optimized_orders) ? result.optimized_orders : [];
+  const returnedStops = Array.isArray(result?.orders) ? result.orders : [];
+  const routePreviewStops = optimizedStops.length > 0 ? optimizedStops : returnedStops;
+  const mapsUrl = googleMapsRouteUrl(routePreviewStops.length > 0 ? routePreviewStops : eligibleStops);
+
+  async function copyRouteManifest() {
+    const text = routeManifestText(routePreviewStops.length > 0 ? routePreviewStops : eligibleStops);
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage({ type: 'success', text: 'Route manifest copied. No route order was saved.' });
+    } catch {
+      setMessage({ type: 'error', text: 'Unable to copy route manifest.' });
+    }
+  }
 
   return (
     <div className="rounded-xl border border-border/50 bg-card p-3 space-y-3">
@@ -236,6 +283,38 @@ function RouteOptimizationPanel({ deliveryDate, stops }) {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={copyRouteManifest}
+          disabled={eligibleStops.length === 0}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground disabled:opacity-60"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Copy Stops
+        </button>
+        {mapsUrl ? (
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Open Static Route
+          </a>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground opacity-60"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Open Static Route
+          </button>
+        )}
+      </div>
+
       {eligibleStops.length < 2 && (
         <p className="text-xs text-muted-foreground">
           At least two active stops with delivery addresses are required to optimize a route.
@@ -254,17 +333,19 @@ function RouteOptimizationPanel({ deliveryDate, stops }) {
         </p>
       )}
 
-      {optimizedStops.length > 0 && (
+      {routePreviewStops.length > 0 && (
         <div className="rounded-lg border border-border/50 bg-background p-2 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Previewed Stop Order</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              {optimizedStops.length > 0 ? 'Previewed Stop Order' : 'Static Stop Manifest'}
+            </p>
             <p className="text-[10px] text-muted-foreground">
               {result?.total_distance_miles ? `${result.total_distance_miles} mi` : 'Distance pending'}
               {result?.total_duration_minutes ? ` · ${result.total_duration_minutes} min` : ''}
             </p>
           </div>
           <div className="space-y-1.5">
-            {optimizedStops.map((stop, index) => (
+            {routePreviewStops.map((stop, index) => (
               <div
                 key={stop.task_id || stop.order_number || `route-stop-${index}`}
                 className="rounded-md bg-card px-2 py-1.5 text-xs"
