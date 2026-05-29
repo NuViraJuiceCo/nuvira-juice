@@ -12,6 +12,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
     if (!user) {
@@ -22,23 +26,9 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { order_number } = body;
-    let orderSummary = null;
-
-    if (order_number) {
-      const orders = await base44.asServiceRole.entities.Order.filter({ order_number });
-      const order = orders?.[0] || null;
-      if (order) {
-        orderSummary = {
-          id: order.id,
-          order_number: order.order_number,
-          customer_email: order.customer_email || null,
-          status: order.status || null,
-          payment_status: order.payment_status || null,
-          payment_captured: order.payment_captured === true,
-        };
-      }
-    }
+    const orderNumber = typeof body.order_number === 'string'
+      ? body.order_number.trim().replace(/^#/, '').toUpperCase().slice(0, 80)
+      : null;
 
     console.log('[manualPushOrderToHub] Deprecated function called; no Hub mutation performed. Use recoverStuckOrder.');
 
@@ -47,13 +37,13 @@ Deno.serve(async (req) => {
       deprecated: true,
       replacement: 'recoverStuckOrder',
       mutated: false,
-      order_number,
-      order_found: !!orderSummary,
-      order: orderSummary,
+      order_number: orderNumber,
+      live_lookup_performed: false,
       message: 'manualPushOrderToHub is deprecated. Use recoverStuckOrder for approved one-order recovery.',
     }, { status: 410 });
   } catch (error) {
-    console.error('[ManualPush] Error:', error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error || 'unknown');
+    console.error('[ManualPush] Error:', message);
+    return Response.json({ error: 'manual_push_deprecated' }, { status: 410 });
   }
 });
