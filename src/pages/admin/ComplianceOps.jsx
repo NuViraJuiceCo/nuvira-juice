@@ -150,6 +150,26 @@ function RangeControls({ dateFrom, dateTo, setDateFrom, setDateTo, rangeError })
 
 function AttentionList({ data }) {
   const issues = data?.issues || {};
+
+  if (data?.hub_unavailable) {
+    return (
+      <div className="rounded-xl border border-amber-300 bg-amber-100 p-4 text-amber-950">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-black">Hub compliance summary is temporarily unavailable</p>
+            <p className="text-xs font-medium opacity-80 mt-0.5">
+              The page is still usable, but official compliance records should be checked in the Hub fallback workflow until this summary reconnects.
+            </p>
+            {Array.isArray(data?.warnings) && data.warnings.length > 0 && (
+              <p className="text-[10px] font-semibold opacity-75 mt-2">{data.warnings.join(' · ')}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const entries = [
     ['temp_out_of_range', 'Temperature out of range'],
     ['ph_out_of_range', 'pH out of range'],
