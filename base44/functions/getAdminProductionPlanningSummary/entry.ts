@@ -450,13 +450,17 @@ function isNativeMay30OperationalOrder(order) {
 }
 
 async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
-  const nativeOrders = await base44.asServiceRole.entities.ShopifyOrder
-    .list('-customer_order_date', 500)
-    .catch(() => []);
-  const recipes = await base44.asServiceRole.entities.Recipe.list('product_name', 500).catch(() => []);
-  const bundles = await base44.asServiceRole.entities.Bundle.list('bundle_name', 500).catch(() => []);
-  const products = await base44.asServiceRole.entities.Product.list('title', 500).catch(() => []);
-  const inventoryItems = await base44.asServiceRole.entities.InventoryItem.list('ingredient', 500).catch(() => []);
+  const listEntity = async (entityName, sort, limit) => {
+    const entity = base44.asServiceRole?.entities?.[entityName];
+    if (!entity || typeof entity.list !== 'function') return [];
+    return entity.list(sort, limit).catch(() => []);
+  };
+
+  const nativeOrders = await listEntity('ShopifyOrder', '-customer_order_date', 500);
+  const recipes = await listEntity('Recipe', 'product_name', 500);
+  const bundles = await listEntity('Bundle', 'bundle_name', 500);
+  const products = await listEntity('Product', 'title', 500);
+  const inventoryItems = await listEntity('InventoryItem', 'ingredient', 500);
 
   const productByDate = new Map();
   const orderNumbersByDate = new Map();
