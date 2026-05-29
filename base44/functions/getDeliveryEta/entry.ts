@@ -17,6 +17,14 @@ function safeErrorMessage(error) {
     .slice(0, 180);
 }
 
+async function readJsonBody(req) {
+  try {
+    return { ok: true, body: await req.json() };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
 async function requireAuthenticatedUser(base44) {
   const user = await base44.auth.me().catch(() => null);
   if (!user?.email) {
@@ -41,7 +49,11 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(req);
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body;
     const { order_id } = body;
 
     if (!order_id || typeof order_id !== 'string') {
