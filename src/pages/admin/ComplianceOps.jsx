@@ -143,7 +143,7 @@ export default function ComplianceOps() {
           </TabsContent>
 
           <TabsContent value="documents">
-            <ComplianceDocumentsTab />
+            <ComplianceDocumentsTab nativeCompliance={nativeCompliance} />
           </TabsContent>
 
           <TabsContent value="temperature">

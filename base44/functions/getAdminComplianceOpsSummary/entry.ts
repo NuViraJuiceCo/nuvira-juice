@@ -275,6 +275,23 @@ function sanitizeHaccpPlanReview(row) {
   ]);
 }
 
+function sanitizeComplianceDocument(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['name', 'name', 160],
+    ['type', 'type', 80],
+    ['status', 'status', 80],
+    ['expiry_date', 'expiry_date', 40],
+    ['issued_date', 'issued_date', 40],
+    ['owner', 'owner', 160],
+    ['issuing_body', 'issuing_body', 160],
+    ['file_url', 'file_url', 500],
+    ['reminder_days', 'reminder_days'],
+    ['notes', 'notes', 1000],
+    ['updated_date', 'updated_date', 80],
+  ]);
+}
+
 function newestFirst(rows, dateField, limit = 50) {
   return [...(Array.isArray(rows) ? rows : [])]
     .sort((a, b) => String(b?.[dateField] || b?.updated_date || b?.created_date || '').localeCompare(String(a?.[dateField] || a?.updated_date || a?.created_date || '')))
@@ -344,6 +361,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     unifiedResult,
     labelResult,
     haccpResult,
+    documentResult,
   ] = await Promise.all([
     safeEntityList(base44, 'TemperatureLog', '-log_date', 500),
     safeEntityList(base44, 'pHLog', '-log_date', 500),
@@ -356,6 +374,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     safeEntityList(base44, 'ComplianceLog', '-log_date', 500),
     safeEntityList(base44, 'LabelAllergenReview', '-updated_date', 100),
     safeEntityList(base44, 'HACCPPlanReview', '-review_date', 100),
+    safeEntityList(base44, 'ComplianceDoc', '-expiry_date', 100),
   ]);
 
   const warnings = [
@@ -370,6 +389,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     unifiedResult.warning,
     labelResult.warning,
     haccpResult.warning,
+    documentResult.warning,
   ].filter(Boolean);
 
   const temperature = temperatureResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
@@ -383,6 +403,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
   const unified = unifiedResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
   const labelReviews = labelResult.rows;
   const haccpReviews = haccpResult.rows;
+  const complianceDocuments = documentResult.rows;
 
   const recentLogs = [
     ...temperature.map(row => nativeComplianceLog('TemperatureLog', row, 'temperature')),
@@ -436,6 +457,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
       unified_logs: unified.length,
       label_allergen_reviews: labelReviews.length,
       haccp_plan_reviews: haccpReviews.length,
+      compliance_documents: complianceDocuments.length,
     },
     issues: {
       ...issues,
@@ -453,6 +475,7 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
       batch_compliance: newestFirst(batch, 'date').map(sanitizeBatchComplianceRecord),
       label_allergen_reviews: newestFirst(labelReviews, 'updated_date', 100).map(sanitizeLabelAllergenReview),
       haccp_plan_reviews: newestFirst(haccpReviews, 'review_date', 100).map(sanitizeHaccpPlanReview),
+      compliance_documents: newestFirst(complianceDocuments, 'expiry_date', 100).map(sanitizeComplianceDocument),
     },
     warnings,
   };
