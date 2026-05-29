@@ -8,6 +8,8 @@ const ALLOWED_TYPES = new Set([
   'corrective_action',
   'daily_checklist',
   'unified',
+  'label_allergen',
+  'haccp_plan',
 ]);
 
 function text(value, max = 220) {
@@ -23,6 +25,11 @@ function number(value, fallback = 0) {
 
 function bool(value) {
   return value === true;
+}
+
+function stringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 30).map(item => text(item, 120)).filter(Boolean);
 }
 
 function todayIso() {
@@ -175,6 +182,55 @@ function unifiedRecord(data, user) {
   });
 }
 
+function labelAllergenRecord(data) {
+  return compact({
+    product_name: text(data?.product_name, 160),
+    label_version: text(data?.label_version, 80),
+    label_file_url: text(data?.label_file_url, 500),
+    ingredient_statement: text(data?.ingredient_statement, 2000),
+    allergen_statement: text(data?.allergen_statement, 1000),
+    contains_allergens: bool(data?.contains_allergens),
+    allergens_present: stringArray(data?.allergens_present),
+    may_contain_statement: text(data?.may_contain_statement, 1000),
+    nutrition_label_status: text(data?.nutrition_label_status || 'Not Required', 80),
+    net_volume: text(data?.net_volume, 80),
+    business_name_and_address: text(data?.business_name_and_address, 500),
+    barcode_or_sku: text(data?.barcode_or_sku, 120),
+    review_status: text(data?.review_status || 'Pending', 80),
+    reviewed_by: text(data?.reviewed_by, 160),
+    review_date: text(data?.review_date, 40),
+    approval_status: text(data?.approval_status || 'Pending', 80),
+    approved_by: text(data?.approved_by, 160),
+    approval_date: text(data?.approval_date, 40),
+    next_review_date: text(data?.next_review_date, 40),
+    notes: text(data?.notes, 2000),
+  });
+}
+
+function haccpPlanRecord(data) {
+  return compact({
+    plan_version: text(data?.plan_version, 80),
+    review_period: text(data?.review_period, 120),
+    review_date: text(data?.review_date, 40),
+    reviewed_by: text(data?.reviewed_by, 160),
+    approval_status: text(data?.approval_status || 'Pending', 80),
+    approved_by: text(data?.approved_by, 160),
+    approval_date: text(data?.approval_date, 40),
+    hazard_analysis_reviewed: bool(data?.hazard_analysis_reviewed),
+    ccp_steps_reviewed: bool(data?.ccp_steps_reviewed),
+    critical_limits_reviewed: bool(data?.critical_limits_reviewed),
+    monitoring_procedures_reviewed: bool(data?.monitoring_procedures_reviewed),
+    corrective_actions_reviewed: bool(data?.corrective_actions_reviewed),
+    verification_procedures_reviewed: bool(data?.verification_procedures_reviewed),
+    recordkeeping_reviewed: bool(data?.recordkeeping_reviewed),
+    changes_made: bool(data?.changes_made),
+    change_summary: text(data?.change_summary, 2000),
+    linked_document_url: text(data?.linked_document_url, 500),
+    next_review_date: text(data?.next_review_date, 40),
+    notes: text(data?.notes, 2000),
+  });
+}
+
 function buildRecord(recordType, data, user) {
   if (recordType === 'temperature') return { entity: 'TemperatureLog', record: temperatureRecord(data, user) };
   if (recordType === 'ph') return { entity: 'pHLog', record: phRecord(data, user) };
@@ -182,6 +238,8 @@ function buildRecord(recordType, data, user) {
   if (recordType === 'sanitation') return { entity: 'SanitationLog', record: sanitationRecord(data, user) };
   if (recordType === 'corrective_action') return { entity: 'CorrectiveActionLog', record: correctiveRecord(data, user) };
   if (recordType === 'daily_checklist') return { entity: 'DailyChecklist', record: checklistRecord(data, user) };
+  if (recordType === 'label_allergen') return { entity: 'LabelAllergenReview', record: labelAllergenRecord(data) };
+  if (recordType === 'haccp_plan') return { entity: 'HACCPPlanReview', record: haccpPlanRecord(data) };
   return { entity: 'ComplianceLog', record: unifiedRecord(data, user) };
 }
 
@@ -192,6 +250,8 @@ function validate(recordType, record) {
   if (recordType === 'sanitation' && (!record.cleaned || !record.sanitized)) return 'sanitation_cleaned_and_sanitized_required';
   if (recordType === 'corrective_action' && !record.corrective_action_taken) return 'corrective_action_required';
   if (recordType === 'unified' && !record.log_type) return 'compliance_log_type_required';
+  if (recordType === 'label_allergen' && !record.product_name) return 'product_name_required';
+  if (recordType === 'haccp_plan' && (!record.plan_version || !record.review_date)) return 'haccp_plan_version_and_review_date_required';
   return null;
 }
 
@@ -262,7 +322,7 @@ Deno.serve(async (req) => {
     let action = 'created';
     let saved;
     const existingId = text(body?.existing_id || data?.id, 140);
-    if (recordType === 'daily_checklist' && existingId && entityApi.update) {
+    if (['daily_checklist', 'label_allergen', 'haccp_plan'].includes(recordType) && existingId && entityApi.update) {
       saved = await entityApi.update(existingId, record);
       action = 'updated';
     } else {

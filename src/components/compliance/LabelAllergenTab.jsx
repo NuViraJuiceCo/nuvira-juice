@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,12 +24,13 @@ function LabelForm({ existing, onClose }) {
   const handleSave = async () => {
     if (!form.product_name) return;
     setSaving(true);
-    if (existing?.id) {
-      await base44.entities.LabelAllergenReview.update(existing.id, form);
-    } else {
-      await base44.entities.LabelAllergenReview.create(form);
-    }
+    await base44.functions.invoke('saveAdminComplianceRecord', {
+      record_type: 'label_allergen',
+      existing_id: existing?.id || null,
+      data: form,
+    });
     qc.invalidateQueries({ queryKey: ['label_allergen_reviews'] });
+    qc.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
     setSaving(false);
     onClose();
   };
@@ -112,14 +113,11 @@ function LabelForm({ existing, onClose }) {
   );
 }
 
-export default function LabelAllergenTab() {
+export default function LabelAllergenTab({ nativeCompliance }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-
-  const { data: records = [], isLoading } = useQuery({
-    queryKey: ['label_allergen_reviews'],
-    queryFn: () => base44.entities.LabelAllergenReview.list('-updated_date', 100),
-  });
+  const records = nativeCompliance?.records?.label_allergen_reviews || [];
+  const isLoading = !nativeCompliance;
 
   if (showForm || editing) {
     return (
@@ -142,7 +140,7 @@ export default function LabelAllergenTab() {
         </Button>
       </div>
 
-      {isLoading && <p className="text-muted-foreground">Loading...</p>}
+      {isLoading && <p className="text-muted-foreground">Loading native compliance records...</p>}
 
       {!isLoading && records.length === 0 && (
         <Card className="border-dashed">

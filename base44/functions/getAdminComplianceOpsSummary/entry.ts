@@ -220,6 +220,61 @@ function sanitizeBatchComplianceRecord(row) {
   ]);
 }
 
+function sanitizeLabelAllergenReview(row) {
+  return {
+    ...sanitizeRecord(row, [
+      ['id', 'id', 140],
+      ['product_name', 'product_name', 160],
+      ['label_version', 'label_version', 80],
+      ['label_file_url', 'label_file_url', 500],
+      ['ingredient_statement', 'ingredient_statement', 2000],
+      ['allergen_statement', 'allergen_statement', 1000],
+      ['contains_allergens', 'contains_allergens'],
+      ['may_contain_statement', 'may_contain_statement', 1000],
+      ['nutrition_label_status', 'nutrition_label_status', 80],
+      ['net_volume', 'net_volume', 80],
+      ['business_name_and_address', 'business_name_and_address', 500],
+      ['barcode_or_sku', 'barcode_or_sku', 120],
+      ['review_status', 'review_status', 80],
+      ['reviewed_by', 'reviewed_by', 160],
+      ['review_date', 'review_date', 40],
+      ['approval_status', 'approval_status', 80],
+      ['approved_by', 'approved_by', 160],
+      ['approval_date', 'approval_date', 40],
+      ['next_review_date', 'next_review_date', 40],
+      ['notes', 'notes', 2000],
+      ['updated_date', 'updated_date', 80],
+    ]),
+    allergens_present: safeStringArray(row?.allergens_present),
+  };
+}
+
+function sanitizeHaccpPlanReview(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['plan_version', 'plan_version', 80],
+    ['review_period', 'review_period', 120],
+    ['review_date', 'review_date', 40],
+    ['reviewed_by', 'reviewed_by', 160],
+    ['approval_status', 'approval_status', 80],
+    ['approved_by', 'approved_by', 160],
+    ['approval_date', 'approval_date', 40],
+    ['hazard_analysis_reviewed', 'hazard_analysis_reviewed'],
+    ['ccp_steps_reviewed', 'ccp_steps_reviewed'],
+    ['critical_limits_reviewed', 'critical_limits_reviewed'],
+    ['monitoring_procedures_reviewed', 'monitoring_procedures_reviewed'],
+    ['corrective_actions_reviewed', 'corrective_actions_reviewed'],
+    ['verification_procedures_reviewed', 'verification_procedures_reviewed'],
+    ['recordkeeping_reviewed', 'recordkeeping_reviewed'],
+    ['changes_made', 'changes_made'],
+    ['change_summary', 'change_summary', 2000],
+    ['linked_document_url', 'linked_document_url', 500],
+    ['next_review_date', 'next_review_date', 40],
+    ['notes', 'notes', 2000],
+    ['updated_date', 'updated_date', 80],
+  ]);
+}
+
 function newestFirst(rows, dateField, limit = 50) {
   return [...(Array.isArray(rows) ? rows : [])]
     .sort((a, b) => String(b?.[dateField] || b?.updated_date || b?.created_date || '').localeCompare(String(a?.[dateField] || a?.updated_date || a?.created_date || '')))
@@ -287,6 +342,8 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     batchResult,
     alertResult,
     unifiedResult,
+    labelResult,
+    haccpResult,
   ] = await Promise.all([
     safeEntityList(base44, 'TemperatureLog', '-log_date', 500),
     safeEntityList(base44, 'pHLog', '-log_date', 500),
@@ -297,6 +354,8 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     safeEntityList(base44, 'BatchComplianceLog', '-date', 500),
     safeEntityList(base44, 'ComplianceAlert', '-triggered_date', 500),
     safeEntityList(base44, 'ComplianceLog', '-log_date', 500),
+    safeEntityList(base44, 'LabelAllergenReview', '-updated_date', 100),
+    safeEntityList(base44, 'HACCPPlanReview', '-review_date', 100),
   ]);
 
   const warnings = [
@@ -309,6 +368,8 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     batchResult.warning,
     alertResult.warning,
     unifiedResult.warning,
+    labelResult.warning,
+    haccpResult.warning,
   ].filter(Boolean);
 
   const temperature = temperatureResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
@@ -320,6 +381,8 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
   const batch = batchResult.rows.filter(row => inDateRange(row.date, dateFrom, dateTo));
   const alerts = alertResult.rows.filter(row => inDateRange(row.triggered_date, dateFrom, dateTo));
   const unified = unifiedResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const labelReviews = labelResult.rows;
+  const haccpReviews = haccpResult.rows;
 
   const recentLogs = [
     ...temperature.map(row => nativeComplianceLog('TemperatureLog', row, 'temperature')),
@@ -371,6 +434,8 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
       batch_compliance_logs: batch.length,
       compliance_alerts: alerts.length,
       unified_logs: unified.length,
+      label_allergen_reviews: labelReviews.length,
+      haccp_plan_reviews: haccpReviews.length,
     },
     issues: {
       ...issues,
@@ -386,6 +451,8 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
       corrective_actions: newestFirst(corrective, 'log_date').map(sanitizeCorrectiveRecord),
       daily_checklists: newestFirst(checklists, 'checklist_date').map(sanitizeChecklistRecord),
       batch_compliance: newestFirst(batch, 'date').map(sanitizeBatchComplianceRecord),
+      label_allergen_reviews: newestFirst(labelReviews, 'updated_date', 100).map(sanitizeLabelAllergenReview),
+      haccp_plan_reviews: newestFirst(haccpReviews, 'review_date', 100).map(sanitizeHaccpPlanReview),
     },
     warnings,
   };
