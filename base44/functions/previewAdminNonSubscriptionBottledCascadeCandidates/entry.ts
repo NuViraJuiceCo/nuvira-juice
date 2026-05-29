@@ -62,6 +62,15 @@ function findUnsupportedBodyKey(body) {
   return null;
 }
 
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
 function safeStringArray(value, itemLength = 120) {
   if (!Array.isArray(value)) return [];
   return value
@@ -156,7 +165,11 @@ Deno.serve(async (req) => {
     if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
     if (req.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 });
 
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
+
     const unsupportedKey = findUnsupportedBodyKey(body);
     if (unsupportedKey) {
       return Response.json({
