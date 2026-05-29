@@ -45,21 +45,10 @@ export default function CCPLogForm({ onClose }) {
 
     setIsSubmitting(true);
     try {
-      await base44.entities.CCPLog.create({
-        ...formData,
+      await base44.functions.invoke('saveAdminComplianceRecord', {
+        record_type: 'ccp',
+        data: formData,
       });
-
-      // If CCP fails, trigger critical alert
-      if (formData.result === 'Fail') {
-        await base44.entities.ComplianceAlert.create({
-          alert_type: 'Failure',
-          severity: 'Critical',
-          message: `⚠️ CCP FAILURE: ${formData.ccp_point} failed for batch ${formData.batch_id}. Immediate corrective action required.`,
-          triggered_date: formData.log_date,
-          triggered_time: formData.log_time,
-          status: 'Active',
-        });
-      }
 
       queryClient.invalidateQueries({ queryKey: ['CCP_logs'] });
       queryClient.invalidateQueries({ queryKey: ['CCP_logs_today'] });

@@ -39,8 +39,9 @@ export default function SanitationLogForm({ onClose }) {
 
     setIsSubmitting(true);
     try {
-      await base44.entities.SanitationLog.create({
-        ...formData,
+      await base44.functions.invoke('saveAdminComplianceRecord', {
+        record_type: 'sanitation',
+        data: formData,
       });
 
       queryClient.invalidateQueries({ queryKey: ['sanitation_logs'] });

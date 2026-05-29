@@ -140,7 +140,10 @@ export default function UnifiedComplianceForm() {
         within_range: getStatus(activeTab, formData) === 'pass' // Add within_range for compliance schema
       };
 
-      await base44.entities.ComplianceLog.create(logEntry);
+      await base44.functions.invoke('saveAdminComplianceRecord', {
+        record_type: 'unified',
+        data: logEntry,
+      });
       setMessage('✓ Log saved successfully');
       setFormData(LOG_TYPES[activeTab].defaults);
 

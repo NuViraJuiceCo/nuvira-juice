@@ -40,8 +40,9 @@ export default function CorrectiveActionForm({ onClose }) {
 
     setIsSubmitting(true);
     try {
-      await base44.entities.CorrectiveActionLog.create({
-        ...formData,
+      await base44.functions.invoke('saveAdminComplianceRecord', {
+        record_type: 'corrective_action',
+        data: formData,
       });
 
       queryClient.invalidateQueries({ queryKey: ['corrective_logs'] });

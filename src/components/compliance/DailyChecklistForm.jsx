@@ -87,11 +87,11 @@ export default function DailyChecklistForm() {
         completed_at: new Date().toISOString(),
       };
 
-      if (existingChecklist) {
-        await base44.entities.DailyChecklist.update(existingChecklist.id, dataToSave);
-      } else {
-        await base44.entities.DailyChecklist.create(dataToSave);
-      }
+      await base44.functions.invoke('saveAdminComplianceRecord', {
+        record_type: 'daily_checklist',
+        existing_id: existingChecklist?.id || null,
+        data: dataToSave,
+      });
 
       queryClient.invalidateQueries({ queryKey: ['checklists_today'] });
       queryClient.invalidateQueries({ queryKey: ['daily_checklists_today'] });

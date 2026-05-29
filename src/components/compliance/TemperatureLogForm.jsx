@@ -56,22 +56,15 @@ export default function TemperatureLogForm({ onClose }) {
       const temp = parseFloat(formData.temperature);
       const isInRange = temp >= formData.min_range && temp <= formData.max_range;
 
-      await base44.entities.TemperatureLog.create({
-        ...formData,
-        temperature: temp,
-        within_range: isInRange,
-        production_date: formData.log_date,
+      await base44.functions.invoke('saveAdminComplianceRecord', {
+        record_type: 'temperature',
+        data: {
+          ...formData,
+          temperature: temp,
+          within_range: isInRange,
+          production_date: formData.log_date,
+        },
       });
-
-      // If out of range, create corrective action prompt
-      if (!isInRange) {
-        await base44.functions.invoke('validateComplianceEntry', {
-          log_type: 'temperature',
-          data: formData,
-          min_value: formData.min_range,
-          max_value: formData.max_range,
-        });
-      }
 
       queryClient.invalidateQueries({ queryKey: ['temperature_logs'] });
       queryClient.invalidateQueries({ queryKey: ['temp_logs_today'] });
