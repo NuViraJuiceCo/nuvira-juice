@@ -251,6 +251,24 @@ function mergeDateGroups(hubDates, nativeDates) {
   });
 }
 
+async function fetchHubJson(url, headers) {
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      return { ok: false, warning: `hub_production_planning_unavailable:${response.status}`, data: null };
+    }
+
+    const data = await response.json().catch(() => null);
+    return { ok: true, warning: null, data };
+  } catch {
+    return { ok: false, warning: 'hub_production_planning_unavailable:fetch_failed', data: null };
+  }
+}
+
 function emptyNativePlanning() {
   return {
     summary: {
@@ -778,17 +796,15 @@ Deno.serve(async (req) => {
         params.set('preset', preset);
       }
 
-      const hubResponse = await fetch(`${hubBase}/functions/getProductionPlanningSummaryForCustomerApp?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-        },
-      });
+      const hubResult = await fetchHubJson(
+        `${hubBase}/functions/getProductionPlanningSummaryForCustomerApp?${params.toString()}`,
+        { Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}` },
+      );
 
-      if (!hubResponse.ok) {
-        warnings.push(`hub_production_planning_unavailable:${hubResponse.status}`);
+      if (!hubResult.ok) {
+        warnings.push(hubResult.warning);
       } else {
-        const parsedHubData = await hubResponse.json().catch(() => null);
+        const parsedHubData = hubResult.data;
         if (
           !parsedHubData ||
           parsedHubData.success !== true ||
