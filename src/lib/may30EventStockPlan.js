@@ -8,8 +8,8 @@ export const MAY30_EVENT_STOCK_PLAN = {
     { productName: 'Oasis', quantity: 45, category: 'Cold-pressed juice' },
     { productName: 'Aura', quantity: 45, category: 'Cold-pressed juice' },
     { productName: 'Re-Nu', quantity: 15, category: 'Cold-pressed juice' },
-    { productName: 'Hydration Shot', quantity: 5, category: 'Shot' },
-    { productName: 'Reset Shot', quantity: 5, category: 'Shot' },
+    { productName: 'Hydration Shot', quantity: 9, category: 'Shot' },
+    { productName: 'Reset Shot', quantity: 1, category: 'Shot' },
     { productName: 'Radiance Shot', quantity: 5, category: 'Shot' },
   ],
 };
