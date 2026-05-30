@@ -54,12 +54,16 @@ export const EVENT_CHECKIN_SESSIONS = [
 
 const EVENT_CHECKIN_DISPLAY_WINDOWS = [
   {
-    starts_at: '2026-05-30T00:00:00-05:00',
-    ends_at: '2026-05-30T20:30:00-05:00',
+    starts_at: '2026-05-30T11:55:00-05:00',
+    ends_at: '2026-05-30T14:00:00-05:00',
   },
   {
-    starts_at: '2026-06-01T00:00:00-05:00',
-    ends_at: '2026-06-01T20:00:00-05:00',
+    starts_at: '2026-05-30T15:00:00-05:00',
+    ends_at: '2026-05-30T19:00:00-05:00',
+  },
+  {
+    starts_at: '2026-06-01T17:25:00-05:00',
+    ends_at: '2026-06-01T18:30:00-05:00',
   },
 ];
 
@@ -99,4 +103,3 @@ export function getEventCheckInStatus(now = new Date()) {
 export function isEventCheckInVisible(now = new Date()) {
   return getEventCheckInStatus(now).isDisplayVisible;
 }
-

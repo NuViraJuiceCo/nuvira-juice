@@ -170,26 +170,26 @@ export default function Home() {
         </div>
       </motion.div>
 
-      {showEventCheckIn && (
-      <div className="mt-4 px-5">
-        <Link
-          to="/event/may30"
-          className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left"
-        >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Gift className="h-5 w-5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-foreground">Event Check-In</span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-              Claim the one-time 250 point event visit bonus.
-            </span>
-          </span>
-        </Link>
-      </div>
-      )}
-
       <HeroBanner banners={banners} scheduleRules={scheduleRules} heroHeadline="Build Your Routine" heroSubtext="Choose your goal. We'll handle the rest." />
+
+      {showEventCheckIn && (
+        <div className="mt-4 px-5">
+          <Link
+            to="/event/may30"
+            className="flex items-center gap-3 rounded-xl border border-primary/25 bg-primary/10 p-3 text-left"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Gift className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-foreground">Event Check-In</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                Claim the one-time 250 point event visit bonus.
+              </span>
+            </span>
+          </Link>
+        </div>
+      )}
 
       {/* QuickReorder — immediately after hero for returning customers */}
       <QuickReorder lastOrder={lastOrder} />
