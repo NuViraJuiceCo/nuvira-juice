@@ -16,8 +16,8 @@ const MAY30_POS_EVENT_STOCK_PLAN = {
     { product_name: 'Oasis', quantity: 45, product_category: 'May 30 POS Event Stock' },
     { product_name: 'Aura', quantity: 45, product_category: 'May 30 POS Event Stock' },
     { product_name: 'Re-Nu', quantity: 15, product_category: 'May 30 POS Event Stock' },
-    { product_name: 'Hydration Shot', quantity: 5, product_category: 'May 30 POS Event Stock' },
-    { product_name: 'Reset Shot', quantity: 5, product_category: 'May 30 POS Event Stock' },
+    { product_name: 'Hydration Shot', quantity: 9, product_category: 'May 30 POS Event Stock' },
+    { product_name: 'Reset Shot', quantity: 1, product_category: 'May 30 POS Event Stock' },
     { product_name: 'Radiance Shot', quantity: 5, product_category: 'May 30 POS Event Stock' },
   ],
 };
