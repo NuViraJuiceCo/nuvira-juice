@@ -144,6 +144,14 @@ function Badge({ children, tone = 'default' }) {
   return <AdminStatusPill label={children} tone={mappedTone} />;
 }
 
+function profileBlockerLabel(blocker) {
+  return {
+    missing_customer_email: 'email not captured',
+    invalid_customer_email: 'invalid email',
+    placeholder_customer_email: 'placeholder email',
+  }[blocker] || 'profile blocked';
+}
+
 function OrderCard({ order }) {
   const hasUnexpectedOpsWork = order.requires_delivery || order.requires_production || order.requires_fulfillment_task;
   const lineItems = Array.isArray(order.line_items) ? order.line_items : [];
@@ -287,6 +295,7 @@ export default function POSOrders() {
   const orders = Array.isArray(data?.orders) ? data.orders : [];
   const summary = data?.summary || {};
   const profileCandidates = Array.isArray(profilePreview?.candidates) ? profilePreview.candidates : [];
+  const profileBlockedOrders = Array.isArray(profilePreview?.blocked_orders) ? profilePreview.blocked_orders : [];
   const profileCandidatePreview = profileCandidates
     .filter(candidate => candidate.would_create_starter_profile || candidate.profile_status === 'already_profile')
     .slice(0, 6);
@@ -525,6 +534,51 @@ export default function POSOrders() {
                   />
                 </div>
               ))}
+            </div>
+          )}
+
+          {profileBlockedOrders.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-amber-900 font-semibold">Needs email follow-up</p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    These POS orders cannot receive starter profiles because no usable customer email was captured.
+                  </p>
+                </div>
+                <AdminStatusPill label={`${profileBlockedOrders.length} orders`} tone="warning" size="sm" />
+              </div>
+              <div className="space-y-2">
+                {profileBlockedOrders.slice(0, 12).map((order, index) => (
+                  <div
+                    key={`${order.order_number || 'blocked'}-${index}`}
+                    className="flex items-start justify-between gap-3 border-t border-amber-200 first:border-t-0 pt-2 first:pt-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-amber-950 truncate">
+                        {order.order_number || 'POS order'}
+                        {order.customer_name ? ` · ${order.customer_name}` : ''}
+                      </p>
+                      <p className="text-[10px] text-amber-800 truncate">
+                        {[order.customer_order_date ? formatDate(order.customer_order_date) : null, order.customer_email || null, order.source_record ? `source ${order.source_record}` : null]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <AdminStatusPill label={profileBlockerLabel(order.blocker)} tone="warning" size="sm" />
+                      {order.total_price !== null && order.total_price !== undefined && (
+                        <p className="text-[10px] text-amber-800 mt-1">{formatMoney(order.total_price)}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {profileBlockedOrders.length > 12 && (
+                <p className="text-[10px] text-amber-800">
+                  Showing 12 of {profileBlockedOrders.length}. Narrow the date range for focused review.
+                </p>
+              )}
             </div>
           )}
 
