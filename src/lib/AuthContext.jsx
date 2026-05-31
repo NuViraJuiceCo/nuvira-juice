@@ -3,8 +3,10 @@ import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
 import {
+  clearBase44AuthTokens,
   consumeBase44AuthFromUrl,
   hasBase44AuthParamsInUrl,
+  logoutInsideApp,
   redirectToLogin,
 } from '@/lib/nativeAuthRedirect';
 
@@ -93,7 +95,7 @@ export const AuthProvider = ({ children }) => {
     return !hasBasicInfo;
   };
 
-  const logout = (shouldRedirect = true) => {
+  const logout = async (shouldRedirect = true) => {
     const userEmail = user?.email;
     setUser(null);
     setIsAuthenticated(false);
@@ -104,11 +106,9 @@ export const AuthProvider = ({ children }) => {
     }
     
     if (shouldRedirect) {
-      // Use the SDK's logout method which handles token cleanup and redirect
-      base44.auth.logout(window.location.href);
+      await logoutInsideApp('/account');
     } else {
-      // Just remove the token without redirect
-      base44.auth.logout();
+      clearBase44AuthTokens();
     }
   };
 
