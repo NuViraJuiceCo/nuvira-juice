@@ -10,6 +10,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Store,
+  UserRound,
 } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
@@ -131,6 +132,13 @@ function SummaryCard({ icon: Icon, label, value, sublabel, tone = 'default', isR
   );
 }
 
+function rangeForPreset(preset, today, appliedDateFrom, appliedDateTo) {
+  if (preset === 'custom') return { date_from: appliedDateFrom, date_to: appliedDateTo };
+  if (preset === 'today') return { date_from: today, date_to: today };
+  if (preset === 'last_30_days') return { date_from: addDays(today, -29), date_to: today };
+  return { date_from: addDays(today, -6), date_to: today };
+}
+
 function Badge({ children, tone = 'default' }) {
   const mappedTone = tone === 'success' ? 'source' : tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : 'neutral';
   return <AdminStatusPill label={children} tone={mappedTone} />;
@@ -234,6 +242,10 @@ export default function POSOrders() {
   const [appliedDateTo, setAppliedDateTo] = useState(today);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
+  const profilePreviewRange = useMemo(
+    () => rangeForPreset(preset, today, appliedDateFrom, appliedDateTo),
+    [appliedDateFrom, appliedDateTo, preset, today],
+  );
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['admin-pos-orders-summary', preset, appliedDateFrom, appliedDateTo],
@@ -250,8 +262,34 @@ export default function POSOrders() {
     staleTime: 30000,
   });
 
+  const {
+    data: profilePreview,
+    isLoading: isProfilePreviewLoading,
+    isError: isProfilePreviewError,
+    error: profilePreviewError,
+    isFetching: isProfilePreviewFetching,
+  } = useQuery({
+    queryKey: ['admin-may30-pos-profile-candidates', profilePreviewRange.date_from, profilePreviewRange.date_to],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('previewAdminMay30POSProfileCandidates', {
+        date_from: profilePreviewRange.date_from,
+        date_to: profilePreviewRange.date_to,
+        limit: 100,
+      });
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result || { candidates: [], blocked_orders: [] };
+    },
+    enabled: user?.role === 'admin',
+    staleTime: 30000,
+  });
+
   const orders = Array.isArray(data?.orders) ? data.orders : [];
   const summary = data?.summary || {};
+  const profileCandidates = Array.isArray(profilePreview?.candidates) ? profilePreview.candidates : [];
+  const profileCandidatePreview = profileCandidates
+    .filter(candidate => candidate.would_create_starter_profile || candidate.profile_status === 'already_profile')
+    .slice(0, 6);
   const contextLabel = useMemo(() => {
     if (data?.date_from && data?.date_to) {
       return `${formatDate(data.date_from)} - ${formatDate(data.date_to)}`;
@@ -407,6 +445,81 @@ export default function POSOrders() {
         />
 
         <May30EventStockPlanPanel />
+
+        <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <UserRound className={`w-4 h-4 text-primary ${isProfilePreviewFetching ? 'animate-pulse' : ''}`} />
+                <h2 className="text-sm font-bold text-foreground">Customer profile readiness</h2>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Read-only preview of POS buyers who could receive starter profiles before they download the app.
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                No profiles are created from this page. Customers still complete onboarding themselves.
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Preview Range</p>
+              <p className="text-xs font-semibold text-foreground">
+                {formatDate(profilePreviewRange.date_from)} - {formatDate(profilePreviewRange.date_to)}
+              </p>
+            </div>
+          </div>
+
+          {isProfilePreviewError && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Profile candidate preview unavailable: {profilePreviewError?.message || 'Unknown error'}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <SummaryCard
+              icon={UserRound}
+              label="Starter Candidates"
+              value={profilePreview?.would_create_starter_profile_count || 0}
+              tone={(profilePreview?.would_create_starter_profile_count || 0) > 0 ? 'success' : 'default'}
+              isRefreshing={isProfilePreviewLoading || isProfilePreviewFetching}
+            />
+            <SummaryCard label="Already Profiles" value={profilePreview?.already_profile_count || 0} />
+            <SummaryCard label="Blocked Candidates" value={profilePreview?.blocked_candidate_count || 0} tone={(profilePreview?.blocked_candidate_count || 0) > 0 ? 'warning' : 'default'} />
+            <SummaryCard label="Blocked Orders" value={profilePreview?.blocked_order_count || 0} tone={(profilePreview?.blocked_order_count || 0) > 0 ? 'warning' : 'default'} />
+          </div>
+
+          {profileCandidatePreview.length > 0 && (
+            <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Profile rows to review</p>
+              {profileCandidatePreview.map(candidate => (
+                <div
+                  key={`${candidate.customer_email}-${candidate.profile_status}`}
+                  className="flex items-start justify-between gap-3 border-t border-border/50 first:border-t-0 pt-2 first:pt-0"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-foreground truncate">
+                      {candidate.customer_name || candidate.customer_email}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground truncate">{candidate.customer_email}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">
+                      Orders: {(candidate.order_numbers || []).join(', ') || 'none'}
+                    </p>
+                  </div>
+                  <AdminStatusPill
+                    label={candidate.would_create_starter_profile ? 'starter ready' : 'already profile'}
+                    tone={candidate.would_create_starter_profile ? 'success' : 'neutral'}
+                    size="sm"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {Array.isArray(profilePreview?.warnings) && profilePreview.warnings.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Warnings: {profilePreview.warnings.join(', ')}
+            </div>
+          )}
+        </section>
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">

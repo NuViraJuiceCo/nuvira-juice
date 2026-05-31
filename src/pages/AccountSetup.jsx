@@ -44,13 +44,16 @@ export default function AccountSetup() {
           const profile = profiles[0];
           setFormData(prev => ({
             ...prev,
-            phone: profile.phone || '',
-            birthday: profile.birthday || '',
+            first_name: prev.first_name || profile.first_name || '',
+            last_name: prev.last_name || profile.last_name || '',
+            contact_email: prev.contact_email || profile.contact_email || '',
+            phone: prev.phone || profile.phone || '',
+            birthday: prev.birthday || profile.birthday || '',
             address: {
-              street: profile.address?.split(',')[0]?.trim() || '',
-              city: profile.address?.split(',')[1]?.trim() || '',
-              state: profile.address?.split(',')[2]?.trim() || '',
-              zip: profile.address?.split(',')[3]?.trim() || '',
+              street: prev.address?.street || profile.address?.split(',')[0]?.trim() || '',
+              city: prev.address?.city || profile.address?.split(',')[1]?.trim() || '',
+              state: prev.address?.state || profile.address?.split(',')[2]?.trim() || '',
+              zip: prev.address?.zip || profile.address?.split(',')[3]?.trim() || '',
             },
           }));
         }
