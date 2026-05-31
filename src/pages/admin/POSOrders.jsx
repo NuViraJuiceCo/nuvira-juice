@@ -290,6 +290,10 @@ export default function POSOrders() {
   const profileCandidatePreview = profileCandidates
     .filter(candidate => candidate.would_create_starter_profile || candidate.profile_status === 'already_profile')
     .slice(0, 6);
+  const starterCandidateSublabel = [
+    `${formatNumber(profilePreview?.named_starter_profile_count || 0)} named`,
+    `${formatNumber(profilePreview?.email_only_starter_profile_count || 0)} email-only`,
+  ].join(' · ');
   const contextLabel = useMemo(() => {
     if (data?.date_from && data?.date_to) {
       return `${formatDate(data.date_from)} - ${formatDate(data.date_to)}`;
@@ -479,6 +483,7 @@ export default function POSOrders() {
               icon={UserRound}
               label="Starter Candidates"
               value={profilePreview?.would_create_starter_profile_count || 0}
+              sublabel={starterCandidateSublabel}
               tone={(profilePreview?.would_create_starter_profile_count || 0) > 0 ? 'success' : 'default'}
               isRefreshing={isProfilePreviewLoading || isProfilePreviewFetching}
             />
@@ -497,15 +502,24 @@ export default function POSOrders() {
                 >
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-foreground truncate">
-                      {candidate.customer_name || candidate.customer_email}
+                      {candidate.customer_name && candidate.starter_profile_mode !== 'email_only'
+                        ? candidate.customer_name
+                        : candidate.customer_email}
                     </p>
                     <p className="text-[10px] text-muted-foreground truncate">{candidate.customer_email}</p>
                     <p className="text-[10px] text-muted-foreground truncate">
                       Orders: {(candidate.order_numbers || []).join(', ') || 'none'}
                     </p>
+                    {candidate.name_completion_required && (
+                      <p className="text-[10px] text-amber-700 truncate">Name will be completed during onboarding.</p>
+                    )}
                   </div>
                   <AdminStatusPill
-                    label={candidate.would_create_starter_profile ? 'starter ready' : 'already profile'}
+                    label={candidate.would_create_starter_profile
+                      ? candidate.starter_profile_mode === 'email_only'
+                        ? 'email-only ready'
+                        : 'starter ready'
+                      : 'already profile'}
                     tone={candidate.would_create_starter_profile ? 'success' : 'neutral'}
                     size="sm"
                   />
