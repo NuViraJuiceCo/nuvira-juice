@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 
 import {
   Activity, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package, Truck, ShieldCheck, Store
@@ -73,7 +72,7 @@ function AdminToolRow({ item, index, isLast }) {
 }
 
 export default function Account() {
-  const { user } = useAuth();
+  const { user, logout, navigateToLogin } = useAuth();
   // staleTime: 2min — cached data shows instantly on back-navigation (stale-while-revalidate)
   // isLoading is only true on first load (no cached data yet), not on background refreshes
   const { data: dashData, isLoading: isDashLoading } = useQuery({
@@ -93,9 +92,9 @@ export default function Account() {
 
   const handleLogout = () => {
     if (user) {
-      base44.auth.logout();
+      logout();
     } else {
-      redirectToLogin(window.location.pathname);
+      navigateToLogin();
     }
   };
 
