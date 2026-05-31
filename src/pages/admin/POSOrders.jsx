@@ -254,6 +254,7 @@ export default function POSOrders() {
     () => rangeForPreset(preset, today, appliedDateFrom, appliedDateTo),
     [appliedDateFrom, appliedDateTo, preset, today],
   );
+  const profilePreviewPreset = isCustom ? 'custom' : preset;
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['admin-pos-orders-summary', preset, appliedDateFrom, appliedDateTo],
@@ -277,9 +278,10 @@ export default function POSOrders() {
     error: profilePreviewError,
     isFetching: isProfilePreviewFetching,
   } = useQuery({
-    queryKey: ['admin-may30-pos-profile-candidates', profilePreviewRange.date_from, profilePreviewRange.date_to],
+    queryKey: ['admin-may30-pos-profile-candidates', profilePreviewPreset, profilePreviewRange.date_from, profilePreviewRange.date_to],
     queryFn: async () => {
       const res = await base44.functions.invoke('previewAdminMay30POSProfileCandidates', {
+        preset: profilePreviewPreset,
         date_from: profilePreviewRange.date_from,
         date_to: profilePreviewRange.date_to,
         limit: 100,
