@@ -351,11 +351,15 @@ Deno.serve(async (req) => {
       const blockers = [];
       const rowWarnings = [];
 
-      if (!split) blockers.push('missing_customer_name');
+      if (!split) rowWarnings.push('email_only_profile_requires_name_completion');
       if (names.length > 1) rowWarnings.push('multiple_names_for_email');
       if (existingProfiles.length > 1) rowWarnings.push('multiple_existing_profiles_for_email');
 
       const alreadyProfile = existingProfiles.length > 0;
+      const canCreateStarterProfile = !alreadyProfile && blockers.length === 0;
+      const starterProfileMode = canCreateStarterProfile
+        ? split ? 'named' : 'email_only'
+        : null;
       candidates.push({
         customer_email: safeText(group.customer_email, 180),
         customer_name: safeText(selectedName, 140),
@@ -365,9 +369,13 @@ Deno.serve(async (req) => {
           ? 'already_profile'
           : blockers.length > 0
             ? 'blocked'
-            : 'would_create_starter_profile',
+            : starterProfileMode === 'named'
+              ? 'would_create_starter_profile'
+              : 'would_create_email_only_starter_profile',
+        starter_profile_mode: starterProfileMode,
+        name_completion_required: starterProfileMode === 'email_only',
         existing_profile_id: alreadyProfile ? safeText(existingProfiles[0].id, 80) : null,
-        would_create_starter_profile: !alreadyProfile && blockers.length === 0,
+        would_create_starter_profile: canCreateStarterProfile,
         order_numbers: group.orders.map(order => order.order_number).filter(Boolean).slice(0, 12),
         order_count: group.orders.length,
         total_spend: Number(group.total_spend.toFixed(2)),
@@ -378,6 +386,8 @@ Deno.serve(async (req) => {
     }
 
     const wouldCreateCount = candidates.filter(candidate => candidate.would_create_starter_profile).length;
+    const namedStarterProfileCount = candidates.filter(candidate => candidate.starter_profile_mode === 'named').length;
+    const emailOnlyStarterProfileCount = candidates.filter(candidate => candidate.starter_profile_mode === 'email_only').length;
     const alreadyProfileCount = candidates.filter(candidate => candidate.profile_status === 'already_profile').length;
     const blockedCandidateCount = candidates.filter(candidate => candidate.profile_status === 'blocked').length;
 
@@ -392,12 +402,14 @@ Deno.serve(async (req) => {
       source_counts: sourceCounts,
       candidate_count: candidates.length,
       would_create_starter_profile_count: wouldCreateCount,
+      named_starter_profile_count: namedStarterProfileCount,
+      email_only_starter_profile_count: emailOnlyStarterProfileCount,
       already_profile_count: alreadyProfileCount,
       blocked_candidate_count: blockedCandidateCount,
       blocked_order_count: blockedOrders.length,
       live_backfill_allowed: false,
       recommended_next_step: wouldCreateCount > 0
-        ? 'Review candidate rows, then run a separately gated starter-profile backfill if approved.'
+        ? 'Review named and email-only candidate rows, then run a separately gated starter-profile backfill if approved.'
         : 'No starter-profile backfill candidates are currently eligible.',
       warnings,
       candidates,
