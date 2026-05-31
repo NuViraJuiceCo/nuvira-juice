@@ -253,6 +253,9 @@ function buildEmailGroups(orders) {
       blockedOrders.push({
         order_number: safeText(orderNumber, 80),
         customer_name: order.customer_name || null,
+        customer_order_date: safeText(order.customer_order_date || order.created_date, 80),
+        total_price: order.total_price === null || order.total_price === undefined ? null : safeNumber(order.total_price),
+        source_record: safeText(order.source_record, 40),
         blocker: 'missing_customer_email',
       });
       continue;
@@ -262,6 +265,9 @@ function buildEmailGroups(orders) {
         order_number: safeText(orderNumber, 80),
         customer_email: safeText(email, 180),
         customer_name: order.customer_name || null,
+        customer_order_date: safeText(order.customer_order_date || order.created_date, 80),
+        total_price: order.total_price === null || order.total_price === undefined ? null : safeNumber(order.total_price),
+        source_record: safeText(order.source_record, 40),
         blocker: 'invalid_customer_email',
       });
       continue;
@@ -271,6 +277,9 @@ function buildEmailGroups(orders) {
         order_number: safeText(orderNumber, 80),
         customer_email: safeText(email, 180),
         customer_name: order.customer_name || null,
+        customer_order_date: safeText(order.customer_order_date || order.created_date, 80),
+        total_price: order.total_price === null || order.total_price === undefined ? null : safeNumber(order.total_price),
+        source_record: safeText(order.source_record, 40),
         blocker: 'placeholder_customer_email',
       });
       continue;
