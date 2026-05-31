@@ -6,6 +6,7 @@ const DEFAULT_DATE = '2026-05-30';
 const MAX_RANGE_DAYS = 31;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
+const PRESET_VALUES = new Set(['today', 'last_7_days', 'last_30_days', 'custom']);
 
 async function readJsonBody(req) {
   try {
@@ -47,6 +48,15 @@ function normalizeLimit(value) {
     throw new Error('limit must be a positive integer');
   }
   return Math.min(parsed, MAX_LIMIT);
+}
+
+function normalizePreset(value) {
+  const preset = normalizeLower(value);
+  if (!preset) return null;
+  if (!PRESET_VALUES.has(preset)) {
+    throw new Error('preset must be one of today, last_7_days, last_30_days, custom');
+  }
+  return preset;
 }
 
 function parseIsoDate(value, fieldName, fallback = null) {
@@ -177,7 +187,7 @@ async function fetchHubJson(url, headers, warningPrefix) {
   }
 }
 
-async function fetchPosOrders({ base44, dateFrom, dateTo, limit }) {
+async function fetchPosOrders({ base44, preset, dateFrom, dateTo, limit }) {
   const warnings = [];
   const nativeRaw = await base44.asServiceRole.entities.ShopifyOrder.list('-created_date', MAX_LIMIT).catch(error => {
     warnings.push('native_pos_records_unavailable');
@@ -192,7 +202,13 @@ async function fetchPosOrders({ base44, dateFrom, dateTo, limit }) {
   let hubOrders = [];
   if (HUB_API_URL && CUSTOMER_APP_SYNC_SECRET) {
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-    const params = new URLSearchParams({ limit: String(limit), date_from: dateFrom, date_to: dateTo });
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (preset && preset !== 'custom') {
+      params.set('preset', preset);
+    } else {
+      params.set('date_from', dateFrom);
+      params.set('date_to', dateTo);
+    }
     const hubResult = await fetchHubJson(
       `${hubBase}/functions/getPOSOrdersForCustomerApp?${params.toString()}`,
       { Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}` },
@@ -329,7 +345,9 @@ Deno.serve(async (req) => {
     let dateFrom;
     let dateTo;
     let limit;
+    let preset;
     try {
+      preset = normalizePreset(body.preset);
       dateFrom = parseIsoDate(body.date_from, 'date_from', DEFAULT_DATE);
       dateTo = parseIsoDate(body.date_to, 'date_to', DEFAULT_DATE);
       limit = normalizeLimit(body.limit);
@@ -348,7 +366,7 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    const { orders, warnings, source_counts: sourceCounts } = await fetchPosOrders({ base44, dateFrom, dateTo, limit });
+    const { orders, warnings, source_counts: sourceCounts } = await fetchPosOrders({ base44, preset, dateFrom, dateTo, limit });
     const { groups, blockedOrders } = buildEmailGroups(orders);
     const candidates = [];
 
