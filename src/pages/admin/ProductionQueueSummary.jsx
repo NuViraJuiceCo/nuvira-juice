@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Database, Lock, Package, Play, RefreshCw } from 'lucide-react';
@@ -1243,6 +1243,7 @@ function ProductionDateSection({ date, batches, today, onActionSuccess }) {
 
 export default function ProductionQueueSummary() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const defaultFrom = useMemo(() => todayDate(), []);
   const defaultTo = useMemo(() => addDays(defaultFrom, 14), [defaultFrom]);
   const [dateFrom, setDateFrom] = useState(defaultFrom);
@@ -1269,6 +1270,21 @@ export default function ProductionQueueSummary() {
     enabled: user?.role === 'admin' && !rangeInvalid,
     staleTime: 60000,
   });
+
+  async function refreshProductionActionSummaries() {
+    await Promise.all([
+      refetch(),
+      queryClient.invalidateQueries({ queryKey: ['admin-production-planning-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-inventory-status-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-delivery-route-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-operations-dashboard-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-sync-health-summary'] }),
+    ]);
+  }
 
   if (user?.role !== 'admin') {
     return (
@@ -1459,7 +1475,7 @@ export default function ProductionQueueSummary() {
                     date={date}
                     batches={groupedBatches[date]}
                     today={defaultFrom}
-                    onActionSuccess={refetch}
+                    onActionSuccess={refreshProductionActionSummaries}
                   />
             ))}
           </div>
