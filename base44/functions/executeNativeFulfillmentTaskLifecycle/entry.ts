@@ -9,45 +9,48 @@ const ALLOWED_ACTIONS_FLAG = 'NATIVE_FULFILLMENT_TASK_LIFECYCLE_ALLOWED_ACTIONS'
 const KILL_SWITCH_FLAG = 'NATIVE_FULFILLMENT_TASK_LIFECYCLE_KILL_SWITCH';
 const CONFIRMATION_PHRASE = 'execute_native_fulfillment_task_lifecycle';
 const ALLOWED_ACTIONS = new Set(['assign', 'unassign', 'pack', 'out_for_delivery', 'delivered_operational']);
-const TERMINAL_STATUSES = new Set(['delivered', 'cancelled', 'unable_to_deliver', 'Delivered', 'Cancelled']);
-const PACKABLE_STATUSES = new Set(['pending', 'scheduled', 'assigned', 'in_production', 'Scheduled']);
-const OUT_FOR_DELIVERY_STATUSES = new Set(['packed', 'bottled_packed', 'ready_for_delivery', 'Packed']);
-const DELIVERABLE_STATUSES = new Set(['out_for_delivery', 'Out For Delivery']);
-const SAFE_ARRAY_LIMIT = 50;
+const TERMINAL_STATUSES = new Set(['delivered', 'cancelled', 'unable_to_deliver']);
+const PACKABLE_STATUSES = new Set(['pending', 'scheduled', 'assigned', 'in_production']);
+const OUT_FOR_DELIVERY_STATUSES = new Set(['packed', 'bottled_packed', 'ready_for_delivery']);
+const DELIVERABLE_STATUSES = new Set(['out_for_delivery']);
 const MAX_REASON_LENGTH = 300;
+const SAFE_ARRAY_LIMIT = 50;
+
 const ALLOWED_BODY_KEYS = new Set([
   'mode',
   'confirmation',
   'fulfillment_task_id',
+  'task_id',
   'action',
   'request_id',
   'reason',
   'assigned_driver',
   'assigned_driver_id',
   'assigned_driver_email',
-  'driver_name',
-  'driver_id',
-  'driver_email',
 ]);
+
 const FORBIDDEN_BODY_KEYS = new Set([
-  'customer_name',
-  'customer_email',
-  'customer_phone',
-  'customer_address',
-  'address',
-  'delivery_address',
-  'address_line1',
-  'address_line2',
-  'address_city',
-  'address_state',
-  'address_postal_code',
-  'driver_notes',
-  'internal_notes',
-  'notes',
+  'raw_payload',
+  'payload',
+  'raw_body',
+  'raw_task',
+  'task',
+  'raw_order',
+  'order',
+  'order_update',
+  'customer_app_order_update',
+  'shopify_order_update',
+  'production_batch_update',
+  'inventory_update',
+  'purchase_order_update',
+  'review_queue_update',
+  'status_history',
+  'notification',
+  'send_notification',
+  'notify_customer',
   'proof',
   'proof_url',
   'proof_file',
-  'proof_file_id',
   'proof_photo_url',
   'photo',
   'photo_url',
@@ -60,28 +63,8 @@ const FORBIDDEN_BODY_KEYS = new Set([
   'optimized_route',
   'provider_id',
   'provider_ids',
-  'raw_payload',
-  'payload',
-  'raw_body',
-  'raw_task',
-  'task',
-  'raw_order',
-  'order',
-  'order_update',
-  'customer_app_order_update',
-  'status_history',
-  'task_status',
-  'status',
-  'delivery_status',
-  'fulfillment_status',
-  'production_status',
-  'notify_customer',
-  'notification',
-  'send_notification',
-  'batch_update',
-  'inventory_update',
-  'purchase_order_update',
-  'review_queue_update',
+  'stripe_id',
+  'shopify_id',
   'headers',
   'authorization',
   'auth_header',
@@ -122,18 +105,13 @@ function sanitizeId(value, maxLength = 180) {
   return /^[A-Za-z0-9._:@/#-]+$/.test(text) ? text : '';
 }
 
-function normalizeRequiredId(value, fieldName) {
-  const id = sanitizeId(value);
-  if (!id) throw new Error(`${fieldName} is required`);
-  return id;
+function safeObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
-function normalizeAction(value) {
-  const action = normalizeLower(value);
-  if (!ALLOWED_ACTIONS.has(action)) {
-    throw new Error('action must be assign, unassign, pack, out_for_delivery, or delivered_operational');
-  }
-  return action;
+function safeStringArray(value, maxLength = 120) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, SAFE_ARRAY_LIMIT).map((item) => sanitizeText(item, maxLength)).filter(Boolean);
 }
 
 function parseCsvSet(value) {
@@ -154,15 +132,6 @@ async function readJsonBody(req) {
   }
 }
 
-function safeObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function safeStringArray(value, maxLength = 120) {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, SAFE_ARRAY_LIMIT).map((item) => sanitizeText(item, maxLength)).filter(Boolean);
-}
-
 function normalizeActorEmail(value) {
   const email = normalizeSingleLine(value).toLowerCase();
   if (!email || email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -171,13 +140,36 @@ function normalizeActorEmail(value) {
   return email;
 }
 
+function normalizeAction(value) {
+  const action = normalizeLower(value);
+  if (!ALLOWED_ACTIONS.has(action)) {
+    throw new Error('action must be assign, unassign, pack, out_for_delivery, or delivered_operational');
+  }
+  return action;
+}
+
+function normalizeDriver(value, fieldName, { required = false } = {}) {
+  const text = sanitizeText(value, 120);
+  if (!text) {
+    if (required) throw new Error(`${fieldName} is required`);
+    return '';
+  }
+  if (!/^[A-Za-z0-9 ._'@+-]+$/.test(text)) {
+    throw new Error(`${fieldName} contains unsupported characters`);
+  }
+  if (fieldName === 'assigned_driver' && (/^\d+$/.test(text) || text.length < 2)) {
+    throw new Error('assigned_driver must be a safe internal driver label or email');
+  }
+  return text;
+}
+
 function findUnsupportedBodyKey(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   for (const key of Object.keys(body)) {
     const normalized = normalizeLower(key);
     if (ALLOWED_BODY_KEYS.has(normalized)) continue;
     if (FORBIDDEN_BODY_KEYS.has(normalized)) return key;
-    if (/(^|_)(customer|order|task|batch|inventory|purchase_order|review_queue|delivery|route|proof|provider)_(id|ids|status|update|mutation|payload|name|email|phone|address|fields|url|file)$/i.test(normalized)) {
+    if (/(^|_)(customer|order|task|batch|inventory|purchase_order|review_queue|delivery|route|proof|provider|compliance)_(id|ids|status|update|mutation|payload|name|email|phone|address|fields|url|file)$/i.test(normalized)) {
       return key;
     }
     if (/(^|_)(header|headers|authorization|auth|secret|token|api_key|api-key)$/i.test(normalized)) {
@@ -187,23 +179,9 @@ function findUnsupportedBodyKey(body) {
   return null;
 }
 
-function envGateFailure({ action, taskId, actorEmail }) {
-  if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') return 'kill_switch_active';
-  if (Deno.env.get(ENABLE_WRITES_FLAG) !== 'true') return 'native_fulfillment_task_lifecycle_writes_disabled';
-
-  const allowedEmails = parseCsvSet(Deno.env.get(ALLOWED_EMAILS_FLAG) || '');
-  if (allowedEmails.size === 0) return 'allowed_email_gate_required';
-  if (!allowedEmails.has(normalizeLower(actorEmail))) return 'actor_email_not_allowlisted';
-
-  const allowedActions = parseCsvSet(Deno.env.get(ALLOWED_ACTIONS_FLAG) || '');
-  if (allowedActions.size === 0) return 'allowed_action_gate_required';
-  if (!allowedActions.has(action)) return 'action_not_allowlisted';
-
-  const allowedTasks = parseCsvSet(Deno.env.get(TASK_ALLOWLIST_FLAG) || '');
-  if (allowedTasks.size === 0) return 'task_allowlist_required';
-  if (!allowedTasks.has(normalizeLower(taskId))) return 'task_not_allowlisted';
-
-  return null;
+function isDeliveryFulfillment(task) {
+  const type = normalizeLower(task.fulfillment_type || task.source_type);
+  return Boolean(type && (type.includes('delivery') || type.includes('driver')));
 }
 
 function hasDeliveryAddress(task) {
@@ -222,17 +200,16 @@ function hasAssignedDriver(task) {
   );
 }
 
-function isDeliveryFulfillment(task) {
-  const type = normalizeLower(task.fulfillment_type || task.source_type);
-  return type.includes('delivery') || type.includes('driver');
+function normalizedStatus(task) {
+  return normalizeLower(task.status);
 }
 
 function appendCommonGuards(task, blockers) {
   if (!sanitizeId(task.id) && !sanitizeId(task.fulfillment_task_id)) blockers.push('missing_task_identity');
-  if (!sanitizeId(task.order_id) && !sanitizeId(task.shopify_order_id) && !sanitizeId(task.order_number)) {
+  if (!sanitizeId(task.order_id) && !sanitizeId(task.shopify_order_id) && !sanitizeText(task.order_number, 80)) {
     blockers.push('missing_order_reference');
   }
-  if (TERMINAL_STATUSES.has(task.status)) blockers.push('task_terminal_status');
+  if (TERMINAL_STATUSES.has(normalizedStatus(task))) blockers.push('task_terminal_status');
   if (task.review_status && normalizeLower(task.review_status) !== 'resolved') blockers.push('task_review_unresolved');
 }
 
@@ -251,23 +228,15 @@ function planAssign({ task, actorEmail, requestId, now, body, reason }) {
   const warnings = [];
   appendCommonGuards(task, blockers);
 
-  const driverName = sanitizeText(body.assigned_driver || body.driver_name, 120);
-  const driverId = sanitizeId(body.assigned_driver_id || body.driver_id);
-  const driverEmail = sanitizeText(body.assigned_driver_email || body.driver_email, 120);
-  if (!driverName && !driverId && !driverEmail) blockers.push('missing_driver_identity');
-
-  if (normalizeLower(task.status) === 'out_for_delivery') warnings.push('assignment_after_out_for_delivery_requires_review');
+  const assignedDriver = normalizeDriver(body.assigned_driver, 'assigned_driver', { required: true });
+  const assignedDriverId = sanitizeId(body.assigned_driver_id);
+  const assignedDriverEmail = normalizeDriver(body.assigned_driver_email, 'assigned_driver_email');
   if (hasAssignedDriver(task)) warnings.push('driver_already_assigned');
+  if (normalizedStatus(task) === 'out_for_delivery') warnings.push('assignment_after_out_for_delivery_requires_review');
 
-  const status = ['pending', 'scheduled', 'Scheduled'].includes(task.status) ? 'assigned' : (sanitizeText(task.status, 80) || 'assigned');
-  const proposedPatch = blockers.length ? null : {
-    ...(driverName ? { assigned_driver: driverName } : {}),
-    ...(driverId ? { assigned_driver_id: driverId } : {}),
-    ...(driverEmail ? { assigned_driver_email: driverEmail } : {}),
-    assigned_at: now,
-    status,
-    audit_trail_append: auditTrailAppend({ action: 'assign', actorEmail, requestId, now, reason }),
-  };
+  const status = ['pending', 'scheduled'].includes(normalizedStatus(task))
+    ? 'assigned'
+    : (sanitizeText(task.status, 80) || 'assigned');
 
   return {
     projected_writes: blockers.length ? [] : [
@@ -278,7 +247,14 @@ function planAssign({ task, actorEmail, requestId, now, body, reason }) {
       'FulfillmentTask.status',
       'FulfillmentTask.audit_trail',
     ],
-    proposed_patch: proposedPatch,
+    proposed_patch: blockers.length ? null : {
+      assigned_driver: assignedDriver,
+      ...(assignedDriverId ? { assigned_driver_id: assignedDriverId } : {}),
+      ...(assignedDriverEmail ? { assigned_driver_email: assignedDriverEmail } : {}),
+      assigned_at: now,
+      status,
+      audit_trail_append: auditTrailAppend({ action: 'assign', actorEmail, requestId, now, reason }),
+    },
     blockers,
     warnings,
   };
@@ -289,17 +265,7 @@ function planUnassign({ task, actorEmail, requestId, now, reason }) {
   const warnings = [];
   appendCommonGuards(task, blockers);
   if (!hasAssignedDriver(task)) blockers.push('driver_not_assigned');
-  if (normalizeLower(task.status) === 'out_for_delivery') blockers.push('cannot_unassign_out_for_delivery_task');
-
-  const proposedPatch = blockers.length ? null : {
-    assigned_driver: null,
-    assigned_driver_id: null,
-    assigned_driver_email: null,
-    assigned_at: null,
-    status: normalizeLower(task.status) === 'assigned' ? 'scheduled' : (sanitizeText(task.status, 80) || 'scheduled'),
-    audit_trail_append: auditTrailAppend({ action: 'unassign', actorEmail, requestId, now, reason }),
-  };
-
+  if (normalizedStatus(task) === 'out_for_delivery') blockers.push('cannot_unassign_out_for_delivery_task');
   if (task.route_id || task.route_stop_sequence) warnings.push('route_assignment_should_be_recomputed');
 
   return {
@@ -311,7 +277,14 @@ function planUnassign({ task, actorEmail, requestId, now, reason }) {
       'FulfillmentTask.status',
       'FulfillmentTask.audit_trail',
     ],
-    proposed_patch: proposedPatch,
+    proposed_patch: blockers.length ? null : {
+      assigned_driver: null,
+      assigned_driver_id: null,
+      assigned_driver_email: null,
+      assigned_at: null,
+      status: normalizedStatus(task) === 'assigned' ? 'scheduled' : (sanitizeText(task.status, 80) || 'scheduled'),
+      audit_trail_append: auditTrailAppend({ action: 'unassign', actorEmail, requestId, now, reason }),
+    },
     blockers,
     warnings,
   };
@@ -321,16 +294,9 @@ function planPack({ task, actorEmail, requestId, now, reason }) {
   const blockers = [];
   const warnings = [];
   appendCommonGuards(task, blockers);
-  if (!PACKABLE_STATUSES.has(task.status)) blockers.push('status_not_packable');
+  if (!PACKABLE_STATUSES.has(normalizedStatus(task))) blockers.push('status_not_packable');
   if (!Array.isArray(task.items) || task.items.length === 0) blockers.push('missing_items');
   if (task.packed_at) warnings.push('already_packed_timestamp_present');
-
-  const proposedPatch = blockers.length ? null : {
-    status: 'packed',
-    production_status: 'packed',
-    packed_at: now,
-    audit_trail_append: auditTrailAppend({ action: 'pack', actorEmail, requestId, now, reason }),
-  };
 
   return {
     projected_writes: blockers.length ? [] : [
@@ -339,7 +305,12 @@ function planPack({ task, actorEmail, requestId, now, reason }) {
       'FulfillmentTask.packed_at',
       'FulfillmentTask.audit_trail',
     ],
-    proposed_patch: proposedPatch,
+    proposed_patch: blockers.length ? null : {
+      status: 'packed',
+      production_status: 'packed',
+      packed_at: now,
+      audit_trail_append: auditTrailAppend({ action: 'pack', actorEmail, requestId, now, reason }),
+    },
     blockers,
     warnings,
   };
@@ -349,17 +320,10 @@ function planOutForDelivery({ task, actorEmail, requestId, now, reason }) {
   const blockers = [];
   const warnings = [];
   appendCommonGuards(task, blockers);
-  if (!OUT_FOR_DELIVERY_STATUSES.has(task.status)) blockers.push('status_not_ready_for_delivery');
+  if (!OUT_FOR_DELIVERY_STATUSES.has(normalizedStatus(task))) blockers.push('status_not_ready_for_delivery');
   if (!isDeliveryFulfillment(task)) blockers.push('not_delivery_fulfillment');
   if (!hasDeliveryAddress(task)) blockers.push('missing_delivery_address');
   if (!hasAssignedDriver(task)) blockers.push('missing_assigned_driver');
-
-  const proposedPatch = blockers.length ? null : {
-    status: 'out_for_delivery',
-    delivery_status: 'out_for_delivery',
-    out_for_delivery_at: now,
-    audit_trail_append: auditTrailAppend({ action: 'out_for_delivery', actorEmail, requestId, now, reason }),
-  };
   warnings.push('customer_status_projection_deferred');
   warnings.push('customer_notification_not_included');
 
@@ -370,7 +334,12 @@ function planOutForDelivery({ task, actorEmail, requestId, now, reason }) {
       'FulfillmentTask.out_for_delivery_at',
       'FulfillmentTask.audit_trail',
     ],
-    proposed_patch: proposedPatch,
+    proposed_patch: blockers.length ? null : {
+      status: 'out_for_delivery',
+      delivery_status: 'out_for_delivery',
+      out_for_delivery_at: now,
+      audit_trail_append: auditTrailAppend({ action: 'out_for_delivery', actorEmail, requestId, now, reason }),
+    },
     blockers,
     warnings,
   };
@@ -380,16 +349,9 @@ function planDeliveredOperational({ task, actorEmail, requestId, now, reason }) 
   const blockers = [];
   const warnings = [];
   appendCommonGuards(task, blockers);
-  if (!DELIVERABLE_STATUSES.has(task.status)) blockers.push('status_not_deliverable');
+  if (!DELIVERABLE_STATUSES.has(normalizedStatus(task))) blockers.push('status_not_deliverable');
   if (!isDeliveryFulfillment(task)) blockers.push('not_delivery_fulfillment');
   if (!hasAssignedDriver(task)) blockers.push('missing_assigned_driver');
-
-  const proposedPatch = blockers.length ? null : {
-    status: 'delivered',
-    delivery_status: 'delivered',
-    delivered_at: now,
-    audit_trail_append: auditTrailAppend({ action: 'delivered_operational', actorEmail, requestId, now, reason }),
-  };
   warnings.push('customer_status_projection_deferred');
   warnings.push('customer_notification_not_included');
   warnings.push('proof_drop_not_included');
@@ -401,7 +363,12 @@ function planDeliveredOperational({ task, actorEmail, requestId, now, reason }) 
       'FulfillmentTask.delivered_at',
       'FulfillmentTask.audit_trail',
     ],
-    proposed_patch: proposedPatch,
+    proposed_patch: blockers.length ? null : {
+      status: 'delivered',
+      delivery_status: 'delivered',
+      delivered_at: now,
+      audit_trail_append: auditTrailAppend({ action: 'delivered_operational', actorEmail, requestId, now, reason }),
+    },
     blockers,
     warnings,
   };
@@ -415,7 +382,7 @@ function planLifecycle({ action, task, actorEmail, requestId, now, body, reason 
   return planDeliveredOperational({ task, actorEmail, requestId, now, reason });
 }
 
-function buildWritePatch(task, proposedPatch) {
+function buildWritePatch(task, proposedPatch, commandLogId) {
   const patch = { ...safeObject(proposedPatch) };
   const auditEntry = patch.audit_trail_append;
   delete patch.audit_trail_append;
@@ -423,24 +390,52 @@ function buildWritePatch(task, proposedPatch) {
     const existingTrail = Array.isArray(task.audit_trail) ? task.audit_trail.slice(-100) : [];
     patch.audit_trail = [...existingTrail, auditEntry];
   }
+  if (commandLogId) patch.command_log_id = commandLogId;
   return patch;
 }
 
-async function findTask(base44, taskId) {
-  const byId = await base44.asServiceRole.entities.FulfillmentTask.get(taskId).catch(() => null);
+async function findTask(base44, taskKey) {
+  const byId = await base44.asServiceRole.entities.FulfillmentTask.get(taskKey).catch(() => null);
   if (byId?.id) return byId;
 
-  const byExternalId = await base44.asServiceRole.entities.FulfillmentTask.filter({ fulfillment_task_id: taskId }, '-created_date', 2).catch(() => []);
+  const byExternalId = await base44.asServiceRole.entities.FulfillmentTask.filter({ fulfillment_task_id: taskKey }, '-created_date', 2).catch(() => []);
   if (Array.isArray(byExternalId) && byExternalId.length === 1) return byExternalId[0];
-  if (Array.isArray(byExternalId) && byExternalId.length > 1) {
-    throw new Error('multiple_fulfillment_task_matches');
-  }
-
+  if (Array.isArray(byExternalId) && byExternalId.length > 1) throw new Error('multiple_fulfillment_task_matches');
   return null;
 }
 
 async function findExistingCommandLog(base44, idempotencyKey) {
   return base44.asServiceRole.entities.CommandLog.filter({ idempotency_key: idempotencyKey }, '-created_date', 1).catch(() => []);
+}
+
+function taskAllowlistKeys(task, requestedKey) {
+  return [
+    requestedKey,
+    task?.id,
+    task?.fulfillment_task_id,
+    task?.order_number,
+    task?.shopify_order_number,
+  ].map(normalizeLower).filter(Boolean);
+}
+
+function envGateFailure({ action, task, requestedKey, actorEmail }) {
+  if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') return 'kill_switch_active';
+  if (Deno.env.get(ENABLE_WRITES_FLAG) !== 'true') return 'native_fulfillment_task_lifecycle_writes_disabled';
+
+  const allowedEmails = parseCsvSet(Deno.env.get(ALLOWED_EMAILS_FLAG) || '');
+  if (allowedEmails.size === 0) return 'allowed_email_gate_required';
+  if (!allowedEmails.has(normalizeLower(actorEmail))) return 'actor_email_not_allowlisted';
+
+  const allowedActions = parseCsvSet(Deno.env.get(ALLOWED_ACTIONS_FLAG) || '');
+  if (allowedActions.size === 0) return 'allowed_action_gate_required';
+  if (!allowedActions.has(action)) return 'action_not_allowlisted';
+
+  const allowedTasks = parseCsvSet(Deno.env.get(TASK_ALLOWLIST_FLAG) || '');
+  if (allowedTasks.size === 0) return 'task_allowlist_required';
+  const keys = taskAllowlistKeys(task, requestedKey);
+  if (!keys.some((key) => allowedTasks.has(key))) return 'task_not_allowlisted';
+
+  return null;
 }
 
 async function createCommandLog({ base44, task, action, status, idempotencyKey, requestId, user, result, errorCode, errorMessage }) {
@@ -468,7 +463,7 @@ async function createCommandLog({ base44, task, action, status, idempotencyKey, 
     submitted_at: now,
     completed_at: status === 'running' ? null : now,
     function_name: 'executeNativeFulfillmentTaskLifecycle',
-    notes: 'Native FulfillmentTask lifecycle command. No customer notifications, provider calls, route optimization, proof/drop, inventory, PO, Customer App Order, or ShopifyOrder writes.',
+    notes: 'Native FulfillmentTask lifecycle command. No Customer App Order, ShopifyOrder, ProductionBatch, inventory, PO, notification, provider, proof/drop, route save, sync, or repair writes.',
   });
 }
 
@@ -486,11 +481,12 @@ async function updateCommandLog({ base44, commandLogId, status, result, errorCod
 
 function safeTaskSummary(task) {
   return {
-    fulfillment_task_id: sanitizeId(task?.id) || sanitizeId(task?.fulfillment_task_id) || null,
-    order_id: sanitizeId(task?.order_id) || sanitizeId(task?.shopify_order_id) || null,
+    fulfillment_task_id: sanitizeId(task?.id) || null,
+    external_fulfillment_task_id: sanitizeId(task?.fulfillment_task_id) || null,
     order_number: sanitizeText(task?.order_number || task?.shopify_order_number, 80) || null,
     previous_status: sanitizeText(task?.status, 80) || null,
-    previous_delivery_status: sanitizeText(task?.delivery_status, 80) || null,
+    delivery_status: sanitizeText(task?.delivery_status, 80) || null,
+    assigned_driver: sanitizeText(task?.assigned_driver, 120) || null,
   };
 }
 
@@ -528,14 +524,10 @@ Deno.serve(async (req) => {
 
     const unsupportedKey = findUnsupportedBodyKey(body);
     if (unsupportedKey) {
-      return Response.json({
-        success: false,
-        error_code: 'unsupported_field',
-        error: `Unsupported field: ${unsupportedKey}`,
-      }, { status: 400 });
+      return Response.json({ success: false, error_code: 'unsupported_field', error: `Unsupported field: ${unsupportedKey}` }, { status: 400 });
     }
 
-    let taskId;
+    let taskKey;
     let action;
     let requestId;
     let actorEmail;
@@ -543,16 +535,29 @@ Deno.serve(async (req) => {
     try {
       if (normalizeLower(body.mode) !== 'live') throw new Error('mode live is required');
       if (normalizeText(body.confirmation) !== CONFIRMATION_PHRASE) throw new Error('confirmation phrase is required');
-      taskId = normalizeRequiredId(body.fulfillment_task_id, 'fulfillment_task_id');
+      taskKey = sanitizeId(body.fulfillment_task_id) || sanitizeId(body.task_id);
+      if (!taskKey) throw new Error('fulfillment_task_id or task_id is required');
       action = normalizeAction(body.action);
-      requestId = normalizeRequiredId(body.request_id, 'request_id');
+      requestId = sanitizeId(body.request_id);
+      if (!requestId) throw new Error('request_id is required');
       actorEmail = normalizeActorEmail(user.email);
       reason = sanitizeText(body.reason, MAX_REASON_LENGTH);
     } catch (error) {
       return Response.json({ success: false, error_code: 'invalid_input', error: error.message }, { status: 400 });
     }
 
-    const gateFailure = envGateFailure({ action, taskId, actorEmail });
+    const task = await findTask(base44, taskKey);
+    if (!task) {
+      return Response.json({
+        success: false,
+        skipped: true,
+        error_code: 'fulfillment_task_not_found',
+        native_writer_enabled: true,
+        writes_performed: false,
+      }, { status: 404 });
+    }
+
+    const gateFailure = envGateFailure({ action, task, requestedKey: taskKey, actorEmail });
     if (gateFailure) {
       return Response.json({
         success: false,
@@ -580,19 +585,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    const task = await findTask(base44, taskId);
-    if (!task) {
+    const now = new Date().toISOString();
+    let plan;
+    try {
+      plan = planLifecycle({ action, task, actorEmail, requestId, now, body, reason });
+    } catch (error) {
       return Response.json({
         success: false,
         skipped: true,
-        error_code: 'fulfillment_task_not_found',
+        error_code: 'invalid_input',
+        error: error.message,
         native_writer_enabled: true,
         writes_performed: false,
-      }, { status: 404 });
+      }, { status: 400 });
     }
-
-    const now = new Date().toISOString();
-    const plan = planLifecycle({ action, task, actorEmail, requestId, now, body, reason });
     const blockers = safeStringArray(plan.blockers);
     const warnings = safeStringArray(plan.warnings);
     if (blockers.length > 0 || !plan.proposed_patch) {
@@ -628,7 +634,6 @@ Deno.serve(async (req) => {
       }, { status: 409 });
     }
 
-    const writePatch = buildWritePatch(task, plan.proposed_patch);
     const commandLog = await createCommandLog({
       base44,
       task,
@@ -643,15 +648,12 @@ Deno.serve(async (req) => {
         warnings,
         writes_performed: false,
         native_writer_enabled: true,
-        customer_notification_sent: false,
-        proof_drop_processed: false,
-        route_optimization_run: false,
-        external_service_calls: false,
       },
     });
 
     let writtenTask;
     try {
+      const writePatch = buildWritePatch(task, plan.proposed_patch, commandLog?.id);
       writtenTask = await base44.asServiceRole.entities.FulfillmentTask.update(task.id, writePatch);
     } catch (error) {
       await updateCommandLog({
@@ -681,9 +683,12 @@ Deno.serve(async (req) => {
         warnings,
         writes_performed: true,
         native_writer_enabled: true,
+        customer_order_updated: false,
+        shopify_order_updated: false,
+        production_batch_updated: false,
         customer_notification_sent: false,
         proof_drop_processed: false,
-        route_optimization_run: false,
+        route_saved: false,
         external_service_calls: false,
       },
     });
@@ -702,9 +707,12 @@ Deno.serve(async (req) => {
       warnings,
       native_writer_enabled: true,
       writes_performed: true,
+      customer_order_updated: false,
+      shopify_order_updated: false,
+      production_batch_updated: false,
       customer_notification_sent: false,
       proof_drop_processed: false,
-      route_optimization_run: false,
+      route_saved: false,
       external_service_calls: false,
     });
   } catch {
