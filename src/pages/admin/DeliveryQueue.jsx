@@ -945,7 +945,7 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
 }
 
 function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMaterialized }) {
-  const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || selectedDate || '');
+  const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || '');
   const [productionDate, setProductionDate] = useState('');
   const [windowLabel, setWindowLabel] = useState(stop.delivery_window_label || '');
   const [preview, setPreview] = useState(null);
@@ -1037,7 +1037,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
       <div>
         <p className="text-[10px] uppercase tracking-wider text-emerald-900 font-semibold">Native Task Materialization</p>
         <p className="text-[10px] text-emerald-800 mt-1">
-          For native delivery orders without a task. Preview first, then exact-order gated execution can create one native FulfillmentTask.
+          For native delivery orders without a task. Enter the actual customer delivery date, preview first, then exact-order gated execution can create one native FulfillmentTask.
         </p>
       </div>
 
@@ -1051,6 +1051,11 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
             disabled={pending || actionPending}
             className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
           />
+          {!deliveryDate && (
+            <span className="text-[10px] text-amber-700">
+              Required. Route filter is {formatDate(selectedDate)} but is not auto-applied.
+            </span>
+          )}
         </label>
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Production date</span>
