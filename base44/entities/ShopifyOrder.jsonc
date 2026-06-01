@@ -177,6 +177,7 @@
         "in_cold_storage",
         "assigned_for_pickup",
         "assigned_for_delivery",
+        "not_required",
         "fulfilled",
         "canceled",
         "refunded"
@@ -229,6 +230,238 @@
     "assigned_delivery_date": {
       "type": "string",
       "format": "date"
+    },
+    "order_type": {
+      "type": "string",
+      "enum": [
+        "one_time",
+        "subscription",
+        "pos",
+        "wholesale",
+        "admin",
+        "event"
+      ],
+      "description": "Operational order classification used by native safeSyncOrderUpdate parity."
+    },
+    "fulfillment_mode": {
+      "type": "string",
+      "enum": [
+        "single_delivery",
+        "multi_delivery"
+      ],
+      "description": "Whether the order has one fulfillment occurrence or multiple subscription/delivery occurrences."
+    },
+    "customer_order_date": {
+      "type": "string"
+    },
+    "internal_customer_id": {
+      "type": "string"
+    },
+    "customer_app_user_id": {
+      "type": "string"
+    },
+    "address_line1": {
+      "type": "string"
+    },
+    "address_line2": {
+      "type": "string"
+    },
+    "address_city": {
+      "type": "string"
+    },
+    "address_state": {
+      "type": "string"
+    },
+    "address_postal_code": {
+      "type": "string"
+    },
+    "address_country": {
+      "type": "string"
+    },
+    "delivery_notes": {
+      "type": "string"
+    },
+    "address_last_synced_from": {
+      "type": "string"
+    },
+    "address_last_synced_at": {
+      "type": "string"
+    },
+    "fulfillments": {
+      "type": "array",
+      "description": "Operational fulfillment occurrence snapshots used by subscription and production safety guards.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "production_snapshot": {
+      "type": "object",
+      "description": "Line item and fulfillment snapshot captured before production-sensitive order fields are frozen."
+    },
+    "selected_delivery_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "production_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "delivery_window_label": {
+      "type": "string"
+    },
+    "order_lock_status": {
+      "type": "string",
+      "enum": [
+        "unlocked",
+        "verified",
+        "production_scheduled",
+        "in_production",
+        "out_for_delivery",
+        "fulfilled"
+      ],
+      "description": "Operational lifecycle lock level for safeSyncOrderUpdate frozen-field enforcement."
+    },
+    "order_status": {
+      "type": "string"
+    },
+    "operational_visibility": {
+      "type": "string"
+    },
+    "sync_status": {
+      "type": "string"
+    },
+    "last_sync_at": {
+      "type": "string"
+    },
+    "stripe_customer_id": {
+      "type": "string"
+    },
+    "stripe_checkout_session_id": {
+      "type": "string"
+    },
+    "stripe_payment_intent_id": {
+      "type": "string"
+    },
+    "stripe_invoice_id": {
+      "type": "string"
+    },
+    "stripe_subscription_id": {
+      "type": "string"
+    },
+    "stripe_charge_id": {
+      "type": "string"
+    },
+    "stripe_event_id_applied": {
+      "type": "string"
+    },
+    "stripe_created_event_type": {
+      "type": "string"
+    },
+    "last_reconciliation_at": {
+      "type": "string"
+    },
+    "source_type": {
+      "type": "string"
+    },
+    "repair_status": {
+      "type": "string"
+    },
+    "repair_timestamp": {
+      "type": "string"
+    },
+    "repair_method": {
+      "type": "string"
+    },
+    "subscription_parent_id": {
+      "type": "string"
+    },
+    "fulfillment_instance_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "fulfillment_sequence_number": {
+      "type": "number"
+    },
+    "source_invoice_id": {
+      "type": "string"
+    },
+    "data_quality_status": {
+      "type": "string"
+    },
+    "last_verified_at": {
+      "type": "string"
+    },
+    "delivery_photo_url": {
+      "type": "string"
+    },
+    "delivery_drop_location": {
+      "type": "string"
+    },
+    "delivered_by": {
+      "type": "string"
+    },
+    "delivered_at": {
+      "type": "string"
+    },
+    "manual_override": {
+      "type": "boolean"
+    },
+    "manual_override_at": {
+      "type": "string"
+    },
+    "manual_override_by": {
+      "type": "string"
+    },
+    "audit_trail": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "delivery_zone_key": {
+      "type": "string"
+    },
+    "delivery_zone_name": {
+      "type": "string"
+    },
+    "delivery_zone_type": {
+      "type": "string"
+    },
+    "delivery_fee": {
+      "type": "number"
+    },
+    "minimum_order": {
+      "type": "number"
+    },
+    "distance_miles": {
+      "type": "number"
+    },
+    "drive_time_minutes": {
+      "type": "number"
+    },
+    "approval_request_id": {
+      "type": "string"
+    },
+    "approval_status": {
+      "type": "string"
+    },
+    "approved_delivery_fee": {
+      "type": "number"
+    },
+    "route_review_required": {
+      "type": "boolean"
+    },
+    "origin_address": {
+      "type": "string"
+    },
+    "refunded_at": {
+      "type": "string"
+    },
+    "cancel_type": {
+      "type": "string"
+    },
+    "excluded_from_production": {
+      "type": "boolean"
     }
   },
   "required": [
