@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const LOG_TYPES = {
   temperature: {
@@ -70,6 +70,7 @@ export default function UnifiedComplianceForm() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const queryClient = useQueryClient();
 
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
@@ -144,6 +145,8 @@ export default function UnifiedComplianceForm() {
         record_type: 'unified',
         data: logEntry,
       });
+      queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
       setMessage('✓ Log saved successfully');
       setFormData(LOG_TYPES[activeTab].defaults);
 

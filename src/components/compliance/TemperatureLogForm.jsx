@@ -68,6 +68,8 @@ export default function TemperatureLogForm({ onClose }) {
 
       queryClient.invalidateQueries({ queryKey: ['temperature_logs'] });
       queryClient.invalidateQueries({ queryKey: ['temp_logs_today'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
       onClose?.();
     } finally {
       setIsSubmitting(false);
