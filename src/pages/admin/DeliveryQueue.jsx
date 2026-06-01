@@ -106,6 +106,21 @@ function dataSourceLabel(value) {
   return 'Source pending';
 }
 
+function isNativeDeliveryStop(stop) {
+  return (stop?.data_source || '').toString().startsWith('customer_app_native');
+}
+
+function isNativeDeliveryTaskStop(stop) {
+  return stop?.data_source === 'customer_app_native_task';
+}
+
+function canonicalTaskStatus(value) {
+  const key = normalizedStatus(value);
+  if (key === 'out for delivery') return 'out_for_delivery';
+  if (key === 'in transit') return 'out_for_delivery';
+  return value || null;
+}
+
 function normalizedStatus(value) {
   return (value || '').toString().trim().toLowerCase();
 }
@@ -138,6 +153,28 @@ function deliveredRequestId(taskId) {
   const fallback = Math.random().toString(36).slice(2);
   const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
   return `fulfillment_delivered_${taskId}_${Date.now()}_${randomId}`;
+}
+
+function nativePreviewRequestId(action, stop) {
+  const fallback = Math.random().toString(36).slice(2);
+  const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+  return `native_fulfillment_preview_${action}_${stop.task_id || stop.order_number || 'task'}_${Date.now()}_${randomId}`;
+}
+
+function nativeTaskPayload(stop) {
+  return {
+    id: stop.task_id || null,
+    fulfillment_task_id: stop.task_id || null,
+    order_number: stop.order_number || null,
+    status: canonicalTaskStatus(stop.task_status),
+    delivery_status: canonicalTaskStatus(stop.delivery_status),
+    fulfillment_type: 'delivery',
+    source_type: stop.source_type || 'customer_app_native',
+    delivery_date: stop.delivery_date || null,
+    address: stop.delivery_address || null,
+    assigned_driver: stop.assigned_driver || null,
+    items: stop.items_summary ? [{ title: stop.items_summary, quantity: 1 }] : [],
+  };
 }
 
 function routeStopPayload(stop) {
@@ -650,7 +687,186 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
   );
 }
 
+function NativeDeliveryReadOnlyNotice({ stop }) {
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50 p-2">
+      <div className="flex items-start gap-2">
+        <Truck className="w-3.5 h-3.5 text-sky-700 mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-wider text-sky-800 font-semibold">
+            {isNativeDeliveryTaskStop(stop) ? 'Native FulfillmentTask' : 'Native Delivery Order'}
+          </p>
+          <p className="text-xs text-sky-800 mt-1">
+            Hub-backed delivery write controls are hidden for this row. Use the dry-run preview below for native readiness until native delivery writes are explicitly allowlisted.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NativeFulfillmentPreviewPanel({ stop }) {
+  const [activeAction, setActiveAction] = useState('assign');
+  const [driverLabel, setDriverLabel] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const canPreview = Boolean(stop.task_id || stop.order_number);
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const projectedWrites = Array.isArray(preview?.projected_writes) ? preview.projected_writes : [];
+  const actions = [
+    { key: 'assign', label: 'Assign' },
+    { key: 'unassign', label: 'Unassign' },
+    { key: 'pack', label: 'Pack' },
+    { key: 'out_for_delivery', label: 'Out For Delivery' },
+    { key: 'delivered_operational', label: 'Delivered' },
+  ];
+
+  async function runPreview(action) {
+    const nextDriver = trimDriverLabel(driverLabel);
+    if (action === 'assign' && !nextDriver) {
+      setMessage({ type: 'error', text: 'Enter an internal driver label to preview assignment.' });
+      return;
+    }
+
+    setActiveAction(action);
+    setPending(true);
+    setPreview(null);
+    setMessage(null);
+
+    try {
+      const payload = {
+        action,
+        mode: 'dry_run',
+        task: nativeTaskPayload(stop),
+        request_id: nativePreviewRequestId(action, stop),
+      };
+
+      if (action === 'assign') {
+        payload.assignment_input = { assigned_driver: nextDriver };
+      }
+
+      const res = await base44.functions.invoke('previewNativeFulfillmentTaskLifecycle', payload);
+      const result = res?.data || res;
+      if (result?.error && result?.success !== true) throw new Error(result.error);
+      setPreview(result);
+      setMessage({
+        type: result.lifecycle_ready ? 'success' : 'warn',
+        text: result.lifecycle_ready
+          ? `${formatLabel(action)} readiness preview passed. Native writes remain disabled.`
+          : `${formatLabel(action)} has preview blockers or warnings.`,
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || `Unable to preview native ${formatLabel(action)}.` });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-background p-2 space-y-3">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Fulfillment Preview</p>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Dry-run only. No native task update, notification, proof/drop action, route save, provider call, or customer-facing status write occurs.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {actions.map(action => (
+          <button
+            key={action.key}
+            type="button"
+            disabled={pending || !canPreview}
+            onClick={() => runPreview(action.key)}
+            className={`h-9 rounded-lg border px-2 text-xs font-semibold ${
+              activeAction === action.key
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card text-foreground border-border disabled:opacity-50'
+            }`}
+          >
+            {pending && activeAction === action.key ? 'Previewing...' : action.label}
+          </button>
+        ))}
+      </div>
+
+      {activeAction === 'assign' && (
+        <label className="space-y-1 block">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Preview driver label</span>
+          <input
+            type="text"
+            value={driverLabel}
+            onChange={event => setDriverLabel(event.target.value.slice(0, 120))}
+            placeholder="Driver name or internal label"
+            disabled={pending}
+            maxLength={120}
+            className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
+          />
+        </label>
+      )}
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-amber-700'
+              : 'text-green-700'
+        }`}>
+          {message.text}
+        </p>
+      )}
+
+      {preview && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ready</p>
+              <p className="text-sm font-bold">{preview.lifecycle_ready ? 'Yes' : 'No'}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Write</p>
+              <p className="text-sm font-bold">{preview.native_write_allowed ? 'Yes' : 'No'}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Action</p>
+              <p className="text-sm font-bold">{formatLabel(preview.action)}</p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="space-y-1">
+              {blockers.map(blocker => (
+                <div key={`native-fulfillment-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Blocker: {formatLabel(blocker)}</span>
+                </div>
+              ))}
+              {warnings.map(warning => (
+                <div key={`native-fulfillment-warning-${warning}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{formatLabel(warning)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {projectedWrites.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              Would write if a future native command is explicitly approved: {projectedWrites.map(formatLabel).join(', ')}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StopCard({ stop, completed, onAssignmentSuccess }) {
+  const nativeStop = isNativeDeliveryStop(stop);
+
   return (
     <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -757,8 +973,17 @@ function StopCard({ stop, completed, onAssignmentSuccess }) {
         Task ID: {stop.task_id || 'Task pending'}
       </p>
 
-      <DriverAssignmentControls stop={stop} onAssignmentSuccess={onAssignmentSuccess} />
-      <OperationalStatusControls stop={stop} onStatusSuccess={onAssignmentSuccess} />
+      {nativeStop ? (
+        <>
+          <NativeDeliveryReadOnlyNotice stop={stop} />
+          <NativeFulfillmentPreviewPanel stop={stop} />
+        </>
+      ) : (
+        <>
+          <DriverAssignmentControls stop={stop} onAssignmentSuccess={onAssignmentSuccess} />
+          <OperationalStatusControls stop={stop} onStatusSuccess={onAssignmentSuccess} />
+        </>
+      )}
     </div>
   );
 }
@@ -897,10 +1122,10 @@ export default function DeliveryQueue() {
           </label>
 
           <p className="text-xs text-muted-foreground">
-            Showing Hub delivery route summary for {formatDate(deliveryDate)}.
+            Showing Hub and native Customer App delivery route summary for {formatDate(deliveryDate)}.
           </p>
           <AdminStatusLegend />
-          <p className="text-[10px] text-muted-foreground">Hub data plus native Customer App delivery orders missing dates. Driver assignment and operational status actions only for eligible active tasks.</p>
+          <p className="text-[10px] text-muted-foreground">Hub data plus native Customer App delivery rows. Hub-backed write actions are hidden for native rows; native fulfillment previews are dry-run only.</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
@@ -918,7 +1143,7 @@ export default function DeliveryQueue() {
 
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-foreground">Hub Driver Portal route view</p>
+            <p className="text-xs font-semibold text-foreground">Driver Portal route view</p>
             <p className="text-[10px] text-muted-foreground">Date-pending native orders are surfaced for review only. Proof, bag return, and manual notification actions remain omitted. Route optimization is preview-only.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
@@ -964,14 +1189,14 @@ export default function DeliveryQueue() {
             )}
             <StopSection
               title="Delivery Stops"
-              subtitle="Active Hub delivery tasks for this date"
+              subtitle="Active Hub and native delivery tasks for this date"
               stops={deliveryStops}
               completed={false}
               onAssignmentSuccess={refreshDeliveryActionSummaries}
             />
             <StopSection
               title="Completed"
-              subtitle="Delivered or completed Hub delivery tasks"
+              subtitle="Delivered or completed delivery tasks"
               stops={completedStops}
               completed
               onAssignmentSuccess={refreshDeliveryActionSummaries}
