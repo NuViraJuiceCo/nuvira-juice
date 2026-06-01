@@ -27,6 +27,12 @@ function sanitizeText(value, maxLength = 160) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
+function operationalText(value, maxLength = 160) {
+  const text = normalizeSingleLine(value).replace(/[\u0000-\u001f\u007f]/g, '');
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
 function sanitizeId(value, maxLength = 180) {
   const text = sanitizeText(value, maxLength);
   return /^[A-Za-z0-9._:@/#-]+$/.test(text) ? text : '';
@@ -70,7 +76,7 @@ function lineItemsSummary(items) {
   if (!Array.isArray(items)) return '';
   return items
     .slice(0, 8)
-    .map(item => `${safeNumber(item.quantity) ?? 0}x ${sanitizeText(item.title || item.name || item.product_title, 80)}`)
+    .map(item => `${safeNumber(item.quantity) ?? 0}x ${operationalText(item.title || item.name || item.product_title, 80)}`)
     .filter(item => !item.startsWith('0x '))
     .join(', ');
 }
@@ -79,14 +85,14 @@ function taskItemsFromOrder(order) {
   if (!Array.isArray(order.line_items)) return [];
   return order.line_items.slice(0, SAFE_ARRAY_LIMIT).map(item => ({
     product_id: sanitizeId(item.shopify_line_item_id || item.id, 120),
-    title: sanitizeText(item.title || item.name || item.product_title, 120) || 'Item',
+    title: operationalText(item.title || item.name || item.product_title, 120) || 'Item',
     price: safeNumber(item.price) ?? 0,
     quantity: safeNumber(item.quantity) ?? 0,
   })).filter(item => item.title && item.quantity > 0);
 }
 
 function deliveryAddress(order) {
-  return sanitizeText(order.delivery_address || order.address || [
+  return operationalText(order.delivery_address || order.address || [
     order.address_line1,
     order.address_city,
     order.address_state,
@@ -112,11 +118,11 @@ function buildTaskDraft(order, body) {
   return {
     order_id: order.id,
     shopify_order_id: order.id,
-    shopify_order_number: sanitizeText(order.shopify_order_number || order.order_number, 120),
-    order_number: sanitizeText(order.shopify_order_number || order.order_number, 120),
-    customer_name: sanitizeText(order.customer_name, 160),
-    customer_email: sanitizeText(order.customer_email, 180),
-    customer_phone: sanitizeText(order.customer_phone, 80),
+    shopify_order_number: operationalText(order.shopify_order_number || order.order_number, 120),
+    order_number: operationalText(order.shopify_order_number || order.order_number, 120),
+    customer_name: operationalText(order.customer_name, 160),
+    customer_email: operationalText(order.customer_email, 180),
+    customer_phone: operationalText(order.customer_phone, 80),
     source_channel: sanitizeText(order.source_channel || 'customer_app', 80),
     source_type: sanitizeText(order.source_type || 'customer_app_native', 80),
     fulfillment_type: 'delivery',
@@ -128,11 +134,11 @@ function buildTaskDraft(order, body) {
     ...(windowLabel ? { time_window: windowLabel, delivery_window_label: windowLabel } : {}),
     address,
     delivery_address: address,
-    address_line1: sanitizeText(order.address_line1, 120),
-    address_line2: sanitizeText(order.address_line2, 120),
-    address_city: sanitizeText(order.address_city, 100),
-    address_state: sanitizeText(order.address_state, 80),
-    address_postal_code: sanitizeText(order.address_postal_code, 40),
+    address_line1: operationalText(order.address_line1, 120),
+    address_line2: operationalText(order.address_line2, 120),
+    address_city: operationalText(order.address_city, 100),
+    address_state: operationalText(order.address_state, 80),
+    address_postal_code: operationalText(order.address_postal_code, 40),
     items,
     items_summary: lineItemsSummary(order.line_items),
     status: 'scheduled',
