@@ -1158,6 +1158,143 @@ function NativeBatchReadOnlyNotice() {
   );
 }
 
+function NativeLifecyclePreviewPanel({ batch }) {
+  const [activeAction, setActiveAction] = useState('start');
+  const [preview, setPreview] = useState(null);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  async function runPreview(action) {
+    setActiveAction(action);
+    setPending(true);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('previewNativeProductionBatchLifecycle', {
+        action,
+        mode: 'dry_run',
+        batch,
+        request_id: requestIdFor(`native_${action}_preview`, batch),
+      });
+      const result = res?.data || res;
+      if (result?.error && result?.success !== true) throw new Error(result.error);
+      setPreview(result);
+      setMessage({
+        type: result.lifecycle_ready ? 'success' : 'warn',
+        text: result.lifecycle_ready
+          ? `${formatLabel(action)} readiness preview passed. Native writes remain disabled.`
+          : `${formatLabel(action)} has preview blockers or warnings.`,
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || `Unable to preview native ${action}.` });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const projectedWrites = Array.isArray(preview?.projected_writes) ? preview.projected_writes : [];
+  const actions = [
+    { key: 'start', label: 'Start' },
+    { key: 'complete', label: 'Complete' },
+    { key: 'verify', label: 'Verify' },
+  ];
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-background p-3 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <ClipboardCheck className="w-4 h-4 text-primary" />
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Lifecycle Preview</p>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Dry-run only. This checks native readiness without creating logs, compliance records, inventory changes, or batch updates.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {actions.map(action => (
+          <button
+            key={action.key}
+            type="button"
+            disabled={pending || (!batch.id && !batch.batch_id)}
+            onClick={() => runPreview(action.key)}
+            className={`h-9 rounded-lg border px-2 text-xs font-semibold ${
+              activeAction === action.key
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card text-foreground border-border disabled:opacity-50'
+            }`}
+          >
+            {pending && activeAction === action.key ? 'Previewing...' : action.label}
+          </button>
+        ))}
+      </div>
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-amber-700'
+              : 'text-green-700'
+        }`}>
+          {message.text}
+        </p>
+      )}
+
+      {preview && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ready</p>
+              <p className="text-sm font-bold">{preview.lifecycle_ready ? 'Yes' : 'No'}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Write</p>
+              <p className="text-sm font-bold">{preview.native_write_allowed ? 'Yes' : 'No'}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Action</p>
+              <p className="text-sm font-bold">{formatLabel(preview.action)}</p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="space-y-1">
+              {blockers.map(blocker => (
+                <div key={`native-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Blocker: {formatLabel(blocker)}</span>
+                </div>
+              ))}
+              {warnings.map(warning => (
+                <div key={`native-warning-${warning}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{formatLabel(warning)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {projectedWrites.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              Would write if a future native command is explicitly approved: {projectedWrites.map(formatLabel).join(', ')}
+            </p>
+          )}
+
+          <div className="flex items-start gap-2 text-xs text-muted-foreground">
+            <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>No live native production command is available from this panel.</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BatchCard({ batch, onActionSuccess }) {
   const nativeBatch = isNativeBatch(batch);
   const categoryAccent = nativeBatch
@@ -1225,7 +1362,10 @@ function BatchCard({ batch, onActionSuccess }) {
       )}
 
       {nativeBatch ? (
-        <NativeBatchReadOnlyNotice />
+        <>
+          <NativeBatchReadOnlyNotice />
+          <NativeLifecyclePreviewPanel batch={batch} />
+        </>
       ) : (
         <>
           <ProductionLifecyclePanel batch={batch} onActionSuccess={onActionSuccess} />
