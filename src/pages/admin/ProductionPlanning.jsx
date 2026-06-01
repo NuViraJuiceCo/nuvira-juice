@@ -97,6 +97,45 @@ function formatNumber(value, maximumFractionDigits = 2) {
   return number.toLocaleString(undefined, { maximumFractionDigits });
 }
 
+function formatQuantity(value, unit, maximumFractionDigits = 2) {
+  if (value === null || value === undefined) return null;
+  const unitText = unit ? ` ${unit}` : '';
+  return `${formatNumber(value, maximumFractionDigits)}${unitText}`;
+}
+
+function hasNativeYieldContext(item) {
+  return ['customer_app_native', 'may30_pos_event_stock_plan', 'mixed_native_and_event_plan'].includes(item.source);
+}
+
+function procurementNeedLabel(item) {
+  if (item.procurement_needed_quantity === null || item.procurement_needed_quantity === undefined) {
+    if (!hasNativeYieldContext(item)) return 'Hub summary';
+    if (item.procurement_basis === 'missing_yield') return 'Yield needed';
+    if (item.procurement_basis === 'yield_missing_conversion') return 'Yield conversion needed';
+    return 'Not available';
+  }
+
+  if (Number(item.procurement_needed_quantity) <= 0) return 'Covered';
+
+  const quantityLabel = formatQuantity(item.procurement_needed_quantity, item.procurement_unit || 'units');
+  const caseQuantity = Number(item.procurement_case_quantity || 0);
+  if (caseQuantity > 0) {
+    return `${quantityLabel} (${formatNumber(caseQuantity, 0)} case${caseQuantity === 1 ? '' : 's'})`;
+  }
+  return quantityLabel;
+}
+
+function yieldContextLabel(item) {
+  if (!hasNativeYieldContext(item) && !item.yield_match_found) return 'Hub demand summary';
+  if (!item.yield_match_found) return 'Missing yield';
+  const parts = [
+    item.oz_per_purchase_unit ? `${formatNumber(item.oz_per_purchase_unit)} oz/${item.purchase_unit || 'unit'}` : null,
+    item.rounding_rule ? formatLabel(item.rounding_rule) : null,
+    item.supplier || null,
+  ].filter(Boolean);
+  return parts.join(' · ') || 'Yield matched';
+}
+
 function formatLabel(value) {
   if (!value) return 'Not set';
   return value
@@ -241,7 +280,11 @@ function IngredientTable({ ingredients }) {
                 <td className="px-4 py-3.5 font-medium text-foreground">{item.ingredient || 'Unnamed ingredient'}</td>
                 <td className="px-4 py-3.5 text-muted-foreground">{formatNumber(item.required_quantity)} {item.unit || ''}</td>
                 <td className="px-4 py-3.5 text-muted-foreground">{item.available_stock === null ? 'No data' : `${formatNumber(item.available_stock)} ${item.unit || ''}`}</td>
-                <td className="px-4 py-3.5 text-muted-foreground">{formatNumber(item.shortage_amount)} {item.unit || ''}</td>
+                <td className="px-4 py-3.5 text-muted-foreground">
+                  <p>{formatNumber(item.shortage_amount)} {item.unit || ''}</p>
+                  <p className="text-[10px] text-foreground font-semibold mt-1">Buy: {procurementNeedLabel(item)}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{yieldContextLabel(item)}</p>
+                </td>
                 <td className="px-4 py-3.5"><StatusBadge status={item.status} /></td>
                 <td className="px-4 py-3.5 text-muted-foreground">{sourceLabel(item.source)}</td>
                 <td className="px-4 py-3.5 text-muted-foreground max-w-[220px]">{(item.source_products || []).join(', ') || '-'}</td>
@@ -281,6 +324,12 @@ function IngredientCards({ ingredients }) {
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Shortage</p>
               <p className="text-xs font-bold">{formatNumber(item.shortage_amount)}</p>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-2">
+            <p className="text-[10px] uppercase tracking-wider text-amber-800 font-semibold">Procurement Need</p>
+            <p className="text-xs font-bold text-foreground mt-0.5">{procurementNeedLabel(item)}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{yieldContextLabel(item)}</p>
           </div>
 
           <div className="space-y-1.5 pt-2 border-t border-border/30">
@@ -483,9 +532,9 @@ export default function ProductionPlanning() {
                 Built-in recipe fallback used for {formatNumber(nativeOverlay.built_in_fallback_recipe_count, 0)} product match{Number(nativeOverlay.built_in_fallback_recipe_count) === 1 ? '' : 'es'} where live Recipe master data was missing.
               </p>
             )}
-            {Number(nativeOverlay.missing_recipe_count || 0) + Number(nativeOverlay.ambiguous_recipe_count || 0) + Number(nativeOverlay.missing_inventory_count || 0) > 0 && (
+            {Number(nativeOverlay.missing_recipe_count || 0) + Number(nativeOverlay.ambiguous_recipe_count || 0) + Number(nativeOverlay.missing_inventory_count || 0) + Number(nativeOverlay.missing_yield_count || 0) + Number(nativeOverlay.ambiguous_yield_count || 0) > 0 && (
               <p className="text-[10px] text-amber-700 mt-1">
-                Native master-data gaps: {formatNumber(nativeOverlay.missing_recipe_count, 0)} missing recipes · {formatNumber(nativeOverlay.ambiguous_recipe_count, 0)} ambiguous recipes · {formatNumber(nativeOverlay.missing_inventory_count, 0)} missing inventory matches
+                Native master-data gaps: {formatNumber(nativeOverlay.missing_recipe_count, 0)} missing recipes · {formatNumber(nativeOverlay.ambiguous_recipe_count, 0)} ambiguous recipes · {formatNumber(nativeOverlay.missing_inventory_count, 0)} missing inventory matches · {formatNumber(nativeOverlay.missing_yield_count, 0)} missing yields · {formatNumber(nativeOverlay.ambiguous_yield_count, 0)} ambiguous yields
               </p>
             )}
             {Number(nativeOverlay.skipped_missing_date_count || 0) > 0 && (
@@ -563,7 +612,7 @@ export default function ProductionPlanning() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Ingredient Demand</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Sanitized ingredient requirements, stock coverage, and make-to-order procurement needs. No inventory is deducted here.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Sanitized ingredient requirements, stock coverage, and IngredientYield purchase-unit needs. No inventory is deducted and no purchase order is created here.</p>
               </div>
               {ingredients.length > 0 ? (
                 <>
