@@ -7,6 +7,7 @@ const ALLOWED_TYPES = new Set([
   'sanitation',
   'corrective_action',
   'daily_checklist',
+  'batch_compliance',
   'unified',
   'label_allergen',
   'haccp_plan',
@@ -21,6 +22,12 @@ function text(value, max = 220) {
 function number(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function optionalNumber(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function bool(value) {
@@ -39,6 +46,19 @@ async function readJsonBody(req) {
 function stringArray(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 30).map(item => text(item, 120)).filter(Boolean);
+}
+
+function ingredientRows(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 80).map(row => {
+    const source = row && typeof row === 'object' ? row : {};
+    return compact({
+      ingredient_name: text(source.ingredient_name || source.name, 160),
+      quantity: optionalNumber(source.quantity),
+      unit: text(source.unit, 40),
+      lot_number: text(source.lot_number, 120),
+    });
+  }).filter(row => row.ingredient_name);
 }
 
 function todayIso() {
@@ -240,6 +260,27 @@ function haccpPlanRecord(data) {
   });
 }
 
+function batchComplianceRecord(data, user) {
+  const passedFailed = text(data?.passed_failed || data?.status || 'passed', 20).toLowerCase() === 'failed' ? 'failed' : 'passed';
+  return compact({
+    date: safeDate(data?.date || data?.log_date),
+    batch_id: text(data?.batch_id, 120),
+    juice_flavor: text(data?.juice_flavor || data?.product_name || data?.flavor, 160),
+    ingredients: ingredientRows(data?.ingredients),
+    start_time: text(data?.start_time, 80),
+    end_time: text(data?.end_time, 80),
+    quantity_produced: number(data?.quantity_produced ?? data?.actual_units ?? data?.units_produced, NaN),
+    staff_on_duty: stringArray(data?.staff_on_duty),
+    pH_result: optionalNumber(data?.pH_result ?? data?.ph_result ?? data?.ph_value),
+    passed_failed: passedFailed,
+    notes: text(data?.notes, 2000),
+    verified_by: text(data?.verified_by || user?.email, 160),
+    verified_at: text(data?.verified_at || new Date().toISOString(), 80),
+    source_production_batch_id: text(data?.source_production_batch_id || data?.production_batch_id, 160),
+    locked: true,
+  });
+}
+
 function buildRecord(recordType, data, user) {
   if (recordType === 'temperature') return { entity: 'TemperatureLog', record: temperatureRecord(data, user) };
   if (recordType === 'ph') return { entity: 'pHLog', record: phRecord(data, user) };
@@ -247,6 +288,7 @@ function buildRecord(recordType, data, user) {
   if (recordType === 'sanitation') return { entity: 'SanitationLog', record: sanitationRecord(data, user) };
   if (recordType === 'corrective_action') return { entity: 'CorrectiveActionLog', record: correctiveRecord(data, user) };
   if (recordType === 'daily_checklist') return { entity: 'DailyChecklist', record: checklistRecord(data, user) };
+  if (recordType === 'batch_compliance') return { entity: 'BatchComplianceLog', record: batchComplianceRecord(data, user) };
   if (recordType === 'label_allergen') return { entity: 'LabelAllergenReview', record: labelAllergenRecord(data) };
   if (recordType === 'haccp_plan') return { entity: 'HACCPPlanReview', record: haccpPlanRecord(data) };
   return { entity: 'ComplianceLog', record: unifiedRecord(data, user) };
@@ -258,6 +300,8 @@ function validate(recordType, record) {
   if (recordType === 'ccp' && (!record.batch_id || !record.measurement)) return 'ccp_batch_and_measurement_required';
   if (recordType === 'sanitation' && (!record.cleaned || !record.sanitized)) return 'sanitation_cleaned_and_sanitized_required';
   if (recordType === 'corrective_action' && !record.corrective_action_taken) return 'corrective_action_required';
+  if (recordType === 'batch_compliance' && (!record.batch_id || !record.juice_flavor || !Number.isFinite(record.quantity_produced) || record.quantity_produced <= 0)) return 'batch_id_product_and_quantity_required';
+  if (recordType === 'batch_compliance' && !['passed', 'failed'].includes(record.passed_failed)) return 'batch_pass_fail_status_required';
   if (recordType === 'unified' && !record.log_type) return 'compliance_log_type_required';
   if (recordType === 'label_allergen' && !record.product_name) return 'product_name_required';
   if (recordType === 'haccp_plan' && (!record.plan_version || !record.review_date)) return 'haccp_plan_version_and_review_date_required';
