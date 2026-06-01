@@ -52,6 +52,8 @@ export default function CCPLogForm({ onClose }) {
 
       queryClient.invalidateQueries({ queryKey: ['CCP_logs'] });
       queryClient.invalidateQueries({ queryKey: ['CCP_logs_today'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
       onClose?.();
     } finally {
       setIsSubmitting(false);

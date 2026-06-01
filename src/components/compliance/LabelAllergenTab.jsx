@@ -31,6 +31,7 @@ function LabelForm({ existing, onClose }) {
     });
     qc.invalidateQueries({ queryKey: ['label_allergen_reviews'] });
     qc.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
+    qc.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
     setSaving(false);
     onClose();
   };

@@ -46,6 +46,8 @@ export default function CorrectiveActionForm({ onClose }) {
       });
 
       queryClient.invalidateQueries({ queryKey: ['corrective_logs'] });
+      queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
       onClose?.();
     } finally {
       setIsSubmitting(false);

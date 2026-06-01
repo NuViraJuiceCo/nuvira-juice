@@ -41,6 +41,7 @@ function HACCPForm({ existing, onClose }) {
     });
     qc.invalidateQueries({ queryKey: ['haccp_plan_reviews'] });
     qc.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
+    qc.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
     setSaving(false);
     onClose();
   };
