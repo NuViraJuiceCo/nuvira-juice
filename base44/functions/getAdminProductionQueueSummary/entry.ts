@@ -89,6 +89,26 @@ function safeStringArray(values, limit = 30) {
     .slice(0, limit);
 }
 
+function safeNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function safeIngredientUsageRows(values) {
+  if (!Array.isArray(values)) return [];
+  return values.slice(0, 40).map(row => {
+    const ingredientName = normalizeText(row?.ingredient_name || row?.name);
+    if (!ingredientName) return null;
+    return {
+      ingredient_name: ingredientName,
+      quantity: safeNumber(row?.quantity),
+      unit: normalizeText(row?.unit),
+      lot_number: normalizeText(row?.lot_number),
+    };
+  }).filter(Boolean);
+}
+
 function sourceKey(batch) {
   return normalizeText(batch.batch_id || batch.id).toLowerCase();
 }
@@ -138,13 +158,36 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit) {
       })
       .map(batch => {
         const orderSources = Array.isArray(batch.order_sources) ? batch.order_sources : [];
-        return sanitizeBatch({
+        const safeBatch = sanitizeBatch({
           ...batch,
           order_count: orderSources.length,
           order_numbers: safeStringArray(orderSources.map(source => source?.order_number), 50),
           source_type_counts: nativeSourceTypeCounts(orderSources),
           source: 'customer_app_native',
         });
+
+        return {
+          ...safeBatch,
+          actual_start_time: normalizeText(batch.actual_start_time),
+          actual_end_time: normalizeText(batch.actual_end_time),
+          started_by: normalizeText(batch.started_by),
+          completed_by: normalizeText(batch.completed_by),
+          verified_by: normalizeText(batch.verified_by),
+          verified_at: normalizeText(batch.verified_at),
+          compliance_log_id: normalizeText(batch.compliance_log_id),
+          inventory_deduction_log_id: normalizeText(batch.inventory_deduction_log_id),
+          source_system: normalizeText(batch.source_system),
+          pH_result: safeNumber(batch.pH_result),
+          pH_passed_failed: normalizeText(batch.pH_passed_failed),
+          passed_failed: normalizeText(batch.passed_failed),
+          bottles_produced: safeNumber(batch.bottles_produced),
+          bottles_rejected_or_wasted: safeNumber(batch.bottles_rejected_or_wasted),
+          final_usable_quantity: safeNumber(batch.final_usable_quantity),
+          storage_location: normalizeText(batch.storage_location),
+          use_by_date: normalizeText(batch.use_by_date),
+          staff_on_duty: safeStringArray(batch.staff_on_duty, 20),
+          ingredients_used: safeIngredientUsageRows(batch.ingredients_used),
+        };
       });
 
     return (limit ? filtered.slice(0, limit) : filtered).sort((a, b) => {
