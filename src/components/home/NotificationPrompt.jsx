@@ -7,7 +7,7 @@ import {
   subscribeToEventPushNotifications,
 } from '@/lib/eventPushNotifications';
 
-const STORAGE_KEY = 'nuvira_notif_prompt_dismissed';
+const STORAGE_KEY = 'nuvira_native_notif_prompt_dismissed_v1';
 
 export default function NotificationPrompt() {
   const [permission, setPermission] = useState(null);
