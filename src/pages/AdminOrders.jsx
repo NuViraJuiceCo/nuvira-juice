@@ -138,6 +138,72 @@ function itemSummary(items = []) {
     .join(' · ') + (items.length > 2 ? ` +${items.length - 2} more` : '');
 }
 
+function todayIsoDate() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  const localDate = new Date(now.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+function itemsFromSummary(summary) {
+  if (!summary || typeof summary !== 'string') return [];
+  return summary
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      const match = part.match(/^(\d+(?:\.\d+)?)x\s+(.+)$/i);
+      return {
+        quantity: match ? Number(match[1]) : 1,
+        title: match ? match[2].trim() : part,
+        price: 0,
+      };
+    });
+}
+
+function mapDeliveryStopToAdminOrder(stop) {
+  if (!stop?.order_number) return null;
+  const status = ['delivered', 'completed', 'fulfilled'].includes((stop.task_status || stop.delivery_status || '').toString().toLowerCase())
+    ? 'delivered'
+    : 'order_received';
+
+  return {
+    id: `native_delivery_fallback_${stop.task_id || stop.order_number}`,
+    order_number: stop.order_number,
+    customer_email: '',
+    customer_name: stop.customer_name || '',
+    status,
+    native_production_status: null,
+    native_fulfillment_status: stop.task_status || stop.delivery_status || null,
+    native_sync_status: 'delivery_queue_fallback',
+    native_review_status: stop.missing_address ? 'review_required' : 'complete',
+    native_fulfillment_task_summary: {
+      count: stop.task_id ? 1 : 0,
+      status_counts: stop.task_status ? { [stop.task_status]: 1 } : {},
+      next_delivery_date: stop.delivery_date || null,
+      production_date: null,
+      task_ids: stop.task_id ? [stop.task_id] : [],
+    },
+    payment_status: null,
+    source_channel: stop.source_type || 'customer_app_native',
+    source_type: stop.data_source || 'delivery_queue_native_fallback',
+    order_type: null,
+    order_lock_status: null,
+    total: 0,
+    subtotal: 0,
+    delivery_fee: 0,
+    fulfillment_type: 'delivery',
+    delivery_address: stop.delivery_address || '',
+    contact_phone: '',
+    estimated_delivery_date: stop.delivery_date || null,
+    created_date: stop.delivery_date || null,
+    items: itemsFromSummary(stop.items_summary),
+    notes: stop.delivery_window_label ? `Window: ${stop.delivery_window_label}` : null,
+    is_native_order: true,
+    is_native_delivery_fallback: true,
+  };
+}
+
 function SectionLabel({ title, description, badge }) {
   return (
     <div className="flex items-start justify-between gap-2">
@@ -861,7 +927,7 @@ export default function AdminOrders() {
 
   const [search, setSearch] = useState('');
 
-  const { data: ordersData = {}, isLoading } = useQuery({
+  const { data: ordersData = {}, isLoading: ordersLoading } = useQuery({
     queryKey: ['admin-orders'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminOrdersWithHub', {});
@@ -870,7 +936,44 @@ export default function AdminOrders() {
     enabled: user?.role === 'admin',
     refetchInterval: 30000,
   });
-  const orders = ordersData.orders || [];
+  const primaryOrders = ordersData.orders || [];
+
+  const { data: deliveryFallbackData = {}, isLoading: deliveryFallbackLoading } = useQuery({
+    queryKey: ['admin-orders-delivery-fallback'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminDeliveryRouteSummary', {
+        delivery_date: todayIsoDate(),
+        limit: 100,
+      });
+      return res.data || {};
+    },
+    enabled: user?.role === 'admin',
+    refetchInterval: 30000,
+  });
+
+  const deliveryFallbackOrders = useMemo(() => {
+    const sections = deliveryFallbackData.sections || {};
+    return [
+      ...(sections.delivery_stops || []),
+      ...(sections.unscheduled_delivery_orders || []),
+    ]
+      .map(mapDeliveryStopToAdminOrder)
+      .filter(Boolean);
+  }, [deliveryFallbackData]);
+
+  const orders = useMemo(() => {
+    const merged = new Map();
+    primaryOrders.forEach(order => {
+      const key = (order.order_number || order.id || '').toString().toLowerCase();
+      if (key) merged.set(key, order);
+    });
+    deliveryFallbackOrders.forEach(order => {
+      const key = (order.order_number || order.id || '').toString().toLowerCase();
+      if (key && !merged.has(key)) merged.set(key, order);
+    });
+    return Array.from(merged.values());
+  }, [primaryOrders, deliveryFallbackOrders]);
+  const isLoading = ordersLoading || (primaryOrders.length === 0 && deliveryFallbackLoading);
 
   // Build email -> name map from the admin orders wrapper payload.
   // This avoids a browser-side UserProfile.list on the operational order page.
