@@ -102,7 +102,7 @@ function ActionButton({ children, onClick, disabled, variant = 'default' }) {
 function AlertCard({ alert, feedback, pendingAction, onAction }) {
   const created = formatDateTime(alert.created_date);
   const updated = formatDateTime(alert.updated_date);
-  const actions = alert.id ? availableAlertActions(alert.status) : [];
+  const actions = alert.id && alert.actions_available !== false ? availableAlertActions(alert.status) : [];
   const terminal = isTerminalStatus(alert.status);
   const isPending = pendingAction?.alertId === alert.id;
 
@@ -147,7 +147,7 @@ function AlertCard({ alert, feedback, pendingAction, onAction }) {
         <p className="text-[10px] text-muted-foreground sm:text-right">Updated: {updated || 'Not set'}</p>
       </div>
 
-      {(actions.length > 0 || terminal || feedback) && (
+      {(actions.length > 0 || terminal || feedback || alert.actions_available === false) && (
         <div className="border-t border-border/40 pt-3 space-y-2">
           {actions.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -182,6 +182,11 @@ function AlertCard({ alert, feedback, pendingAction, onAction }) {
           {terminal && (
             <p className="text-[10px] text-muted-foreground">
               This alert is {formatLabel(alert.status).toLowerCase()}. No actions are available.
+            </p>
+          )}
+          {alert.actions_available === false && !terminal && (
+            <p className="text-[10px] text-muted-foreground">
+              This native fallback alert is read-only here. Use the source page to resolve it.
             </p>
           )}
           {feedback && (
@@ -227,6 +232,9 @@ export default function OpsAlerts() {
 
   const alerts = data?.alerts || [];
   const summary = data?.summary || {};
+  const warnings = Array.isArray(data?.warnings) ? data.warnings.filter(Boolean) : [];
+  const isNativeFallback = data?.source === 'customer_app_native_ops_alerts_fallback'
+    || data?.data_sources?.hub_available === false;
   const categoryOptions = useMemo(() => categorySelectOptions(alerts, categoryFilter), [alerts, categoryFilter]);
 
   async function refreshOpsAlertSummaries() {
@@ -385,12 +393,26 @@ export default function OpsAlerts() {
 
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-foreground">Hub Alerts view</p>
-            <p className="text-[10px] text-muted-foreground">Sanitized alert visibility only. Acknowledge, resolve, and dismiss are available for active alerts only.</p>
+            <p className="text-xs font-semibold text-foreground">
+              {isNativeFallback ? 'Native Customer App alerts fallback' : 'Hub Alerts view'}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {isNativeFallback
+                ? 'Sanitized native alert and review visibility only. Actions remain disabled while Hub alerts are unavailable.'
+                : 'Sanitized alert visibility only. Acknowledge, resolve, and dismiss are available for active alerts only.'}
+            </p>
             <AdminStatusLegend className="mt-2" />
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        {warnings.length > 0 && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            {warnings.includes('native_read_only_fallback')
+              ? 'Hub ops alerts are unavailable. Showing native Customer App read-only alerts and review issues so operational visibility stays available.'
+              : warnings.slice(0, 2).join(', ')}
+          </p>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
