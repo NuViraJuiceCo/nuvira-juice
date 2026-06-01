@@ -8,9 +8,10 @@ const BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_BATCH_ALLOWLIST'
 const ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS';
 const KILL_SWITCH_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH';
 const CONFIRMATION_PHRASE = 'execute_native_production_batch_lifecycle';
-const ALLOWED_ACTIONS = new Set(['start', 'complete']);
+const ALLOWED_ACTIONS = new Set(['start', 'complete', 'verify']);
 const STARTABLE_STATUSES = new Set(['planned', 'ready_for_production']);
 const COMPLETABLE_STATUSES = new Set(['in_production']);
+const VERIFYABLE_STATUSES = new Set(['completed_pending_verification']);
 const SAFE_ARRAY_LIMIT = 50;
 const MAX_REASON_LENGTH = 300;
 const ALLOWED_BODY_KEYS = new Set([
@@ -28,6 +29,15 @@ const ALLOWED_BODY_KEYS = new Set([
   'final_usable_quantity',
   'storage_location',
   'use_by_date',
+  'pH_result',
+  'ph_result',
+  'ph_value',
+  'pH_passed_failed',
+  'ph_passed_failed',
+  'passed_failed',
+  'staff_on_duty',
+  'corrective_action_required',
+  'verification_notes',
 ]);
 const FORBIDDEN_BODY_KEYS = new Set([
   'raw_payload',
@@ -151,8 +161,7 @@ function normalizeActorEmail(value) {
 
 function normalizeAction(value) {
   const action = normalizeLower(value);
-  if (action === 'verify') throw new Error('verify requires a dedicated compliance command');
-  if (!ALLOWED_ACTIONS.has(action)) throw new Error('action must be start or complete');
+  if (!ALLOWED_ACTIONS.has(action)) throw new Error('action must be start, complete, or verify');
   return action;
 }
 
@@ -208,6 +217,24 @@ function auditTrailAppend({ action, actorEmail, requestId, now, reason }) {
     reason: sanitizeText(reason, MAX_REASON_LENGTH) || 'Native production batch lifecycle command',
     request_id: sanitizeId(requestId) || null,
   };
+}
+
+function normalizePassFail(value) {
+  const text = normalizeLower(value);
+  return ['passed', 'failed'].includes(text) ? text : '';
+}
+
+function safeIngredientRows(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, SAFE_ARRAY_LIMIT).map(row => {
+    const source = safeObject(row);
+    return {
+      ingredient_name: sanitizeText(source.ingredient_name || source.name, 160),
+      quantity: safeNumber(source.quantity),
+      unit: sanitizeText(source.unit, 40),
+      lot_number: sanitizeText(source.lot_number, 120),
+    };
+  }).filter(row => row.ingredient_name);
 }
 
 function planStart({ batch, actorEmail, requestId, now, reason }) {
@@ -286,9 +313,84 @@ function planComplete({ batch, actorEmail, requestId, now, body, reason }) {
   };
 }
 
+function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
+  const blockers = [];
+  const warnings = [];
+  appendCommonGuards(batch, blockers, warnings);
+  const currentStatus = normalizeLower(batch.status);
+  if (!VERIFYABLE_STATUSES.has(currentStatus)) blockers.push('status_not_verifiable');
+  if (!batch.actual_end_time && !batch.completed_by) blockers.push('missing_completion_metadata');
+  if (batch.compliance_log_id || batch.verified_at || batch.verified_by) blockers.push('already_verified_logged');
+
+  const pHResult = body.pH_result ?? body.ph_result ?? body.ph_value ?? batch.pH_result;
+  const pHStatus = normalizePassFail(body.pH_passed_failed ?? body.ph_passed_failed ?? batch.pH_passed_failed);
+  const passedFailed = normalizePassFail(body.passed_failed ?? batch.passed_failed);
+  const staffOnDuty = Array.isArray(body.staff_on_duty) ? body.staff_on_duty : (Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty : []);
+  const quantityProduced = safeNumber(batch.actual_units) ?? safeNumber(batch.final_usable_quantity);
+
+  if (!isPositiveNumber(pHResult)) blockers.push('missing_ph_result');
+  if (!pHStatus) blockers.push('missing_ph_pass_fail');
+  if (!passedFailed) blockers.push('missing_batch_pass_fail');
+  if (!isPositiveNumber(quantityProduced)) blockers.push('missing_quantity_produced_for_compliance_log');
+  if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
+  if (body.corrective_action_required === true || batch.corrective_action_required === true) {
+    warnings.push('corrective_action_present_requires_admin_review');
+  }
+  if (!Array.isArray(batch.ingredients_used) || batch.ingredients_used.length === 0) {
+    warnings.push('ingredients_used_not_present');
+  }
+
+  const complianceLogRecord = blockers.length ? null : {
+    date: sanitizeText(batch.production_date, 40),
+    batch_id: sanitizeId(batch.batch_id) || sanitizeId(batch.id),
+    juice_flavor: sanitizeText(batch.product_name, 120),
+    ingredients: safeIngredientRows(batch.ingredients_used),
+    start_time: sanitizeText(batch.actual_start_time, 80),
+    end_time: sanitizeText(batch.actual_end_time, 80),
+    quantity_produced: Number(quantityProduced),
+    staff_on_duty: safeStringArray(staffOnDuty),
+    pH_result: Number(pHResult),
+    passed_failed: passedFailed,
+    notes: sanitizeText(body.verification_notes || reason, 1000),
+    verified_by: sanitizeText(actorEmail, 120) || 'native_admin_actor',
+    verified_at: now,
+    source_production_batch_id: sanitizeId(batch.id) || null,
+    locked: true,
+  };
+
+  const proposedPatch = blockers.length ? null : {
+    status: 'verified_logged',
+    verified_by: sanitizeText(actorEmail, 120) || 'native_admin_actor',
+    verified_at: now,
+    pH_result: Number(pHResult),
+    pH_passed_failed: pHStatus,
+    passed_failed: passedFailed,
+    audit_trail_append: auditTrailAppend({ action: 'verify', actorEmail, requestId, now, reason }),
+  };
+
+  return {
+    projected_writes: blockers.length ? [] : [
+      'BatchComplianceLog',
+      'ProductionBatch.status',
+      'ProductionBatch.verified_by',
+      'ProductionBatch.verified_at',
+      'ProductionBatch.pH_result',
+      'ProductionBatch.pH_passed_failed',
+      'ProductionBatch.passed_failed',
+      'ProductionBatch.compliance_log_id',
+      'ProductionBatch.audit_trail',
+    ],
+    proposed_patch: proposedPatch,
+    compliance_log_record: complianceLogRecord,
+    blockers,
+    warnings,
+  };
+}
+
 function planLifecycle({ action, batch, actorEmail, requestId, now, body, reason }) {
   if (action === 'start') return planStart({ batch, actorEmail, requestId, now, reason });
-  return planComplete({ batch, actorEmail, requestId, now, body, reason });
+  if (action === 'complete') return planComplete({ batch, actorEmail, requestId, now, body, reason });
+  return planVerify({ batch, actorEmail, requestId, now, body, reason });
 }
 
 function buildWritePatch(batch, proposedPatch) {
@@ -342,7 +444,7 @@ async function createCommandLog({ base44, batch, action, status, idempotencyKey,
     submitted_at: now,
     completed_at: status === 'running' ? null : now,
     function_name: 'executeNativeProductionBatchLifecycle',
-    notes: 'Native ProductionBatch lifecycle command for start/complete only. No verification/compliance log, inventory, PO, Customer App Order, ShopifyOrder, FulfillmentTask, notification, provider, sync, or repair writes.',
+    notes: 'Native ProductionBatch lifecycle command for start/complete/verify. Verify may create one BatchComplianceLog and link it to the ProductionBatch. No inventory, PO, Customer App Order, ShopifyOrder, FulfillmentTask, notification, provider, sync, or repair writes.',
   });
 }
 
@@ -450,6 +552,19 @@ Deno.serve(async (req) => {
         reason: 'idempotency_log_present',
       });
     }
+    if (existingLog?.status === 'failed' && action === 'verify' && sanitizeId(existingLog.result?.compliance_log_id)) {
+      return Response.json({
+        success: false,
+        skipped: true,
+        action,
+        request_id: requestId,
+        idempotency_key: idempotencyKey,
+        error_code: 'prior_failed_verify_requires_manual_review',
+        blockers: ['prior_failed_verify_requires_manual_review'],
+        native_writer_enabled: true,
+        writes_performed: false,
+      }, { status: 409 });
+    }
 
     const batch = await findBatch(base44, batchKey);
     if (!batch) {
@@ -518,7 +633,18 @@ Deno.serve(async (req) => {
     });
 
     let writtenBatch;
+    let complianceLog = null;
+    let writeStage = 'production_batch_update';
     try {
+      if (action === 'verify') {
+        if (!plan.compliance_log_record) throw new Error('Batch compliance log record unavailable');
+        writeStage = 'batch_compliance_log_create';
+        complianceLog = await base44.asServiceRole.entities.BatchComplianceLog.create(plan.compliance_log_record);
+        const complianceLogId = sanitizeId(complianceLog?.id);
+        if (!complianceLogId) throw new Error('BatchComplianceLog id unavailable');
+        writePatch.compliance_log_id = complianceLogId;
+      }
+      writeStage = 'production_batch_update';
       writtenBatch = await base44.asServiceRole.entities.ProductionBatch.update(batch.id, writePatch);
     } catch (error) {
       await updateCommandLog({
@@ -531,9 +657,11 @@ Deno.serve(async (req) => {
           warnings,
           writes_performed: false,
           native_writer_enabled: true,
+          compliance_log_created: Boolean(complianceLog?.id),
+          compliance_log_id: sanitizeId(complianceLog?.id) || null,
         },
-        errorCode: 'production_batch_update_failed',
-        errorMessage: error?.message || 'ProductionBatch update failed',
+        errorCode: writeStage === 'batch_compliance_log_create' ? 'batch_compliance_log_create_failed' : 'production_batch_update_failed',
+        errorMessage: writeStage === 'batch_compliance_log_create' ? 'BatchComplianceLog create failed' : (error?.message || 'ProductionBatch update failed'),
       }).catch(() => null);
       throw error;
     }
@@ -548,7 +676,8 @@ Deno.serve(async (req) => {
         warnings,
         writes_performed: true,
         native_writer_enabled: true,
-        compliance_log_created: false,
+        compliance_log_created: Boolean(complianceLog?.id),
+        compliance_log_id: sanitizeId(complianceLog?.id) || null,
         inventory_deduction_run: false,
         purchase_order_updated: false,
         customer_notification_sent: false,
@@ -565,11 +694,12 @@ Deno.serve(async (req) => {
       request_id: requestId,
       idempotency_key: idempotencyKey,
       command_log_id: commandLog?.id || null,
+      compliance_log_id: sanitizeId(complianceLog?.id) || null,
       projected_writes: safeStringArray(plan.projected_writes),
       warnings,
       native_writer_enabled: true,
       writes_performed: true,
-      compliance_log_created: false,
+      compliance_log_created: Boolean(complianceLog?.id),
       inventory_deduction_run: false,
       purchase_order_updated: false,
       customer_notification_sent: false,

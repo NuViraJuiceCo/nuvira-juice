@@ -72,6 +72,21 @@ function safeOrderSourceSummaries(value) {
   }).filter(Boolean);
 }
 
+function safeIngredientRows(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, SAFE_ARRAY_LIMIT).map((item) => {
+    const source = safeObject(item);
+    const ingredient = sanitizeText(source.ingredient_name || source.name, 160);
+    if (!ingredient) return null;
+    return {
+      ingredient_name: ingredient,
+      quantity: safeNumber(source.quantity),
+      unit: sanitizeText(source.unit, 40),
+      lot_number: sanitizeText(source.lot_number, 120),
+    };
+  }).filter(Boolean);
+}
+
 function buildBaseSummary(batch) {
   const orderSources = Array.isArray(batch.order_sources) ? batch.order_sources : [];
   const ingredients = Array.isArray(batch.ingredients_used) ? batch.ingredients_used : [];
@@ -250,10 +265,12 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
   const staffOnDuty = Array.isArray(verificationInput.staff_on_duty)
     ? verificationInput.staff_on_duty
     : (Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty : []);
+  const quantityProduced = safeNumber(batch.actual_units) ?? safeNumber(batch.final_usable_quantity);
 
   if (!isPositiveNumber(pHResult)) blockers.push('missing_ph_result');
   if (!pHStatus) blockers.push('missing_ph_pass_fail');
   if (!passedFailed) blockers.push('missing_batch_pass_fail');
+  if (!isPositiveNumber(quantityProduced)) blockers.push('missing_quantity_produced_for_compliance_log');
   if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
   if (verificationInput.corrective_action_required === true || batch.corrective_action_required === true) {
     warnings.push('corrective_action_present_requires_admin_review');
@@ -266,7 +283,11 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
     batch_id: sanitizeId(batch.batch_id) || sanitizeId(batch.id) || null,
     juice_flavor: sanitizeText(batch.product_name, 120) || null,
     date: sanitizeText(batch.production_date, 40) || null,
-    quantity_produced: safeNumber(batch.actual_units) ?? safeNumber(batch.final_usable_quantity) ?? null,
+    ingredients: safeIngredientRows(batch.ingredients_used),
+    start_time: sanitizeText(batch.actual_start_time, 80) || null,
+    end_time: sanitizeText(batch.actual_end_time, 80) || null,
+    quantity_produced: quantityProduced ?? null,
+    staff_on_duty: safeStringArray(staffOnDuty),
     pH_result: Number(pHResult),
     passed_failed: passedFailed,
     verified_by: sanitizeText(actorEmail, 120) || 'native_preview_actor',
