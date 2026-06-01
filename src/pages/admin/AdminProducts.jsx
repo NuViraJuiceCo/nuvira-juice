@@ -158,8 +158,17 @@ export default function AdminProducts() {
   );
 
   const handleUpdated = () => {
-    queryClient.invalidateQueries({ queryKey: ['admin-products'] });
-    queryClient.invalidateQueries({ queryKey: ['products'] });
+    [
+      ['admin-products'],
+      ['products'],
+      ['admin-operations-dashboard-summary'],
+      ['admin-production-planning-summary'],
+      ['admin-inventory-status-summary'],
+      ['admin-calendar-events-summary'],
+      ['admin-shopify-ops-summary'],
+    ].forEach(queryKey => {
+      queryClient.invalidateQueries({ queryKey });
+    });
   };
 
   if (user?.role !== 'admin') {
