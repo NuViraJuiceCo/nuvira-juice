@@ -55,7 +55,12 @@ function normalizeStatus(value) {
 }
 
 function sanitizeText(value, maxLength = 120) {
-  const text = normalizeText(value).replace(/\s+/g, ' ');
+  const text = normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted]')
+    .replace(/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, '[redacted]')
+    .replace(/\b\d{1,6}\s+[A-Za-z0-9.'\-\s]{2,}\s+(?:st|street|ave|avenue|rd|road|dr|drive|ln|lane|blvd|boulevard|way|ct|court|pl|place)\b/gi, '[redacted]')
+    .replace(/\b(?:bearer|authorization|token|secret|api[_-]?key)\s*[:=]\s*\S+/gi, '[redacted]');
   if (!text) return null;
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
@@ -128,6 +133,154 @@ function sanitizeEquipmentItem(item) {
   };
 }
 
+function matchesSearch(values, search) {
+  if (!search) return true;
+  const haystack = values.map(normalizeLower).join(' ');
+  return haystack.includes(normalizeLower(search));
+}
+
+function matchesStatus(value, status) {
+  if (!status) return true;
+  return normalizeLower(value) === normalizeLower(status);
+}
+
+async function listEntity(base44, entityName, sort, limit = 500) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  if (!entity || typeof entity.list !== 'function') return [];
+  return await entity.list(sort, limit).catch(error => {
+    console.warn(`[getAdminResourcesSummary] Native ${entityName} unavailable:`, error.message);
+    return [];
+  });
+}
+
+function mapNativeTeam(users) {
+  return (Array.isArray(users) ? users : [])
+    .filter(user => ['admin', 'driver'].includes(normalizeLower(user?.role)))
+    .map(user => sanitizeTeamItem({
+      resource_id: `native_user_${user.id || [user.first_name, user.last_name, user.role].filter(Boolean).join('_')}`,
+      display_name: [user.first_name, user.last_name].map(sanitizeText).filter(Boolean).join(' '),
+      role: user.role || 'team member',
+      shift_label: null,
+      status: 'active',
+      updated_date: user.updated_date || user.created_date || null,
+    }))
+    .filter(member => member.display_name);
+}
+
+function mapNativeEquipment({ productionBatches, inventoryItems }) {
+  const equipment = new Map();
+  for (const batch of Array.isArray(productionBatches) ? productionBatches : []) {
+    for (const name of Array.isArray(batch?.equipment_used) ? batch.equipment_used : []) {
+      const safeName = sanitizeText(name, 120);
+      if (!safeName) continue;
+      const key = normalizeLower(safeName);
+      if (!equipment.has(key)) {
+        equipment.set(key, sanitizeEquipmentItem({
+          resource_id: `native_batch_equipment_${key.replace(/[^a-z0-9]+/g, '_')}`,
+          equipment_name: safeName,
+          equipment_type: 'Production equipment',
+          equipment_status: 'operational',
+          last_service_date: null,
+          updated_date: batch.updated_date || batch.created_date || null,
+        }));
+      }
+    }
+  }
+
+  for (const item of Array.isArray(inventoryItems) ? inventoryItems : []) {
+    if (normalizeLower(item?.category) !== 'equipment') continue;
+    const safeName = sanitizeText(item.ingredient, 120);
+    if (!safeName) continue;
+    const key = normalizeLower(safeName);
+    if (!equipment.has(key)) {
+      equipment.set(key, sanitizeEquipmentItem({
+        resource_id: `native_inventory_equipment_${item.id || key.replace(/[^a-z0-9]+/g, '_')}`,
+        equipment_name: safeName,
+        equipment_type: 'Inventory equipment',
+        equipment_status: Number(item.stock || 0) > 0 ? 'operational' : 'maintenance',
+        last_service_date: null,
+        updated_date: item.updated_date || item.created_date || null,
+      }));
+    }
+  }
+  return [...equipment.values()];
+}
+
+function applyNativeFilters({ team, equipment, category, status, search, limit }) {
+  let filteredTeam = team;
+  let filteredEquipment = equipment;
+
+  if (category === 'Team Member') filteredEquipment = [];
+  if (category === 'Equipment') filteredTeam = [];
+
+  filteredTeam = filteredTeam
+    .filter(member => matchesStatus(member.status, status))
+    .filter(member => matchesSearch([member.display_name, member.role, member.shift_label, member.status], search));
+  filteredEquipment = filteredEquipment
+    .filter(item => matchesStatus(item.equipment_status, status))
+    .filter(item => matchesSearch([item.equipment_name, item.equipment_type, item.equipment_status], search));
+
+  return {
+    team: filteredTeam.slice(0, limit),
+    equipment: filteredEquipment.slice(0, limit),
+    total_before_limit: filteredTeam.length + filteredEquipment.length,
+  };
+}
+
+async function loadNativeResources(base44, { category, status, search, limit }) {
+  const [users, productionBatches, inventoryItems] = await Promise.all([
+    listEntity(base44, 'User', '-created_date'),
+    listEntity(base44, 'ProductionBatch', '-production_date'),
+    listEntity(base44, 'InventoryItem', 'ingredient'),
+  ]);
+
+  const team = mapNativeTeam(users);
+  const equipment = mapNativeEquipment({ productionBatches, inventoryItems });
+  const filtered = applyNativeFilters({ team, equipment, category, status, search, limit });
+  const sections = {
+    team: filtered.team,
+    equipment: filtered.equipment,
+  };
+  const summary = sanitizeSummary({
+    team_count: team.length,
+    equipment_count: equipment.length,
+    active_team: team.filter(member => normalizeLower(member.status) === 'active').length,
+    operational_equipment: equipment.filter(item => normalizeLower(item.equipment_status) === 'operational').length,
+    maintenance_equipment: equipment.filter(item => normalizeLower(item.equipment_status) === 'maintenance').length,
+    broken_equipment: equipment.filter(item => normalizeLower(item.equipment_status) === 'broken').length,
+  });
+
+  return {
+    summary,
+    sections,
+    count: sections.team.length + sections.equipment.length,
+    truncated: filtered.total_before_limit > sections.team.length + sections.equipment.length,
+  };
+}
+
+function nativeFallbackResponse({ nativeResources, reason, hubStatus = null }) {
+  return Response.json({
+    success: true,
+    source: 'customer_app_native_resources_fallback',
+    summary: sanitizeSummary(nativeResources.summary),
+    count: nativeResources.count,
+    truncated: nativeResources.truncated === true,
+    sections: {
+      team: nativeResources.sections.team.map(sanitizeTeamItem),
+      equipment: nativeResources.sections.equipment.map(sanitizeEquipmentItem),
+    },
+    warnings: [
+      hubStatus ? `hub_resources_unavailable:${hubStatus}` : `hub_resources_unavailable:${reason}`,
+      'native_read_only_fallback',
+    ],
+    data_sources: {
+      hub_available: false,
+      native_available: true,
+      native_read_only: true,
+    },
+  });
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -164,9 +317,19 @@ Deno.serve(async (req) => {
     }
 
     const search = sanitizeText(body.search, 80) || '';
+    const loadNativeResourcesSummary = () => loadNativeResources(base44, {
+      category,
+      status,
+      search,
+      limit,
+    });
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub resources service is not configured' }, { status: 503 });
+      const nativeResources = await loadNativeResourcesSummary();
+      return nativeFallbackResponse({
+        nativeResources,
+        reason: 'missing_config',
+      });
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -177,18 +340,30 @@ Deno.serve(async (req) => {
     if (status) params.set('status', status);
     if (search) params.set('search', search);
 
-    const hubResponse = await fetch(`${hubBase}/functions/getResourcesSummaryForCustomerApp?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-    });
+    let hubResponse;
+    try {
+      hubResponse = await fetch(`${hubBase}/functions/getResourcesSummaryForCustomerApp?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        },
+      });
+    } catch (error) {
+      console.warn('[getAdminResourcesSummary] Hub fetch failed; returning native fallback:', error.message);
+      const nativeResources = await loadNativeResourcesSummary();
+      return nativeFallbackResponse({
+        nativeResources,
+        reason: 'fetch_failed',
+      });
+    }
 
     if (!hubResponse.ok) {
-      return Response.json({
-        error: 'Unable to load resources summary',
-        hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
+      const nativeResources = await loadNativeResourcesSummary();
+      return nativeFallbackResponse({
+        nativeResources,
+        reason: 'non_ok',
+        hubStatus: hubResponse.status,
+      });
     }
 
     const hubData = await hubResponse.json().catch(() => null);
@@ -199,7 +374,11 @@ Deno.serve(async (req) => {
       !Array.isArray(hubData.sections.team) ||
       !Array.isArray(hubData.sections.equipment)
     ) {
-      return Response.json({ error: 'Malformed resources summary response' }, { status: 502 });
+      const nativeResources = await loadNativeResourcesSummary();
+      return nativeFallbackResponse({
+        nativeResources,
+        reason: 'malformed_response',
+      });
     }
 
     const team = hubData.sections.team.map(sanitizeTeamItem).slice(0, limit);

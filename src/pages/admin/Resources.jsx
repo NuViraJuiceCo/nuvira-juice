@@ -182,6 +182,9 @@ export default function Resources() {
   const summary = data?.summary || {};
   const team = data?.sections?.team || [];
   const equipment = data?.sections?.equipment || [];
+  const warnings = Array.isArray(data?.warnings) ? data.warnings.filter(Boolean) : [];
+  const isNativeFallback = data?.source === 'customer_app_native_resources_fallback'
+    || data?.data_sources?.hub_available === false;
   const categories = useMemo(() => categoryOptions(team, equipment, categoryFilter), [categoryFilter, equipment, team]);
   const hasResults = team.length > 0 || equipment.length > 0;
 
@@ -259,11 +262,25 @@ export default function Resources() {
 
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-foreground">Hub Resources view</p>
-            <p className="text-[10px] text-muted-foreground">Read-only team and equipment visibility from Hub.</p>
+            <p className="text-xs font-semibold text-foreground">
+              {isNativeFallback ? 'Native Customer App resources fallback' : 'Hub Resources view'}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {isNativeFallback
+                ? 'Read-only native team and equipment-like resource visibility while Hub resources are unavailable.'
+                : 'Read-only team and equipment visibility from Hub.'}
+            </p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        {warnings.length > 0 && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            {warnings.includes('native_read_only_fallback')
+              ? 'Hub resources are unavailable. Showing native Customer App read-only resource context where available.'
+              : warnings.slice(0, 2).join(', ')}
+          </p>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
