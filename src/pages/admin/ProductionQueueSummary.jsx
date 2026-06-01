@@ -20,7 +20,7 @@ const productionOpsReadinessItems = [
   {
     label: 'Lifecycle actions',
     status: 'controlled',
-    detail: 'Hub rows expose preview-first Start, Complete, and Verify actions for exact eligible batches; native rows are read-only until native lifecycle writes are allowlisted.',
+    detail: 'Hub and native rows expose preview-first Start, Complete, and Verify actions for exact eligible batches; native writes remain exact-batch gated.',
   },
   {
     label: 'Ingredient correction',
@@ -1149,8 +1149,8 @@ function NativeBatchReadOnlyNotice() {
         <div className="min-w-0">
           <p className="text-xs font-semibold text-sky-900">Native Customer App batch</p>
           <p className="text-xs text-sky-800 mt-1">
-            This row is visible for production planning context only. Hub-backed lifecycle, ingredient correction,
-            post-verify cascade, and inventory controls are hidden until native batch writes are explicitly allowlisted.
+            This row uses native Customer App lifecycle controls when exact batch gates are open. Ingredient correction,
+            post-verify cascade, and inventory controls stay separated until their native write paths are explicitly approved.
           </p>
         </div>
       </div>
@@ -1158,11 +1158,74 @@ function NativeBatchReadOnlyNotice() {
   );
 }
 
-function NativeLifecyclePreviewPanel({ batch }) {
+function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
   const [activeAction, setActiveAction] = useState('start');
   const [preview, setPreview] = useState(null);
   const [pending, setPending] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
   const [message, setMessage] = useState(null);
+  const [completeForm, setCompleteForm] = useState({
+    actual_units: batch.actual_units || batch.planned_units || '',
+    pH_result: batch.pH_result || '',
+    pH_passed_failed: batch.pH_passed_failed || 'passed',
+    passed_failed: batch.passed_failed || 'passed',
+    staff_on_duty: Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty.join(', ') : '',
+    bottles_produced: batch.bottles_produced || '',
+    bottles_rejected_or_wasted: batch.bottles_rejected_or_wasted || '',
+    final_usable_quantity: batch.final_usable_quantity || '',
+    storage_location: batch.storage_location || '',
+    use_by_date: batch.use_by_date || '',
+    verification_notes: '',
+  });
+
+  function baseNativePayload(action, prefix) {
+    return {
+      action,
+      mode: 'dry_run',
+      production_batch_id: batch.id,
+      batch_id: batch.batch_id,
+      batch,
+      request_id: requestIdFor(prefix, batch),
+    };
+  }
+
+  function nativeCompletionFields() {
+    return {
+      actual_units: Number(completeForm.actual_units),
+      bottles_produced: completeForm.bottles_produced === '' ? undefined : Number(completeForm.bottles_produced),
+      bottles_rejected_or_wasted: completeForm.bottles_rejected_or_wasted === '' ? undefined : Number(completeForm.bottles_rejected_or_wasted),
+      final_usable_quantity: completeForm.final_usable_quantity === '' ? undefined : Number(completeForm.final_usable_quantity),
+      storage_location: completeForm.storage_location,
+      use_by_date: completeForm.use_by_date,
+    };
+  }
+
+  function nativeVerificationFields() {
+    return {
+      pH_result: Number(completeForm.pH_result),
+      pH_passed_failed: completeForm.pH_passed_failed,
+      passed_failed: completeForm.passed_failed,
+      staff_on_duty: completeForm.staff_on_duty
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean),
+      verification_notes: completeForm.verification_notes,
+    };
+  }
+
+  function executionPayload(action) {
+    return {
+      mode: 'live',
+      confirmation: 'execute_native_production_batch_lifecycle',
+      production_batch_id: batch.id,
+      batch_id: batch.batch_id,
+      action,
+      request_id: requestIdFor(`native_${action}_execute`, batch),
+      reason: `Admin Production Queue native ${formatLabel(action)}.`,
+      ...(action === 'complete' ? nativeCompletionFields() : {}),
+      ...(action === 'verify' ? nativeVerificationFields() : {}),
+    };
+  }
 
   async function runPreview(action) {
     setActiveAction(action);
@@ -1171,10 +1234,9 @@ function NativeLifecyclePreviewPanel({ batch }) {
 
     try {
       const res = await base44.functions.invoke('previewNativeProductionBatchLifecycle', {
-        action,
-        mode: 'dry_run',
-        batch,
-        request_id: requestIdFor(`native_${action}_preview`, batch),
+        ...baseNativePayload(action, `native_${action}_preview`),
+        ...(action === 'complete' ? nativeCompletionFields() : {}),
+        ...(action === 'verify' ? nativeVerificationFields() : {}),
       });
       const result = res?.data || res;
       if (result?.error && result?.success !== true) throw new Error(result.error);
@@ -1182,13 +1244,51 @@ function NativeLifecyclePreviewPanel({ batch }) {
       setMessage({
         type: result.lifecycle_ready ? 'success' : 'warn',
         text: result.lifecycle_ready
-          ? `${formatLabel(action)} readiness preview passed. Native writes remain disabled.`
+          ? `${formatLabel(action)} readiness preview passed. Native execution remains exact-gated.`
           : `${formatLabel(action)} has preview blockers or warnings.`,
       });
     } catch (error) {
       setMessage({ type: 'error', text: error?.message || `Unable to preview native ${action}.` });
     } finally {
       setPending(false);
+    }
+  }
+
+  async function runNative(action) {
+    if (!batch.id && !batch.batch_id) {
+      setMessage({ type: 'error', text: 'A native ProductionBatch id or batch id is required before execution.' });
+      return;
+    }
+    if (preview?.action !== action || !preview?.lifecycle_ready) {
+      setMessage({ type: 'error', text: 'Run a passing preview for this action before executing it.' });
+      return;
+    }
+
+    const label = formatLabel(action);
+    const warning = action === 'verify'
+      ? 'This may create one native BatchComplianceLog and link it to this exact ProductionBatch. It will not deduct inventory, update orders, update tasks, send notifications, or call providers.'
+      : 'This updates only the exact native ProductionBatch lifecycle fields plus CommandLog. It will not deduct inventory, update orders, update tasks, send notifications, or call providers.';
+    if (!window.confirm(`Run native ${label} for ${batch.batch_id || batch.product_name}? ${warning}`)) {
+      return;
+    }
+
+    setActionPending(true);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('executeNativeProductionBatchLifecycle', executionPayload(action));
+      const result = res?.data || res;
+      if (!result?.success) throw new Error(result?.error || result?.error_code || `native_${action}_failed`);
+      setMessage({
+        type: result.skipped ? 'warn' : 'success',
+        text: result.skipped ? `Native ${label} was already recorded.` : `Native ${label} completed.`,
+      });
+      setPreview(null);
+      await onActionSuccess?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || `Unable to run native ${action}. Native gates may still be closed.` });
+    } finally {
+      setActionPending(false);
     }
   }
 
@@ -1220,7 +1320,7 @@ function NativeLifecyclePreviewPanel({ batch }) {
           <button
             key={action.key}
             type="button"
-            disabled={pending || (!batch.id && !batch.batch_id)}
+            disabled={pending || actionPending || (!batch.id && !batch.batch_id)}
             onClick={() => runPreview(action.key)}
             className={`h-9 rounded-lg border px-2 text-xs font-semibold ${
               activeAction === action.key
@@ -1232,6 +1332,136 @@ function NativeLifecyclePreviewPanel({ batch }) {
           </button>
         ))}
       </div>
+
+      {(activeAction === 'complete' || activeAction === 'verify') && (
+        <div className="rounded-lg border border-border/50 bg-card/70 p-3 space-y-3">
+          {activeAction === 'complete' && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Actual units</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={completeForm.actual_units}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, actual_units: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Final usable quantity</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={completeForm.final_usable_quantity}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, final_usable_quantity: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Bottles produced</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={completeForm.bottles_produced}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, bottles_produced: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Rejected/wasted</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={completeForm.bottles_rejected_or_wasted}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, bottles_rejected_or_wasted: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Storage location</span>
+                  <input
+                    value={completeForm.storage_location}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, storage_location: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Use by date</span>
+                  <input
+                    type="date"
+                    value={completeForm.use_by_date}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, use_by_date: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
+              </div>
+            </>
+          )}
+
+          {activeAction === 'verify' && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">pH result</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={completeForm.pH_result}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, pH_result: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Staff on duty</span>
+                  <input
+                    value={completeForm.staff_on_duty}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, staff_on_duty: event.target.value }))}
+                    placeholder="Name, name"
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">pH pass/fail</span>
+                  <select
+                    value={completeForm.pH_passed_failed}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, pH_passed_failed: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  >
+                    <option value="passed">Passed</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Batch pass/fail</span>
+                  <select
+                    value={completeForm.passed_failed}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, passed_failed: event.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  >
+                    <option value="passed">Passed</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </label>
+              </div>
+              <label className="space-y-1 block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Verification notes</span>
+                <textarea
+                  rows={2}
+                  value={completeForm.verification_notes}
+                  onChange={event => setCompleteForm(prev => ({ ...prev, verification_notes: event.target.value }))}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs resize-none"
+                />
+              </label>
+            </>
+          )}
+        </div>
+      )}
 
       {message && (
         <p className={`text-xs ${
@@ -1281,13 +1511,22 @@ function NativeLifecyclePreviewPanel({ batch }) {
 
           {projectedWrites.length > 0 && (
             <p className="text-[10px] text-muted-foreground">
-              Would write if a future native command is explicitly approved: {projectedWrites.map(formatLabel).join(', ')}
+              Would write if exact native gates are open: {projectedWrites.map(formatLabel).join(', ')}
             </p>
           )}
 
+          <button
+            type="button"
+            disabled={actionPending || pending || preview?.action !== activeAction || !preview?.lifecycle_ready}
+            onClick={() => runNative(activeAction)}
+            className="w-full h-10 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {actionPending ? `Running Native ${formatLabel(activeAction)}...` : `Run Native ${formatLabel(activeAction)}`}
+          </button>
+
           <div className="flex items-start gap-2 text-xs text-muted-foreground">
             <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <span>No live native production command is available from this panel.</span>
+            <span>Native execution is default-off and requires exact batch, action, admin, and feature-flag gates.</span>
           </div>
         </div>
       )}
@@ -1364,7 +1603,7 @@ function BatchCard({ batch, onActionSuccess }) {
       {nativeBatch ? (
         <>
           <NativeBatchReadOnlyNotice />
-          <NativeLifecyclePreviewPanel batch={batch} />
+          <NativeLifecyclePreviewPanel batch={batch} onActionSuccess={onActionSuccess} />
         </>
       ) : (
         <>
