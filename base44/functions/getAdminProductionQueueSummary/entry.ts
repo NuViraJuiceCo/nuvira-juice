@@ -220,6 +220,26 @@ function mergeHubAndNativeBatches(hubBatches, nativeBatches, limit) {
   return limit ? merged.slice(0, limit) : merged;
 }
 
+function nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }) {
+  return {
+    success: true,
+    date_from: dateFrom,
+    date_to: dateTo,
+    count: nativeBatches.length,
+    truncated: false,
+    batches: nativeBatches,
+    data_sources: {
+      hub_available: false,
+      native_available: true,
+      native_read_only: true,
+      native_batch_count: nativeBatches.length,
+      hub_batch_count: 0,
+      live_actions_source: 'hub_backed_only',
+    },
+    warnings,
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -288,23 +308,7 @@ Deno.serve(async (req) => {
       }
 
       warnings.push('hub_production_queue_service_not_configured');
-      return Response.json({
-        success: true,
-        date_from: dateFrom,
-        date_to: dateTo,
-        count: nativeBatches.length,
-        truncated: false,
-        batches: nativeBatches,
-        data_sources: {
-          hub_available: false,
-          native_available: true,
-          native_read_only: true,
-          native_batch_count: nativeBatches.length,
-          hub_batch_count: 0,
-          live_actions_source: 'hub_backed_only',
-        },
-        warnings,
-      });
+      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }));
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -314,12 +318,25 @@ Deno.serve(async (req) => {
     });
     if (limit) params.set('limit', limit.toString());
 
-    const hubResponse = await fetch(`${hubBase}/functions/getProductionQueueSummaryForCustomerApp?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-    });
+    let hubResponse;
+    try {
+      hubResponse = await fetch(`${hubBase}/functions/getProductionQueueSummaryForCustomerApp?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        },
+      });
+    } catch {
+      warnings.push('hub_production_queue_unavailable:fetch_failed');
+      if (nativeBatches.length === 0) {
+        return Response.json({
+          error: 'Unable to load production queue summary',
+          warnings,
+        }, { status: 503 });
+      }
+
+      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }));
+    }
 
     if (!hubResponse.ok) {
       warnings.push(`hub_production_queue_unavailable:${hubResponse.status}`);
@@ -331,23 +348,7 @@ Deno.serve(async (req) => {
         }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
       }
 
-      return Response.json({
-        success: true,
-        date_from: dateFrom,
-        date_to: dateTo,
-        count: nativeBatches.length,
-        truncated: false,
-        batches: nativeBatches,
-        data_sources: {
-          hub_available: false,
-          native_available: true,
-          native_read_only: true,
-          native_batch_count: nativeBatches.length,
-          hub_batch_count: 0,
-          live_actions_source: 'hub_backed_only',
-        },
-        warnings,
-      });
+      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }));
     }
 
     const hubData = await hubResponse.json().catch(() => null);
@@ -357,23 +358,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Malformed production queue summary response', warnings }, { status: 502 });
       }
 
-      return Response.json({
-        success: true,
-        date_from: dateFrom,
-        date_to: dateTo,
-        count: nativeBatches.length,
-        truncated: false,
-        batches: nativeBatches,
-        data_sources: {
-          hub_available: false,
-          native_available: true,
-          native_read_only: true,
-          native_batch_count: nativeBatches.length,
-          hub_batch_count: 0,
-          live_actions_source: 'hub_backed_only',
-        },
-        warnings,
-      });
+      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }));
     }
 
     const batches = mergeHubAndNativeBatches(hubData.batches, nativeBatches, limit);
