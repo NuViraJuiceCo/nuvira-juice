@@ -7,6 +7,20 @@ function normalizeOrderNum(num) {
   return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
 }
 
+function normalizeLower(value) {
+  return (value || '').toString().trim().toLowerCase();
+}
+
+function isPosLikeOrder(order) {
+  return [
+    order?.source_channel,
+    order?.source_type,
+    order?.order_type,
+    order?.fulfillment_type,
+    order?.fulfillment_method,
+  ].some(value => normalizeLower(value) === 'pos');
+}
+
 /**
  * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
  * 
@@ -231,6 +245,7 @@ Deno.serve(async (req) => {
             const resolvedName = resolveField(hubName, emailToName[authKey]);
             const resolvedPhone = resolveField(order.contact_phone || order.phone, emailToPhone[authKey]);
             const resolvedAddress = resolveField(order.delivery_address, emailToAddress[authKey]);
+            const fulfillmentType = isPosLikeOrder(order) ? 'pickup' : (order.fulfillment_type || 'delivery');
 
             const fulfillments = order.fulfillments;
             const isSubscription = order.order_type === 'subscription' || order.fulfillment_mode === 'multi_delivery';
@@ -265,7 +280,7 @@ Deno.serve(async (req) => {
                   total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
                   subtotal: order.subtotal ? parseFloat((order.subtotal / fulfillments.length).toFixed(2)) : 0,
                   delivery_fee: order.delivery_fee || 0,
-                  fulfillment_type: order.fulfillment_type || 'delivery',
+                  fulfillment_type: fulfillmentType,
                   delivery_address: fAddress,
                   contact_phone: fPhone,
                   estimated_delivery_date: f.delivery_date || null,
@@ -300,7 +315,7 @@ Deno.serve(async (req) => {
                 total: order.total || 0,
                 subtotal: order.subtotal || 0,
                 delivery_fee: order.delivery_fee || 0,
-                fulfillment_type: order.fulfillment_type || 'delivery',
+                fulfillment_type: fulfillmentType,
                 delivery_address: resolvedAddress,
                 contact_phone: resolvedPhone,
                 estimated_delivery_date: order.estimated_delivery_date || null,
