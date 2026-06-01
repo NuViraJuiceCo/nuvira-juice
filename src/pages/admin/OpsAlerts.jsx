@@ -229,6 +229,20 @@ export default function OpsAlerts() {
   const summary = data?.summary || {};
   const categoryOptions = useMemo(() => categorySelectOptions(alerts, categoryFilter), [alerts, categoryFilter]);
 
+  async function refreshOpsAlertSummaries() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['admin-ops-alerts-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-operations-dashboard-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-sync-health-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-production-planning-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-inventory-status-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-delivery-route-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] }),
+    ]);
+  }
+
   const handleAlertAction = async (alert, action) => {
     if (!alert?.id || pendingAction) return;
 
@@ -272,7 +286,7 @@ export default function OpsAlerts() {
           message: `${formatLabel(action)} saved.`,
         },
       }));
-      await queryClient.invalidateQueries({ queryKey: ['admin-ops-alerts-summary'] });
+      await refreshOpsAlertSummaries();
     } catch {
       setFeedbackByAlert(current => ({
         ...current,
