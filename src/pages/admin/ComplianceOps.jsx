@@ -19,6 +19,7 @@ import ComplianceLogsParity from '@/components/compliance/ComplianceLogsParity';
 import ComplianceDocumentsTab from '@/components/compliance/ComplianceDocumentsTab';
 import LabelAllergenTab from '@/components/compliance/LabelAllergenTab';
 import HACCPPlanTab from '@/components/compliance/HACCPPlanTab';
+import BatchComplianceLogForm from '@/components/compliance/BatchComplianceLogForm';
 
 const complianceReadinessItems = [
   {
@@ -28,8 +29,8 @@ const complianceReadinessItems = [
   },
   {
     label: 'Batch compliance',
-    status: 'fallback',
-    detail: 'Batch logs stay tied to production verification so production and compliance records remain aligned.',
+    status: 'controlled',
+    detail: 'Admins can create native batch compliance logs here without verifying production, deducting inventory, or changing order state.',
   },
   {
     label: 'Audit packets',
@@ -259,12 +260,18 @@ export default function ComplianceOps() {
 
           <TabsContent value="batch">
             <div className="space-y-4">
-              <div>
-                <h2 className="text-2xl font-bold">Batch Compliance Logs</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Batch verification logs created by production workflows. Create/verify batch logs from the production lifecycle action, not from this tab.
-                </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Batch Compliance Logs</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Record batch compliance details natively. This does not verify production, deduct inventory, or change order status.
+                  </p>
+                </div>
+                <Button onClick={() => setShowNewEntry('batch')} size="sm">
+                  <Plus className="w-4 h-4 mr-2" /> New Batch Log
+                </Button>
               </div>
+              {showNewEntry === 'batch' && <BatchComplianceLogForm onClose={() => setShowNewEntry(null)} />}
               <BatchComplianceLogsList nativeCompliance={nativeCompliance} />
             </div>
           </TabsContent>
