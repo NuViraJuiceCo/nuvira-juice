@@ -245,10 +245,28 @@ function DeliveryCard({ item }) {
   );
 }
 
+function ComplianceCard({ item }) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-background p-3 space-y-3">
+      <div>
+        <div className="mb-1"><TypeChip label="compliance" /></div>
+        <h3 className="text-sm font-semibold text-foreground">Compliance Summary</h3>
+        <p className="text-xs text-muted-foreground">{formatDate(item.compliance_date)}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <StatCard label="Logs" value={item.log_count} />
+        <StatCard label="Open Actions" value={item.open_corrective_action_count} />
+      </div>
+      <p className="text-xs text-muted-foreground">Log types: <CountList counts={item.status_counts} /></p>
+    </div>
+  );
+}
+
 function CalendarItem({ item }) {
   if (item.type === 'event') return <EventCard item={item} />;
   if (item.type === 'production') return <ProductionCard item={item} />;
   if (item.type === 'delivery') return <DeliveryCard item={item} />;
+  if (item.type === 'compliance') return <ComplianceCard item={item} />;
   return null;
 }
 
@@ -485,6 +503,9 @@ export default function Calendar() {
 
   const summary = data?.summary || {};
   const dates = data?.dates || [];
+  const warnings = Array.isArray(data?.warnings) ? data.warnings.filter(Boolean) : [];
+  const isNativeFallback = data?.source === 'customer_app_native_calendar_fallback'
+    || data?.data_sources?.hub_available === false;
   const hasResults = dates.length > 0;
   const hasCompliance = Number(summary.compliance_items || 0) > 0 || dates.some(group => Number(group.counts?.compliance || 0) > 0) || typeFilter === 'compliance';
   const showError = isError && !data && !isFetching;
@@ -662,8 +683,10 @@ export default function Calendar() {
 
         <div className="rounded-xl border border-border/50 bg-card p-3 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-foreground">Hub Calendar view</p>
-            <p className="text-[10px] text-muted-foreground">Read-only schedule visibility. Use the month controls to move the calendar; event, production, delivery, and order actions are not available here.</p>
+            <p className="text-xs font-semibold text-foreground">
+              {isNativeFallback ? 'Native Customer App calendar fallback' : 'Hub Calendar view'}
+            </p>
+            <p className="text-[10px] text-muted-foreground">Read-only schedule visibility. Use the month controls to move the calendar; event, production, delivery, compliance, and order actions are not available here.</p>
             <p className="text-[10px] font-semibold text-primary mt-1">{formatMonthLabel(visibleDateFrom, visibleDateTo)}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -722,6 +745,14 @@ export default function Calendar() {
         {data?.truncated && (
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
             Results are capped. Narrow the date range or filters for a more complete calendar view.
+          </p>
+        )}
+
+        {warnings.length > 0 && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            {warnings.includes('native_read_only_fallback')
+              ? 'Hub calendar aggregation is unavailable. Showing native Customer App read-only schedule counts so calendar visibility stays available.'
+              : warnings.slice(0, 2).join(', ')}
           </p>
         )}
 
