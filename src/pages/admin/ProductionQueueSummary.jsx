@@ -306,6 +306,8 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
         type: result.skipped ? 'warn' : 'success',
         text: result.skipped ? `${label} was already recorded.` : `${label} completed.`,
       });
+      setPreview(null);
+      setActiveAction(null);
       await onActionSuccess?.();
     } catch (error) {
       setMessage({ type: 'error', text: error?.message || `Unable to run ${action}. Hub gates may still be closed.` });
@@ -528,6 +530,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
         type: result.skipped ? 'warn' : 'success',
         text: result.skipped ? 'Inventory deduction was already recorded.' : 'Inventory deduction completed.',
       });
+      setPreview(null);
       await onDeductionSuccess?.();
     } catch {
       setMessage({ type: 'error', text: 'Unable to deduct inventory. Hub gates may still be closed.' });
@@ -723,6 +726,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
         type: result.skipped ? 'warn' : 'success',
         text: result.skipped ? 'Ingredient usage correction was already recorded.' : 'Ingredient usage correction completed.',
       });
+      setPreview(null);
       await onCorrectionSuccess?.();
     } catch (error) {
       setMessage({ type: 'error', text: error?.message || 'Unable to correct ingredient usage. Hub gates may still be closed.' });
@@ -927,6 +931,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
         type: result.skipped ? 'warn' : 'success',
         text: result.skipped ? 'Task pack cascade was already recorded.' : `Packed ${result.packed_task_count || taskIds.length} task(s).`,
       });
+      setPreview(null);
       await onCascadeSuccess?.();
     } catch (error) {
       setMessage({ type: 'error', text: error?.message || 'Unable to pack fulfillment tasks. Hub gates may still be closed.' });
@@ -962,6 +967,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
         type: result.skipped ? 'warn' : 'success',
         text: result.skipped ? 'Order bottled cascade was already recorded.' : 'Order marked bottled.',
       });
+      setPreview(null);
       await onCascadeSuccess?.();
     } catch (error) {
       setMessage({ type: 'error', text: error?.message || 'Unable to bottle order. Hub gates may still be closed.' });
