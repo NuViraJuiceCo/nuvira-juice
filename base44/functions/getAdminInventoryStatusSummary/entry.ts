@@ -324,14 +324,21 @@ Deno.serve(async (req) => {
       if (status) params.set('status', status);
       if (search) params.set('search', search);
 
-      const hubResponse = await fetch(`${hubBase}/functions/getInventoryStatusSummaryForCustomerApp?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-        },
-      });
+      let hubResponse;
+      try {
+        hubResponse = await fetch(`${hubBase}/functions/getInventoryStatusSummaryForCustomerApp?${params.toString()}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+          },
+        });
+      } catch {
+        hubWarning = 'hub_inventory_status_fetch_failed';
+      }
 
-      if (!hubResponse.ok) {
+      if (!hubResponse) {
+        // Native inventory/procurement data remains usable when Hub is temporarily unreachable.
+      } else if (!hubResponse.ok) {
         hubWarning = `hub_inventory_status_unavailable:${hubResponse.status}`;
       } else {
         const parsedHubData = await hubResponse.json().catch(() => null);
