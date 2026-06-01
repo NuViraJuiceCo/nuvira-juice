@@ -145,6 +145,19 @@ function todayIsoDate() {
   return localDate.toISOString().slice(0, 10);
 }
 
+function upcomingIsoDates(dayCount = 14) {
+  const dates = [];
+  const start = new Date();
+  for (let index = 0; index < dayCount; index += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - offset * 60 * 1000);
+    dates.push(localDate.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
 function itemsFromSummary(summary) {
   if (!summary || typeof summary !== 'string') return [];
   return summary
@@ -941,22 +954,39 @@ export default function AdminOrders() {
   const { data: deliveryFallbackData = {}, isLoading: deliveryFallbackLoading } = useQuery({
     queryKey: ['admin-orders-delivery-fallback'],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getAdminDeliveryRouteSummary', {
-        delivery_date: todayIsoDate(),
-        limit: 100,
-      });
-      return res.data || {};
+      const dates = upcomingIsoDates(14);
+      const summaries = await Promise.all(
+        dates.map(async deliveryDate => {
+          try {
+            const res = await base44.functions.invoke('getAdminDeliveryRouteSummary', {
+              delivery_date: deliveryDate,
+              limit: 100,
+            });
+            return res.data || {};
+          } catch (error) {
+            console.warn('[AdminOrders] Native delivery fallback unavailable for date', deliveryDate, error?.message || error);
+            return {};
+          }
+        })
+      );
+      return { summaries };
     },
     enabled: user?.role === 'admin',
     refetchInterval: 30000,
   });
 
   const deliveryFallbackOrders = useMemo(() => {
-    const sections = deliveryFallbackData.sections || {};
-    return [
-      ...(sections.delivery_stops || []),
-      ...(sections.unscheduled_delivery_orders || []),
-    ]
+    const summaries = Array.isArray(deliveryFallbackData.summaries)
+      ? deliveryFallbackData.summaries
+      : [deliveryFallbackData];
+    return summaries
+      .flatMap(summary => {
+        const sections = summary.sections || {};
+        return [
+          ...(sections.delivery_stops || []),
+          ...(sections.unscheduled_delivery_orders || []),
+        ];
+      })
       .map(mapDeliveryStopToAdminOrder)
       .filter(Boolean);
   }, [deliveryFallbackData]);

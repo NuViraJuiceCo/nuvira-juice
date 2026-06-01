@@ -194,6 +194,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/pos-orders" element={<ProtectedRoute element={<POSOrders />} user={user} />} />
           <Route path="/admin/resources" element={<ProtectedRoute element={<Resources />} user={user} />} />
           <Route path="/admin/compliance-ops" element={<ProtectedRoute element={<ComplianceOps />} user={user} />} />
+          <Route path="/admin/compliance" element={<Navigate to="/admin/compliance-ops" replace />} />
           <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
           <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
           <Route path="/admin/bag-returns" element={<ProtectedRoute element={<BagReturnAdmin />} user={user} />} />
