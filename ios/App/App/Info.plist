@@ -24,6 +24,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>FirebaseMessagingAutoInitEnabled</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>NuVira Juice uses the camera so you can take a profile photo for your account.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>NuVira Juice uses your photo library so you can choose a profile photo for your account.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
