@@ -81,6 +81,18 @@ function sanitizeSourceTypeCounts(value) {
   );
 }
 
+function safeStringArray(values, limit = 30) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map(value => normalizeText(value))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function sourceKey(batch) {
+  return normalizeText(batch.batch_id || batch.id).toLowerCase();
+}
+
 function sanitizeBatch(batch) {
   return {
     id: batch.id || null,
@@ -97,8 +109,72 @@ function sanitizeBatch(batch) {
       ? batch.order_numbers.map(value => value?.toString().trim()).filter(Boolean)
       : [],
     source_type_counts: sanitizeSourceTypeCounts(batch.source_type_counts),
+    source: batch.source || 'hub',
+    source_label: batch.source === 'customer_app_native' ? 'Native Customer App' : 'Hub',
     updated_date: batch.updated_date || null,
   };
+}
+
+function nativeSourceTypeCounts(orderSources) {
+  const counts = {};
+  for (const source of Array.isArray(orderSources) ? orderSources : []) {
+    const key = normalizeText(source?.source_type) || 'native_order';
+    counts[key] = (counts[key] || 0) + (Number(source?.quantity) || 1);
+  }
+  return counts;
+}
+
+async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit) {
+  try {
+    const entity = base44.asServiceRole?.entities?.ProductionBatch;
+    if (!entity || typeof entity.list !== 'function') return [];
+    const rows = await entity.list('production_date', 500).catch(() => []);
+    if (!Array.isArray(rows)) return [];
+
+    const filtered = rows
+      .filter(batch => {
+        const productionDate = normalizeText(batch.production_date);
+        return productionDate && productionDate >= dateFrom && productionDate <= dateTo;
+      })
+      .map(batch => {
+        const orderSources = Array.isArray(batch.order_sources) ? batch.order_sources : [];
+        return sanitizeBatch({
+          ...batch,
+          order_count: orderSources.length,
+          order_numbers: safeStringArray(orderSources.map(source => source?.order_number), 50),
+          source_type_counts: nativeSourceTypeCounts(orderSources),
+          source: 'customer_app_native',
+        });
+      });
+
+    return (limit ? filtered.slice(0, limit) : filtered).sort((a, b) => {
+      const dateCompare = (a.production_date || '').localeCompare(b.production_date || '');
+      if (dateCompare !== 0) return dateCompare;
+      return (a.product_name || '').localeCompare(b.product_name || '');
+    });
+  } catch (error) {
+    console.error('[getAdminProductionQueueSummary] Native batch overlay unavailable:', error.message);
+    return [];
+  }
+}
+
+function mergeHubAndNativeBatches(hubBatches, nativeBatches, limit) {
+  const hubRows = Array.isArray(hubBatches)
+    ? hubBatches.map(batch => sanitizeBatch({ ...batch, source: 'hub' }))
+    : [];
+  const hubKeys = new Set(hubRows.map(sourceKey).filter(Boolean));
+  const nativeOnlyRows = nativeBatches.filter(batch => {
+    const key = sourceKey(batch);
+    return key && !hubKeys.has(key);
+  });
+  const merged = [...hubRows, ...nativeOnlyRows].sort((a, b) => {
+    const dateCompare = (a.production_date || '').localeCompare(b.production_date || '');
+    if (dateCompare !== 0) return dateCompare;
+    const sourceCompare = (a.source || '').localeCompare(b.source || '');
+    if (sourceCompare !== 0) return sourceCompare;
+    return (a.product_name || '').localeCompare(b.product_name || '');
+  });
+  return limit ? merged.slice(0, limit) : merged;
 }
 
 Deno.serve(async (req) => {
@@ -157,8 +233,35 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
+    const nativeBatches = await loadNativeProductionBatches(base44, dateFrom, dateTo, limit);
+    const warnings = [];
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub production queue service is not configured' }, { status: 503 });
+      if (nativeBatches.length === 0) {
+        return Response.json({
+          error: 'Hub production queue service is not configured',
+          warnings: ['hub_production_queue_service_not_configured'],
+        }, { status: 503 });
+      }
+
+      warnings.push('hub_production_queue_service_not_configured');
+      return Response.json({
+        success: true,
+        date_from: dateFrom,
+        date_to: dateTo,
+        count: nativeBatches.length,
+        truncated: false,
+        batches: nativeBatches,
+        data_sources: {
+          hub_available: false,
+          native_available: true,
+          native_read_only: true,
+          native_batch_count: nativeBatches.length,
+          hub_batch_count: 0,
+          live_actions_source: 'hub_backed_only',
+        },
+        warnings,
+      });
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -176,20 +279,65 @@ Deno.serve(async (req) => {
     });
 
     if (!hubResponse.ok) {
+      warnings.push(`hub_production_queue_unavailable:${hubResponse.status}`);
+      if (nativeBatches.length === 0) {
+        return Response.json({
+          error: 'Unable to load production queue summary',
+          hub_status: hubResponse.status,
+          warnings,
+        }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
+      }
+
       return Response.json({
-        error: 'Unable to load production queue summary',
-        hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
+        success: true,
+        date_from: dateFrom,
+        date_to: dateTo,
+        count: nativeBatches.length,
+        truncated: false,
+        batches: nativeBatches,
+        data_sources: {
+          hub_available: false,
+          native_available: true,
+          native_read_only: true,
+          native_batch_count: nativeBatches.length,
+          hub_batch_count: 0,
+          live_actions_source: 'hub_backed_only',
+        },
+        warnings,
+      });
     }
 
     const hubData = await hubResponse.json().catch(() => null);
     if (!hubData || hubData.success !== true || !Array.isArray(hubData.batches)) {
-      return Response.json({ error: 'Malformed production queue summary response' }, { status: 502 });
+      warnings.push('hub_production_queue_malformed_response');
+      if (nativeBatches.length === 0) {
+        return Response.json({ error: 'Malformed production queue summary response', warnings }, { status: 502 });
+      }
+
+      return Response.json({
+        success: true,
+        date_from: dateFrom,
+        date_to: dateTo,
+        count: nativeBatches.length,
+        truncated: false,
+        batches: nativeBatches,
+        data_sources: {
+          hub_available: false,
+          native_available: true,
+          native_read_only: true,
+          native_batch_count: nativeBatches.length,
+          hub_batch_count: 0,
+          live_actions_source: 'hub_backed_only',
+        },
+        warnings,
+      });
     }
 
-    const sanitizedBatches = hubData.batches.map(sanitizeBatch);
-    const batches = limit ? sanitizedBatches.slice(0, limit) : sanitizedBatches;
-    const truncated = hubData.truncated === true || batches.length < sanitizedBatches.length;
+    const batches = mergeHubAndNativeBatches(hubData.batches, nativeBatches, limit);
+    const hubBatchCount = hubData.batches.length;
+    const nativeOnlyCount = batches.filter(batch => batch.source === 'customer_app_native').length;
+    const unmergedCount = hubBatchCount + nativeOnlyCount;
+    const truncated = hubData.truncated === true || Boolean(limit && unmergedCount > batches.length);
 
     return Response.json({
       success: true,
@@ -198,6 +346,16 @@ Deno.serve(async (req) => {
       count: batches.length,
       truncated,
       batches,
+      data_sources: {
+        hub_available: true,
+        native_available: nativeBatches.length > 0,
+        native_read_only: true,
+        native_batch_count: nativeBatches.length,
+        native_only_batch_count: nativeOnlyCount,
+        hub_batch_count: hubBatchCount,
+        live_actions_source: 'hub_backed_only',
+      },
+      warnings,
     });
   } catch (error) {
     console.error('[getAdminProductionQueueSummary] Error:', error.message);

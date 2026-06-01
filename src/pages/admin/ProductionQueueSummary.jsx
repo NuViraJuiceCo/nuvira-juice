@@ -20,7 +20,7 @@ const productionOpsReadinessItems = [
   {
     label: 'Lifecycle actions',
     status: 'controlled',
-    detail: 'Start, Complete, and Verify are preview-first Hub-backed actions for exact eligible batches.',
+    detail: 'Hub rows expose preview-first Start, Complete, and Verify actions for exact eligible batches; native rows are read-only until native lifecycle writes are allowlisted.',
   },
   {
     label: 'Ingredient correction',
@@ -92,6 +92,15 @@ function sourceTypeSummary(sourceTypeCounts) {
   return entries
     .map(([source, count]) => `${formatLabel(source)}: ${count}`)
     .join(' · ');
+}
+
+function isNativeBatch(batch) {
+  return batch?.source === 'customer_app_native';
+}
+
+function batchSourceLabel(batch) {
+  if (batch?.source_label) return batch.source_label;
+  return isNativeBatch(batch) ? 'Native Customer App' : 'Hub';
 }
 
 function compactOrderNumbers(orderNumbers) {
@@ -1132,8 +1141,30 @@ function groupByProductionDate(items) {
   }, {});
 }
 
+function NativeBatchReadOnlyNotice() {
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+      <div className="flex items-start gap-2">
+        <Database className="w-4 h-4 text-sky-700 mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-sky-900">Native Customer App batch</p>
+          <p className="text-xs text-sky-800 mt-1">
+            This row is visible for production planning context only. Hub-backed lifecycle, ingredient correction,
+            post-verify cascade, and inventory controls are hidden until native batch writes are explicitly allowlisted.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BatchCard({ batch, onActionSuccess }) {
-  const categoryAccent = isShotCategory(batch.product_category) ? 'border-l-amber-400' : 'border-l-primary';
+  const nativeBatch = isNativeBatch(batch);
+  const categoryAccent = nativeBatch
+    ? 'border-l-sky-500'
+    : isShotCategory(batch.product_category)
+      ? 'border-l-amber-400'
+      : 'border-l-primary';
 
   return (
     <div className={`rounded-xl border border-border/50 border-l-4 ${categoryAccent} bg-card p-4 space-y-3`}>
@@ -1143,6 +1174,10 @@ function BatchCard({ batch, onActionSuccess }) {
           <p className="text-xs text-muted-foreground">{batch.product_category || 'Uncategorized'}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <AdminStatusPill
+            value={nativeBatch ? 'native' : 'hub'}
+            label={batchSourceLabel(batch)}
+          />
           {batch.is_locked && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground border border-border/60">
               <Lock className="w-3 h-3" />
@@ -1185,16 +1220,22 @@ function BatchCard({ batch, onActionSuccess }) {
 
       {batch.updated_date && (
         <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-          Last Hub update: {formatDateTime(batch.updated_date)}
+          Last {nativeBatch ? 'native' : 'Hub'} update: {formatDateTime(batch.updated_date)}
         </p>
       )}
 
-      <ProductionLifecyclePanel batch={batch} onActionSuccess={onActionSuccess} />
-      <IngredientUsageCorrectionPanel batch={batch} onCorrectionSuccess={onActionSuccess} />
-      {batch.status === 'verified_logged' && (
-        <PostVerifyCascadesPanel batch={batch} onCascadeSuccess={onActionSuccess} />
+      {nativeBatch ? (
+        <NativeBatchReadOnlyNotice />
+      ) : (
+        <>
+          <ProductionLifecyclePanel batch={batch} onActionSuccess={onActionSuccess} />
+          <IngredientUsageCorrectionPanel batch={batch} onCorrectionSuccess={onActionSuccess} />
+          {batch.status === 'verified_logged' && (
+            <PostVerifyCascadesPanel batch={batch} onCascadeSuccess={onActionSuccess} />
+          )}
+          <InventoryDeductionPanel batch={batch} onDeductionSuccess={onActionSuccess} />
+        </>
       )}
-      <InventoryDeductionPanel batch={batch} onDeductionSuccess={onActionSuccess} />
     </div>
   );
 }
@@ -1205,6 +1246,8 @@ function ProductionDateSection({ date, batches, today, onActionSuccess }) {
   const neededUnits = batches.reduce((total, batch) => total + (Number(batch.planned_units) || 0), 0);
   const producedUnits = batches.reduce((total, batch) => total + (Number(batch.actual_units) || 0), 0);
   const productCount = batches.length;
+  const nativeCount = batches.filter(isNativeBatch).length;
+  const hubCount = productCount - nativeCount;
   const headerClass = isToday
     ? 'bg-primary/10 border-primary/30'
     : isPast
@@ -1229,7 +1272,7 @@ function ProductionDateSection({ date, batches, today, onActionSuccess }) {
             </p>
           </div>
           <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-card/70 border border-border text-muted-foreground">
-            Hub Production
+            {nativeCount > 0 ? `Hub ${hubCount} · Native ${nativeCount}` : 'Hub Production'}
           </span>
         </div>
       </div>
@@ -1366,8 +1409,13 @@ export default function ProductionQueueSummary() {
             </p>
           )}
           <p className="text-[10px] text-muted-foreground">
-            Hub data · Inventory deduction is preview-first and remains blocked unless the Hub gates allow the exact batch.
+            Hub and native Customer App data · Native rows are read-only in this queue. Inventory deduction is preview-first and remains blocked unless the Hub gates allow the exact batch.
           </p>
+          {Array.isArray(data?.warnings) && data.warnings.length > 0 && (
+            <p className="text-[10px] text-amber-700">
+              Data warning: {data.warnings.map(formatLabel).join(', ')}
+            </p>
+          )}
           <AdminStatusLegend />
         </div>
 
