@@ -669,6 +669,29 @@ function fallbackHubUnavailableSummary(dateFrom, dateTo, reason, hubStatus = nul
   };
 }
 
+function withNativeFallback(fallback, native) {
+  return {
+    ...fallback,
+    native,
+    summary: {
+      ...fallback.summary,
+      native_temperature: native.summary.temperature,
+      native_ph: native.summary.ph,
+      native_ccp: native.summary.ccp,
+      native_sanitation: native.summary.sanitation,
+      native_daily_checklists: native.summary.daily_checklists,
+      native_corrective_actions: native.summary.corrective_actions,
+      native_batch_compliance_logs: native.summary.batch_compliance_logs,
+    },
+    issues: {
+      ...fallback.issues,
+      native_attention_items: native.issues.total_attention_items,
+    },
+    recent_logs: native.recent_logs,
+    warnings: [...fallback.warnings, ...native.warnings],
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -727,26 +750,7 @@ Deno.serve(async (req) => {
         'Hub compliance ops summary service is not configured',
         503
       );
-      return Response.json({
-        ...fallback,
-        native,
-        summary: {
-          ...fallback.summary,
-          native_temperature: native.summary.temperature,
-          native_ph: native.summary.ph,
-          native_ccp: native.summary.ccp,
-          native_sanitation: native.summary.sanitation,
-          native_daily_checklists: native.summary.daily_checklists,
-          native_corrective_actions: native.summary.corrective_actions,
-          native_batch_compliance_logs: native.summary.batch_compliance_logs,
-        },
-        issues: {
-          ...fallback.issues,
-          native_attention_items: native.issues.total_attention_items,
-        },
-        recent_logs: native.recent_logs,
-        warnings: [...fallback.warnings, ...native.warnings],
-      });
+      return Response.json(withNativeFallback(fallback, native));
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -755,12 +759,23 @@ Deno.serve(async (req) => {
       date_to: dateTo,
     });
 
-    const hubResponse = await fetch(`${hubBase}/functions/getComplianceOpsSummaryForCustomerApp?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-    });
+    let hubResponse;
+    try {
+      hubResponse = await fetch(`${hubBase}/functions/getComplianceOpsSummaryForCustomerApp?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        },
+      });
+    } catch {
+      const fallback = fallbackHubUnavailableSummary(
+        dateFrom,
+        dateTo,
+        'Hub compliance ops summary fetch failed; native compliance summary remains available',
+        503
+      );
+      return Response.json(withNativeFallback(fallback, native));
+    }
 
     const hubData = await hubResponse.json().catch(() => null);
     if (!hubResponse.ok) {
@@ -770,26 +785,7 @@ Deno.serve(async (req) => {
         sanitizeText(hubData?.error, 160) || 'Unable to load Hub compliance ops summary',
         hubResponse.status
       );
-      return Response.json({
-        ...fallback,
-        native,
-        summary: {
-          ...fallback.summary,
-          native_temperature: native.summary.temperature,
-          native_ph: native.summary.ph,
-          native_ccp: native.summary.ccp,
-          native_sanitation: native.summary.sanitation,
-          native_daily_checklists: native.summary.daily_checklists,
-          native_corrective_actions: native.summary.corrective_actions,
-          native_batch_compliance_logs: native.summary.batch_compliance_logs,
-        },
-        issues: {
-          ...fallback.issues,
-          native_attention_items: native.issues.total_attention_items,
-        },
-        recent_logs: native.recent_logs,
-        warnings: [...fallback.warnings, ...native.warnings],
-      });
+      return Response.json(withNativeFallback(fallback, native));
     }
 
     const hub = sanitizeHubResponse(hubData, dateFrom, dateTo);
