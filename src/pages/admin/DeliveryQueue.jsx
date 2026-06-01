@@ -167,6 +167,12 @@ function nativeExecuteRequestId(action, stop) {
   return `native_fulfillment_execute_${action}_${stop.task_id || stop.order_number || 'task'}_${Date.now()}_${randomId}`;
 }
 
+function nativeMaterializationRequestId(stop) {
+  const fallback = Math.random().toString(36).slice(2);
+  const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+  return `native_task_materialize_${stop.order_number || 'order'}_${Date.now()}_${randomId}`;
+}
+
 function nativeTaskPayload(stop) {
   return {
     id: stop.task_id || null,
@@ -938,7 +944,219 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
   );
 }
 
-function StopCard({ stop, completed, onAssignmentSuccess }) {
+function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMaterialized }) {
+  const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || selectedDate || '');
+  const [productionDate, setProductionDate] = useState('');
+  const [windowLabel, setWindowLabel] = useState(stop.delivery_window_label || '');
+  const [preview, setPreview] = useState(null);
+  const [pending, setPending] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const projectedWrites = Array.isArray(preview?.projected_writes) ? preview.projected_writes : [];
+  const canPreview = Boolean(stop.order_number && deliveryDate);
+  const canRun = Boolean(preview?.task_materialization_ready && !pending && !actionPending);
+
+  function materializationPayload(mode = 'dry_run') {
+    return {
+      mode,
+      order_number: stop.order_number,
+      delivery_date: deliveryDate,
+      production_date: productionDate || undefined,
+      delivery_window_label: windowLabel || undefined,
+      request_id: nativeMaterializationRequestId(stop),
+    };
+  }
+
+  async function runPreview() {
+    if (!canPreview) {
+      setMessage({ type: 'error', text: 'Order number and delivery date are required before preview.' });
+      return;
+    }
+
+    setPending(true);
+    setPreview(null);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('previewNativeFulfillmentTaskMaterialization', materializationPayload('dry_run'));
+      const result = res?.data || res;
+      if (result?.error && result?.success !== true) throw new Error(result.error);
+      setPreview(result);
+      setMessage({
+        type: result.task_materialization_ready ? 'success' : 'warn',
+        text: result.task_materialization_ready
+          ? 'Native task materialization preview passed. Execution remains exact-order gated.'
+          : 'Native task materialization has blockers or warnings.',
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to preview native task materialization.' });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function runMaterialization() {
+    if (!canRun) return;
+    if (!window.confirm(`Create one native FulfillmentTask for order ${stop.order_number} on ${deliveryDate}? This updates only the native operational order schedule and creates one native task. It does not notify customers, call providers, deduct inventory, or run sync/repair.`)) {
+      return;
+    }
+
+    setActionPending(true);
+    setMessage(null);
+
+    try {
+      const requestId = nativeMaterializationRequestId(stop);
+      const res = await base44.functions.invoke('executeNativeFulfillmentTaskMaterialization', {
+        ...materializationPayload('live'),
+        request_id: requestId,
+        confirmation: 'execute_native_fulfillment_task_materialization',
+      });
+      const result = res?.data || res;
+      if (!result?.success) {
+        const gate = result?.error_code ? ` (${formatLabel(result.error_code)})` : '';
+        throw new Error(`${result?.error || 'Native task materialization was not allowed'}${gate}`);
+      }
+      setPreview(null);
+      setMessage({
+        type: result.skipped ? 'warn' : 'success',
+        text: result.skipped ? 'Native task materialization was already recorded.' : 'Native FulfillmentTask created.',
+      });
+      await onMaterialized?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to run native task materialization.' });
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-2 space-y-3">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-emerald-900 font-semibold">Native Task Materialization</p>
+        <p className="text-[10px] text-emerald-800 mt-1">
+          For native delivery orders without a task. Preview first, then exact-order gated execution can create one native FulfillmentTask.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <label className="space-y-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Delivery date</span>
+          <input
+            type="date"
+            value={deliveryDate}
+            onChange={event => setDeliveryDate(event.target.value)}
+            disabled={pending || actionPending}
+            className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Production date</span>
+          <input
+            type="date"
+            value={productionDate}
+            onChange={event => setProductionDate(event.target.value)}
+            disabled={pending || actionPending}
+            className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Window</span>
+          <input
+            value={windowLabel}
+            onChange={event => setWindowLabel(event.target.value.slice(0, 120))}
+            disabled={pending || actionPending}
+            placeholder="Optional"
+            className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
+          />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={!canPreview || pending || actionPending}
+          onClick={runPreview}
+          className="h-9 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-900 disabled:opacity-50"
+        >
+          {pending ? 'Previewing...' : 'Preview Task Create'}
+        </button>
+        <button
+          type="button"
+          disabled={!canRun}
+          onClick={runMaterialization}
+          className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+        >
+          {actionPending ? 'Running...' : 'Run Native Task Create'}
+        </button>
+      </div>
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-amber-700'
+              : 'text-green-700'
+        }`}>
+          {message.text}
+        </p>
+      )}
+
+      {preview && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ready</p>
+              <p className="text-sm font-bold">{preview.task_materialization_ready ? 'Yes' : 'No'}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Existing tasks</p>
+              <p className="text-sm font-bold">{preview.existing_task_count ?? 0}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Write</p>
+              <p className="text-sm font-bold">{preview.native_write_allowed ? 'Yes' : 'No'}</p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="space-y-1">
+              {blockers.map(blocker => (
+                <div key={`materialization-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Blocker: {formatLabel(blocker)}</span>
+                </div>
+              ))}
+              {warnings.map(warning => (
+                <div key={`materialization-warning-${warning}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{formatLabel(warning)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {projectedWrites.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              Would write if exact native gates are open: {projectedWrites.map(formatLabel).join(', ')}
+            </p>
+          )}
+
+          {preview.fulfillment_task_draft && (
+            <p className="text-[10px] text-muted-foreground">
+              Draft: {preview.fulfillment_task_draft.items_summary || `${preview.fulfillment_task_draft.item_count || 0} item(s)`} for {preview.fulfillment_task_draft.delivery_date}.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StopCard({ stop, completed, selectedDate, onAssignmentSuccess }) {
   const nativeStop = isNativeDeliveryStop(stop);
 
   return (
@@ -1050,7 +1268,15 @@ function StopCard({ stop, completed, onAssignmentSuccess }) {
       {nativeStop ? (
         <>
           <NativeDeliveryReadOnlyNotice stop={stop} />
-          <NativeFulfillmentPreviewPanel stop={stop} onActionSuccess={onAssignmentSuccess} />
+          {isNativeDeliveryTaskStop(stop) ? (
+            <NativeFulfillmentPreviewPanel stop={stop} onActionSuccess={onAssignmentSuccess} />
+          ) : (
+            <NativeFulfillmentTaskMaterializationPanel
+              stop={stop}
+              selectedDate={selectedDate}
+              onMaterialized={onAssignmentSuccess}
+            />
+          )}
         </>
       ) : (
         <>
@@ -1062,7 +1288,7 @@ function StopCard({ stop, completed, onAssignmentSuccess }) {
   );
 }
 
-function StopSection({ title, subtitle, stops, completed, onAssignmentSuccess }) {
+function StopSection({ title, subtitle, stops, completed, selectedDate, onAssignmentSuccess }) {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -1089,6 +1315,7 @@ function StopSection({ title, subtitle, stops, completed, onAssignmentSuccess })
               key={stop.task_id || `${stop.order_number}-${stop.fulfillment_number}`}
               stop={stop}
               completed={completed}
+              selectedDate={selectedDate}
               onAssignmentSuccess={onAssignmentSuccess}
             />
           ))}
@@ -1199,7 +1426,7 @@ export default function DeliveryQueue() {
             Showing Hub and native Customer App delivery route summary for {formatDate(deliveryDate)}.
           </p>
           <AdminStatusLegend />
-          <p className="text-[10px] text-muted-foreground">Hub data plus native Customer App delivery rows. Hub-backed write actions are hidden for native rows; native fulfillment previews are dry-run only.</p>
+          <p className="text-[10px] text-muted-foreground">Hub data plus native Customer App delivery rows. Native delivery writes remain preview-first and exact-gated.</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
@@ -1218,7 +1445,7 @@ export default function DeliveryQueue() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Driver Portal route view</p>
-            <p className="text-[10px] text-muted-foreground">Date-pending native orders are surfaced for review only. Proof, bag return, and manual notification actions remain omitted. Route optimization is preview-only.</p>
+            <p className="text-[10px] text-muted-foreground">Date-pending native orders can be previewed for task creation. Proof, bag return, and manual notification actions remain omitted. Route optimization is preview-only.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
@@ -1255,9 +1482,10 @@ export default function DeliveryQueue() {
             {unscheduledStops.length > 0 && (
               <StopSection
                 title="Date Pending / Needs Review"
-                subtitle="Native delivery orders without a delivery date. Assign or fix the date from Orders before route actions."
+                subtitle="Native delivery orders without a task yet. Preview a delivery date and create one exact-gated native task when approved."
                 stops={unscheduledStops}
                 completed={false}
+                selectedDate={deliveryDate}
                 onAssignmentSuccess={refreshDeliveryActionSummaries}
               />
             )}
@@ -1266,6 +1494,7 @@ export default function DeliveryQueue() {
               subtitle="Active Hub and native delivery tasks for this date"
               stops={deliveryStops}
               completed={false}
+              selectedDate={deliveryDate}
               onAssignmentSuccess={refreshDeliveryActionSummaries}
             />
             <StopSection
@@ -1273,6 +1502,7 @@ export default function DeliveryQueue() {
               subtitle="Delivered or completed delivery tasks"
               stops={completedStops}
               completed
+              selectedDate={deliveryDate}
               onAssignmentSuccess={refreshDeliveryActionSummaries}
             />
           </div>
