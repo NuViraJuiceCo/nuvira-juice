@@ -320,6 +320,9 @@ function OperationsSnapshot({ user }) {
   });
 
   const summary = data?.summary || {};
+  const warnings = Array.isArray(data?.warnings) ? data.warnings.filter(Boolean) : [];
+  const isNativeFallback = data?.source === 'customer_app_native_operations_dashboard_fallback'
+    || data?.data_sources?.hub_available === false;
   const showError = isError && !data && !isFetching;
   const contextLabel = useMemo(() => {
     if (isCustom) {
@@ -353,7 +356,9 @@ function OperationsSnapshot({ user }) {
               Read-only
             </span>
           </div>
-          <p className="text-xs font-medium text-slate-300 mt-0.5">Aggregate Hub summary</p>
+          <p className="text-xs font-medium text-slate-300 mt-0.5">
+            {isNativeFallback ? 'Native Customer App fallback summary' : 'Aggregate Hub summary'}
+          </p>
         </div>
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-wider text-slate-400 font-black">Range</p>
@@ -447,6 +452,14 @@ function OperationsSnapshot({ user }) {
       {data?.truncated && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
           Some Hub source reads were capped. Counts are shown as a bounded operations summary.
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          {warnings.includes('native_read_only_fallback')
+            ? 'Hub dashboard aggregation is unavailable. Showing native Customer App read-only counts so operations stay visible.'
+            : warnings.slice(0, 2).join(', ')}
         </div>
       )}
 
