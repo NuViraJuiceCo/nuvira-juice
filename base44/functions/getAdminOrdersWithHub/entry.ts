@@ -546,7 +546,8 @@ function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, review
 }
 
 function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
-  if (!order || !order.shopify_order_number) return null;
+  const orderNumber = (order?.shopify_order_number || order?.order_number || '').toString().replace(/^#/, '');
+  if (!order || !orderNumber) return null;
   if (order.is_subscription === true || order.order_type === 'subscription' || order.source_channel === 'subscription') return null;
 
   const fulfillmentMethod = order.fulfillment_method || (order.source_channel === 'pos' ? 'pos' : 'delivery');
@@ -563,18 +564,18 @@ function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
     task_ids: [],
   };
   const nativeLatestSyncLog = nativeContext?.latestSyncFor({
-    orderNumber: order.shopify_order_number,
+    orderNumber,
     orderId: order.id,
   }) || null;
   const nativeReviewQueueSummary = nativeContext?.reviewFor({
-    orderNumber: order.shopify_order_number,
+    orderNumber,
     orderId: order.id,
   }) || null;
 
   return {
     id: `native_${order.id}`,
     native_shopify_order_id: order.id,
-    order_number: (order.shopify_order_number || '').toString().replace(/^#/, ''),
+    order_number: orderNumber,
     customer_email: order.customer_email || '',
     customer_name: order.customer_name || '',
     status: mappedStatus,
