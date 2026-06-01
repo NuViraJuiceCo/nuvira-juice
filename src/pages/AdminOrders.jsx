@@ -364,6 +364,58 @@ function LiveCustomerContextPanel({ orders, isLoading, nameMap }) {
   );
 }
 
+function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliveryFallbackOrders, ordersError, ordersQueryError, deliveryFallbackError, deliveryFallbackQueryError }) {
+  const summaries = Array.isArray(deliveryFallbackData?.summaries)
+    ? deliveryFallbackData.summaries
+    : (deliveryFallbackData?.sections ? [deliveryFallbackData] : []);
+  const sourceRows = [
+    ['Local Customer App orders', ordersData?.local_count],
+    ['Hub bridge expanded rows', ordersData?.hub_count],
+    ['Native ShopifyOrder rows', ordersData?.native_shopify_order_count],
+    ['Delivery fallback rows', deliveryFallbackOrders?.length],
+    ['Delivery fallback dates checked', summaries.length],
+  ];
+  const errors = [
+    ordersData?.error,
+    ordersError ? (ordersQueryError?.message || 'Admin orders query failed') : null,
+    deliveryFallbackError ? (deliveryFallbackQueryError?.message || 'Delivery fallback query failed') : null,
+  ].filter(Boolean);
+
+  return (
+    <section className="px-4 mt-4">
+      <div className="rounded-2xl border border-slate-200 bg-card p-3 shadow-sm dark:border-slate-800">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Order Source Diagnostics</p>
+            <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+              Read-only counts from the Customer App, native operational mirror, Hub bridge, and delivery fallback.
+            </p>
+          </div>
+          <AdminStatusPill label={errors.length ? 'Needs review' : 'Read-only'} tone={errors.length ? 'warning' : 'native'} />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {sourceRows.map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-border bg-background p-2">
+              <p className="text-lg font-black text-foreground">{Number.isFinite(Number(value)) ? Number(value) : 0}</p>
+              <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+            </div>
+          ))}
+        </div>
+        {errors.length > 0 && (
+          <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-50 p-2 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            {errors.map((error, index) => (
+              <p key={`${error}-${index}`}>{error}</p>
+            ))}
+          </div>
+        )}
+        <p className="mt-2 text-[10px] font-medium text-muted-foreground">
+          This panel does not call repair, retry, provider, payment, notification, inventory, or fulfillment write paths.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function NativeOperationsPanel({ order }) {
   if (!order.is_native_order) return null;
   const taskSummary = order.native_fulfillment_task_summary || {};
@@ -940,7 +992,12 @@ export default function AdminOrders() {
 
   const [search, setSearch] = useState('');
 
-  const { data: ordersData = {}, isLoading: ordersLoading } = useQuery({
+  const {
+    data: ordersData = {},
+    isLoading: ordersLoading,
+    isError: ordersError,
+    error: ordersQueryError,
+  } = useQuery({
     queryKey: ['admin-orders'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminOrdersWithHub', {});
@@ -951,7 +1008,12 @@ export default function AdminOrders() {
   });
   const primaryOrders = ordersData.orders || [];
 
-  const { data: deliveryFallbackData = {}, isLoading: deliveryFallbackLoading } = useQuery({
+  const {
+    data: deliveryFallbackData = {},
+    isLoading: deliveryFallbackLoading,
+    isError: deliveryFallbackError,
+    error: deliveryFallbackQueryError,
+  } = useQuery({
     queryKey: ['admin-orders-delivery-fallback'],
     queryFn: async () => {
       const dates = upcomingIsoDates(14);
@@ -1112,6 +1174,16 @@ export default function AdminOrders() {
         orders={operationalOrders}
         isLoading={isLoading}
         nameMap={nameMap}
+      />
+
+      <AdminOrderSourceDiagnostics
+        ordersData={ordersData}
+        deliveryFallbackData={deliveryFallbackData}
+        deliveryFallbackOrders={deliveryFallbackOrders}
+        ordersError={ordersError}
+        ordersQueryError={ordersQueryError}
+        deliveryFallbackError={deliveryFallbackError}
+        deliveryFallbackQueryError={deliveryFallbackQueryError}
       />
 
       <div className="px-4 mt-4">
