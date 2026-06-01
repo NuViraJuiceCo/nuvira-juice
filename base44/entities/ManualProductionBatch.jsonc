@@ -1,0 +1,207 @@
+{
+  "name": "ManualProductionBatch",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Descriptive title, such as Brand Influencer Sampling or Event Prep"
+    },
+    "purpose": {
+      "type": "string",
+      "description": "Why this internal batch is being produced"
+    },
+    "production_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Scheduled production date"
+    },
+    "use_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date items will be used, sold, sampled, or distributed"
+    },
+    "items": {
+      "type": "array",
+      "description": "Products to produce for this internal batch",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "produced_quantity": {
+            "type": "number",
+            "description": "Actual quantity produced for partial completion"
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "included_in_planning",
+        "in_production",
+        "produced",
+        "completed",
+        "cancelled"
+      ],
+      "description": "Manual/internal batch lifecycle status"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "source_type": {
+      "type": "string",
+      "description": "Source label for demand generation, typically manual_internal_batch"
+    },
+    "event_name": {
+      "type": "string",
+      "description": "Optional event or campaign name connected to this internal batch"
+    },
+    "event_location": {
+      "type": "string",
+      "description": "Optional event or distribution location"
+    },
+    "linked_production_batch_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "ProductionBatch batch_id values that produced items for this manual batch"
+    },
+    "produced_at": {
+      "type": "string",
+      "description": "ISO timestamp when production was completed"
+    },
+    "completed_at": {
+      "type": "string",
+      "description": "ISO timestamp when fully marked completed"
+    },
+    "completed_by": {
+      "type": "string",
+      "description": "Email of user who completed this batch"
+    },
+    "produced_quantities": {
+      "type": "array",
+      "description": "Per-product produced quantity tracking",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_name": {
+            "type": "string"
+          },
+          "planned_quantity": {
+            "type": "number"
+          },
+          "produced_quantity": {
+            "type": "number"
+          },
+          "production_batch_id": {
+            "type": "string"
+          },
+          "produced_at": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "audit_trail": {
+      "type": "array",
+      "description": "Admin audit trail for internal batch edits",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "performed_by": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "command_log_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "source_system": {
+      "type": "string",
+      "description": "System that created or mirrored this manual batch"
+    },
+    "source_hub_manual_batch_id": {
+      "type": "string",
+      "description": "Legacy Hub manual batch ID for migration parity"
+    },
+    "native_owner_status": {
+      "type": "string",
+      "description": "Migration status for Customer App native ownership"
+    }
+  },
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "production_manager",
+                "operations_staff",
+                "staff"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "production_manager"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "name": "LabelAllergenReview",
+  "type": "object",
+  "properties": {
+    "product_name": {
+      "type": "string",
+      "description": "Product name (must match recipe/production names)"
+    },
+    "label_version": {
+      "type": "string",
+      "description": "Label version e.g. v1.0, v1.2"
+    },
+    "label_file_url": {
+      "type": "string",
+      "description": "URL to uploaded label file or image"
+    },
+    "ingredient_statement": {
+      "type": "string",
+      "description": "Full ingredient list as it appears on label"
+    },
+    "allergen_statement": {
+      "type": "string",
+      "description": "Contains: [allergens]. e.g. Contains: None"
+    },
+    "contains_allergens": {
+      "type": "boolean",
+      "description": "Does product contain any major allergens?",
+      "default": false
+    },
+    "allergens_present": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of allergens present e.g. Tree Nuts, Soy"
+    },
+    "may_contain_statement": {
+      "type": "string",
+      "description": "May contain statement if applicable"
+    },
+    "nutrition_label_status": {
+      "type": "string",
+      "enum": [
+        "Not Required",
+        "Draft",
+        "Reviewed",
+        "Approved"
+      ],
+      "default": "Not Required"
+    },
+    "net_volume": {
+      "type": "string",
+      "description": "Net volume on label e.g. 12 fl oz (355 mL)"
+    },
+    "business_name_and_address": {
+      "type": "string",
+      "description": "Business name and address on label"
+    },
+    "barcode_or_sku": {
+      "type": "string",
+      "description": "Barcode or SKU if applicable"
+    },
+    "review_status": {
+      "type": "string",
+      "enum": [
+        "Pending",
+        "In Review",
+        "Reviewed",
+        "Needs Changes"
+      ],
+      "default": "Pending"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of reviewer"
+    },
+    "review_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of review"
+    },
+    "approval_status": {
+      "type": "string",
+      "enum": [
+        "Pending",
+        "Approved",
+        "Rejected",
+        "Requires Update"
+      ],
+      "default": "Pending"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "Email of approver"
+    },
+    "approval_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of approval"
+    },
+    "next_review_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Next scheduled review date"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes or change history"
+    }
+  },
+  "required": [
+    "product_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "quality_control_staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "quality_control_staff"
+          ]
+        }
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "quality_control_staff"
+          ]
+        }
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

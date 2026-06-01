@@ -1,0 +1,408 @@
+{
+  "name": "ProductionBatch",
+  "type": "object",
+  "properties": {
+    "batch_id": {
+      "type": "string",
+      "description": "Batch ID like BATCH-2026-05-01-Aura"
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Juice product or shot flavor name"
+    },
+    "product_category": {
+      "type": "string",
+      "enum": [
+        "juice",
+        "shot",
+        "other"
+      ],
+      "description": "Category of product"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "ready_for_production",
+        "in_production",
+        "completed_pending_verification",
+        "verified_logged",
+        "archived"
+      ],
+      "description": "Batch production status"
+    },
+    "production_status": {
+      "type": "string",
+      "enum": [
+        "bottled",
+        "packed"
+      ],
+      "description": "Operational status at completion"
+    },
+    "planned_units": {
+      "type": "number",
+      "description": "Total units required based on orders"
+    },
+    "actual_units": {
+      "type": "number",
+      "description": "Actual units produced"
+    },
+    "production_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Scheduled production date"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Person assigned to this batch"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Production notes"
+    },
+    "is_locked": {
+      "type": "boolean",
+      "description": "Locked batches cannot be edited without admin reason and audit trail"
+    },
+    "order_sources": {
+      "type": "array",
+      "description": "Breakdown of which orders contribute to this batch",
+      "items": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string"
+          },
+          "order_number": {
+            "type": "string"
+          },
+          "customer_email": {
+            "type": "string"
+          },
+          "customer_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "source_type": {
+            "type": "string",
+            "description": "direct, bundle, subscription"
+          },
+          "source_item": {
+            "type": "string",
+            "description": "Original line item title if from bundle"
+          }
+        }
+      }
+    },
+    "actual_start_time": {
+      "type": "string",
+      "description": "ISO timestamp when batch production started"
+    },
+    "actual_end_time": {
+      "type": "string",
+      "description": "ISO timestamp when batch production ended"
+    },
+    "started_by": {
+      "type": "string",
+      "description": "Email of staff member who started the batch"
+    },
+    "completed_by": {
+      "type": "string",
+      "description": "Email of staff member who marked batch completed"
+    },
+    "staff_on_duty": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of staff member emails/names on duty during production"
+    },
+    "equipment_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of equipment used for this batch"
+    },
+    "pre_op_sanitation_confirmed": {
+      "type": "boolean",
+      "description": "Pre-operation sanitation was completed"
+    },
+    "sanitizer_log_reference": {
+      "type": "string",
+      "description": "Reference to SanitationLog entity if available"
+    },
+    "refrigerator_temp_checked": {
+      "type": "boolean",
+      "description": "Refrigerator temperature was checked before production"
+    },
+    "formula_or_recipe_used": {
+      "type": "string",
+      "description": "Recipe name or formula reference"
+    },
+    "ingredients_used": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ingredient_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "lot_number": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Ingredients used with lot tracking"
+    },
+    "ingredient_lot_notes": {
+      "type": "string",
+      "description": "Notes about ingredient lots, sourcing, or substitutions"
+    },
+    "related_orders": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "ShopifyOrder IDs that this batch fulfills"
+    },
+    "bottle_size": {
+      "type": "string",
+      "description": "Bottle size (e.g., 12oz, 16oz)"
+    },
+    "bottles_produced": {
+      "type": "number",
+      "description": "Total bottles produced"
+    },
+    "bottles_rejected_or_wasted": {
+      "type": "number",
+      "description": "Bottles rejected or wasted during QC"
+    },
+    "final_usable_quantity": {
+      "type": "number",
+      "description": "Final usable quantity after QC rejections"
+    },
+    "storage_location": {
+      "type": "string",
+      "description": "Where the finished product is stored"
+    },
+    "use_by_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Use by date for finished product"
+    },
+    "pH_result": {
+      "type": "number",
+      "description": "pH test result"
+    },
+    "pH_passed_failed": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ],
+      "description": "pH test result status"
+    },
+    "pH_meter_id": {
+      "type": "string",
+      "description": "ID of pH meter used for calibration tracking"
+    },
+    "calibration_checked": {
+      "type": "boolean",
+      "description": "Equipment calibration was verified"
+    },
+    "ccp_check_complete": {
+      "type": "boolean",
+      "description": "Critical Control Point monitoring was completed"
+    },
+    "sanitation_verification_complete": {
+      "type": "boolean",
+      "description": "Sanitation verification was completed"
+    },
+    "labels_applied": {
+      "type": "boolean",
+      "description": "Labels were applied to bottles"
+    },
+    "passed_failed": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ],
+      "description": "Overall batch pass/fail status"
+    },
+    "corrective_action_required": {
+      "type": "boolean",
+      "description": "Corrective action was needed for this batch"
+    },
+    "issue_identified": {
+      "type": "string",
+      "description": "Description of issue requiring corrective action"
+    },
+    "detection_method": {
+      "type": "string",
+      "description": "How the issue was detected"
+    },
+    "product_involved": {
+      "type": "string",
+      "description": "Product involved in the corrective action"
+    },
+    "action_taken": {
+      "type": "string",
+      "description": "Description of corrective action taken"
+    },
+    "disposed": {
+      "type": "boolean",
+      "description": "Whether affected product was disposed"
+    },
+    "quantity_disposed": {
+      "type": "number",
+      "description": "Quantity of product disposed"
+    },
+    "preventive_steps": {
+      "type": "string",
+      "description": "Steps taken to prevent recurrence"
+    },
+    "verified_by": {
+      "type": "string",
+      "description": "Email of manager/admin who verified and logged the batch"
+    },
+    "verified_at": {
+      "type": "string",
+      "description": "ISO timestamp when batch was verified"
+    },
+    "compliance_log_id": {
+      "type": "string",
+      "description": "Link to created BatchComplianceLog entity"
+    },
+    "ccp_log_id": {
+      "type": "string",
+      "description": "Link to created CCPLog entity"
+    },
+    "corrective_action_log_id": {
+      "type": "string",
+      "description": "Link to created CorrectiveActionLog entity"
+    },
+    "sanitation_log_id": {
+      "type": "string",
+      "description": "Link to created SanitationLog entity"
+    },
+    "audit_trail": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "performed_by": {
+            "type": "string"
+          },
+          "before": {
+            "type": "object"
+          },
+          "after": {
+            "type": "object"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "command_log_id": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Audit trail of all edits to locked batches"
+    },
+    "source_system": {
+      "type": "string",
+      "description": "System that created or mirrored this production batch"
+    },
+    "source_hub_batch_id": {
+      "type": "string",
+      "description": "Legacy Hub batch ID for migration parity"
+    },
+    "command_log_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "CommandLog IDs tied to native batch lifecycle actions"
+    },
+    "ingredient_usage_status": {
+      "type": "string",
+      "description": "Ingredient usage capture status for inventory deduction readiness"
+    },
+    "procurement_needed": {
+      "type": "boolean",
+      "description": "True when make-to-order stock shortfall requires procurement"
+    },
+    "inventory_deduction_status": {
+      "type": "string",
+      "description": "Inventory deduction lifecycle status for this batch"
+    },
+    "inventory_deduction_log_id": {
+      "type": "string",
+      "description": "CommandLog or audit ID for the approved inventory deduction action"
+    },
+    "native_owner_status": {
+      "type": "string",
+      "description": "Migration status for Customer App native ownership"
+    }
+  },
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff",
+            "staff"
+          ]
+        }
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff"
+          ]
+        }
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

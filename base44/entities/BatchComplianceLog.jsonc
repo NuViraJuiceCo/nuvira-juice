@@ -1,0 +1,160 @@
+{
+  "name": "BatchComplianceLog",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date batch was produced"
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "Batch ID reference"
+    },
+    "juice_flavor": {
+      "type": "string",
+      "description": "Juice flavor produced"
+    },
+    "ingredients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ingredient_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "lot_number": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Ingredients used with lot tracking"
+    },
+    "start_time": {
+      "type": "string",
+      "description": "ISO timestamp when production started"
+    },
+    "end_time": {
+      "type": "string",
+      "description": "ISO timestamp when production ended"
+    },
+    "quantity_produced": {
+      "type": "number",
+      "description": "Total quantity produced (bottles or units)"
+    },
+    "staff_on_duty": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Staff members on duty during production"
+    },
+    "pH_result": {
+      "type": "number",
+      "description": "pH test result"
+    },
+    "passed_failed": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ],
+      "description": "Batch pass/fail status"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Any notes or observations during production"
+    },
+    "verified_by": {
+      "type": "string",
+      "description": "Email of manager/admin who verified this log"
+    },
+    "verified_at": {
+      "type": "string",
+      "description": "ISO timestamp when log was verified"
+    },
+    "source_production_batch_id": {
+      "type": "string",
+      "description": "Link to source ProductionBatch entity"
+    },
+    "locked": {
+      "type": "boolean",
+      "default": true,
+      "description": "Compliance logs are locked from editing once created"
+    }
+  },
+  "required": [
+    "date",
+    "batch_id",
+    "juice_flavor",
+    "quantity_produced",
+    "passed_failed"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$in": [
+            "admin",
+            "production_manager",
+            "operations_staff"
+          ]
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.staff_on_duty": {
+            "$in": [
+              "{{user.email}}"
+            ]
+          }
+        },
+        {
+          "data.verified_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "production_manager",
+                "operations_staff",
+                "staff"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.verified_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.locked": {
+            "$ne": true
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -6,8 +6,44 @@
       "type": "string",
       "description": "Reference to the parent Order entity (for subscription orders)"
     },
+    "shopify_order_id": {
+      "type": "string",
+      "description": "Reference to native ShopifyOrder/operational order record"
+    },
+    "shopify_order_number": {
+      "type": "string",
+      "description": "Shopify order number when available"
+    },
+    "order_number": {
+      "type": "string",
+      "description": "Customer-visible or operational order number"
+    },
+    "fulfillment_task_id": {
+      "type": "string",
+      "description": "External or legacy Hub fulfillment task id when mirrored during migration"
+    },
+    "customer_name": {
+      "type": "string",
+      "description": "Customer name for admin/driver operational views"
+    },
     "customer_email": {
       "type": "string"
+    },
+    "customer_phone": {
+      "type": "string",
+      "description": "Customer phone for approved operational delivery use"
+    },
+    "source_channel": {
+      "type": "string",
+      "description": "Source channel such as customer_app, website, Shopify POS, or Hub mirror"
+    },
+    "source_type": {
+      "type": "string",
+      "description": "Operational source type such as one_time, subscription, pickup, delivery, or POS"
+    },
+    "fulfillment_type": {
+      "type": "string",
+      "description": "Fulfillment mode such as delivery, pickup, event_pos, or subscription_delivery"
     },
     "fulfillment_number": {
       "type": "number",
@@ -17,6 +53,52 @@
       "type": "string",
       "format": "date",
       "description": "Scheduled delivery date for this specific fulfillment"
+    },
+    "scheduled_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Operational scheduled date if different from delivery_date"
+    },
+    "assigned_delivery_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date assigned by delivery operations"
+    },
+    "production_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Production date needed for this fulfillment"
+    },
+    "time_window": {
+      "type": "string",
+      "description": "Delivery or pickup time window"
+    },
+    "delivery_window_label": {
+      "type": "string",
+      "description": "Human-readable delivery window label"
+    },
+    "address": {
+      "type": "string",
+      "description": "Single-line delivery address summary for admin/driver use"
+    },
+    "delivery_address": {
+      "type": "object",
+      "description": "Structured delivery address for operational routing"
+    },
+    "address_line1": {
+      "type": "string"
+    },
+    "address_line2": {
+      "type": "string"
+    },
+    "address_city": {
+      "type": "string"
+    },
+    "address_state": {
+      "type": "string"
+    },
+    "address_postal_code": {
+      "type": "string"
     },
     "items": {
       "type": "array",
@@ -42,18 +124,135 @@
       },
       "description": "Line items for this specific fulfillment"
     },
+    "items_summary": {
+      "type": "string",
+      "description": "Short item summary for dense admin/driver task lists"
+    },
     "status": {
       "type": "string",
       "enum": [
         "pending",
+        "scheduled",
+        "assigned",
         "in_production",
+        "packed",
         "bottled_packed",
+        "ready_for_delivery",
         "out_for_delivery",
         "delivered",
-        "cancelled"
+        "unable_to_deliver",
+        "needs_review",
+        "cancelled",
+        "Scheduled",
+        "Packed",
+        "Out For Delivery",
+        "Delivered",
+        "Cancelled"
       ],
       "default": "pending",
       "description": "Fulfillment-specific status"
+    },
+    "delivery_status": {
+      "type": "string",
+      "description": "Operational delivery status projection"
+    },
+    "production_status": {
+      "type": "string",
+      "description": "Operational production status for this task"
+    },
+    "payment_status": {
+      "type": "string",
+      "description": "Payment status copied from the source order for operational filtering"
+    },
+    "sync_status": {
+      "type": "string",
+      "description": "Native/Hub sync status during migration"
+    },
+    "schedule_source": {
+      "type": "string",
+      "description": "How the fulfillment schedule was assigned or derived"
+    },
+    "stripe_subscription_id": {
+      "type": "string",
+      "description": "Subscription id for subscription-derived fulfillment tasks"
+    },
+    "customer_app_subscription_id": {
+      "type": "string",
+      "description": "Customer App subscription id for subscription-derived fulfillment tasks"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "plan_name": {
+      "type": "string"
+    },
+    "cadence": {
+      "type": "string"
+    },
+    "assigned_driver": {
+      "type": "string",
+      "description": "Assigned driver display name"
+    },
+    "assigned_driver_id": {
+      "type": "string"
+    },
+    "assigned_driver_email": {
+      "type": "string"
+    },
+    "assigned_at": {
+      "type": "string",
+      "description": "ISO timestamp when driver assignment was made"
+    },
+    "packed_at": {
+      "type": "string",
+      "description": "ISO timestamp when fulfillment was packed"
+    },
+    "out_for_delivery_at": {
+      "type": "string",
+      "description": "ISO timestamp when fulfillment went out for delivery"
+    },
+    "delivered_at": {
+      "type": "string",
+      "description": "ISO timestamp when fulfillment was marked delivered"
+    },
+    "route_id": {
+      "type": "string",
+      "description": "Route plan id if assigned"
+    },
+    "route_stop_sequence": {
+      "type": "number",
+      "description": "Stop ordering within an assigned route"
+    },
+    "driver_notes": {
+      "type": "string",
+      "description": "Driver-facing operational notes"
+    },
+    "internal_notes": {
+      "type": "string",
+      "description": "Admin-only operational notes"
+    },
+    "review_status": {
+      "type": "string",
+      "description": "Review status for incomplete or ambiguous fulfillment tasks"
+    },
+    "review_reason": {
+      "type": "string",
+      "description": "Safe reason why the task needs admin review"
+    },
+    "created_from_order_sync_log_id": {
+      "type": "string",
+      "description": "OrderSyncLog id that produced this task, if available"
+    },
+    "command_log_id": {
+      "type": "string",
+      "description": "CommandLog id for the latest approved operational mutation, if available"
+    },
+    "audit_trail": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Safe task audit events; no raw provider payloads"
     },
     "notes": {
       "type": "string",
