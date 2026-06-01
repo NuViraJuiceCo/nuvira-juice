@@ -444,6 +444,7 @@ async function findExistingCommandLog(base44, idempotencyKey) {
 }
 
 async function createCommandLog({ base44, task, action, status, idempotencyKey, requestId, user, result, errorCode, errorMessage }) {
+  const now = new Date().toISOString();
   return base44.asServiceRole.entities.CommandLog.create({
     command_type: COMMAND_TYPE,
     command_source: SOURCE,
@@ -464,10 +465,22 @@ async function createCommandLog({ base44, task, action, status, idempotencyKey, 
     idempotency_key: idempotencyKey,
     idempotent_skipped: status === 'skipped',
     request_id: requestId,
-    submitted_at: new Date().toISOString(),
-    completed_at: new Date().toISOString(),
+    submitted_at: now,
+    completed_at: status === 'running' ? null : now,
     function_name: 'executeNativeFulfillmentTaskLifecycle',
     notes: 'Native FulfillmentTask lifecycle command. No customer notifications, provider calls, route optimization, proof/drop, inventory, PO, Customer App Order, or ShopifyOrder writes.',
+  });
+}
+
+async function updateCommandLog({ base44, commandLogId, status, result, errorCode, errorMessage }) {
+  if (!commandLogId) return null;
+  return base44.asServiceRole.entities.CommandLog.update(commandLogId, {
+    status,
+    result,
+    error_code: errorCode || null,
+    error_message: errorMessage ? sanitizeText(errorMessage, 180) : null,
+    idempotent_skipped: status === 'skipped',
+    completed_at: new Date().toISOString(),
   });
 }
 
@@ -552,7 +565,8 @@ Deno.serve(async (req) => {
 
     const idempotencyKey = `${COMMAND_TYPE}:${requestId}`;
     const existingLogs = await findExistingCommandLog(base44, idempotencyKey);
-    if (Array.isArray(existingLogs) && existingLogs.length > 0) {
+    const existingLog = Array.isArray(existingLogs) && existingLogs.length > 0 ? existingLogs[0] : null;
+    if (existingLog && existingLog.status !== 'failed') {
       return Response.json({
         success: true,
         skipped: true,
@@ -615,15 +629,52 @@ Deno.serve(async (req) => {
     }
 
     const writePatch = buildWritePatch(task, plan.proposed_patch);
-    const writtenTask = await base44.asServiceRole.entities.FulfillmentTask.update(task.id, writePatch);
     const commandLog = await createCommandLog({
       base44,
-      task: writtenTask || task,
+      task,
       action,
-      status: 'success',
+      status: 'running',
       idempotencyKey,
       requestId,
       user,
+      result: {
+        action,
+        projected_writes: safeStringArray(plan.projected_writes),
+        warnings,
+        writes_performed: false,
+        native_writer_enabled: true,
+        customer_notification_sent: false,
+        proof_drop_processed: false,
+        route_optimization_run: false,
+        external_service_calls: false,
+      },
+    });
+
+    let writtenTask;
+    try {
+      writtenTask = await base44.asServiceRole.entities.FulfillmentTask.update(task.id, writePatch);
+    } catch (error) {
+      await updateCommandLog({
+        base44,
+        commandLogId: commandLog?.id,
+        status: 'failed',
+        result: {
+          action,
+          projected_writes: safeStringArray(plan.projected_writes),
+          warnings,
+          writes_performed: false,
+          native_writer_enabled: true,
+        },
+        errorCode: 'fulfillment_task_update_failed',
+        errorMessage: error?.message || 'FulfillmentTask update failed',
+      }).catch(() => null);
+      throw error;
+    }
+
+    await updateCommandLog({
+      base44,
+      commandLogId: commandLog?.id,
+      status: 'success',
       result: {
         action,
         projected_writes: safeStringArray(plan.projected_writes),
