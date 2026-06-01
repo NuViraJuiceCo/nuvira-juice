@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, format, parseISO } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import {
@@ -218,9 +218,18 @@ function StatCard({ icon: Icon, label, value, sublabel, isRefreshing }) {
 function RouteOptimizationPanel({ deliveryDate, stops }) {
   const eligibleStops = stops.filter(stop => stop.delivery_address && !stop.missing_address);
   const missingAddressCount = stops.length - eligibleStops.length;
+  const stopSignature = useMemo(
+    () => eligibleStops.map(stop => `${stop.task_id || stop.order_number || ''}:${stop.task_status || ''}:${stop.assigned_driver || ''}`).join('|'),
+    [eligibleStops]
+  );
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState(null);
   const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    setResult(null);
+    setMessage(null);
+  }, [deliveryDate, stopSignature]);
 
   async function previewRoute() {
     setPending(true);
@@ -792,6 +801,7 @@ function StopSection({ title, subtitle, stops, completed, onAssignmentSuccess })
 
 export default function DeliveryQueue() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const defaultDate = useMemo(() => todayDate(), []);
   const [deliveryDate, setDeliveryDate] = useState(defaultDate);
 
@@ -823,6 +833,18 @@ export default function DeliveryQueue() {
   const completedStops = data?.sections?.completed || [];
   const unscheduledStops = data?.sections?.unscheduled_delivery_orders || [];
   const hasRows = deliveryStops.length > 0 || completedStops.length > 0 || unscheduledStops.length > 0;
+
+  async function refreshDeliveryActionSummaries() {
+    await Promise.all([
+      refetch(),
+      queryClient.invalidateQueries({ queryKey: ['admin-delivery-route-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-operations-dashboard-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-sync-health-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-calendar-events-summary'] }),
+    ]);
+  }
 
   return (
     <div className="min-h-screen bg-background pb-10">
@@ -937,7 +959,7 @@ export default function DeliveryQueue() {
                 subtitle="Native delivery orders without a delivery date. Assign or fix the date from Orders before route actions."
                 stops={unscheduledStops}
                 completed={false}
-                onAssignmentSuccess={refetch}
+                onAssignmentSuccess={refreshDeliveryActionSummaries}
               />
             )}
             <StopSection
@@ -945,14 +967,14 @@ export default function DeliveryQueue() {
               subtitle="Active Hub delivery tasks for this date"
               stops={deliveryStops}
               completed={false}
-              onAssignmentSuccess={refetch}
+              onAssignmentSuccess={refreshDeliveryActionSummaries}
             />
             <StopSection
               title="Completed"
               subtitle="Delivered or completed Hub delivery tasks"
               stops={completedStops}
               completed
-              onAssignmentSuccess={refetch}
+              onAssignmentSuccess={refreshDeliveryActionSummaries}
             />
           </div>
         )}
