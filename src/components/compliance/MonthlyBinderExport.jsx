@@ -269,7 +269,7 @@ function buildBinderHTML({ counts, monthLabel, startDate, endDate, user, logType
       </div>
       <div style="margin-top: 24px; padding: 12px; background: #f9fafb; border-radius: 6px; font-size: 10px; color: #6b7280;">
         This document is an official compliance record for NuVira Juice Co. and must be retained per applicable food safety regulations.
-        All records are read-only exports from the NuVira Hub system.
+        All records are read-only exports from the NuVira compliance operations system.
       </div>
       <div class="footer">
         <span>NuVira Juice Co. — Monthly Compliance Binder — ${monthLabel}</span>
