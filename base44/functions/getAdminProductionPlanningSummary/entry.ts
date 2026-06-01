@@ -308,9 +308,12 @@ function emptyNativePlanning() {
     native_product_count: 0,
     built_in_fallback_recipe_count: 0,
     native_inventory_item_count: 0,
+    native_ingredient_yield_count: 0,
     missing_recipe_count: 0,
     ambiguous_recipe_count: 0,
     missing_inventory_count: 0,
+    missing_yield_count: 0,
+    ambiguous_yield_count: 0,
   };
 }
 
@@ -377,6 +380,60 @@ function inventoryAvailableOz(item) {
   if (unit === 'g') return stock * 0.035274;
   if (unit === 'units' || unit === 'bottles' || unit === 'cases') return null;
   return stock;
+}
+
+function normalizedPurchaseUnit(yieldRecord) {
+  return sanitizeText(yieldRecord?.purchase_unit, 30);
+}
+
+function normalizedRoundingRule(yieldRecord) {
+  const rule = normalizeLower(yieldRecord?.rounding_rule);
+  return ['round_up_unit', 'round_up_case', 'exact'].includes(rule) ? rule : 'round_up_unit';
+}
+
+function roundedProcurementQuantity(rawQuantity, roundingRule, unitsPerCase) {
+  if (rawQuantity === null || rawQuantity === undefined) return null;
+  if (!Number.isFinite(rawQuantity) || rawQuantity <= 0) return 0;
+  if (roundingRule === 'exact') return Number(rawQuantity.toFixed(3));
+  if (roundingRule === 'round_up_case' && Number.isFinite(unitsPerCase) && unitsPerCase > 0) {
+    return Math.ceil(rawQuantity / unitsPerCase) * unitsPerCase;
+  }
+  return Math.ceil(rawQuantity);
+}
+
+function procurementNeedFromYield(row, shortageAmount) {
+  if (!row.yield_match_found || !row.oz_per_purchase_unit || row.oz_per_purchase_unit <= 0) {
+    return {
+      procurement_needed_quantity: null,
+      procurement_unit: null,
+      procurement_case_quantity: null,
+      procurement_basis: row.yield_match_found ? 'yield_missing_conversion' : 'missing_yield',
+    };
+  }
+
+  const basisOz = numberOrZero(shortageAmount);
+  if (basisOz <= 0) {
+    return {
+      procurement_needed_quantity: 0,
+      procurement_unit: row.purchase_unit || null,
+      procurement_case_quantity: 0,
+      procurement_basis: 'covered',
+    };
+  }
+
+  const trimWasteFactor = numberOrZero(row.trim_waste_factor) || 1;
+  const rawPurchaseUnits = (basisOz * trimWasteFactor) / row.oz_per_purchase_unit;
+  const roundedUnits = roundedProcurementQuantity(rawPurchaseUnits, row.rounding_rule, row.units_per_case);
+  const caseQuantity = row.rounding_rule === 'round_up_case' && numberOrZero(row.units_per_case) > 0
+    ? Math.ceil(rawPurchaseUnits / numberOrZero(row.units_per_case))
+    : null;
+
+  return {
+    procurement_needed_quantity: roundedUnits,
+    procurement_unit: row.purchase_unit || null,
+    procurement_case_quantity: caseQuantity,
+    procurement_basis: row.available_stock === null || row.available_stock === undefined ? 'required_no_stock_data' : 'shortfall',
+  };
 }
 
 function lineItemTitle(item) {
@@ -474,6 +531,14 @@ function aggregateNativeIngredient(ingredientMap, row) {
     source_products: [],
     production_dates: [],
     source: 'customer_app_native',
+    yield_match_found: false,
+    purchase_unit: null,
+    oz_per_purchase_unit: null,
+    trim_waste_factor: null,
+    units_per_case: null,
+    split_case_allowed: null,
+    rounding_rule: null,
+    supplier: null,
   };
 
   current.required_quantity += numberOrZero(row.required_quantity);
@@ -482,6 +547,16 @@ function aggregateNativeIngredient(ingredientMap, row) {
   }
   if (row.source && current.source !== row.source) {
     current.source = 'mixed_native_and_event_plan';
+  }
+  if (row.yield_match_found && !current.yield_match_found) {
+    current.yield_match_found = true;
+    current.purchase_unit = row.purchase_unit || null;
+    current.oz_per_purchase_unit = row.oz_per_purchase_unit ?? null;
+    current.trim_waste_factor = row.trim_waste_factor ?? null;
+    current.units_per_case = row.units_per_case ?? null;
+    current.split_case_allowed = row.split_case_allowed ?? null;
+    current.rounding_rule = row.rounding_rule || null;
+    current.supplier = row.supplier || null;
   }
   current.source_products = uniqueStrings([...current.source_products, ...(row.source_products || [])]).slice(0, 20);
   current.production_dates = uniqueStrings([...current.production_dates, ...(row.production_dates || [])]).slice(0, 31);
@@ -532,6 +607,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const bundles = await listEntity('Bundle', 'bundle_name', 500);
   const products = await listEntity('Product', 'title', 500);
   const inventoryItems = await listEntity('InventoryItem', 'ingredient', 500);
+  const ingredientYields = await listEntity('IngredientYield', 'ingredient_name', 500);
 
   const productByDate = new Map();
   const orderNumbersByDate = new Map();
@@ -540,9 +616,12 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const bundleIndex = new Map();
   const productIndex = new Map();
   const inventoryIndex = new Map();
+  const yieldIndex = new Map();
   const missingRecipeKeys = new Set();
   const ambiguousRecipeKeys = new Set();
   const missingInventoryKeys = new Set();
+  const missingYieldKeys = new Set();
+  const ambiguousYieldKeys = new Set();
   let skippedDateCount = 0;
   let builtInFallbackRecipeCount = 0;
   let eventStockPlanIncluded = false;
@@ -563,6 +642,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     .forEach(product => addToIndex(productIndex, product.title, product));
 
   inventoryItems.forEach(item => addToIndex(inventoryIndex, item.ingredient, item));
+  ingredientYields.forEach(yieldRecord => addToIndex(yieldIndex, yieldRecord.ingredient_name, yieldRecord));
 
   function ensurePlanningDate(productionDate) {
     if (!productByDate.has(productionDate)) productByDate.set(productionDate, new Map());
@@ -591,7 +671,11 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
         const inventoryMatch = firstUnambiguous(inventoryIndex, ingredientName);
         const inventoryItem = inventoryMatch && !inventoryMatch.ambiguous ? inventoryMatch : null;
         const availableOz = inventoryAvailableOz(inventoryItem);
+        const yieldMatch = firstUnambiguous(yieldIndex, ingredientName);
+        const yieldRecord = yieldMatch && !yieldMatch.ambiguous ? yieldMatch : null;
         if (!inventoryItem) missingInventoryKeys.add(ingredientName);
+        if (yieldMatch?.ambiguous) ambiguousYieldKeys.add(ingredientName);
+        else if (!yieldRecord) missingYieldKeys.add(ingredientName);
         aggregateNativeIngredient(ingredientMap, {
           ingredient: ingredientName,
           unit: 'oz',
@@ -600,6 +684,14 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
           source_products: [productName],
           production_dates: [productionDate],
           source,
+          yield_match_found: Boolean(yieldRecord),
+          purchase_unit: normalizedPurchaseUnit(yieldRecord),
+          oz_per_purchase_unit: numberOrNull(yieldRecord?.oz_per_purchase_unit),
+          trim_waste_factor: numberOrNull(yieldRecord?.trim_waste_factor),
+          units_per_case: numberOrNull(yieldRecord?.units_per_case),
+          split_case_allowed: typeof yieldRecord?.split_case_allowed === 'boolean' ? yieldRecord.split_case_allowed : null,
+          rounding_rule: normalizedRoundingRule(yieldRecord),
+          supplier: sanitizeText(yieldRecord?.supplier || inventoryItem?.supplier, 120),
         });
       }
     }
@@ -699,12 +791,17 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
       else if (availableStock <= numberOrZero(row.required_quantity) * 1.15) status = 'low';
       else status = 'covered';
     }
+    const procurementNeed = procurementNeedFromYield(
+      { ...row, available_stock: availableStock },
+      shortageAmount,
+    );
 
     return {
       ...row,
       available_stock: availableStock,
       shortage_amount: shortageAmount,
       status,
+      ...procurementNeed,
     };
   });
   const ingredientStatsByDate = new Map();
@@ -734,7 +831,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
       ingredient_count: ingredients.length,
       shortage_count: ingredients.filter(row => row.status === 'short').length,
       missing_recipe_count: missingRecipeKeys.size + ambiguousRecipeKeys.size,
-      missing_yield_count: 0,
+      missing_yield_count: missingYieldKeys.size + ambiguousYieldKeys.size,
       native_order_count: nativeOrderCount,
       skipped_missing_date_count: skippedDateCount,
       event_stock_plan_count: eventStockPlanIncluded ? 1 : 0,
@@ -746,9 +843,12 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     native_product_count: products.length,
     built_in_fallback_recipe_count: builtInFallbackRecipeCount,
     native_inventory_item_count: inventoryItems.length,
+    native_ingredient_yield_count: ingredientYields.length,
     missing_recipe_count: missingRecipeKeys.size,
     ambiguous_recipe_count: ambiguousRecipeKeys.size,
     missing_inventory_count: missingInventoryKeys.size,
+    missing_yield_count: missingYieldKeys.size,
+    ambiguous_yield_count: ambiguousYieldKeys.size,
     event_stock_plan: {
       included: eventStockPlanIncluded,
       event_date: MAY30_POS_EVENT_STOCK_PLAN.event_date,
@@ -780,6 +880,18 @@ function sanitizeIngredient(row) {
       : numberOrZero(row.available_stock),
     shortage_amount: numberOrZero(row?.shortage_amount),
     status,
+    yield_match_found: row?.yield_match_found === true,
+    purchase_unit: sanitizeText(row?.purchase_unit, 30),
+    oz_per_purchase_unit: numberOrNull(row?.oz_per_purchase_unit),
+    trim_waste_factor: numberOrNull(row?.trim_waste_factor),
+    units_per_case: numberOrNull(row?.units_per_case),
+    split_case_allowed: typeof row?.split_case_allowed === 'boolean' ? row.split_case_allowed : null,
+    rounding_rule: sanitizeText(row?.rounding_rule, 40),
+    supplier: sanitizeText(row?.supplier, 120),
+    procurement_needed_quantity: numberOrNull(row?.procurement_needed_quantity),
+    procurement_unit: sanitizeText(row?.procurement_unit, 30),
+    procurement_case_quantity: numberOrNull(row?.procurement_case_quantity),
+    procurement_basis: sanitizeText(row?.procurement_basis, 60),
     source_products: sanitizeStringList(row?.source_products, 20, 100),
     production_dates: sanitizeStringList(row?.production_dates, 31, 20),
     source: sanitizeText(row?.source, 80),
@@ -923,9 +1035,12 @@ Deno.serve(async (req) => {
         native_product_count: nativePlanning.native_product_count,
         built_in_fallback_recipe_count: nativePlanning.built_in_fallback_recipe_count,
         native_inventory_item_count: nativePlanning.native_inventory_item_count,
+        native_ingredient_yield_count: nativePlanning.native_ingredient_yield_count,
         missing_recipe_count: nativePlanning.missing_recipe_count,
         ambiguous_recipe_count: nativePlanning.ambiguous_recipe_count,
         missing_inventory_count: nativePlanning.missing_inventory_count,
+        missing_yield_count: nativePlanning.missing_yield_count,
+        ambiguous_yield_count: nativePlanning.ambiguous_yield_count,
         skipped_missing_date_count: nativePlanning.summary.skipped_missing_date_count,
         event_stock_plan: nativePlanning.event_stock_plan,
         inventory_deduction_enabled: false,
