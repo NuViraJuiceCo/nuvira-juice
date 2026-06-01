@@ -320,6 +320,7 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
       'ProductionBatch.pH_result',
       'ProductionBatch.pH_passed_failed',
       'ProductionBatch.passed_failed',
+      'ProductionBatch.compliance_log_id',
       'ProductionBatch.audit_trail',
       'BatchComplianceLog',
     ],
