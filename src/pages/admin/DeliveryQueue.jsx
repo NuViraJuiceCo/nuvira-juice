@@ -161,6 +161,12 @@ function nativePreviewRequestId(action, stop) {
   return `native_fulfillment_preview_${action}_${stop.task_id || stop.order_number || 'task'}_${Date.now()}_${randomId}`;
 }
 
+function nativeExecuteRequestId(action, stop) {
+  const fallback = Math.random().toString(36).slice(2);
+  const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+  return `native_fulfillment_execute_${action}_${stop.task_id || stop.order_number || 'task'}_${Date.now()}_${randomId}`;
+}
+
 function nativeTaskPayload(stop) {
   return {
     id: stop.task_id || null,
@@ -705,11 +711,12 @@ function NativeDeliveryReadOnlyNotice({ stop }) {
   );
 }
 
-function NativeFulfillmentPreviewPanel({ stop }) {
+function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
   const [activeAction, setActiveAction] = useState('assign');
   const [driverLabel, setDriverLabel] = useState('');
   const [preview, setPreview] = useState(null);
   const [pending, setPending] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
   const [message, setMessage] = useState(null);
 
   const canPreview = Boolean(stop.task_id || stop.order_number);
@@ -755,7 +762,7 @@ function NativeFulfillmentPreviewPanel({ stop }) {
       setMessage({
         type: result.lifecycle_ready ? 'success' : 'warn',
         text: result.lifecycle_ready
-          ? `${formatLabel(action)} readiness preview passed. Native writes remain disabled.`
+          ? `${formatLabel(action)} readiness preview passed. Native execution remains exact-gated.`
           : `${formatLabel(action)} has preview blockers or warnings.`,
       });
     } catch (error) {
@@ -764,6 +771,59 @@ function NativeFulfillmentPreviewPanel({ stop }) {
       setPending(false);
     }
   }
+
+  async function runNative(action) {
+    const nextDriver = trimDriverLabel(driverLabel);
+    if (!stop.task_id) {
+      setMessage({ type: 'error', text: 'A native FulfillmentTask id is required before execution.' });
+      return;
+    }
+    if (!preview?.lifecycle_ready || preview.action !== action) return;
+    if (action === 'assign' && !nextDriver) {
+      setMessage({ type: 'error', text: 'Enter an internal driver label before assigning.' });
+      return;
+    }
+    if (!window.confirm(`Run native ${formatLabel(action)} for ${stop.order_number || stop.task_id}? This is exact-task gated and does not update orders, notify customers, save routes, or process proof/drop evidence.`)) {
+      return;
+    }
+
+    setActionPending(true);
+    setMessage(null);
+
+    try {
+      const payload = {
+        mode: 'live',
+        confirmation: 'execute_native_fulfillment_task_lifecycle',
+        fulfillment_task_id: stop.task_id,
+        action,
+        request_id: nativeExecuteRequestId(action, stop),
+        reason: `Admin Delivery Queue native ${formatLabel(action)}.`,
+      };
+
+      if (action === 'assign') {
+        payload.assigned_driver = nextDriver;
+      }
+
+      const res = await base44.functions.invoke('executeNativeFulfillmentTaskLifecycle', payload);
+      const result = res?.data || res;
+      if (!result?.success) {
+        const gate = result?.error_code ? ` (${formatLabel(result.error_code)})` : '';
+        throw new Error(`${result?.error || 'Native fulfillment action was not allowed'}${gate}`);
+      }
+      setPreview(null);
+      setMessage({
+        type: result.skipped ? 'warn' : 'success',
+        text: result.skipped ? 'Native action was already recorded.' : `Native ${formatLabel(action)} completed.`,
+      });
+      await onActionSuccess?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || `Unable to run native ${formatLabel(action)}.` });
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  const canExecuteNative = Boolean(stop.task_id && preview?.lifecycle_ready && preview.action === activeAction);
 
   return (
     <div className="rounded-lg border border-border/50 bg-background p-2 space-y-3">
@@ -858,6 +918,20 @@ function NativeFulfillmentPreviewPanel({ stop }) {
               Would write if a future native command is explicitly approved: {projectedWrites.map(formatLabel).join(', ')}
             </p>
           )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => runNative(activeAction)}
+              disabled={!canExecuteNative || actionPending}
+              className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              {actionPending ? 'Running...' : `Run Native ${formatLabel(activeAction)}`}
+            </button>
+            <p className="text-[10px] text-muted-foreground">
+              Default off. Requires exact task allowlist and native fulfillment gates before any write can occur.
+            </p>
+          </div>
         </div>
       )}
     </div>
@@ -976,7 +1050,7 @@ function StopCard({ stop, completed, onAssignmentSuccess }) {
       {nativeStop ? (
         <>
           <NativeDeliveryReadOnlyNotice stop={stop} />
-          <NativeFulfillmentPreviewPanel stop={stop} />
+          <NativeFulfillmentPreviewPanel stop={stop} onActionSuccess={onAssignmentSuccess} />
         </>
       ) : (
         <>
