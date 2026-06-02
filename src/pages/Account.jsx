@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 
 import {
-  ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package, Truck
+  Activity, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package, Truck, ShieldCheck, Store
 } from 'lucide-react';
 import CreditWallet from '@/components/account/CreditWallet';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
@@ -20,7 +19,7 @@ const accountMenuItems = [
 ];
 
 const supportMenuItems = [
-  { icon: Bell, label: 'Notifications', path: '/notifications', desc: 'Delivery updates and offers' },
+  { icon: Bell, label: 'Notification Settings', path: '/account/settings', desc: 'Enable push and choose alerts' },
   { icon: HelpCircle, label: 'Help & Support', path: '/support', desc: 'FAQ, delivery help, and contact' },
   { icon: Settings, label: 'Settings', path: '/account/settings', desc: 'Preferences and account details' },
 ];
@@ -33,8 +32,47 @@ const brandItems = [
   { icon: PartyPopper, label: 'Book Us for an Event', path: '/book-event', desc: 'Birthdays, showers & more' },
 ];
 
+const adminToolItems = [
+  { icon: Settings, label: 'Operations', path: '/admin/operations', desc: 'Admin command center' },
+  { icon: ClipboardList, label: 'Orders', path: '/admin/orders', desc: 'Customer, order, fulfillment, and timeline context' },
+  { icon: Store, label: 'POS / Event Orders', path: '/admin/pos-orders', desc: 'Shopify POS event orders and source labels' },
+  { icon: Calendar, label: 'Production Planning', path: '/admin/production-planning', desc: 'Product demand and procurement needs' },
+  { icon: Package, label: 'Production Queue', path: '/admin/production-queue', desc: 'Controlled batch lifecycle actions' },
+  { icon: Truck, label: 'Delivery Queue', path: '/admin/delivery-queue', desc: 'Driver assignment, Out For Delivery, Delivered' },
+  { icon: ShieldCheck, label: 'Compliance Ops', path: '/admin/compliance-ops', desc: 'Logs, checklists, batch records, audit export' },
+  { icon: Package, label: 'Inventory Status', path: '/admin/inventory-status', desc: 'Stock, supplier, reorder, and procurement view' },
+  { icon: Activity, label: 'Sync Health', path: '/admin/sync-health', desc: 'Bridge errors, review issues, disabled tools' },
+  { icon: Bell, label: 'Ops Alerts', path: '/admin/ops-alerts', desc: 'Sanitized operations inbox' },
+  { icon: Zap, label: 'Shopify', path: '/admin/shopify', desc: 'POS/webhook visibility and gated exact-order tools' },
+  { icon: Activity, label: 'Live Checkout Monitor', path: '/admin/live-monitor', desc: 'One-order checkout trace visibility' },
+  { icon: ImagePlus, label: 'Product Images', path: '/admin/products', desc: 'Catalog photo management' },
+];
+
+function AdminToolRow({ item, index, isLast }) {
+  const Icon = item.icon;
+  return (
+    <Link to={item.path}>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.74 + index * 0.01 }}
+        className={`flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors ${isLast ? '' : 'border-b border-border/40 dark:border-primary/15'}`}
+      >
+        <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
+          <Icon className="w-4 h-4 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground">{item.label}</p>
+          <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">{item.desc}</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
+      </motion.div>
+    </Link>
+  );
+}
+
 export default function Account() {
-  const { user } = useAuth();
+  const { user, logout, navigateToLogin } = useAuth();
   // staleTime: 2min — cached data shows instantly on back-navigation (stale-while-revalidate)
   // isLoading is only true on first load (no cached data yet), not on background refreshes
   const { data: dashData, isLoading: isDashLoading } = useQuery({
@@ -54,9 +92,9 @@ export default function Account() {
 
   const handleLogout = () => {
     if (user) {
-      base44.auth.logout();
+      logout();
     } else {
-      redirectToLogin(window.location.pathname);
+      navigateToLogin();
     }
   };
 
@@ -388,142 +426,14 @@ export default function Account() {
             <div className="px-4 py-2.5 border-b border-border/50 dark:border-primary/20">
               <p className="text-[10px] font-semibold text-foreground/50 dark:text-muted-foreground/75 uppercase tracking-wider">Admin Tools</p>
             </div>
-            <Link to="/admin/operations">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.74 }}
-                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                  <Settings className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">Operations</p>
-                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Hub-backed admin workspace</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-              </motion.div>
-            </Link>
-            <Link to="/admin/orders">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.75 }}
-                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                  <ClipboardList className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">Order Management</p>
-                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Update statuses</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-              </motion.div>
-            </Link>
-            <Link to="/admin/production-queue">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.77 }}
-                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                  <Package className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">Production Queue</p>
-                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Read-only batches</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-              </motion.div>
-            </Link>
-            <Link to="/admin/delivery-queue">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.775 }}
-                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                  <Truck className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">Delivery Queue</p>
-                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Read-only route summary</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-              </motion.div>
-            </Link>
-            <Link to="/admin/inventory-status">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.777 }}
-                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                  <Package className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">Inventory Status</p>
-                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Read-only stock summary</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-              </motion.div>
-            </Link>
-            <Link to="/admin/ops-alerts">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.778 }}
-                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                  <Bell className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">Ops Alerts</p>
-                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Read-only operations inbox</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-              </motion.div>
-            </Link>
-            <Link to="/admin/shopify">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.78 }}
-                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors border-b border-border/40 dark:border-primary/15"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                  <Zap className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">Shopify</p>
-                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Sync & webhooks</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-              </motion.div>
-            </Link>
-            <Link to="/admin/products">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.8 }}
-                className="flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center shrink-0 border border-primary/20 dark:border-primary/25">
-                  <ImagePlus className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">Product Images</p>
-                  <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/75">Manage photos</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/50 dark:text-muted-foreground/60" />
-              </motion.div>
-            </Link>
+            {adminToolItems.map((item, index) => (
+              <AdminToolRow
+                key={item.path}
+                item={item}
+                index={index}
+                isLast={index === adminToolItems.length - 1}
+              />
+            ))}
           </div>
         </div>
       )}

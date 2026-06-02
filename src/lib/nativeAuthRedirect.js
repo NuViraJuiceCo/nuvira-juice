@@ -1,11 +1,10 @@
-import { Capacitor } from '@capacitor/core';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 
-const AUTH_TOKEN_STORAGE_KEYS = ['base44_access_token', 'token'];
+const AUTH_TOKEN_STORAGE_KEYS = ['base44_access_token', 'token', 'base44_clear_access_token'];
 
 export function isNativeAppShell() {
-  return typeof window !== 'undefined' && Capacitor.isNativePlatform();
+  return typeof window !== 'undefined';
 }
 
 export function hasBase44AuthParamsInUrl() {
@@ -63,14 +62,62 @@ function normalizeReturnRoute(route) {
   return route;
 }
 
+function routeWithClearToken(route) {
+  if (typeof window === 'undefined') return '/';
+  const url = new URL(normalizeReturnRoute(route), window.location.origin);
+  url.searchParams.set('clear_access_token', 'true');
+  url.searchParams.set('signed_out', '1');
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+export function clearBase44AuthTokens() {
+  if (typeof window === 'undefined') return;
+  for (const key of AUTH_TOKEN_STORAGE_KEYS) {
+    try {
+      window.localStorage?.removeItem(key);
+      window.sessionStorage?.removeItem(key);
+    } catch {
+      // Storage can be unavailable in strict privacy contexts. The reload
+      // route below still carries clear_access_token as a second guard.
+    }
+  }
+}
+
 export async function redirectToLogin(returnRoute = getCurrentRoute()) {
   const safeReturnRoute = normalizeReturnRoute(returnRoute);
 
-  if (!isNativeAppShell()) {
+  if (typeof window === 'undefined') {
     base44.auth.redirectToLogin(safeReturnRoute);
     return;
   }
 
+  if (window.location.pathname === '/native-login') {
+    return;
+  }
+
+  // Keep customer checkout/account auth inside the NuVira app session. The
+  // hosted Base44 login can open in an external browser/webview and return
+  // without sharing the same token storage, which creates a sign-in loop.
   const loginUrl = `/native-login?return_to=${encodeURIComponent(safeReturnRoute)}`;
   window.location.assign(loginUrl);
+}
+
+export async function logoutInsideApp(returnRoute = '/account') {
+  if (typeof window === 'undefined') return;
+
+  const signedOutRoute = routeWithClearToken(returnRoute);
+  clearBase44AuthTokens();
+
+  try {
+    const fromUrl = `${window.location.origin}${signedOutRoute}`;
+    await fetch(`${appParams.appBaseUrl}/api/apps/auth/logout?from_url=${encodeURIComponent(fromUrl)}`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+  } catch {
+    // Clearing local app auth is the critical path. If the hosted logout
+    // endpoint cannot be reached from the app shell, keep the user in-app.
+  }
+
+  window.location.replace(signedOutRoute);
 }
