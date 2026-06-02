@@ -179,6 +179,26 @@ function nativeScheduleCorrectionRequestId(stop) {
   return `native_schedule_correct_${stop.order_number || 'order'}_${Date.now()}_${randomId}`;
 }
 
+function functionErrorBody(error) {
+  return error?.response?.data || error?.data || error?.body || null;
+}
+
+function nativeScheduleCorrectionErrorText(error) {
+  const body = functionErrorBody(error);
+  const errorCode = body?.error_code || body?.code;
+  const blockers = Array.isArray(body?.blockers) ? body.blockers : [];
+  const warnings = Array.isArray(body?.warnings) ? body.warnings : [];
+  const parts = [];
+
+  if (body?.error) parts.push(body.error);
+  if (errorCode) parts.push(`Code: ${formatLabel(errorCode)}`);
+  if (blockers.length > 0) parts.push(`Blockers: ${blockers.map(formatLabel).join(', ')}`);
+  if (warnings.length > 0) parts.push(`Warnings: ${warnings.map(formatLabel).join(', ')}`);
+
+  if (parts.length > 0) return parts.join(' | ');
+  return error?.message || 'Unable to run native schedule correction.';
+}
+
 function nativeTaskPayload(stop) {
   return {
     id: stop.task_id || null,
@@ -1032,7 +1052,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
       });
       await onCorrected?.();
     } catch (error) {
-      setMessage({ type: 'error', text: error?.message || 'Unable to run native schedule correction.' });
+      setMessage({ type: 'error', text: nativeScheduleCorrectionErrorText(error) });
     } finally {
       setActionPending(false);
     }
