@@ -146,6 +146,16 @@ function formatLabel(value) {
     .join(' ');
 }
 
+function draftIdPart(value) {
+  return (value || 'pending')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40) || 'pending';
+}
+
 function validateRange(from, to) {
   if (!from || !to) return 'Choose a start and end date.';
   if (to < from) return 'End date must be on or after start date.';
@@ -253,6 +263,135 @@ function DateGroup({ group }) {
       </div>
 
       <ProductGroupList groups={group.product_groups} />
+    </section>
+  );
+}
+
+function productionBatchDraftRows(dateGroups, ingredients) {
+  const safeDateGroups = Array.isArray(dateGroups) ? dateGroups : [];
+  const safeIngredients = Array.isArray(ingredients) ? ingredients : [];
+
+  return safeDateGroups.flatMap(group => {
+    const productionDate = group.production_date || 'date_pending';
+    return (Array.isArray(group.product_groups) ? group.product_groups : []).map(product => {
+      const productName = product.product_name || 'Unnamed product';
+      const productKey = draftIdPart(productName);
+      const matchingIngredients = safeIngredients.filter(item => {
+        const dates = Array.isArray(item.production_dates) ? item.production_dates : [];
+        const products = Array.isArray(item.source_products) ? item.source_products : [];
+        return dates.includes(productionDate) && products.some(sourceProduct => draftIdPart(sourceProduct) === productKey);
+      });
+      const blockers = [];
+      const warnings = [];
+      if (productionDate === 'date_pending') blockers.push('production_date_required');
+      if (Number(product.planned_units || 0) <= 0) blockers.push('planned_units_required');
+      if (matchingIngredients.some(item => hasNativeYieldContext(item) && !item.yield_match_found)) warnings.push('ingredient_yield_review');
+      if (matchingIngredients.some(item => item.status === 'short' || Number(item.procurement_needed_quantity || 0) > 0)) warnings.push('procurement_needed');
+      if (matchingIngredients.some(item => item.status === 'no_data')) warnings.push('inventory_context_missing');
+
+      return {
+        proposed_batch_id: `DRAFT-${productionDate === 'date_pending' ? 'DATE-PENDING' : productionDate}-${productKey.toUpperCase()}`,
+        product_name: productName,
+        product_category: product.product_category || 'Product',
+        production_date: productionDate,
+        planned_units: Number(product.planned_units || 0),
+        source_order_count: Number(product.source_order_count || 0),
+        source: product.source || group.source || 'planning_summary',
+        proposed_status: 'planned',
+        ingredient_count: matchingIngredients.length,
+        blockers,
+        warnings,
+      };
+    });
+  });
+}
+
+function ProductionBatchDraftCards({ dateGroups, ingredients }) {
+  const drafts = productionBatchDraftRows(dateGroups, ingredients);
+  if (drafts.length === 0) return null;
+
+  const readyDrafts = drafts.filter(draft => draft.blockers.length === 0).length;
+  const blockedDrafts = drafts.length - readyDrafts;
+
+  return (
+    <section className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Native ProductionBatch drafts</p>
+          <h2 className="text-sm font-bold text-emerald-950">Proposed batch records from planning demand</h2>
+          <p className="text-xs text-emerald-900/80 mt-1">
+            Read-only draft fields for the future native batch materialization step. No ProductionBatch, CommandLog, inventory, purchase order, notification, or Hub record is created here.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <AdminStatusPill label={`${readyDrafts} ready draft${readyDrafts === 1 ? '' : 's'}`} tone="native" />
+          {blockedDrafts > 0 && <AdminStatusPill label={`${blockedDrafts} need review`} tone="warning" />}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {drafts.map(draft => (
+          <div key={`${draft.proposed_batch_id}-${draft.product_name}`} className="rounded-lg border border-emerald-100 bg-white/80 p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-emerald-950">{draft.product_name}</p>
+                <p className="text-[10px] uppercase tracking-wider text-emerald-700">{draft.product_category}</p>
+              </div>
+              <AdminStatusPill
+                label={draft.blockers.length > 0 ? 'Needs review' : 'Draft ready'}
+                tone={draft.blockers.length > 0 ? 'warning' : 'native'}
+              />
+            </div>
+
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-2">
+              <p className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold">Proposed batch id</p>
+              <p className="text-xs font-mono text-emerald-950 break-all mt-0.5">{draft.proposed_batch_id}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Status</p>
+                <p className="font-bold text-foreground">{formatLabel(draft.proposed_status)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Production date</p>
+                <p className="font-bold text-foreground">{formatDate(draft.production_date)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Planned units</p>
+                <p className="font-bold text-foreground">{formatNumber(draft.planned_units, 0)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source orders</p>
+                <p className="font-bold text-foreground">{formatNumber(draft.source_order_count, 0)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source</p>
+                <p className="font-bold text-foreground">{sourceLabel(draft.source)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ingredient rows</p>
+                <p className="font-bold text-foreground">{formatNumber(draft.ingredient_count, 0)}</p>
+              </div>
+            </div>
+
+            {(draft.blockers.length > 0 || draft.warnings.length > 0) && (
+              <div className="space-y-1.5 border-t border-emerald-100 pt-2">
+                {draft.blockers.map(blocker => (
+                  <p key={`blocker-${blocker}`} className="text-[11px] text-amber-800 font-semibold">
+                    Blocker: {formatLabel(blocker)}
+                  </p>
+                ))}
+                {draft.warnings.map(warning => (
+                  <p key={`warning-${warning}`} className="text-[11px] text-muted-foreground">
+                    Watch: {formatLabel(warning)}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -558,6 +697,8 @@ export default function ProductionPlanning() {
         />
 
         <May30EventStockPlanPanel includedInPlanning={eventStockPlan.included === true} />
+
+        <ProductionBatchDraftCards dateGroups={dateGroups} ingredients={ingredients} />
 
         {warnings.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
