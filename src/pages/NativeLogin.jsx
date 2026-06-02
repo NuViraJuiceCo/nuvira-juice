@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Building2, Eye, EyeOff, KeyRound, Lock, Mail, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Eye, EyeOff, Lock, Mail, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
-import { redirectToProviderLogin } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
 
@@ -81,12 +80,6 @@ export default function NativeLogin() {
   const normalizedEmail = email.trim().toLowerCase();
   const isRegistering = mode === 'register';
   const isVerifying = mode === 'verify';
-
-  const providerOptions = [
-    { provider: 'apple', label: 'Continue with Apple', icon: Sparkles },
-    { provider: 'google', label: 'Continue with Google', icon: KeyRound },
-    { provider: 'sso', label: 'Continue with SSO', icon: Building2 },
-  ];
 
   const switchToVerifyMode = (message = 'Enter the verification code from your email.') => {
     setMode('verify');
@@ -227,19 +220,6 @@ export default function NativeLogin() {
     }
   };
 
-  const handleProviderLogin = (provider) => {
-    setStatusText('');
-    setFormError('');
-    try {
-      setStatusText('Opening secure sign-in...');
-      redirectToProviderLogin(provider, returnTo);
-    } catch (error) {
-      const message = errorMessage(error, 'Unable to open this sign-in option.');
-      setFormError(message);
-      toast.error(message);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background px-5 py-6" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
       <SEO title="Sign In" noindex={true} />
@@ -267,27 +247,6 @@ export default function NativeLogin() {
                 ? 'Enter the code sent to your email.'
                 : 'Access rewards, orders, and event check-in.'}
           </p>
-        </div>
-
-        <div className="mb-5 space-y-2">
-          {providerOptions.map(({ provider, label, icon: Icon }) => (
-            <button
-              key={provider}
-              type="button"
-              onClick={() => handleProviderLogin(provider)}
-              disabled={isSubmitting}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-border bg-card text-sm font-semibold text-foreground disabled:opacity-60"
-            >
-              <Icon className="h-4 w-4 text-muted-foreground" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="mb-5 flex items-center gap-3">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">or use email</span>
-          <div className="h-px flex-1 bg-border" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

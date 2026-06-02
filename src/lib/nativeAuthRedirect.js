@@ -2,7 +2,6 @@ import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 
 const AUTH_TOKEN_STORAGE_KEYS = ['base44_access_token', 'token', 'base44_clear_access_token'];
-const PROVIDER_LOGIN_OPTIONS = new Set(['apple', 'google', 'sso']);
 
 export function isNativeAppShell() {
   return typeof window !== 'undefined';
@@ -101,17 +100,6 @@ export async function redirectToLogin(returnRoute = getCurrentRoute()) {
   // without sharing the same token storage, which creates a sign-in loop.
   const loginUrl = `/native-login?return_to=${encodeURIComponent(safeReturnRoute)}`;
   window.location.assign(loginUrl);
-}
-
-export function redirectToProviderLogin(provider, returnRoute = getCurrentRoute()) {
-  const normalizedProvider = String(provider || '').trim().toLowerCase();
-  if (!PROVIDER_LOGIN_OPTIONS.has(normalizedProvider)) {
-    throw new Error('Unsupported sign-in provider.');
-  }
-
-  const safeReturnRoute = normalizeReturnRoute(returnRoute);
-  const callbackRoute = `/native-login?return_to=${encodeURIComponent(safeReturnRoute)}`;
-  base44.auth.loginWithProvider(normalizedProvider, callbackRoute);
 }
 
 export async function logoutInsideApp(returnRoute = '/account') {
