@@ -1,10 +1,13 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
 import {
   clearBase44AuthTokens,
   consumeBase44AuthFromUrl,
+  consumeNativeAuthCallbackUrl,
   hasBase44AuthParamsInUrl,
   logoutInsideApp,
   redirectToLogin,
@@ -68,6 +71,40 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkAppState();
+  }, [checkAppState]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform?.()) return undefined;
+
+    let listenerHandle = null;
+    let isMounted = true;
+
+    CapacitorApp.addListener('appUrlOpen', async (event) => {
+      const callbackResult = consumeNativeAuthCallbackUrl(event?.url);
+      if (!callbackResult) return;
+
+      try {
+        const currentUser = await checkAppState();
+        if (currentUser?.email) {
+          window.location.replace(callbackResult.returnTo);
+        }
+      } catch (error) {
+        console.warn('[AuthContext] Native auth callback failed', error?.message || 'unknown_error');
+      }
+    }).then((handle) => {
+      if (!isMounted) {
+        handle.remove();
+        return;
+      }
+      listenerHandle = handle;
+    }).catch((error) => {
+      console.warn('[AuthContext] Native URL listener unavailable', error?.message || 'unknown_error');
+    });
+
+    return () => {
+      isMounted = false;
+      listenerHandle?.remove();
+    };
   }, [checkAppState]);
 
   useEffect(() => {
