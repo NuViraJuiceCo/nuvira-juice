@@ -1,5 +1,4 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
@@ -74,12 +73,13 @@ export const AuthProvider = ({ children }) => {
   }, [checkAppState]);
 
   useEffect(() => {
-    if (!Capacitor.isNativePlatform?.()) return undefined;
+    const capacitorApp = Capacitor.Plugins?.App;
+    if (!Capacitor.isNativePlatform?.() || !capacitorApp?.addListener) return undefined;
 
     let listenerHandle = null;
     let isMounted = true;
 
-    CapacitorApp.addListener('appUrlOpen', async (event) => {
+    capacitorApp.addListener('appUrlOpen', async (event) => {
       const callbackResult = consumeNativeAuthCallbackUrl(event?.url);
       if (!callbackResult) return;
 
