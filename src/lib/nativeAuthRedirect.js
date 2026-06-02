@@ -2,6 +2,9 @@ import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 
 const AUTH_TOKEN_STORAGE_KEYS = ['base44_access_token', 'token', 'base44_clear_access_token'];
+const NATIVE_CALLBACK_ROUTE = '/native-login';
+const NATIVE_URL_SCHEME = 'nuvira';
+const NATIVE_CALLBACK_MARKER = 'native_provider_callback';
 
 export function isNativeAppShell() {
   return typeof window !== 'undefined';
@@ -13,33 +16,102 @@ export function hasBase44AuthParamsInUrl() {
   return params.has('access_token') || params.get('clear_access_token') === 'true';
 }
 
-export function consumeBase44AuthFromUrl() {
-  if (typeof window === 'undefined') return null;
+function parseUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
 
-  const url = new URL(window.location.href);
+function applyBase44AuthParams(url) {
   const accessToken = url.searchParams.get('access_token');
   const shouldClearToken = url.searchParams.get('clear_access_token') === 'true';
 
   if (!accessToken && !shouldClearToken) return null;
 
-  try {
-    if (shouldClearToken) {
-      for (const key of AUTH_TOKEN_STORAGE_KEYS) {
-        window.localStorage.removeItem(key);
-      }
+  if (shouldClearToken) {
+    for (const key of AUTH_TOKEN_STORAGE_KEYS) {
+      window.localStorage.removeItem(key);
     }
+  }
 
-    if (accessToken) {
-      base44.auth.setToken(accessToken);
-    }
+  if (accessToken) {
+    base44.auth.setToken(accessToken);
+  }
+
+  return accessToken;
+}
+
+export function consumeBase44AuthFromUrl() {
+  if (typeof window === 'undefined') return null;
+
+  const url = new URL(window.location.href);
+  const accessToken = applyBase44AuthParams(url);
+  const shouldClearToken = url.searchParams.get('clear_access_token') === 'true';
+
+  if (!accessToken && !shouldClearToken) return null;
+
+  try {
+    return accessToken;
   } finally {
     url.searchParams.delete('access_token');
     url.searchParams.delete('clear_access_token');
     url.searchParams.delete('is_new_user');
+    url.searchParams.delete(NATIVE_CALLBACK_MARKER);
     window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
   }
+}
 
-  return accessToken;
+export function normalizeReturnRoute(route) {
+  if (!route || typeof route !== 'string') return '/';
+  if (!route.startsWith('/') || route.startsWith('//')) return '/';
+  return route;
+}
+
+export function getNativeProviderReturnUrl(returnRoute = '/') {
+  const callbackUrl = new URL(NATIVE_CALLBACK_ROUTE, appParams.appBaseUrl);
+  callbackUrl.searchParams.set('return_to', normalizeReturnRoute(returnRoute));
+  callbackUrl.searchParams.set(NATIVE_CALLBACK_MARKER, '1');
+  return callbackUrl.toString();
+}
+
+export function getNativeSchemeProviderReturnUrl(returnRoute = '/') {
+  const callbackUrl = new URL(`${NATIVE_URL_SCHEME}://auth/callback`);
+  callbackUrl.searchParams.set('return_to', normalizeReturnRoute(returnRoute));
+  callbackUrl.searchParams.set(NATIVE_CALLBACK_MARKER, '1');
+  return callbackUrl.toString();
+}
+
+export function consumeNativeAuthCallbackUrl(callbackUrl) {
+  if (typeof window === 'undefined') return null;
+
+  const url = parseUrl(callbackUrl);
+  if (!url) return null;
+
+  const appBaseUrl = parseUrl(appParams.appBaseUrl);
+  const isApprovedWebCallback = appBaseUrl
+    && url.origin === appBaseUrl.origin
+    && url.pathname === NATIVE_CALLBACK_ROUTE;
+  const isApprovedSchemeCallback = url.protocol === `${NATIVE_URL_SCHEME}:`
+    && url.host === 'auth'
+    && url.pathname === '/callback';
+
+  if (!isApprovedWebCallback && !isApprovedSchemeCallback) return null;
+
+  const accessToken = applyBase44AuthParams(url);
+  const shouldClearToken = url.searchParams.get('clear_access_token') === 'true';
+  const returnTo = normalizeReturnRoute(url.searchParams.get('return_to'));
+
+  if (!accessToken && !shouldClearToken && url.searchParams.get(NATIVE_CALLBACK_MARKER) !== '1') {
+    return null;
+  }
+
+  return {
+    accessToken,
+    shouldClearToken,
+    returnTo,
+  };
 }
 
 export function getStoredBase44Token() {
@@ -54,12 +126,6 @@ export function getStoredBase44Token() {
 function getCurrentRoute() {
   if (typeof window === 'undefined') return '/';
   return `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
-}
-
-function normalizeReturnRoute(route) {
-  if (!route || typeof route !== 'string') return '/';
-  if (!route.startsWith('/') || route.startsWith('//')) return '/';
-  return route;
 }
 
 function routeWithClearToken(route) {

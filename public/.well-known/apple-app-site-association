@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "JPFWU38MTS.com.base69d48d0c39891f7945481152.app",
+        "paths": [
+          "/native-login",
+          "/native-login/*"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "JPFWU38MTS.com.base69d48d0c39891f7945481152.app"
+    ]
+  }
+}

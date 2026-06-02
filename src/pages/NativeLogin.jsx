@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
+import { getNativeProviderReturnUrl } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
 
@@ -127,7 +128,7 @@ export default function NativeLogin() {
       return;
     }
 
-    base44.auth.loginWithProvider(provider, `/native-login?return_to=${encodeURIComponent(returnTo)}`);
+    base44.auth.loginWithProvider(provider, getNativeProviderReturnUrl(returnTo));
   };
 
   const handleLogin = async () => {
