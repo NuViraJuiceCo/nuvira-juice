@@ -20,7 +20,7 @@ import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
-const ENABLE_PROVIDER_BUTTONS = import.meta.env.VITE_ENABLE_AUTH_PROVIDER_BUTTONS === 'true';
+const ENABLE_PROVIDER_BUTTONS = import.meta.env.VITE_ENABLE_AUTH_PROVIDER_BUTTONS !== 'false';
 
 function normalizeReturnRoute(value) {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
