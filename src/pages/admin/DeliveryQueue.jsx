@@ -1051,9 +1051,11 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Delivery date</span>
           <input
-            type="date"
+            type="text"
+            inputMode="numeric"
+            placeholder="YYYY-MM-DD"
             value={deliveryDate}
-            onChange={event => setDeliveryDate(event.target.value)}
+            onChange={event => setDeliveryDate(event.target.value.slice(0, 10))}
             disabled={pending || actionPending}
             className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
           />
@@ -1066,9 +1068,11 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Production date</span>
           <input
-            type="date"
+            type="text"
+            inputMode="numeric"
+            placeholder="YYYY-MM-DD"
             value={productionDate}
-            onChange={event => setProductionDate(event.target.value)}
+            onChange={event => setProductionDate(event.target.value.slice(0, 10))}
             disabled={pending || actionPending}
             className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
           />
