@@ -1669,6 +1669,139 @@ function ProductionDateSection({ date, batches, today, onActionSuccess }) {
   );
 }
 
+function planningProductGroups(planningData) {
+  const groupsByProduct = new Map();
+  const dateGroups = Array.isArray(planningData?.dates) ? planningData.dates : [];
+  for (const dateGroup of dateGroups) {
+    const productionDate = dateGroup.production_date || 'date_pending';
+    for (const group of Array.isArray(dateGroup.product_groups) ? dateGroup.product_groups : []) {
+      const key = `${group.product_name || 'Product'}|${group.product_category || ''}`;
+      const current = groupsByProduct.get(key) || {
+        product_name: group.product_name || 'Product',
+        product_category: group.product_category || null,
+        planned_units: 0,
+        source_order_count: 0,
+        production_dates: new Set(),
+      };
+      current.planned_units += Number(group.planned_units || 0);
+      current.source_order_count += Number(group.source_order_count || 0);
+      if (productionDate) current.production_dates.add(productionDate);
+      groupsByProduct.set(key, current);
+    }
+  }
+  return Array.from(groupsByProduct.values())
+    .sort((a, b) => Number(b.planned_units || 0) - Number(a.planned_units || 0))
+    .map(group => ({
+      ...group,
+      production_dates: Array.from(group.production_dates),
+    }));
+}
+
+function ProductionDemandHandoffPanel({ planningData, queueNeededUnits, isLoading, isError, error }) {
+  const summary = planningData?.summary || {};
+  const nativeOverlay = planningData?.native_overlay || {};
+  const plannedUnits = Number(summary.planned_units || 0);
+  const unbatchedUnits = Math.max(0, plannedUnits - Number(queueNeededUnits || 0));
+  const groups = planningProductGroups(planningData).slice(0, 8);
+  const missingMasterDataCount = [
+    nativeOverlay.missing_recipe_count,
+    nativeOverlay.ambiguous_recipe_count,
+    nativeOverlay.missing_inventory_count,
+    nativeOverlay.missing_yield_count,
+    nativeOverlay.ambiguous_yield_count,
+  ].reduce((total, value) => total + Number(value || 0), 0);
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-border/50 bg-card p-4">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="w-4 h-4 text-primary animate-spin" />
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Loading planning handoff</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm font-semibold text-amber-900">Production planning handoff unavailable</p>
+        <p className="text-xs text-amber-800 mt-1">{error?.message || 'Open Production Planning for demand details.'}</p>
+      </div>
+    );
+  }
+
+  if (plannedUnits <= 0 && groups.length === 0) return null;
+
+  return (
+    <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-800">Planning demand handoff</p>
+          <h2 className="text-sm font-bold text-blue-950">Demand exists before a production batch is scheduled</h2>
+          <p className="text-xs text-blue-900/80 mt-1">
+            Read-only Production Planning demand for this queue range. Create or update batches through approved production workflows only.
+          </p>
+        </div>
+        <AdminStatusPill label={unbatchedUnits > 0 ? 'Unbatched demand' : 'Covered by queue'} tone={unbatchedUnits > 0 ? 'warning' : 'native'} />
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Planned Units</p>
+          <p className="text-lg font-black text-blue-950">{formatNumber(plannedUnits)}</p>
+        </div>
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Unbatched</p>
+          <p className="text-lg font-black text-blue-950">{formatNumber(unbatchedUnits)}</p>
+        </div>
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Ingredients</p>
+          <p className="text-lg font-black text-blue-950">{formatNumber(summary.ingredient_count)}</p>
+        </div>
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Master Data Gaps</p>
+          <p className="text-lg font-black text-blue-950">{formatNumber(missingMasterDataCount)}</p>
+        </div>
+      </div>
+
+      {Number(nativeOverlay.order_count || 0) > 0 && (
+        <p className="text-xs text-blue-900">
+          Native overlay: {formatNumber(nativeOverlay.order_count)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units)} units · {formatNumber(nativeOverlay.ingredient_count)} ingredient rows.
+        </p>
+      )}
+
+      {groups.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {groups.map(group => (
+            <div key={`${group.product_name}-${group.product_category}`} className="rounded-lg border border-blue-100 bg-white/70 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-blue-950">{group.product_name}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-blue-700">{group.product_category || 'Product'}</p>
+                </div>
+                <p className="text-sm font-black text-blue-950">{formatNumber(group.planned_units)} units</p>
+              </div>
+              <p className="mt-2 text-[11px] text-blue-900">
+                {formatNumber(group.source_order_count)} source order{Number(group.source_order_count) === 1 ? '' : 's'} · {group.production_dates.map(formatDate).join(', ')}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <a href="/admin/production-planning" className="h-8 px-3 rounded-lg bg-blue-700 text-white text-xs font-semibold inline-flex items-center">
+          Open Production Planning
+        </a>
+        <a href="/admin/inventory-status" className="h-8 px-3 rounded-lg border border-blue-200 bg-white/80 text-blue-900 text-xs font-semibold inline-flex items-center">
+          Open Inventory Status
+        </a>
+      </div>
+    </section>
+  );
+}
+
 export default function ProductionQueueSummary() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -1694,6 +1827,27 @@ export default function ProductionQueueSummary() {
       const result = res?.data || res;
       if (result?.error) throw new Error(result.error);
       return result || { batches: [] };
+    },
+    enabled: user?.role === 'admin' && !rangeInvalid,
+    staleTime: 60000,
+  });
+
+  const {
+    data: planningData,
+    isLoading: planningLoading,
+    isError: planningError,
+    error: planningQueryError,
+  } = useQuery({
+    queryKey: ['admin-production-queue-planning-handoff', dateFrom, dateTo],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminProductionPlanningSummary', {
+        preset: 'custom',
+        date_from: dateFrom,
+        date_to: dateTo,
+      });
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result || { summary: {}, dates: [], ingredients: [] };
     },
     enabled: user?.role === 'admin' && !rangeInvalid,
     staleTime: 60000,
@@ -1828,6 +1982,14 @@ export default function ProductionQueueSummary() {
           ]}
         />
 
+        <ProductionDemandHandoffPanel
+          planningData={planningData}
+          queueNeededUnits={totalNeeded}
+          isLoading={planningLoading}
+          isError={planningError}
+          error={planningQueryError}
+        />
+
         <div className="space-y-3">
           <div className="flex gap-0 border-b overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
             {tabs.map(item => (
@@ -1888,7 +2050,7 @@ export default function ProductionQueueSummary() {
         ) : !rangeInvalid && allBatches.length === 0 ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
             <p className="text-sm font-semibold text-foreground">No upcoming production scheduled</p>
-            <p className="text-xs text-muted-foreground mt-1">This date range has no Hub production queue summary yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">This date range has no Hub or native production batch rows yet. Check the planning handoff above for unbatched demand.</p>
           </div>
         ) : !rangeInvalid && filteredBatches.length === 0 ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
