@@ -113,13 +113,37 @@ function addressFromOrder(order) {
   };
 }
 
+function firstFulfillmentDate(order) {
+  const firstFulfillment = Array.isArray(order?.fulfillments)
+    ? order.fulfillments.find(fulfillment => (
+        fulfillment?.delivery_date ||
+        fulfillment?.assigned_delivery_date ||
+        fulfillment?.selected_delivery_date ||
+        fulfillment?.requested_delivery_date ||
+        fulfillment?.scheduled_date
+      ))
+    : null;
+  return firstFulfillment?.delivery_date ||
+    firstFulfillment?.assigned_delivery_date ||
+    firstFulfillment?.selected_delivery_date ||
+    firstFulfillment?.requested_delivery_date ||
+    firstFulfillment?.scheduled_date ||
+    order?.first_fulfillment?.delivery_date ||
+    order?.first_fulfillment?.assigned_delivery_date ||
+    order?.first_fulfillment?.selected_delivery_date ||
+    order?.first_fulfillment?.requested_delivery_date ||
+    null;
+}
+
 function deliveryDateForOrder(order) {
   return sanitizeText(
     order?.assigned_delivery_date ||
     order?.estimated_delivery_date ||
     order?.requested_delivery_date ||
     order?.delivery_date ||
-    order?.selected_delivery_date,
+    order?.selected_delivery_date ||
+    order?.first_delivery_date ||
+    firstFulfillmentDate(order),
     40,
   );
 }
@@ -167,7 +191,7 @@ function buildSafeReviewPayload({ source, eventType, order, lineItems, paymentSt
     total_price: safeNumber(order?.total_price ?? order?.total, 0),
     has_complete_delivery_address: hasCompleteDeliveryAddress(order),
     production_date_present: Boolean(order?.production_date),
-    assigned_delivery_date_present: Boolean(order?.assigned_delivery_date || order?.estimated_delivery_date || order?.requested_delivery_date),
+    assigned_delivery_date_present: Boolean(deliveryDateForOrder(order)),
   };
 }
 

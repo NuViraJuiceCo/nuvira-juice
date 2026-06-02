@@ -335,7 +335,8 @@ function orderPlanningDate(order) {
     order?.selected_delivery_date ||
     order?.requested_delivery_date ||
     order?.scheduled_delivery_date ||
-    order?.delivery_date,
+    order?.delivery_date ||
+    firstFulfillmentDate(order),
   );
 }
 
@@ -346,6 +347,31 @@ function orderReferenceDate(order) {
     order?.shopify_synced_at ||
     order?.updated_date,
   );
+}
+
+function firstFulfillmentDate(order) {
+  const firstFulfillment = Array.isArray(order?.fulfillments)
+    ? order.fulfillments.find(fulfillment => (
+        fulfillment?.production_date ||
+        fulfillment?.delivery_date ||
+        fulfillment?.assigned_delivery_date ||
+        fulfillment?.selected_delivery_date ||
+        fulfillment?.requested_delivery_date ||
+        fulfillment?.scheduled_date
+      ))
+    : null;
+  return firstFulfillment?.production_date ||
+    firstFulfillment?.delivery_date ||
+    firstFulfillment?.assigned_delivery_date ||
+    firstFulfillment?.selected_delivery_date ||
+    firstFulfillment?.requested_delivery_date ||
+    firstFulfillment?.scheduled_date ||
+    order?.first_fulfillment?.production_date ||
+    order?.first_fulfillment?.delivery_date ||
+    order?.first_fulfillment?.assigned_delivery_date ||
+    order?.first_fulfillment?.selected_delivery_date ||
+    order?.first_fulfillment?.requested_delivery_date ||
+    null;
 }
 
 function safeLineItems(order) {
