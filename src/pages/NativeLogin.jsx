@@ -1,11 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Eye, EyeOff, Lock, Mail, Sparkles } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Apple,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  ShieldCheck,
+  Sparkles,
+  UserPlus,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
+
+const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
+const ENABLE_PROVIDER_BUTTONS = import.meta.env.VITE_ENABLE_AUTH_PROVIDER_BUTTONS === 'true';
 
 function normalizeReturnRoute(value) {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
@@ -101,6 +115,20 @@ export default function NativeLogin() {
       navigate(returnTo, { replace: true });
     }
   }, [isAuthenticated, navigate, returnTo, user?.email]);
+
+  const handleProviderLogin = (provider) => {
+    setStatusText('');
+    setFormError('');
+
+    if (!ENABLE_PROVIDER_BUTTONS) {
+      const message = 'Apple and Google sign-in are being finalized. Email sign-in is the reliable active path in this build.';
+      setStatusText(message);
+      toast.info(message);
+      return;
+    }
+
+    base44.auth.loginWithProvider(provider, `/native-login?return_to=${encodeURIComponent(returnTo)}`);
+  };
 
   const handleLogin = async () => {
     const result = await authRequest('login', {
@@ -221,35 +249,109 @@ export default function NativeLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-background px-5 py-6" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
+    <div
+      className="min-h-screen bg-background px-5 py-6"
+      style={{
+        paddingTop: 'max(1.5rem, env(safe-area-inset-top))',
+        background: 'radial-gradient(circle at 50% 0%, hsl(var(--primary) / 0.18), transparent 38%), hsl(var(--background))',
+      }}
+    >
       <SEO title="Sign In" noindex={true} />
       <button
         type="button"
         onClick={() => navigate('/', { replace: true })}
-        className="mb-5 flex h-10 w-10 items-center justify-center rounded-full bg-muted"
+        className="mb-5 flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-card/80 text-foreground shadow-sm"
         aria-label="Back to home"
       >
         <ArrowLeft className="h-4 w-4" />
       </button>
 
       <div className="mx-auto max-w-sm">
-        <div className="mb-8">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <Sparkles className="h-5 w-5" />
+        <div className="mb-6 text-center">
+          <img src={LOGO_URL} alt="NuVira Juice Company" className="mx-auto mb-5 h-8 opacity-90" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/15 text-primary shadow-sm">
+            {isRegistering ? <UserPlus className="h-6 w-6" /> : isVerifying ? <ShieldCheck className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
           </div>
-          <h1 className="font-heading text-3xl font-bold">
+          <h1 className="font-heading text-3xl font-bold tracking-tight">
             {isRegistering ? 'Create Account' : isVerifying ? 'Verify Email' : 'Sign In'}
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
             {isRegistering
-              ? 'Create your NuVira account to check in and earn rewards.'
+              ? 'Create your NuVira account to order faster, earn rewards, and keep delivery details ready.'
               : isVerifying
-                ? 'Enter the code sent to your email.'
-                : 'Access rewards, orders, and event check-in.'}
+                ? 'Enter the code sent to your email to finish securing your account.'
+                : 'Access ordering, rewards, event check-in, and account details.'}
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="mb-4 grid grid-cols-3 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-sm">
+          {[
+            { key: 'login', label: 'Sign In' },
+            { key: 'register', label: 'Join' },
+            { key: 'verify', label: 'Verify' },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                setMode(item.key);
+                setFormError('');
+                setStatusText('');
+              }}
+              className={`h-10 rounded-xl text-xs font-semibold transition-colors ${
+                mode === item.key
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mb-4 rounded-3xl border border-border/60 bg-card/85 p-4 shadow-lg shadow-black/5 backdrop-blur">
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleProviderLogin('apple')}
+              disabled={isSubmitting}
+              className={`flex h-12 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition-colors ${
+                ENABLE_PROVIDER_BUTTONS
+                  ? 'border-border bg-background text-foreground active:scale-[0.99]'
+                  : 'border-border/60 bg-muted/35 text-muted-foreground'
+              }`}
+            >
+              <Apple className="h-4 w-4" />
+              Apple
+            </button>
+            <button
+              type="button"
+              onClick={() => handleProviderLogin('google')}
+              disabled={isSubmitting}
+              className={`flex h-12 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition-colors ${
+                ENABLE_PROVIDER_BUTTONS
+                  ? 'border-border bg-background text-foreground active:scale-[0.99]'
+                  : 'border-border/60 bg-muted/35 text-muted-foreground'
+              }`}
+            >
+              <span className="flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px] font-bold">G</span>
+              Google
+            </button>
+          </div>
+
+          {!ENABLE_PROVIDER_BUTTONS && (
+            <p className="mb-4 rounded-2xl border border-primary/15 bg-primary/10 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              Apple and Google sign-in are visible here, but kept in safe mode until the native redirect domain is connected. Email sign-in is active now.
+            </p>
+          )}
+
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Email</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Email</span>
             <span className="flex h-12 items-center gap-3 rounded-xl border border-border bg-card px-3">
@@ -337,7 +439,7 @@ export default function NativeLogin() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="h-12 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
+            className="h-12 w-full rounded-2xl bg-primary text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 disabled:opacity-60"
           >
             {isSubmitting
               ? 'Please wait...'
@@ -347,14 +449,19 @@ export default function NativeLogin() {
                   ? 'Verify and Sign In'
                   : 'Sign In'}
           </button>
-        </form>
+          </form>
+        </div>
 
         <div className="mt-5 flex flex-col items-center gap-3 text-xs">
           {!isVerifying && (
             <>
               <button
                 type="button"
-                onClick={() => setMode(isRegistering ? 'login' : 'register')}
+                onClick={() => {
+                  setMode(isRegistering ? 'login' : 'register');
+                  setFormError('');
+                  setStatusText('');
+                }}
                 className="font-semibold text-primary"
               >
                 {isRegistering ? 'Already have an account? Sign in' : 'New to NuVira? Create an account'}
@@ -377,6 +484,13 @@ export default function NativeLogin() {
               Forgot password?
             </button>
           )}
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-border/60 bg-card/45 p-3 text-center">
+          <p className="text-[11px] font-semibold text-foreground">Secure NuVira account access</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+            Your orders, rewards, event check-ins, and admin tools stay inside the app session.
+          </p>
         </div>
       </div>
     </div>
