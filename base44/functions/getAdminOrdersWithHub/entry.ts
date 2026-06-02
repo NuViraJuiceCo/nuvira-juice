@@ -560,6 +560,28 @@ function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, review
   };
 }
 
+function nativeFulfillmentDate(order) {
+  const firstFulfillment = Array.isArray(order?.fulfillments)
+    ? order.fulfillments.find(fulfillment => (
+        fulfillment?.delivery_date ||
+        fulfillment?.assigned_delivery_date ||
+        fulfillment?.selected_delivery_date ||
+        fulfillment?.requested_delivery_date ||
+        fulfillment?.scheduled_date
+      ))
+    : null;
+  return firstFulfillment?.delivery_date ||
+    firstFulfillment?.assigned_delivery_date ||
+    firstFulfillment?.selected_delivery_date ||
+    firstFulfillment?.requested_delivery_date ||
+    firstFulfillment?.scheduled_date ||
+    order?.first_fulfillment?.delivery_date ||
+    order?.first_fulfillment?.assigned_delivery_date ||
+    order?.first_fulfillment?.selected_delivery_date ||
+    order?.first_fulfillment?.requested_delivery_date ||
+    null;
+}
+
 function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
   const orderNumber = (order?.shopify_order_number || order?.order_number || '').toString().replace(/^#/, '');
   if (!order || !orderNumber) return null;
@@ -613,7 +635,7 @@ function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
     fulfillment_type: isPos ? 'pickup' : (fulfillmentMethod === 'pickup' ? 'pickup' : 'delivery'),
     delivery_address: order.delivery_address || [order.address_line1, order.address_city, order.address_state, order.address_postal_code].filter(Boolean).join(', '),
     contact_phone: order.customer_phone || '',
-    estimated_delivery_date: order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date || null,
+    estimated_delivery_date: order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date || nativeFulfillmentDate(order) || null,
     created_date: order.customer_order_date || order.created_date || order.last_sync_at || null,
     items,
     notes: order.internal_notes || order.customer_notes || null,
