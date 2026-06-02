@@ -173,6 +173,12 @@ function nativeMaterializationRequestId(stop) {
   return `native_task_materialize_${stop.order_number || 'order'}_${Date.now()}_${randomId}`;
 }
 
+function nativeScheduleCorrectionRequestId(stop) {
+  const fallback = Math.random().toString(36).slice(2);
+  const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+  return `native_schedule_correct_${stop.order_number || 'order'}_${Date.now()}_${randomId}`;
+}
+
 function nativeTaskPayload(stop) {
   return {
     id: stop.task_id || null,
@@ -944,6 +950,223 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
   );
 }
 
+function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected }) {
+  const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || '');
+  const [productionDate, setProductionDate] = useState('');
+  const [windowLabel, setWindowLabel] = useState(stop.delivery_window_label || '');
+  const [preview, setPreview] = useState(null);
+  const [pending, setPending] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const projectedWrites = Array.isArray(preview?.projected_writes) ? preview.projected_writes : [];
+  const canPreview = Boolean(stop.order_number && deliveryDate && productionDate);
+  const canRun = Boolean(preview?.schedule_correction_ready && !pending && !actionPending);
+
+  function schedulePayload(mode = 'dry_run') {
+    return {
+      mode,
+      order_number: stop.order_number,
+      delivery_date: deliveryDate,
+      production_date: productionDate,
+      delivery_window_label: windowLabel || undefined,
+      request_id: nativeScheduleCorrectionRequestId(stop),
+    };
+  }
+
+  async function runPreview() {
+    if (!canPreview) {
+      setMessage({ type: 'error', text: 'Order number, delivery date, and production date are required before preview.' });
+      return;
+    }
+
+    setPending(true);
+    setPreview(null);
+    setMessage(null);
+
+    try {
+      const res = await base44.functions.invoke('previewNativeOrderScheduleCorrection', schedulePayload('dry_run'));
+      const result = res?.data || res;
+      if (result?.error && result?.success !== true) throw new Error(result.error);
+      setPreview(result);
+      setMessage({
+        type: result.schedule_correction_ready ? 'success' : 'warn',
+        text: result.schedule_correction_ready
+          ? 'Native schedule correction preview passed. Execution remains exact-order gated.'
+          : 'Native schedule correction has blockers or warnings.',
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to preview native schedule correction.' });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function runCorrection() {
+    if (!canRun) return;
+    if (!window.confirm(`Correct native schedule for order ${stop.order_number} to delivery ${deliveryDate} and production ${productionDate}? This updates only native operational order schedule fields and does not create a task or notify customers.`)) {
+      return;
+    }
+
+    setActionPending(true);
+    setMessage(null);
+
+    try {
+      const requestId = nativeScheduleCorrectionRequestId(stop);
+      const res = await base44.functions.invoke('executeNativeOrderScheduleCorrection', {
+        ...schedulePayload('live'),
+        request_id: requestId,
+        confirmation: 'execute_native_order_schedule_correction',
+      });
+      const result = res?.data || res;
+      if (!result?.success) {
+        const gate = result?.error_code ? ` (${formatLabel(result.error_code)})` : '';
+        throw new Error(`${result?.error || 'Native schedule correction was not allowed'}${gate}`);
+      }
+      setPreview(null);
+      setMessage({
+        type: result.skipped ? 'warn' : 'success',
+        text: result.skipped ? 'Native schedule correction was already recorded.' : 'Native schedule corrected.',
+      });
+      await onCorrected?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to run native schedule correction.' });
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-2 space-y-3">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-sky-950 font-semibold">Native Schedule Correction</p>
+        <p className="text-[10px] text-sky-900 mt-1">
+          For native delivery orders missing schedule fields. Preview first. Execution is exact-order gated and does not create tasks, notify customers, call providers, deduct inventory, or run sync/repair.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <label className="space-y-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Delivery date</span>
+          <input
+            type="date"
+            value={deliveryDate}
+            onChange={event => setDeliveryDate(event.target.value)}
+            disabled={pending || actionPending}
+            className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
+          />
+          {!deliveryDate && (
+            <span className="text-[10px] text-amber-700">
+              Required. Route filter is {formatDate(selectedDate)} but is not auto-applied.
+            </span>
+          )}
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Production date</span>
+          <input
+            type="date"
+            value={productionDate}
+            onChange={event => setProductionDate(event.target.value)}
+            disabled={pending || actionPending}
+            className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Window</span>
+          <input
+            value={windowLabel}
+            onChange={event => setWindowLabel(event.target.value.slice(0, 120))}
+            disabled={pending || actionPending}
+            placeholder="Optional"
+            className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
+          />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={!canPreview || pending || actionPending}
+          onClick={runPreview}
+          className="h-9 rounded-lg border border-sky-300 bg-white px-3 text-xs font-semibold text-sky-950 disabled:opacity-50"
+        >
+          {pending ? 'Previewing...' : 'Preview Schedule'}
+        </button>
+        <button
+          type="button"
+          disabled={!canRun}
+          onClick={runCorrection}
+          className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+        >
+          {actionPending ? 'Running...' : 'Run Schedule Correction'}
+        </button>
+      </div>
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-amber-700'
+              : 'text-green-700'
+        }`}>
+          {message.text}
+        </p>
+      )}
+
+      {preview && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ready</p>
+              <p className="text-sm font-bold">{preview.schedule_correction_ready ? 'Yes' : 'No'}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Write</p>
+              <p className="text-sm font-bold">{preview.native_write_allowed ? 'Yes' : 'No'}</p>
+            </div>
+            <div className="rounded-lg bg-card p-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Tasks</p>
+              <p className="text-sm font-bold">{preview.existing_task_count || 0}</p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="space-y-1">
+              {blockers.map(blocker => (
+                <div key={`native-schedule-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Blocker: {formatLabel(blocker)}</span>
+                </div>
+              ))}
+              {warnings.map(warning => (
+                <div key={`native-schedule-warning-${warning}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{formatLabel(warning)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {projectedWrites.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              Would write if exact native gates are open: {projectedWrites.map(formatLabel).join(', ')}
+            </p>
+          )}
+
+          {preview.patch_draft && (
+            <p className="text-[10px] text-muted-foreground">
+              Draft: delivery {preview.patch_draft.assigned_delivery_date}; production {preview.patch_draft.production_date}.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMaterialized }) {
   const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || '');
   const [productionDate, setProductionDate] = useState('');
@@ -1276,11 +1499,18 @@ function StopCard({ stop, completed, selectedDate, onAssignmentSuccess }) {
           {isNativeDeliveryTaskStop(stop) ? (
             <NativeFulfillmentPreviewPanel stop={stop} onActionSuccess={onAssignmentSuccess} />
           ) : (
-            <NativeFulfillmentTaskMaterializationPanel
-              stop={stop}
-              selectedDate={selectedDate}
-              onMaterialized={onAssignmentSuccess}
-            />
+            <>
+              <NativeOrderScheduleCorrectionPanel
+                stop={stop}
+                selectedDate={selectedDate}
+                onCorrected={onAssignmentSuccess}
+              />
+              <NativeFulfillmentTaskMaterializationPanel
+                stop={stop}
+                selectedDate={selectedDate}
+                onMaterialized={onAssignmentSuccess}
+              />
+            </>
           )}
         </>
       ) : (
