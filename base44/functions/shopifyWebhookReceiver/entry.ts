@@ -9,13 +9,6 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Set your SHOPIFY_WEBHOOK_SECRET in secrets for verification.
  */
 
-const SHOPIFY_WEBHOOK_SECRET =
-  Deno.env.get('SHOPIFY_WEBHOOK_SECRET') ||
-  Deno.env.get('SHOPIFY_WEBHOOK_SIGNING_SECRET') ||
-  Deno.env.get('SHOPIFY_CLIENT_SECRET') ||
-  Deno.env.get('SHOPIFY_API_SECRET') ||
-  Deno.env.get('SHOPIFY_APP_SECRET') ||
-  '';
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
 const ENABLE_MAY30_NATIVE_ORDER_OPS = Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
 const MAY30_NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
@@ -23,14 +16,26 @@ const ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER = Deno.env.get('ENABLE_SHOP
 const SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS = Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS') || 'orders/create,orders/paid';
 const SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST = Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST') || '';
 
+function getShopifyWebhookSecret() {
+  return (
+    Deno.env.get('SHOPIFY_WEBHOOK_SECRET') ||
+    Deno.env.get('SHOPIFY_WEBHOOK_SIGNING_SECRET') ||
+    Deno.env.get('SHOPIFY_CLIENT_SECRET') ||
+    Deno.env.get('SHOPIFY_API_SECRET') ||
+    Deno.env.get('SHOPIFY_APP_SECRET') ||
+    ''
+  ).trim();
+}
+
 async function verifyShopifyHmac(req, bodyText) {
   const hmacHeader = req.headers.get('x-shopify-hmac-sha256');
-  if (!SHOPIFY_WEBHOOK_SECRET) {
+  const webhookSecret = getShopifyWebhookSecret();
+  if (!webhookSecret) {
     throw new Error('SHOPIFY_WEBHOOK_SECRET not configured');
   }
   if (!hmacHeader) return false;
   const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(SHOPIFY_WEBHOOK_SECRET),
+    'raw', new TextEncoder().encode(webhookSecret),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
   );
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(bodyText));
