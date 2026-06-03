@@ -29,9 +29,8 @@ export default function QuickReorder({ lastOrder }) {
         className="mx-5 mt-4"
       >
         <Link to="/account/orders">
-          <div className="flex items-center gap-3 bg-secondary/60 rounded-xl p-3.5 border border-border/50">
-            <div className="w-10 h-10 rounded-full bg-nuvira-gradient flex items-center justify-center shrink-0 shadow-sm">
-              <RotateCcw className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-3 rounded-xl p-3.5 border nuvira-premium-card">
+            <div className="w-10 h-10 rounded-full nuvira-icon-badge flex items-center justify-center shrink-0">              <RotateCcw className="w-4 h-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">Your last order</p>

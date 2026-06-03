@@ -4,7 +4,7 @@ import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Minus, Plus, ShoppingBag, Heart, Leaf, Info } from 'lucide-react';
+import { ArrowLeft, Minus, Plus, ShoppingBag, Leaf } from 'lucide-react';
 import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
@@ -189,8 +189,7 @@ export default function ProductDetail() {
             {/* Certifications */}
             <div className="mt-4 flex flex-wrap gap-2">
               {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
-                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-primary/10 text-primary border border-primary/25 rounded-full">
-                  ✓ {cert}
+                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">                  ✓ {cert}
                 </span>
               ))}
             </div>
@@ -221,7 +220,7 @@ export default function ProductDetail() {
           </div>
         )}
         {product.ingredients && (
-          <div className="bg-secondary/40 rounded-xl p-3.5">
+          <div className="bg-nuvira-gradient-soft border border-nuvira rounded-xl p-3.5">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Leaf className="w-3.5 h-3.5 text-primary" />
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ingredients</h3>
@@ -267,8 +266,7 @@ export default function ProductDetail() {
           {/* Add to Cart Button */}
           <Button
             onClick={handleAddToCart}
-            className="flex-1 h-10 rounded-xl font-semibold text-sm bg-nuvira-gradient border-0 text-white hover:opacity-95"
-          >
+            className="flex-1 h-10 rounded-xl font-semibold text-sm nuvira-gradient-button"          >
             <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
             {`$${(product.price * quantity).toFixed(2)}`}
           </Button>

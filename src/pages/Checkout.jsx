@@ -495,7 +495,7 @@ export default function Checkout() {
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+        <div className="nuvira-icon-badge w-16 h-16 rounded-full flex items-center justify-center mb-4">
           <span className="text-3xl">🍃</span>
         </div>
         <h2 className="font-heading text-2xl font-bold mb-2">Sign In to Checkout</h2>
@@ -522,7 +522,7 @@ export default function Checkout() {
   if (user && userProfile !== undefined && !userProfile?.onboarding_complete) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+        <div className="nuvira-icon-badge w-16 h-16 rounded-full flex items-center justify-center mb-4">
           <span className="text-3xl">🌿</span>
         </div>
         <h2 className="font-heading text-2xl font-bold mb-2">One Quick Step First</h2>
@@ -569,7 +569,7 @@ export default function Checkout() {
 
 
       {/* Delivery Estimate */}
-      <div className="mx-4 mb-5 bg-primary/5 rounded-xl p-3.5 flex items-center gap-2.5">
+      <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-3.5 flex items-center gap-2.5">
         <Truck className="w-5 h-5 text-primary shrink-0" />
         <div>
           <p className="text-sm font-semibold text-primary">
@@ -596,7 +596,7 @@ export default function Checkout() {
 
       {/* Subscriber Perks Banner */}
       {activeSubscription?.plan && (
-        <div className="mx-4 mb-5 bg-primary/10 border border-primary/30 rounded-xl p-4">
+        <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center shrink-0">
               <span className="text-sm">⭐</span>
@@ -614,7 +614,7 @@ export default function Checkout() {
 
       {/* NuVira Credits */}
       {user?.email && availableCredits > 0 && (
-        <div className="mx-4 mb-5 bg-primary/5 border border-primary/20 rounded-xl p-4">
+        <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 bg-primary/15 rounded-full flex items-center justify-center">

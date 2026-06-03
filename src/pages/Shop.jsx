@@ -123,7 +123,7 @@ export default function Shop() {
             placeholder="Search juices, bundles..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-10 rounded-xl bg-secondary/50 border-0 text-sm"
+            className="pl-9 h-10 rounded-xl bg-nuvira-gradient-soft border border-nuvira text-sm"
           />
         </div>
       </div>
@@ -140,7 +140,7 @@ export default function Shop() {
             onClick={() => { setCategory(cat.key); setSearchParams({}); }}
             className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
               category === cat.key
-                ? 'bg-primary text-primary-foreground'
+                ? 'bg-nuvira-gradient text-white shadow-sm shadow-emerald-950/15'
                 : 'bg-secondary text-foreground/70 border border-border/60'
             }`}
           >
@@ -178,7 +178,7 @@ export default function Shop() {
             <p className="text-muted-foreground text-sm mb-5">New Drops Are On The Way</p>
             <button
               onClick={() => { setCategory('all'); setSearchParams({}); }}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-full text-sm font-semibold"
+              className="px-6 py-2 nuvira-gradient-button rounded-full text-sm font-semibold"
             >
               Shop All Juices
             </button>

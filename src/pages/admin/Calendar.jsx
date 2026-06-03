@@ -579,7 +579,7 @@ export default function Calendar() {
                 onClick={() => applyPreset(option.value)}
                 className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
                   preset === option.value
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? 'bg-nuvira-gradient text-white border-primary'
                     : 'bg-background text-muted-foreground border-border hover:text-foreground'
                 }`}
               >
@@ -623,7 +623,7 @@ export default function Calendar() {
                 rangeError
                   ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
                   : preset === 'custom' && appliedDateFrom === dateFrom && appliedDateTo === dateTo
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? 'bg-nuvira-gradient text-white border-primary'
                     : 'bg-background text-muted-foreground border-border hover:text-foreground'
               }`}
             >
@@ -717,7 +717,7 @@ export default function Calendar() {
               type="button"
               onClick={() => setViewMode('agenda')}
               className={`h-8 px-3 rounded-lg border text-xs font-semibold ${
-                viewMode === 'agenda' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border'
+                viewMode === 'agenda' ? 'bg-nuvira-gradient text-white border-primary' : 'bg-background text-muted-foreground border-border'
               }`}
             >
               Agenda
@@ -726,7 +726,7 @@ export default function Calendar() {
               type="button"
               onClick={() => setViewMode('month')}
               className={`h-8 px-3 rounded-lg border text-xs font-semibold ${
-                viewMode === 'month' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border'
+                viewMode === 'month' ? 'bg-nuvira-gradient text-white border-primary' : 'bg-background text-muted-foreground border-border'
               }`}
             >
               Month

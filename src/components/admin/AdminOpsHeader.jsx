@@ -16,7 +16,7 @@ export default function AdminOpsHeader({
   const backProps = onBack ? { type: 'button', onClick: onBack } : { to: backTo };
 
   return (
-    <div className="border-b border-emerald-500/30 bg-slate-950 px-4 py-3 text-white shadow-sm shadow-slate-950/20">
+    <div className="border-b border-emerald-500/35 nuvira-admin-header px-4 py-3 text-white shadow-sm shadow-slate-950/20">
       <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <BackControl

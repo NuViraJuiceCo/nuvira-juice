@@ -65,14 +65,14 @@ export default function Merch() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="mx-4 mt-5 bg-card border border-border/40 rounded-2xl p-5"
+          className="nuvira-premium-card mx-4 mt-5 rounded-2xl p-5"
         >
           <div className="flex items-center gap-2 mb-3">
             <Bell className="w-4 h-4 text-primary" />
             <p className="font-semibold text-sm">Get notified at launch</p>
           </div>
           {submitted ? (
-            <div className="bg-primary/10 rounded-xl py-3 px-4 text-center">
+            <div className="rounded-xl border border-nuvira bg-nuvira-gradient-soft py-3 px-4 text-center">
               <p className="text-primary text-sm font-semibold">You're on the list 🌿</p>
               <p className="text-xs text-muted-foreground mt-0.5">We'll hit you first when merch drops.</p>
             </div>
@@ -110,7 +110,7 @@ export default function Merch() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.15 + i * 0.07 }}
-                className="bg-card border border-border/30 rounded-2xl overflow-hidden"
+                className="nuvira-premium-card rounded-2xl overflow-hidden"
               >
                 {item.image_url && (
                   <div className="aspect-square bg-secondary/50 overflow-hidden">

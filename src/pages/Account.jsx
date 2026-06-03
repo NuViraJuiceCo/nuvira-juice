@@ -58,8 +58,7 @@ function AdminToolRow({ item, index, isLast }) {
         transition={{ delay: 0.74 + index * 0.01 }}
         className={`flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors ${isLast ? '' : 'border-b border-border/40 dark:border-primary/15'}`}
       >
-        <div className="w-9 h-9 rounded-lg bg-nuvira-gradient flex items-center justify-center shrink-0 shadow-sm">
-          <Icon className="w-4 h-4 text-white" />
+        <div className="w-9 h-9 rounded-lg nuvira-icon-badge flex items-center justify-center shrink-0">          <Icon className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground">{item.label}</p>
@@ -114,7 +113,7 @@ export default function Account() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent rounded-full" />
         
         {/* Main dashboard card */}
-        <div className="relative rounded-3xl border border-border/50 dark:border-primary/30 p-5 shadow-lg bg-card/70 backdrop-blur-sm">
+        <div className="relative rounded-3xl border p-5 nuvira-premium-card backdrop-blur-sm">
           <div className="flex items-start gap-4">
             {/* Avatar with profile photo upload */}
             <ProfileAvatar userProfile={userProfile} size="large" />
@@ -134,9 +133,9 @@ export default function Account() {
                   </span>
                 )}
                 {!isDashLoading && subscriptions.length > 0 && subscriptions.some(s => s.status === 'active') && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/20 dark:bg-primary/25 border border-primary/40 dark:border-primary/35 rounded-full">
-                    <Star className="w-3 h-3 text-primary dark:text-white" />
-                    <span className="text-[10px] font-bold text-primary dark:text-white uppercase tracking-wide">Active Ritual</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-nuvira-gradient text-white border border-white/20 rounded-full shadow-sm">
+                    <Star className="w-3 h-3 text-white" />
+                    <span className="text-[10px] font-bold text-white uppercase tracking-wide">Active Ritual</span>
                   </span>
                 )}
               </div>
@@ -153,8 +152,7 @@ export default function Account() {
             <div className="space-y-2">
               {userProfile?.phone && (
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-nuvira-gradient flex items-center justify-center shrink-0 shadow-sm">
-                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="w-7 h-7 rounded-lg nuvira-icon-badge flex items-center justify-center shrink-0">                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                     </svg>
                   </div>
@@ -163,8 +161,7 @@ export default function Account() {
               )}
               {userProfile?.address && (
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-nuvira-gradient flex items-center justify-center shrink-0 shadow-sm">
-                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="w-7 h-7 rounded-lg nuvira-icon-badge flex items-center justify-center shrink-0">                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
@@ -230,15 +227,14 @@ export default function Account() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.15 }}
-              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 dark:from-primary/25 dark:via-primary/18 dark:to-primary/12 border border-primary/25 dark:border-primary/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md" style={{ touchAction: 'pan-y' }}
+              className="group relative overflow-hidden rounded-2xl p-4 nuvira-premium-card active:scale-[0.97] transition-all hover:shadow-md" style={{ touchAction: 'pan-y' }}
             >
               <div className="relative">
-                <div className="w-9 h-9 rounded-lg bg-nuvira-gradient flex items-center justify-center mb-2 shadow-sm">
-                  <Repeat2 className="w-4 h-4 text-white" />
+                <div className="w-9 h-9 rounded-lg nuvira-icon-badge flex items-center justify-center mb-2">                  <Repeat2 className="w-4 h-4 text-white" />
                 </div>
                 <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Weekly Ritual</p>
                 <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Pause, skip, or manage</p>
-                <span className="inline-block mt-2 text-[9px] font-bold text-primary dark:text-white bg-primary/15 dark:bg-primary/20 px-2 py-0.5 rounded-full border border-primary/30 dark:border-primary/25">Flexible</span>
+                <span className="inline-block mt-2 text-[9px] font-bold text-primary bg-white/60 dark:bg-white/10 px-2 py-0.5 rounded-full border border-primary/30">Flexible</span>
               </div>
             </motion.div>
           </Link>
@@ -251,9 +247,8 @@ export default function Account() {
               className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-[#C9A24A]/15 via-[#C9A24A]/10 to-[#C9A24A]/8 dark:from-[#C9A24A]/20 dark:via-[#C9A24A]/15 dark:to-[#C9A24A]/10 border border-[#C9A24A]/20 dark:border-[#C9A24A]/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md" style={{ touchAction: 'pan-y' }}
             >
               <div className="relative">
-                <div className="w-9 h-9 rounded-lg bg-nuvira-gradient flex items-center justify-center mb-2 shadow-sm">
-                  <Gift className="w-4 h-4 text-white" />
-                </div>
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#E7C873] to-[#C9A24A] flex items-center justify-center mb-2 border border-white/20 shadow-sm">
+                  <Gift className="w-4 h-4 text-[#9A7B2F] dark:text-[#E7C873]" />                </div>
                 <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Refer & Earn</p>
                 <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Give $5, get rewarded</p>
                 <span className="inline-block mt-2 text-[9px] font-bold text-[#7A5F20] dark:text-[#E7C873] bg-[#C9A24A]/20 dark:bg-[#C9A24A]/20 px-2 py-0.5 rounded-full border border-[#C9A24A]/40 dark:border-[#C9A24A]/30">Perk</span>
@@ -280,8 +275,7 @@ export default function Account() {
               <Link to={path}>
                 <div className="group relative overflow-hidden rounded-2xl bg-card dark:bg-card/60 border border-border/50 dark:border-primary/25 p-4 active:scale-[0.98] transition-all shadow-sm hover:shadow-md">
                   <div className="flex items-center gap-3.5">
-                    <div className="w-11 h-11 rounded-xl bg-nuvira-gradient flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                      <Icon className="w-5 h-5 text-white" />
+                    <div className="w-11 h-11 rounded-xl nuvira-icon-badge flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">                      <Icon className="w-5 h-5 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-foreground">{label}</p>
@@ -311,9 +305,8 @@ export default function Account() {
               transition={{ delay: 0.35 + i * 0.05 }}
             >
               <Link to={path}>
-                <div className="group relative overflow-hidden rounded-2xl bg-primary/12 dark:bg-primary/18 border border-primary/25 dark:border-primary/35 p-4 active:scale-[0.98] transition-all">
-                  <div className="w-9 h-9 rounded-xl bg-nuvira-gradient flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform shadow-sm">
-                    <Icon className="w-4 h-4 text-white" />
+                <div className="group relative overflow-hidden rounded-2xl nuvira-premium-card p-4 active:scale-[0.98] transition-all">
+                  <div className="w-9 h-9 rounded-xl nuvira-icon-badge flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">                    <Icon className="w-4 h-4 text-white" />
                   </div>
                   <p className="text-xs font-bold text-foreground mb-1">{label}</p>
                   <p className="text-[9px] text-foreground/55 dark:text-muted-foreground/85 leading-snug line-clamp-2">{desc}</p>
@@ -350,10 +343,9 @@ export default function Account() {
           className="mt-2"
         >
           <Link to="/book-event">
-            <div className="group relative overflow-hidden rounded-2xl bg-primary/15 dark:bg-primary/20 border border-primary/30 dark:border-primary/40 p-4 active:scale-[0.98] transition-all">
+            <div className="group relative overflow-hidden rounded-2xl nuvira-premium-card p-4 active:scale-[0.98] transition-all">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-nuvira-gradient flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-sm">
-                  <PartyPopper className="w-5 h-5 text-white" />
+                <div className="w-10 h-10 rounded-xl nuvira-icon-badge flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">                  <PartyPopper className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-foreground">Book Us for an Event</p>

@@ -26,9 +26,9 @@ export default function RewardsSuccessModal({ open, onClose, email, name }) {
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: 'spring', delay: 0.2, damping: 15 }}
-              className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5"
+              className="w-16 h-16 nuvira-icon-badge rounded-full flex items-center justify-center mx-auto mb-5"
             >
-              <Check className="w-8 h-8 text-green-600" />
+              <Check className="w-8 h-8 text-white" />
             </motion.div>
 
             {/* Content */}
@@ -40,7 +40,7 @@ export default function RewardsSuccessModal({ open, onClose, email, name }) {
             </p>
 
             {/* Confirmation Details */}
-            <div className="bg-primary/5 rounded-xl p-4 mb-5 space-y-2.5">
+            <div className="bg-nuvira-gradient-soft border border-nuvira rounded-xl p-4 mb-5 space-y-2.5">
               <div className="flex items-start gap-3">
                 <span className="text-2xl">🎁</span>
                 <div>
@@ -67,7 +67,7 @@ export default function RewardsSuccessModal({ open, onClose, email, name }) {
             {/* Close Button */}
             <Button
               onClick={onClose}
-              className="w-full h-11 rounded-xl font-semibold"
+              className="w-full h-11 rounded-xl font-semibold nuvira-gradient-button"
             >
               Got It! 🙌
             </Button>

@@ -179,7 +179,7 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
       transition={{ delay: index * 0.05 }}
     >
       <Link to={order.order_number ? `/order-tracker/${order.order_number}?source=order_history` : `/order-tracker/${order.id}?source=order_history`}>
-        <div className="bg-card rounded-xl border border-border/50 p-3.5 active:bg-secondary/50 transition-colors">
+        <div className="rounded-xl border p-3.5 active:bg-secondary/50 transition-colors nuvira-premium-card">
           <div className="flex items-start justify-between mb-2">
             <div>
               <p className="text-sm font-medium">#{order.order_number} • {getDisplayName()}</p>
@@ -230,8 +230,7 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
               {!isActive && (
                 <button
                   onClick={handleReorder}
-                  className="flex items-center gap-1 bg-nuvira-gradient text-white text-[10px] font-bold px-2.5 py-1 rounded-full active:scale-95 transition-transform"
-                >
+                  className="flex items-center gap-1 nuvira-gradient-button text-[10px] font-bold px-2.5 py-1 rounded-full active:scale-95 transition-transform"                >
                   <RotateCcw className="w-2.5 h-2.5" />
                   Reorder
                 </button>

@@ -99,7 +99,7 @@ export default function ReturnReward() {
 
       {/* Hero */}
       <div
-        className="bg-primary relative overflow-hidden"
+        className="bg-nuvira-gradient relative overflow-hidden"
         style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))' }}
       >
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/5 rounded-full" />
@@ -156,10 +156,10 @@ export default function ReturnReward() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07 }}
-              className="bg-card border border-border/50 rounded-2xl p-4 flex items-start gap-4"
+              className="nuvira-premium-card border rounded-2xl p-4 flex items-start gap-4"
             >
-              <div className="shrink-0 w-10 h-10 bg-primary/8 rounded-xl flex items-center justify-center mt-0.5">
-                {React.createElement(Icon, { className: 'w-4 h-4 text-primary' })}
+              <div className="shrink-0 w-10 h-10 nuvira-icon-badge rounded-xl flex items-center justify-center mt-0.5">
+                {React.createElement(Icon, { className: 'w-4 h-4 text-white' })}
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
@@ -178,7 +178,7 @@ export default function ReturnReward() {
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">NuVira Credit Values</p>
         <div className="grid grid-cols-2 gap-3">
           {credits.map(({ type, amount, sub }) => (
-            <div key={type} className="bg-card border border-border/50 rounded-2xl p-4 text-center">
+            <div key={type} className="nuvira-premium-card border rounded-2xl p-4 text-center">
               <p className="font-heading text-3xl font-bold text-primary mb-1">{amount}</p>
               <p className="text-xs font-semibold">{type}</p>
               <p className="text-[10px] text-muted-foreground mt-1 leading-tight">{sub}</p>
@@ -193,11 +193,11 @@ export default function ReturnReward() {
       {/* Eligibility */}
       <div className="px-5 mt-8">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Bag Eligibility</p>
-        <div className="bg-card border border-border/50 rounded-2xl p-4 space-y-3">
+        <div className="nuvira-premium-card border rounded-2xl p-4 space-y-3">
           {eligibility.map((item) => (
             <div key={item} className="flex items-center gap-3">
-              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <CheckCircle className="w-3 h-3 text-primary" />
+              <div className="w-5 h-5 rounded-full nuvira-icon-badge flex items-center justify-center shrink-0">
+                <CheckCircle className="w-3 h-3 text-white" />
               </div>
               <p className="text-sm">{item}</p>
             </div>
@@ -210,7 +210,7 @@ export default function ReturnReward() {
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Frequently Asked</p>
         <div className="space-y-2">
           {faqs.map(({ q, a }) => (
-            <div key={q} className="bg-card border border-border/50 rounded-2xl p-4">
+            <div key={q} className="nuvira-premium-card border rounded-2xl p-4">
               <div className="flex items-start gap-2.5 mb-1.5">
                 <HelpCircle className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
                 <p className="text-sm font-semibold">{q}</p>
@@ -225,7 +225,7 @@ export default function ReturnReward() {
       <div className="px-5 mt-10">
         {user ? (
           <Link to="/account">
-            <div className="bg-primary rounded-2xl p-5">
+            <div className="bg-nuvira-gradient rounded-2xl p-5 shadow-lg shadow-emerald-950/20">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Leaf className="w-4 h-4 text-primary-foreground/60" />
@@ -255,7 +255,7 @@ export default function ReturnReward() {
         ) : (
           <button
             onClick={() => redirectToLogin('/return-reward')}
-            className="w-full bg-primary rounded-2xl p-5 flex items-center gap-4 text-left"
+            className="w-full bg-nuvira-gradient rounded-2xl p-5 flex items-center gap-4 text-left shadow-lg shadow-emerald-950/20"
           >
             <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center shrink-0">
               <Leaf className="w-5 h-5 text-white" />

@@ -12,21 +12,18 @@ export default function MerchTeaser() {
       className="mx-5 mt-6"
     >
       <Link to="/merch">
-        <div className="relative bg-nuvira-gradient rounded-2xl p-5 overflow-hidden flex items-center justify-between shadow-lg">
-          {/* BG texture */}
+        <div className="relative bg-nuvira-gradient rounded-2xl p-5 overflow-hidden flex items-center justify-between shadow-lg shadow-emerald-950/20">          {/* BG texture */}
           <div className="absolute inset-0 opacity-10"
             style={{ backgroundImage: 'radial-gradient(circle at 80% 50%, hsl(var(--accent)) 0%, transparent 60%)' }}
           />
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-1">
-              <Shirt className="w-4 h-4 text-white/70" />
-              <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Coming Soon</span>
-            </div>
+              <Shirt className="w-4 h-4 text-white/75" />
+              <span className="text-[10px] font-bold text-white/65 uppercase tracking-widest">Coming Soon</span>            </div>
             <p className="font-heading text-lg font-bold text-white">NuVira Merch</p>
             <p className="text-xs text-white/70 mt-0.5">Gear for the wellness lifestyle.</p>
           </div>
-          <div className="relative z-10 flex items-center gap-1 text-white/80">
-            <span className="text-xs font-medium">Preview</span>
+          <div className="relative z-10 flex items-center gap-1 text-white/85">            <span className="text-xs font-medium">Preview</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </div>

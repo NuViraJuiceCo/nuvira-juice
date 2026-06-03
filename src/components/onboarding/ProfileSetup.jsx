@@ -81,7 +81,7 @@ export default function ProfileSetup({ onComplete }) {
 
   if (done) {
     return (
-      <div className="fixed inset-0 z-[100] bg-primary flex flex-col items-center justify-center px-8 text-center">
+      <div className="fixed inset-0 z-[100] bg-nuvira-gradient flex flex-col items-center justify-center px-8 text-center">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }}>
           <CheckCircle2 className="w-16 h-16 text-white mb-4" />
         </motion.div>
@@ -104,7 +104,7 @@ export default function ProfileSetup({ onComplete }) {
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
       {/* Header */}
-      <div className="px-6 pt-10 pb-6 bg-primary shrink-0">
+      <div className="px-6 pt-10 pb-6 bg-nuvira-gradient shrink-0">
         {/* Progress dots */}
         <div className="flex gap-1.5 mb-5">
           <div className={`h-1 rounded-full flex-1 transition-all duration-500 bg-white ${step >= 1 ? 'opacity-100' : 'opacity-30'}`} />
@@ -172,7 +172,7 @@ export default function ProfileSetup({ onComplete }) {
               <Button
                 onClick={handleNameNext}
                 disabled={!canSubmitName}
-                className="w-full h-12 rounded-xl font-semibold text-base mt-2"
+                className="nuvira-gradient-button w-full h-12 rounded-xl font-semibold text-base mt-2"
               >
                 Continue →
               </Button>
@@ -203,7 +203,7 @@ export default function ProfileSetup({ onComplete }) {
               <Button
                 onClick={handleSubmit}
                 disabled={!canSubmitEmail || saving}
-                className="w-full h-12 rounded-xl font-semibold text-base"
+                className="nuvira-gradient-button w-full h-12 rounded-xl font-semibold text-base"
               >
                 {saving ? 'Saving...' : 'Get Started →'}
               </Button>

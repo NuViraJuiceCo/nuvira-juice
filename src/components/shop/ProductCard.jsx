@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
@@ -49,7 +49,7 @@ export default function ProductCard({ product, compact = false }) {
         <motion.div
             whileTap={{ scale: 0.94 }}
             transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            className="bg-card rounded-2xl border border-border/50 overflow-hidden shadow-md"
+            className="rounded-2xl border overflow-hidden shadow-md nuvira-premium-card"
             style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
         >
           <div className="relative overflow-hidden" style={{ aspectRatio: '1/1' }}>
@@ -103,7 +103,7 @@ export default function ProductCard({ product, compact = false }) {
       <motion.div
          whileTap={{ scale: 0.97 }}
          transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-         className="bg-card rounded-xl border border-border/50 overflow-hidden shadow-md"
+         className="rounded-xl border overflow-hidden shadow-md nuvira-premium-card"
          style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
       >
         <div className="aspect-[4/3] bg-secondary/50 relative overflow-hidden">

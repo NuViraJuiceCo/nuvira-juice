@@ -55,8 +55,8 @@ export default function WaitlistForm({ zip, onSuccess, onBack }) {
         animate={{ opacity: 1, y: 0 }}
         className="p-5 text-center"
       >
-        <div className="w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mx-auto mb-3 border border-primary/20">
-          <CheckCircle className="w-6 h-6 text-primary" />
+        <div className="w-12 h-12 rounded-full nuvira-icon-badge flex items-center justify-center mx-auto mb-3">
+          <CheckCircle className="w-6 h-6 text-white" />
         </div>
         <p className="font-heading text-base font-bold text-foreground mb-1">You're On The List</p>
         <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto">
@@ -64,7 +64,7 @@ export default function WaitlistForm({ zip, onSuccess, onBack }) {
         </p>
         <div className="flex gap-2 mt-4">
           <Link to="/shop" className="flex-1">
-            <button className="w-full h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold active:scale-[0.98] transition-transform">
+            <button className="w-full h-10 rounded-xl nuvira-gradient-button text-sm font-semibold active:scale-[0.98] transition-transform">
               Continue Browsing
             </button>
           </Link>
@@ -120,7 +120,7 @@ export default function WaitlistForm({ zip, onSuccess, onBack }) {
       <button
         onClick={handleSubmit}
         disabled={submitting}
-        className="w-full h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold mt-4 disabled:opacity-60 active:scale-[0.98] transition-transform"
+        className="w-full h-11 rounded-xl nuvira-gradient-button text-sm font-semibold mt-4 disabled:opacity-60 active:scale-[0.98] transition-transform"
       >
         {submitting ? (
           <span className="flex items-center justify-center gap-2">

@@ -97,8 +97,8 @@ export default function DeliveryAvailabilityCard() {
               className="p-5"
             >
               <div className="flex items-start gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0 border border-primary/20">
-                  <CheckCircle className="w-5 h-5 text-primary" />
+                <div className="w-10 h-10 rounded-xl nuvira-icon-badge flex items-center justify-center shrink-0">
+                  <CheckCircle className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-heading text-base font-bold text-foreground leading-snug">
@@ -111,7 +111,7 @@ export default function DeliveryAvailabilityCard() {
               </div>
               <div className="flex gap-2 mt-4">
                 <Link to="/shop" className="flex-1">
-                  <button className="w-full h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
+                  <button className="w-full h-10 rounded-xl nuvira-gradient-button text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
                     Start My Order <ArrowRight className="w-4 h-4" />
                   </button>
                 </Link>

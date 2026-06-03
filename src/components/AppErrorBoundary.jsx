@@ -34,7 +34,7 @@ export default class AppErrorBoundary extends React.Component {
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
         <div className="w-full max-w-sm text-center">
           <img src={LOGO_URL} alt="NuVira Juice Company" className="mx-auto mb-6 h-9 opacity-90" />
-          <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+          <div className="nuvira-premium-card rounded-3xl p-5">
             <h1 className="font-heading text-2xl font-bold">Refresh Needed</h1>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               The app hit a loading issue. Refreshing will reopen NuVira from a clean home state.
@@ -42,7 +42,7 @@ export default class AppErrorBoundary extends React.Component {
             <button
               type="button"
               onClick={this.handleReload}
-              className="mt-5 h-11 w-full rounded-2xl bg-primary text-sm font-semibold text-primary-foreground"
+              className="nuvira-gradient-button mt-5 h-11 w-full rounded-2xl text-sm font-semibold"
             >
               Reopen App
             </button>

@@ -375,7 +375,7 @@ function RouteOptimizationPanel({ deliveryDate, stops }) {
           type="button"
           onClick={previewRoute}
           disabled={pending || stops.length === 0 || eligibleStops.length < 2}
-          className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+          className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
         >
           {pending ? 'Optimizing...' : 'Preview Route'}
         </button>
@@ -573,7 +573,7 @@ function DriverAssignmentControls({ stop, onAssignmentSuccess }) {
             type="button"
             onClick={() => runAssignment('assign')}
             disabled={pending}
-            className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+            className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
           >
             {pending ? 'Saving...' : 'Assign'}
           </button>
@@ -583,7 +583,7 @@ function DriverAssignmentControls({ stop, onAssignmentSuccess }) {
             type="button"
             onClick={() => runAssignment('reassign')}
             disabled={pending}
-            className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+            className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
           >
             {pending ? 'Saving...' : 'Reassign'}
           </button>
@@ -695,7 +695,7 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
           type="button"
           onClick={markDelivered}
           disabled={deliveredPending}
-          className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+          className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
         >
           {deliveredPending ? 'Saving...' : 'Mark Delivered'}
         </button>
@@ -706,7 +706,7 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
           type="button"
           onClick={markOutForDelivery}
           disabled={outForDeliveryPending}
-          className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+          className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
         >
           {outForDeliveryPending ? 'Saving...' : 'Mark Out For Delivery'}
         </button>
@@ -875,7 +875,7 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
             onClick={() => runPreview(action.key)}
             className={`h-9 rounded-lg border px-2 text-xs font-semibold ${
               activeAction === action.key
-                ? 'bg-primary text-primary-foreground border-primary'
+                ? 'bg-nuvira-gradient text-white border-primary'
                 : 'bg-card text-foreground border-border disabled:opacity-50'
             }`}
           >
@@ -956,7 +956,7 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
               type="button"
               onClick={() => runNative(activeAction)}
               disabled={!canExecuteNative || actionPending}
-              className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+              className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
             >
               {actionPending ? 'Running...' : `Run Native ${formatLabel(activeAction)}`}
             </button>
@@ -1122,7 +1122,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
           type="button"
           disabled={!canRun}
           onClick={runCorrection}
-          className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+          className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
         >
           {actionPending ? 'Running...' : 'Run Schedule Correction'}
         </button>
@@ -1339,7 +1339,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
           type="button"
           disabled={!canRun}
           onClick={runMaterialization}
-          className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+          className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
         >
           {actionPending ? 'Running...' : 'Run Native Task Create'}
         </button>

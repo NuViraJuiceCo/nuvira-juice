@@ -134,7 +134,7 @@ export default function WhyNuVira() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-card rounded-2xl border border-border/40 px-4"
+          className="nuvira-premium-card rounded-2xl px-4"
         >
           {sections.map(s => <AccordionItem key={s.title} {...s} />)}
         </motion.div>
@@ -142,7 +142,7 @@ export default function WhyNuVira() {
         {/* CTA */}
         <div className="text-center pb-4">
           <Link to="/shop">
-            <Button className="rounded-full px-8">Shop Now</Button>
+            <Button className="nuvira-gradient-button rounded-full px-8">Shop Now</Button>
           </Link>
         </div>
       </div>

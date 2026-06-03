@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Mail, Phone, MapPin, Clock, Send } from 'lucide-react';
+import { ArrowLeft, Mail, MapPin, Clock, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,9 +61,9 @@ export default function Contact() {
 
         {/* Contact Info */}
         <div className="grid grid-cols-1 gap-3">
-          <div className="flex items-center gap-3 p-4 bg-card border border-border/50 rounded-2xl">
-            <div className="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-              <Mail className="w-4 h-4 text-primary" />
+          <div className="nuvira-premium-card flex items-center gap-3 p-4 rounded-2xl">
+            <div className="nuvira-icon-badge w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+              <Mail className="w-4 h-4" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Email</p>
@@ -71,9 +71,9 @@ export default function Contact() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 p-4 bg-card border border-border/50 rounded-2xl">
-            <div className="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-              <MapPin className="w-4 h-4 text-primary" />
+          <div className="nuvira-premium-card flex items-center gap-3 p-4 rounded-2xl">
+            <div className="nuvira-icon-badge w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+              <MapPin className="w-4 h-4" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Location</p>
@@ -82,9 +82,9 @@ export default function Contact() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 p-4 bg-card border border-border/50 rounded-2xl">
-            <div className="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-              <Clock className="w-4 h-4 text-primary" />
+          <div className="nuvira-premium-card flex items-center gap-3 p-4 rounded-2xl">
+            <div className="nuvira-icon-badge w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+              <Clock className="w-4 h-4" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Response Time</p>
@@ -95,7 +95,7 @@ export default function Contact() {
         </div>
 
         {/* Contact Form */}
-        <div className="bg-card border border-border/50 rounded-2xl p-5">
+        <div className="nuvira-premium-card rounded-2xl p-5">
           <h2 className="font-heading text-base font-semibold mb-4">Send a Message</h2>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
@@ -136,7 +136,7 @@ export default function Contact() {
                 rows="4"
               />
             </div>
-            <Button type="submit" disabled={sending} className="w-full h-10 rounded-lg">
+            <Button type="submit" disabled={sending} className="nuvira-gradient-button w-full h-10 rounded-lg">
               <Send className="w-3.5 h-3.5 mr-2" />
               {sending ? 'Sending...' : 'Send Message'}
             </Button>

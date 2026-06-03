@@ -100,7 +100,7 @@ function ReturnCard({ ret, verificationFrozen }) {
                       <div className="flex gap-2 flex-wrap">
                         {[['accepted', 'Found & Accepted'], ['not_eligible', 'Not Eligible'], ['not_found', 'Not Found']].map(([v, l]) => (
                           <button key={v} onClick={() => setSmallStatus(v)}
-                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${smallStatus === v ? 'bg-primary text-primary-foreground border-primary' : 'border-border bg-background'}`}>
+                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${smallStatus === v ? 'bg-nuvira-gradient text-white border-primary' : 'border-border bg-background'}`}>
                             {l}
                           </button>
                         ))}
@@ -113,7 +113,7 @@ function ReturnCard({ ret, verificationFrozen }) {
                       <div className="flex gap-2 flex-wrap">
                         {[['accepted', 'Found & Accepted'], ['not_eligible', 'Not Eligible'], ['not_found', 'Not Found']].map(([v, l]) => (
                           <button key={v} onClick={() => setToteStatus(v)}
-                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${toteStatus === v ? 'bg-primary text-primary-foreground border-primary' : 'border-border bg-background'}`}>
+                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${toteStatus === v ? 'bg-nuvira-gradient text-white border-primary' : 'border-border bg-background'}`}>
                             {l}
                           </button>
                         ))}
@@ -155,7 +155,7 @@ function ReturnCard({ ret, verificationFrozen }) {
                   <button
                     onClick={handleSubmit}
                     disabled={verificationFrozen}
-                    className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
+                    className="w-full py-3 bg-nuvira-gradient text-white rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
                   >
                     {verificationFrozen ? 'Verification Frozen' : 'Submit Verification'}
                   </button>
@@ -266,7 +266,7 @@ export default function BagReturnAdmin() {
           <button
             key={tab.key}
             onClick={() => setFilter(tab.key)}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${filter === tab.key ? 'bg-nuvira-gradient text-white' : 'bg-secondary text-secondary-foreground'}`}
           >
             {tab.label}
           </button>

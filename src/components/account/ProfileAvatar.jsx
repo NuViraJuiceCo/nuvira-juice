@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { User, Camera, X, Loader2, Crown } from 'lucide-react';
+import { Camera, X, Loader2, Crown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
@@ -169,7 +169,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
         <button
           onClick={handleOpenMenu}
           disabled={isUploading}
-          className={`${sizeClasses[size]} rounded-full bg-gradient-to-br from-primary/25 via-primary/15 to-accent/15 border-2 border-primary/30 dark:border-primary/40 shadow-lg overflow-hidden relative group hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center`}
+          className={`${sizeClasses[size]} rounded-full bg-nuvira-gradient-soft border-2 border-primary/30 dark:border-primary/40 shadow-lg overflow-hidden relative group hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center`}
         >
           {hasPhoto && !isUploading ? (
             <img
@@ -200,7 +200,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
 
         {/* Camera/Edit Icon - top-right, always visible for large avatars */}
         {size === 'large' && !isUploading && (
-          <div className="absolute top-0 right-0 w-6 h-6 bg-primary rounded-full border-2 border-card flex items-center justify-center shadow-md">
+          <div className="nuvira-icon-badge absolute top-0 right-0 w-6 h-6 rounded-full border-2 border-card flex items-center justify-center shadow-md">
             <Camera className="w-3 h-3 text-white" />
           </div>
         )}
@@ -242,8 +242,8 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
                     disabled={isUploading}
                     className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border/40 bg-card hover:bg-secondary/20 transition-colors disabled:opacity-50"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
-                      <Camera className="w-4 h-4 text-primary" />
+                    <div className="nuvira-icon-badge w-9 h-9 rounded-lg flex items-center justify-center shrink-0">
+                      <Camera className="w-4 h-4" />
                     </div>
                     <div className="flex-1 text-left">
                       <p className="text-sm font-semibold">

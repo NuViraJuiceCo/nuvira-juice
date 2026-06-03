@@ -366,7 +366,7 @@ export default function POSOrders() {
                 onClick={() => setPreset(option.value)}
                 className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
                   preset === option.value
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? 'bg-nuvira-gradient text-white border-primary'
                     : 'bg-background text-muted-foreground border-border hover:text-foreground'
                 }`}
               >
@@ -410,7 +410,7 @@ export default function POSOrders() {
                 rangeError
                   ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
                   : preset === 'custom' && appliedDateFrom === dateFrom && appliedDateTo === dateTo
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? 'bg-nuvira-gradient text-white border-primary'
                     : 'bg-background text-muted-foreground border-border hover:text-foreground'
               }`}
             >
