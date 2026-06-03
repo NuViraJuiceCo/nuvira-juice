@@ -9,12 +9,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Set your SHOPIFY_WEBHOOK_SECRET in secrets for verification.
  */
 
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
-const ENABLE_MAY30_NATIVE_ORDER_OPS = Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
 const MAY30_NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
-const ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER = Deno.env.get('ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER') === 'true';
-const SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS = Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS') || 'orders/create,orders/paid';
-const SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST = Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST') || '';
 const SHOPIFY_WEBHOOK_SECRET_ENV_NAMES = [
   'SHOPIFY_WEBHOOK_SECRET',
   'SHOPIFY_WEBHOOK_SIGNING_SECRET',
@@ -24,6 +19,25 @@ const SHOPIFY_WEBHOOK_SECRET_ENV_NAMES = [
   'SHOPIFY_SHARED_SECRET',
   'SHOPIFY_APP_SECRET',
 ];
+
+function getCustomerAppSyncSecret() {
+  return Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
+}
+
+function isMay30NativeOrderOpsEnabled() {
+  return Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
+}
+
+function getShopifyNativeSafeSyncBridgeConfig() {
+  // Read bridge gates per request. This avoids stale Base44 runtime snapshots
+  // when exact order allowlists or kill switches are changed for a pilot.
+  return {
+    enabled: Deno.env.get('ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER') === 'true',
+    topics: Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS') || 'orders/create,orders/paid',
+    orderAllowlist: Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST') || '',
+    customerAppSyncSecret: getCustomerAppSyncSecret(),
+  };
+}
 
 function shopifyWebhookSecretCandidates() {
   // Keep literal env reads so Base44 can attach referenced secrets, while still
@@ -238,13 +252,13 @@ function nativeSafeSyncIdentifiers(record) {
   ].map(normalizeKey).filter(Boolean);
 }
 
-function isNativeSafeSyncTopicAllowed(topic) {
-  const allowed = parseCsvSet(SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS);
+function isNativeSafeSyncTopicAllowed(topic, config) {
+  const allowed = parseCsvSet(config?.topics);
   return allowed.size > 0 && allowed.has(normalizeKey(topic));
 }
 
-function isNativeSafeSyncOrderAllowlisted(record) {
-  const allowed = parseCsvSet(SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST);
+function isNativeSafeSyncOrderAllowlisted(record, config) {
+  const allowed = parseCsvSet(config?.orderAllowlist);
   if (allowed.size === 0) return false;
   return nativeSafeSyncIdentifiers(record).some(identifier => allowed.has(identifier));
 }
@@ -265,6 +279,20 @@ function nativeSafeSyncPayload(record) {
   delete payload.updated_by;
   delete payload.shopify_raw_payload;
   return payload;
+}
+
+function webhookPayloadPreview({ topic, payload, shopifyOrderId, orderNumber }) {
+  const fieldsPresent = Object.keys(payload || {}).sort().slice(0, 50);
+  return JSON.stringify({
+    payload_type: 'shopify_webhook_redacted_summary',
+    topic,
+    shopify_order_id: shopifyOrderId || null,
+    shopify_order_number: orderNumber || null,
+    source_name: safeLogText(payload?.source_name, 80) || null,
+    financial_status: safeLogText(payload?.financial_status, 80) || null,
+    fulfillment_status: safeLogText(payload?.fulfillment_status, 80) || null,
+    fields_present: fieldsPresent,
+  }).substring(0, 500);
 }
 
 function nativeSafeSyncHandled(result) {
@@ -290,13 +318,14 @@ async function refetchShopifyOrder(base44, record) {
 }
 
 async function maybeRunNativeSafeSyncWriter(base44, { record, topic }) {
-  if (!ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER) {
+  const config = getShopifyNativeSafeSyncBridgeConfig();
+  if (!config.enabled) {
     return { attempted: false, handled: false, reason: 'bridge_disabled' };
   }
-  if (!isNativeSafeSyncTopicAllowed(topic)) {
+  if (!isNativeSafeSyncTopicAllowed(topic, config)) {
     return { attempted: false, handled: false, reason: 'topic_not_allowed' };
   }
-  if (!isNativeSafeSyncOrderAllowlisted(record)) {
+  if (!isNativeSafeSyncOrderAllowlisted(record, config)) {
     return { attempted: false, handled: false, reason: 'order_not_allowlisted' };
   }
 
@@ -313,7 +342,7 @@ async function maybeRunNativeSafeSyncWriter(base44, { record, topic }) {
       event_type: eventType,
       request_id: requestId,
       idempotency_key: idempotencyKey,
-      internal_secret: CUSTOMER_APP_SYNC_SECRET,
+      internal_secret: config.customerAppSyncSecret,
       incoming_payload: nativeSafeSyncPayload(record),
     });
     const result = response?.data || response || {};
@@ -416,7 +445,7 @@ Deno.serve(async (req) => {
     shopify_order_id: shopifyOrderId,
     shopify_order_number: orderNumber,
     status: 'received',
-    payload_preview: bodyText.substring(0, 500),
+    payload_preview: webhookPayloadPreview({ topic, payload, shopifyOrderId, orderNumber }),
   });
 
   console.log(`Webhook received: ${topic} | Order: ${orderNumber}`);
@@ -770,7 +799,7 @@ function uniqueTags(values) {
 }
 
 function may30NativeRefundSourceForOrder(record) {
-  if (!ENABLE_MAY30_NATIVE_ORDER_OPS) return null;
+  if (!isMay30NativeOrderOpsEnabled()) return null;
   if (record?.is_subscription || record?.source_channel === 'subscription' || record?.order_type === 'subscription') {
     return null;
   }
@@ -803,7 +832,7 @@ async function maybeRunMay30NativeRefundMirror(base44, record, topic, payload) {
       },
       request_id: `shopifyWebhookReceiver:${topic}:${orderKey}`,
       idempotency_key: `may30_native_order_ops:${source}:refund:${orderKey}`,
-      internal_secret: CUSTOMER_APP_SYNC_SECRET,
+      internal_secret: getCustomerAppSyncSecret(),
     });
     const result = response?.data || response;
     console.log(`[May30 native refund mirror] source=${source} order=${orderKey} action=${result?.action || 'unknown'} success=${result?.success === true}`);
@@ -1077,7 +1106,7 @@ function webhookDescription({ topic, nativeOpsAttempted, nativeOpsResult }) {
     return 'Webhook processed. May 30 native order ops not applicable for this topic.';
   }
 
-  if (!ENABLE_MAY30_NATIVE_ORDER_OPS) {
+  if (!isMay30NativeOrderOpsEnabled()) {
     return 'Webhook processed. May 30 native order ops is disabled; Hub bridge/fallback remains available.';
   }
 
@@ -1097,7 +1126,7 @@ function webhookDescription({ topic, nativeOpsAttempted, nativeOpsResult }) {
 }
 
 function may30NativeSourceForOrder(record, topic) {
-  if (!ENABLE_MAY30_NATIVE_ORDER_OPS) return null;
+  if (!isMay30NativeOrderOpsEnabled()) return null;
   if (!MAY30_NATIVE_ORDER_TOPICS.has(topic)) return null;
   if (record?.is_subscription || record?.source_channel === 'subscription' || record?.order_type === 'subscription') {
     return null;
@@ -1128,7 +1157,7 @@ async function maybeRunMay30NativeOrderOps(base44, record, topic) {
       order: record,
       request_id: `shopifyWebhookReceiver:${topic}:${orderKey}`,
       idempotency_key: `may30_native_order_ops:${source}:${orderKey}`,
-      internal_secret: CUSTOMER_APP_SYNC_SECRET,
+      internal_secret: getCustomerAppSyncSecret(),
     });
     const result = response?.data || response;
     console.log(`[May30 native order ops] source=${source} order=${orderKey} action=${result?.action || 'unknown'} success=${result?.success === true}`);

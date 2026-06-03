@@ -1,14 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const ENABLE_NATIVE_SAFE_SYNC_WRITER = Deno.env.get('ENABLE_NATIVE_SAFE_SYNC_WRITER') === 'true';
-const NATIVE_SAFE_SYNC_WRITER_KILL_SWITCH = Deno.env.get('NATIVE_SAFE_SYNC_WRITER_KILL_SWITCH') === 'true';
-const NATIVE_SAFE_SYNC_WRITER_SECRET = Deno.env.get('NATIVE_SAFE_SYNC_WRITER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
-const NATIVE_SAFE_SYNC_WRITER_ALLOWED_SOURCES = Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ALLOWED_SOURCES') || '';
-const NATIVE_SAFE_SYNC_WRITER_ALLOWED_EVENTS = Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ALLOWED_EVENTS') || '';
-const NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST = Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST') || '';
-
 const DEFAULT_ALLOWED_EVENTS = new Set(['order.created', 'order.updated', 'order.mirrored', 'manual.safe_sync']);
 const MAX_SAFE_ARRAY = 40;
+
+function getNativeSafeSyncWriterConfig() {
+  // Read gates per request so Base44 runtime artifact/env propagation issues
+  // cannot leave native writer controls stuck on a stale module snapshot.
+  return {
+    enabled: Deno.env.get('ENABLE_NATIVE_SAFE_SYNC_WRITER') === 'true',
+    killSwitch: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_KILL_SWITCH') === 'true',
+    secret: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '',
+    allowedSources: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ALLOWED_SOURCES') || '',
+    allowedEvents: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ALLOWED_EVENTS') || '',
+    orderAllowlist: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST') || '',
+  };
+}
 
 function normalizeText(value) {
   return (value ?? '').toString().trim();
@@ -67,19 +73,19 @@ function getOrderIdentifiers(order) {
   ].map(normalizeLower).filter(Boolean);
 }
 
-function isOrderAllowlisted(order) {
-  const allowed = parseCsvSet(NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST);
+function isOrderAllowlisted(order, config) {
+  const allowed = parseCsvSet(config?.orderAllowlist);
   if (allowed.size === 0) return false;
   return getOrderIdentifiers(order).some(identifier => allowed.has(identifier));
 }
 
-function isSourceAllowed(source) {
-  const allowed = parseCsvSet(NATIVE_SAFE_SYNC_WRITER_ALLOWED_SOURCES);
+function isSourceAllowed(source, config) {
+  const allowed = parseCsvSet(config?.allowedSources);
   return allowed.size > 0 && allowed.has(normalizeLower(source));
 }
 
-function isEventAllowed(eventType, mode) {
-  const allowed = parseCsvSet(NATIVE_SAFE_SYNC_WRITER_ALLOWED_EVENTS);
+function isEventAllowed(eventType, mode, config) {
+  const allowed = parseCsvSet(config?.allowedEvents);
   if (allowed.size > 0) return allowed.has(normalizeLower(eventType));
   if (mode === 'live') return false;
   return DEFAULT_ALLOWED_EVENTS.has(normalizeLower(eventType));
@@ -96,11 +102,12 @@ async function readJsonBody(req) {
   }
 }
 
-async function resolveAuth({ base44, req, body, mode }) {
+async function resolveAuth({ base44, req, body, mode, config }) {
   const authHeader = req.headers.get('authorization') || '';
   const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
   const bodySecret = normalizeText(body?.internal_secret || body?._internal_secret);
-  if (NATIVE_SAFE_SYNC_WRITER_SECRET && (bearer === NATIVE_SAFE_SYNC_WRITER_SECRET || bodySecret === NATIVE_SAFE_SYNC_WRITER_SECRET)) {
+  const writerSecret = config?.secret || '';
+  if (writerSecret && (bearer === writerSecret || bodySecret === writerSecret)) {
     return { ok: true, actor_type: 'system', actor_role: 'service', actor_email: 'system' };
   }
 
@@ -296,8 +303,9 @@ Deno.serve(async (req) => {
       : (body.order && typeof body.order === 'object' ? body.order : {});
     const idempotencyKey = sanitizeText(body.idempotency_key || body.request_id || `native_safe_sync:${Date.now()}`, 180);
     const requestId = sanitizeText(body.request_id, 160) || idempotencyKey;
+    const writerConfig = getNativeSafeSyncWriterConfig();
 
-    const auth = await resolveAuth({ base44, req, body, mode });
+    const auth = await resolveAuth({ base44, req, body, mode, config: writerConfig });
     if (!auth.ok) {
       return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized' }, { status: 401 });
     }
@@ -306,7 +314,7 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error_code: 'invalid_request', message: 'source, event_type, and incoming_payload are required' }, { status: 400 });
     }
 
-    if (!isEventAllowed(eventType, mode)) {
+    if (!isEventAllowed(eventType, mode, writerConfig)) {
       return Response.json({ success: false, skipped: true, error_code: 'event_not_allowed', source, event_type: eventType });
     }
 
@@ -365,16 +373,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (NATIVE_SAFE_SYNC_WRITER_KILL_SWITCH) {
+    if (writerConfig.killSwitch) {
       return Response.json({ success: true, skipped: true, error_code: 'native_safe_sync_writer_kill_switch', writes_performed: false });
     }
-    if (!ENABLE_NATIVE_SAFE_SYNC_WRITER) {
+    if (!writerConfig.enabled) {
       return Response.json({ success: true, skipped: true, error_code: 'native_safe_sync_writer_disabled', writes_performed: false });
     }
-    if (!isSourceAllowed(source)) {
+    if (!isSourceAllowed(source, writerConfig)) {
       return Response.json({ success: true, skipped: true, error_code: 'source_not_allowed', source, writes_performed: false });
     }
-    if (!isOrderAllowlisted({ ...incoming, ...(existing || {}) })) {
+    if (!isOrderAllowlisted({ ...incoming, ...(existing || {}) }, writerConfig)) {
       return Response.json({ success: true, skipped: true, error_code: 'order_not_allowlisted', writes_performed: false });
     }
 

@@ -1,16 +1,32 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const HUB_API_URL              = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '')}/api/functions/receiveCustomerAppEvent`;
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
-const ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH = Deno.env.get('ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH') === 'true';
-const NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE') || '0';
-const NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES') || '';
-const NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS') || '';
-const NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST') || '';
-const NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE') || 'none';
-const NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH') === 'true';
-const NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG = Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG') === 'true';
-const ENABLE_MAY30_NATIVE_ORDER_OPS = Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
+function getHubApiUrl() {
+  const hubBaseUrl = (Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '');
+  return hubBaseUrl ? `${hubBaseUrl}/api/functions/receiveCustomerAppEvent` : '';
+}
+
+function getCustomerAppSyncSecret() {
+  return Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
+}
+
+function isMay30NativeOrderOpsEnabled() {
+  return Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
+}
+
+function getNativeSafeSyncDarkLaunchConfig() {
+  // Read dark-launch gates per request so Base44 runtime artifact/env
+  // propagation cannot leave allowlists or kill switches on stale values.
+  return {
+    enabled: Deno.env.get('ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH') === 'true',
+    sampleRate: Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE') || '0',
+    allowedSources: Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES') || '',
+    allowedEvents: Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS') || '',
+    orderAllowlist: Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST') || '',
+    loggingMode: Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE') || 'none',
+    killSwitch: Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH') === 'true',
+    returnDebug: Deno.env.get('NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG') === 'true',
+  };
+}
 
 /**
  * Syncs an app-originated order to the operations hub.
@@ -123,8 +139,8 @@ function getDarkLaunchOrderIdentifiers(order) {
   ].map(normalizeAllowlistValue).filter(Boolean);
 }
 
-function hasDarkLaunchOrderAllowlistMatch(order) {
-  const allowedOrders = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ORDER_ALLOWLIST);
+function hasDarkLaunchOrderAllowlistMatch(order, config = getNativeSafeSyncDarkLaunchConfig()) {
+  const allowedOrders = parseCsvSet(config?.orderAllowlist);
   if (allowedOrders.size === 0) return false;
 
   const identifiers = getDarkLaunchOrderIdentifiers(order);
@@ -137,10 +153,10 @@ function getSafeDarkLaunchOrderIdentifier(order) {
   return order?.order_number || order?.id || null;
 }
 
-function summarizeDarkLaunchComparison(comparison, skippedReason = null) {
+function summarizeDarkLaunchComparison(comparison, skippedReason = null, config = getNativeSafeSyncDarkLaunchConfig()) {
   if (skippedReason) {
     return {
-      enabled: ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH,
+      enabled: config.enabled,
       sampled: false,
       skipped_reason: skippedReason,
       native_writer_enabled: false,
@@ -166,18 +182,19 @@ function hasExplicitDarkLaunchDebugRequest(body) {
 }
 
 function shouldReturnDarkLaunchDebug({ body, payload, summary }) {
-  if (!NATIVE_SAFE_SYNC_DARK_LAUNCH_RETURN_DEBUG) return false;
+  const config = getNativeSafeSyncDarkLaunchConfig();
+  if (!config.returnDebug) return false;
   if (!hasExplicitDarkLaunchDebugRequest(body)) return false;
   if (!summary) return false;
-  if (!ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH) return false;
-  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH) return false;
-  if (!['none', 'persistent'].includes(NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE)) return false;
-  if (!hasDarkLaunchOrderAllowlistMatch(payload?.order)) return false;
+  if (!config.enabled) return false;
+  if (config.killSwitch) return false;
+  if (!['none', 'persistent'].includes(config.loggingMode)) return false;
+  if (!hasDarkLaunchOrderAllowlistMatch(payload?.order, config)) return false;
 
   const source = payload?.source || 'customer_app';
   const event = payload?.event || 'order.created';
-  const allowedSources = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES);
-  const allowedEvents = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS);
+  const allowedSources = parseCsvSet(config.allowedSources);
+  const allowedEvents = parseCsvSet(config.allowedEvents);
   if (!allowedSources.has(normalizeAllowlistValue(source))) return false;
   if (!allowedEvents.has(normalizeAllowlistValue(event))) return false;
 
@@ -185,6 +202,7 @@ function shouldReturnDarkLaunchDebug({ body, payload, summary }) {
 }
 
 function sanitizeDarkLaunchDebugSummary(summary, payload) {
+  const config = getNativeSafeSyncDarkLaunchConfig();
   return {
     enabled: summary?.enabled === true,
     sampled: summary?.sampled === true,
@@ -199,7 +217,7 @@ function sanitizeDarkLaunchDebugSummary(summary, payload) {
     order_identifier: getSafeDarkLaunchOrderIdentifier(payload?.order),
     native_writer_enabled: false,
     hub_remains_live_writer: true,
-    persistent_logging_enabled: NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE === 'persistent',
+    persistent_logging_enabled: config.loggingMode === 'persistent',
     persistent_logging_status: summary?.persistent_logging_status || 'not_attempted',
   };
 }
@@ -252,7 +270,8 @@ function getSafeRejectedFields(nativeResult) {
 }
 
 async function persistSafeSyncParityLog({ base44, payload, source, event, hubAction, logStatus, summary, comparison, nativeResult, idempotencyKey }) {
-  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE !== 'persistent') {
+  const config = getNativeSafeSyncDarkLaunchConfig();
+  if (config.loggingMode !== 'persistent') {
     return { attempted: false, status: 'disabled' };
   }
   if (!summary?.sampled) {
@@ -295,24 +314,25 @@ async function persistSafeSyncParityLog({ base44, payload, source, event, hubAct
 }
 
 async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, logStatus }) {
-  if (!ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH) return null;
-  if (NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH) return summarizeDarkLaunchComparison(null, 'kill_switch');
-  if (!['none', 'persistent'].includes(NATIVE_SAFE_SYNC_DARK_LAUNCH_LOGGING_MODE)) return summarizeDarkLaunchComparison(null, 'unsupported_logging_mode');
+  const config = getNativeSafeSyncDarkLaunchConfig();
+  if (!config.enabled) return null;
+  if (config.killSwitch) return summarizeDarkLaunchComparison(null, 'kill_switch', config);
+  if (!['none', 'persistent'].includes(config.loggingMode)) return summarizeDarkLaunchComparison(null, 'unsupported_logging_mode', config);
 
   const source = payload?.source || 'customer_app';
   const event = payload?.event || 'order.created';
   const normalizedSource = normalizeAllowlistValue(source);
   const normalizedEvent = normalizeAllowlistValue(event);
-  const allowedSources = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_SOURCES);
-  const allowedEvents = parseCsvSet(NATIVE_SAFE_SYNC_DARK_LAUNCH_ALLOWED_EVENTS);
-  if (!allowedSources.has(normalizedSource)) return summarizeDarkLaunchComparison(null, 'source_not_allowlisted');
-  if (!allowedEvents.has(normalizedEvent)) return summarizeDarkLaunchComparison(null, 'event_not_allowlisted');
-  if (normalizedEvent !== 'order.created') return summarizeDarkLaunchComparison(null, 'event_out_of_scope');
-  if (!hasDarkLaunchOrderAllowlistMatch(payload?.order)) return summarizeDarkLaunchComparison(null, 'no_order_allowlist_match');
+  const allowedSources = parseCsvSet(config.allowedSources);
+  const allowedEvents = parseCsvSet(config.allowedEvents);
+  if (!allowedSources.has(normalizedSource)) return summarizeDarkLaunchComparison(null, 'source_not_allowlisted', config);
+  if (!allowedEvents.has(normalizedEvent)) return summarizeDarkLaunchComparison(null, 'event_not_allowlisted', config);
+  if (normalizedEvent !== 'order.created') return summarizeDarkLaunchComparison(null, 'event_out_of_scope', config);
+  if (!hasDarkLaunchOrderAllowlistMatch(payload?.order, config)) return summarizeDarkLaunchComparison(null, 'no_order_allowlist_match', config);
 
-  const sampleRate = parseSampleRate(NATIVE_SAFE_SYNC_DARK_LAUNCH_SAMPLE_RATE);
+  const sampleRate = parseSampleRate(config.sampleRate);
   const sampleKey = payload?.order?.id || payload?.order?.order_number || payload?.order?.stripe_checkout_session_id || '';
-  if (stableBucket(sampleKey) >= sampleRate) return summarizeDarkLaunchComparison(null, 'not_sampled');
+  if (stableBucket(sampleKey) >= sampleRate) return summarizeDarkLaunchComparison(null, 'not_sampled', config);
 
   try {
     const idempotencyKey = `syncOrderToHub:${payload?.order?.id || payload?.order?.order_number || 'unknown'}`;
@@ -439,7 +459,7 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
 }
 
 async function maybeRunMay30NativeOrderOps({ base44, payload, body }) {
-  if (!ENABLE_MAY30_NATIVE_ORDER_OPS) return null;
+  if (!isMay30NativeOrderOpsEnabled()) return null;
   const eventType = payload?.event || 'order.created';
   if (eventType !== 'order.created' && eventType !== 'order.refunded') return { skipped: true, reason: 'event_out_of_scope' };
   if (payload?.order?.order_type === 'subscription' || payload?.order?.stripe_subscription_id) {
@@ -458,7 +478,7 @@ async function maybeRunMay30NativeOrderOps({ base44, payload, body }) {
       order: payload.order,
       request_id: `syncOrderToHub:${eventType}:${payload?.order?.id || payload?.order?.order_number || Date.now()}`,
       idempotency_key: `may30_native_order_ops:customer_app_one_time:${eventType}:${orderNumber}${refundSuffix}`,
-      internal_secret: CUSTOMER_APP_SYNC_SECRET,
+      internal_secret: getCustomerAppSyncSecret(),
     });
     const result = response?.data || response;
     console.log(`[May30 native order ops] order=${payload?.order?.order_number || 'unknown'} action=${result?.action || 'unknown'} success=${result?.success === true}`);
@@ -508,6 +528,9 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'No order data' }, { status: 400 });
   }
 
+  const hubApiUrl = getHubApiUrl();
+  const customerAppSyncSecret = getCustomerAppSyncSecret();
+
   // HARD GATE: Never sync unpaid, pending, or abandoned checkout orders to Hub.
   // Only payment_captured=true + payment_status='paid' orders may enter Hub operational flow.
   // EXCEPT: Refunded orders (payment_status='refunded') — these MUST sync to Hub to cancel production/fulfillment
@@ -548,7 +571,7 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Fake Stripe IDs blocked' }, { status: 400 });
   }
 
-  if (!HUB_API_URL) {
+  if (!hubApiUrl) {
     console.log('syncOrderToHub: HUB_API_URL not set, skipping');
     return Response.json({ success: true, skipped: true });
   }
@@ -730,16 +753,16 @@ Deno.serve(async (req) => {
     // Log refund-specific details
     if (eventType === 'order.refunded') {
       console.log(`[syncOrderToHub:REFUND] Sending order.refunded event for ${order.order_number}`);
-      console.log(`[syncOrderToHub:REFUND] Endpoint: ${HUB_API_URL}`);
-      console.log(`[syncOrderToHub:REFUND] Auth: Authorization: Bearer ${(CUSTOMER_APP_SYNC_SECRET || 'NOT_SET').substring(0,20)}...`);
+      console.log(`[syncOrderToHub:REFUND] Endpoint: ${hubApiUrl}`);
+      console.log(`[syncOrderToHub:REFUND] Auth configured: ${customerAppSyncSecret ? 'yes' : 'no'}`);
       console.log(`[syncOrderToHub:REFUND] Refund details: amount=$${order.refund_amount}, id=${order.refund_id}, full=${!order.is_partial_refund}`);
     }
 
-    const response = await fetch(HUB_API_URL, {
+    const response = await fetch(hubApiUrl, {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
-        'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        'Authorization': `Bearer ${customerAppSyncSecret}`,
       },
       body: JSON.stringify(payload),
     });
