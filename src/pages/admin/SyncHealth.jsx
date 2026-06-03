@@ -110,7 +110,7 @@ function statusClass(value) {
   const key = (value || '').toString().toLowerCase();
   if (key.includes('success') || key.includes('active')) return 'bg-emerald-50 text-emerald-700 border-emerald-100';
   if (key.includes('fail') || key.includes('error')) return 'bg-red-50 text-red-700 border-red-100';
-  if (key.includes('pending') || key.includes('stale')) return 'bg-amber-50 text-amber-800 border-amber-100';
+  if (key.includes('pending') || key.includes('stale')) return 'bg-cyan-50 text-cyan-800 border-cyan-100';
   if (key.includes('deprecated') || key.includes('disabled')) return 'bg-secondary text-secondary-foreground border-border/50';
   return 'bg-blue-50 text-blue-700 border-blue-100';
 }
@@ -127,7 +127,7 @@ function StatCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefr
   const toneClass = {
     default: 'border-border/50 bg-card',
     success: 'border-emerald-100 bg-emerald-50/60',
-    warning: 'border-amber-100 bg-amber-50/60',
+    warning: 'border-cyan-100 bg-cyan-50/60',
     danger: 'border-red-100 bg-red-50/60',
     info: 'border-blue-100 bg-blue-50/60',
   }[tone] || 'border-border/50 bg-card';
@@ -284,11 +284,11 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
       )}
 
       {preview && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+        <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <p className="text-xs font-bold text-amber-950">Historical POS test cancellation candidates</p>
-              <p className="text-[10px] text-amber-800 mt-0.5">
+              <p className="text-xs font-bold text-cyan-950">Historical POS test cancellation candidates</p>
+              <p className="text-[10px] text-cyan-800 mt-0.5">
                 These rows are treated as archived/canceled historical POS tests and excluded from production demand. Live backfill still requires exact allowlisting and include_archived.
               </p>
             </div>
@@ -297,17 +297,17 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
           {posCancellationRows.length > 0 ? (
             <div className="space-y-2">
               {posCancellationOrderNumbers && (
-                <div className="rounded-lg border border-amber-200 bg-white/70 p-2">
-                  <p className="text-[10px] uppercase tracking-wider text-amber-800 font-semibold">Exact allowlist candidates</p>
-                  <p className="text-xs font-semibold text-amber-950 break-words mt-1">{posCancellationOrderNumbers}</p>
+                <div className="rounded-lg border border-cyan-200 bg-white/70 p-2">
+                  <p className="text-[10px] uppercase tracking-wider text-cyan-800 font-semibold">Exact allowlist candidates</p>
+                  <p className="text-xs font-semibold text-cyan-950 break-words mt-1">{posCancellationOrderNumbers}</p>
                 </div>
               )}
               {posCancellationRows.slice(0, 20).map((row, index) => (
-                <div key={`pos-${row.order?.order_number || index}-${row.reason}`} className="rounded-lg border border-amber-200 bg-white/80 p-3 space-y-2">
+                <div key={`pos-${row.order?.order_number || index}-${row.reason}`} className="rounded-lg border border-cyan-200 bg-white/80 p-3 space-y-2">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-amber-950">{row.order?.order_number || 'Order pending'}</p>
-                      <p className="text-[10px] text-amber-800 mt-0.5">
+                      <p className="text-xs font-semibold text-cyan-950">{row.order?.order_number || 'Order pending'}</p>
+                      <p className="text-[10px] text-cyan-800 mt-0.5">
                         {[
                           row.order?.customer_name || row.order?.customer_email || null,
                           row.order?.source_channel ? formatLabel(row.order.source_channel) : 'POS',
@@ -319,7 +319,7 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
                     <StatusChip value={row.reason} />
                   </div>
                   {row.order?.items?.length > 0 && (
-                    <p className="text-[10px] text-amber-900">
+                    <p className="text-[10px] text-cyan-900">
                       Items: {row.order.items.map(item => `${item.quantity}x ${item.title}`).join(', ')}
                     </p>
                   )}
@@ -327,7 +327,7 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-amber-900 rounded-lg border border-amber-200 bg-white/70 p-2">
+            <p className="text-xs text-cyan-900 rounded-lg border border-cyan-200 bg-white/70 p-2">
               No POS test cancellation rows were returned in the preview rows.
             </p>
           )}
@@ -421,19 +421,19 @@ function NativeCustomerAppContext({ context }) {
         <div className="space-y-2">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Active Native Review Items</p>
           {reviewIssues.map(issue => (
-            <div key={issue.id || `${issue.order_number}-${issue.incident_type}`} className="rounded-lg border border-amber-100 bg-amber-50/70 p-3 space-y-2">
+            <div key={issue.id || `${issue.order_number}-${issue.incident_type}`} className="rounded-lg border border-cyan-100 bg-cyan-50/70 p-3 space-y-2">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-amber-950">{formatLabel(issue.incident_type)}</p>
-                  <p className="text-[10px] text-amber-800 mt-0.5">
+                  <p className="text-sm font-semibold text-cyan-950">{formatLabel(issue.incident_type)}</p>
+                  <p className="text-[10px] text-cyan-800 mt-0.5">
                     {[issue.order_number ? `Order ${issue.order_number}` : null, issue.source ? formatLabel(issue.source) : null, `Last seen ${formatDateTime(issue.last_seen_at)}`].filter(Boolean).join(' · ')}
                   </p>
                 </div>
                 <StatusChip value={issue.status || 'pending'} />
               </div>
-              {issue.issue && <p className="text-xs text-amber-900 leading-relaxed">{issue.issue}</p>}
+              {issue.issue && <p className="text-xs text-cyan-900 leading-relaxed">{issue.issue}</p>}
               {issue.recommended_action && (
-                <p className="text-[10px] font-semibold text-amber-900">Recommended: {formatLabel(issue.recommended_action)}</p>
+                <p className="text-[10px] font-semibold text-cyan-900">Recommended: {formatLabel(issue.recommended_action)}</p>
               )}
             </div>
           ))}
@@ -650,7 +650,7 @@ export default function SyncHealth() {
           </div>
 
           {rangeError && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
               {rangeError}
             </div>
           )}
@@ -732,7 +732,7 @@ export default function SyncHealth() {
         )}
 
         {data?.hub_available === false && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex items-start gap-2">
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             <span>
               {data.hub_error
@@ -743,7 +743,7 @@ export default function SyncHealth() {
         )}
 
         {data?.truncated && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
             Results are capped. Narrow the date range or filters for a more complete sync health view.
           </p>
         )}

@@ -26,12 +26,12 @@ export default function SyncStatus() {
       />
 
       <div className="px-4 mt-5 max-w-3xl mx-auto space-y-4">
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <section className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-700 mt-0.5 shrink-0" />
+            <AlertTriangle className="w-5 h-5 text-cyan-700 mt-0.5 shrink-0" />
             <div>
-              <h2 className="text-sm font-bold text-amber-900">Manual recovery is disabled</h2>
-              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+              <h2 className="text-sm font-bold text-cyan-900">Manual recovery is disabled</h2>
+              <p className="text-xs text-cyan-800 mt-1 leading-relaxed">
                 Stuck-order detection and recovery can write sync logs and retry Hub sync. During the May 30 launch freeze,
                 use the read-only Sync Health page unless a specific paid order recovery is explicitly approved.
               </p>

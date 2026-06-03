@@ -231,16 +231,16 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
                     <motion.div
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-start gap-2"
+                      className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-3 flex items-start gap-2"
                     >
-                      <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <MapPin className="w-3.5 h-3.5 text-cyan-600 shrink-0 mt-0.5" />
                       <div className="text-xs">
-                        <p className="font-semibold text-amber-900">Outside Delivery Area</p>
-                        <p className="text-amber-700 mt-0.5">{calculatedDistance?.toFixed(1)} miles away — we deliver within 15 miles</p>
+                        <p className="font-semibold text-cyan-900">Outside Delivery Area</p>
+                        <p className="text-cyan-700 mt-0.5">{calculatedDistance?.toFixed(1)} miles away — we deliver within 15 miles</p>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="mt-2 border-amber-500/40 text-amber-600 hover:bg-amber-50 h-8"
+                          className="mt-2 border-cyan-500/40 text-cyan-600 hover:bg-cyan-50 h-8"
                           onClick={() => setShowOutOfArea(true)}
                         >
                           Join the Waitlist

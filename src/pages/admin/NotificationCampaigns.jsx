@@ -301,7 +301,7 @@ export default function NotificationCampaigns() {
               </div>
               <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2">
                 <p className="text-[10px] text-muted-foreground">Backend</p>
-                <p className={`text-sm font-semibold ${adminPushStatus.diagnostics.ready ? 'text-primary' : 'text-amber-700'}`}>
+                <p className={`text-sm font-semibold ${adminPushStatus.diagnostics.ready ? 'text-primary' : 'text-cyan-700'}`}>
                   {adminPushStatus.diagnostics.ready ? 'Ready' : 'Check'}
                 </p>
               </div>
@@ -318,9 +318,9 @@ export default function NotificationCampaigns() {
             <div className={`mt-4 rounded-xl border px-3 py-2 ${
               adminPushTestResult.push_sent
                 ? 'border-primary/20 bg-primary/5'
-                : 'border-amber-200 bg-amber-50'
+                : 'border-cyan-200 bg-cyan-50'
             }`}>
-              <p className={`text-xs font-semibold ${adminPushTestResult.push_sent ? 'text-primary' : 'text-amber-900'}`}>
+              <p className={`text-xs font-semibold ${adminPushTestResult.push_sent ? 'text-primary' : 'text-cyan-900'}`}>
                 {adminPushTestResult.push_sent ? 'Test sent' : 'Test skipped'}
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
@@ -382,11 +382,11 @@ export default function NotificationCampaigns() {
         </div>
 
         {!CAMPAIGN_SENDS_ENABLED && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
-            <AlertCircle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+          <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-cyan-700 mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-amber-900">Campaign sending disabled</p>
-              <p className="text-xs text-amber-800 mt-1">
+              <p className="text-sm font-semibold text-cyan-900">Campaign sending disabled</p>
+              <p className="text-xs text-cyan-800 mt-1">
                 Notification campaign creation and sends are frozen for May 30 launch operations unless explicitly re-enabled.
               </p>
             </div>
@@ -455,9 +455,9 @@ export default function NotificationCampaigns() {
             </div>
 
             {form.audience !== 'test_only' && (
-              <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                <p className="text-xs text-amber-700">
+              <div className="flex items-start gap-2.5 bg-cyan-50 border border-cyan-200 rounded-xl p-3">
+                <AlertCircle className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />
+                <p className="text-xs text-cyan-700">
                   <strong>Broad send:</strong> This will notify all customers in the "{AUDIENCE_LABELS[form.audience]}" segment. You'll see a confirmation before it sends.
                 </p>
               </div>

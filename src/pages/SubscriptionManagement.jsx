@@ -282,7 +282,7 @@ export default function SubscriptionManagement() {
                         <p className="text-xs text-muted-foreground mt-0.5">{getPlan(sub.plan_id)?.bottle_count} bottles · {getPlan(sub.plan_id)?.frequency}</p>
                       </div>
                       {isPendingCancel
-                        ? <span className="bg-amber-100 text-amber-700 text-[9px] font-bold px-2 py-1 rounded-full">Ends {sub.cancel_effective_date ? formatLocalDate(sub.cancel_effective_date) : 'next cycle'}</span>
+                        ? <span className="bg-cyan-100 text-cyan-700 text-[9px] font-bold px-2 py-1 rounded-full">Ends {sub.cancel_effective_date ? formatLocalDate(sub.cancel_effective_date) : 'next cycle'}</span>
                         : <span className="bg-primary/20 text-primary text-[9px] font-bold px-2 py-1 rounded-full">Active</span>
                       }
                     </div>
@@ -508,8 +508,8 @@ export default function SubscriptionManagement() {
               <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
                 This will stop your subscription after your current paid month. <strong>You will still receive all of this month's scheduled deliveries.</strong>
               </p>
-              <div className="bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 mb-4">
-                <p className="text-xs text-amber-900 leading-snug">
+              <div className="bg-cyan-50 border border-cyan-300 rounded-lg px-3 py-2.5 mb-4">
+                <p className="text-xs text-cyan-900 leading-snug">
                   Monthly subscription payments are non-refundable once processed. Cancelling only stops the <em>next</em> billing cycle.
                 </p>
               </div>

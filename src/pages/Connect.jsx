@@ -63,8 +63,8 @@ const links = [
     name: 'Google Business',
     url: 'https://g.page/nuvirajuiceco',
     desc: 'Leave us a review on Google',
-    bg: 'bg-yellow-50 border-yellow-200',
-    textColor: 'text-yellow-700',
+    bg: 'bg-lime-50 border-lime-200',
+    textColor: 'text-lime-700',
   },
 ];
 

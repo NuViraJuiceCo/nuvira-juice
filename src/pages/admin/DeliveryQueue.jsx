@@ -439,7 +439,7 @@ function RouteOptimizationPanel({ deliveryDate, stops }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -904,7 +904,7 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -931,7 +931,7 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`native-fulfillment-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                <div key={`native-fulfillment-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -1080,7 +1080,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
             className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
           />
           {!deliveryDate && (
-            <span className="text-[10px] text-amber-700">
+            <span className="text-[10px] text-cyan-700">
               Required. Route filter is {formatDate(selectedDate)} but is not auto-applied.
             </span>
           )}
@@ -1133,7 +1133,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -1160,7 +1160,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`native-schedule-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                <div key={`native-schedule-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -1299,7 +1299,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
             className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
           />
           {!deliveryDate && (
-            <span className="text-[10px] text-amber-700">
+            <span className="text-[10px] text-cyan-700">
               Required. Route filter is {formatDate(selectedDate)} but is not auto-applied.
             </span>
           )}
@@ -1350,7 +1350,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -1377,7 +1377,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`materialization-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                <div key={`materialization-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -1467,7 +1467,7 @@ function StopCard({ stop, completed, selectedDate, onAssignmentSuccess }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div className="rounded-lg border border-border/50 bg-background p-2">
           <div className="flex items-center gap-2">
-            <AlertTriangle className={`w-3.5 h-3.5 ${stop.missing_address ? 'text-amber-600' : 'text-muted-foreground'}`} />
+            <AlertTriangle className={`w-3.5 h-3.5 ${stop.missing_address ? 'text-cyan-600' : 'text-muted-foreground'}`} />
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Address Check</p>
           </div>
           <p className="text-xs font-medium mt-1">{stop.missing_address ? 'Missing address flag' : 'Address present'}</p>

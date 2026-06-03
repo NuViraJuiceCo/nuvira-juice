@@ -23,8 +23,8 @@ const statusConfig = {
   },
   watch: {
     label: 'Watch',
-    className: 'border-amber-200 bg-amber-50 text-amber-950',
-    iconClassName: 'text-amber-700',
+    className: 'border-cyan-200 bg-cyan-50 text-cyan-950',
+    iconClassName: 'text-cyan-700',
     icon: AlertTriangle,
   },
   frozen: {

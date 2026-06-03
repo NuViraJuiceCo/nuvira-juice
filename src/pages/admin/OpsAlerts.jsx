@@ -407,7 +407,7 @@ export default function OpsAlerts() {
         </div>
 
         {warnings.length > 0 && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
             {warnings.includes('native_read_only_fallback')
               ? 'Hub ops alerts are unavailable. Showing native Customer App read-only alerts and review issues so operational visibility stays available.'
               : warnings.slice(0, 2).join(', ')}
@@ -432,7 +432,7 @@ export default function OpsAlerts() {
         ) : (
           <div className="space-y-3">
             {data?.truncated && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
                 Results are capped. Narrow the search or filters for a more complete view.
               </p>
             )}

@@ -263,7 +263,7 @@ function SnapshotMetricCard({ icon: Icon, label, value, sublabel, tone = 'defaul
     default: 'border-slate-300 bg-slate-100 text-slate-950 border-l-slate-600',
     info: 'border-sky-300 bg-sky-100 text-sky-950 border-l-sky-600',
     success: 'border-emerald-300 bg-emerald-100 text-emerald-950 border-l-emerald-600',
-    warning: 'border-amber-300 bg-amber-100 text-amber-950 border-l-amber-500',
+    warning: 'border-cyan-300 bg-cyan-100 text-cyan-950 border-l-cyan-500',
     danger: 'border-rose-300 bg-rose-100 text-rose-950 border-l-rose-600',
   }[tone] || 'border-slate-300 bg-slate-100 text-slate-950 border-l-slate-600';
 
@@ -438,7 +438,7 @@ function OperationsSnapshot({ user }) {
       </div>
 
       {rangeError && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
           {rangeError}
         </div>
       )}
@@ -450,13 +450,13 @@ function OperationsSnapshot({ user }) {
       )}
 
       {data?.truncated && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
           Some Hub source reads were capped. Counts are shown as a bounded operations summary.
         </div>
       )}
 
       {warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
           {warnings.includes('native_read_only_fallback')
             ? 'Hub dashboard aggregation is unavailable. Showing native Customer App read-only counts so operations stay visible.'
             : warnings.slice(0, 2).join(', ')}
@@ -539,7 +539,7 @@ function cardVisibilityTone(title) {
   const key = title.toLowerCase();
   if (key.includes('order')) return { border: 'border-sky-500', gradient: 'from-sky-500 to-blue-700' };
   if (key.includes('pos') || key.includes('event')) return { border: 'border-fuchsia-500', gradient: 'from-fuchsia-500 to-purple-700' };
-  if (key.includes('production')) return { border: 'border-amber-400', gradient: 'from-amber-400 to-orange-700' };
+  if (key.includes('production')) return { border: 'border-lime-500', gradient: 'from-lime-500 to-emerald-700' };
   if (key.includes('inventory')) return { border: 'border-rose-500', gradient: 'from-rose-500 to-red-700' };
   if (key.includes('delivery')) return { border: 'border-emerald-500', gradient: 'from-emerald-500 to-green-700' };
   if (key.includes('calendar')) return { border: 'border-cyan-500', gradient: 'from-cyan-500 to-teal-700' };

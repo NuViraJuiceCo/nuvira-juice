@@ -187,8 +187,7 @@ export default function BrowserAppPrompt({ pageRoute = '' }) {
               </button>
               <button
                 onClick={handleDownload}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold"
-                style={{ background: '#C9A24A', color: '#062A20' }}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-nuvira-gradient"
               >
                 Download App
               </button>

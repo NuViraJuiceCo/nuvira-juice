@@ -24,7 +24,7 @@ export default function BundleComposer({ bundleSize, composition, juices, onChan
     <div className="mt-3 bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between mb-1">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Customize Your Bundle</p>
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${remaining === 0 ? 'bg-primary/15 text-primary' : 'bg-amber-100 text-amber-700'}`}>
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${remaining === 0 ? 'bg-primary/15 text-primary' : 'bg-cyan-100 text-cyan-700'}`}>
           {remaining === 0 ? '✓ Full' : `${remaining} left`}
         </span>
       </div>

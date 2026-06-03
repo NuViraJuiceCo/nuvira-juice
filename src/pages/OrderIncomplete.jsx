@@ -39,9 +39,9 @@ export default function OrderIncomplete() {
             : 'Your checkout was not completed. No NuVira order will be prepared and no charge was made. You can safely return to your cart when you\'re ready.'}
         </p>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
-          <p className="text-xs text-amber-800 font-semibold mb-1">Your cart is still saved</p>
-          <p className="text-xs text-amber-700 leading-relaxed">
+        <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4 mb-6 text-left">
+          <p className="text-xs text-cyan-800 font-semibold mb-1">Your cart is still saved</p>
+          <p className="text-xs text-cyan-700 leading-relaxed">
             Your items are still in your cart. Return to checkout whenever you're ready — your juice selection is waiting for you.
           </p>
         </div>

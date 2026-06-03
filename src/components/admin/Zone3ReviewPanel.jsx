@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const STATUS_COLORS = {
-  pending_authorization: 'bg-yellow-100 text-yellow-700',
-  pending_review: 'bg-amber-100 text-amber-800',
+  pending_authorization: 'bg-lime-100 text-lime-700',
+  pending_review: 'bg-cyan-100 text-cyan-800',
   approved: 'bg-green-100 text-green-700',
   captured: 'bg-green-100 text-green-700',
   denied: 'bg-red-100 text-red-700',
@@ -44,8 +44,8 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
   return (
     <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
       <button onClick={() => setExpanded(!expanded)} className="w-full flex items-start gap-3 p-4 text-left">
-        <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-          <MapPin className="w-4 h-4 text-amber-600" />
+        <div className="w-9 h-9 bg-cyan-100 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+          <MapPin className="w-4 h-4 text-cyan-600" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -65,7 +65,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
             <span className="text-xs text-muted-foreground">{dar.estimated_distance_miles?.toFixed(1)} mi</span>
             {isSubscriptionReview
               ? <span className="text-xs font-semibold text-blue-700">{dar.selected_plan_name || '—'} · ${dar.selected_plan_price}/{dar.selected_plan_frequency === 'weekly' ? 'wk' : 'mo'}</span>
-              : <span className="text-xs font-semibold text-amber-700">${(dar.amount_authorized || dar.estimated_total || 0).toFixed(2)} hold</span>
+              : <span className="text-xs font-semibold text-cyan-700">${(dar.amount_authorized || dar.estimated_total || 0).toFixed(2)} hold</span>
             }
             <span className="text-xs text-muted-foreground">{createdAt}</span>
           </div>
@@ -103,7 +103,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
                 ) : (
                   <>
                     <div className="flex justify-between"><span className="text-muted-foreground">Cart</span><span className="font-medium">${(dar.cart_subtotal || 0).toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Auth Hold</span><span className="font-semibold text-amber-700">${(dar.amount_authorized || 0).toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Auth Hold</span><span className="font-semibold text-cyan-700">${(dar.amount_authorized || 0).toFixed(2)}</span></div>
                     {dar.amount_capturable != null && (
                       <div className="flex justify-between"><span className="text-muted-foreground">Capturable</span><span className="font-medium">${(dar.amount_capturable || 0).toFixed(2)}</span></div>
                     )}
@@ -130,7 +130,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
               {isPendingReview && (
                 <div className="space-y-3 pt-1">
                   {ROUTE_REVIEW_DECISIONS_FROZEN && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
                       Route review approval/denial actions are paused for the May 30 launch freeze. Existing requests remain visible for admin review.
                     </div>
                   )}
@@ -296,10 +296,10 @@ export default function Zone3ReviewPanel() {
       {/* Pending Review — requires action */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <Clock className="w-4 h-4 text-amber-600" />
+          <Clock className="w-4 h-4 text-cyan-600" />
           <h3 className="text-sm font-bold">Pending Review ({pending.length})</h3>
           {pending.length > 0 && (
-            <span className="w-5 h-5 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{pending.length}</span>
+            <span className="w-5 h-5 bg-cyan-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{pending.length}</span>
           )}
         </div>
         {pending.length === 0 ? (

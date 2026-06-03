@@ -118,7 +118,7 @@ function SummaryCard({ icon: Icon, label, value, sublabel, tone = 'default', isR
   const toneClass = {
     default: 'border-border/50 bg-card',
     success: 'border-emerald-100 bg-emerald-50/60',
-    warning: 'border-amber-100 bg-amber-50/60',
+    warning: 'border-cyan-100 bg-cyan-50/60',
     danger: 'border-red-100 bg-red-50/60',
   }[tone] || 'border-border/50 bg-card';
 
@@ -419,7 +419,7 @@ export default function POSOrders() {
           </div>
 
           {rangeError && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
               {rangeError}
             </div>
           )}
@@ -431,7 +431,7 @@ export default function POSOrders() {
           )}
 
           {data?.truncated && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
               Hub returned a bounded order list. Narrow the date range if you need exact row-level review.
             </div>
           )}
@@ -484,7 +484,7 @@ export default function POSOrders() {
           </div>
 
           {isProfilePreviewError && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
               Profile candidate preview unavailable: {profilePreviewError?.message || 'Unknown error'}
             </div>
           )}
@@ -522,7 +522,7 @@ export default function POSOrders() {
                       Orders: {(candidate.order_numbers || []).join(', ') || 'none'}
                     </p>
                     {candidate.name_completion_required && (
-                      <p className="text-[10px] text-amber-700 truncate">Name will be completed during onboarding.</p>
+                      <p className="text-[10px] text-cyan-700 truncate">Name will be completed during onboarding.</p>
                     )}
                   </div>
                   <AdminStatusPill
@@ -540,11 +540,11 @@ export default function POSOrders() {
           )}
 
           {profileBlockedOrders.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 space-y-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-amber-900 font-semibold">Needs email follow-up</p>
-                  <p className="text-xs text-amber-800 mt-1">
+                  <p className="text-[10px] uppercase tracking-wider text-cyan-900 font-semibold">Needs email follow-up</p>
+                  <p className="text-xs text-cyan-800 mt-1">
                     These POS orders cannot receive starter profiles because no usable customer email was captured.
                   </p>
                 </div>
@@ -554,14 +554,14 @@ export default function POSOrders() {
                 {profileBlockedOrders.slice(0, 12).map((order, index) => (
                   <div
                     key={`${order.order_number || 'blocked'}-${index}`}
-                    className="flex items-start justify-between gap-3 border-t border-amber-200 first:border-t-0 pt-2 first:pt-0"
+                    className="flex items-start justify-between gap-3 border-t border-cyan-200 first:border-t-0 pt-2 first:pt-0"
                   >
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-amber-950 truncate">
+                      <p className="text-xs font-bold text-cyan-950 truncate">
                         {order.order_number || 'POS order'}
                         {order.customer_name ? ` · ${order.customer_name}` : ''}
                       </p>
-                      <p className="text-[10px] text-amber-800 truncate">
+                      <p className="text-[10px] text-cyan-800 truncate">
                         {[order.customer_order_date ? formatDate(order.customer_order_date) : null, order.customer_email || null, order.source_record ? `source ${order.source_record}` : null]
                           .filter(Boolean)
                           .join(' · ')}
@@ -570,14 +570,14 @@ export default function POSOrders() {
                     <div className="text-right shrink-0">
                       <AdminStatusPill label={profileBlockerLabel(order.blocker)} tone="warning" size="sm" />
                       {order.total_price !== null && order.total_price !== undefined && (
-                        <p className="text-[10px] text-amber-800 mt-1">{formatMoney(order.total_price)}</p>
+                        <p className="text-[10px] text-cyan-800 mt-1">{formatMoney(order.total_price)}</p>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
               {profileBlockedOrders.length > 12 && (
-                <p className="text-[10px] text-amber-800">
+                <p className="text-[10px] text-cyan-800">
                   Showing 12 of {profileBlockedOrders.length}. Narrow the date range for focused review.
                 </p>
               )}
@@ -585,7 +585,7 @@ export default function POSOrders() {
           )}
 
           {Array.isArray(profilePreview?.warnings) && profilePreview.warnings.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
               Warnings: {profilePreview.warnings.join(', ')}
             </div>
           )}

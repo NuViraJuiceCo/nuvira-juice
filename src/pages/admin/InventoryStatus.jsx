@@ -233,10 +233,10 @@ function ProcurementPlan({ items }) {
   return (
     <div className="space-y-3">
       {Object.entries(bySupplier).map(([supplier, supplierItems]) => (
-        <section key={supplier} className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+        <section key={supplier} className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-4">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-amber-800 font-semibold">Supplier</p>
+              <p className="text-[10px] uppercase tracking-wider text-cyan-800 font-semibold">Supplier</p>
               <h2 className="text-sm font-bold text-foreground">{supplier}</h2>
             </div>
             <AdminStatusPill value="procurement_needed" label={`${supplierItems.length} needs`} size="md" />
@@ -244,7 +244,7 @@ function ProcurementPlan({ items }) {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
             {supplierItems.map(item => (
-              <div key={`${item.inventory_item_id || item.ingredient}-${supplier}`} className="rounded-lg border border-amber-200/70 bg-card p-3">
+              <div key={`${item.inventory_item_id || item.ingredient}-${supplier}`} className="rounded-lg border border-cyan-200/70 bg-card p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">{item.ingredient || 'Ingredient'}</p>
@@ -509,7 +509,7 @@ export default function InventoryStatus() {
         )}
 
         {warnings.length > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
             {warnings.includes('hub_inventory_status_service_not_configured') || warnings.some(warning => warning?.startsWith?.('hub_inventory_status_unavailable'))
               ? 'Hub inventory summary is unavailable, so this view is showing native Customer App inventory/procurement records only.'
               : 'Inventory status returned warnings. Review Hub and native source context before making procurement decisions.'}
@@ -549,7 +549,7 @@ export default function InventoryStatus() {
             </section>
 
             {data?.truncated && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
                 Results are capped. Narrow the search or filters for a more complete view.
               </p>
             )}

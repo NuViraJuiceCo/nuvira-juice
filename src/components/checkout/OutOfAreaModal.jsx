@@ -51,8 +51,8 @@ export default function OutOfAreaModal({ address, zip, onClose }) {
 
         {!submitted ? (
           <>
-            <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-4">
-              <MapPin className="w-7 h-7 text-amber-500" />
+            <div className="w-14 h-14 bg-cyan-500/10 rounded-2xl flex items-center justify-center mb-4">
+              <MapPin className="w-7 h-7 text-cyan-500" />
             </div>
 
             <h2 className="font-heading text-xl font-bold mb-2">Outside Our Delivery Area</h2>

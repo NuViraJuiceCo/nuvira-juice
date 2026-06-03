@@ -402,7 +402,7 @@ function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliver
           ))}
         </div>
         {errors.length > 0 && (
-          <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-50 p-2 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="mt-3 rounded-xl border border-cyan-500/40 bg-cyan-50 p-2 text-[11px] font-semibold text-cyan-900 dark:bg-cyan-950/30 dark:text-cyan-100">
             {errors.map((error, index) => (
               <p key={`${error}-${index}`}>{error}</p>
             ))}
@@ -751,7 +751,7 @@ function InternalHubNoteComposer({ order }) {
         </div>
         <div className="flex flex-col items-end gap-1 text-right">
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Append-only</span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 leading-tight">Only Hub write available here</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 border border-cyan-200 leading-tight">Only Hub write available here</span>
         </div>
       </div>
 
@@ -942,7 +942,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
 
                 {/* Action buttons */}
                 {ORDER_WORKFLOW_CONTROLS_FROZEN && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
                     Generic order status buttons are disabled during launch hardening to avoid accidental customer-facing status changes. Operational fulfillment actions remain available in Delivery Queue.
                   </div>
                 )}
@@ -1232,7 +1232,7 @@ export default function AdminOrders() {
         <button
           onClick={() => setShowZone3(!showZone3)}
           className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors shrink-0 ${
-            showZone3 ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'
+            showZone3 ? 'bg-cyan-600 text-white' : 'bg-cyan-100 text-cyan-800'
           }`}
         >
           🗺️ Route Review

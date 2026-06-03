@@ -102,7 +102,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           transition={{ delay: 0.4 }}
           className="absolute top-3 right-3 bg-white/15 backdrop-blur-sm border border-white/25 rounded-full px-2.5 py-1 flex items-center gap-1"
         >
-          <Zap className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300" />
+          <Zap className="w-2.5 h-2.5 text-lime-300 fill-lime-300" />
           <span className="text-white text-[9px] font-semibold">{deliveryText}</span>
         </motion.div>
       )}

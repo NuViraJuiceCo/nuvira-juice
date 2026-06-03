@@ -16,9 +16,9 @@ import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 
-// ── Brand color tokens (luxury gold + deep green) ──────────────────────────
-const GOLD = '#C9A24A';
-const GOLD_LIGHT = '#E7C873';
+// ── Brand color tokens (fresh lime + deep green) ──────────────────────────
+const REFRESH_ACCENT = '#7BDC48';
+const REFRESH_ACCENT_LIGHT = '#D2FF87';
 const GREEN_DEEP = '#0B3D2E';
 const GREEN_DARK = '#062A20';
 
@@ -26,9 +26,9 @@ const GREEN_DARK = '#062A20';
 const TIERS = [
   { name: 'Seedling',  min: 0,    max: 499,  next: 500,  color: '#7BA05B' },
   { name: 'Silver',    min: 500,  max: 999,  next: 1000, color: '#A8A8A8' },
-  { name: 'Gold',      min: 1000, max: 2499, next: 2500, color: GOLD },
+  { name: 'Gold',      min: 1000, max: 2499, next: 2500, color: REFRESH_ACCENT },
   { name: 'Platinum',  min: 2500, max: 4999, next: 5000, color: '#B0C4DE' },
-  { name: 'Elite',     min: 5000, max: Infinity, next: null, color: GOLD_LIGHT },
+  { name: 'Elite',     min: 5000, max: Infinity, next: null, color: REFRESH_ACCENT_LIGHT },
 ];
 
 function getTier(pts) {
@@ -66,11 +66,11 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
       transition={{ duration: 0.5 }}
       className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl relative border border-[#3DB84A]/30 bg-nuvira-gradient"
     >
-      {/* Gold accent arc */}
+      {/* Fresh accent arc */}
       <div className="absolute" style={{
         top: -60, right: -60, width: 200, height: 200,
         borderRadius: '50%',
-        background: `radial-gradient(circle, ${GOLD}25 0%, transparent 70%)`,
+        background: `radial-gradient(circle, ${REFRESH_ACCENT}25 0%, transparent 70%)`,
         pointerEvents: 'none',
       }} />
 
@@ -86,7 +86,7 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
               <p className="text-sm font-bold text-white">{tier.name} Member</p>
             </div>
           </div>
-          <div className="px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: `${GOLD}35`, color: '#FFFFFF', border: `1px solid ${GOLD}60` }}>
+          <div className="px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: `${REFRESH_ACCENT}35`, color: '#FFFFFF', border: `1px solid ${REFRESH_ACCENT}60` }}>
             {tier.name}
           </div>
         </div>
@@ -113,14 +113,14 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
                 animate={{ width: `${progressPct}%` }}
                 transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
                 className="h-full rounded-full"
-                style={{ background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)` }}
+                style={{ background: `linear-gradient(90deg, ${REFRESH_ACCENT} 0%, ${REFRESH_ACCENT_LIGHT} 100%)` }}
               />
             </div>
           </div>
         )}
         {!tier.next && (
           <div className="flex items-center gap-2 mt-1">
-            <Sparkles className="w-4 h-4" style={{ color: GOLD_LIGHT }} />
+            <Sparkles className="w-4 h-4" style={{ color: REFRESH_ACCENT_LIGHT }} />
             <p className="text-sm font-bold" style={{ color: '#FFFFFF' }}>You've reached Elite status!</p>
           </div>
         )}
@@ -132,13 +132,13 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
 // ── Stat mini cards ─────────────────────────────────────────────────────────
 function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
   const stats = [
-    { label: 'Available',  value: totalPoints.toLocaleString(),   icon: Star,       gold: true },
-    { label: 'Lifetime',   value: lifetimePoints.toLocaleString(), icon: Sparkles,  gold: false },
-    { label: 'Redeemed',   value: redeemedPoints.toLocaleString(), icon: Gift,      gold: false },
+    { label: 'Available',  value: totalPoints.toLocaleString(),   icon: Star,       highlight: true },
+    { label: 'Lifetime',   value: lifetimePoints.toLocaleString(), icon: Sparkles,  highlight: false },
+    { label: 'Redeemed',   value: redeemedPoints.toLocaleString(), icon: Gift,      highlight: false },
   ];
   return (
     <div className="mx-4 mt-4 grid grid-cols-3 gap-3">
-      {stats.map(({ label, value, icon: Icon, gold }, i) => (
+      {stats.map(({ label, value, icon: Icon, highlight }, i) => (
         <motion.div
           key={label}
           initial={{ opacity: 0, y: 10 }}
@@ -146,21 +146,21 @@ function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
           transition={{ delay: 0.1 + i * 0.07 }}
           className="rounded-2xl p-3.5 text-center"
           style={{
-            background: gold 
-              ? `linear-gradient(135deg, rgba(201,162,74,0.20) 0%, rgba(231,200,115,0.12) 100%)`
+            background: highlight
+              ? `linear-gradient(135deg, rgba(123,220,72,0.20) 0%, rgba(210,255,135,0.12) 100%)`
               : 'hsl(var(--card))',
-            border: gold ? `1.5px solid rgba(201,162,74,0.65)` : '1.5px solid hsl(var(--border))',
-            boxShadow: gold
-              ? '0 4px 16px rgba(201,162,74,0.15), 0 1px 4px rgba(0,0,0,0.08)'
+            border: highlight ? `1.5px solid rgba(123,220,72,0.65)` : '1.5px solid hsl(var(--border))',
+            boxShadow: highlight
+              ? '0 4px 16px rgba(123,220,72,0.15), 0 1px 4px rgba(0,0,0,0.08)'
               : '0 4px 14px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
           <div className="w-7 h-7 rounded-full flex items-center justify-center mx-auto mb-1.5"
-            style={{ background: gold ? `${GOLD}25` : 'hsl(var(--muted))' }}>
-            <Icon className="w-3.5 h-3.5" style={{ color: gold ? '#7A5F20' : 'hsl(var(--muted-foreground))' }} />
+            style={{ background: highlight ? `${REFRESH_ACCENT}25` : 'hsl(var(--muted))' }}>
+            <Icon className="w-3.5 h-3.5" style={{ color: highlight ? '#1F7A3E' : 'hsl(var(--muted-foreground))' }} />
           </div>
           <p className="font-heading text-base font-bold text-foreground">{value}</p>
-          <p className="text-[10px] font-semibold mt-0.5" style={{ color: gold ? '#7A5F20' : 'hsl(var(--muted-foreground))' }}>{label}</p>
+          <p className="text-[10px] font-semibold mt-0.5" style={{ color: highlight ? '#1F7A3E' : 'hsl(var(--muted-foreground))' }}>{label}</p>
         </motion.div>
       ))}
     </div>
@@ -180,12 +180,12 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       transition={{ delay: index * 0.07 }}
       className="flex-shrink-0 w-[155px] rounded-2xl overflow-hidden"
       style={{ touchAction: 'pan-x',
-        border: unlocked ? `1.5px solid rgba(201,162,74,0.65)` : '1.5px solid hsl(var(--border))',
+        border: unlocked ? `1.5px solid rgba(123,220,72,0.65)` : '1.5px solid hsl(var(--border))',
         background: unlocked
-          ? `linear-gradient(135deg, rgba(11,61,46,0.09) 0%, rgba(201,162,74,0.14) 100%)`
+          ? `linear-gradient(135deg, rgba(11,61,46,0.09) 0%, rgba(123,220,72,0.14) 100%)`
           : 'hsl(var(--card))',
         boxShadow: unlocked
-          ? `0 8px 28px rgba(201,162,74,0.18), 0 2px 6px rgba(0,0,0,0.10)`
+          ? `0 8px 28px rgba(123,220,72,0.18), 0 2px 6px rgba(0,0,0,0.10)`
           : '0 4px 14px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)',
         pointerEvents: 'none',
       }}
@@ -194,12 +194,12 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       <div className={`h-20 flex items-center justify-center relative overflow-hidden pointer-events-none ${unlocked ? 'bg-nuvira-gradient' : ''}`}
         style={!unlocked ? { background: 'hsl(var(--muted))' } : {}}>
         {unlocked && (
-          <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(circle at 80% 20%, ${GOLD}30 0%, transparent 60%)` }} />
+          <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(circle at 80% 20%, ${REFRESH_ACCENT}30 0%, transparent 60%)` }} />
         )}
         <span className="text-3xl relative z-10 pointer-events-none">{reward.icon || '🎁'}</span>
         {unlocked && (
           <div className="absolute top-2 right-2 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide pointer-events-none"
-            style={{ background: `${GOLD}40`, color: '#FFFFFF', border: `1px solid ${GOLD}65` }}>
+            style={{ background: `${REFRESH_ACCENT}40`, color: '#FFFFFF', border: `1px solid ${REFRESH_ACCENT}65` }}>
             Unlocked
           </div>
         )}
@@ -213,8 +213,8 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
         {/* Points required */}
         <div className="flex items-center justify-between gap-1 pointer-events-none">
           <div className="flex items-center gap-0.5 min-w-0">
-            <Star className="w-2.5 h-2.5 shrink-0 pointer-events-none" style={{ color: unlocked ? GOLD : 'hsl(var(--muted-foreground))', fill: unlocked ? GOLD : 'hsl(var(--muted-foreground))' }} />
-            <span className="text-[10px] font-bold truncate pointer-events-none" style={{ color: unlocked ? '#9A7B2F' : 'hsl(var(--muted-foreground))' }}>
+            <Star className="w-2.5 h-2.5 shrink-0 pointer-events-none" style={{ color: unlocked ? REFRESH_ACCENT : 'hsl(var(--muted-foreground))', fill: unlocked ? REFRESH_ACCENT : 'hsl(var(--muted-foreground))' }} />
+            <span className="text-[10px] font-bold truncate pointer-events-none" style={{ color: unlocked ? '#2B8A46' : 'hsl(var(--muted-foreground))' }}>
               {reward.points_required.toLocaleString()}
             </span>
           </div>
@@ -233,7 +233,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
             )
           ) : (
             <div className="w-12 h-1.5 rounded-full shrink-0 pointer-events-none" style={{ background: 'hsl(var(--muted))' }}>
-              <div className="h-full rounded-full pointer-events-none" style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)` }} />
+              <div className="h-full rounded-full pointer-events-none" style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${REFRESH_ACCENT} 0%, ${REFRESH_ACCENT_LIGHT} 100%)` }} />
             </div>
           )}
         </div>
@@ -253,8 +253,8 @@ function GuestView() {
         style={{ background: `linear-gradient(145deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` }}>
         <div className="px-6 py-8 text-center">
           <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
-            style={{ background: `${GOLD}22`, border: `1.5px solid ${GOLD}44` }}>
-            <Star className="w-8 h-8" style={{ color: GOLD_LIGHT, fill: GOLD_LIGHT }} />
+            style={{ background: `${REFRESH_ACCENT}22`, border: `1.5px solid ${REFRESH_ACCENT}44` }}>
+            <Star className="w-8 h-8" style={{ color: REFRESH_ACCENT_LIGHT, fill: REFRESH_ACCENT_LIGHT }} />
           </div>
           <h1 className="font-heading text-2xl font-bold text-white mb-2">NuVira Rewards</h1>
           <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.65)' }}>
@@ -263,7 +263,7 @@ function GuestView() {
           <button
             onClick={() => redirectToLogin(window.location.pathname)}
             className="w-full h-12 rounded-2xl font-bold text-sm"
-            style={{ background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)`, color: '#062A20' }}
+            style={{ background: `linear-gradient(90deg, ${REFRESH_ACCENT} 0%, ${REFRESH_ACCENT_LIGHT} 100%)`, color: '#062A20' }}
           >
             Sign In to Start Earning
           </button>
@@ -276,13 +276,13 @@ function GuestView() {
         <div className="grid grid-cols-2 gap-3">
           {HOW_TO_EARN.map(({ icon: Icon, label, pts }) => (
             <div key={label} className="rounded-2xl p-4 border"
-              style={{ background: 'hsl(var(--card))', borderColor: `${GOLD}22` }}>
+              style={{ background: 'hsl(var(--card))', borderColor: `${REFRESH_ACCENT}22` }}>
               <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2"
-                style={{ background: `${GOLD}25` }}>
-                <Icon className="w-4 h-4" style={{ color: '#7A5F20' }} />
+                style={{ background: `${REFRESH_ACCENT}25` }}>
+                <Icon className="w-4 h-4" style={{ color: '#1F7A3E' }} />
               </div>
               <p className="text-sm font-semibold text-foreground">{label}</p>
-              <p className="text-xs mt-0.5 font-bold" style={{ color: '#7A5F20' }}>{pts}</p>
+              <p className="text-xs mt-0.5 font-bold" style={{ color: '#1F7A3E' }}>{pts}</p>
             </div>
           ))}
         </div>
@@ -296,14 +296,14 @@ function GuestView() {
             <div key={i} className="flex items-center gap-3 rounded-2xl p-4 border"
               style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border) / 0.4)' }}>
               <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"
-                style={{ background: `${GOLD}12` }}>{reward.icon}</div>
+                style={{ background: `${REFRESH_ACCENT}12` }}>{reward.icon}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-foreground">{reward.title}</p>
                 <p className="text-xs text-muted-foreground">{reward.description}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <Star className="w-3 h-3" style={{ color: '#E7C873', fill: '#E7C873' }} />
-                <span className="text-xs font-bold" style={{ color: '#E7C873' }}>{reward.points_required.toLocaleString()}</span>
+                <Star className="w-3 h-3" style={{ color: '#D2FF87', fill: '#D2FF87' }} />
+                <span className="text-xs font-bold" style={{ color: '#D2FF87' }}>{reward.points_required.toLocaleString()}</span>
               </div>
             </div>
           ))}
@@ -487,7 +487,7 @@ export default function Rewards() {
           </Link>
         ) : !birthday ? (
           <Link to="/account/settings">
-            <span className="text-xs font-bold px-3 py-1.5 rounded-xl whitespace-nowrap" style={{ background: GOLD, color: '#1A0F00', border: `1px solid ${GOLD}` }}>Set Date</span>
+            <span className="text-xs font-bold px-3 py-1.5 rounded-xl whitespace-nowrap" style={{ background: REFRESH_ACCENT, color: '#052A16', border: `1px solid ${REFRESH_ACCENT}` }}>Set Date</span>
           </Link>
         ) : null}
       </motion.div>
@@ -532,14 +532,14 @@ export default function Rewards() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * i }}
               className="rounded-2xl p-4"
-              style={{ background: 'hsl(var(--card))', border: `1.5px solid ${GOLD}55`, boxShadow: '0 3px 10px rgba(0,0,0,0.07)' }}
+              style={{ background: 'hsl(var(--card))', border: `1.5px solid ${REFRESH_ACCENT}55`, boxShadow: '0 3px 10px rgba(0,0,0,0.07)' }}
             >
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5"
-                style={{ background: `${GOLD}25` }}>
-                <Icon className="w-4 h-4" style={{ color: '#7A5F20' }} />
+                style={{ background: `${REFRESH_ACCENT}25` }}>
+                <Icon className="w-4 h-4" style={{ color: '#1F7A3E' }} />
               </div>
               <p className="text-sm font-bold mb-0.5 text-foreground">{label}</p>
-              <p className="text-xs font-bold" style={{ color: '#7A5F20' }}>{pts}</p>
+              <p className="text-xs font-bold" style={{ color: '#1F7A3E' }}>{pts}</p>
             </motion.div>
           ))}
         </div>
@@ -555,17 +555,17 @@ export default function Rewards() {
             className="rounded-2xl p-5 flex items-center justify-between overflow-hidden relative"
             style={{ background: `linear-gradient(135deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)`, boxShadow: `0 4px 20px ${GREEN_DEEP}30` }}
           >
-            <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 90% 50%, ${GOLD}20 0%, transparent 60%)`, pointerEvents: 'none' }} />
+            <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 90% 50%, ${REFRESH_ACCENT}20 0%, transparent 60%)`, pointerEvents: 'none' }} />
             <div className="relative z-10">
               <div className="w-10 h-10 rounded-full flex items-center justify-center mb-3"
-                style={{ background: `${GOLD}30`, border: `1.5px solid ${GOLD}55` }}>
+                style={{ background: `${REFRESH_ACCENT}30`, border: `1.5px solid ${REFRESH_ACCENT}55` }}>
                 <Users className="w-5 h-5" style={{ color: '#FFFFFF' }} />
               </div>
               <p className="font-heading text-lg font-bold text-white">Invite Friends</p>
               <p className="text-sm" style={{ color: '#E8F5E9' }}>Give $10 · Get 250 Points</p>
             </div>
             <div className="relative z-10 flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm"
-              style={{ background: `linear-gradient(90deg, ${GOLD} 0%, ${GOLD_LIGHT} 100%)`, color: '#062A20' }}>
+              style={{ background: `linear-gradient(90deg, ${REFRESH_ACCENT} 0%, ${REFRESH_ACCENT_LIGHT} 100%)`, color: '#062A20' }}>
               Invite <ArrowRight className="w-4 h-4" />
             </div>
           </motion.div>
@@ -589,10 +589,10 @@ export default function Rewards() {
         </Link>
         <Link to="/account/settings">
           <div className="rounded-2xl p-4 flex items-center gap-3 active:opacity-80 transition-opacity"
-            style={{ background: `${GOLD}15`, border: `1.5px solid ${GOLD}40` }}>
+            style={{ background: `${REFRESH_ACCENT}15`, border: `1.5px solid ${REFRESH_ACCENT}40` }}>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: `${GOLD}30` }}>
-              <Cake className="w-4 h-4" style={{ color: '#7A5F20' }} />
+              style={{ background: `${REFRESH_ACCENT}30` }}>
+              <Cake className="w-4 h-4" style={{ color: '#1F7A3E' }} />
             </div>
             <div>
               <p className="text-xs font-bold text-foreground">Birthday Perk</p>
@@ -612,10 +612,10 @@ export default function Rewards() {
               <div key={i} className="flex items-center justify-between px-4 py-3.5">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: entry.type === 'redeemed' ? 'hsl(var(--muted))' : `${GOLD}20` }}>
+                    style={{ background: entry.type === 'redeemed' ? 'hsl(var(--muted))' : `${REFRESH_ACCENT}20` }}>
                     {entry.type === 'redeemed'
                       ? <Gift className="w-3.5 h-3.5" style={{ color: 'hsl(var(--muted-foreground))' }} />
-                      : <Star className="w-3.5 h-3.5" style={{ color: '#9A7B2F', fill: '#9A7B2F' }} />
+                      : <Star className="w-3.5 h-3.5" style={{ color: '#2B8A46', fill: '#2B8A46' }} />
                     }
                   </div>
                   <div>
@@ -635,8 +635,8 @@ export default function Rewards() {
         <div className="mx-4 mt-8 mb-4">
           <h2 className="font-heading text-xl font-bold mb-4" style={{ color: 'hsl(var(--foreground))' }}>Recent Activity</h2>
           <div className="rounded-2xl p-8 text-center"
-            style={{ background: 'hsl(var(--card))', border: `1.5px solid ${GOLD}25` }}>
-            <Star className="w-8 h-8 mx-auto mb-3" style={{ color: `${GOLD}70` }} />
+            style={{ background: 'hsl(var(--card))', border: `1.5px solid ${REFRESH_ACCENT}25` }}>
+            <Star className="w-8 h-8 mx-auto mb-3" style={{ color: `${REFRESH_ACCENT}70` }} />
             <p className="text-sm font-semibold text-foreground mb-1">No activity yet</p>
             <p className="text-xs font-medium text-muted-foreground">Place your first order to start earning points.</p>
             <Link to="/shop">

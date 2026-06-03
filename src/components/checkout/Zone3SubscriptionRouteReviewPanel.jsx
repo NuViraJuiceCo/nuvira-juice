@@ -86,7 +86,7 @@ export default function Zone3SubscriptionRouteReviewPanel({ address, selectedPla
             <p className="font-mono font-bold text-base">{requestNumber}</p>
           </div>
           <div className="space-y-2 text-left text-xs text-muted-foreground">
-            <p className="flex items-start gap-2"><Clock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-500" /> Review takes 24–48 hours</p>
+            <p className="flex items-start gap-2"><Clock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-cyan-500" /> Review takes 24–48 hours</p>
             <p className="flex items-start gap-2"><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" /> You'll be notified by email and in-app when approved</p>
             <p className="flex items-start gap-2"><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" /> No charge until your subscription is active</p>
           </div>
@@ -102,14 +102,14 @@ export default function Zone3SubscriptionRouteReviewPanel({ address, selectedPla
       className="mx-4 mt-4 space-y-4"
     >
       {/* Header */}
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+      <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-4">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-            <MapPin className="w-4 h-4 text-amber-600" />
+          <div className="w-9 h-9 bg-cyan-100 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+            <MapPin className="w-4 h-4 text-cyan-600" />
           </div>
           <div>
-            <p className="font-semibold text-sm text-amber-900">Subscription Route Review Required</p>
-            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+            <p className="font-semibold text-sm text-cyan-900">Subscription Route Review Required</p>
+            <p className="text-xs text-cyan-700 mt-0.5 leading-relaxed">
               Your address is {distanceMiles ? `${distanceMiles.toFixed(1)} miles` : 'outside our standard zone'} from our kitchen. 
               Subscriptions for your area require a quick route review before we can activate recurring deliveries.
             </p>

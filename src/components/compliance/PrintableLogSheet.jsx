@@ -159,7 +159,7 @@ export default function PrintableLogSheet({ log, onClose }) {
                         )}
                       </>
                     ) : (
-                      <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                      <div className="p-2 bg-cyan-50 border border-cyan-200 rounded text-xs text-cyan-700">
                         ⚠️ Formula not found — manual review required
                       </div>
                     )}
@@ -252,7 +252,7 @@ export default function PrintableLogSheet({ log, onClose }) {
 
         {/* Notes */}
         {log.notes && (
-          <div className="mb-5 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
+          <div className="mb-5 p-3 bg-lime-50 border border-lime-200 rounded text-sm">
             <p className="font-semibold text-gray-700 mb-1">Notes</p>
             <p className="text-gray-600">{log.notes}</p>
           </div>

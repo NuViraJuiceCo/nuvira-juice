@@ -9,7 +9,7 @@ const TIME_ICONS = {
 };
 
 const TIME_COLORS = {
-  'AM': 'bg-amber-50 border-amber-200 text-amber-700',
+  'AM': 'bg-cyan-50 border-cyan-200 text-cyan-700',
   'Afternoon Boost': 'bg-orange-50 border-orange-200 text-orange-700',
   'Golden Hour': 'bg-rose-50 border-rose-200 text-rose-700',
   'Nightcap': 'bg-indigo-50 border-indigo-200 text-indigo-700',

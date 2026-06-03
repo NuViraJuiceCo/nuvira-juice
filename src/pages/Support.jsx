@@ -216,15 +216,15 @@ export default function Support() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-xl border border-yellow-200 active:bg-yellow-100 transition-colors">
+          <div className="flex items-center justify-between p-4 bg-lime-50 rounded-xl border border-lime-200 active:bg-lime-100 transition-colors">
             <div className="flex items-center gap-3">
-              <Star className="w-4 h-4 text-yellow-500 fill-yellow-400" />
+              <Star className="w-4 h-4 text-lime-500 fill-lime-400" />
               <div>
                 <p className="text-sm font-medium">Leave a Google Review</p>
                 <p className="text-[10px] text-muted-foreground">Share your NuVira experience</p>
               </div>
             </div>
-            <span className="text-xs text-yellow-600">›</span>
+            <span className="text-xs text-lime-600">›</span>
           </div>
         </a>
       </div>
