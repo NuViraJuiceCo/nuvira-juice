@@ -9,6 +9,22 @@ import {
 
 const STORAGE_KEY = 'nuvira_native_notif_prompt_dismissed_v1';
 
+function getStoredDismissedState() {
+  try {
+    return window.localStorage?.getItem(STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function storeDismissedState() {
+  try {
+    window.localStorage?.setItem(STORAGE_KEY, '1');
+  } catch {
+    // Notification prompting should never block the app shell from loading.
+  }
+}
+
 export default function NotificationPrompt() {
   const [permission, setPermission] = useState(null);
   const [dismissed, setDismissed] = useState(false);
@@ -20,7 +36,7 @@ export default function NotificationPrompt() {
     let timer = null;
 
     if (typeof window === 'undefined') return undefined;
-    const isDismissed = localStorage.getItem(STORAGE_KEY) === '1';
+    const isDismissed = getStoredDismissedState();
     setDismissed(isDismissed);
 
     async function loadPermission() {
@@ -47,7 +63,7 @@ export default function NotificationPrompt() {
   }, []);
 
   const handleDismiss = () => {
-    localStorage.setItem(STORAGE_KEY, '1');
+    storeDismissedState();
     setDismissed(true);
     setShow(false);
   };
@@ -60,10 +76,10 @@ export default function NotificationPrompt() {
       setPermission(nextPermission);
       if (result.success || nextPermission === 'granted') {
         setShow(false);
-        localStorage.setItem(STORAGE_KEY, '1');
+        storeDismissedState();
       } else if (nextPermission === 'denied') {
         setShow(false);
-        localStorage.setItem(STORAGE_KEY, '1');
+        storeDismissedState();
       }
     } catch {
       setShow(false);

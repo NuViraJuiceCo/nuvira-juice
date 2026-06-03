@@ -2,14 +2,28 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const CartContext = createContext();
 
-export function CartProvider({ children }) {
-  const [items, setItems] = useState(() => {
-    const saved = localStorage.getItem('nuvira_cart');
+function readStoredCart() {
+  try {
+    const saved = window.localStorage?.getItem('nuvira_cart');
     return saved ? JSON.parse(saved) : [];
-  });
+  } catch {
+    return [];
+  }
+}
+
+function storeCart(items) {
+  try {
+    window.localStorage?.setItem('nuvira_cart', JSON.stringify(items));
+  } catch {
+    // Cart persistence should never prevent the app shell from rendering.
+  }
+}
+
+export function CartProvider({ children }) {
+  const [items, setItems] = useState(readStoredCart);
 
   useEffect(() => {
-    localStorage.setItem('nuvira_cart', JSON.stringify(items));
+    storeCart(items);
   }, [items]);
 
   const addItem = (product, quantity = 1, extra = {}) => {
