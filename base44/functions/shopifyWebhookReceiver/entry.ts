@@ -25,18 +25,40 @@ const SHOPIFY_WEBHOOK_SECRET_ENV_NAMES = [
   'SHOPIFY_APP_SECRET',
 ];
 
+function shopifyWebhookSecretCandidates() {
+  // Keep literal env reads so Base44 can attach referenced secrets, while still
+  // reading per request instead of using a stale module-level snapshot.
+  return [
+    ['SHOPIFY_WEBHOOK_SECRET', Deno.env.get('SHOPIFY_WEBHOOK_SECRET')],
+    ['SHOPIFY_WEBHOOK_SIGNING_SECRET', Deno.env.get('SHOPIFY_WEBHOOK_SIGNING_SECRET')],
+    ['SHOPIFY_CLIENT_SECRET', Deno.env.get('SHOPIFY_CLIENT_SECRET')],
+    ['SHOPIFY_API_SECRET', Deno.env.get('SHOPIFY_API_SECRET')],
+    ['SHOPIFY_API_SECRET_KEY', Deno.env.get('SHOPIFY_API_SECRET_KEY')],
+    ['SHOPIFY_SHARED_SECRET', Deno.env.get('SHOPIFY_SHARED_SECRET')],
+    ['SHOPIFY_APP_SECRET', Deno.env.get('SHOPIFY_APP_SECRET')],
+  ];
+}
+
 function getShopifyWebhookSecret() {
-  for (const name of SHOPIFY_WEBHOOK_SECRET_ENV_NAMES) {
-    const value = (Deno.env.get(name) || '').trim();
+  for (const [, rawValue] of shopifyWebhookSecretCandidates()) {
+    const value = (rawValue || '').trim();
     if (value) return value;
   }
   return '';
 }
 
 function shopifyWebhookSecretDiagnostic() {
-  return Object.fromEntries(
-    SHOPIFY_WEBHOOK_SECRET_ENV_NAMES.map(name => [name, Boolean((Deno.env.get(name) || '').trim())])
-  );
+  return Object.fromEntries(shopifyWebhookSecretCandidates().map(([name, rawValue]) => [
+    name,
+    Boolean((rawValue || '').trim()),
+  ]));
+}
+
+function shopifyWebhookSecretDiagnosticLog() {
+  const presence = shopifyWebhookSecretDiagnostic();
+  return SHOPIFY_WEBHOOK_SECRET_ENV_NAMES
+    .map(name => `${name}:${presence[name] ? 'present' : 'missing'}`)
+    .join(',');
 }
 
 async function verifyShopifyHmac(req, bodyText) {
@@ -366,6 +388,7 @@ Deno.serve(async (req) => {
     console.error('Shopify HMAC verification unavailable:', error.message, {
       env_present: shopifyWebhookSecretDiagnostic(),
     });
+    console.error(`Shopify HMAC verification env presence: ${shopifyWebhookSecretDiagnosticLog()}`);
     return Response.json({ error: 'shopify_webhook_verification_unavailable' }, { status: 500 });
   }
   if (!valid) {
