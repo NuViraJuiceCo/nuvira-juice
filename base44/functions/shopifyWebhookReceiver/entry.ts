@@ -13,6 +13,9 @@ const SHOPIFY_WEBHOOK_SECRET = Deno.env.get('SHOPIFY_WEBHOOK_SECRET') || '';
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
 const ENABLE_MAY30_NATIVE_ORDER_OPS = Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
 const MAY30_NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
+const ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER = Deno.env.get('ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER') === 'true';
+const SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS = Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS') || 'orders/create,orders/paid';
+const SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST = Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST') || '';
 
 async function verifyShopifyHmac(req, bodyText) {
   const hmacHeader = req.headers.get('x-shopify-hmac-sha256');
@@ -156,6 +159,14 @@ function mapToShopifyOrder(order) {
   };
 }
 
+function normalizeKey(value) {
+  return (value ?? '').toString().trim().replace(/^#/, '').toLowerCase();
+}
+
+function parseCsvSet(value) {
+  return new Set(String(value || '').split(',').map(normalizeKey).filter(Boolean));
+}
+
 function safeLogText(value, maxLength = 180) {
   const text = (value ?? '').toString()
     .trim()
@@ -164,6 +175,120 @@ function safeLogText(value, maxLength = 180) {
     .replace(/\b(?:sk|pk|rk|whsec|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]');
   if (!text) return '';
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
+function topicKey(topic) {
+  return normalizeKey(topic).replace(/[^a-z0-9]+/g, '_');
+}
+
+function nativeSafeSyncIdentifiers(record) {
+  return [
+    record?.id,
+    record?.shopify_order_id,
+    record?.shopify_order_number,
+    record?.order_number,
+    record?.stripe_checkout_session_id,
+    record?.stripe_payment_intent_id,
+  ].map(normalizeKey).filter(Boolean);
+}
+
+function isNativeSafeSyncTopicAllowed(topic) {
+  const allowed = parseCsvSet(SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS);
+  return allowed.size > 0 && allowed.has(normalizeKey(topic));
+}
+
+function isNativeSafeSyncOrderAllowlisted(record) {
+  const allowed = parseCsvSet(SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST);
+  if (allowed.size === 0) return false;
+  return nativeSafeSyncIdentifiers(record).some(identifier => allowed.has(identifier));
+}
+
+function nativeSafeSyncSourceFor(record) {
+  if (record?.source_channel === 'pos' || record?.source_type === 'shopify_pos' || record?.fulfillment_method === 'pos') {
+    return 'admin';
+  }
+  return 'customer_app';
+}
+
+function nativeSafeSyncPayload(record) {
+  const payload = { ...(record || {}) };
+  delete payload.id;
+  delete payload.created_date;
+  delete payload.updated_date;
+  delete payload.created_by;
+  delete payload.updated_by;
+  delete payload.shopify_raw_payload;
+  return payload;
+}
+
+function nativeSafeSyncHandled(result) {
+  if (!result || result.success !== true) return false;
+  if (result.native_writer_enabled === true && ['created', 'updated', 'skipped'].includes(result.action)) return true;
+  return result.action === 'idempotent_skip';
+}
+
+async function refetchShopifyOrder(base44, record) {
+  const shopifyOrderId = record?.shopify_order_id;
+  if (shopifyOrderId) {
+    const byShopifyId = await base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_id: shopifyOrderId }, '-created_date', 2).catch(() => []);
+    if (Array.isArray(byShopifyId) && byShopifyId.length > 0) return byShopifyId[0];
+  }
+
+  const orderNumber = record?.shopify_order_number || record?.order_number;
+  if (orderNumber) {
+    const byNumber = await base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_number: orderNumber }, '-created_date', 2).catch(() => []);
+    if (Array.isArray(byNumber) && byNumber.length > 0) return byNumber[0];
+  }
+
+  return null;
+}
+
+async function maybeRunNativeSafeSyncWriter(base44, { record, topic }) {
+  if (!ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER) {
+    return { attempted: false, handled: false, reason: 'bridge_disabled' };
+  }
+  if (!isNativeSafeSyncTopicAllowed(topic)) {
+    return { attempted: false, handled: false, reason: 'topic_not_allowed' };
+  }
+  if (!isNativeSafeSyncOrderAllowlisted(record)) {
+    return { attempted: false, handled: false, reason: 'order_not_allowlisted' };
+  }
+
+  const source = nativeSafeSyncSourceFor(record);
+  const orderKey = safeLogText(record?.shopify_order_number || record?.shopify_order_id || 'unknown', 120);
+  const eventType = `shopify.webhook.${topicKey(topic)}`;
+  const requestId = `shopifyWebhookReceiver:native_safe_sync:${topicKey(topic)}:${orderKey}`;
+  const idempotencyKey = `native_safe_sync:shopify_webhook:${topicKey(topic)}:${orderKey}`;
+
+  try {
+    const response = await base44.asServiceRole.functions.invoke('executeNativeSafeSyncOrderUpdate', {
+      mode: 'live',
+      source,
+      event_type: eventType,
+      request_id: requestId,
+      idempotency_key: idempotencyKey,
+      internal_secret: CUSTOMER_APP_SYNC_SECRET,
+      incoming_payload: nativeSafeSyncPayload(record),
+    });
+    const result = response?.data || response || {};
+    const handled = nativeSafeSyncHandled(result);
+    console.log(`[Shopify native safeSync bridge] topic=${topic} order=${orderKey} source=${source} action=${result?.action || 'unknown'} handled=${handled}`);
+    return {
+      attempted: true,
+      handled,
+      result,
+      source,
+      action: result?.action || null,
+      order: handled ? await refetchShopifyOrder(base44, record) : null,
+    };
+  } catch (error) {
+    console.warn(`[Shopify native safeSync bridge] failed safely for ${orderKey}: ${error?.message || 'unknown error'}`);
+    return {
+      attempted: true,
+      handled: false,
+      error_code: 'native_safe_sync_bridge_failed',
+    };
+  }
 }
 
 function safeFieldList(fields, limit = 40) {
@@ -282,11 +407,22 @@ Deno.serve(async (req) => {
   const existing = await base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_id: shopifyOrderId });
   let nativeOpsResult = null;
   let nativeOpsAttempted = false;
+  let nativeSafeSyncBridge = { attempted: false, handled: false };
 
   if (topic === 'orders/create' || topic === 'orders/paid') {
     let record;
     let action = 'created';
-    if (existing.length > 0) {
+    const mappedForNativeSafeSync = mapToShopifyOrder(payload);
+    nativeSafeSyncBridge = await maybeRunNativeSafeSyncWriter(base44, {
+      record: existing.length > 0 ? { ...mappedForNativeSafeSync, id: existing[0].id } : mappedForNativeSafeSync,
+      topic,
+    });
+
+    if (nativeSafeSyncBridge.handled) {
+      record = nativeSafeSyncBridge.order || existing[0] || mappedForNativeSafeSync;
+      action = nativeSafeSyncBridge.action === 'created' ? 'created' : 'updated';
+      console.log(`Native safeSync handled Shopify webhook ${topic} #${orderNumber}`);
+    } else if (existing.length > 0) {
       const updates = mapToShopifyOrder(payload);
       record = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
         shopify_fulfillment_status: updates.shopify_fulfillment_status,
@@ -362,7 +498,15 @@ Deno.serve(async (req) => {
     nativeOpsResult = await maybeRunMay30NativeOrderOps(base44, record, topic);
 
   } else if (topic === 'orders/updated') {
-    if (existing.length > 0) {
+    const mappedForNativeSafeSync = mapToShopifyOrder(payload);
+    nativeSafeSyncBridge = await maybeRunNativeSafeSyncWriter(base44, {
+      record: existing.length > 0 ? { ...mappedForNativeSafeSync, id: existing[0].id } : mappedForNativeSafeSync,
+      topic,
+    });
+
+    if (nativeSafeSyncBridge.handled) {
+      console.log(`Native safeSync handled Shopify update webhook #${orderNumber}`);
+    } else if (existing.length > 0) {
       const updates = mapToShopifyOrder(payload);
       const updatedRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
         shopify_fulfillment_status: updates.shopify_fulfillment_status,
