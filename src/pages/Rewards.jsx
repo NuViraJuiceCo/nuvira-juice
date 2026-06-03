@@ -64,8 +64,7 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl relative border border-[#C9A24A]/25"
-      style={{ background: `linear-gradient(135deg, #0B3D2E 0%, #0E5A43 42%, #0A6A50 100%)` }}
+      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl relative border border-[#3DB84A]/30 bg-nuvira-gradient"
     >
       {/* Gold accent arc */}
       <div className="absolute" style={{
@@ -192,8 +191,8 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       }}
     >
       {/* Top panel */}
-      <div className="h-20 flex items-center justify-center relative overflow-hidden pointer-events-none"
-        style={{ background: unlocked ? `linear-gradient(135deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` : 'hsl(var(--muted))' }}>
+      <div className={`h-20 flex items-center justify-center relative overflow-hidden pointer-events-none ${unlocked ? 'bg-nuvira-gradient' : ''}`}
+        style={!unlocked ? { background: 'hsl(var(--muted))' } : {}}>
         {unlocked && (
           <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(circle at 80% 20%, ${GOLD}30 0%, transparent 60%)` }} />
         )}
@@ -228,8 +227,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
               </button>
             ) : (
               <button onClick={onApply}
-                className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0 text-white pointer-events-auto"
-                style={{ background: `linear-gradient(90deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` }}>
+                className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0 text-white pointer-events-auto bg-nuvira-gradient">
                 Redeem
               </button>
             )
