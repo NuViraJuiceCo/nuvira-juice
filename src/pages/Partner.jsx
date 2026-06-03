@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Building2, Dumbbell, Briefcase, Heart, Mail, Check, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Building2, Dumbbell, Briefcase, Heart, Mail, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
@@ -58,7 +58,7 @@ export default function Partner() {
       </div>
 
       {/* Hero */}
-      <div className="bg-gradient-to-b from-primary/15 to-transparent px-5 pt-6 pb-4 text-center">
+      <div className="bg-nuvira-gradient-soft px-5 pt-6 pb-4 text-center">
         <img src={LOGO_URL} alt="NuVira" className="h-10 mx-auto mb-3" />
         <h1 className="font-heading text-2xl font-bold mb-2">Bring NuVira to Your Space</h1>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
@@ -76,10 +76,10 @@ export default function Partner() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07 }}
-              className="bg-card border border-border/50 rounded-2xl p-4"
+              className="nuvira-premium-card rounded-2xl p-4"
             >
-              <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center mb-2">
-                <Icon className="w-4 h-4 text-primary" />
+              <div className="nuvira-icon-badge w-9 h-9 rounded-xl flex items-center justify-center mb-2">
+                <Icon className="w-4 h-4" />
               </div>
               <p className="text-sm font-semibold leading-snug">{label}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">{example}</p>
@@ -90,7 +90,7 @@ export default function Partner() {
 
       {/* Perks */}
       <div className="px-4 mt-6">
-        <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5">
+        <div className="nuvira-premium-card rounded-2xl p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">What You Get</p>
           <div className="space-y-2">
             {perks.map(perk => (

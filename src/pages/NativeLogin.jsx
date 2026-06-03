@@ -271,7 +271,7 @@ export default function NativeLogin() {
       <div className="mx-auto max-w-sm">
         <div className="mb-6 text-center">
           <img src={LOGO_URL} alt="NuVira Juice Company" className="mx-auto mb-5 h-8 opacity-90" />
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/15 text-primary shadow-sm">
+          <div className="nuvira-icon-badge nuvira-brand-ring mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm">
             {isRegistering ? <UserPlus className="h-6 w-6" /> : isVerifying ? <ShieldCheck className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
           </div>
           <h1 className="font-heading text-3xl font-bold tracking-tight">
@@ -302,7 +302,7 @@ export default function NativeLogin() {
               }}
               className={`h-10 rounded-xl text-xs font-semibold transition-colors ${
                 mode === item.key
-                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  ? 'nuvira-gradient-button shadow-sm'
                   : 'text-muted-foreground'
               }`}
             >
@@ -311,7 +311,7 @@ export default function NativeLogin() {
           ))}
         </div>
 
-        <div className="mb-4 rounded-3xl border border-border/60 bg-card/85 p-4 shadow-lg shadow-black/5 backdrop-blur">
+        <div className="nuvira-premium-card mb-4 rounded-3xl border p-4 backdrop-blur">
           <div className="mb-4 grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -342,7 +342,7 @@ export default function NativeLogin() {
           </div>
 
           {!ENABLE_PROVIDER_BUTTONS && (
-            <p className="mb-4 rounded-2xl border border-primary/15 bg-primary/10 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mb-4 rounded-2xl border border-nuvira bg-nuvira-gradient-soft px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
               Apple and Google sign-in are visible here, but kept in safe mode until the native redirect domain is connected. Email sign-in is active now.
             </p>
           )}
@@ -426,7 +426,7 @@ export default function NativeLogin() {
           )}
 
           {statusText && (
-            <p className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs leading-relaxed text-primary">
+            <p className="rounded-xl border border-nuvira bg-nuvira-gradient-soft px-3 py-2 text-xs leading-relaxed text-primary">
               {statusText}
             </p>
           )}
@@ -441,7 +441,7 @@ export default function NativeLogin() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="h-12 w-full rounded-2xl bg-primary text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 disabled:opacity-60"
+            className="nuvira-gradient-button h-12 w-full rounded-2xl text-sm font-semibold disabled:opacity-60"
           >
             {isSubmitting
               ? 'Please wait...'
@@ -488,7 +488,7 @@ export default function NativeLogin() {
           )}
         </div>
 
-        <div className="mt-8 rounded-2xl border border-border/60 bg-card/45 p-3 text-center">
+        <div className="nuvira-premium-card mt-8 rounded-2xl border p-3 text-center">
           <p className="text-[11px] font-semibold text-foreground">Secure NuVira account access</p>
           <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
             Your orders, rewards, event check-ins, and admin tools stay inside the app session.

@@ -256,7 +256,7 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
           className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
             isRunning
               ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
-              : 'bg-primary text-primary-foreground border-primary hover:opacity-90'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
           }`}
         >
           {isRunning ? 'Previewing...' : 'Run Read-Only Preview'}
@@ -597,7 +597,7 @@ export default function SyncHealth() {
                 onClick={() => setPreset(option.value)}
                 className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
                   preset === option.value
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? 'bg-nuvira-gradient text-white border-primary'
                     : 'bg-background text-muted-foreground border-border hover:text-foreground'
                 }`}
               >
@@ -641,7 +641,7 @@ export default function SyncHealth() {
                 rangeError
                   ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
                   : preset === 'custom' && appliedDateFrom === dateFrom && appliedDateTo === dateTo
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? 'bg-nuvira-gradient text-white border-primary'
                     : 'bg-background text-muted-foreground border-border hover:text-foreground'
               }`}
             >

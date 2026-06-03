@@ -56,7 +56,7 @@ export default function ShopifyDashboard() {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                activeTab === tab.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                activeTab === tab.key ? 'bg-nuvira-gradient text-white' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -211,14 +211,14 @@ function ShopifyOrdersTab() {
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {['active', 'fulfilled', 'canceled', 'all'].map(s => (
           <button key={s} onClick={() => setFilterStatus(s)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${filterStatus === s ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${filterStatus === s ? 'bg-nuvira-gradient text-white' : 'bg-secondary text-secondary-foreground'}`}>
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
         <div className="w-px bg-border mx-1" />
         {['all', 'online', 'pos', 'event', 'subscription', 'wholesale'].map(c => (
           <button key={c} onClick={() => setFilterChannel(c)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${filterChannel === c ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${filterChannel === c ? 'bg-nuvira-gradient text-white' : 'bg-secondary text-secondary-foreground'}`}>
             {c === 'all' ? 'All Channels' : c.charAt(0).toUpperCase() + c.slice(1)}
           </button>
         ))}
@@ -382,7 +382,7 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
           <button
             onClick={() => onAdvance(order.id, nextStep.key)}
             disabled={SHOPIFY_WORKFLOW_ADVANCE_FROZEN}
-            className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
+            className="w-full py-3 bg-nuvira-gradient text-white rounded-xl text-sm font-semibold active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
           >
             → Mark as "{nextStep.label}"
           </button>
@@ -421,7 +421,7 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
         />
         {notesEdited && (
           <button onClick={() => { onSaveNotes(order.id, notes); setNotesEdited(false); }}
-            className="mt-2 w-full py-2 bg-primary text-primary-foreground rounded-lg text-xs font-semibold">
+            className="mt-2 w-full py-2 bg-nuvira-gradient text-white rounded-lg text-xs font-semibold">
             Save Notes (Locked)
           </button>
         )}
@@ -642,7 +642,7 @@ function SettingsTab() {
           Broad Shopify resync is frozen for May 30 launch. Exact order import is a gated fallback: it requires a server flag and an exact allowlisted Shopify order id, name, or number.
         </div>
         <button onClick={handleResyncOrders} disabled={adminResyncFrozen || resyncing}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50">
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-nuvira-gradient text-white rounded-xl text-sm font-semibold disabled:opacity-50">
           <RefreshCw className={`w-4 h-4 ${resyncing ? 'animate-spin' : ''}`} />
           {resyncing ? 'Syncing...' : 'Sync Recent Orders (50)'}
         </button>
@@ -657,7 +657,7 @@ function SettingsTab() {
             className="flex-1 h-9 px-3 rounded-lg border border-border bg-secondary/30 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <button onClick={handleManualOrderSync} disabled={adminResyncFrozen || resyncing || !manualOrderId.trim()}
-            className="px-3 h-9 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-50">
+            className="px-3 h-9 bg-nuvira-gradient text-white rounded-lg text-sm font-semibold disabled:opacity-50">
             Import Locked
           </button>
         </div>

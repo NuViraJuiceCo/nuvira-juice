@@ -97,7 +97,7 @@ export default function BagReturnSelector({ totalBottles, lastOrderBottles, onCh
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              <div className="px-5 py-3 bg-primary/5 border-b border-border/40 flex items-start gap-2">
+              <div className="px-5 py-3 bg-nuvira-gradient-soft border-b border-nuvira flex items-start gap-2">
                 <span className="text-primary text-[10px] mt-0.5">✦</span>
                 <p className="text-[11px] text-primary font-medium leading-relaxed">{suggestText}</p>
               </div>
@@ -114,7 +114,7 @@ export default function BagReturnSelector({ totalBottles, lastOrderBottles, onCh
               onClick={() => handleSelect(opt.key)}
               className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition-all duration-200 ${
                 selected === opt.key
-                  ? 'border-primary bg-primary/5'
+                  ? 'border-primary bg-nuvira-gradient-soft'
                   : 'border-border/50 bg-background hover:border-border'
               }`}
             >
@@ -122,7 +122,7 @@ export default function BagReturnSelector({ totalBottles, lastOrderBottles, onCh
                 <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
                   selected === opt.key ? 'border-primary' : 'border-muted-foreground/30'
                 }`}>
-                  {selected === opt.key && <div className="w-2 h-2 rounded-full bg-primary" />}
+                  {selected === opt.key && <div className="w-2 h-2 rounded-full bg-nuvira-gradient" />}
                 </div>
                 <span className="text-sm font-medium">{opt.label}</span>
               </div>
@@ -158,7 +158,7 @@ export default function BagReturnSelector({ totalBottles, lastOrderBottles, onCh
                   <Stepper value={toteCount} onChange={v => handleCountChange('tote', v)} />
                 </div>
                 {estimatedCredit > 0 && (
-                  <div className="bg-primary/5 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div className="bg-nuvira-gradient-soft border border-nuvira rounded-xl px-4 py-3 flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">Estimated credit</p>
                     <p className="text-sm font-semibold text-primary">+${estimatedCredit.toFixed(2)} after verification</p>
                   </div>

@@ -116,7 +116,7 @@ export default function Events() {
           className="relative rounded-2xl overflow-hidden h-36"
         >
           <img src={TRIO_URL} alt="NuVira Community" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/80 to-primary/40" />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(200,232,106,0.22) 0%, rgba(29,140,53,0.82) 42%, rgba(6,42,32,0.72) 100%)' }} />
           <div className="absolute inset-0 flex items-center px-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -133,9 +133,9 @@ export default function Events() {
         {showEventCheckIn && (
         <Link
           to="/event/may30"
-          className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left"
+          className="flex items-center gap-3 rounded-2xl border p-4 text-left nuvira-premium-card"
         >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl nuvira-icon-badge">
             <Gift className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
@@ -192,7 +192,7 @@ export default function Events() {
                 <div className="flex gap-2 mt-3">
                   {event.tickets_link && (
                     <a href={event.tickets_link} target="_blank" rel="noopener noreferrer"
-                      className="flex-1 text-center text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-xl">
+                      className="flex-1 text-center text-xs font-bold nuvira-gradient-button px-3 py-2 rounded-xl">
                       Get Tickets
                     </a>
                   )}

@@ -160,7 +160,7 @@ export default function OrderTracker() {
         <AlertCircle className="w-10 h-10 text-muted-foreground mb-3" />
         <h2 className="font-heading text-lg font-bold mb-2">Connection Problem</h2>
         <p className="text-sm text-muted-foreground mb-4">We couldn't reach the server. Check your connection and try again.</p>
-        <button onClick={() => refetch()} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm mb-3">
+        <button onClick={() => refetch()} className="px-6 py-2.5 nuvira-gradient-button rounded-xl font-medium text-sm mb-3">
           Try Again
         </button>
         <button onClick={() => navigate('/account/orders')} className="px-6 py-2.5 bg-secondary text-foreground rounded-xl font-medium text-sm">
@@ -195,7 +195,7 @@ export default function OrderTracker() {
         <AlertCircle className="w-10 h-10 text-muted-foreground mb-3" />
         <h2 className="font-heading text-lg font-bold mb-2">Sign In Required</h2>
         <p className="text-sm text-muted-foreground mb-4">Please sign in to view your order.</p>
-        <button onClick={() => redirectToLogin(window.location.pathname)} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm">
+        <button onClick={() => redirectToLogin(window.location.pathname)} className="px-6 py-2.5 nuvira-gradient-button rounded-xl font-medium text-sm">
           Sign In
         </button>
       </div>
@@ -234,7 +234,7 @@ export default function OrderTracker() {
 
         <div className="space-y-2.5 w-full max-w-xs">
           {isPostCheckoutPending && (
-            <button onClick={() => refetch()} className="w-full px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm active:scale-95 transition-transform">
+            <button onClick={() => refetch()} className="w-full px-6 py-2.5 nuvira-gradient-button rounded-xl font-medium text-sm active:scale-95 transition-transform">
               Try Again
             </button>
           )}
@@ -460,14 +460,14 @@ export default function OrderTracker() {
               >
                 <div className="flex flex-col items-center">
                   <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border-2 transition-all ${
-                    isCurrent ? 'bg-primary border-primary text-white ring-4 ring-primary/20'
-                    : isCompleted ? 'bg-primary border-primary text-white'
+                    isCurrent ? 'bg-nuvira-gradient border-transparent text-white ring-4 ring-primary/20'
+                    : isCompleted ? 'bg-nuvira-gradient border-transparent text-white'
                     : 'bg-background border-border text-muted-foreground'
                   }`}>
                     {isCompleted ? <Check className="w-4 h-4" /> : <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />}
                   </div>
                   {index < stages.length - 1 && (
-                    <div className={`w-0.5 h-12 transition-colors ${index < currentIndex ? 'bg-primary' : 'bg-border'}`} />
+                    <div className={`w-0.5 h-12 transition-colors ${index < currentIndex ? 'bg-nuvira-gradient' : 'bg-border'}`} />
                   )}
                 </div>
                 <div className="pb-10 pt-1.5">

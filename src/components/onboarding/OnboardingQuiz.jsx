@@ -130,7 +130,7 @@ export default function OnboardingQuiz({ onComplete }) {
 
   if (done) {
     return (
-      <div className="fixed inset-0 z-50 bg-primary flex flex-col items-center justify-center px-8 text-center">
+      <div className="fixed inset-0 z-50 bg-nuvira-gradient flex flex-col items-center justify-center px-8 text-center">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }}>
           <CheckCircle2 className="w-16 h-16 text-white mb-4" />
         </motion.div>
@@ -145,7 +145,7 @@ export default function OnboardingQuiz({ onComplete }) {
   return (
     <div className="fixed inset-0 z-50 bg-background flex flex-col">
       {/* Header */}
-      <div className="px-6 pt-10 pb-4 bg-primary">
+      <div className="px-6 pt-10 pb-4 bg-nuvira-gradient">
         <img src={LOGO_URL} alt="NuVira" className="h-6 brightness-0 invert opacity-90 mb-4" />
         <div className="flex gap-1.5 mb-4">
           {STEPS.map((_, i) => (
@@ -172,7 +172,7 @@ export default function OnboardingQuiz({ onComplete }) {
         <Button
           onClick={handleNext}
           disabled={!canNext() || saving}
-          className="w-full h-11 rounded-xl font-semibold text-sm"
+          className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm"
         >
           {saving ? 'Saving...' : step === STEPS.length - 1 ? (
             <>
@@ -209,7 +209,7 @@ export default function OnboardingQuiz({ onComplete }) {
                   onClick={() => toggle(current.key, opt.value, current.type)}
                   className={`p-4 rounded-2xl border-2 text-left transition-all active:scale-95 ${
                     selected
-                      ? 'bg-primary border-primary text-primary-foreground shadow-lg'
+                      ? 'bg-nuvira-gradient border-primary text-white shadow-lg shadow-primary/20'
                       : 'bg-card border-border text-foreground'
                   }`}
                 >

@@ -23,7 +23,7 @@ export default function SideNav() {
   const visibleNavItems = user?.role === 'admin' ? [...navItems, adminNavItem] : navItems;
 
   return (
-    <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-border min-h-screen fixed left-0 top-0 h-screen overflow-y-auto">
+    <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-nuvira min-h-screen fixed left-0 top-0 h-screen overflow-y-auto shadow-sm">
       {/* Logo */}
       <Link to="/" className="px-6 border-b border-border block" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: '1.5rem' }}>
         <img src={LOGO_URL} alt="NuVira Juice Co. — Cold-Pressed Juice Delivery" className="h-8" />
@@ -47,7 +47,7 @@ export default function SideNav() {
                 isActive
                   ? label === 'Admin'
                     ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-950/20'
-                    : 'bg-primary text-primary-foreground'
+                    : 'bg-nuvira-gradient text-white shadow-sm shadow-emerald-950/15'
                   : label === 'Admin'
                     ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground'

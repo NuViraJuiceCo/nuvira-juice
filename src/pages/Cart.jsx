@@ -129,7 +129,7 @@ export default function Cart() {
         <h2 className="font-heading text-lg font-semibold">Your cart is empty</h2>
         <p className="text-sm text-muted-foreground mt-1 mb-4">Time to add some fresh juice!</p>
         <Link to="/shop">
-          <Button className="rounded-full px-6">Browse Juices</Button>
+          <Button className="rounded-full px-6 nuvira-gradient-button">Browse Juices</Button>
         </Link>
       </div>
     );
@@ -381,7 +381,7 @@ export default function Cart() {
               navigate('/checkout');
             }}
             disabled={!meetsMinimum}
-            className="w-full h-11 rounded-xl font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-11 rounded-xl font-semibold text-sm nuvira-gradient-button disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {meetsMinimum ? 'Checkout' : 'Add more items'}
             {meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}

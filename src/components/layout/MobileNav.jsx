@@ -23,7 +23,7 @@ export default function MobileNav() {
   const visibleNavItems = user?.role === 'admin' ? [...navItems, adminNavItem] : navItems;
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-nuvira shadow-[0_-10px_30px_rgba(6,42,32,0.08)]" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
         {visibleNavItems.map(({ path, icon: Icon, label }) => {
           const isActive = location.pathname === path || 
@@ -72,7 +72,7 @@ export default function MobileNav() {
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
-                  className={`absolute -top-px left-1/4 right-1/4 h-0.5 rounded-full ${label === 'Admin' ? 'bg-emerald-400' : 'bg-primary'}`}
+                  className={`absolute -top-px left-1/4 right-1/4 h-0.5 rounded-full ${label === 'Admin' ? 'bg-emerald-400' : 'bg-nuvira-gradient'}`}
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                 />
               )}

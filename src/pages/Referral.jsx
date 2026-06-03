@@ -73,10 +73,10 @@ export default function Referral() {
       </div>
 
       {/* Hero */}
-      <div className="bg-gradient-to-b from-primary/15 to-transparent px-5 pt-6 pb-5 text-center">
+      <div className="bg-nuvira-gradient-soft px-5 pt-6 pb-5 text-center">
         <img src={LOGO_URL} alt="NuVira" className="h-9 mx-auto mb-3" />
-        <div className="w-14 h-14 bg-primary/15 rounded-full flex items-center justify-center mx-auto mb-3">
-          <Gift className="w-6 h-6 text-primary" />
+        <div className="nuvira-icon-badge w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3">
+          <Gift className="w-6 h-6" />
         </div>
         <h1 className="font-heading text-2xl font-bold mb-1">Give $5, Get a Bottle</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
@@ -89,7 +89,7 @@ export default function Referral() {
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="mx-4 mt-2 bg-card border border-border/40 rounded-2xl p-5"
+        className="nuvira-premium-card mx-4 mt-2 rounded-2xl p-5"
       >
         <p className="text-xs text-muted-foreground mb-2 font-medium">Your referral code</p>
         <div className="flex items-center gap-3">
@@ -98,9 +98,9 @@ export default function Referral() {
           </div>
           <button
             onClick={handleCopy}
-            className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center transition-colors active:bg-primary/20"
+            className="nuvira-icon-badge w-12 h-12 rounded-xl flex items-center justify-center transition-colors active:scale-95"
           >
-            {copied ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4 text-primary" />}
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
           </button>
         </div>
         <Button
@@ -118,7 +118,7 @@ export default function Referral() {
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.18 }}
-        className="mx-4 mt-3 bg-card border border-border/40 rounded-2xl p-4"
+        className="nuvira-premium-card mx-4 mt-3 rounded-2xl p-4"
       >
         <p className="text-sm font-semibold mb-1">Invite by email</p>
         <p className="text-xs text-muted-foreground mb-3">We'll send them a personal invite from you.</p>
@@ -152,8 +152,8 @@ export default function Referral() {
               transition={{ delay: 0.25 + i * 0.07 }}
               className="flex items-start gap-3"
             >
-              <div className="w-7 h-7 bg-primary rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-primary-foreground text-xs font-bold">{step}</span>
+              <div className="nuvira-icon-badge w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-xs font-bold">{step}</span>
               </div>
               <div>
                 <p className="text-sm font-semibold">{title}</p>
@@ -169,7 +169,7 @@ export default function Referral() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.45 }}
-        className="mx-4 mt-6 bg-gradient-to-br from-primary/15 to-accent/10 border border-border/30 rounded-2xl p-5"
+        className="nuvira-premium-card mx-4 mt-6 rounded-2xl p-5"
       >
         <div className="flex items-center gap-2 mb-3">
           <Users className="w-4 h-4 text-primary" />

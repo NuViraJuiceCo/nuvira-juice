@@ -354,7 +354,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
             onClick={() => resetFor(key)}
             className={`h-9 rounded-lg border px-2 text-xs font-semibold flex items-center justify-center gap-1.5 ${
               activeAction === key
-                ? 'bg-primary text-primary-foreground border-primary'
+                ? 'bg-nuvira-gradient text-white border-primary'
                 : 'bg-card text-foreground border-border disabled:opacity-50'
             }`}
           >
@@ -471,7 +471,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
             type="button"
             onClick={() => runLive(activeAction)}
             disabled={!preview?.live_allowed || Boolean(pending)}
-            className="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+            className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
           >
             {pending === `live_${activeAction}` ? 'Running...' : `Run ${formatLabel(activeAction)}`}
           </button>
@@ -654,7 +654,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
               type="button"
               onClick={deductInventory}
               disabled={MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN || deductPending}
-              className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+              className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
             >
               {MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN ? 'Deduction Frozen' : deductPending ? 'Deducting...' : 'Deduct Inventory'}
             </button>
@@ -865,7 +865,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
               type="button"
               onClick={correctIngredientUsage}
               disabled={!preview.usage_correction_allowed || correctionPending}
-              className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+              className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
             >
               {correctionPending ? 'Correcting...' : 'Correct Usage'}
             </button>
@@ -1095,7 +1095,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
               type="button"
               onClick={packFulfillmentTasks}
               disabled={!preview.pack_cascade_allowed || packableTasks.length === 0 || Boolean(actionPending)}
-              className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+              className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
             >
               {actionPending === 'pack' ? 'Packing...' : `Pack Tasks (${packableTasks.length})`}
             </button>
@@ -1324,7 +1324,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
             onClick={() => runPreview(action.key)}
             className={`h-9 rounded-lg border px-2 text-xs font-semibold ${
               activeAction === action.key
-                ? 'bg-primary text-primary-foreground border-primary'
+                ? 'bg-nuvira-gradient text-white border-primary'
                 : 'bg-card text-foreground border-border disabled:opacity-50'
             }`}
           >
@@ -1519,7 +1519,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
             type="button"
             disabled={actionPending || pending || preview?.action !== activeAction || !preview?.lifecycle_ready}
             onClick={() => runNative(activeAction)}
-            className="w-full h-10 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-10 rounded-lg bg-nuvira-gradient text-white text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {actionPending ? `Running Native ${formatLabel(activeAction)}...` : `Run Native ${formatLabel(activeAction)}`}
           </button>

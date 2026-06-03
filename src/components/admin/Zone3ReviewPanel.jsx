@@ -143,7 +143,7 @@ function DARCard({ dar, onApprove, onDeny, isProcessing }) {
                           onClick={() => setDeliveryFee(fee)}
                           className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
                             deliveryFee === fee
-                              ? 'bg-primary text-primary-foreground border-primary'
+                              ? 'bg-nuvira-gradient text-white border-primary'
                               : 'bg-secondary text-secondary-foreground border-border'
                           }`}
                         >

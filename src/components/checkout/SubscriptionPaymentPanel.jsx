@@ -103,7 +103,7 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
   return (
     <div className="space-y-4">
       {/* Plan summary */}
-      <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-3">
+      <div className="flex items-center justify-between bg-nuvira-gradient-soft border border-nuvira rounded-xl px-4 py-3">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
           <span className="text-sm font-semibold">{planName}</span>
@@ -171,7 +171,7 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
         <Button
           type="submit"
           disabled={!stripe || submitting}
-          className="w-full h-12 rounded-xl font-semibold text-sm"
+          className="w-full h-12 rounded-xl font-semibold text-sm nuvira-gradient-button"
         >
           {submitting ? 'Processing Payment…' : `Subscribe — $${amountDue.toFixed(2)}`}
         </Button>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
@@ -171,7 +171,7 @@ export default function ProgramDetail() {
            transition={{ delay: 0.12 }}
            className="mb-6"
          >
-           <div className="bg-card border border-border/50 rounded-2xl p-4">
+           <div className="nuvira-premium-card rounded-2xl p-4">
              <div className="flex items-center gap-2 mb-1">
                <Zap className="w-4 h-4 text-primary" />
                <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
@@ -190,7 +190,7 @@ export default function ProgramDetail() {
                        isSelected ? prev.filter(id => id !== shot.id) : [...prev, shot.id]
                      )}
                      className={`w-full text-left flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition-all ${
-                       isSelected ? 'border-primary bg-primary/5' : atMax ? 'border-border/30 opacity-40' : 'border-border/50 bg-background'
+                       isSelected ? 'border-primary bg-nuvira-gradient-soft' : atMax ? 'border-border/30 opacity-40' : 'border-border/50 bg-background'
                      }`}
                    >
                      {shot.image_url ? (
@@ -202,7 +202,7 @@ export default function ProgramDetail() {
                        <p className="text-xs font-semibold">{shot.title}</p>
                        <p className="text-[10px] text-muted-foreground">{shot.short_description}</p>
                      </div>
-                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-primary bg-primary' : 'border-border'}`}>
+                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-primary bg-nuvira-gradient' : 'border-border'}`}>
                        {isSelected && <Check className="w-3 h-3 text-white" />}
                      </div>
                    </button>

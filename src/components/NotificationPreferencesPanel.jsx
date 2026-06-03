@@ -82,8 +82,8 @@ export default function NotificationPreferencesPanel() {
           return (
             <div key={key} className="flex items-center justify-between gap-3 py-3 border-b border-border/30 last:border-0">
               <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${enabled ? 'bg-primary/10' : 'bg-secondary'}`}>
-                  {enabled ? <Bell className="w-3.5 h-3.5 text-primary" /> : <BellOff className="w-3.5 h-3.5 text-muted-foreground" />}
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${enabled ? 'nuvira-icon-badge' : 'bg-secondary'}`}>
+                  {enabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5 text-muted-foreground" />}
                 </div>
                 <div>
                   <p className="text-sm font-medium">{label}</p>
@@ -94,7 +94,7 @@ export default function NotificationPreferencesPanel() {
                 onClick={() => !isOperational && toggle(key)}
                 className={`w-12 h-6 rounded-full transition-all relative shrink-0 ${
                   isOperational ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                } ${enabled ? 'bg-primary' : 'bg-secondary border border-border'}`}
+                } ${enabled ? 'bg-nuvira-gradient' : 'bg-secondary border border-border'}`}
                 title={isOperational ? 'Required for order & delivery alerts' : undefined}
               >
                 <div className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-all ${enabled ? 'left-7' : 'left-1'}`} />
@@ -106,7 +106,7 @@ export default function NotificationPreferencesPanel() {
       <button
         onClick={handleSave}
         disabled={saving}
-        className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold text-sm active:opacity-90 transition-opacity disabled:opacity-60"
+        className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm active:opacity-90 transition-opacity disabled:opacity-60"
       >
         {saving ? 'Saving...' : 'Save Preferences'}
       </button>

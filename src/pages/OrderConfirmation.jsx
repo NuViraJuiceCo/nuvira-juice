@@ -123,8 +123,8 @@ export default function OrderConfirmation() {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center">
         <SEO title="Order Processing" noindex={true} />
-        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-5">
-          <Mail className="w-10 h-10 text-primary" />
+        <div className="nuvira-icon-badge w-20 h-20 rounded-full flex items-center justify-center mb-5">
+          <Mail className="w-10 h-10" />
         </div>
         <h1 className="font-heading text-2xl font-bold mb-2">Check Your Orders</h1>
         <p className="text-sm text-muted-foreground max-w-xs mb-6 leading-relaxed">
@@ -132,7 +132,7 @@ export default function OrderConfirmation() {
         </p>
         <div className="space-y-2.5 w-full max-w-sm">
           <Link to="/account/orders" className="block">
-            <Button className="w-full h-11 rounded-xl font-semibold text-sm">
+            <Button className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
               View My Orders <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </Link>
@@ -178,8 +178,8 @@ export default function OrderConfirmation() {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center">
         <SEO title="Order Received" noindex={true} />
-        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-5">
-          <Clock className="w-10 h-10 text-primary" />
+        <div className="nuvira-icon-badge w-20 h-20 rounded-full flex items-center justify-center mb-5">
+          <Clock className="w-10 h-10" />
         </div>
         <h1 className="font-heading text-2xl font-bold mb-2">Order Received!</h1>
         {(resolvedOrderNumber) && (
@@ -191,7 +191,7 @@ export default function OrderConfirmation() {
         </p>
         <div className="space-y-2.5 w-full max-w-sm">
           <Link to="/account/orders" className="block">
-            <Button className="w-full h-11 rounded-xl font-semibold text-sm">
+            <Button className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
               View My Orders <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </Link>
@@ -218,9 +218,9 @@ export default function OrderConfirmation() {
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-        className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-5"
+        className="nuvira-icon-badge w-20 h-20 rounded-full flex items-center justify-center mb-5"
       >
-        <CheckCircle className="w-10 h-10 text-primary" />
+        <CheckCircle className="w-10 h-10" />
       </motion.div>
 
       <motion.div
@@ -241,7 +241,7 @@ export default function OrderConfirmation() {
         className="w-full max-w-sm mt-6"
       >
         {/* Delivery Info */}
-        <div className="bg-primary/5 rounded-xl p-4 flex items-center gap-3 mb-4">
+        <div className="bg-nuvira-gradient-soft border border-nuvira rounded-xl p-4 flex items-center gap-3 mb-4">
           <Truck className="w-5 h-5 text-primary shrink-0" />
           <div>
             <p className="text-sm font-semibold text-primary">
@@ -264,7 +264,7 @@ export default function OrderConfirmation() {
          </div>
 
         {/* Order Summary */}
-         <div className="bg-secondary/40 rounded-xl p-4 mb-6">
+         <div className="nuvira-premium-card rounded-xl p-4 mb-6">
            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
              Order Summary
            </h3>
@@ -283,7 +283,7 @@ export default function OrderConfirmation() {
         {/* Actions */}
         <div className="space-y-2.5">
           <Link to={`/order-tracker/${order.order_number || order.id}`} className="block">
-            <Button className="w-full h-11 rounded-xl font-semibold text-sm">
+            <Button className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
               Track Your Order <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </Link>

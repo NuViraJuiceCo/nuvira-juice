@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Users, Sparkles, Heart, PartyPopper, GlassWater, Mail, Check } from 'lucide-react';
+import { ArrowLeft, Calendar, Users, Sparkles, Heart, PartyPopper, GlassWater, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
@@ -85,7 +85,7 @@ export default function BookEvent() {
       {/* Hero */}
       <div className="relative h-56 overflow-hidden">
         <img src={HERO_URL} alt="NuVira Event" className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/70 via-primary/60 to-primary/90" />
+        <div className="absolute inset-0 bg-gradient-to-b from-primary/40 via-primary/60 to-primary/90" />
         <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
           <img src={LOGO_URL} alt="NuVira" className="h-9 mb-3 drop-shadow-lg" />
           <h1 className="font-heading text-2xl font-bold text-white leading-tight">
@@ -110,12 +110,12 @@ export default function BookEvent() {
               onClick={() => set('eventType', label)}
               className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all ${
                 form.eventType === label
-                  ? 'border-primary bg-primary/10'
+                  ? 'border-primary bg-nuvira-gradient-soft'
                   : 'border-border/40 bg-card'
               }`}
             >
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                form.eventType === label ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                form.eventType === label ? 'nuvira-icon-badge' : 'bg-secondary text-muted-foreground'
               }`}>
                 <Icon className="w-4 h-4" />
               </div>
@@ -127,7 +127,7 @@ export default function BookEvent() {
 
       {/* What's Included */}
       <div className="px-4 mt-6">
-        <div className="bg-gradient-to-br from-primary/10 to-accent/5 border border-primary/20 rounded-2xl p-5">
+        <div className="nuvira-premium-card rounded-2xl p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">What's Included</p>
           <div className="space-y-2">
             {includes.map(item => (
@@ -168,7 +168,7 @@ export default function BookEvent() {
                 onClick={() => set('juiceType', value)}
                 className={`p-3 rounded-xl border-2 transition-all text-left ${
                   form.juiceType === value
-                    ? 'border-primary bg-primary/10'
+                    ? 'border-primary bg-nuvira-gradient-soft'
                     : 'border-border/40 bg-card'
                 }`}
               >
@@ -188,7 +188,7 @@ export default function BookEvent() {
                 onClick={() => set('serviceModel', value)}
                 className={`p-3 rounded-xl border-2 transition-all text-left ${
                   form.serviceModel === value
-                    ? 'border-primary bg-primary/10'
+                    ? 'border-primary bg-nuvira-gradient-soft'
                     : 'border-border/40 bg-card'
                 }`}
               >
@@ -207,7 +207,7 @@ export default function BookEvent() {
           className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
         />
 
-        <Button onClick={handleSubmit} disabled={loading} className="w-full h-12 rounded-xl font-semibold text-sm">
+        <Button onClick={handleSubmit} disabled={loading} className="nuvira-gradient-button w-full h-12 rounded-xl font-semibold text-sm">
           {loading ? 'Sending...' : 'Request Your Event Quote'}
           {!loading && <Sparkles className="w-4 h-4 ml-1" />}
         </Button>

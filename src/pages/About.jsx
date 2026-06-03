@@ -36,7 +36,7 @@ export default function About() {
       {/* Hero Image */}
       <div className="relative h-56 overflow-hidden">
         <img src={TRIO_URL} alt="NuVira cold-pressed juices" className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/60 to-primary/90" />
+        <div className="absolute inset-0 bg-gradient-to-b from-primary/35 via-primary/55 to-primary/90" />
         <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
           <img src={LOGO_URL} alt="NuVira Juice Company logo" className="w-36 mb-2 drop-shadow-lg" />
           <p className="text-primary-foreground/90 text-sm font-light tracking-wide">Real. Living. Nutrition.</p>
@@ -66,9 +66,9 @@ export default function About() {
           <h2 className="font-heading text-lg font-semibold mb-4">The NuVira Way</h2>
           <div className="grid grid-cols-1 gap-4">
             {values.map(({ icon: IconComp, title, body }) => (
-              <div key={title} className="flex gap-4 p-4 bg-secondary/50 rounded-2xl border border-border/40">
-                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                  <IconComp className="w-4 h-4 text-primary" />
+              <div key={title} className="nuvira-premium-card flex gap-4 p-4 rounded-2xl">
+                <div className="nuvira-icon-badge w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                  <IconComp className="w-4 h-4" />
                 </div>
                 <div>
                   <p className="font-semibold text-sm mb-1">{title}</p>
@@ -102,7 +102,7 @@ export default function About() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="bg-gradient-to-br from-primary to-primary/80 rounded-2xl p-6 text-center"
+          className="bg-nuvira-gradient rounded-2xl p-6 text-center shadow-xl shadow-primary/20"
         >
           <div className="relative rounded-xl overflow-hidden mb-4" style={{ height: '180px' }}>
             <img
@@ -119,7 +119,7 @@ export default function About() {
 
         {/* CTA Links */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="flex flex-col gap-3 pb-4">
-          <Link to="/shop" className="w-full h-12 rounded-xl font-semibold text-sm bg-primary text-primary-foreground flex items-center justify-center">
+          <Link to="/shop" className="nuvira-gradient-button w-full h-12 rounded-xl font-semibold text-sm flex items-center justify-center">
             Shop the Collection
           </Link>
           <Link to="/contact" className="w-full h-12 rounded-xl font-semibold text-sm border border-border flex items-center justify-center text-foreground">

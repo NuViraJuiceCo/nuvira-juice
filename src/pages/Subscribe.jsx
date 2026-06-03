@@ -42,9 +42,9 @@ export default function Subscribe() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-5"
+          className="w-16 h-16 rounded-2xl nuvira-icon-badge flex items-center justify-center mb-5"
         >
-          <Clock className="w-7 h-7 text-primary" />
+          <Clock className="w-7 h-7 text-white" />
         </motion.div>
 
         <motion.div
@@ -65,8 +65,7 @@ export default function Subscribe() {
           className="w-full space-y-3"
         >
           <Link to="/shop" className="block">
-            <Button className="w-full h-12 rounded-xl font-semibold text-sm bg-nuvira-gradient border-0 text-white hover:opacity-95">
-              <ShoppingBag className="w-4 h-4 mr-2" />
+            <Button className="w-full h-12 rounded-xl font-semibold text-sm nuvira-gradient-button">              <ShoppingBag className="w-4 h-4 mr-2" />
               Shop One-Time Orders
             </Button>
           </Link>

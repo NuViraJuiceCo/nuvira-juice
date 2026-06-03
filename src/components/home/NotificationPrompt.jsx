@@ -81,11 +81,11 @@ export default function NotificationPrompt() {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
         transition={{ duration: 0.3 }}
-        className="mx-4 mb-4 bg-card border border-border/50 rounded-2xl p-4 shadow-sm"
+        className="nuvira-premium-card mx-4 mb-4 rounded-2xl p-4"
       >
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-            <Bell className="w-4 h-4 text-primary" />
+          <div className="nuvira-icon-badge w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+            <Bell className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold mb-0.5">Stay In The Loop</p>
@@ -96,7 +96,7 @@ export default function NotificationPrompt() {
               <button
                 onClick={handleEnable}
                 disabled={isEnabling}
-                className="px-4 py-1.5 bg-primary text-primary-foreground rounded-full text-xs font-semibold"
+                className="nuvira-gradient-button px-4 py-1.5 rounded-full text-xs font-semibold"
               >
                 {isEnabling ? 'Enabling...' : 'Enable Notifications'}
               </button>

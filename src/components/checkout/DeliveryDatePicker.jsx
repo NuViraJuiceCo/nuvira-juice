@@ -36,7 +36,7 @@ export default function DeliveryDatePicker({ options, selected, onSelect }) {
               onClick={() => onSelect(opt)}
               className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
                 isSelected
-                  ? 'border-primary bg-primary/5 shadow-sm'
+                  ? 'border-primary bg-nuvira-gradient-soft shadow-sm'
                   : 'border-border bg-card hover:border-primary/40'
               }`}
             >
@@ -51,7 +51,7 @@ export default function DeliveryDatePicker({ options, selected, onSelect }) {
               </div>
               <div className="flex flex-col items-end gap-1">
                 {opt.is_earliest && (
-                  <span className="text-[10px] font-semibold bg-primary/10 text-primary rounded-full px-2 py-0.5">
+                  <span className="text-[10px] font-semibold bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full px-2 py-0.5">
                     Earliest
                   </span>
                 )}

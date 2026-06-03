@@ -310,8 +310,8 @@ export default function EventMay30() {
       </div>
 
       <main className="px-4 py-6 space-y-5 max-w-xl mx-auto">
-        <section className="rounded-2xl border border-border/50 bg-card overflow-hidden">
-          <div className="bg-primary px-5 py-6 text-primary-foreground">
+        <section className="nuvira-premium-card rounded-2xl overflow-hidden">
+          <div className="bg-nuvira-gradient px-5 py-6 text-white">
             <div className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center mb-4">
               <Sparkles className="w-5 h-5" />
             </div>
@@ -324,7 +324,7 @@ export default function EventMay30() {
 
           <div className="p-5 space-y-4">
             {displaySession && (
-              <div className="rounded-xl border border-border/50 bg-secondary/30 p-3">
+              <div className="rounded-xl border border-nuvira bg-nuvira-gradient-soft p-3">
                 <div className="flex items-start gap-3">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <div className="min-w-0">
@@ -340,19 +340,19 @@ export default function EventMay30() {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-secondary/50 p-3">
+              <div className="rounded-xl border border-nuvira bg-nuvira-gradient-soft p-3">
                 <Gift className="w-4 h-4 text-primary mb-2" />
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Bonus</p>
                 <p className="text-xl font-bold">{EVENT_CHECKIN_BONUS_POINTS} pts</p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3">
+              <div className="rounded-xl border border-nuvira bg-nuvira-gradient-soft p-3">
                 <Bell className="w-4 h-4 text-primary mb-2" />
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notice</p>
                 <p className="text-sm font-semibold">In app</p>
               </div>
             </div>
 
-            <div className="rounded-xl border border-border/50 bg-secondary/30 p-3 space-y-2">
+            <div className="rounded-xl border border-nuvira bg-nuvira-gradient-soft p-3 space-y-2">
               <label htmlFor="event-code" className="text-xs font-semibold">Event code</label>
               <input
                 id="event-code"
@@ -378,7 +378,7 @@ export default function EventMay30() {
               )}
             </div>
 
-            <div className="rounded-xl border border-border/50 bg-secondary/30 p-3 space-y-2">
+            <div className="rounded-xl border border-nuvira bg-nuvira-gradient-soft p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold">Event push</p>
@@ -446,7 +446,7 @@ export default function EventMay30() {
               type="button"
               onClick={() => redeem.mutate()}
               disabled={redeem.isPending || isLoadingClaimStatus || hasClaimed || !canAttemptClaim}
-              className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm active:scale-[0.99] transition-transform disabled:opacity-60"
+              className="nuvira-gradient-button w-full h-12 rounded-xl font-semibold text-sm active:scale-[0.99] transition-transform disabled:opacity-60"
             >
               {redeem.isPending
                 ? 'Checking in...'

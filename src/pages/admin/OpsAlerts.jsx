@@ -83,7 +83,7 @@ function Chip({ value, context = 'status' }) {
 function ActionButton({ children, onClick, disabled, variant = 'default' }) {
   const variantClasses = {
     default: 'border-border bg-background text-foreground hover:bg-secondary',
-    primary: 'border-primary/20 bg-primary text-primary-foreground hover:bg-primary/90',
+    primary: 'border-primary/20 bg-nuvira-gradient text-white hover:bg-primary/90',
     muted: 'border-border bg-secondary text-secondary-foreground hover:bg-secondary/80',
   };
 
