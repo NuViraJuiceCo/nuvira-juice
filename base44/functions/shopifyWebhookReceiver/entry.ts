@@ -9,7 +9,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Set your SHOPIFY_WEBHOOK_SECRET in secrets for verification.
  */
 
-const SHOPIFY_WEBHOOK_SECRET = Deno.env.get('SHOPIFY_WEBHOOK_SECRET') || '';
+const SHOPIFY_WEBHOOK_SECRET =
+  Deno.env.get('SHOPIFY_WEBHOOK_SECRET') ||
+  Deno.env.get('SHOPIFY_WEBHOOK_SIGNING_SECRET') ||
+  Deno.env.get('SHOPIFY_CLIENT_SECRET') ||
+  Deno.env.get('SHOPIFY_API_SECRET') ||
+  Deno.env.get('SHOPIFY_APP_SECRET') ||
+  '';
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
 const ENABLE_MAY30_NATIVE_ORDER_OPS = Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
 const MAY30_NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
