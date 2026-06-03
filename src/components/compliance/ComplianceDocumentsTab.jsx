@@ -4,7 +4,7 @@ import moment from 'moment';
 
 const statusStyle = {
   Valid: 'bg-emerald-50 text-emerald-700',
-  'Due Soon': 'bg-amber-50 text-amber-700',
+  'Due Soon': 'bg-cyan-50 text-cyan-700',
   Overdue: 'bg-red-50 text-red-700',
   Expired: 'bg-red-100 text-red-800',
   Pending: 'bg-blue-50 text-blue-700',
@@ -61,7 +61,7 @@ export default function ComplianceDocumentsTab({ nativeCompliance }) {
         <StatCard label="Overdue" value={overdue} icon={AlertTriangle} />
       </div>
 
-      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <div className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-900">
         <Lock className="mt-0.5 h-4 w-4 shrink-0" />
         <p>Document deletes are locked during launch operations. Use the existing compliance fallback/admin process for destructive document changes.</p>
       </div>

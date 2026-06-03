@@ -118,11 +118,11 @@ export default function ComplianceOps() {
                 </div>
               )}
               {incompleteChecklistCount > 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                <div className="bg-lime-50 border border-lime-200 rounded-lg p-3 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-lime-600 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-semibold text-yellow-900">{incompleteChecklistCount} Incomplete Checklist{incompleteChecklistCount === 1 ? '' : 's'}</p>
-                    <p className="text-sm text-yellow-700">Daily checklists must be completed before end of shift.</p>
+                    <p className="font-semibold text-lime-900">{incompleteChecklistCount} Incomplete Checklist{incompleteChecklistCount === 1 ? '' : 's'}</p>
+                    <p className="text-sm text-lime-700">Daily checklists must be completed before end of shift.</p>
                   </div>
                 </div>
               )}
@@ -470,7 +470,7 @@ function CorrectiveActionsList({ nativeCompliance }) {
               <p className="font-semibold">{log.issue_type}</p>
               <p className="text-sm text-muted-foreground">{log.log_date} {log.log_time} • {log.staff_member}</p>
               <p className="text-sm mt-1">{log.corrective_action_taken}</p>
-              <span className={`inline-block text-xs px-2 py-1 rounded mt-2 ${log.status === 'Verified' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{log.status}</span>
+              <span className={`inline-block text-xs px-2 py-1 rounded mt-2 ${log.status === 'Verified' ? 'bg-green-100 text-green-700' : 'bg-lime-100 text-lime-700'}`}>{log.status}</span>
             </div>
           </div>
           <ComplianceRecordDetails record={log} />

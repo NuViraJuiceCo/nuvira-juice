@@ -75,8 +75,8 @@ export default function Zone3RouteReviewPanel({
     <div className="px-4 pb-4">
       {/* Zone 3 Badge */}
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center shrink-0">
-          <MapPin className="w-4 h-4 text-amber-600" />
+        <div className="w-8 h-8 bg-cyan-100 dark:bg-cyan-900/30 rounded-full flex items-center justify-center shrink-0">
+          <MapPin className="w-4 h-4 text-cyan-600" />
         </div>
         <div>
           <p className="text-sm font-bold text-foreground">Route Review Required</p>
@@ -85,26 +85,26 @@ export default function Zone3RouteReviewPanel({
       </div>
 
       {/* Disclosure Card */}
-      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-4">
+      <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-xl p-4 mb-4">
         <div className="flex items-start gap-2.5 mb-3">
-          <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Authorization Hold Notice</p>
+          <AlertTriangle className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />
+          <p className="text-sm font-semibold text-cyan-900 dark:text-cyan-200">Authorization Hold Notice</p>
         </div>
-        <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed mb-3">
+        <p className="text-xs text-cyan-800 dark:text-cyan-300 leading-relaxed mb-3">
           Your address is outside our automatic delivery routes. We may still be able to deliver depending on route availability.
           We'll place a <strong>temporary authorization hold</strong> on your card, but <strong>you will not be charged</strong> unless your delivery request is approved by our team.
         </p>
         <div className="flex items-start gap-2.5 mb-3">
-          <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-xs text-amber-800 dark:text-amber-300">
+          <Clock className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-cyan-800 dark:text-cyan-300">
             Our team will review your request and respond within <strong>24–48 hours</strong>. If denied, the hold is released immediately — no charge.
           </p>
         </div>
         {/* Estimated fee */}
         <div className="bg-white/60 dark:bg-black/20 rounded-lg p-2.5 text-xs">
-          <div className="flex justify-between mb-1"><span className="text-amber-800 dark:text-amber-300">Subtotal</span><span className="font-medium">${(subtotal || 0).toFixed(2)}</span></div>
-          <div className="flex justify-between mb-1"><span className="text-amber-800 dark:text-amber-300">Est. Delivery Fee</span><span className="font-medium">${estimatedFee.toFixed(2)}</span></div>
-          <div className="flex justify-between border-t border-amber-200/60 pt-1 mt-1"><span className="font-semibold text-amber-900 dark:text-amber-200">Auth Hold Amount</span><span className="font-bold">${total.toFixed(2)}</span></div>
+          <div className="flex justify-between mb-1"><span className="text-cyan-800 dark:text-cyan-300">Subtotal</span><span className="font-medium">${(subtotal || 0).toFixed(2)}</span></div>
+          <div className="flex justify-between mb-1"><span className="text-cyan-800 dark:text-cyan-300">Est. Delivery Fee</span><span className="font-medium">${estimatedFee.toFixed(2)}</span></div>
+          <div className="flex justify-between border-t border-cyan-200/60 pt-1 mt-1"><span className="font-semibold text-cyan-900 dark:text-cyan-200">Auth Hold Amount</span><span className="font-bold">${total.toFixed(2)}</span></div>
         </div>
       </div>
 
@@ -163,7 +163,7 @@ export default function Zone3RouteReviewPanel({
           <Button
             onClick={handleAuthorize}
             disabled={!acknowledged || isSubmitting}
-            className="w-full h-12 rounded-xl font-semibold text-sm bg-amber-600 hover:bg-amber-700 text-white"
+            className="w-full h-12 rounded-xl font-semibold text-sm bg-cyan-600 hover:bg-cyan-700 text-white"
           >
             {isSubmitting ? 'Processing...' : `Authorize Route Review · $${total.toFixed(2)}`}
             {!isSubmitting && <ChevronRight className="w-4 h-4 ml-1" />}

@@ -286,9 +286,9 @@ export default function DailyChecklistForm({ nativeCompliance }) {
           </div>
 
           {!preProductionComplete && (
-            <div className="flex gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
-              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-800">
+            <div className="flex gap-2 p-3 bg-cyan-50 border border-cyan-200 rounded-md">
+              <AlertCircle className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-cyan-800">
                 <p className="font-semibold">Required Pre-Production Items Incomplete</p>
                 <p>Complete the temperature check, sanitizer check, equipment sanitation, and work area cleaning before submitting.</p>
               </div>

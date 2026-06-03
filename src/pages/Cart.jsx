@@ -200,17 +200,17 @@ export default function Cart() {
 
         {/* Minimum Order Notice */}
         {!meetsMinimum && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-3.5 flex items-center gap-3">
-            <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3.5 flex items-center gap-3">
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
             <p className="text-xs font-semibold text-foreground">Add {Math.ceil(3 - juiceCount)} more to checkout</p>
           </motion.div>
         )}
 
         {/* Production Alert */}
         {productionInfo && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 flex items-center gap-3">
-            <Zap className="w-4 h-4 text-amber-500 shrink-0 fill-amber-400" />
-            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">{productionInfo.label}</p>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-cyan-500/10 border border-cyan-500/30 rounded-2xl p-3.5 flex items-center gap-3">
+            <Zap className="w-4 h-4 text-cyan-500 shrink-0 fill-cyan-400" />
+            <p className="text-xs font-semibold text-cyan-600 dark:text-cyan-400">{productionInfo.label}</p>
           </motion.div>
         )}
 

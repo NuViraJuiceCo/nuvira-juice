@@ -184,10 +184,10 @@ export default function HACCPPlanTab({ nativeCompliance }) {
                     <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                       {r.review_date && <span>Reviewed {r.review_date}</span>}
                       {r.reviewed_by && <span>by {r.reviewed_by.split('@')[0]}</span>}
-                      <span className={checkedCount === CHECKLIST_FIELDS.length ? 'text-emerald-700' : 'text-amber-700'}>
+                      <span className={checkedCount === CHECKLIST_FIELDS.length ? 'text-emerald-700' : 'text-cyan-700'}>
                         {checkedCount}/{CHECKLIST_FIELDS.length} sections reviewed
                       </span>
-                      {r.changes_made && <span className="text-amber-700">• Changes made</span>}
+                      {r.changes_made && <span className="text-cyan-700">• Changes made</span>}
                     </div>
                   </div>
                   {checkedCount === CHECKLIST_FIELDS.length && (

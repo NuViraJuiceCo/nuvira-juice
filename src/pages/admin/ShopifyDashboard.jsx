@@ -84,7 +84,7 @@ const SOURCE_COLORS = {
   online: 'bg-blue-100 text-blue-700',
   pos: 'bg-purple-100 text-purple-700',
   event: 'bg-pink-100 text-pink-700',
-  subscription: 'bg-amber-100 text-amber-700',
+  subscription: 'bg-cyan-100 text-cyan-700',
   wholesale: 'bg-cyan-100 text-cyan-700',
   draft: 'bg-gray-100 text-gray-600',
   admin: 'bg-slate-100 text-slate-600',
@@ -93,7 +93,7 @@ const SOURCE_COLORS = {
 const PROD_STATUS_COLORS = {
   new: 'bg-blue-100 text-blue-700',
   awaiting_production: 'bg-indigo-100 text-indigo-700',
-  in_production: 'bg-amber-100 text-amber-700',
+  in_production: 'bg-cyan-100 text-cyan-700',
   bottled: 'bg-orange-100 text-orange-700',
   labeled: 'bg-orange-100 text-orange-700',
   qc_checked: 'bg-lime-100 text-lime-700',
@@ -243,7 +243,7 @@ function ShopifyOrdersTab() {
                       <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${SOURCE_COLORS[order.source_channel] || 'bg-muted text-muted-foreground'}`}>
                         {order.source_channel}
                       </span>
-                      {order.is_subscription && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-semibold">Recurring</span>}
+                      {order.is_subscription && <span className="text-[10px] bg-cyan-100 text-cyan-700 px-1.5 py-0.5 rounded-full font-semibold">Recurring</span>}
                     </div>
                     <p className="text-xs font-medium truncate">{order.customer_name}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{order.customer_email}</p>
@@ -348,7 +348,7 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
       {/* Production Checklist */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Production Checklist</p>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-3">
+        <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800 mb-3">
           Legacy Shopify checklist writes are locked for launch. Use Production Queue and Delivery Queue actions for controlled operational updates.
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -370,7 +370,7 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
       {/* Workflow Advance */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Production Status</p>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-3">
+        <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800 mb-3">
           Legacy Shopify production-status buttons are paused for the May 30 launch freeze. Use Delivery Queue, Production Queue, and Hub-backed operations pages for controlled fulfillment and production actions.
         </div>
         <div className="flex gap-1 mb-3">
@@ -397,7 +397,7 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
               </button>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs text-amber-600 font-semibold text-center">This will mark the order complete. Continue?</p>
+                <p className="text-xs text-cyan-600 font-semibold text-center">This will mark the order complete. Continue?</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => setShowFulfillConfirm(false)} className="py-2 bg-secondary rounded-lg text-sm font-semibold">Cancel</button>
                   <button onClick={() => { onAdvance(order.id, 'fulfilled'); setShowFulfillConfirm(false); }}
@@ -456,7 +456,7 @@ function AlertsTab() {
   const read = alerts.filter(a => a.is_read);
 
   const SEVERITY_ICON = { critical: XCircle, warning: AlertTriangle, info: CheckCircle };
-  const SEVERITY_COLOR = { critical: 'text-red-500', warning: 'text-amber-500', info: 'text-blue-500' };
+  const SEVERITY_COLOR = { critical: 'text-red-500', warning: 'text-cyan-500', info: 'text-blue-500' };
 
   const renderAlert = (alert) => {
     const Icon = SEVERITY_ICON[alert.severity] || CheckCircle;
@@ -638,7 +638,7 @@ function SettingsTab() {
       {/* Actions */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sync Actions</p>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
           Broad Shopify resync is frozen for May 30 launch. Exact order import is a gated fallback: it requires a server flag and an exact allowlisted Shopify order id, name, or number.
         </div>
         <button onClick={handleResyncOrders} disabled={adminResyncFrozen || resyncing}
@@ -665,8 +665,8 @@ function SettingsTab() {
           This does not enable bulk polling. Launch fallback imports are locked here and require a separately approved recovery command.
         </p>
         {resyncResult && (
-          <div className={`rounded-xl p-3 text-xs ${resyncResult.success === false ? 'bg-amber-50 border border-amber-200' : 'bg-green-50 border border-green-200'}`}>
-            <p className={`font-semibold ${resyncResult.success === false ? 'text-amber-800' : 'text-green-800'}`}>
+          <div className={`rounded-xl p-3 text-xs ${resyncResult.success === false ? 'bg-cyan-50 border border-cyan-200' : 'bg-green-50 border border-green-200'}`}>
+            <p className={`font-semibold ${resyncResult.success === false ? 'text-cyan-800' : 'text-green-800'}`}>
               {resyncResult.success === false
                 ? `Import not run: ${resyncResult.reason || resyncResult.error || 'blocked'}`
                 : resyncResult.action
@@ -674,7 +674,7 @@ function SettingsTab() {
                   : `Sync complete: ${resyncResult.synced ?? 0} synced, ${resyncResult.failed ?? 0} failed`}
             </p>
             {resyncResult.message && (
-              <p className={resyncResult.success === false ? 'text-amber-700 mt-1' : 'text-green-700 mt-1'}>
+              <p className={resyncResult.success === false ? 'text-cyan-700 mt-1' : 'text-green-700 mt-1'}>
                 {resyncResult.message}
               </p>
             )}

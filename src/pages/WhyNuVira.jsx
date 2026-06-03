@@ -12,7 +12,7 @@ const RENU_URL = "https://media.base44.com/images/public/69d48d0c39891f794548115
 const sections = [
   {
     title: 'Cold-Pressed, Never Compromised',
-    body: `Cold-pressing is the gold standard of juice production. Unlike conventional juicing, cold-pressing uses hydraulic pressure — never heat — to extract every ounce of nutrition from fresh produce.\n\nHeat destroys enzymes and degrades vitamins. Cold-pressing preserves them. What you get is a living, nutrient-dense juice that works the way nature intended.`,
+    body: `Cold-pressing is the highest standard of juice production. Unlike conventional juicing, cold-pressing uses hydraulic pressure — never heat — to extract every ounce of nutrition from fresh produce.\n\nHeat destroys enzymes and degrades vitamins. Cold-pressing preserves them. What you get is a living, nutrient-dense juice that works the way nature intended.`,
   },
   {
     title: 'Made to Order. Never Mass-Produced.',
@@ -67,7 +67,7 @@ export default function WhyNuVira() {
     <div className="min-h-screen bg-background">
       <SEO
         title="Why NuVira"
-        description="Cold-pressed, never compromised. Learn why NuVira's small-batch, made-to-order juices are the gold standard in living nutrition."
+        description="Cold-pressed, never compromised. Learn why NuVira's small-batch, made-to-order juices set the standard in living nutrition."
       />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">

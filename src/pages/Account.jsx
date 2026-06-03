@@ -127,9 +127,9 @@ export default function Account() {
               {/* Badges row */}
               <div className="flex flex-wrap gap-2 mb-2">
                 {user && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent/25 dark:bg-accent/25 border border-accent/40 dark:border-accent/35 rounded-full">
-                    <Crown className="w-3 h-3 text-orange-800 dark:text-white" />
-                    <span className="text-[10px] font-bold text-orange-800 dark:text-white uppercase tracking-wide">Member</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/10 dark:bg-white/10 border border-primary/25 dark:border-white/15 rounded-full">
+                    <Crown className="w-3 h-3 text-primary dark:text-white" />
+                    <span className="text-[10px] font-bold text-primary dark:text-white uppercase tracking-wide">Member</span>
                   </span>
                 )}
                 {!isDashLoading && subscriptions.length > 0 && subscriptions.some(s => s.status === 'active') && (
@@ -244,14 +244,14 @@ export default function Account() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.18 }}
-              className="group relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-[#C9A24A]/15 via-[#C9A24A]/10 to-[#C9A24A]/8 dark:from-[#C9A24A]/20 dark:via-[#C9A24A]/15 dark:to-[#C9A24A]/10 border border-[#C9A24A]/20 dark:border-[#C9A24A]/30 active:scale-[0.97] transition-all shadow-sm hover:shadow-md" style={{ touchAction: 'pan-y' }}
+              className="group relative overflow-hidden rounded-2xl p-4 nuvira-premium-card active:scale-[0.97] transition-all hover:shadow-md" style={{ touchAction: 'pan-y' }}
             >
               <div className="relative">
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#E7C873] to-[#C9A24A] flex items-center justify-center mb-2 border border-white/20 shadow-sm">
-                  <Gift className="w-4 h-4 text-[#9A7B2F] dark:text-[#E7C873]" />                </div>
+                <div className="w-9 h-9 rounded-lg nuvira-icon-badge flex items-center justify-center mb-2">
+                  <Gift className="w-4 h-4 text-white" />                </div>
                 <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Refer & Earn</p>
                 <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Give $5, get rewarded</p>
-                <span className="inline-block mt-2 text-[9px] font-bold text-[#7A5F20] dark:text-[#E7C873] bg-[#C9A24A]/20 dark:bg-[#C9A24A]/20 px-2 py-0.5 rounded-full border border-[#C9A24A]/40 dark:border-[#C9A24A]/30">Perk</span>
+                <span className="inline-block mt-2 text-[9px] font-bold text-primary bg-white/60 dark:bg-white/10 px-2 py-0.5 rounded-full border border-primary/30">Perk</span>
               </div>
             </motion.div>
           </Link>

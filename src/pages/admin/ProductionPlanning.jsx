@@ -166,7 +166,7 @@ function validateRange(from, to) {
 function StatCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefreshing }) {
   const toneClass = {
     default: 'border-border/50 bg-card',
-    warning: 'border-amber-100 bg-amber-50/60',
+    warning: 'border-cyan-100 bg-cyan-50/60',
     danger: 'border-red-100 bg-red-50/60',
     info: 'border-blue-100 bg-blue-50/60',
   }[tone] || 'border-border/50 bg-card';
@@ -378,7 +378,7 @@ function ProductionBatchDraftCards({ dateGroups, ingredients }) {
             {(draft.blockers.length > 0 || draft.warnings.length > 0) && (
               <div className="space-y-1.5 border-t border-emerald-100 pt-2">
                 {draft.blockers.map(blocker => (
-                  <p key={`blocker-${blocker}`} className="text-[11px] text-amber-800 font-semibold">
+                  <p key={`blocker-${blocker}`} className="text-[11px] text-cyan-800 font-semibold">
                     Blocker: {formatLabel(blocker)}
                   </p>
                 ))}
@@ -465,8 +465,8 @@ function IngredientCards({ ingredients }) {
             </div>
           </div>
 
-          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-2">
-            <p className="text-[10px] uppercase tracking-wider text-amber-800 font-semibold">Procurement Need</p>
+          <div className="rounded-lg border border-cyan-200 bg-cyan-50/70 p-2">
+            <p className="text-[10px] uppercase tracking-wider text-cyan-800 font-semibold">Procurement Need</p>
             <p className="text-xs font-bold text-foreground mt-0.5">{procurementNeedLabel(item)}</p>
             <p className="text-[10px] text-muted-foreground mt-1">{yieldContextLabel(item)}</p>
           </div>
@@ -632,7 +632,7 @@ export default function ProductionPlanning() {
           </div>
 
           {rangeError && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
               {rangeError}
             </div>
           )}
@@ -672,7 +672,7 @@ export default function ProductionPlanning() {
               </p>
             )}
             {Number(nativeOverlay.missing_recipe_count || 0) + Number(nativeOverlay.ambiguous_recipe_count || 0) + Number(nativeOverlay.missing_inventory_count || 0) + Number(nativeOverlay.missing_yield_count || 0) + Number(nativeOverlay.ambiguous_yield_count || 0) > 0 && (
-              <p className="text-[10px] text-amber-700 mt-1">
+              <p className="text-[10px] text-cyan-700 mt-1">
                 Native master-data gaps: {formatNumber(nativeOverlay.missing_recipe_count, 0)} missing recipes · {formatNumber(nativeOverlay.ambiguous_recipe_count, 0)} ambiguous recipes · {formatNumber(nativeOverlay.missing_inventory_count, 0)} missing inventory matches · {formatNumber(nativeOverlay.missing_yield_count, 0)} missing yields · {formatNumber(nativeOverlay.ambiguous_yield_count, 0)} ambiguous yields
               </p>
             )}
@@ -701,7 +701,7 @@ export default function ProductionPlanning() {
         <ProductionBatchDraftCards dateGroups={dateGroups} ingredients={ingredients} />
 
         {warnings.length > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
             {warnings.includes('hub_production_planning_service_not_configured') || warnings.some(warning => warning?.startsWith?.('hub_production_planning_unavailable'))
               ? 'Hub production planning is unavailable, so this view is showing native Customer App order mirror demand only.'
               : 'Production planning returned warnings. Review native and Hub planning context before batching.'}
@@ -716,7 +716,7 @@ export default function ProductionPlanning() {
         )}
 
         {data?.truncated && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
             Results are capped. Narrow the date range for a more complete planning view.
           </p>
         )}

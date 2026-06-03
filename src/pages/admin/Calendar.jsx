@@ -152,7 +152,7 @@ function chipClass(typeOrStatus) {
   const key = (typeOrStatus || '').toString().toLowerCase();
   if (key === 'event' || key === 'scheduled' || key === 'active') return 'bg-blue-50 text-blue-700 border-blue-100';
   if (key === 'production' || key === 'completed' || key === 'complete') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
-  if (key === 'delivery' || key === 'pending') return 'bg-amber-50 text-amber-800 border-amber-100';
+  if (key === 'delivery' || key === 'pending') return 'bg-cyan-50 text-cyan-800 border-cyan-100';
   if (key === 'compliance') return 'bg-purple-50 text-purple-700 border-purple-100';
   if (key === 'cancelled' || key === 'canceled') return 'bg-red-50 text-red-700 border-red-100';
   return 'bg-secondary text-secondary-foreground border-border/50';
@@ -632,7 +632,7 @@ export default function Calendar() {
           </div>
 
           {rangeError && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
               {rangeError}
             </div>
           )}
@@ -743,13 +743,13 @@ export default function Calendar() {
         )}
 
         {data?.truncated && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
             Results are capped. Narrow the date range or filters for a more complete calendar view.
           </p>
         )}
 
         {warnings.length > 0 && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
             {warnings.includes('native_read_only_fallback')
               ? 'Hub calendar aggregation is unavailable. Showing native Customer App read-only schedule counts so calendar visibility stays available.'
               : warnings.slice(0, 2).join(', ')}

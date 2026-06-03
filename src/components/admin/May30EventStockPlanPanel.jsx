@@ -55,9 +55,9 @@ export default function May30EventStockPlanPanel({ includedInPlanning = false })
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-          <p className="text-xs font-semibold text-amber-900">
+        <div className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+          <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" />
+          <p className="text-xs font-semibold text-cyan-900">
             Reconcile after the events: staged units minus Shopify POS sold units equals expected return count.
           </p>
         </div>

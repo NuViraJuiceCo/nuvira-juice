@@ -214,7 +214,7 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
     <div>
       {/* Debug bar — hidden in production, visible with ?debug=1 in URL */}
       {showDebug && (
-        <div className="mb-3 rounded-xl border border-amber-400 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 space-y-0.5">
+        <div className="mb-3 rounded-xl border border-cyan-400 bg-cyan-50 px-3 py-2 text-[11px] text-cyan-800 space-y-0.5">
           <div><span className="font-semibold">Origin:</span> {origin}</div>
           <div><span className="font-semibold">In iframe:</span> {isIframe ? 'YES ⚠️' : 'No'}</div>
           <div><span className="font-semibold">PI:</span> {piId}</div>

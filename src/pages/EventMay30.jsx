@@ -67,7 +67,7 @@ function ResultPanel({ result }) {
     };
 
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+      <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-cyan-800">
         <p className="font-semibold text-sm">Check-in not completed</p>
         <p className="text-xs mt-1">{messageByReason[result.reason] || 'Check with the NuVira team at the event if this continues.'}</p>
       </div>

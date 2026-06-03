@@ -16,9 +16,9 @@ const statusLabel = {
 };
 
 const statusColor = {
-  requested: 'text-amber-600 bg-amber-50',
+  requested: 'text-cyan-600 bg-cyan-50',
   verified: 'text-primary bg-primary/10',
-  partially_verified: 'text-amber-600 bg-amber-50',
+  partially_verified: 'text-cyan-600 bg-cyan-50',
   not_found: 'text-muted-foreground bg-secondary',
   not_eligible: 'text-muted-foreground bg-secondary',
 };

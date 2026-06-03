@@ -39,7 +39,7 @@ const subtypeColors = {
   subscription_payment_success: 'bg-blue-50 text-blue-600',
   subscription_payment_failed:  'bg-destructive/10 text-destructive',
   promo:                        'bg-accent/20 text-accent',
-  loyalty_credit:               'bg-amber-50 text-amber-600',
+  loyalty_credit:               'bg-cyan-50 text-cyan-600',
   general:                      'bg-secondary text-muted-foreground',
 };
 

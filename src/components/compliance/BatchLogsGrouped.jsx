@@ -160,7 +160,7 @@ function ProductGroupCard({ productName, logs, monthLabel, onPrintLog }) {
               <span>Avg pH: {summary.avgPH}</span>
               <span className="text-green-700 font-medium">{summary.passed} passed</span>
               {summary.failed > 0 && <span className="text-red-700 font-medium">{summary.failed} failed</span>}
-              {summary.corrective > 0 && <span className="text-amber-700 font-medium">{summary.corrective} corrective</span>}
+              {summary.corrective > 0 && <span className="text-cyan-700 font-medium">{summary.corrective} corrective</span>}
             </div>
           </div>
         </div>

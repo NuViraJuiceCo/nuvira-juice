@@ -44,7 +44,7 @@ export default function ComplianceDashboard({ summary }) {
       case 'good':
         return 'bg-green-50 border-green-200';
       case 'warning':
-        return 'bg-yellow-50 border-yellow-200';
+        return 'bg-lime-50 border-lime-200';
       case 'critical':
         return 'bg-red-50 border-red-200';
       default:
@@ -57,7 +57,7 @@ export default function ComplianceDashboard({ summary }) {
       case 'good':
         return <CheckCircle2 className="w-5 h-5 text-green-600" />;
       case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-yellow-600" />;
+        return <AlertTriangle className="w-5 h-5 text-lime-600" />;
       case 'critical':
         return <AlertCircle className="w-5 h-5 text-red-600" />;
       default:

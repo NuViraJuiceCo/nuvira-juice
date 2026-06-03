@@ -175,14 +175,14 @@ function PreviewResult({ preview }) {
         </div>
       </div>
 
-      <p className={`text-xs ${preview.live_allowed ? 'text-green-700' : 'text-amber-700'}`}>
+      <p className={`text-xs ${preview.live_allowed ? 'text-green-700' : 'text-cyan-700'}`}>
         {previewStatusText(preview)}
       </p>
 
       {(blockers.length > 0 || warnings.length > 0) && (
         <div className="space-y-1">
           {blockers.map(blocker => (
-            <p key={`blocker-${blocker}`} className="text-xs text-amber-800">Blocker: {formatLabel(blocker)}</p>
+            <p key={`blocker-${blocker}`} className="text-xs text-cyan-800">Blocker: {formatLabel(blocker)}</p>
           ))}
           {warnings.map(warning => (
             <p key={`warning-${warning}`} className="text-xs text-muted-foreground">Warning: {formatLabel(warning)}</p>
@@ -450,7 +450,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -579,7 +579,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -606,7 +606,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                <div key={`blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>{formatLabel(blocker)}</span>
                 </div>
@@ -661,7 +661,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
           )}
 
           {preview.live_allowed && MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN && (
-            <div className="flex items-start gap-2 text-xs text-amber-800">
+            <div className="flex items-start gap-2 text-xs text-cyan-800">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>Preview passed, but live inventory deduction stays frozen for May 30 operations. Use this as procurement context only.</span>
             </div>
@@ -776,7 +776,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -803,7 +803,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
           {(correctionBlockers.length > 0 || deductionBlockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {correctionBlockers.map(blocker => (
-                <div key={`correction-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                <div key={`correction-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Correction blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -847,7 +847,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
                           label={row.usage_row_ready ? 'Ready' : 'Blocked'}
                         />
                         {row.procurement_needed && (
-                          <p className="text-[10px] text-amber-700">Procurement needed</p>
+                          <p className="text-[10px] text-cyan-700">Procurement needed</p>
                         )}
                       </div>
                     </div>
@@ -1020,7 +1020,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -1047,7 +1047,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`cascade-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                <div key={`cascade-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -1110,7 +1110,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
           </div>
 
           {preview.bottled_order_cascade_allowed && eligibleOrders.length !== 1 && (
-            <p className="text-[10px] text-amber-700">
+            <p className="text-[10px] text-cyan-700">
               Bottled cascade requires exactly one eligible non-subscription order from this page. Use a narrower, approved command for multi-order cases.
             </p>
           )}
@@ -1468,7 +1468,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-amber-700'
+              ? 'text-cyan-700'
               : 'text-green-700'
         }`}>
           {message.text}
@@ -1495,7 +1495,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`native-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800">
+                <div key={`native-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -1539,7 +1539,7 @@ function BatchCard({ batch, onActionSuccess }) {
   const categoryAccent = nativeBatch
     ? 'border-l-sky-500'
     : isShotCategory(batch.product_category)
-      ? 'border-l-amber-400'
+      ? 'border-l-cyan-400'
       : 'border-l-primary';
 
   return (
@@ -1724,9 +1724,9 @@ function ProductionDemandHandoffPanel({ planningData, queueNeededUnits, isLoadin
 
   if (isError) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-        <p className="text-sm font-semibold text-amber-900">Production planning handoff unavailable</p>
-        <p className="text-xs text-amber-800 mt-1">{error?.message || 'Open Production Planning for demand details.'}</p>
+      <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+        <p className="text-sm font-semibold text-cyan-900">Production planning handoff unavailable</p>
+        <p className="text-xs text-cyan-800 mt-1">{error?.message || 'Open Production Planning for demand details.'}</p>
       </div>
     );
   }
@@ -1945,7 +1945,7 @@ export default function ProductionQueueSummary() {
             Hub and native Customer App data · Native rows are read-only in this queue. Inventory deduction is preview-first and remains blocked unless the Hub gates allow the exact batch.
           </p>
           {Array.isArray(data?.warnings) && data.warnings.length > 0 && (
-            <p className="text-[10px] text-amber-700">
+            <p className="text-[10px] text-cyan-700">
               Data warning: {data.warnings.map(formatLabel).join(', ')}
             </p>
           )}
@@ -2060,7 +2060,7 @@ export default function ProductionQueueSummary() {
         ) : !rangeInvalid ? (
           <div className="space-y-6">
             {data?.truncated && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
                 Results are capped at 100 batches. Narrow the date range for a complete view.
               </p>
             )}

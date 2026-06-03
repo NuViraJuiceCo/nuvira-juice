@@ -10,9 +10,9 @@ import { toast } from 'sonner';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 
 const STATUS_COLOR = {
-  requested: 'bg-amber-50 text-amber-700',
+  requested: 'bg-cyan-50 text-cyan-700',
   verified: 'bg-primary/10 text-primary',
-  partially_verified: 'bg-amber-50 text-amber-700',
+  partially_verified: 'bg-cyan-50 text-cyan-700',
   not_found: 'bg-secondary text-muted-foreground',
   not_eligible: 'bg-red-50 text-red-600',
 };
@@ -148,7 +148,7 @@ function ReturnCard({ ret, verificationFrozen }) {
                     <p className="font-heading text-xl font-bold text-primary">${calcCredit().toFixed(2)}</p>
                   </div>
                   {verificationFrozen && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
                       Bag return verification, credits, and customer emails are frozen for May 30 launch operations unless explicitly approved.
                     </div>
                   )}
@@ -226,7 +226,7 @@ export default function BagReturnAdmin() {
       />
 
       <div className="px-4 mt-4">
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
           Bag return verification, credits, and customer emails are frozen for May 30 launch operations. This page remains read-only for review.
         </div>
       </div>

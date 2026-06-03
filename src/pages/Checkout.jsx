@@ -635,11 +635,11 @@ export default function Checkout() {
 
       {/* Points Redemption */}
       {user?.email && availablePoints >= 100 && (
-        <div className="mx-4 mb-5 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+        <div className="mx-4 mb-5 bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-amber-500/20 rounded-full flex items-center justify-center">
-                <Gift className="w-4 h-4 text-amber-600" />
+              <div className="w-8 h-8 bg-cyan-500/20 rounded-full flex items-center justify-center">
+                <Gift className="w-4 h-4 text-cyan-600" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">Use Loyalty Points</p>
@@ -649,7 +649,7 @@ export default function Checkout() {
             <Switch checked={usePoints} onCheckedChange={setUsePoints} />
           </div>
           {usePoints && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 font-medium">✓ {pointsUsed.toLocaleString()} points applied · -${pointsDiscount.toFixed(2)} off</p>
+            <p className="text-xs text-cyan-600 dark:text-cyan-400 mt-2 font-medium">✓ {pointsUsed.toLocaleString()} points applied · -${pointsDiscount.toFixed(2)} off</p>
           )}
         </div>
       )}
@@ -737,13 +737,13 @@ export default function Checkout() {
               }
               if (e.zone_type === 'extended' && !e.checkout_allowed && e.reason_code === 'MINIMUM_ORDER_NOT_MET') {
                 return (
-                  <p className="text-xs text-amber-600 font-medium mt-1.5">
+                  <p className="text-xs text-cyan-600 font-medium mt-1.5">
                     {e.customer_message}
                   </p>
                 );
               }
               if (e.zone_type === 'route_review') {
-                return <p className="text-xs text-amber-600 font-medium mt-1.5">⚠️ {e.customer_message}</p>;
+                return <p className="text-xs text-cyan-600 font-medium mt-1.5">⚠️ {e.customer_message}</p>;
               }
               if (e.zone_type === 'waitlist_only' || !e.checkout_allowed) {
                 return <p className="text-xs text-destructive font-medium mt-1.5">{e.customer_message}</p>;
@@ -777,7 +777,7 @@ export default function Checkout() {
             <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
           </div>
           {pointsDiscount > 0 && (
-            <div className="flex justify-between text-xs text-amber-600 mb-1 font-medium">
+            <div className="flex justify-between text-xs text-cyan-600 mb-1 font-medium">
               <span>Points Discount</span><span>-${pointsDiscount.toFixed(2)}</span>
             </div>
           )}

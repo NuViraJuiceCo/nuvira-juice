@@ -55,7 +55,7 @@ export default function CorrectiveActionForm({ onClose }) {
   };
 
   return (
-    <Card className="mb-6 border-orange-200 bg-orange-50">
+    <Card className="mb-6 border-rose-200 bg-rose-50">
       <CardHeader>
         <CardTitle>🔧 Corrective Action Log</CardTitle>
       </CardHeader>

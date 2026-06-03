@@ -50,7 +50,7 @@ const STATUS_MAP = {
 const BUCKET_CLASSES = {
   success: 'bg-emerald-100 text-emerald-900 border border-emerald-300',
   info: 'bg-sky-100 text-sky-900 border border-sky-300',
-  warning: 'bg-amber-100 text-amber-950 border border-amber-300',
+  warning: 'bg-cyan-100 text-cyan-950 border border-cyan-300',
   danger: 'bg-rose-100 text-rose-900 border border-rose-300',
   admin: 'bg-violet-100 text-violet-900 border border-violet-300',
   neutral: 'bg-muted text-muted-foreground border border-border',
@@ -59,7 +59,7 @@ const BUCKET_CLASSES = {
 const BUCKET_DOT = {
   success: 'bg-emerald-600',
   info: 'bg-sky-600',
-  warning: 'bg-amber-500',
+  warning: 'bg-cyan-500',
   danger: 'bg-rose-600',
   admin: 'bg-violet-600',
   neutral: 'bg-muted-foreground',
@@ -80,7 +80,7 @@ export function getStatusTextClass(status) {
   return {
     success: 'text-emerald-700',
     info: 'text-sky-700',
-    warning: 'text-amber-700',
+    warning: 'text-cyan-700',
     danger: 'text-rose-700',
     admin: 'text-violet-700',
     neutral: 'text-muted-foreground',

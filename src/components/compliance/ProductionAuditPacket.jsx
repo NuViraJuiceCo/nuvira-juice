@@ -59,7 +59,7 @@ function StatusPill({ value }) {
   const isFail = v === 'fail' || v === 'failed';
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-      isPass ? 'bg-green-100 text-green-700' : isFail ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+      isPass ? 'bg-green-100 text-green-700' : isFail ? 'bg-red-100 text-red-700' : 'bg-cyan-100 text-cyan-700'
     }`}>
       {(value || 'Pending').toUpperCase()}
     </span>
@@ -106,7 +106,7 @@ function ReadinessProgressBar({ steps, productionDate, productionStarted }) {
           <h3 className="font-bold text-sm flex items-center gap-2">
             {productionStarted ? (
               <>
-                <Zap className="w-4 h-4 text-orange-500" />
+                <Zap className="w-4 h-4 text-lime-500" />
                 Production Active
               </>
             ) : isReady ? (
@@ -116,7 +116,7 @@ function ReadinessProgressBar({ steps, productionDate, productionStarted }) {
               </>
             ) : (
               <>
-                <Clock className="w-4 h-4 text-amber-500" />
+                <Clock className="w-4 h-4 text-cyan-500" />
                 Setup In Progress
               </>
             )}
@@ -147,7 +147,7 @@ function ReadinessProgressBar({ steps, productionDate, productionStarted }) {
               </>
             ) : (
               <>
-                <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                <Clock className="w-4 h-4 text-cyan-500 shrink-0" />
                 <span className="text-sm text-foreground font-medium">{step.label}</span>
               </>
             )}
@@ -157,9 +157,9 @@ function ReadinessProgressBar({ steps, productionDate, productionStarted }) {
 
       {/* Status Message */}
       {productionStarted && (
-        <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2">
-          <Zap className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-orange-800">
+        <div className="mt-3 p-3 bg-lime-50 border border-lime-200 rounded-lg flex items-start gap-2">
+          <Zap className="w-4 h-4 text-lime-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-lime-800">
             Production is active. Continue logging compliance data throughout the day.
           </p>
         </div>
@@ -323,9 +323,9 @@ export default function ProductionAuditPacket({ productionDate, onClose }) {
                   <div key={item.label} className="flex items-center gap-1.5">
                     {item.count > 0
                       ? <CheckCircle2 className="w-3 h-3 text-green-600 shrink-0" />
-                      : <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                      : <AlertTriangle className="w-3 h-3 text-cyan-500 shrink-0" />
                     }
-                    <span className={item.count > 0 ? 'text-foreground' : 'text-amber-700'}>{item.label}</span>
+                    <span className={item.count > 0 ? 'text-foreground' : 'text-cyan-700'}>{item.label}</span>
                     <span className="text-muted-foreground">({item.count})</span>
                   </div>
                 ))}
@@ -432,7 +432,7 @@ export default function ProductionAuditPacket({ productionDate, onClose }) {
             </Section>
 
             {/* 5. Batch Logs */}
-            <Section icon={Package} title={`Batch Logs (${data.batches.length} batches scheduled)`} color="text-amber-600">
+            <Section icon={Package} title={`Batch Logs (${data.batches.length} batches scheduled)`} color="text-cyan-600">
               {data.batches.length === 0 && data.batchLogs.length === 0 ? (
                 <MissingLogPlaceholder
                   label="Batch"
@@ -527,12 +527,12 @@ export default function ProductionAuditPacket({ productionDate, onClose }) {
                         )}
                         {/* Audit trail overrides */}
                         {(batch.audit_trail || []).filter(e => e.action === 'PreProductionChecklistOverride').map((entry, j) => (
-                          <div key={j} className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs">
-                            <p className="font-bold text-amber-800">⚠️ Checklist Override Recorded</p>
-                            <p className="text-amber-700 mt-0.5">By {entry.performed_by} at {moment(entry.timestamp).format('h:mm A')}</p>
-                            <p className="text-amber-700">Reason: {entry.reason}</p>
+                          <div key={j} className="mt-2 bg-cyan-50 border border-cyan-200 rounded-lg px-3 py-2 text-xs">
+                            <p className="font-bold text-cyan-800">⚠️ Checklist Override Recorded</p>
+                            <p className="text-cyan-700 mt-0.5">By {entry.performed_by} at {moment(entry.timestamp).format('h:mm A')}</p>
+                            <p className="text-cyan-700">Reason: {entry.reason}</p>
                             {entry.before?.missing_checks?.length > 0 && (
-                              <p className="text-amber-600">Missing: {entry.before.missing_checks.join(', ')}</p>
+                              <p className="text-cyan-600">Missing: {entry.before.missing_checks.join(', ')}</p>
                             )}
                           </div>
                         ))}
@@ -591,7 +591,7 @@ export default function ProductionAuditPacket({ productionDate, onClose }) {
                     placeholder="Optional review note for this print/export session"
                     className="w-full text-sm border border-border rounded-xl px-3 py-2.5 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                   />
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg px-3 py-2">
                     Persistent ProductionBatch audit-trail sign-off is locked until a dedicated backend command is approved.
                   </p>
                   <Button onClick={handleSignOff} className="w-full gap-2">

@@ -208,7 +208,7 @@ export default function ComplianceLogsParity() {
                           {allVerified
                             ? <span className="text-[10px] font-semibold text-green-600 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> All Verified</span>
                             : hasActive
-                            ? <span className="text-[10px] font-semibold text-amber-600 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> In Progress</span>
+                            ? <span className="text-[10px] font-semibold text-cyan-600 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> In Progress</span>
                             : <span className="text-[10px] text-muted-foreground">View Packet</span>
                           }
                         </div>

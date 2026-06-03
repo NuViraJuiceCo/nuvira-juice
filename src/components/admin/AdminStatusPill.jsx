@@ -3,7 +3,7 @@ import React from 'react';
 const toneClasses = {
   success: 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-950/10',
   progress: 'bg-sky-600 text-white border-sky-500 shadow-sm shadow-sky-950/10',
-  warning: 'bg-amber-400 text-amber-950 border-amber-300 shadow-sm shadow-amber-950/10',
+  warning: 'bg-cyan-400 text-cyan-950 border-cyan-300 shadow-sm shadow-cyan-950/10',
   danger: 'bg-rose-600 text-white border-rose-500 shadow-sm shadow-rose-950/10',
   source: 'bg-fuchsia-600 text-white border-fuchsia-500 shadow-sm shadow-fuchsia-950/10',
   native: 'bg-cyan-600 text-white border-cyan-500 shadow-sm shadow-cyan-950/10',

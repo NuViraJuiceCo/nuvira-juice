@@ -14,7 +14,7 @@ function StatusBadge({ value }) {
     <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
       isPass ? 'bg-green-100 text-green-800' :
       isFail ? 'bg-red-100 text-red-800' :
-      'bg-amber-100 text-amber-800'
+      'bg-cyan-100 text-cyan-800'
     }`}>
       {isPass ? <CheckCircle className="w-3 h-3" /> : isFail ? <XCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
       {value}
@@ -196,9 +196,9 @@ export default function LiveCheckoutMonitor() {
             {/* Hub sync logs */}
             <Section title="🔄 OrderSyncLog (all attempts)">
               {c.sync_logs?.length === 0
-                ? <p className="text-xs text-amber-700 font-semibold">⚠️ No sync attempts logged yet</p>
+                ? <p className="text-xs text-cyan-700 font-semibold">⚠️ No sync attempts logged yet</p>
                 : c.sync_logs?.map((log, i) => (
-                  <div key={i} className={`text-xs p-2 rounded-lg mb-2 ${log.status === 'success' ? 'bg-green-50' : log.status === 'error' ? 'bg-red-50' : 'bg-amber-50'}`}>
+                  <div key={i} className={`text-xs p-2 rounded-lg mb-2 ${log.status === 'success' ? 'bg-green-50' : log.status === 'error' ? 'bg-red-50' : 'bg-cyan-50'}`}>
                     <div className="flex justify-between mb-1">
                       <span className="font-semibold uppercase">{log.status}</span>
                       <span className="text-muted-foreground">{log.created_at} · {log.triggered_by}</span>
