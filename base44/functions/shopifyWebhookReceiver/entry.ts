@@ -156,6 +156,53 @@ function mapToShopifyOrder(order) {
   };
 }
 
+function safeLogText(value, maxLength = 180) {
+  const text = (value ?? '').toString()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]');
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
+function safeFieldList(fields, limit = 40) {
+  return Array.from(new Set((Array.isArray(fields) ? fields : [])
+    .map(field => safeLogText(field, 100))
+    .filter(Boolean)))
+    .slice(0, limit);
+}
+
+async function createOrderWriteAuditLog(base44, { record, topic, action, reason, fieldsUpdated, status = 'success' }) {
+  const orderNumber = safeLogText(record?.shopify_order_number || record?.order_number || 'unknown', 120) || 'unknown';
+  const shopifyOrderId = safeLogText(record?.shopify_order_id, 120);
+  const now = new Date().toISOString();
+
+  await base44.asServiceRole.entities.OrderSyncLog.create({
+    order_number: orderNumber,
+    status,
+    sync_timestamp: now,
+    sync_source: 'shopify_webhook_receiver',
+    event_type: safeLogText(topic, 80),
+    order_id: safeLogText(record?.id, 120),
+    action: safeLogText(action, 80),
+    reason: safeLogText(reason || `Shopify webhook ${topic} ${action}`, 300),
+    fields_updated: safeFieldList(fieldsUpdated),
+    fields_rejected: [],
+    success: status === 'success' || status === 'deduped',
+    error: null,
+    error_code: null,
+    idempotency_key: `shopify_webhook:${safeLogText(topic, 80)}:${shopifyOrderId || orderNumber}:${safeLogText(action, 80)}`,
+    request_id: `shopifyWebhookReceiver:${safeLogText(topic, 80)}:${shopifyOrderId || orderNumber}:${safeLogText(action, 80)}`,
+    correlation_id: `shopify:${shopifyOrderId || orderNumber}`,
+    description: safeLogText(`Audited ShopifyOrder ${action} from Shopify webhook ${topic}. No raw Shopify payload stored in this audit log.`, 500),
+    started_at: now,
+    completed_at: now,
+  }).catch(error => {
+    console.warn(`[shopifyWebhookReceiver] OrderSyncLog audit write failed safely: ${error?.message || 'unknown error'}`);
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
@@ -252,10 +299,33 @@ Deno.serve(async (req) => {
         shopify_synced_at: new Date().toISOString(),
       });
       action = 'updated';
+      await createOrderWriteAuditLog(base44, {
+        record,
+        topic,
+        action,
+        reason: 'shopify_order_create_or_paid_existing_order_update',
+        fieldsUpdated: [
+          'shopify_fulfillment_status',
+          'financial_status',
+          'payment_status',
+          'customer_notes',
+          'line_items',
+          'total_price',
+          'total_discounts',
+          'shopify_synced_at',
+        ],
+      });
       console.log(`Updated existing ShopifyOrder for ${topic} #${orderNumber}`);
     } else {
       record = mapToShopifyOrder(payload);
       record = await base44.asServiceRole.entities.ShopifyOrder.create(record);
+      await createOrderWriteAuditLog(base44, {
+        record,
+        topic,
+        action,
+        reason: 'shopify_order_create_or_paid_new_order',
+        fieldsUpdated: Object.keys(record || {}),
+      });
       console.log(`Created ShopifyOrder for #${orderNumber}`);
     }
 
@@ -294,7 +364,7 @@ Deno.serve(async (req) => {
   } else if (topic === 'orders/updated') {
     if (existing.length > 0) {
       const updates = mapToShopifyOrder(payload);
-      await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
+      const updatedRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
         shopify_fulfillment_status: updates.shopify_fulfillment_status,
         financial_status: updates.financial_status,
         customer_notes: updates.customer_notes,
@@ -303,10 +373,32 @@ Deno.serve(async (req) => {
         total_discounts: updates.total_discounts,
         shopify_synced_at: new Date().toISOString(),
       });
+      await createOrderWriteAuditLog(base44, {
+        record: updatedRecord,
+        topic,
+        action: 'updated',
+        reason: 'shopify_order_updated_existing_order_update',
+        fieldsUpdated: [
+          'shopify_fulfillment_status',
+          'financial_status',
+          'customer_notes',
+          'line_items',
+          'total_price',
+          'total_discounts',
+          'shopify_synced_at',
+        ],
+      });
       console.log(`Updated ShopifyOrder #${orderNumber}`);
     } else {
       // Order not in Base44 yet — create it
       const created = await base44.asServiceRole.entities.ShopifyOrder.create(mapToShopifyOrder(payload));
+      await createOrderWriteAuditLog(base44, {
+        record: created,
+        topic,
+        action: 'created',
+        reason: 'shopify_order_updated_missing_order_create',
+        fieldsUpdated: Object.keys(created || {}),
+      });
       nativeOpsAttempted = shouldAttemptMay30NativeOrderOps(created, topic);
       nativeOpsResult = await maybeRunMay30NativeOrderOps(base44, created, topic);
       console.log(`Created missing ShopifyOrder #${orderNumber} from update event`);
@@ -314,10 +406,17 @@ Deno.serve(async (req) => {
 
   } else if (topic === 'orders/cancelled') {
     if (existing.length > 0) {
-      await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
+      const updatedRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
         production_status: 'canceled',
         shopify_fulfillment_status: 'cancelled',
         shopify_synced_at: new Date().toISOString(),
+      });
+      await createOrderWriteAuditLog(base44, {
+        record: updatedRecord,
+        topic,
+        action: 'updated',
+        reason: 'shopify_order_cancelled_status_update',
+        fieldsUpdated: ['production_status', 'shopify_fulfillment_status', 'shopify_synced_at'],
       });
       await createAlert(base44, 'cancellation', `Order Canceled #${orderNumber}`, `${payload.customer?.first_name || ''} ${payload.customer?.last_name || ''} canceled their order`, shopifyOrderId, orderNumber, 'warning');
     }
@@ -356,6 +455,29 @@ Deno.serve(async (req) => {
           },
         ],
       });
+      await createOrderWriteAuditLog(base44, {
+        record: updatedOrder,
+        topic,
+        action: 'updated',
+        reason: 'shopify_order_refunded_status_update',
+        fieldsUpdated: [
+          'payment_status',
+          'financial_status',
+          'production_status',
+          'fulfillment_status',
+          'order_status',
+          'operational_visibility',
+          'sync_status',
+          'excluded_from_production',
+          'refunded_at',
+          'cancel_type',
+          'tags',
+          'shopify_synced_at',
+          'last_sync_at',
+          'internal_notes',
+          'audit_trail',
+        ],
+      });
       nativeOpsAttempted = Boolean(may30NativeRefundSourceForOrder(updatedOrder));
       nativeOpsResult = await maybeRunMay30NativeRefundMirror(base44, updatedOrder, topic, payload);
       await createAlert(base44, 'refund', `Refund #${orderNumber}`, `Refund processed for ${payload.customer?.first_name || ''} — $${payload.total_price || '?'}`, shopifyOrderId, orderNumber, 'info');
@@ -363,9 +485,16 @@ Deno.serve(async (req) => {
 
   } else if (topic === 'orders/fulfilled') {
     if (existing.length > 0) {
-      await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
+      const updatedRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
         shopify_fulfillment_status: 'fulfilled',
         shopify_synced_at: new Date().toISOString(),
+      });
+      await createOrderWriteAuditLog(base44, {
+        record: updatedRecord,
+        topic,
+        action: 'updated',
+        reason: 'shopify_order_fulfilled_status_update',
+        fieldsUpdated: ['shopify_fulfillment_status', 'shopify_synced_at'],
       });
     }
   }
