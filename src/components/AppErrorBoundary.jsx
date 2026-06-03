@@ -22,7 +22,25 @@ export default class AppErrorBoundary extends React.Component {
     } catch {
       // Storage can be unavailable in restricted contexts.
     }
-    window.location.replace('/');
+
+    const reopenPath = `/?native_reopen=${Date.now()}`;
+    let target = reopenPath;
+    try {
+      if (window.location.origin && window.location.origin !== 'null') {
+        target = new URL(reopenPath, window.location.origin).toString();
+      }
+    } catch {
+      target = reopenPath;
+    }
+
+    this.setState({ hasError: false }, () => {
+      try {
+        window.location.assign(target);
+        window.setTimeout(() => window.location.reload(), 120);
+      } catch {
+        window.location.href = target;
+      }
+    });
   };
 
   render() {
