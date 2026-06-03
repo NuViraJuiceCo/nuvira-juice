@@ -28,6 +28,7 @@ const SHOPIFY_WEBHOOK_SECRET_ENV_NAMES = [
 function shopifyWebhookSecretCandidates() {
   // Keep literal env reads so Base44 can attach referenced secrets, while still
   // reading per request instead of using a stale module-level snapshot.
+  // Incident rebuild note: this comment-only revision forces a fresh function artifact.
   return [
     ['SHOPIFY_WEBHOOK_SECRET', Deno.env.get('SHOPIFY_WEBHOOK_SECRET')],
     ['SHOPIFY_WEBHOOK_SIGNING_SECRET', Deno.env.get('SHOPIFY_WEBHOOK_SIGNING_SECRET')],
