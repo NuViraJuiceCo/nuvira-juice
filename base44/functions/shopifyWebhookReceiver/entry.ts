@@ -15,16 +15,28 @@ const MAY30_NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
 const ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER = Deno.env.get('ENABLE_SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_WRITER') === 'true';
 const SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS = Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_TOPICS') || 'orders/create,orders/paid';
 const SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST = Deno.env.get('SHOPIFY_WEBHOOK_NATIVE_SAFE_SYNC_ORDER_ALLOWLIST') || '';
+const SHOPIFY_WEBHOOK_SECRET_ENV_NAMES = [
+  'SHOPIFY_WEBHOOK_SECRET',
+  'SHOPIFY_WEBHOOK_SIGNING_SECRET',
+  'SHOPIFY_CLIENT_SECRET',
+  'SHOPIFY_API_SECRET',
+  'SHOPIFY_API_SECRET_KEY',
+  'SHOPIFY_SHARED_SECRET',
+  'SHOPIFY_APP_SECRET',
+];
 
 function getShopifyWebhookSecret() {
-  return (
-    Deno.env.get('SHOPIFY_WEBHOOK_SECRET') ||
-    Deno.env.get('SHOPIFY_WEBHOOK_SIGNING_SECRET') ||
-    Deno.env.get('SHOPIFY_CLIENT_SECRET') ||
-    Deno.env.get('SHOPIFY_API_SECRET') ||
-    Deno.env.get('SHOPIFY_APP_SECRET') ||
-    ''
-  ).trim();
+  for (const name of SHOPIFY_WEBHOOK_SECRET_ENV_NAMES) {
+    const value = (Deno.env.get(name) || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function shopifyWebhookSecretDiagnostic() {
+  return Object.fromEntries(
+    SHOPIFY_WEBHOOK_SECRET_ENV_NAMES.map(name => [name, Boolean((Deno.env.get(name) || '').trim())])
+  );
 }
 
 async function verifyShopifyHmac(req, bodyText) {
@@ -351,7 +363,9 @@ Deno.serve(async (req) => {
   try {
     valid = await verifyShopifyHmac(req, bodyText);
   } catch (error) {
-    console.error('Shopify HMAC verification unavailable:', error.message);
+    console.error('Shopify HMAC verification unavailable:', error.message, {
+      env_present: shopifyWebhookSecretDiagnostic(),
+    });
     return Response.json({ error: 'shopify_webhook_verification_unavailable' }, { status: 500 });
   }
   if (!valid) {
