@@ -13,6 +13,29 @@ import {
 } from '@/lib/nativeAuthRedirect';
 
 const AuthContext = createContext();
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 4500;
+const AUTH_EXPLICIT_TIMEOUT_MS = 10000;
+
+function timeoutAfter(ms, code) {
+  return new Promise((_, reject) => {
+    globalThis.setTimeout(() => {
+      const error = new Error(code);
+      error.code = code;
+      reject(error);
+    }, ms);
+  });
+}
+
+async function readCurrentUserWithTimeout(timeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS) {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return base44.auth.me();
+  }
+
+  return Promise.race([
+    base44.auth.me(),
+    timeoutAfter(timeoutMs, 'auth_bootstrap_timeout'),
+  ]);
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -23,18 +46,21 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
 
-  const checkUserAuth = useCallback(async () => {
+  const checkUserAuth = useCallback(async ({ timeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS } = {}) => {
     try {
       consumeBase44AuthFromUrl();
       setIsLoadingAuth(true);
       setAuthError(null);
-      const currentUser = await base44.auth.me();
+      const currentUser = await readCurrentUserWithTimeout(timeoutMs);
       setUser(currentUser);
       setIsAuthenticated(true);
       setAuthChecked(true);
       setIsLoadingAuth(false);
       return currentUser;
     } catch (error) {
+      if (error?.code === 'auth_bootstrap_timeout') {
+        console.warn('[AuthContext] Auth bootstrap timed out; continuing as public session.');
+      }
       // For public apps, 401 is expected when user isn't logged in — don't treat as error.
       setUser(null);
       setIsAuthenticated(false);
@@ -44,7 +70,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const checkAppState = useCallback(async () => {
+  const checkAppState = useCallback(async ({ authTimeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS } = {}) => {
     try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
@@ -56,7 +82,7 @@ export const AuthProvider = ({ children }) => {
       
       // Always ask Base44 for the current user. Some app/browser auth returns
       // establish an HTTP-only session without a token visible in localStorage.
-      const currentUser = await checkUserAuth();
+      const currentUser = await checkUserAuth({ timeoutMs: authTimeoutMs });
       setIsLoadingPublicSettings(false);
       return currentUser;
     } catch (error) {
@@ -84,7 +110,7 @@ export const AuthProvider = ({ children }) => {
       if (!callbackResult) return;
 
       try {
-        const currentUser = await checkAppState();
+        const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
         if (currentUser?.email) {
           window.location.replace(callbackResult.returnTo);
         }
@@ -154,7 +180,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const refreshUser = async () => {
-    const currentUser = await base44.auth.me();
+    const currentUser = await readCurrentUserWithTimeout(AUTH_EXPLICIT_TIMEOUT_MS);
     setUser(currentUser);
     setIsAuthenticated(Boolean(currentUser));
     setAuthChecked(true);
