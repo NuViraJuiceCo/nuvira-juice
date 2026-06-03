@@ -230,7 +230,7 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
               {!isActive && (
                 <button
                   onClick={handleReorder}
-                  className="flex items-center gap-1 bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-1 rounded-full active:scale-95 transition-transform"
+                  className="flex items-center gap-1 bg-nuvira-gradient text-white text-[10px] font-bold px-2.5 py-1 rounded-full active:scale-95 transition-transform"
                 >
                   <RotateCcw className="w-2.5 h-2.5" />
                   Reorder

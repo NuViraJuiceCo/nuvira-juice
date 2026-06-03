@@ -174,7 +174,7 @@ export default function OrderTracker() {
   if (isLoading || (!detail && user?.email && hasLookupKey)) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="bg-primary px-4 pt-10 pb-6">
+        <div className="bg-nuvira-gradient px-4 pt-10 pb-6">
           <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4">
             <ArrowLeft className="w-4 h-4 text-white" />
           </button>
@@ -345,12 +345,12 @@ export default function OrderTracker() {
     <div className="pb-8 min-h-screen bg-background">
       <BrowserAppPrompt pageRoute={`/order-tracker/${displayNum || ''}`} />
       {/* Header */}
-      <div className="bg-primary px-4 pt-10 pb-6">
+      <div className="bg-nuvira-gradient px-4 pt-10 pb-6">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4">
           <ArrowLeft className="w-4 h-4 text-white" />
         </button>
-        <p className="text-primary-foreground/70 text-xs font-medium uppercase tracking-wider">Order #{displayNum} • {resolveCustomerName()}</p>
-        <h1 className="font-heading text-2xl font-bold text-primary-foreground mt-0.5">
+        <p className="text-white/70 text-xs font-medium uppercase tracking-wider">Order #{displayNum} • {resolveCustomerName()}</p>
+        <h1 className="font-heading text-2xl font-bold text-white mt-0.5">
           {currentStatus === 'delivered' ? 'Order Delivered' : currentStatus === 'picked_up' ? 'Order Picked Up' : 'Track Your Order'}
         </h1>
 

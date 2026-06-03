@@ -79,7 +79,7 @@ export default function CreditWallet({ dashData: propDashData }) {
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="px-5 mt-3">
       {/* Main Credits Card - Always Visible */}
       <button onClick={() => setIsExpanded(!isExpanded)} className="w-full text-left" style={{ touchAction: 'pan-y' }}>
-        <div className="bg-primary rounded-2xl p-5 text-primary-foreground shadow-lg">
+        <div className="bg-nuvira-gradient rounded-2xl p-5 text-primary-foreground shadow-lg">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Leaf className="w-4 h-4 text-white/70" />
@@ -170,7 +170,7 @@ export default function CreditWallet({ dashData: propDashData }) {
 
               {/* Link to learn more */}
               <Link to="/return-reward">
-                <div className="flex items-center justify-between p-4 bg-primary/5 border border-primary/15 rounded-2xl">
+                <div className="flex items-center justify-between p-4 bg-nuvira-gradient-card border-nuvira border rounded-2xl">
                   <div className="flex items-center gap-2">
                     <Leaf className="w-4 h-4 text-primary" />
                     <p className="text-sm font-semibold text-primary">Earn Credits — Return + Reward</p>

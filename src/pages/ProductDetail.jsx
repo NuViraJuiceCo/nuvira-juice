@@ -189,7 +189,7 @@ export default function ProductDetail() {
             {/* Certifications */}
             <div className="mt-4 flex flex-wrap gap-2">
               {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
-                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-primary/8 text-primary border border-primary/20 rounded-full">
+                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-primary/10 text-primary border border-primary/25 rounded-full">
                   ✓ {cert}
                 </span>
               ))}
@@ -267,7 +267,7 @@ export default function ProductDetail() {
           {/* Add to Cart Button */}
           <Button
             onClick={handleAddToCart}
-            className="flex-1 h-10 rounded-xl font-semibold text-sm"
+            className="flex-1 h-10 rounded-xl font-semibold text-sm bg-nuvira-gradient border-0 text-white hover:opacity-95"
           >
             <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
             {`$${(product.price * quantity).toFixed(2)}`}

@@ -30,8 +30,8 @@ export default function QuickReorder({ lastOrder }) {
       >
         <Link to="/account/orders">
           <div className="flex items-center gap-3 bg-secondary/60 rounded-xl p-3.5 border border-border/50">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <RotateCcw className="w-4 h-4 text-primary" />
+            <div className="w-10 h-10 rounded-full bg-nuvira-gradient flex items-center justify-center shrink-0 shadow-sm">
+              <RotateCcw className="w-4 h-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">Your last order</p>

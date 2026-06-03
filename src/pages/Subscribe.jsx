@@ -65,7 +65,7 @@ export default function Subscribe() {
           className="w-full space-y-3"
         >
           <Link to="/shop" className="block">
-            <Button className="w-full h-12 rounded-xl font-semibold text-sm">
+            <Button className="w-full h-12 rounded-xl font-semibold text-sm bg-nuvira-gradient border-0 text-white hover:opacity-95">
               <ShoppingBag className="w-4 h-4 mr-2" />
               Shop One-Time Orders
             </Button>
