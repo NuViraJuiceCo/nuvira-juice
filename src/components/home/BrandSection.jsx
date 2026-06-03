@@ -28,7 +28,7 @@ export default function BrandSection() {
     >
       {/* NuVira Difference — values only, no photo bg */}
       <div className="mx-5">
-        <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-md" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)` }}>
+        <div className="rounded-2xl p-4 shadow-md bg-nuvira-gradient-card border border-nuvira">
           <p className="font-heading font-bold text-base mb-0.5">The NuVira Difference</p>
           <p className="text-[10px] text-muted-foreground mb-4">No fillers. No compromises.</p>
           <div className="grid grid-cols-3 gap-3">
@@ -41,8 +41,8 @@ export default function BrandSection() {
                 transition={{ delay: i * 0.1 }}
                 className="text-center"
               >
-                <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center mx-auto mb-1.5">
-                  <Icon className="w-4 h-4 text-primary" />
+                <div className="w-9 h-9 bg-nuvira-gradient rounded-xl flex items-center justify-center mx-auto mb-1.5 shadow-sm">
+                  <Icon className="w-4 h-4 text-white" />
                 </div>
                 <p className="text-foreground text-[10px] font-bold">{title}</p>
                 <p className="text-muted-foreground text-[9px] leading-tight">{desc}</p>
@@ -53,7 +53,7 @@ export default function BrandSection() {
       </div>
 
       {/* Brand Nav Links */}
-      <div className="mx-5 bg-card border border-border/50 rounded-2xl overflow-hidden divide-y divide-border/50 shadow-md" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}>
+      <div className="mx-5 bg-nuvira-gradient-card border border-nuvira rounded-2xl overflow-hidden divide-y divide-border/40 shadow-md">
         {brandLinks.map(({ label, to, desc }, i) => (
           <motion.div
             key={to}
@@ -68,8 +68,8 @@ export default function BrandSection() {
                   <p className="text-sm font-semibold">{label}</p>
                   <p className="text-xs text-muted-foreground">{desc}</p>
                 </div>
-                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
-                  <ArrowRight className="w-3.5 h-3.5 text-primary" />
+                <div className="w-7 h-7 rounded-full bg-nuvira-gradient flex items-center justify-center shadow-sm">
+                  <ArrowRight className="w-3.5 h-3.5 text-white" />
                 </div>
               </div>
             </Link>

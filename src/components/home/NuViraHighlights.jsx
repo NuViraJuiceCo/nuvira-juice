@@ -65,14 +65,11 @@ export default function NuViraHighlights() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.08 }}
-              className="w-[280px] rounded-2xl p-4 border border-border/50 shadow-sm"
-              style={{
-                background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)`,
-              }}
+              className="w-[280px] rounded-2xl p-4 border shadow-sm bg-nuvira-gradient-card border-nuvira"
             >
               {/* Icon badge */}
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: `${highlight.accentColor}20` }}>
-                <Icon className="w-5 h-5" style={{ color: highlight.accentColor }} />
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 bg-nuvira-gradient shadow-md">
+                <Icon className="w-5 h-5 text-white" />
               </div>
 
               {/* Content */}

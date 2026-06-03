@@ -132,7 +132,7 @@ export default function Home() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
         className="flex items-center justify-between px-5 pb-2"
-        style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))' }}
+        style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))', background: 'linear-gradient(180deg, rgba(200,232,106,0.08) 0%, transparent 100%)' }}
       >
         <div>
           <img src={LOGO_URL} alt="NuVira Juice Company" className="h-8" />

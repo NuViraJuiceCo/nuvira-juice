@@ -89,6 +89,20 @@
   }
 }
 
+/* NuVira Brand Gradient — matches app icon */
+.bg-nuvira-gradient {
+  background: linear-gradient(135deg, #C8E86A 0%, #3DB84A 55%, #1A8C35 100%);
+}
+.bg-nuvira-gradient-soft {
+  background: linear-gradient(135deg, rgba(200, 232, 106, 0.15) 0%, rgba(61, 184, 74, 0.08) 100%);
+}
+.bg-nuvira-gradient-card {
+  background: linear-gradient(135deg, rgba(200, 232, 106, 0.12) 0%, rgba(29, 140, 53, 0.06) 100%);
+}
+.border-nuvira {
+  border-color: rgba(61, 184, 74, 0.25);
+}
+
 /* Safe area inset classes */
 .safe-area-top {
   padding-top: env(safe-area-inset-top);

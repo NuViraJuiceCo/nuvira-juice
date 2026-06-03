@@ -63,8 +63,9 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           width="800"
           height="576"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(200,232,106,0.25) 0%, rgba(29,140,53,0.85) 40%, rgba(10,60,20,0.6) 100%)' }} />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
       </div>
 
       {/* Animated layer for multi-banner transitions only */}
@@ -86,8 +87,9 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
               width="800"
               height="576"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(200,232,106,0.25) 0%, rgba(29,140,53,0.85) 40%, rgba(10,60,20,0.6) 100%)' }} />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
           </motion.div>
         </AnimatePresence>
       )}
@@ -123,7 +125,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           </p>
           <div className="flex items-center gap-3">
             <Link to={banner.link_to || '/shop'}>
-              <Button className="bg-white text-primary hover:bg-white/90 font-bold rounded-full px-8 h-11 text-sm shadow-lg shadow-black/25">
+              <Button className="bg-nuvira-gradient text-white hover:opacity-95 font-bold rounded-full px-8 h-11 text-sm shadow-lg shadow-black/30 border-0">
                 Order Now <ArrowRight className="w-4 h-4 ml-1.5" />
               </Button>
             </Link>

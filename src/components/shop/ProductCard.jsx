@@ -79,7 +79,7 @@ export default function ProductCard({ product, compact = false }) {
               onClick={handleQuickAdd}
               whileTap={{ scale: 0.88 }}
               aria-label={`Add ${product.title} to cart`}
-              className="absolute bottom-2 right-2 w-9 h-9 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:opacity-90 transition-opacity"
+              className="absolute bottom-2 right-2 w-9 h-9 bg-nuvira-gradient text-white rounded-full flex items-center justify-center shadow-md active:opacity-90 transition-opacity"
             >
               <Plus className="w-4 h-4" />
             </motion.button>
@@ -120,7 +120,7 @@ export default function ProductCard({ product, compact = false }) {
           <button
             onClick={handleQuickAdd}
             aria-label={`Add ${product.title} to cart`}
-            className="absolute bottom-2 right-2 w-11 h-11 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"
+            className="absolute bottom-2 right-2 w-11 h-11 bg-nuvira-gradient text-white rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"
           >
             <Plus className="w-4 h-4" />
           </button>

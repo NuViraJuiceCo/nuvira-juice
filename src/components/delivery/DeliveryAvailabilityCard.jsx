@@ -82,7 +82,8 @@ export default function DeliveryAvailabilityCard() {
       <div
         className="rounded-2xl border border-border/60 overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.04) 100%)',
+          background: 'linear-gradient(135deg, rgba(200, 232, 106, 0.10) 0%, rgba(29, 140, 53, 0.06) 100%)',
+          borderColor: 'rgba(61, 184, 74, 0.25)',
         }}
       >
         {/* ── Eligible State ── */}
@@ -149,7 +150,7 @@ export default function DeliveryAvailabilityCard() {
               <div className="flex gap-2 mt-4">
                 <button
                   onClick={() => setShowWaitlist(true)}
-                  className="flex-1 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold active:scale-[0.98] transition-transform"
+                  className="flex-1 h-10 rounded-xl bg-nuvira-gradient text-white text-sm font-semibold active:scale-[0.98] transition-transform"
                 >
                   Join The Waitlist
                 </button>
@@ -190,8 +191,8 @@ export default function DeliveryAvailabilityCard() {
             >
               {/* Header */}
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-9 h-9 rounded-xl bg-primary/12 flex items-center justify-center border border-primary/15">
-                  <MapPin className="w-4 h-4 text-primary" />
+                <div className="w-9 h-9 rounded-xl bg-nuvira-gradient flex items-center justify-center shadow-sm">
+                  <MapPin className="w-4 h-4 text-white" />
                 </div>
                 <div>
                   <p className="font-heading text-sm font-bold text-foreground leading-tight">
@@ -224,7 +225,7 @@ export default function DeliveryAvailabilityCard() {
                 <button
                   onClick={handleCheck}
                   disabled={status === 'checking'}
-                  className="h-11 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold shrink-0 disabled:opacity-60 active:scale-[0.97] transition-transform"
+                  className="h-11 px-5 rounded-xl bg-nuvira-gradient text-white text-sm font-semibold shrink-0 disabled:opacity-60 active:scale-[0.97] transition-transform"
                 >
                   {status === 'checking' ? (
                     <span className="flex items-center gap-1.5">
