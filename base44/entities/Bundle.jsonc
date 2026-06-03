@@ -4,8 +4,7 @@
   "properties": {
     "bundle_name": {
       "type": "string",
-      "description": "Bundle/program name (must match line_item titles in orders)",
-      "required": true
+      "description": "Bundle/program name (must match line_item titles in orders)"
     },
     "description": {
       "type": "string",

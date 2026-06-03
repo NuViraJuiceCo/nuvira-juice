@@ -4,8 +4,7 @@
   "properties": {
     "product_name": {
       "type": "string",
-      "description": "Juice product name (must match line_item titles in orders)",
-      "required": true
+      "description": "Juice product name (must match line_item titles in orders)"
     },
     "product_sku": {
       "type": "string",
