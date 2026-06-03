@@ -92,9 +92,29 @@ const ProtectedRoute = ({ element, user }) => {
   return element;
 };
 
+function hasSplashBeenShown() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage?.getItem('splashShown') === '1';
+  } catch {
+    // WKWebView can reject storage access during early native app bootstrap.
+    // Treat the splash as already shown so storage errors cannot crash render.
+    return true;
+  }
+}
+
+function markSplashShown() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage?.setItem('splashShown', '1');
+  } catch {
+    // Storage is only a convenience for suppressing the splash.
+  }
+}
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, checkAppState } = useAuth();
-  const [showSplash, setShowSplash] = React.useState(() => !sessionStorage.getItem('splashShown'));
+  const [showSplash, setShowSplash] = React.useState(() => !hasSplashBeenShown());
 
   const location = useLocation();
 
@@ -117,7 +137,7 @@ const AuthenticatedApp = () => {
   });
 
   const handleSplashDone = () => {
-    sessionStorage.setItem('splashShown', '1');
+    markSplashShown();
     setShowSplash(false);
   };
 
