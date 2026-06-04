@@ -89,6 +89,24 @@ For `shopifyWebhookReceiver`:
 
 Do not send a valid Shopify HMAC unless a real webhook processing test is explicitly approved.
 
+### 2026-06-03 Shopify webhook incident evidence
+
+The Shopify webhook runtime-secret incident was resolved without changing secret values or sending a valid Shopify webhook.
+
+Confirmed live app/project:
+
+- Base44 app: `NuVira Juice`
+- App id: `69d48d0c39891f7945481152`
+- Domains checked: `nuvira-fresh-flow.base44.app`, `nuvirajuice.com`
+
+Confirmed safe boundary behavior after the Version History publish workaround:
+
+- `GET /api/functions/shopifyWebhookReceiver` returns `405 method_not_allowed`.
+- Synthetic `POST` with a fake HMAC returns `401 Unauthorized` on both domains.
+- No Shopify API call, provider call, order mutation, notification, sync/repair/replay, inventory, production, fulfillment, or compliance mutation occurred.
+
+Operational lesson: if a published function still behaves as though a present secret is unavailable, treat it as a possible stale Base44 runtime artifact. Re-publish the current Version History entry before patching code again, then rerun only auth-safe boundary checks. Do not print or commit secret values.
+
 ## Next phase
 
 After this hardening is merged and published:
