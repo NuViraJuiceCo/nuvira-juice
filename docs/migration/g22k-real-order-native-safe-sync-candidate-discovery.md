@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Identify one low-risk real-order candidate for the first native `safeSync` writer pilot after G22J.
+Identify one low-risk live-record candidate for the first native `safeSync` writer pilot after G22J.
 
 This phase is read-only discovery and dry-run preflight only. It does not enable the native writer, does not open writer gates, does not send a live request to `executeNativeSafeSyncOrderUpdate`, and does not mutate a live order.
 
@@ -33,11 +33,24 @@ The current CLI read surface did not expose Customer App `Order` rows, so no cre
 
 The scan evaluated visible native `ShopifyOrder` records for an update-style first pilot. Synthetic G22/G22I records, refunded/canceled records, subscription records, advanced production/fulfillment records, and records with review queue context were excluded.
 
+## Owner correction
+
+After G22K merged, Amar confirmed that order `1009` / native `ShopifyOrder` id `6a1879c55f79664af02d1daf` was a test order created by him.
+
+Classification:
+
+- owner-confirmed test order
+- live record
+- not a real customer order
+- acceptable candidate for the first native safeSync writer pilot only if all dry-run, gate, and side-effect conditions still pass
+
+This order must not be treated as an ordinary customer order. It must not broaden native writer eligibility, and it must not be used as evidence that real customer native writer pilots are approved.
+
 ## Recommended candidate
 
 | Field | Value |
 | --- | --- |
-| Candidate type | Existing native `ShopifyOrder` update pilot |
+| Candidate type | Existing native `ShopifyOrder` update pilot for an owner-confirmed test order |
 | Order number | `1009` |
 | Existing native `ShopifyOrder` id | `6a1879c55f79664af02d1daf` |
 | Source channel | `online` |
@@ -51,7 +64,7 @@ The scan evaluated visible native `ShopifyOrder` records for an update-style fir
 | Customer email | redacted as `am***@nuvisionarymedia.com` |
 | Current visible sync/review/task context | no `OrderSyncLog`, `CommandLog`, `OrderReviewQueue`, `SafeSyncParityLog`, or `FulfillmentTask` found by order number in the current CLI read surface |
 
-This candidate is not a subscription, refund, cancellation, advanced production state, delivery-status event, proof/drop event, repair/replay event, or provider/payment mutation.
+This candidate is not a subscription, refund, cancellation, advanced production state, delivery-status event, proof/drop event, repair/replay event, or provider/payment mutation. It is also not a real customer order.
 
 ## Excluded visible records
 
@@ -168,6 +181,7 @@ NATIVE_SAFE_SYNC_WRITER_KILL_SWITCH=false
 NATIVE_SAFE_SYNC_WRITER_ALLOWED_SOURCES=customer_app
 NATIVE_SAFE_SYNC_WRITER_ALLOWED_EVENTS=order.updated
 NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST=1009,6a1879c55f79664af02d1daf
+NATIVE_SAFE_SYNC_WRITER_ACTOR_EMAIL_ALLOWLIST=system
 NATIVE_SAFE_SYNC_WRITER_SECRET=<temporary service secret>
 ```
 
@@ -179,6 +193,7 @@ NATIVE_SAFE_SYNC_WRITER_KILL_SWITCH=true
 NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST=disabled
 NATIVE_SAFE_SYNC_WRITER_ALLOWED_SOURCES=disabled
 NATIVE_SAFE_SYNC_WRITER_ALLOWED_EVENTS=disabled
+NATIVE_SAFE_SYNC_WRITER_ACTOR_EMAIL_ALLOWLIST=disabled
 NATIVE_SAFE_SYNC_WRITER_SECRET=disabled
 ```
 
@@ -209,7 +224,7 @@ Duplicate call with the same idempotency key:
 
 Stop before any real writer execution if:
 
-- owner does not explicitly approve order `1009` / `6a1879c55f79664af02d1daf`
+- owner does not explicitly approve owner-confirmed test order `1009` / `6a1879c55f79664af02d1daf`
 - the order status changes to refund/cancel/payment-provider related
 - the order becomes subscription-related
 - production/fulfillment advances beyond the current low-risk state
@@ -220,10 +235,10 @@ Stop before any real writer execution if:
 
 ## Recommendation
 
-Proceed next to owner approval for a one-order pilot only if order `1009` / `6a1879c55f79664af02d1daf` is acceptable.
+Proceed next to owner approval for a one-order test-record pilot only if order `1009` / `6a1879c55f79664af02d1daf` is acceptable.
 
 Recommended next phase:
 
-- `G22L` - one-order native safeSync writer pilot for order `1009`, identity-preserving metadata update only, with exact writer gates and immediate gate shutdown.
+- `G22L` - one-order native safeSync writer pilot for owner-confirmed test order `1009`, identity-preserving metadata update only, with exact writer gates and immediate gate shutdown.
 
 Do not execute `G22L` without explicit approval of this exact order and payload shape.

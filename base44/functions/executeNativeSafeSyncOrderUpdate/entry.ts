@@ -13,6 +13,8 @@ function getNativeSafeSyncWriterConfig() {
     allowedSources: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ALLOWED_SOURCES') || '',
     allowedEvents: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ALLOWED_EVENTS') || '',
     orderAllowlist: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST') || '',
+    actorEmailAllowlist: Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ACTOR_EMAIL_ALLOWLIST') ||
+      Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ACTOR_ALLOWLIST') || '',
   };
 }
 
@@ -89,6 +91,18 @@ function isEventAllowed(eventType, mode, config) {
   if (allowed.size > 0) return allowed.has(normalizeLower(eventType));
   if (mode === 'live') return false;
   return DEFAULT_ALLOWED_EVENTS.has(normalizeLower(eventType));
+}
+
+function isActorAllowed(actor, config) {
+  const allowed = parseCsvSet(config?.actorEmailAllowlist);
+  if (allowed.size === 0) return false;
+  const actorEmail = normalizeLower(actor?.actor_email);
+  const identifiers = [
+    actorEmail,
+    actor?.actor_type && actorEmail ? `${normalizeLower(actor.actor_type)}:${actorEmail}` : '',
+    actor?.actor_role && actorEmail ? `${normalizeLower(actor.actor_role)}:${actorEmail}` : '',
+  ].filter(Boolean);
+  return identifiers.some(identifier => allowed.has(identifier));
 }
 
 async function readJsonBody(req) {
@@ -378,6 +392,9 @@ Deno.serve(async (req) => {
     }
     if (!writerConfig.enabled) {
       return Response.json({ success: true, skipped: true, error_code: 'native_safe_sync_writer_disabled', writes_performed: false });
+    }
+    if (!isActorAllowed(auth, writerConfig)) {
+      return Response.json({ success: true, skipped: true, error_code: 'actor_not_allowlisted', writes_performed: false });
     }
     if (!isSourceAllowed(source, writerConfig)) {
       return Response.json({ success: true, skipped: true, error_code: 'source_not_allowed', source, writes_performed: false });
