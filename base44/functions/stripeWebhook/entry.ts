@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-refresh-2026-06-04-v2';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
   'backend_cadence',
   'admin_override',
@@ -85,23 +86,18 @@ Deno.serve(async (req) => {
   try {
     event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
   } catch (err) {
-    // TEMPORARY DIAGNOSTIC LOGGING FOR INVALID SIGNATURE
+    // Safe boundary logging only. Never log secret values, prefixes, suffixes, or raw payloads.
     const secretExists = !!webhookSecret;
-    const secretLength = webhookSecret?.length || 0;
-    const secretPrefix = webhookSecret ? `${webhookSecret.substring(0, 6)}...${webhookSecret.substring(secretLength - 4)}` : 'MISSING';
     const signatureExists = !!signature;
-    const bodyLength = body?.length || 0;
     const requestPath = req.url;
-    const webhookBuildId = 'canonical-we-1TVFMc-2026-05-09-v1';
     
     console.error('Webhook signature verification failed:', err.message);
-    console.error(`[DIAGNOSTICS] STRIPE_WEBHOOK_SECRET exists: ${secretExists}`);
-    console.error(`[DIAGNOSTICS] STRIPE_WEBHOOK_SECRET length: ${secretLength}`);
-    console.error(`[DIAGNOSTICS] STRIPE_WEBHOOK_SECRET prefix/suffix: ${secretPrefix}`);
-    console.error(`[DIAGNOSTICS] Stripe-Signature header exists: ${signatureExists}`);
-    console.error(`[DIAGNOSTICS] Request body length: ${bodyLength}`);
-    console.error(`[DIAGNOSTICS] Request path: ${requestPath}`);
-    console.error(`[DIAGNOSTICS] WEBHOOK_BUILD_ID: ${webhookBuildId}`);
+    console.error('[stripeWebhook] invalid signature boundary', {
+      has_stripe_webhook_secret: secretExists,
+      has_stripe_signature_header: signatureExists,
+      request_path: requestPath,
+      runtime_build_id: STRIPE_WEBHOOK_RUNTIME_BUILD_ID,
+    });
     
     return Response.json({ error: 'Invalid signature' }, { status: 400 });
   }

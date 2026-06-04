@@ -2,7 +2,8 @@ import React from 'react';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
 const RECOVERY_SESSION_KEY = 'nuvira_native_recovery_attempted_at_v1';
-const RECOVERY_COOLDOWN_MS = 60 * 1000;
+const RECOVERY_COUNT_KEY = 'nuvira_native_recovery_attempt_count_v1';
+const MAX_IMMEDIATE_RECOVERY_ATTEMPTS = 3;
 const RECOVERY_QUERY_PARAM = 'native_reopen';
 const LEGACY_STORAGE_KEYS = [
   'splashShown',
@@ -51,6 +52,7 @@ function clearNativeBootstrapState({ preserveRecoveryFlag = false } = {}) {
 
   if (!preserveRecoveryFlag) {
     safelyRemoveItem(window.sessionStorage, RECOVERY_SESSION_KEY);
+    safelyRemoveItem(window.sessionStorage, RECOVERY_COUNT_KEY);
   }
 }
 
@@ -86,43 +88,37 @@ export default class AppErrorBoundary extends React.Component {
     this.scheduleAutomaticRecovery();
   }
 
-  wasRecentlyRecovered() {
+  getRecoveryAttemptCount() {
     try {
-      const reopenAttempt = new URLSearchParams(window.location.search).get(RECOVERY_QUERY_PARAM);
-      if (reopenAttempt) return true;
-
-      const recoveredAt = Number(window.sessionStorage?.getItem(RECOVERY_SESSION_KEY) || 0);
-      return recoveredAt > 0 && Date.now() - recoveredAt < RECOVERY_COOLDOWN_MS;
+      return Number(window.sessionStorage?.getItem(RECOVERY_COUNT_KEY) || 0);
     } catch {
-      return false;
+      return 0;
     }
   }
 
   markRecoveryAttempt() {
     try {
+      const nextCount = this.getRecoveryAttemptCount() + 1;
       window.sessionStorage?.setItem(RECOVERY_SESSION_KEY, String(Date.now()));
+      window.sessionStorage?.setItem(RECOVERY_COUNT_KEY, String(nextCount));
+      return nextCount;
     } catch {
       // Recovery still proceeds if sessionStorage is unavailable.
+      return 1;
     }
   }
 
   scheduleAutomaticRecovery() {
-    if (typeof window === 'undefined' || this.wasRecentlyRecovered()) return;
+    if (typeof window === 'undefined') return;
 
-    this.markRecoveryAttempt();
+    const attemptCount = this.markRecoveryAttempt();
     window.setTimeout(() => {
-      clearNativeBootstrapState({ preserveRecoveryFlag: true });
+      clearNativeBootstrapState({
+        preserveRecoveryFlag: attemptCount < MAX_IMMEDIATE_RECOVERY_ATTEMPTS,
+      });
       navigateToFreshHome();
-    }, 80);
+    }, 0);
   }
-
-  handleReload = () => {
-    clearNativeBootstrapState();
-
-    this.setState({ hasError: false }, () => {
-      navigateToFreshHome();
-    });
-  };
 
   render() {
     if (!this.state.hasError) {
@@ -130,23 +126,8 @@ export default class AppErrorBoundary extends React.Component {
     }
 
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
-        <div className="w-full max-w-sm text-center">
-          <img src={LOGO_URL} alt="NuVira Juice Company" className="mx-auto mb-6 h-9 opacity-90" />
-          <div className="nuvira-premium-card rounded-3xl p-5">
-            <h1 className="font-heading text-2xl font-bold">Opening NuVira</h1>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              We are resetting the app session and opening a fresh home screen.
-            </p>
-            <button
-              type="button"
-              onClick={this.handleReload}
-              className="nuvira-gradient-button mt-5 h-11 w-full rounded-2xl text-sm font-semibold"
-            >
-              Open NuVira
-            </button>
-          </div>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center px-6" aria-label="Loading NuVira">
+        <img src={LOGO_URL} alt="NuVira Juice Company" className="h-10 opacity-85" />
       </div>
     );
   }
