@@ -4,7 +4,7 @@
   "properties": {
     "shopify_order_id": {
       "type": "string",
-      "description": "Shopify order GID or numeric ID"
+      "description": "Shopify order GID or numeric ID when the order originated from Shopify. Native Customer App operational orders may not have this at creation time."
     },
     "shopify_order_number": {
       "type": "string",
@@ -465,7 +465,6 @@
     }
   },
   "required": [
-    "shopify_order_id",
     "shopify_order_number"
   ],
   "rls": {
