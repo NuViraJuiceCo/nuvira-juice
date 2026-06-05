@@ -2,7 +2,7 @@ import { base44 } from '@/api/base44Client';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 
-const VAPID_PUBLIC_KEY = 'BHmr7cCgm_eL3ckBL91ZKnvCqXvLax8pahXxpFCY8qwFXi0alWve4tDDJaaSDTuLwA-4VSEWBHMMlE_BixdHWaM';
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY || '';
 const SERVICE_WORKER_PATH = '/push-sw.js';
 const NUVIRA_APP_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
 const EVENT_NATIVE_PUSH_TARGET_KEY = 'nuvira_may30_native_push_target_v1';
@@ -241,6 +241,10 @@ export async function subscribeToEventPushNotifications() {
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
     return { success: false, status: permission, reason: 'permission_not_granted' };
+  }
+
+  if (!VAPID_PUBLIC_KEY) {
+    return { success: false, status: permission, reason: 'vapid_public_key_missing' };
   }
 
   const registration = await navigator.serviceWorker.register(SERVICE_WORKER_PATH, { scope: '/' });

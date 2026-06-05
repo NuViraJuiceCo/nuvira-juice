@@ -8,8 +8,7 @@ const NOTIFICATION_TITLE = 'Welcome To NuVira';
 const NOTIFICATION_BODY = 'Your 250 point event visit bonus has been added.';
 const DEFAULT_LOCATION_RADIUS_METERS = 230;
 const EVENT_CODE_ALLOWS_NO_LOCATION = Deno.env.get('MAY30_EVENT_CODE_ALLOWS_NO_LOCATION') !== 'false';
-const VAPID_PUBLIC_KEY = Deno.env.get('WEB_PUSH_VAPID_PUBLIC_KEY')
-  || 'BHmr7cCgm_eL3ckBL91ZKnvCqXvLax8pahXxpFCY8qwFXi0alWve4tDDJaaSDTuLwA-4VSEWBHMMlE_BixdHWaM';
+const VAPID_PUBLIC_KEY = Deno.env.get('WEB_PUSH_VAPID_PUBLIC_KEY') || '';
 const VAPID_PRIVATE_KEY = Deno.env.get('WEB_PUSH_VAPID_PRIVATE_KEY');
 const VAPID_CONTACT = Deno.env.get('WEB_PUSH_CONTACT') || 'mailto:info@nuvirajuice.com';
 const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -1146,14 +1145,14 @@ async function sendEventPush(
   let attempted = false;
 
   if (browserSubscriptions.length > 0) {
-    if (VAPID_PRIVATE_KEY) {
+    if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
       attempted = true;
       const result = await sendWebPushSubscriptions(base44, browserSubscriptions, payload);
       sent += result.sent;
       failed += result.failed;
       revoked += result.revoked;
     } else {
-      skippedReasons.push('vapid_private_key_missing');
+      skippedReasons.push(VAPID_PRIVATE_KEY ? 'vapid_public_key_missing' : 'vapid_private_key_missing');
     }
   }
 
