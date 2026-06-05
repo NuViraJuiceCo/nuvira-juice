@@ -233,6 +233,31 @@ function sanitizeDarkLaunchDebugSummary(summary, payload) {
   };
 }
 
+function sanitizeSyncLogText(value, maxLength = 240) {
+  const text = String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted email]')
+    .replace(/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]')
+    .trim();
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
+function buildSafePayloadSummary({ order, paymentStatus, addressLine1, addressCity, addressState, addressPostalCode }) {
+  const itemCount = Array.isArray(order?.items) ? order.items.length : 0;
+  const hasStructuredAddress = Boolean(addressLine1 && addressCity && addressState && addressPostalCode);
+  return [
+    `payment_status=${paymentStatus || 'unknown'}`,
+    `address_complete=${hasStructuredAddress}`,
+    `customer_present=${Boolean(order?.customer_name || order?.customer_email)}`,
+    `total=${Number(order?.total || 0)}`,
+    `items=${itemCount}`,
+    `is_preorder=${order?.is_preorder === true}`,
+  ].join(' | ');
+}
+
 function toSafeStringArray(value, limit = 20) {
   if (!value) return [];
   if (Array.isArray(value)) {
@@ -620,7 +645,7 @@ Deno.serve(async (req) => {
     const stateZip      = (parts[2] || '').trim().split(' ');
     address_state       = stateZip[0] || '';
     address_postal_code = stateZip[1] || '';
-    console.log(`syncOrderToHub: address parsed from string for ${order.order_number}: "${address_line1}", "${address_city}", "${address_state}", "${address_postal_code}"`);
+    console.log(`syncOrderToHub: address parsed from string for ${order.order_number}; address_complete=${Boolean(address_line1 && address_city && address_state && address_postal_code)}`);
   }
 
   if (!address_line1) {
@@ -752,7 +777,14 @@ Deno.serve(async (req) => {
     },
   };
 
-  const payloadSummary = `payment_status=${payment_status} | address="${address_line1}, ${address_city}, ${address_state} ${address_postal_code}" | customer="${order.customer_name}" | email="${order.customer_email}" | total=${order.total} | items=${(order.items||[]).length} | is_preorder=${order.is_preorder || false}`;
+  const payloadSummary = buildSafePayloadSummary({
+    order,
+    paymentStatus: payment_status,
+    addressLine1: address_line1,
+    addressCity: address_city,
+    addressState: address_state,
+    addressPostalCode: address_postal_code,
+  });
   console.log(`syncOrderToHub: PAYLOAD for ${order.order_number}: ${payloadSummary}`);
 
   try {
@@ -804,7 +836,7 @@ Deno.serve(async (req) => {
           order_number: order.order_number,
           status:       'error',
           hub_action:   null,
-          description:  `Hub HTTP ${response.status}. Retry eligible. ${payloadSummary}. Response: ${responseText.substring(0, 300)}`,
+          description:  `Hub HTTP ${response.status}. Retry eligible. ${payloadSummary}. Response: ${sanitizeSyncLogText(responseText, 220)}`,
           started_at:   new Date().toISOString(),
           completed_at: new Date().toISOString(),
           triggered_by: body.triggered_by || 'stripe_webhook',
@@ -880,7 +912,7 @@ Deno.serve(async (req) => {
         hub_action:         hubAction || 'unknown',
         hub_order_id:       hubOrderId || undefined,
         matched_hub_order_id: matchedHubOrderId || undefined,
-        description:        `${logLabel}. ${payloadSummary}`.substring(0, 1000),
+        description:        `${sanitizeSyncLogText(logLabel, 260)}. ${payloadSummary}`.substring(0, 1000),
         started_at:         new Date().toISOString(),
         completed_at:       new Date().toISOString(),
         triggered_by:       body.triggered_by || 'stripe_webhook',
@@ -913,7 +945,7 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.OrderSyncLog.create({
         order_number:  order.order_number,
         status:        'error',
-        description:   `Sync failed: ${fetchErr.message}. Payload: ${payloadSummary}`,
+        description:   `Sync failed: ${sanitizeSyncLogText(fetchErr.message, 180)}. Payload: ${payloadSummary}`,
         started_at:    new Date().toISOString(),
         completed_at:  new Date().toISOString(),
         triggered_by:  body.triggered_by || 'stripe_webhook',

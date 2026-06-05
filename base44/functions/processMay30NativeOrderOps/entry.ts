@@ -1,11 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const ENABLE_MAY30_NATIVE_ORDER_OPS = Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
-const MAY30_NATIVE_ORDER_OPS_SECRET = Deno.env.get('MAY30_NATIVE_ORDER_OPS_SECRET') || CUSTOMER_APP_SYNC_SECRET;
-
 const SUPPORTED_SOURCES = new Set(['customer_app_one_time', 'website_one_time', 'shopify_pos']);
 const MAX_LINE_ITEMS = 60;
+
+function isMay30NativeOrderOpsEnabled() {
+  // Read gates per request so Base44 runtime artifact/env propagation cannot
+  // leave native mirror controls stuck on a stale top-level snapshot.
+  return Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
+}
+
+function getMay30NativeOrderOpsSecret() {
+  return Deno.env.get('MAY30_NATIVE_ORDER_OPS_SECRET') ||
+    Deno.env.get('CUSTOMER_APP_SYNC_SECRET') ||
+    '';
+}
 
 function getNativeSafeSyncPreviewInvokeOptions() {
   return {
@@ -210,7 +218,8 @@ async function resolveAuth({ base44, req, body, mode }) {
   const authHeader = req.headers.get('authorization') || '';
   const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
   const bodySecret = normalizeText(body?.internal_secret || body?._internal_secret);
-  if (MAY30_NATIVE_ORDER_OPS_SECRET && (bearer === MAY30_NATIVE_ORDER_OPS_SECRET || bodySecret === MAY30_NATIVE_ORDER_OPS_SECRET)) {
+  const nativeOrderOpsSecret = getMay30NativeOrderOpsSecret();
+  if (nativeOrderOpsSecret && (bearer === nativeOrderOpsSecret || bodySecret === nativeOrderOpsSecret)) {
     return { ok: true, actor_type: 'system', actor_role: 'service', actor_email: 'system' };
   }
 
@@ -713,9 +722,36 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
 
   const draft = {
     order_id: shopifyOrder.id,
+    shopify_order_id: shopifyOrder.id,
+    shopify_order_number: shopifyOrder.shopify_order_number || outputs.record.shopify_order_number,
+    order_number: shopifyOrder.shopify_order_number || outputs.record.shopify_order_number,
+    customer_name: outputs.record.customer_name,
     customer_email: outputs.record.customer_email,
+    customer_phone: outputs.record.customer_phone,
+    source_channel: outputs.record.source_channel,
+    source_type: outputs.record.source_type || source,
+    fulfillment_type: outputs.record.fulfillment_method || 'delivery',
     fulfillment_number: 1,
     delivery_date: deliveryDate,
+    scheduled_date: deliveryDate,
+    assigned_delivery_date: deliveryDate,
+    production_date: outputs.record.production_date || null,
+    time_window: outputs.record.delivery_window_label,
+    delivery_window_label: outputs.record.delivery_window_label,
+    address: outputs.record.delivery_address,
+    delivery_address: {
+      address_line1: outputs.record.address_line1 || '',
+      address_line2: outputs.record.address_line2 || '',
+      address_city: outputs.record.address_city || '',
+      address_state: outputs.record.address_state || '',
+      address_postal_code: outputs.record.address_postal_code || '',
+      address_country: outputs.record.address_country || 'US',
+    },
+    address_line1: outputs.record.address_line1,
+    address_line2: outputs.record.address_line2,
+    address_city: outputs.record.address_city,
+    address_state: outputs.record.address_state,
+    address_postal_code: outputs.record.address_postal_code,
     items: Array.isArray(outputs.record.line_items)
       ? outputs.record.line_items.map(item => ({
           product_id: item.shopify_line_item_id || '',
@@ -724,7 +760,18 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
           quantity: item.quantity ?? 0,
         }))
       : [],
+    items_summary: Array.isArray(outputs.record.line_items)
+      ? outputs.record.line_items
+          .slice(0, 8)
+          .map(item => `${safeNumber(item.quantity, 0)}x ${sanitizeText(item.title, 80) || 'Item'}`)
+          .join(', ')
+      : '',
     status: 'pending',
+    delivery_status: 'pending',
+    production_status: outputs.record.production_status,
+    payment_status: outputs.record.payment_status,
+    sync_status: outputs.record.sync_status,
+    schedule_source: 'native_customer_app_paid_order_mirror',
     notes: sanitizeText(
       `Native May 30 delivery task mirror. Source=${source}; event=${eventType}; request=${requestId}; idempotency=${idempotencyKey}`,
       500,
@@ -740,9 +787,35 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
 
   if (Array.isArray(existing) && existing.length > 0) {
     const updated = await base44.asServiceRole.entities.FulfillmentTask.update(existing[0].id, {
+      shopify_order_id: draft.shopify_order_id,
+      shopify_order_number: draft.shopify_order_number,
+      order_number: draft.order_number,
+      customer_name: draft.customer_name,
       customer_email: draft.customer_email,
+      customer_phone: draft.customer_phone,
+      source_channel: draft.source_channel,
+      source_type: draft.source_type,
+      fulfillment_type: draft.fulfillment_type,
       delivery_date: draft.delivery_date,
+      scheduled_date: draft.scheduled_date,
+      assigned_delivery_date: draft.assigned_delivery_date,
+      production_date: draft.production_date,
+      time_window: draft.time_window,
+      delivery_window_label: draft.delivery_window_label,
+      address: draft.address,
+      delivery_address: draft.delivery_address,
+      address_line1: draft.address_line1,
+      address_line2: draft.address_line2,
+      address_city: draft.address_city,
+      address_state: draft.address_state,
+      address_postal_code: draft.address_postal_code,
       items: draft.items,
+      items_summary: draft.items_summary,
+      delivery_status: draft.delivery_status,
+      production_status: draft.production_status,
+      payment_status: draft.payment_status,
+      sync_status: draft.sync_status,
+      schedule_source: draft.schedule_source,
       notes: draft.notes,
     });
     return { action: 'updated', record: updated };
@@ -787,7 +860,7 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized' }, { status: 401 });
     }
 
-    if (mode === 'live' && !ENABLE_MAY30_NATIVE_ORDER_OPS) {
+    if (mode === 'live' && !isMay30NativeOrderOpsEnabled()) {
       return Response.json({
         success: true,
         skipped: true,
