@@ -36,11 +36,13 @@ async function readJsonBody(req) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me().catch(() => null);
-    if (!user) {
+    let user = null;
+    try {
+      user = await base44.auth.me();
+    } catch {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (user.role !== 'admin') {
+    if (!user || user.role !== 'admin') {
       return Response.json({ error: 'Admin only' }, { status: 403 });
     }
 
