@@ -31,6 +31,15 @@ const HELD_CUSTOMERS = ['ksukhi2000@yahoo.com', 'jskahlon1984@live.com'];
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    let user = null;
+    try {
+      user = await base44.auth.me();
+    } catch {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!user || user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     console.log('[Audit] Starting Phase 2 post-import read-only audit');
 

@@ -1,3 +1,5 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
 const ALLOWED_ACTIONS = new Set(['assign', 'unassign', 'pack', 'out_for_delivery', 'delivered_operational']);
 const TERMINAL_STATUSES = new Set(['delivered', 'cancelled', 'unable_to_deliver', 'Delivered', 'Cancelled']);
 const PACKABLE_STATUSES = new Set(['pending', 'scheduled', 'assigned', 'in_production', 'Scheduled']);
@@ -387,6 +389,17 @@ Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
       return Response.json({ success: false, error_code: 'method_not_allowed', error: 'Method not allowed' }, { status: 405 });
+    }
+
+    const base44 = createClientFromRequest(req);
+    let user = null;
+    try {
+      user = await base44.auth.me();
+    } catch {
+      return Response.json({ success: false, dry_run: true, error_code: 'unauthorized', error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!user || user.role !== 'admin') {
+      return Response.json({ success: false, dry_run: true, error_code: 'forbidden', error: 'Forbidden' }, { status: 403 });
     }
 
     let body;
