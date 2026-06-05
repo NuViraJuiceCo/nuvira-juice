@@ -1938,6 +1938,8 @@ Deno.serve(async (req) => {
           order_id: order.id,
           stripe_session: { id: charge.id },
           triggered_by: 'stripe_refund_webhook',
+        }, {
+          headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' },
         });
         if (refundSyncResult?.success) {
           console.log(`[charge.refunded] ✅ Order ${orderNumber} refund synced to Hub successfully`);

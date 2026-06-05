@@ -52,7 +52,19 @@ const OLD_HUB_ENDPOINT = `${(Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user?.email) {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin') {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+
     const body = await req.json();
     const { mode = 'map', order_number, customer_email, subscription_id } = body;
 

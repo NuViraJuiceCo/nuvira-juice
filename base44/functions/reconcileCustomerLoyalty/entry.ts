@@ -20,6 +20,14 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user?.email) {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin') {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+
     const { customer_email } = await req.json();
 
     if (!customer_email) {
