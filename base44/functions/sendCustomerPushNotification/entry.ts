@@ -666,7 +666,12 @@ Deno.serve(async (req) => {
     if (!body) {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
     }
-    const customerEmail = normalizeEmail(body.customer_email);
+    let customerEmail = '';
+    try {
+      customerEmail = normalizeEmail(body.customer_email);
+    } catch {
+      return Response.json({ error: 'Missing required field: customer_email' }, { status: 400 });
+    }
     const title = normalizeSingleLine(body.title);
     const message = normalizeSingleLine(body.message);
     const notificationSubtype = normalizeSingleLine(body.notification_subtype || 'general');
