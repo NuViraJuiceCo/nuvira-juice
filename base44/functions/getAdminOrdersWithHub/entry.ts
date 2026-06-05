@@ -21,6 +21,44 @@ function isPosLikeOrder(order) {
   ].some(value => normalizeLower(value) === 'pos');
 }
 
+function uniqueValues(values) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function addIndexValue(index, key, value) {
+  const normalizedKey = normalizeOrderNum(key);
+  if (!normalizedKey || !value || index.has(normalizedKey)) return;
+  index.set(normalizedKey, value);
+}
+
+function isPaidOrder(order) {
+  return (
+    order?.payment_status === 'paid' ||
+    order?.financial_status === 'paid' ||
+    order?.payment_captured === true ||
+    order?.native_payment_status === 'paid' ||
+    order?.customer_app_payment_status === 'paid'
+  );
+}
+
+function isPendingPaymentOrder(order) {
+  return (
+    order?.status === 'pending_payment' ||
+    ['pending', 'unpaid', 'requires_payment_method'].includes(normalizeLower(order?.payment_status)) ||
+    ['pending', 'unpaid', 'requires_payment_method'].includes(normalizeLower(order?.financial_status))
+  );
+}
+
+function hasPaymentSignal(order) {
+  return Boolean(
+    order?.payment_status ||
+    order?.financial_status ||
+    order?.payment_captured === true ||
+    order?.native_payment_status ||
+    order?.customer_app_payment_status
+  );
+}
+
 /**
  * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
  * 
@@ -33,7 +71,7 @@ function isPosLikeOrder(order) {
  * 3. Query Hub for each customer's orders (include cancelled-only customers for visibility)
  * 4. Expand Hub subscription orders into fulfillment-level display records
  * 5. Expand local subscription orders via FulfillmentTask references
- * 6. Merge: Hub wins on order_number; local fills missing contact info
+ * 6. Merge: Hub remains the primary row on order_number; local + native context attach for same-order visibility
  * 7. Return merged list sorted by created_date (newest first)
  * 
  * FULFILLMENT EXPANSION:
@@ -42,9 +80,8 @@ function isPosLikeOrder(order) {
  * - Result: Admins see individual deliveries, not parent "0-item" records
  * 
  * STATUS UPDATES:
- * - Hub-managed orders (is_hub_order=true) send status updates via pushOrderStatusToHub
- * - Local orders update directly via Order.update() (no Hub push)
- * - Admin can always edit status; status history is tracked
+ * - Generic order workflow controls are frozen in the admin UI during launch hardening
+ * - This function is read-only aggregation and does not create, update, sync, repair, notify, or call providers
  * 
  * Called by: pages/AdminOrders (admin order management)
  */
@@ -395,7 +432,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. Merge: Hub wins for any order_number it has; local wins otherwise
+    const nativeAdminOrders = nativeShopifyOrders
+      .map(order => mapNativeShopifyOrderToAdminOrder(order, nativeContext))
+      .filter(Boolean);
+    const nativeOrderIndexes = buildNativeOrderIndexes(nativeAdminOrders);
+    const customerAppOrderIndexes = buildCustomerAppOrderIndexes(expandedLocalOrders);
+
+    const withMergedContext = (order) => mergeAdminOperationalContext({
+      order,
+      nativeOrderIndexes,
+      customerAppOrderIndexes,
+      syncContext: nativeContext,
+    });
+
+    // 4. Merge: Hub remains the primary operational row when present, but same-order
+    // Customer App + native May 30 context is attached to that row instead of hidden.
     // Normalize order numbers for comparison: strip leading #, lowercase, trim
     const mergedMap = new Map();
 
@@ -404,17 +455,18 @@ Deno.serve(async (req) => {
       const key = normalizeOrderNum(order.order_number);
       if (!key) continue;
       if (!mergedMap.has(key)) {
-        mergedMap.set(key, order);
+        mergedMap.set(key, withMergedContext(order));
       }
     }
 
     // Native May 30 operational records are visible in Customer App admin even while
-    // Hub remains the operational fallback. Hub still wins if the same order exists.
-    for (const order of nativeShopifyOrders.map(order => mapNativeShopifyOrderToAdminOrder(order, nativeContext)).filter(Boolean)) {
+    // Hub remains the operational fallback. When Hub already has the same order, its row
+    // was enriched above; otherwise render the native row directly.
+    for (const order of nativeAdminOrders) {
       const key = normalizeOrderNum(order.order_number);
       if (!key) continue;
       if (!mergedMap.has(key)) {
-        mergedMap.set(key, order);
+        mergedMap.set(key, withMergedContext(order));
       }
     }
 
@@ -424,7 +476,7 @@ Deno.serve(async (req) => {
       if (!key) continue; // skip orders with no order_number entirely
       const hubHasIt = mergedMap.has(key) && mergedMap.get(key).is_hub_order;
       if (!hubHasIt) {
-        mergedMap.set(key, order);
+        mergedMap.set(key, withMergedContext(order));
       }
     }
 
@@ -482,18 +534,28 @@ function mapHubStatus(hubStatus) {
 }
 
 function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, reviewQueueItems }) {
-  const byOrderId = new Map();
-  const syncByOrderNumber = new Map();
-  const syncByOrderId = new Map();
+  const taskByOrderId = new Map();
+  const taskByShopifyOrderId = new Map();
+  const taskByOrderNumber = new Map();
+  const nativeSyncByOrderNumber = new Map();
+  const nativeSyncByOrderId = new Map();
+  const hubSyncByOrderNumber = new Map();
+  const hubSyncByOrderId = new Map();
   const reviewByOrderNumber = new Map();
   const reviewByOrderId = new Map();
 
-  for (const task of Array.isArray(fulfillmentTasks) ? fulfillmentTasks : []) {
-    const orderId = (task.order_id || '').toString();
-    if (!orderId) continue;
-    const existing = byOrderId.get(orderId) || [];
+  const addTaskIndex = (index, key, task) => {
+    const normalizedKey = (key || '').toString();
+    if (!normalizedKey) return;
+    const existing = index.get(normalizedKey) || [];
     existing.push(task);
-    byOrderId.set(orderId, existing);
+    index.set(normalizedKey, existing);
+  };
+
+  for (const task of Array.isArray(fulfillmentTasks) ? fulfillmentTasks : []) {
+    addTaskIndex(taskByOrderId, task.order_id, task);
+    addTaskIndex(taskByShopifyOrderId, task.shopify_order_id, task);
+    addTaskIndex(taskByOrderNumber, normalizeOrderNum(task.shopify_order_number || task.order_number), task);
   }
 
   for (const log of Array.isArray(orderSyncLogs) ? orderSyncLogs : []) {
@@ -505,10 +567,24 @@ function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, review
       source: log.sync_source || log.triggered_by || null,
       event_type: log.event_type || null,
       reason: log.reason || log.error_code || null,
+      hub_order_id: log.hub_order_id || null,
       timestamp: log.sync_timestamp || log.completed_at || log.created_date || null,
     };
-    if (orderNumber && !syncByOrderNumber.has(orderNumber)) syncByOrderNumber.set(orderNumber, summary);
-    if (orderId && !syncByOrderId.has(orderId)) syncByOrderId.set(orderId, summary);
+    const isNativeSync = normalizeLower(log.sync_source).includes('native') ||
+      normalizeLower(log.sync_source).includes('may30') ||
+      normalizeLower(log.action).includes('native');
+    const isHubSync = Boolean(log.hub_order_id || log.hub_action) ||
+      normalizeLower(log.triggered_by).includes('hub') ||
+      normalizeLower(log.sync_source).includes('hub');
+
+    if (isNativeSync) {
+      if (orderNumber && !nativeSyncByOrderNumber.has(orderNumber)) nativeSyncByOrderNumber.set(orderNumber, summary);
+      if (orderId && !nativeSyncByOrderId.has(orderId)) nativeSyncByOrderId.set(orderId, summary);
+    }
+    if (isHubSync) {
+      if (orderNumber && !hubSyncByOrderNumber.has(orderNumber)) hubSyncByOrderNumber.set(orderNumber, summary);
+      if (orderId && !hubSyncByOrderId.has(orderId)) hubSyncByOrderId.set(orderId, summary);
+    }
   }
 
   for (const item of Array.isArray(reviewQueueItems) ? reviewQueueItems : []) {
@@ -528,36 +604,309 @@ function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, review
     if (orderId && !reviewByOrderId.has(orderId)) reviewByOrderId.set(orderId, summary);
   }
 
+  const taskSummary = (tasks) => {
+    const statusCounts = {};
+    let nextDeliveryDate = null;
+    let productionDate = null;
+    const missingMetadataFields = new Set();
+
+    for (const task of tasks) {
+      const status = task.status || 'unknown';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+      const candidateDeliveryDate = task.delivery_date || task.scheduled_date || task.assigned_delivery_date || null;
+      if (candidateDeliveryDate && (!nextDeliveryDate || candidateDeliveryDate < nextDeliveryDate)) {
+        nextDeliveryDate = candidateDeliveryDate;
+      }
+      if (!productionDate && task.production_date) productionDate = task.production_date;
+
+      if (!task.shopify_order_number && !task.order_number) missingMetadataFields.add('shopify_order_number');
+      if (!task.source_type) missingMetadataFields.add('source_type');
+      if (!task.schedule_source) missingMetadataFields.add('schedule_source');
+      if (!task.production_date) missingMetadataFields.add('production_date');
+    }
+
+    return {
+      count: tasks.length,
+      status_counts: statusCounts,
+      next_delivery_date: nextDeliveryDate,
+      production_date: productionDate,
+      task_ids: tasks.slice(0, 5).map(task => task.id).filter(Boolean),
+      tasks: tasks.slice(0, 5).map(task => ({
+        id: task.id || null,
+        order_id: task.order_id || null,
+        shopify_order_id: task.shopify_order_id || null,
+        shopify_order_number: task.shopify_order_number || task.order_number || null,
+        status: task.status || null,
+        delivery_status: task.delivery_status || null,
+        delivery_date: task.delivery_date || task.scheduled_date || task.assigned_delivery_date || null,
+        production_date: task.production_date || null,
+        source_channel: task.source_channel || null,
+        source_type: task.source_type || null,
+        schedule_source: task.schedule_source || null,
+        fulfillment_type: task.fulfillment_type || null,
+        fulfillment_number: task.fulfillment_number || null,
+        delivery_window_label: task.delivery_window_label || task.time_window || null,
+      })),
+      incomplete_display_metadata: tasks.length > 0 && missingMetadataFields.size > 0,
+      missing_metadata_fields: Array.from(missingMetadataFields),
+    };
+  };
+
+  const tasksFor = ({ orderNumber, orderId, shopifyOrderId }) => {
+    const combined = [
+      ...(taskByOrderId.get((orderId || '').toString()) || []),
+      ...(taskByShopifyOrderId.get((shopifyOrderId || '').toString()) || []),
+      ...(taskByOrderNumber.get(normalizeOrderNum(orderNumber)) || []),
+    ];
+    const seen = new Set();
+    return combined.filter(task => {
+      const key = task.id || `${task.order_id || ''}:${task.shopify_order_number || task.order_number || ''}:${task.delivery_date || task.scheduled_date || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const latestNativeSyncFor = ({ orderNumber, orderId }) => (
+    nativeSyncByOrderId.get((orderId || '').toString()) || nativeSyncByOrderNumber.get(normalizeOrderNum(orderNumber)) || null
+  );
+  const latestHubSyncFor = ({ orderNumber, orderId }) => (
+    hubSyncByOrderId.get((orderId || '').toString()) || hubSyncByOrderNumber.get(normalizeOrderNum(orderNumber)) || null
+  );
+
   return {
     taskSummaryFor(orderId) {
-      const tasks = byOrderId.get((orderId || '').toString()) || [];
-      const statusCounts = {};
-      let nextDeliveryDate = null;
-      let productionDate = null;
-      for (const task of tasks) {
-        const status = task.status || 'unknown';
-        statusCounts[status] = (statusCounts[status] || 0) + 1;
-        const candidateDeliveryDate = task.delivery_date || task.scheduled_date || null;
-        if (candidateDeliveryDate && (!nextDeliveryDate || candidateDeliveryDate < nextDeliveryDate)) {
-          nextDeliveryDate = candidateDeliveryDate;
-        }
-        if (!productionDate && task.production_date) productionDate = task.production_date;
-      }
-      return {
-        count: tasks.length,
-        status_counts: statusCounts,
-        next_delivery_date: nextDeliveryDate,
-        production_date: productionDate,
-        task_ids: tasks.slice(0, 5).map(task => task.id).filter(Boolean),
-      };
+      return taskSummary(tasksFor({ orderId }));
     },
+    taskSummaryForOrder({ orderNumber, orderId, shopifyOrderId }) {
+      return taskSummary(tasksFor({ orderNumber, orderId, shopifyOrderId }));
+    },
+    latestNativeSyncFor,
+    latestHubSyncFor,
     latestSyncFor({ orderNumber, orderId }) {
-      return syncByOrderId.get((orderId || '').toString()) || syncByOrderNumber.get(normalizeOrderNum(orderNumber)) || null;
+      return latestNativeSyncFor({ orderNumber, orderId }) || latestHubSyncFor({ orderNumber, orderId });
     },
     reviewFor({ orderNumber, orderId }) {
       return reviewByOrderId.get((orderId || '').toString()) || reviewByOrderNumber.get(normalizeOrderNum(orderNumber)) || null;
     },
   };
+}
+
+function buildNativeOrderIndexes(nativeAdminOrders) {
+  const byOrderNumber = new Map();
+  const byCustomerAppOrderId = new Map();
+  const byNativeOrderId = new Map();
+
+  for (const order of Array.isArray(nativeAdminOrders) ? nativeAdminOrders : []) {
+    addIndexValue(byOrderNumber, order.native_order_number || order.order_number, order);
+    if (order.native_base44_order_id && !byCustomerAppOrderId.has(order.native_base44_order_id)) {
+      byCustomerAppOrderId.set(order.native_base44_order_id, order);
+    }
+    if (order.native_shopify_order_id && !byNativeOrderId.has(order.native_shopify_order_id)) {
+      byNativeOrderId.set(order.native_shopify_order_id, order);
+    }
+  }
+
+  return { byOrderNumber, byCustomerAppOrderId, byNativeOrderId };
+}
+
+function summarizeCustomerAppOrder(order) {
+  if (!order) return null;
+  return {
+    id: order.id || null,
+    order_number: order.order_number || null,
+    status: order.status || null,
+    payment_status: order.payment_status || order.financial_status || null,
+    payment_captured: order.payment_captured === true,
+    fulfillment_type: order.fulfillment_type || null,
+    estimated_delivery_date: order.estimated_delivery_date || null,
+    line_item_count: Array.isArray(order.items) ? order.items.length : (Array.isArray(order.line_items) ? order.line_items.length : null),
+  };
+}
+
+function buildCustomerAppOrderIndexes(orders) {
+  const byOrderNumber = new Map();
+  const byId = new Map();
+
+  for (const order of Array.isArray(orders) ? orders : []) {
+    const summary = summarizeCustomerAppOrder(order);
+    if (!summary) continue;
+    addIndexValue(byOrderNumber, order.order_number, summary);
+    if (order.id && !byId.has(order.id)) byId.set(order.id, summary);
+  }
+
+  return { byOrderNumber, byId };
+}
+
+function copyNativeContextFields(target, nativeOrder, syncContext) {
+  if (!nativeOrder) return target;
+
+  const taskSummary = syncContext?.taskSummaryForOrder({
+    orderNumber: nativeOrder.native_order_number || nativeOrder.order_number,
+    orderId: nativeOrder.native_shopify_order_id,
+    shopifyOrderId: nativeOrder.native_shopify_order_id,
+  }) || nativeOrder.native_fulfillment_task_summary || {
+    count: 0,
+    status_counts: {},
+    next_delivery_date: null,
+    production_date: null,
+    task_ids: [],
+    tasks: [],
+    incomplete_display_metadata: false,
+    missing_metadata_fields: [],
+  };
+
+  const latestNativeSyncLog = syncContext?.latestNativeSyncFor({
+    orderNumber: nativeOrder.native_order_number || nativeOrder.order_number,
+    orderId: nativeOrder.native_shopify_order_id,
+  }) || nativeOrder.native_latest_sync_log || null;
+  const reviewSummary = syncContext?.reviewFor({
+    orderNumber: nativeOrder.native_order_number || nativeOrder.order_number,
+    orderId: nativeOrder.native_shopify_order_id,
+  }) || nativeOrder.native_review_queue_summary || null;
+
+  return {
+    ...target,
+    has_native_order: true,
+    native_shopify_order_id: nativeOrder.native_shopify_order_id || null,
+    native_base44_order_id: nativeOrder.native_base44_order_id || null,
+    native_order_number: nativeOrder.native_order_number || nativeOrder.order_number || null,
+    native_payment_status: nativeOrder.native_payment_status || nativeOrder.payment_status || null,
+    native_production_status: nativeOrder.native_production_status || null,
+    native_fulfillment_status: nativeOrder.native_fulfillment_status || null,
+    native_sync_status: nativeOrder.native_sync_status || null,
+    native_review_status: nativeOrder.native_review_status || null,
+    native_source_channel: nativeOrder.native_source_channel || nativeOrder.source_channel || null,
+    native_source_type: nativeOrder.native_source_type || nativeOrder.source_type || null,
+    native_order_type: nativeOrder.native_order_type || nativeOrder.order_type || null,
+    native_order_lock_status: nativeOrder.native_order_lock_status || nativeOrder.order_lock_status || null,
+    native_line_item_count: nativeOrder.native_line_item_count ?? (Array.isArray(nativeOrder.items) ? nativeOrder.items.length : null),
+    native_total: nativeOrder.native_total ?? nativeOrder.total ?? null,
+    native_fulfillment_task_summary: taskSummary,
+    has_native_task: taskSummary.count > 0,
+    native_task_incomplete_metadata: taskSummary.incomplete_display_metadata,
+    native_task_missing_metadata_fields: taskSummary.missing_metadata_fields || [],
+    native_latest_sync_log: latestNativeSyncLog,
+    native_review_queue_summary: reviewSummary,
+  };
+}
+
+function attachCustomerAppContext(target, customerAppOrder) {
+  if (!customerAppOrder) return target;
+  return {
+    ...target,
+    has_customer_app_order: true,
+    customer_app_order_id: customerAppOrder.id || null,
+    customer_app_order_status: customerAppOrder.status || null,
+    customer_app_payment_status: customerAppOrder.payment_status || null,
+    customer_app_payment_captured: customerAppOrder.payment_captured === true,
+    customer_app_fulfillment_type: customerAppOrder.fulfillment_type || null,
+    customer_app_estimated_delivery_date: customerAppOrder.estimated_delivery_date || null,
+    customer_app_line_item_count: customerAppOrder.line_item_count ?? null,
+  };
+}
+
+function buildOperationalContextGuidance(order) {
+  const guidance = [];
+  const paid = isPaidOrder(order);
+
+  if (order.has_native_order && order.is_hub_order) {
+    guidance.push({
+      tone: 'native',
+      label: 'Native mirror + Hub fallback active',
+      detail: 'Native Customer App operations context is visible while Hub remains the bridge fallback.',
+    });
+  }
+
+  if (order.has_customer_app_order && paid && !order.has_native_order) {
+    guidance.push({
+      tone: 'warning',
+      label: 'Native ops mirror missing',
+      detail: 'Monitor this paid app order or use an explicitly approved processing path; this page does not run native processing.',
+    });
+  }
+
+  if (order.has_customer_app_order && paid && !order.is_hub_order) {
+    guidance.push({
+      tone: 'warning',
+      label: 'Hub sync missing',
+      detail: 'Monitor the Hub bridge or use an explicitly approved resend path; this page does not run sync or repair.',
+    });
+  }
+
+  if (isPendingPaymentOrder(order) || (hasPaymentSignal(order) && !paid)) {
+    guidance.push({
+      tone: 'warning',
+      label: 'Do not fulfill until paid',
+      detail: 'Payment is not confirmed for fulfillment decisions.',
+    });
+  }
+
+  if (order.native_task_incomplete_metadata) {
+    guidance.push({
+      tone: 'warning',
+      label: 'Native task exists but has incomplete display metadata.',
+      detail: 'This is a read-only warning; no backfill is performed from Admin Orders.',
+    });
+  }
+
+  return guidance;
+}
+
+function buildAdminContextBadges(order) {
+  const badges = [];
+
+  if (order.has_customer_app_order || (!order.is_hub_order && !order.has_native_order)) badges.push('Customer App Order');
+  if (order.has_native_order) badges.push('Native Ops Mirror');
+  if (order.has_native_task || order.native_fulfillment_task_summary?.count > 0) badges.push('Native Task');
+  if (order.is_hub_order) badges.push('Hub Synced');
+  if (order.is_hub_order && order.has_native_order) badges.push('Hub Fallback');
+  if (order.native_review_queue_summary || ['review', 'review_required', 'queued_for_review', 'rejected', 'incomplete'].includes(normalizeLower(order.native_review_status))) {
+    badges.push('Needs Review');
+  }
+  if (isPendingPaymentOrder(order) || (hasPaymentSignal(order) && !isPaidOrder(order))) {
+    badges.push('Payment Pending');
+  } else if (isPaidOrder(order)) {
+    badges.push('Paid');
+  }
+  if (isPosLikeOrder(order)) {
+    badges.push('POS/Event');
+  } else if (order.fulfillment_type === 'delivery' || order.customer_app_fulfillment_type === 'delivery') {
+    badges.push('Delivery');
+  }
+
+  return uniqueValues(badges);
+}
+
+function mergeAdminOperationalContext({ order, nativeOrderIndexes, customerAppOrderIndexes, syncContext }) {
+  if (!order) return order;
+
+  const orderNumberKey = normalizeOrderNum(order.order_number);
+  let merged = { ...order };
+
+  const customerAppOrder =
+    customerAppOrderIndexes.byId.get(order.id) ||
+    customerAppOrderIndexes.byId.get(order.native_base44_order_id) ||
+    customerAppOrderIndexes.byOrderNumber.get(orderNumberKey);
+
+  merged = attachCustomerAppContext(merged, customerAppOrder);
+
+  const nativeOrder =
+    nativeOrderIndexes.byNativeOrderId.get(order.native_shopify_order_id) ||
+    nativeOrderIndexes.byCustomerAppOrderId.get(merged.customer_app_order_id) ||
+    nativeOrderIndexes.byOrderNumber.get(orderNumberKey);
+
+  merged = copyNativeContextFields(merged, nativeOrder, syncContext);
+
+  merged.hub_sync_summary = syncContext?.latestHubSyncFor({
+    orderNumber: merged.order_number,
+    orderId: merged.hub_order_id || merged.customer_app_order_id,
+  }) || null;
+
+  merged.admin_context_guidance = buildOperationalContextGuidance(merged);
+  merged.admin_context_badges = buildAdminContextBadges(merged);
+
+  return merged;
 }
 
 function nativeFulfillmentDate(order) {
@@ -599,8 +948,11 @@ function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
     next_delivery_date: null,
     production_date: null,
     task_ids: [],
+    tasks: [],
+    incomplete_display_metadata: false,
+    missing_metadata_fields: [],
   };
-  const nativeLatestSyncLog = nativeContext?.latestSyncFor({
+  const nativeLatestSyncLog = nativeContext?.latestNativeSyncFor({
     orderNumber,
     orderId: order.id,
   }) || null;
@@ -611,7 +963,17 @@ function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
 
   return {
     id: `native_${order.id}`,
+    has_native_order: true,
     native_shopify_order_id: order.id,
+    native_base44_order_id: order.base44_order_id || null,
+    native_order_number: orderNumber,
+    native_payment_status: order.payment_status || order.financial_status || null,
+    native_source_channel: order.source_channel || null,
+    native_source_type: order.source_type || null,
+    native_order_type: order.order_type || null,
+    native_order_lock_status: order.order_lock_status || null,
+    native_line_item_count: items.length,
+    native_total: Number(order.total_price || 0),
     order_number: orderNumber,
     customer_email: order.customer_email || '',
     customer_name: order.customer_name || '',
@@ -622,6 +984,9 @@ function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
     native_sync_status: order.sync_status || null,
     native_review_status: order.data_quality_status || null,
     native_fulfillment_task_summary: nativeTaskSummary,
+    has_native_task: nativeTaskSummary.count > 0,
+    native_task_incomplete_metadata: nativeTaskSummary.incomplete_display_metadata,
+    native_task_missing_metadata_fields: nativeTaskSummary.missing_metadata_fields || [],
     native_latest_sync_log: nativeLatestSyncLog,
     native_review_queue_summary: nativeReviewQueueSummary,
     payment_status: order.payment_status || order.financial_status || null,
