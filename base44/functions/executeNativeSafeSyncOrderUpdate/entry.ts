@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const DEFAULT_ALLOWED_EVENTS = new Set(['order.created', 'order.updated', 'order.mirrored', 'manual.safe_sync']);
 const MAX_SAFE_ARRAY = 40;
+const ARRAY_SHAPE_GUARDED_FIELDS = ['line_items', 'fulfillments'];
 
 function getNativeSafeSyncWriterConfig() {
   // Read gates per request so Base44 runtime artifact/env propagation issues
@@ -61,6 +62,32 @@ function stripUnsafeWriteFields(record) {
   delete next.created_by;
   delete next.updated_by;
   return next;
+}
+
+function getArrayShapeNormalizationRisk(existing, acceptedFields) {
+  if (!existing || !acceptedFields) return [];
+  return ARRAY_SHAPE_GUARDED_FIELDS.filter((field) => {
+    if (Object.prototype.hasOwnProperty.call(acceptedFields, field)) return false;
+    return !Array.isArray(existing[field]);
+  });
+}
+
+function buildArrayShapeRiskResponse({ source, eventType, idempotencyKey, requestId, riskFields }) {
+  return {
+    success: false,
+    skipped: true,
+    error_code: 'schema_array_materialization_risk',
+    message: 'Native safeSync writer blocked an update that could silently materialize missing array fields.',
+    source,
+    event_type: eventType,
+    idempotency_key: idempotencyKey,
+    request_id: requestId,
+    blocked_fields: safeStringArray(riskFields),
+    writes_performed: false,
+    provider_calls_performed: false,
+    notifications_sent: false,
+    hub_bridge_modified: false,
+  };
 }
 
 function getOrderIdentifiers(order) {
@@ -343,6 +370,9 @@ Deno.serve(async (req) => {
       idempotencyKey,
       fixtureId: body.fixture_id,
     });
+    const schemaNormalizationRisk = planner?.would_update_order === true
+      ? getArrayShapeNormalizationRisk(existing, planner?.accepted_fields)
+      : [];
 
     if (mode !== 'live') {
       const review = planner?.would_quarantine ? await createOrUpdateReviewQueue({ base44, planner, source, incoming, idempotencyKey, mode }) : null;
@@ -383,6 +413,7 @@ Deno.serve(async (req) => {
         order_review_queue_draft: review?.draft || planner?.order_review_queue_draft || null,
         order_sync_log_draft: syncLog?.draft || planner?.order_sync_log_draft || null,
         command_log_draft: commandLog?.draft || null,
+        schema_normalization_risk: schemaNormalizationRisk,
         writes_performed: false,
       });
     }
@@ -418,6 +449,15 @@ Deno.serve(async (req) => {
 
     if (!planner?.success) {
       return Response.json({ success: false, error_code: 'native_safe_sync_preview_failed', writes_performed: false }, { status: 500 });
+    }
+    if (schemaNormalizationRisk.length > 0) {
+      return Response.json(buildArrayShapeRiskResponse({
+        source,
+        eventType,
+        idempotencyKey,
+        requestId,
+        riskFields: schemaNormalizationRisk,
+      }), { status: 409 });
     }
 
     let writtenRecord = existing || null;
