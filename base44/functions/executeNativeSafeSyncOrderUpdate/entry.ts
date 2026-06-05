@@ -19,6 +19,17 @@ function getNativeSafeSyncWriterConfig() {
   };
 }
 
+function getNativeSafeSyncPreviewInvokeOptions() {
+  return {
+    headers: {
+      'x-internal-secret': Deno.env.get('NATIVE_SAFE_SYNC_PREVIEW_SECRET') ||
+        Deno.env.get('CUSTOMER_APP_SYNC_SECRET') ||
+        Deno.env.get('HUB_SYNC_SECRET') ||
+        '',
+    },
+  };
+}
+
 function normalizeText(value) {
   return (value ?? '').toString().trim();
 }
@@ -196,7 +207,7 @@ async function runPlanner({ base44, source, incoming, existing, idempotencyKey, 
     idempotency_key: idempotencyKey,
     incoming_payload: incoming,
     starting_order: existing || null,
-  });
+  }, getNativeSafeSyncPreviewInvokeOptions());
   return response?.data || response;
 }
 

@@ -517,8 +517,47 @@ async function readJsonBody(req) {
   }
 }
 
+function previewUnauthorized() {
+  return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized' }, { status: 401 });
+}
+
+function previewForbidden() {
+  return Response.json({ success: false, error_code: 'forbidden', message: 'Admin access required' }, { status: 403 });
+}
+
+function getPreviewInternalSecret() {
+  return Deno.env.get('NATIVE_SAFE_SYNC_PREVIEW_SECRET') ||
+    Deno.env.get('CUSTOMER_APP_SYNC_SECRET') ||
+    Deno.env.get('HUB_SYNC_SECRET') ||
+    '';
+}
+
+async function requirePreviewAccess(req) {
+  const providedSecret = (req.headers.get('x-internal-secret') || '').trim();
+  if (providedSecret) {
+    const expectedSecret = getPreviewInternalSecret();
+    return expectedSecret && providedSecret === expectedSecret
+      ? { ok: true }
+      : { ok: false, response: previewUnauthorized() };
+  }
+
+  try {
+    const { createClientFromRequest } = await import('npm:@base44/sdk@0.8.25');
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) return { ok: false, response: previewUnauthorized() };
+    if (user.role !== 'admin') return { ok: false, response: previewForbidden() };
+    return { ok: true };
+  } catch {
+    return { ok: false, response: previewUnauthorized() };
+  }
+}
+
 Deno.serve(async (req) => {
   try {
+    const access = await requirePreviewAccess(req);
+    if (!access.ok) return access.response;
+
     if (req.method !== 'POST') {
       return Response.json({ success: false, error_code: 'method_not_allowed', message: 'POST required' }, { status: 405 });
     }
