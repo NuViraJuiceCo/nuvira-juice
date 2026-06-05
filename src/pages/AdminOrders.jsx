@@ -236,6 +236,7 @@ function SectionLabel({ title, description, badge }) {
 function statusSummary(order) {
   const nativeReviewStatus = (order.native_review_status || '').toString().toLowerCase();
   return [
+    order.customer_app_order_status ? `App: ${formatStatusLabel(order.customer_app_order_status)}` : null,
     order.payment_status ? `Payment: ${formatStatusLabel(order.payment_status)}` : null,
     order.native_production_status ? `Production: ${formatStatusLabel(order.native_production_status)}` : null,
     order.native_fulfillment_status ? `Fulfillment: ${formatStatusLabel(order.native_fulfillment_status)}` : null,
@@ -245,6 +246,38 @@ function statusSummary(order) {
     !order.native_review_queue_summary && nativeReviewStatus && nativeReviewStatus !== 'complete' ? `Review: ${formatStatusLabel(order.native_review_status)}` : null,
     order.order_lock_status ? `Lock: ${formatStatusLabel(order.order_lock_status)}` : null,
   ].filter(Boolean).join(' · ');
+}
+
+function contextBadgeTone(label) {
+  const normalized = (label || '').toLowerCase();
+  if (normalized.includes('native')) return 'native';
+  if (normalized.includes('hub')) return 'hub';
+  if (normalized.includes('review') || normalized.includes('pending') || normalized.includes('missing')) return 'warning';
+  if (normalized.includes('paid')) return 'success';
+  if (normalized.includes('delivery') || normalized.includes('pos') || normalized.includes('customer app')) return 'source';
+  return 'neutral';
+}
+
+function ContextBadges({ badges = [] }) {
+  const safeBadges = Array.isArray(badges) ? badges.filter(Boolean) : [];
+  if (safeBadges.length === 0) return null;
+  return (
+    <>
+      {safeBadges.map(label => (
+        <AdminStatusPill key={label} value={label} label={label} tone={contextBadgeTone(label)} />
+      ))}
+    </>
+  );
+}
+
+function guidanceToneClass(tone) {
+  if (tone === 'warning') {
+    return 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100';
+  }
+  if (tone === 'native') {
+    return 'border-cyan-200 bg-cyan-50 text-cyan-900 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-100';
+  }
+  return 'border-border bg-background text-foreground';
 }
 
 function orderSourceTone(order) {
@@ -338,8 +371,9 @@ function LiveCustomerContextPanel({ orders, isLoading, nameMap }) {
                     <p className="shrink-0 text-xs font-black text-white">{formatCurrency(order.total)}</p>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1">
-                    <AdminStatusPill label={formatStatusLabel(sourceLabel)} tone={orderSourceTone(order)} />
+                    <AdminStatusPill value={sourceLabel} label={formatStatusLabel(sourceLabel)} tone={orderSourceTone(order)} />
                     <AdminStatusPill
+                      value={order.fulfillment_type || 'fulfillment'}
                       label={order.fulfillment_type === 'pickup' ? 'Pickup / POS' : formatStatusLabel(order.fulfillment_type) || 'Fulfillment'}
                       tone={order.fulfillment_type === 'pickup' ? 'source' : 'progress'}
                     />
@@ -391,7 +425,7 @@ function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliver
               Read-only counts from the Customer App, native operational mirror, Hub bridge, and delivery fallback.
             </p>
           </div>
-          <AdminStatusPill label={errors.length ? 'Needs review' : 'Read-only'} tone={errors.length ? 'warning' : 'native'} />
+          <AdminStatusPill value={errors.length ? 'Needs review' : 'Read-only'} label={errors.length ? 'Needs review' : 'Read-only'} tone={errors.length ? 'warning' : 'native'} />
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
           {sourceRows.map(([label, value]) => (
@@ -416,34 +450,112 @@ function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliver
   );
 }
 
+function OperationalContextPanel({ order }) {
+  const guidance = Array.isArray(order.admin_context_guidance) ? order.admin_context_guidance : [];
+  return (
+    <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
+      <SectionLabel
+        title="Merged Operational Context"
+        description="Same-order Customer App, native mirror/task, and Hub fallback visibility. Read-only; no sync or repair actions run here."
+        badge="Visibility"
+      />
+      <div className="flex flex-wrap gap-1.5">
+        <ContextBadges badges={order.admin_context_badges} />
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="rounded-lg border border-border/50 bg-secondary/30 p-2 space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Customer App</p>
+          <InfoRow label="Order ID" value={order.customer_app_order_id || (order.has_customer_app_order ? order.id : null)} />
+          <InfoRow label="Status" value={formatStatusLabel(order.customer_app_order_status || order.status)} />
+          <InfoRow label="Payment" value={formatStatusLabel(order.customer_app_payment_status || order.payment_status)} />
+          <InfoRow label="Captured" value={order.customer_app_payment_captured === true ? 'Yes' : null} />
+          <InfoRow label="Line Items" value={Number.isFinite(Number(order.customer_app_line_item_count)) ? `${order.customer_app_line_item_count}` : null} />
+        </div>
+        <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-2 space-y-1 dark:border-cyan-900/60 dark:bg-cyan-950/20">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-900 dark:text-cyan-100">Native Ops Mirror</p>
+          {order.has_native_order ? (
+            <>
+              <InfoRow label="Order ID" value={order.native_shopify_order_id} />
+              <InfoRow label="Sync" value={formatStatusLabel(order.native_sync_status)} />
+              <InfoRow label="Production" value={formatStatusLabel(order.native_production_status)} />
+              <InfoRow label="Fulfillment" value={formatStatusLabel(order.native_fulfillment_status)} />
+              <InfoRow label="Task" value={order.has_native_task ? `${order.native_fulfillment_task_summary?.count || 0} native task(s)` : 'No native task'} />
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">No native mirror attached to this order row.</p>
+          )}
+        </div>
+        <div className="rounded-lg border border-slate-300 bg-slate-50 p-2 space-y-1 dark:border-slate-800 dark:bg-slate-950/30">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-200">Hub Bridge</p>
+          {order.is_hub_order ? (
+            <>
+              <InfoRow label="Hub Order" value={order.hub_order_id} />
+              <InfoRow label="Status" value={formatStatusLabel(order.hub_operational_status || order.status)} />
+              <InfoRow label="Bridge" value={order.hub_sync_summary ? `${formatStatusLabel(order.hub_sync_summary.status)}${order.hub_sync_summary.action ? ` · ${formatStatusLabel(order.hub_sync_summary.action)}` : ''}` : 'Synced'} />
+              <InfoRow label="Updated" value={formatDateTime(order.hub_sync_summary?.timestamp || order.hub_updated_date)} />
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">No Hub order attached to this row.</p>
+          )}
+        </div>
+      </div>
+      {guidance.length > 0 && (
+        <div className="space-y-2">
+          {guidance.map(item => (
+            <div key={`${item.label}-${item.detail}`} className={`rounded-lg border p-2 ${guidanceToneClass(item.tone)}`}>
+              <p className="text-xs font-bold">{item.label}</p>
+              {item.detail && <p className="mt-0.5 text-[10px] font-medium opacity-90">{item.detail}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NativeOperationsPanel({ order }) {
-  if (!order.is_native_order) return null;
+  if (!order.is_native_order && !order.has_native_order) return null;
   const taskSummary = order.native_fulfillment_task_summary || {};
   const latestSyncLog = order.native_latest_sync_log || null;
   const reviewSummary = order.native_review_queue_summary || null;
   const taskStatusSummary = Object.entries(taskSummary.status_counts || {})
     .map(([status, count]) => `${formatStatusLabel(status)}: ${count}`)
     .join(' · ');
+  const firstTask = Array.isArray(taskSummary.tasks) ? taskSummary.tasks[0] : null;
 
   return (
     <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2 mb-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Native Operations</p>
-        <AdminStatusPill label="Customer App" tone="native" />
+        <AdminStatusPill value="Customer App" label="Customer App" tone="native" />
       </div>
-      <InfoRow label="Payment" value={formatStatusLabel(order.payment_status)} />
+      <InfoRow label="Mirror ID" value={order.native_shopify_order_id} />
+      <InfoRow label="Payment" value={formatStatusLabel(order.native_payment_status || order.payment_status)} />
       <InfoRow label="Production" value={formatStatusLabel(order.native_production_status)} />
       <InfoRow label="Fulfillment" value={formatStatusLabel(order.native_fulfillment_status)} />
       <InfoRow label="Sync" value={formatStatusLabel(order.native_sync_status)} />
       <InfoRow label="Review" value={formatStatusLabel(order.native_review_status)} />
-      <InfoRow label="Source" value={formatStatusLabel(order.source_type || order.source_channel)} />
-      <InfoRow label="Order Type" value={formatStatusLabel(order.order_type)} />
-      <InfoRow label="Lock" value={formatStatusLabel(order.order_lock_status)} />
+      <InfoRow label="Source" value={formatStatusLabel(order.native_source_type || order.native_source_channel || order.source_type || order.source_channel)} />
+      <InfoRow label="Order Type" value={formatStatusLabel(order.native_order_type || order.order_type)} />
+      <InfoRow label="Line Items" value={Number.isFinite(Number(order.native_line_item_count)) ? `${order.native_line_item_count}` : null} />
+      <InfoRow label="Native Total" value={Number.isFinite(Number(order.native_total)) ? formatCurrency(order.native_total) : null} />
+      <InfoRow label="Lock" value={formatStatusLabel(order.native_order_lock_status || order.order_lock_status)} />
       <div className="pt-2 mt-2 border-t border-border/40 space-y-1.5">
         <InfoRow label="Task Count" value={taskSummary.count ? `${taskSummary.count}` : 'No native delivery task'} />
+        <InfoRow label="Task ID" value={firstTask?.id || taskSummary.task_ids?.[0]} />
         <InfoRow label="Task Status" value={taskStatusSummary} />
-        <InfoRow label="Task Delivery" value={formatDateOnly(taskSummary.next_delivery_date)} />
-        <InfoRow label="Task Production" value={formatDateOnly(taskSummary.production_date)} />
+        <InfoRow label="Task Delivery" value={formatDateOnly(firstTask?.delivery_date || taskSummary.next_delivery_date)} />
+        <InfoRow label="Task Production" value={formatDateOnly(firstTask?.production_date || taskSummary.production_date)} />
+        <InfoRow label="Task Source" value={formatStatusLabel(firstTask?.source_type || firstTask?.source_channel)} />
+        <InfoRow label="Schedule" value={formatStatusLabel(firstTask?.schedule_source)} />
+        {taskSummary.incomplete_display_metadata && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10px] font-semibold text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+            Native task exists but has incomplete display metadata.
+            {taskSummary.missing_metadata_fields?.length > 0 && (
+              <span className="block font-medium">Missing: {taskSummary.missing_metadata_fields.map(formatStatusLabel).join(', ')}</span>
+            )}
+          </div>
+        )}
       </div>
       <div className="pt-2 mt-2 border-t border-border/40 space-y-1.5">
         <InfoRow label="Latest Sync" value={latestSyncLog ? `${formatStatusLabel(latestSyncLog.status)}${latestSyncLog.action ? ` · ${formatStatusLabel(latestSyncLog.action)}` : ''}` : 'No native sync log'} />
@@ -456,7 +568,7 @@ function NativeOperationsPanel({ order }) {
         <div className="pt-2 mt-2 border-t border-border/40 space-y-1.5">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Native Review Queue</p>
-            <AdminStatusPill value={reviewSummary.status || 'pending'} size="sm" />
+            <AdminStatusPill value={reviewSummary.status || 'pending'} label={formatStatusLabel(reviewSummary.status || 'pending')} tone="warning" size="sm" />
           </div>
           <InfoRow label="Issue" value={formatStatusLabel(reviewSummary.incident_type)} />
           <InfoRow label="Details" value={reviewSummary.issue_description} />
@@ -504,13 +616,15 @@ function HubOperationsPanel({ order, customerAppStatusLabel }) {
     <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2 mb-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hub Operations</p>
-        <AdminStatusPill label="Read-only" tone="hub" />
+        <AdminStatusPill value="Read-only" label="Read-only" tone="hub" />
       </div>
       {hasHubOpsData ? (
         <>
+          <InfoRow label="Hub Order ID" value={order.hub_order_id} />
           <InfoRow label="Customer App Status" value={customerAppStatusLabel || formatStatusLabel(order.status)} />
           <InfoRow label="Hub Operational Status" value={formatStatusLabel(order.hub_operational_status)} />
           <InfoRow label="Fulfillment" value={formatStatusLabel(order.hub_fulfillment_status)} />
+          <InfoRow label="Hub Bridge" value={order.hub_sync_summary ? `${formatStatusLabel(order.hub_sync_summary.status)}${order.hub_sync_summary.action ? ` · ${formatStatusLabel(order.hub_sync_summary.action)}` : ''}` : null} />
           <InfoRow label="Production Date" value={formatDateOnly(order.production_date)} />
           <InfoRow label="Delivery" value={formatDateOnly(order.assigned_delivery_date)} />
           <InfoRow label="Window" value={order.delivery_window_label} />
@@ -564,7 +678,7 @@ function FulfillmentTasksPanel({ order }) {
     <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fulfillment Tasks</p>
-        <AdminStatusPill label="Read-only" tone="hub" />
+        <AdminStatusPill value="Read-only" label="Read-only" tone="hub" />
       </div>
 
       {!shouldFetchTasks ? (
@@ -645,7 +759,7 @@ function HubTimelinePanel({ order }) {
     <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hub Timeline</p>
-        <AdminStatusPill label="Read-only" tone="hub" />
+        <AdminStatusPill value="Read-only" label="Read-only" tone="hub" />
       </div>
 
       {!shouldFetchTimeline ? (
@@ -812,14 +926,14 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
           {/* Row 1: order # + status badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-bold">#{order.order_number}</p>
-            <AdminStatusPill value={order.status} label={customerAppStatusLabel} />
-            <AdminStatusPill value={order.fulfillment_type} label={order.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'} context="source" />
-            {order.is_hub_order && (
-              <AdminStatusPill label="Hub" tone="hub" />
-            )}
-            {order.is_native_order && (
-              <AdminStatusPill label="Native Ops" tone="native" />
-            )}
+            <AdminStatusPill value={order.status} label={customerAppStatusLabel} tone={null} />
+            <AdminStatusPill value={order.fulfillment_type} label={order.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'} context="source" tone={null} />
+            <ContextBadges badges={order.admin_context_badges || [
+              order.has_customer_app_order ? 'Customer App Order' : null,
+              order.has_native_order || order.is_native_order ? 'Native Ops Mirror' : null,
+              order.has_native_task ? 'Native Task' : null,
+              order.is_hub_order ? 'Hub Synced' : null,
+            ].filter(Boolean)} />
           </div>
           {/* Row 2: customer name (always shown if available) */}
           <p className="text-sm font-semibold text-foreground">
@@ -859,6 +973,8 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
             className="overflow-hidden"
           >
             <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-4">
+
+              <OperationalContextPanel order={order} />
 
               {/* Customer info block */}
               <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
@@ -908,11 +1024,11 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                 </section>
               )}
 
-              {order.is_native_order && (
+              {(order.is_native_order || order.has_native_order) && (
                 <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
                   <SectionLabel
                     title="Native Customer App Context"
-                    description="Operational mirror created in Customer App for May 30 launch processing."
+                    description="Operational mirror/task context created in Customer App for May 30 launch processing."
                     badge="Parallel"
                   />
                   <NativeOperationsPanel order={order} />
