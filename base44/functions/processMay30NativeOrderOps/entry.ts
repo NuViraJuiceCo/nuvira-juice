@@ -7,6 +7,17 @@ const MAY30_NATIVE_ORDER_OPS_SECRET = Deno.env.get('MAY30_NATIVE_ORDER_OPS_SECRE
 const SUPPORTED_SOURCES = new Set(['customer_app_one_time', 'website_one_time', 'shopify_pos']);
 const MAX_LINE_ITEMS = 60;
 
+function getNativeSafeSyncPreviewInvokeOptions() {
+  return {
+    headers: {
+      'x-internal-secret': Deno.env.get('NATIVE_SAFE_SYNC_PREVIEW_SECRET') ||
+        Deno.env.get('CUSTOMER_APP_SYNC_SECRET') ||
+        Deno.env.get('HUB_SYNC_SECRET') ||
+        '',
+    },
+  };
+}
+
 function normalizeText(value) {
   return (value ?? '').toString().trim();
 }
@@ -754,7 +765,7 @@ async function runPlanner({ base44, source, record, existing, idempotencyKey }) 
     idempotency_key: idempotencyKey,
     incoming_payload: plannerPayload,
     starting_order: existing || null,
-  });
+  }, getNativeSafeSyncPreviewInvokeOptions());
   return plannerResponse?.data || plannerResponse;
 }
 

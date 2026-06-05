@@ -9,6 +9,17 @@ function getCustomerAppSyncSecret() {
   return Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
 }
 
+function getNativeSafeSyncPreviewInvokeOptions() {
+  return {
+    headers: {
+      'x-internal-secret': Deno.env.get('NATIVE_SAFE_SYNC_PREVIEW_SECRET') ||
+        Deno.env.get('CUSTOMER_APP_SYNC_SECRET') ||
+        Deno.env.get('HUB_SYNC_SECRET') ||
+        '',
+    },
+  };
+}
+
 function isMay30NativeOrderOpsEnabled() {
   return Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
 }
@@ -343,7 +354,7 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
       idempotency_key: idempotencyKey,
       incoming_payload: payload.order,
       starting_order: null,
-    });
+    }, getNativeSafeSyncPreviewInvokeOptions());
     const nativeResult = nativeResponse?.data || nativeResponse;
     const nativeFields = nativeResult?.order_sync_log_draft || {};
     const normalizedHubAction = normalizeDarkLaunchAction(hubAction || logStatus);
@@ -404,7 +415,7 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
       idempotency_key: idempotencyKey,
       hub_result: hubSummary,
       native_result: nativeResult,
-    });
+    }, getNativeSafeSyncPreviewInvokeOptions());
     const comparison = comparisonResponse?.data || comparisonResponse;
     const summary = summarizeDarkLaunchComparison({
       ...comparison,
