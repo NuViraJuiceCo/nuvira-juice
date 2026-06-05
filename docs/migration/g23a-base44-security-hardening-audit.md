@@ -111,3 +111,7 @@ Secret availability check:
 No ownership patch was needed in G23A3.
 
 G23A3 also moved the browser subscription helper to `VITE_WEB_PUSH_VAPID_PUBLIC_KEY` with a nonblocking `vapid_public_key_missing` result if that public config is unavailable, and replaced the exact public-key value in `docs/MAY30_EVENT_PUSH_REWARDS.md` with a placeholder. The browser VAPID key is public material, but keeping it in public runtime config instead of source keeps scans cleaner and avoids committed credential-looking values.
+
+## G23A3B Push Boundary Update
+
+Post-publish boundary testing found malformed public `sendCustomerPushNotification` requests returned `500` when `customer_email` was missing because email normalization happened before input validation. G23A3B changes that malformed-input path to a safe `400 Missing required field: customer_email` response. It does not alter notification eligibility gates, provider behavior, token lookup, or send behavior.
