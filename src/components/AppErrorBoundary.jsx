@@ -16,31 +16,27 @@ export default class AppErrorBoundary extends React.Component {
     console.warn('[AppErrorBoundary] App render failed', error?.message || 'unknown_error');
   }
 
-  handleReload = () => {
+  handleTryAgain = () => {
+    this.setState({ hasError: false });
+  };
+
+  handleResetSession = () => {
     try {
       window.sessionStorage?.removeItem('splashShown');
+      window.sessionStorage?.clear();
     } catch {
       // Storage can be unavailable in restricted contexts.
     }
 
-    const reopenPath = `/?native_reopen=${Date.now()}`;
-    let target = reopenPath;
     try {
-      if (window.location.origin && window.location.origin !== 'null') {
-        target = new URL(reopenPath, window.location.origin).toString();
+      if (window.location.pathname !== '/') {
+        window.history.replaceState({}, '', '/');
       }
     } catch {
-      target = reopenPath;
+      // History can be unavailable in restricted contexts.
     }
 
-    this.setState({ hasError: false }, () => {
-      try {
-        window.location.assign(target);
-        window.setTimeout(() => window.location.reload(), 120);
-      } catch {
-        window.location.href = target;
-      }
-    });
+    this.setState({ hasError: false });
   };
 
   render() {
@@ -53,16 +49,23 @@ export default class AppErrorBoundary extends React.Component {
         <div className="w-full max-w-sm text-center">
           <img src={LOGO_URL} alt="NuVira Juice Company" className="mx-auto mb-6 h-9 opacity-90" />
           <div className="nuvira-premium-card rounded-3xl p-5">
-            <h1 className="font-heading text-2xl font-bold">Refresh Needed</h1>
+            <h1 className="font-heading text-2xl font-bold">NuVira needs a quick reset</h1>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              The app hit a loading issue. Refreshing will reopen NuVira from a clean home state.
+              The app hit a loading issue, but it will not keep refreshing. Try again or reset this app session.
             </p>
             <button
               type="button"
-              onClick={this.handleReload}
+              onClick={this.handleTryAgain}
               className="nuvira-gradient-button mt-5 h-11 w-full rounded-2xl text-sm font-semibold"
             >
-              Reopen App
+              Try Again
+            </button>
+            <button
+              type="button"
+              onClick={this.handleResetSession}
+              className="mt-3 h-11 w-full rounded-2xl border border-border bg-card text-sm font-semibold text-foreground"
+            >
+              Reset App Session
             </button>
           </div>
         </div>

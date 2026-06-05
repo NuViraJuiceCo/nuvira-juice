@@ -112,7 +112,12 @@ export const AuthProvider = ({ children }) => {
       try {
         const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
         if (currentUser?.email) {
-          window.location.replace(callbackResult.returnTo);
+          try {
+            window.history.replaceState({}, '', callbackResult.returnTo || '/');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          } catch {
+            window.location.href = callbackResult.returnTo || '/';
+          }
         }
       } catch (error) {
         console.warn('[AuthContext] Native auth callback failed', error?.message || 'unknown_error');

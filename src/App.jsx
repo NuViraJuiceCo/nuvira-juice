@@ -4,7 +4,7 @@ import { Toaster as AppToaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
@@ -66,7 +66,6 @@ import ProgramDetail from '@/pages/ProgramDetail';
 import AccountSetup from '@/pages/AccountSetup';
 import NativeLogin from '@/pages/NativeLogin';
 import { base44 } from '@/api/base44Client';
-import { useLocation } from 'react-router-dom';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
 
 // Protected route wrapper—redirect to login if not authenticated
@@ -117,6 +116,7 @@ const AuthenticatedApp = () => {
   const [showSplash, setShowSplash] = React.useState(() => !hasSplashBeenShown());
 
   const location = useLocation();
+  const navigate = useNavigate();
 
   React.useEffect(() => {
     if (hasBase44AuthParamsInUrl()) {
@@ -143,6 +143,19 @@ const AuthenticatedApp = () => {
 
   // No auto-redirect to orders on app open — customers should always land on Home.
 
+  const shouldRouteToAccountSetup = Boolean(
+    user?.email &&
+    !isLoadingProfile &&
+    !userProfileForOnboarding?.onboarding_complete &&
+    location.pathname !== '/account-setup'
+  );
+
+  React.useEffect(() => {
+    if (shouldRouteToAccountSetup) {
+      navigate('/account-setup', { replace: true });
+    }
+  }, [shouldRouteToAccountSetup, navigate]);
+
   // Show loading spinner while checking app public settings, auth, or profile
   if (isLoadingPublicSettings || isLoadingAuth || (user?.email && isLoadingProfile)) {
     return (
@@ -164,9 +177,8 @@ const AuthenticatedApp = () => {
 
 
 
-  // Auto-redirect to account setup if profile is not complete (but skip if already on setup page)
-  if (user?.email && !userProfileForOnboarding?.onboarding_complete && location.pathname !== '/account-setup') {
-    window.location.replace('/account-setup');
+  // Route to account setup through React Router so the native app never hard-reloads during startup.
+  if (shouldRouteToAccountSetup) {
     return null;
   }
 
