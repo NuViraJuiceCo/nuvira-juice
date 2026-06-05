@@ -35,14 +35,16 @@ Deno.serve(async (req) => {
 
     const member = members[0];
 
-    // Push to hub via loyaltySync endpoint
+    // Push to hub via loyaltySync endpoint. Keep the URL in runtime config so
+    // legacy Hub details are not hardcoded in the deployed function.
+    const hubLoyaltySyncUrl = Deno.env.get('HUB_LOYALTY_SYNC_URL');
     const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
-    if (!hubSecret) {
+    if (!hubLoyaltySyncUrl || !hubSecret) {
       return Response.json({ error: 'Hub not configured' }, { status: 400 });
     }
 
-    const response = await fetch('https://nuvira-flow-core.base44.app/functions/loyaltySync', {
+    const response = await fetch(hubLoyaltySyncUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${hubSecret}`,
