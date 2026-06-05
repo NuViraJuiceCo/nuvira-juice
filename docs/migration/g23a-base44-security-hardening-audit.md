@@ -79,3 +79,11 @@ G23A1 patches only clear high-value auth gaps:
 - No Stripe, Shopify, provider, notification, sync, retry, or repair run.
 - No live business record mutation.
 - No Base44 "Fix All".
+
+## G23A2 Update
+
+G23A2 applies the deferred `Merch` and `RewardTier` RLS schema patch:
+
+- Public read remains allowed for customer-facing merch/rewards pages.
+- Create, update, and delete are restricted to admin users.
+- No runtime functions, checkout/payment/order sync, provider calls, or customer-facing behavior are changed.
