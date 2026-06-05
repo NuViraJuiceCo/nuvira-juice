@@ -71,45 +71,18 @@
   "rls": {
     "create": {
       "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "production_manager",
-            "operations_staff",
-            "staff"
-          ]
-        }
+        "role": "admin"
       }
     },
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "data.resolved_by": "{{user.email}}"
-        },
-        {
-          "data.acknowledged_by": "{{user.email}}"
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "update": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "data.resolved_by": "{{user.email}}"
-        },
-        {
-          "data.acknowledged_by": "{{user.email}}"
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "delete": {
       "user_condition": {

@@ -99,57 +99,18 @@
   "rls": {
     "create": {
       "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "production_manager",
-            "operations_staff"
-          ]
-        }
+        "role": "admin"
       }
     },
     "read": {
-      "$or": [
-        {
-          "data.staff_on_duty": {
-            "$in": [
-              "{{user.email}}"
-            ]
-          }
-        },
-        {
-          "data.verified_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": {
-              "$in": [
-                "admin",
-                "production_manager",
-                "operations_staff",
-                "staff"
-              ]
-            }
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "update": {
-      "$or": [
-        {
-          "data.verified_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "data.locked": {
-            "$ne": true
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "delete": {
       "user_condition": {
