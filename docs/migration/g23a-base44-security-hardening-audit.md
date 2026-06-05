@@ -32,10 +32,10 @@ G23A1 patches only clear high-value auth gaps:
 | --- | --- | --- | --- |
 | `Merch` missing RLS | D | Customer-facing catalog read appears intentional; writes should be admin-only like `Product`/`Bundle`. | Defer to G23A2 schema PR: public read, admin create/update/delete. |
 | `RewardTier` missing RLS | D | Customer-facing rewards read appears intentional; writes should be admin-only like `SubscriptionPlan`. | Defer to G23A2 schema PR: public read, admin create/update/delete. |
-| VAPID fallback in `sendCustomerPushNotification` | D | Public key fallback only; private key remains env-only. | Defer to push-specific PR: env-only public key with nonblocking push failure. |
-| VAPID fallback in `redeemMay30EventBonus` | D | Public key fallback only; private key remains env-only. | Defer to push-specific PR: env-only public key with nonblocking push failure. |
-| VAPID warning for `sendAdminPushTestNotification` | C | Admin-authenticated test path; no private key fallback found. | Document as baseline scanner carryover; verify in push PR. |
-| VAPID warning for `unregisterPushSubscription` | C | Customer-authenticated unsubscribe path; no VAPID private key exposure. | Document as baseline scanner carryover; verify ownership hardening later. |
+| VAPID fallback in `sendCustomerPushNotification` | D | Public key fallback only; private key remains env-only. | Patched in G23A3: backend uses env-only public/private VAPID keys and skips safely if missing. |
+| VAPID fallback in `redeemMay30EventBonus` | D | Public key fallback only; private key remains env-only. | Patched in G23A3: backend uses env-only public/private VAPID keys and skips safely if missing. |
+| VAPID warning for `sendAdminPushTestNotification` | C | Admin-authenticated test path; no private key fallback found. | Verified in G23A3 as scanner carryover; invokes `sendCustomerPushNotification`. |
+| VAPID warning for `unregisterPushSubscription` | C | Customer-authenticated unsubscribe path; no VAPID private key exposure. | Verified in G23A3; auth and ownership checks already present. |
 | `assignDeliveryWindow` unauthenticated warning | D | Pure scheduling calculator; no service-role reads/writes found. | Defer until call-site contract is clarified to avoid breaking checkout/scheduling. |
 | `assignProductionWindow` unauthenticated warning | D | Pure scheduling calculator; no service-role reads/writes found. | Defer until call-site contract is clarified to avoid breaking checkout/scheduling. |
 | `claimReward` unauthenticated warning | C | Requires `base44.auth.me()` before user reward mutation; Hub call uses server secret. | No G23A1 patch. |
@@ -60,17 +60,15 @@ G23A1 patches only clear high-value auth gaps:
 | `syncSubscriptionWithFulfillments` unauthenticated warning | C | Requires admin auth or exact internal secret header; anonymous calls fail. | No G23A1 patch. |
 | `syncUserToHub` unauthenticated warning | C | Requires logged-in user and syncs that user only. | No G23A1 patch. |
 | `testSchedulingLogic` unauthenticated warning | C | Already admin-gated. | No G23A1 patch. |
-| `unregisterPushSubscription` unauthenticated warning | D | Requires auth, but ownership/selector hardening should be reviewed separately. | Defer to push-specific auth/privacy PR. |
+| `unregisterPushSubscription` unauthenticated warning | C | Requires auth and skips records not owned by the authenticated user. | Verified in G23A3; no patch required. |
 | `updateAdminOpsAlertStatus` unauthenticated warning | C | Requires admin auth before update. | No G23A1 patch. |
 | `updateAdminProductCatalogItem` unauthenticated warning | C | Requires admin auth before update. | No G23A1 patch. |
 | X-Frame-Options recommendation | E | Platform/header recommendation; no app-level control found in this pass. | Defer to Base44/platform support or hosting-level header review. |
 
-## Deferred PRs
+## Remaining PRs
 
-1. G23A2: `Merch` and `RewardTier` RLS schema patch.
-2. G23A3: Push/VAPID cleanup and `unregisterPushSubscription` ownership review.
-3. G23A4: Provider/scheduler auth contracts for notification and Google Merchant functions.
-4. G23A5: Preview helper auth policy once fixture/test harness use is confirmed.
+1. G23A4: Provider/scheduler auth contracts for notification and Google Merchant functions.
+2. G23A5: Preview helper auth policy once fixture/test harness use is confirmed.
 
 ## Hard Stops Preserved
 
@@ -87,3 +85,29 @@ G23A2 applies the deferred `Merch` and `RewardTier` RLS schema patch:
 - Public read remains allowed for customer-facing merch/rewards pages.
 - Create, update, and delete are restricted to admin users.
 - No runtime functions, checkout/payment/order sync, provider calls, or customer-facing behavior are changed.
+
+## G23A3 Push/VAPID Update
+
+G23A3 removes the backend hardcoded VAPID public-key fallback from:
+
+- `base44/functions/sendCustomerPushNotification/entry.ts`
+- `base44/functions/redeemMay30EventBonus/entry.ts`
+
+Both functions now require `WEB_PUSH_VAPID_PUBLIC_KEY` and `WEB_PUSH_VAPID_PRIVATE_KEY` from the runtime environment before attempting browser web-push delivery. If either value is unavailable, the functions skip browser web-push with a safe `vapid_public_key_missing` or `vapid_private_key_missing` reason instead of falling back to a committed key.
+
+Secret availability check:
+
+- `WEB_PUSH_VAPID_PUBLIC_KEY` is present in Base44 secrets.
+- `WEB_PUSH_VAPID_PRIVATE_KEY` is present in Base44 secrets.
+- Secret values were not printed or committed.
+
+`unregisterPushSubscription` was reviewed during G23A3. It already:
+
+- requires an authenticated user,
+- derives `customerEmail` from `base44.auth.me()`,
+- skips `PushSubscription` rows whose `customer_email` does not match the authenticated user,
+- searches fallback `CustomerMessageDeliveryLog` storage by authenticated `customer_email` only.
+
+No ownership patch was needed in G23A3.
+
+G23A3 also moved the browser subscription helper to `VITE_WEB_PUSH_VAPID_PUBLIC_KEY` with a nonblocking `vapid_public_key_missing` result if that public config is unavailable, and replaced the exact public-key value in `docs/MAY30_EVENT_PUSH_REWARDS.md` with a placeholder. The browser VAPID key is public material, but keeping it in public runtime config instead of source keeps scans cleaner and avoids committed credential-looking values.

@@ -2,8 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 // @deno-types="npm:@types/web-push@3.6.4"
 import webpush from 'npm:web-push@3.6.7';
 
-const VAPID_PUBLIC_KEY = Deno.env.get('WEB_PUSH_VAPID_PUBLIC_KEY')
-  || 'BHmr7cCgm_eL3ckBL91ZKnvCqXvLax8pahXxpFCY8qwFXi0alWve4tDDJaaSDTuLwA-4VSEWBHMMlE_BixdHWaM';
+const VAPID_PUBLIC_KEY = Deno.env.get('WEB_PUSH_VAPID_PUBLIC_KEY') || '';
 const VAPID_PRIVATE_KEY = Deno.env.get('WEB_PUSH_VAPID_PRIVATE_KEY');
 const VAPID_CONTACT = Deno.env.get('WEB_PUSH_CONTACT') || 'mailto:info@nuvirajuice.com';
 const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -734,14 +733,14 @@ Deno.serve(async (req) => {
     let attempted = false;
 
     if (browserSubscriptions.length > 0) {
-      if (VAPID_PRIVATE_KEY) {
+      if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
         attempted = true;
         const result = await sendWebPushSubscriptions(base44, browserSubscriptions, webPayload);
         sent += result.sent;
         failed += result.failed;
         revoked += result.revoked;
       } else {
-        skippedReasons.push('vapid_private_key_missing');
+        skippedReasons.push(VAPID_PRIVATE_KEY ? 'vapid_public_key_missing' : 'vapid_private_key_missing');
       }
     }
 

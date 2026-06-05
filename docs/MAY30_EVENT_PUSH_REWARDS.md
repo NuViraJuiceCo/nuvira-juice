@@ -37,7 +37,7 @@ ENABLE_MAY30_EVENT_BONUS=true
 ENABLE_MAY30_EVENT_PUSH=true
 MAY30_EVENT_KEY=may30_event_visit
 MAY30_EVENT_BONUS_POINTS=250
-WEB_PUSH_VAPID_PUBLIC_KEY=BHmr7cCgm_eL3ckBL91ZKnvCqXvLax8pahXxpFCY8qwFXi0alWve4tDDJaaSDTuLwA-4VSEWBHMMlE_BixdHWaM
+WEB_PUSH_VAPID_PUBLIC_KEY=<public VAPID key, stored in Base44 secrets/config>
 WEB_PUSH_VAPID_PRIVATE_KEY=<matching private key, stored only in Base44 secrets>
 WEB_PUSH_CONTACT=mailto:info@nuvirajuice.com
 ```
