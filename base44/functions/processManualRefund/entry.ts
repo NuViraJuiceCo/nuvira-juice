@@ -111,6 +111,8 @@ Deno.serve(async (req) => {
         order_id: order.id,
         stripe_session: { id: stripe_refund_id || 'manual_refund' },
         triggered_by: 'manual_refund_process',
+      }, {
+        headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' },
       });
       if (syncResult?.success) {
         console.log(`[processManualRefund] ✅ Hub refund sync succeeded`);

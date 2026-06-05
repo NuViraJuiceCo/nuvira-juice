@@ -21,6 +21,14 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user?.email) {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin') {
+      return Response.json({ error: 'forbidden' }, { status: 403 });
+    }
+
     const { stripe_subscription_id, stripe_customer_id, stripe_invoice_id } = await req.json();
 
     if (!stripe_subscription_id) {
