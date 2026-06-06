@@ -73,12 +73,13 @@ function forbidden() {
 }
 
 async function requirePreviewAccess({ base44, req, body }) {
-  const authHeader = req.headers.get('authorization') || '';
-  const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+  // Base44 admin/session calls include an Authorization bearer token. That token
+  // is not the internal preview secret; only the explicit header/body preview
+  // secret should be evaluated as service access before falling back to admin auth.
   const bodySecret = normalizeText(body?.internal_secret || body?._internal_secret);
   const headerSecret = normalizeText(req.headers.get('x-internal-secret'));
   const expectedSecret = getPreviewInternalSecret();
-  const providedSecret = headerSecret || bearer || bodySecret;
+  const providedSecret = headerSecret || bodySecret;
 
   if (providedSecret) {
     return expectedSecret && providedSecret === expectedSecret

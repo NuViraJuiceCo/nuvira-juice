@@ -103,6 +103,45 @@ const internalSecretAuth = await fns.requirePreviewAccess({
 assert.equal(internalSecretAuth.ok, true);
 assert.equal(internalSecretAuth.actor_type, 'system');
 
+
+const parityFns = loadFunctions('base44/functions/previewNativeSafeSyncLiveOrderParity/entry.ts', [
+  'requirePreviewAccess',
+], {
+  NATIVE_SAFE_SYNC_PREVIEW_SECRET: 'preview-secret',
+});
+
+const parityAdminBearerAuth = await parityFns.requirePreviewAccess({
+  base44: {
+    auth: {
+      me: async () => ({ role: 'admin', email: 'admin@example.test' }),
+    },
+  },
+  req: {
+    headers: {
+      get: name => (name.toLowerCase() === 'authorization' ? 'Bearer short' : ''),
+    },
+  },
+  body: {},
+});
+assert.equal(parityAdminBearerAuth.ok, true);
+assert.equal(parityAdminBearerAuth.actor_type, 'admin');
+
+const parityBodySecretWithBearerAuth = await parityFns.requirePreviewAccess({
+  base44: {
+    auth: {
+      me: async () => { throw new Error('auth.me should not run for valid internal preview body secret'); },
+    },
+  },
+  req: {
+    headers: {
+      get: name => (name.toLowerCase() === 'authorization' ? 'Bearer short' : ''),
+    },
+  },
+  body: { _internal_secret: 'preview-secret' },
+});
+assert.equal(parityBodySecretWithBearerAuth.ok, true);
+assert.equal(parityBodySecretWithBearerAuth.actor_type, 'system');
+
 assert.equal(fns.taskHasDisplayMetadata({
   order_number: 'G27-1001',
   source_type: 'customer_app_one_time',
