@@ -32,6 +32,7 @@ function loadFunctions(relativePath, exportNames, env = {}) {
     RegExp,
     JSON,
     Error,
+    Response,
     Deno: {
       env: {
         get: key => env[key] || '',
@@ -49,7 +50,9 @@ const fns = loadFunctions('base44/functions/previewNativeOrderCutoverReadiness/e
   'summarizeTarget',
   'aggregateReadiness',
   'gateSummary',
+  'requirePreviewAccess',
 ], {
+  NATIVE_SAFE_SYNC_PREVIEW_SECRET: 'preview-secret',
   ENABLE_NATIVE_SAFE_SYNC_WRITER: 'false',
   NATIVE_SAFE_SYNC_WRITER_KILL_SWITCH: 'true',
   NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST: 'G27-1001',
@@ -67,6 +70,38 @@ const lookup = fns.getLookup({
 });
 assert.equal(lookup.orderNumber, 'G27-1001');
 assert.equal(lookup.nativeOrderId, 'native_order_001');
+
+const adminBearerAuth = await fns.requirePreviewAccess({
+  base44: {
+    auth: {
+      me: async () => ({ role: 'admin', email: 'admin@example.test' }),
+    },
+  },
+  req: {
+    headers: {
+      get: name => (name.toLowerCase() === 'authorization' ? 'Bearer short' : ''),
+    },
+  },
+  body: {},
+});
+assert.equal(adminBearerAuth.ok, true);
+assert.equal(adminBearerAuth.actor_type, 'admin');
+
+const internalSecretAuth = await fns.requirePreviewAccess({
+  base44: {
+    auth: {
+      me: async () => { throw new Error('auth.me should not run for valid internal secret'); },
+    },
+  },
+  req: {
+    headers: {
+      get: name => (name.toLowerCase() === 'x-internal-secret' ? 'preview-secret' : ''),
+    },
+  },
+  body: {},
+});
+assert.equal(internalSecretAuth.ok, true);
+assert.equal(internalSecretAuth.actor_type, 'system');
 
 assert.equal(fns.taskHasDisplayMetadata({
   order_number: 'G27-1001',

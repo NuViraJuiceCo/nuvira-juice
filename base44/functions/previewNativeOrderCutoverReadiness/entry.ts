@@ -86,12 +86,10 @@ function forbidden() {
 }
 
 async function requirePreviewAccess({ base44, req, body }) {
-  const authHeader = req.headers.get('authorization') || '';
-  const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
   const bodySecret = normalizeText(body?.internal_secret || body?._internal_secret);
   const headerSecret = normalizeText(req.headers.get('x-internal-secret'));
   const expectedSecret = getPreviewInternalSecret();
-  const providedSecret = headerSecret || bearer || bodySecret;
+  const providedSecret = headerSecret || bodySecret;
 
   if (providedSecret) {
     return expectedSecret && providedSecret === expectedSecret
