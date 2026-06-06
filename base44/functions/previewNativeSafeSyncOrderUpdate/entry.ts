@@ -29,7 +29,7 @@ const LOCK_FROZEN_FIELDS = {
 
 const FIELD_OWNERSHIP = {
   stripe_webhook: [
-    'shopify_order_id', 'shopify_order_number', 'payment_status',
+    'shopify_order_id', 'shopify_order_number', 'base44_order_id', 'payment_status',
     'stripe_customer_id', 'stripe_subscription_id', 'stripe_invoice_id',
     'stripe_checkout_session_id', 'stripe_payment_intent_id',
     'stripe_charge_id', 'stripe_created_event_type',
@@ -41,7 +41,7 @@ const FIELD_OWNERSHIP = {
     'address_country', 'address_last_synced_from', 'address_last_synced_at',
   ],
   customer_app: [
-    'customer_name', 'customer_email', 'customer_phone', 'address_line1',
+    'base44_order_id', 'customer_name', 'customer_email', 'customer_phone', 'address_line1',
     'address_line2', 'address_city', 'address_state', 'address_postal_code',
     'address_country', 'customer_notes', 'requested_delivery_date',
     'selected_delivery_date', 'assigned_delivery_date', 'production_date',
@@ -54,7 +54,7 @@ const FIELD_OWNERSHIP = {
     'data_quality_status', 'order_lock_status',
   ],
   rebuild_subscriptions: [
-    'shopify_order_id', 'shopify_order_number', 'customer_name',
+    'shopify_order_id', 'shopify_order_number', 'base44_order_id', 'customer_name',
     'customer_email', 'customer_phone', 'source_channel', 'source_type',
     'stripe_subscription_id', 'stripe_customer_id', 'line_items',
     'fulfillments', 'total_price', 'subtotal', 'payment_status',
@@ -77,7 +77,7 @@ const FIELD_OWNERSHIP = {
   ],
   admin: ['__all__'],
   manual_recovery: [
-    'shopify_order_id', 'shopify_order_number', 'customer_name',
+    'shopify_order_id', 'shopify_order_number', 'base44_order_id', 'customer_name',
     'customer_email', 'customer_phone', 'source_channel', 'source_type',
     'stripe_subscription_id', 'stripe_customer_id',
     'stripe_checkout_session_id', 'stripe_payment_intent_id',
@@ -370,6 +370,12 @@ function planSafeSync(input) {
     for (const field of ['production_status', 'order_lock_status', 'data_quality_status']) {
       rejectField(incoming, rejectedFields, field, 'customer_app_operational_ownership_guard');
     }
+  }
+
+  if (existingOrder?.base44_order_id && incoming.base44_order_id &&
+    incoming.base44_order_id !== existingOrder.base44_order_id &&
+    source !== 'admin') {
+    rejectField(incoming, rejectedFields, 'base44_order_id', 'base44_order_linkage_guard');
   }
 
   const allowedFields = source === 'admin' ? null : (FIELD_OWNERSHIP[source] || []);
