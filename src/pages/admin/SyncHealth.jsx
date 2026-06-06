@@ -220,6 +220,235 @@ function DeprecatedTools({ tools }) {
   );
 }
 
+function NativeCutoverReadinessPreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onOrderNumberChange,
+  onRun,
+}) {
+  const readiness = preview?.readiness || {};
+  const gates = preview?.gates || {};
+  const targets = Array.isArray(preview?.targets) ? preview.targets : [];
+  const safety = preview?.safety || {};
+  const nativeWriter = gates.native_safe_sync_writer || {};
+  const may30Ops = gates.may30_native_order_ops || {};
+  const taskMaterialization = gates.native_fulfillment_task_materialization || {};
+  const blockers = Array.isArray(readiness.blockers) ? readiness.blockers : [];
+  const warnings = Array.isArray(readiness.warnings) ? readiness.warnings : [];
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Native Cutover Readiness Gate</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G27 read-only dry run for paid Customer App order ownership. It checks native order/task context and existing parity planning; it does not sync, repair, replay, or write records.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Checking...' : 'Run Read-Only Cutover Check'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-2 items-end">
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Optional exact order number</span>
+          <input
+            type="text"
+            value={orderNumber}
+            onChange={event => onOrderNumberChange(event.target.value)}
+            placeholder="Leave blank to check recent paid delivery orders"
+            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          />
+        </label>
+        <p className="text-[10px] text-muted-foreground leading-relaxed rounded-lg border border-border/50 bg-background p-2">
+          Exact order checks are still preview-only. Live pilot remains separately approved per order.
+        </p>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Safety contract: dry-run only; no native writer broadening, Hub retirement, provider call, notification, production batch, inventory mutation, delivery mutation, or customer-facing status change.
+      </div>
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <StatCard
+              label="Classification"
+              value={formatLabel(readiness.classification)}
+              tone={blockers.length > 0 ? 'warning' : 'success'}
+            />
+            <StatCard label="Targets" value={formatNumber(readiness.target_count)} />
+            <StatCard label="Pilot Ready" value={formatNumber(readiness.pilot_ready_target_count)} tone={Number(readiness.pilot_ready_target_count || 0) > 0 ? 'success' : 'default'} />
+            <StatCard label="Usable Targets" value={formatNumber(readiness.usable_target_count)} tone={Number(readiness.usable_target_count || 0) > 0 ? 'success' : 'default'} />
+            <StatCard label="Generated" value={formatDateTime(preview.generated_at)} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={readiness.next_action || 'review'} />
+            <StatusChip value={readiness.hub_bridge_remains_fallback ? 'Hub bridge remains fallback' : 'Hub fallback missing'} />
+            <StatusChip value={readiness.live_pilot_requires_exact_order_approval ? 'Exact order approval required' : 'Approval state unknown'} />
+            <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+              <p className="text-xs font-bold text-foreground">Native safeSync writer</p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={nativeWriter.enabled ? 'Enabled' : 'Disabled'} />
+                <StatusChip value={nativeWriter.kill_switch ? 'Kill switch on' : 'Kill switch off'} />
+                <StatusChip value={nativeWriter.broad_real_order_mode ? 'Broad mode active' : 'Broad mode off'} />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Order allowlist: {formatNumber(nativeWriter.order_allowlist_count)} · Actor allowlist: {formatNumber(nativeWriter.actor_allowlist_count)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+              <p className="text-xs font-bold text-foreground">May 30 native ops</p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={may30Ops.enabled ? 'Enabled' : 'Disabled'} />
+                <StatusChip value={may30Ops.secret_configured ? 'Secret configured' : 'Secret missing'} />
+                <StatusChip value={may30Ops.hub_bridge_fallback_expected ? 'Hub fallback expected' : 'Fallback state unknown'} />
+              </div>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+              <p className="text-xs font-bold text-foreground">Task materialization</p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={taskMaterialization.enabled ? 'Enabled' : 'Disabled'} />
+                <StatusChip value={taskMaterialization.kill_switch ? 'Kill switch on' : 'Kill switch off'} />
+                <StatusChip value={taskMaterialization.broad_real_order_mode ? 'Broad mode active' : 'Broad mode off'} />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Order allowlist: {formatNumber(taskMaterialization.order_allowlist_count)} · Actor allowlist: {formatNumber(taskMaterialization.actor_allowlist_count)}
+              </p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Readiness blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.map(blocker => (
+                      <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No aggregate blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.map(warning => (
+                      <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No aggregate warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {targets.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Target order readiness</p>
+              {targets.map(target => {
+                const targetBlockers = Array.isArray(target.blockers) ? target.blockers : [];
+                const targetWarnings = Array.isArray(target.warnings) ? target.warnings : [];
+                const nativeTasks = Array.isArray(target.native_tasks) ? target.native_tasks : [];
+                return (
+                  <div key={target.customer_app_order_id || target.native_shopify_order_id || target.order_number || target.classification} className="rounded-lg border border-border/50 bg-background p-3 space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{target.order_number || 'Order pending'}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {[
+                            target.customer_app_order_id ? `Customer App ${target.customer_app_order_id}` : null,
+                            target.native_shopify_order_id ? `Native ${target.native_shopify_order_id}` : null,
+                            target.payment_status ? formatLabel(target.payment_status) : null,
+                            target.fulfillment_method ? formatLabel(target.fulfillment_method) : null,
+                          ].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <StatusChip value={target.classification || 'review'} />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <StatusChip value={target.native_order_present ? 'Native Ops Mirror' : 'Native mirror missing'} />
+                      <StatusChip value={`${formatNumber(target.native_task_count)} Native Tasks`} />
+                      <StatusChip value={`${formatNumber(target.native_task_display_metadata_complete_count)} Tasks Metadata Complete`} />
+                      <StatusChip value={target.address_complete ? 'Address Complete' : 'Address Incomplete'} />
+                      <StatusChip value={`${formatNumber(target.line_item_count)} Line Items`} />
+                    </div>
+
+                    {nativeTasks.length > 0 && (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                        {nativeTasks.map(task => (
+                          <div key={task.id || `${target.order_number}-${task.delivery_date}`} className="rounded-lg border border-border/50 bg-card p-2">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <p className="text-xs font-semibold text-foreground">{task.id || 'Native task'}</p>
+                              <StatusChip value={task.display_metadata_complete ? 'Metadata Complete' : 'Metadata Incomplete'} />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              {[
+                                task.status ? `Status ${formatLabel(task.status)}` : null,
+                                task.delivery_date ? `Delivery ${task.delivery_date}` : null,
+                                task.production_date ? `Production ${task.production_date}` : null,
+                                task.source_type ? formatLabel(task.source_type) : null,
+                                task.schedule_source ? formatLabel(task.schedule_source) : null,
+                              ].filter(Boolean).join(' · ') || 'No display metadata returned'}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {(targetBlockers.length > 0 || targetWarnings.length > 0) && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {targetBlockers.length > 0 ? `Blockers: ${targetBlockers.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : ''}
+                        {targetBlockers.length > 0 && targetWarnings.length > 0 ? ' · ' : ''}
+                        {targetWarnings.length > 0 ? `Warnings: ${targetWarnings.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : ''}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+              No target orders returned. Check an exact paid delivery order number or wait for a natural paid app order.
+            </p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
   const summary = preview?.summary || {};
   const fetchStats = preview?.fetch_stats || {};
@@ -481,6 +710,10 @@ export default function SyncHealth() {
   const [backfillPreview, setBackfillPreview] = useState(null);
   const [backfillPreviewError, setBackfillPreviewError] = useState('');
   const [isBackfillPreviewRunning, setIsBackfillPreviewRunning] = useState(false);
+  const [cutoverOrderNumber, setCutoverOrderNumber] = useState('');
+  const [cutoverPreview, setCutoverPreview] = useState(null);
+  const [cutoverPreviewError, setCutoverPreviewError] = useState('');
+  const [isCutoverPreviewRunning, setIsCutoverPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -562,6 +795,27 @@ export default function SyncHealth() {
       setBackfillPreviewError(previewError?.message || 'Unable to run historical backfill preview.');
     } finally {
       setIsBackfillPreviewRunning(false);
+    }
+  };
+
+  const runNativeCutoverReadinessPreview = async () => {
+    setCutoverPreviewError('');
+    setIsCutoverPreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      const payload = exactOrderNumber
+        ? { mode: 'dry_run', order_number: exactOrderNumber }
+        : { mode: 'dry_run', limit: 5 };
+      const res = await base44.functions.invoke('previewNativeOrderCutoverReadiness', payload);
+      const result = res?.data || res;
+      if (!result || result.error) {
+        throw new Error(result?.message || result?.error || 'Native cutover readiness check failed.');
+      }
+      setCutoverPreview(result);
+    } catch (previewError) {
+      setCutoverPreviewError(previewError?.message || 'Unable to run native cutover readiness check.');
+    } finally {
+      setIsCutoverPreviewRunning(false);
     }
   };
 
@@ -722,6 +976,15 @@ export default function SyncHealth() {
           isRunning={isBackfillPreviewRunning}
           error={backfillPreviewError}
           onRun={runHistoricalBackfillPreview}
+        />
+
+        <NativeCutoverReadinessPreview
+          preview={cutoverPreview}
+          isRunning={isCutoverPreviewRunning}
+          error={cutoverPreviewError}
+          orderNumber={cutoverOrderNumber}
+          onOrderNumberChange={setCutoverOrderNumber}
+          onRun={runNativeCutoverReadinessPreview}
         />
 
         {showError && (
