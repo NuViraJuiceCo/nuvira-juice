@@ -1,0 +1,596 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+const DISPLAY_CRITICAL_FIELDS = [
+  'base44_order_id',
+  'shopify_order_id',
+  'native_shopify_order_id',
+  'shopify_order_number',
+  'order_number',
+  'source_type',
+  'schedule_source',
+  'production_date',
+];
+const SAFE_ARRAY_LIMIT = 40;
+
+function normalizeText(value) {
+  return (value ?? '').toString().trim();
+}
+
+function normalizeSingleLine(value) {
+  return normalizeText(value).replace(/\s+/g, ' ');
+}
+
+function normalizeLower(value) {
+  return normalizeSingleLine(value).toLowerCase();
+}
+
+function normalizeOrderNumber(value) {
+  return normalizeSingleLine(value).replace(/^#/, '');
+}
+
+function sanitizeText(value, maxLength = 160) {
+  const text = normalizeSingleLine(value)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted email]')
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Circle|Cir|Way|Place|Pl)\b/gi, '[redacted address]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]')
+    .replace(/\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, '[redacted token]');
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
+function operationalText(value, maxLength = 160) {
+  const text = normalizeSingleLine(value).replace(/[\u0000-\u001f\u007f]/g, '');
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
+function sanitizeId(value, maxLength = 180) {
+  const text = sanitizeText(value, maxLength);
+  return /^[A-Za-z0-9._:@/#-]+$/.test(text) ? text : '';
+}
+
+function safeNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function compactObject(value) {
+  const out = {};
+  for (const [key, item] of Object.entries(value || {})) {
+    if (item !== undefined && item !== null && item !== '') out[key] = item;
+  }
+  return out;
+}
+
+function safeStringArray(value, maxLength = 120) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.slice(0, SAFE_ARRAY_LIMIT).map(item => sanitizeText(item, maxLength)).filter(Boolean))];
+}
+
+function parseCsvSet(value) {
+  return new Set(normalizeText(value).split(',').map(normalizeLower).filter(Boolean));
+}
+
+async function readJsonBody(req) {
+  const raw = await req.text();
+  if (!raw.trim()) return { ok: true, body: {} };
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? { ok: true, body: parsed }
+      : { ok: false, body: null };
+  } catch {
+    return { ok: false, body: null };
+  }
+}
+
+function previewSecret() {
+  return Deno.env.get('NATIVE_FULFILLMENT_TASK_METADATA_REPAIR_PREVIEW_SECRET') ||
+    Deno.env.get('NATIVE_SAFE_SYNC_PREVIEW_SECRET') ||
+    Deno.env.get('CUSTOMER_APP_SYNC_SECRET') ||
+    Deno.env.get('HUB_SYNC_SECRET') ||
+    '';
+}
+
+function unauthorized() {
+  return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized' }, { status: 401 });
+}
+
+function forbidden() {
+  return Response.json({ success: false, error_code: 'forbidden', message: 'Admin access required' }, { status: 403 });
+}
+
+async function requirePreviewAccess({ base44, req, body }) {
+  const providedSecret = normalizeText(req.headers.get('x-internal-secret') || body?._internal_secret || body?.internal_secret);
+  if (providedSecret) {
+    const expected = previewSecret();
+    return expected && providedSecret === expected
+      ? { ok: true, actor_type: 'system', actor_role: 'service', actor_email: 'system' }
+      : { ok: false, response: unauthorized() };
+  }
+
+  try {
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) return { ok: false, response: unauthorized() };
+    if (user.role !== 'admin') return { ok: false, response: forbidden() };
+    return { ok: true, actor_type: 'admin', actor_role: 'admin', actor_email: user.email || 'admin' };
+  } catch {
+    return { ok: false, response: unauthorized() };
+  }
+}
+
+function getLookup(body) {
+  return {
+    taskId: sanitizeId(body?.task_id || body?.fulfillment_task_id),
+    nativeOrderId: sanitizeId(body?.native_order_id || body?.shopify_order_id || body?.native_shopify_order_id),
+    base44OrderId: sanitizeId(body?.base44_order_id || body?.customer_app_order_id || body?.order_id),
+    orderNumber: normalizeOrderNumber(body?.order_number || body?.shopify_order_number || body?.order || body?.number),
+  };
+}
+
+function hasExactLookup(lookup) {
+  return Boolean(lookup.taskId || lookup.nativeOrderId || lookup.base44OrderId || lookup.orderNumber);
+}
+
+function taskDisplayMetadataComplete(task) {
+  return DISPLAY_CRITICAL_FIELDS.every(field => Boolean(normalizeText(task?.[field])));
+}
+
+function taskMissingDisplayFields(task) {
+  return DISPLAY_CRITICAL_FIELDS.filter(field => !normalizeText(task?.[field]));
+}
+
+function lineItemsSummary(items) {
+  if (!Array.isArray(items)) return '';
+  return items
+    .slice(0, 8)
+    .map(item => `${safeNumber(item?.quantity) ?? 0}x ${operationalText(item?.title || item?.name || item?.product_title, 80)}`)
+    .filter(item => !item.startsWith('0x '))
+    .join(', ');
+}
+
+function taskItemsFromOrder(order) {
+  const items = Array.isArray(order?.line_items) ? order.line_items : [];
+  return items.slice(0, SAFE_ARRAY_LIMIT).map(item => compactObject({
+    product_id: sanitizeId(item?.shopify_line_item_id || item?.id || item?.product_id, 120),
+    title: operationalText(item?.title || item?.name || item?.product_title, 120) || 'Item',
+    price: safeNumber(item?.price) ?? 0,
+    quantity: safeNumber(item?.quantity) ?? 0,
+  })).filter(item => item.title && item.quantity > 0);
+}
+
+function deliveryAddress(order) {
+  return operationalText(order?.delivery_address || order?.address || [
+    order?.address_line1,
+    order?.address_city,
+    order?.address_state,
+    order?.address_postal_code,
+  ].filter(Boolean).join(', '), 280);
+}
+
+function hasCompleteAddress(order) {
+  return Boolean(order?.address_line1 && order?.address_city && order?.address_state && order?.address_postal_code);
+}
+
+function firstDate(...values) {
+  for (const value of values) {
+    const text = normalizeText(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  }
+  return '';
+}
+
+function chooseSourceChannel(nativeOrder, customerOrder) {
+  return sanitizeText(nativeOrder?.source_channel || customerOrder?.source_channel || 'customer_app', 80) || 'customer_app';
+}
+
+function chooseSourceType(nativeOrder, customerOrder) {
+  return sanitizeText(nativeOrder?.source_type || customerOrder?.source_type || 'customer_app_one_time', 80) || 'customer_app_one_time';
+}
+
+function chooseFulfillmentType(nativeOrder, customerOrder, task) {
+  return sanitizeText(
+    task?.fulfillment_type || nativeOrder?.fulfillment_method || customerOrder?.fulfillment_type || customerOrder?.fulfillment_method || 'delivery',
+    80,
+  ) || 'delivery';
+}
+
+function sourceMetadata({ task, nativeOrder, customerOrder }) {
+  const deliveryDate = firstDate(
+    task?.delivery_date,
+    task?.assigned_delivery_date,
+    task?.scheduled_date,
+    nativeOrder?.assigned_delivery_date,
+    nativeOrder?.selected_delivery_date,
+    nativeOrder?.requested_delivery_date,
+    customerOrder?.assigned_delivery_date,
+    customerOrder?.selected_delivery_date,
+    customerOrder?.estimated_delivery_date,
+    customerOrder?.delivery_date,
+  );
+  const productionDate = firstDate(
+    nativeOrder?.production_date,
+    nativeOrder?.assigned_production_day,
+    customerOrder?.production_date,
+    customerOrder?.assigned_production_day,
+    task?.production_date,
+  );
+  const lineItems = Array.isArray(nativeOrder?.line_items) ? nativeOrder.line_items : [];
+  const taskItems = taskItemsFromOrder(nativeOrder || {});
+  const orderNumber = normalizeOrderNumber(nativeOrder?.shopify_order_number || nativeOrder?.order_number || customerOrder?.order_number || task?.shopify_order_number || task?.order_number);
+  const base44OrderId = sanitizeId(nativeOrder?.base44_order_id || customerOrder?.id || task?.base44_order_id, 120);
+
+  return compactObject({
+    order_id: sanitizeId(nativeOrder?.id || task?.order_id, 120),
+    base44_order_id: base44OrderId,
+    shopify_order_id: sanitizeId(nativeOrder?.id || task?.shopify_order_id, 120),
+    native_shopify_order_id: sanitizeId(nativeOrder?.id || task?.native_shopify_order_id, 120),
+    shopify_order_number: orderNumber,
+    order_number: orderNumber,
+    customer_name: operationalText(nativeOrder?.customer_name || customerOrder?.customer_name || task?.customer_name, 160),
+    customer_email: operationalText(nativeOrder?.customer_email || customerOrder?.customer_email || task?.customer_email, 180),
+    customer_phone: operationalText(nativeOrder?.customer_phone || customerOrder?.contact_phone || customerOrder?.customer_phone || task?.customer_phone, 80),
+    source_channel: chooseSourceChannel(nativeOrder, customerOrder),
+    source_type: chooseSourceType(nativeOrder, customerOrder),
+    task_source: 'native_fulfillment_task_metadata_repair',
+    created_from_native_ops: true,
+    order_type: sanitizeText(nativeOrder?.order_type || customerOrder?.order_type || 'one_time', 80) || 'one_time',
+    fulfillment_type: chooseFulfillmentType(nativeOrder, customerOrder, task),
+    fulfillment_number: safeNumber(task?.fulfillment_number) ?? 1,
+    delivery_date: deliveryDate,
+    scheduled_date: firstDate(task?.scheduled_date, deliveryDate),
+    assigned_delivery_date: firstDate(task?.assigned_delivery_date, deliveryDate),
+    production_date: productionDate,
+    time_window: sanitizeText(nativeOrder?.delivery_window_label || customerOrder?.delivery_window_label || task?.time_window, 120),
+    delivery_window_label: sanitizeText(nativeOrder?.delivery_window_label || customerOrder?.delivery_window_label || task?.delivery_window_label, 120),
+    address: deliveryAddress(nativeOrder) || deliveryAddress(customerOrder) || task?.address,
+    delivery_address: nativeOrder?.delivery_address || customerOrder?.delivery_address || task?.delivery_address,
+    address_line1: operationalText(nativeOrder?.address_line1 || customerOrder?.address_line1 || task?.address_line1, 120),
+    address_line2: operationalText(nativeOrder?.address_line2 || customerOrder?.address_line2 || task?.address_line2, 120),
+    address_city: operationalText(nativeOrder?.address_city || customerOrder?.address_city || task?.address_city, 100),
+    address_state: operationalText(nativeOrder?.address_state || customerOrder?.address_state || task?.address_state, 80),
+    address_postal_code: operationalText(nativeOrder?.address_postal_code || customerOrder?.address_postal_code || task?.address_postal_code, 40),
+    items: taskItems,
+    items_summary: lineItemsSummary(lineItems),
+    line_item_count: taskItems.length || safeNumber(task?.line_item_count),
+    total_price: safeNumber(nativeOrder?.total_price ?? nativeOrder?.total ?? customerOrder?.total ?? customerOrder?.total_price ?? task?.total_price),
+    address_complete: hasCompleteAddress(nativeOrder) || hasCompleteAddress(customerOrder) || task?.address_complete === true,
+    status: task?.status || 'pending',
+    delivery_status: task?.delivery_status || task?.status || 'pending',
+    production_status: sanitizeText(nativeOrder?.production_status || customerOrder?.production_status || task?.production_status, 80),
+    payment_status: sanitizeText(nativeOrder?.payment_status || customerOrder?.payment_status || customerOrder?.financial_status || task?.payment_status, 80),
+    sync_status: task?.sync_status || 'native_task_metadata_repaired',
+    schedule_source: task?.schedule_source || 'native_customer_app_paid_order_mirror',
+    delivery_zone_key: sanitizeText(nativeOrder?.delivery_zone_key || customerOrder?.delivery_zone_key || task?.delivery_zone_key, 80),
+  });
+}
+
+function isEmptyValue(value) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return normalizeText(value) === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
+function isIdentityField(field) {
+  return [
+    'order_id',
+    'base44_order_id',
+    'shopify_order_id',
+    'native_shopify_order_id',
+    'shopify_order_number',
+    'order_number',
+  ].includes(field);
+}
+
+function sameValue(a, b) {
+  return normalizeLower(a) === normalizeLower(b);
+}
+
+function buildMetadataRepairPlan({ task, nativeOrder, customerOrder }) {
+  const blockers = [];
+  const warnings = [];
+
+  if (!task?.id) blockers.push('fulfillment_task_missing');
+  if (!nativeOrder?.id) blockers.push('native_shopify_order_missing');
+  if (nativeOrder && normalizeLower(nativeOrder.order_type) === 'subscription') blockers.push('subscription_order_not_supported');
+  if (nativeOrder && ['pos', 'shopify_pos'].includes(normalizeLower(nativeOrder.order_type || nativeOrder.source_channel || nativeOrder.fulfillment_method))) blockers.push('pos_order_not_supported');
+  if (nativeOrder && !['paid', 'succeeded'].includes(normalizeLower(nativeOrder.payment_status || nativeOrder.financial_status))) blockers.push('payment_not_paid');
+
+  if (task?.order_id && nativeOrder?.id && !sameValue(task.order_id, nativeOrder.id)) {
+    blockers.push('task_order_link_conflict');
+  }
+  if (task?.base44_order_id && nativeOrder?.base44_order_id && !sameValue(task.base44_order_id, nativeOrder.base44_order_id)) {
+    blockers.push('task_base44_order_link_conflict');
+  }
+  if (task?.shopify_order_number && nativeOrder?.shopify_order_number && !sameValue(task.shopify_order_number, nativeOrder.shopify_order_number)) {
+    blockers.push('task_order_number_conflict');
+  }
+  if (task?.order_number && nativeOrder?.shopify_order_number && !sameValue(task.order_number, nativeOrder.shopify_order_number)) {
+    blockers.push('task_order_number_conflict');
+  }
+
+  const source = sourceMetadata({ task, nativeOrder, customerOrder });
+  const patch = {};
+  const skippedExistingFields = [];
+  for (const [field, value] of Object.entries(source)) {
+    if (isEmptyValue(value)) continue;
+    if (isEmptyValue(task?.[field])) patch[field] = value;
+    else if (!isIdentityField(field)) skippedExistingFields.push(field);
+  }
+
+  const missingDisplayFields = taskMissingDisplayFields({ ...task, ...patch });
+  if (missingDisplayFields.length > 0) warnings.push('display_metadata_still_incomplete_after_patch');
+  if (Object.keys(patch).length === 0) warnings.push('no_missing_metadata_fields_to_repair');
+
+  return {
+    ready: blockers.length === 0,
+    action: Object.keys(patch).length === 0 ? 'noop_already_complete_or_no_patch' : 'repair_existing_task_metadata',
+    blockers: safeStringArray([...new Set(blockers)]),
+    warnings: safeStringArray([...new Set(warnings)]),
+    patch,
+    patch_fields: Object.keys(patch).sort(),
+    missing_display_fields_before: taskMissingDisplayFields(task),
+    missing_display_fields_after: missingDisplayFields,
+    skipped_existing_fields: safeStringArray(skippedExistingFields.sort(), 80),
+  };
+}
+
+function summarizeTask(task) {
+  return task ? {
+    id: sanitizeId(task.id) || null,
+    order_id: sanitizeId(task.order_id) || null,
+    base44_order_id: sanitizeId(task.base44_order_id) || null,
+    shopify_order_id: sanitizeId(task.shopify_order_id) || null,
+    native_shopify_order_id: sanitizeId(task.native_shopify_order_id) || null,
+    shopify_order_number: sanitizeText(task.shopify_order_number || task.order_number, 120) || null,
+    source_type: sanitizeText(task.source_type, 80) || null,
+    schedule_source: sanitizeText(task.schedule_source, 120) || null,
+    delivery_date: sanitizeText(task.delivery_date || task.assigned_delivery_date, 40) || null,
+    production_date: sanitizeText(task.production_date, 40) || null,
+    status: sanitizeText(task.status, 80) || null,
+    display_metadata_complete: taskDisplayMetadataComplete(task),
+  } : null;
+}
+
+function summarizeOrder(order) {
+  return order ? {
+    id: sanitizeId(order.id) || null,
+    order_number: sanitizeText(order.shopify_order_number || order.order_number, 120) || null,
+    base44_order_id: sanitizeId(order.base44_order_id) || null,
+    source_type: sanitizeText(order.source_type, 80) || null,
+    order_type: sanitizeText(order.order_type, 80) || null,
+    fulfillment_method: sanitizeText(order.fulfillment_method, 80) || null,
+    payment_status: sanitizeText(order.payment_status || order.financial_status, 80) || null,
+    production_status: sanitizeText(order.production_status, 80) || null,
+    fulfillment_status: sanitizeText(order.fulfillment_status, 80) || null,
+  } : null;
+}
+
+function summarizePatch(patch) {
+  const summary = {};
+  for (const [field, value] of Object.entries(patch || {})) {
+    if (['customer_name', 'customer_email', 'customer_phone', 'address', 'delivery_address', 'address_line1', 'address_line2'].includes(field)) {
+      summary[field] = sanitizeText(value, 120) || '[redacted]';
+    } else if (field === 'items') {
+      summary[field] = { item_count: Array.isArray(value) ? value.length : 0 };
+    } else {
+      summary[field] = value;
+    }
+  }
+  return summary;
+}
+
+async function findCustomerOrder(base44, lookup, nativeOrder) {
+  const filters = [];
+  if (lookup.base44OrderId) filters.push({ id: lookup.base44OrderId });
+  if (nativeOrder?.base44_order_id) filters.push({ id: nativeOrder.base44_order_id });
+  if (lookup.orderNumber) filters.push({ order_number: lookup.orderNumber });
+  if (nativeOrder?.shopify_order_number) filters.push({ order_number: nativeOrder.shopify_order_number });
+
+  for (const filter of filters) {
+    const rows = await base44.asServiceRole.entities.Order.filter(filter, '-created_date', 5).catch(() => []);
+    if (Array.isArray(rows) && rows.length > 0) return rows[0];
+  }
+  return null;
+}
+
+async function findNativeOrder(base44, lookup, task = null) {
+  const filters = [];
+  if (lookup.nativeOrderId) filters.push({ id: lookup.nativeOrderId });
+  if (task?.order_id) filters.push({ id: task.order_id });
+  if (task?.shopify_order_id) filters.push({ id: task.shopify_order_id });
+  if (task?.native_shopify_order_id) filters.push({ id: task.native_shopify_order_id });
+  if (lookup.base44OrderId) filters.push({ base44_order_id: lookup.base44OrderId });
+  if (task?.base44_order_id) filters.push({ base44_order_id: task.base44_order_id });
+  if (lookup.orderNumber) filters.push({ shopify_order_number: lookup.orderNumber });
+  if (task?.shopify_order_number || task?.order_number) filters.push({ shopify_order_number: task.shopify_order_number || task.order_number });
+
+  const matches = [];
+  for (const filter of filters) {
+    const rows = await base44.asServiceRole.entities.ShopifyOrder.filter(filter, '-created_date', 5).catch(() => []);
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (row?.id && !matches.some(match => match.id === row.id)) matches.push(row);
+    }
+  }
+  return { nativeOrder: matches.length === 1 ? matches[0] : null, nativeMatches: matches };
+}
+
+async function findTasks(base44, lookup, nativeOrder = null) {
+  const filters = [];
+  if (lookup.taskId) filters.push({ id: lookup.taskId });
+  if (nativeOrder?.id) {
+    filters.push({ order_id: nativeOrder.id });
+    filters.push({ shopify_order_id: nativeOrder.id });
+    filters.push({ native_shopify_order_id: nativeOrder.id });
+  }
+  if (lookup.nativeOrderId) {
+    filters.push({ order_id: lookup.nativeOrderId });
+    filters.push({ shopify_order_id: lookup.nativeOrderId });
+    filters.push({ native_shopify_order_id: lookup.nativeOrderId });
+  }
+  if (lookup.base44OrderId) filters.push({ base44_order_id: lookup.base44OrderId });
+  if (lookup.orderNumber) {
+    filters.push({ shopify_order_number: lookup.orderNumber });
+    filters.push({ order_number: lookup.orderNumber });
+  }
+  if (nativeOrder?.shopify_order_number) {
+    filters.push({ shopify_order_number: nativeOrder.shopify_order_number });
+    filters.push({ order_number: nativeOrder.shopify_order_number });
+  }
+
+  const matches = [];
+  for (const filter of filters) {
+    const rows = await base44.asServiceRole.entities.FulfillmentTask.filter(filter, '-created_date', 10).catch(() => []);
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (row?.id && !matches.some(match => match.id === row.id)) matches.push(row);
+    }
+  }
+  return matches;
+}
+
+async function buildRepairPreview({ base44, body, actor }) {
+  const lookup = getLookup(body);
+  if (!hasExactLookup(lookup)) {
+    return {
+      success: false,
+      status: 400,
+      body: {
+        success: false,
+        dry_run: true,
+        error_code: 'exact_task_or_order_required',
+        message: 'Provide task_id, native_order_id, base44_order_id, or order_number for exact task metadata repair preview.',
+        writes_performed: false,
+      },
+    };
+  }
+
+  let task = null;
+  let tasks = [];
+  let nativeOrder = null;
+  let nativeMatches = [];
+
+  if (lookup.taskId) {
+    tasks = await findTasks(base44, lookup, null);
+    task = tasks.length === 1 ? tasks[0] : null;
+    const nativeResult = await findNativeOrder(base44, lookup, task);
+    nativeOrder = nativeResult.nativeOrder;
+    nativeMatches = nativeResult.nativeMatches;
+  } else {
+    const nativeResult = await findNativeOrder(base44, lookup, null);
+    nativeOrder = nativeResult.nativeOrder;
+    nativeMatches = nativeResult.nativeMatches;
+    tasks = await findTasks(base44, lookup, nativeOrder);
+    task = tasks.length === 1 ? tasks[0] : null;
+  }
+
+  const blockers = [];
+  if (nativeMatches.length > 1) blockers.push('multiple_native_order_matches');
+  if (tasks.length > 1 && !lookup.taskId) blockers.push('multiple_fulfillment_task_matches');
+  if (!task) blockers.push('fulfillment_task_not_found');
+  if (!nativeOrder) blockers.push('native_shopify_order_not_found');
+
+  const customerOrder = nativeOrder ? await findCustomerOrder(base44, lookup, nativeOrder) : null;
+  const plan = blockers.length === 0
+    ? buildMetadataRepairPlan({ task, nativeOrder, customerOrder })
+    : {
+        ready: false,
+        action: 'blocked',
+        blockers,
+        warnings: [],
+        patch: {},
+        patch_fields: [],
+        missing_display_fields_before: task ? taskMissingDisplayFields(task) : [],
+        missing_display_fields_after: task ? taskMissingDisplayFields(task) : [],
+        skipped_existing_fields: [],
+      };
+
+  return {
+    success: true,
+    status: 200,
+    body: {
+      success: plan.ready,
+      dry_run: true,
+      function_name: 'previewNativeFulfillmentTaskMetadataRepair',
+      generated_at: new Date().toISOString(),
+      scope: 'specific_task_or_order',
+      target: {
+        lookup: {
+          task_id: lookup.taskId || null,
+          native_order_id: lookup.nativeOrderId || null,
+          base44_order_id: lookup.base44OrderId || null,
+          order_number: lookup.orderNumber || null,
+        },
+        native_order: summarizeOrder(nativeOrder),
+        fulfillment_task: summarizeTask(task),
+        customer_app_order_id: sanitizeId(customerOrder?.id) || null,
+      },
+      repair_plan: {
+        ready: plan.ready,
+        action: plan.action,
+        blockers: safeStringArray(plan.blockers),
+        warnings: safeStringArray(plan.warnings),
+        patch_fields: safeStringArray(plan.patch_fields, 100),
+        patch_preview: summarizePatch(plan.patch),
+        missing_display_fields_before: safeStringArray(plan.missing_display_fields_before, 80),
+        missing_display_fields_after: safeStringArray(plan.missing_display_fields_after, 80),
+        skipped_existing_fields: safeStringArray(plan.skipped_existing_fields, 80),
+      },
+      generated_by: {
+        actor_type: sanitizeText(actor?.actor_type, 80),
+        actor_role: sanitizeText(actor?.actor_role, 80),
+        actor_email: sanitizeText(actor?.actor_email, 180),
+      },
+      safety: {
+        dry_run_only: true,
+        writes_performed: false,
+        customer_app_order_updated: false,
+        native_shopify_order_updated: false,
+        provider_calls_performed: false,
+        stripe_calls_performed: false,
+        shopify_api_calls_performed: false,
+        notifications_sent: false,
+        sync_repair_replay_performed: false,
+        production_inventory_delivery_mutations_performed: false,
+        hub_bridge_modified: false,
+        redaction_applied: true,
+      },
+    },
+  };
+}
+
+Deno.serve(async (req) => {
+  try {
+    if (req.method !== 'POST') {
+      return Response.json({ success: false, error_code: 'method_not_allowed', message: 'POST required' }, { status: 405 });
+    }
+
+    const base44 = createClientFromRequest(req);
+    const parsed = await readJsonBody(req);
+    if (!parsed.ok) {
+      return Response.json({ success: false, error_code: 'malformed_json', message: 'Malformed JSON body' }, { status: 400 });
+    }
+    const body = parsed.body || {};
+    if (body.mode && body.mode !== 'dry_run') {
+      return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
+    }
+
+    const auth = await requirePreviewAccess({ base44, req, body });
+    if (!auth.ok) return auth.response;
+
+    const preview = await buildRepairPreview({ base44, body, actor: auth });
+    return Response.json(preview.body, { status: preview.status });
+  } catch (error) {
+    console.error(`[previewNativeFulfillmentTaskMetadataRepair] failed safely: ${error?.message || 'unknown error'}`);
+    return Response.json({
+      success: false,
+      dry_run: true,
+      error_code: 'native_task_metadata_repair_preview_failed',
+      message: 'Native FulfillmentTask metadata repair preview failed safely.',
+      writes_performed: false,
+    }, { status: 500 });
+  }
+});
