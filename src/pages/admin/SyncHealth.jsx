@@ -227,6 +227,10 @@ function NativeCutoverReadinessPreview({
   orderNumber,
   onOrderNumberChange,
   onRun,
+  pilotApproval,
+  isPilotApprovalRunning,
+  pilotApprovalError,
+  onRunPilotApproval,
 }) {
   const readiness = preview?.readiness || {};
   const gates = preview?.gates || {};
@@ -237,6 +241,12 @@ function NativeCutoverReadinessPreview({
   const taskMaterialization = gates.native_fulfillment_task_materialization || {};
   const blockers = Array.isArray(readiness.blockers) ? readiness.blockers : [];
   const warnings = Array.isArray(readiness.warnings) ? readiness.warnings : [];
+  const approval = pilotApproval?.approval || {};
+  const approvalBlockers = Array.isArray(approval.blockers) ? approval.blockers : [];
+  const approvalWarnings = Array.isArray(approval.warnings) ? approval.warnings : [];
+  const writerSummary = approval.writer_dry_run_equivalent || {};
+  const gateSnapshot = approval.gate_snapshot || {};
+  const canRequestApprovalPacket = Boolean(orderNumber?.trim()) && readiness.classification === 'pilot_ready_with_exact_order_approval';
 
   return (
     <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
@@ -289,6 +299,78 @@ function NativeCutoverReadinessPreview({
       <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
         Safety contract: dry-run only; no native writer broadening, Hub retirement, provider call, notification, production batch, inventory mutation, delivery mutation, or customer-facing status change.
       </div>
+
+      {preview && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-amber-950">Exact-Order Pilot Approval Packet</p>
+              <p className="text-[10px] text-amber-900 mt-0.5">
+                G28 packet generation is read-only. It formalizes the separate approval boundary for one exact order and does not execute the native writer.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={isPilotApprovalRunning || !canRequestApprovalPacket}
+              onClick={onRunPilotApproval}
+              className={`h-8 px-3 rounded-lg border text-[11px] font-semibold transition-colors ${
+                isPilotApprovalRunning || !canRequestApprovalPacket
+                  ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+                  : 'bg-background text-amber-950 border-amber-300 hover:bg-amber-100'
+              }`}
+            >
+              {isPilotApprovalRunning ? 'Generating...' : 'Generate Read-Only Packet'}
+            </button>
+          </div>
+          {!orderNumber?.trim() && (
+            <p className="text-[10px] text-amber-900">Enter an exact order number before generating a pilot approval packet.</p>
+          )}
+          {orderNumber?.trim() && !canRequestApprovalPacket && (
+            <p className="text-[10px] text-amber-900">Run a clean exact-order readiness check before generating a pilot approval packet.</p>
+          )}
+          {pilotApprovalError && (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-[10px] text-destructive">{pilotApprovalError}</p>
+          )}
+          {pilotApproval && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={approval.approval_packet_ready ? 'Packet Ready' : 'Packet Held'} />
+                <StatusChip value="Separate Approval Required" />
+                <StatusChip value={approval.live_execution_not_run ? 'No Live Execution' : 'Execution State Unknown'} />
+                <StatusChip value={pilotApproval?.safety?.writes_performed === false ? 'No Writes Performed' : 'Write State Unknown'} />
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+                <div className="rounded-lg border border-amber-200 bg-background p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Approval phrase</p>
+                  <p className="mt-1 text-xs font-semibold text-foreground break-words">{approval.exact_order_approval_phrase || 'Not generated'}</p>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-background p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Writer dry-run equivalent</p>
+                  <p className="mt-1 text-xs text-foreground">
+                    {writerSummary.action ? `${formatLabel(writerSummary.action)} · ${writerSummary.would_update_order ? 'Would Update' : writerSummary.would_create_order ? 'Would Create' : 'No Order Write'}` : 'Not returned'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-background p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Writer gates</p>
+                  <p className="mt-1 text-xs text-foreground">
+                    {gateSnapshot.native_safe_sync_writer?.enabled ? 'Enabled' : 'Disabled'} · {gateSnapshot.native_safe_sync_writer?.kill_switch ? 'Kill Switch On' : 'Kill Switch Off'} · {gateSnapshot.native_safe_sync_writer?.broad_real_order_mode ? 'Broad Mode On' : 'Broad Mode Off'}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-background p-3 text-[10px] text-muted-foreground">
+                Live execution contract: exact order only; requires actor allowlist, order allowlist, live mode, separate approval, Hub fallback retained, no provider calls, no notifications, no repair/replay, and no production/inventory/delivery mutation expansion.
+              </div>
+              {(approvalBlockers.length > 0 || approvalWarnings.length > 0) && (
+                <p className="text-[10px] text-muted-foreground">
+                  {approvalBlockers.length > 0 ? `Packet blockers: ${approvalBlockers.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : ''}
+                  {approvalBlockers.length > 0 && approvalWarnings.length > 0 ? ' · ' : ''}
+                  {approvalWarnings.length > 0 ? `Packet warnings: ${approvalWarnings.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : ''}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {preview && (
         <div className="space-y-4">
@@ -714,6 +796,9 @@ export default function SyncHealth() {
   const [cutoverPreview, setCutoverPreview] = useState(null);
   const [cutoverPreviewError, setCutoverPreviewError] = useState('');
   const [isCutoverPreviewRunning, setIsCutoverPreviewRunning] = useState(false);
+  const [pilotApprovalPreview, setPilotApprovalPreview] = useState(null);
+  const [pilotApprovalError, setPilotApprovalError] = useState('');
+  const [isPilotApprovalRunning, setIsPilotApprovalRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -800,6 +885,8 @@ export default function SyncHealth() {
 
   const runNativeCutoverReadinessPreview = async () => {
     setCutoverPreviewError('');
+    setPilotApprovalError('');
+    setPilotApprovalPreview(null);
     setIsCutoverPreviewRunning(true);
     try {
       const exactOrderNumber = cutoverOrderNumber.trim();
@@ -816,6 +903,30 @@ export default function SyncHealth() {
       setCutoverPreviewError(previewError?.message || 'Unable to run native cutover readiness check.');
     } finally {
       setIsCutoverPreviewRunning(false);
+    }
+  };
+
+  const runNativePilotApprovalPreview = async () => {
+    setPilotApprovalError('');
+    setIsPilotApprovalRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for a pilot approval packet.');
+      }
+      const res = await base44.functions.invoke('previewNativeExactOrderPilotApproval', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+      });
+      const result = res?.data || res;
+      if (!result || result.error) {
+        throw new Error(result?.message || result?.error_code || 'Native pilot approval packet failed.');
+      }
+      setPilotApprovalPreview(result);
+    } catch (previewError) {
+      setPilotApprovalError(previewError?.message || 'Unable to generate native pilot approval packet.');
+    } finally {
+      setIsPilotApprovalRunning(false);
     }
   };
 
@@ -985,6 +1096,10 @@ export default function SyncHealth() {
           orderNumber={cutoverOrderNumber}
           onOrderNumberChange={setCutoverOrderNumber}
           onRun={runNativeCutoverReadinessPreview}
+          pilotApproval={pilotApprovalPreview}
+          isPilotApprovalRunning={isPilotApprovalRunning}
+          pilotApprovalError={pilotApprovalError}
+          onRunPilotApproval={runNativePilotApprovalPreview}
         />
 
         {showError && (
