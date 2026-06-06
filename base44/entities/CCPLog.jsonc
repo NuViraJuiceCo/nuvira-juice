@@ -65,6 +65,7 @@
   ],
   "rls": {
     "create": {
+      "data.staff_member": "{{user.full_name}}",
       "user_condition": {
         "role": {
           "$in": [
@@ -77,15 +78,22 @@
       }
     },
     "read": {
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "production_manager",
-            "operations_staff"
-          ]
+      "$or": [
+        {
+          "data.staff_member": "{{user.full_name}}"
+        },
+        {
+          "user_condition": {
+            "role": {
+              "$in": [
+                "admin",
+                "production_manager",
+                "operations_staff"
+              ]
+            }
+          }
         }
-      }
+      ]
     },
     "update": {
       "$or": [
