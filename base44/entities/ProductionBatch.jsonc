@@ -366,38 +366,66 @@
   },
   "rls": {
     "create": {
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "production_manager",
-            "operations_staff"
-          ]
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "production_manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "operations_staff"
+          }
         }
-      }
+      ]
     },
     "read": {
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "production_manager",
-            "operations_staff",
-            "staff"
-          ]
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "production_manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "operations_staff"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "staff"
+          }
         }
-      }
+      ]
     },
     "update": {
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "production_manager",
-            "operations_staff"
-          ]
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "production_manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "operations_staff"
+          }
         }
-      }
+      ]
     },
     "delete": {
       "user_condition": {
