@@ -73,15 +73,23 @@
       }
     },
     "read": {
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "production_manager",
-            "operations_staff"
-          ]
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "production_manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "operations_staff"
+          }
         }
-      }
+      ]
     },
     "update": {
       "user_condition": {

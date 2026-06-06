@@ -74,15 +74,23 @@
   "rls": {
     "create": {
       "created_by": "{{user.email}}",
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "inventory_manager",
-            "production_manager"
-          ]
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "inventory_manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "production_manager"
+          }
         }
-      }
+      ]
     },
     "read": {
       "$or": [
@@ -90,15 +98,23 @@
           "created_by": "{{user.email}}"
         },
         {
-          "user_condition": {
-            "role": {
-              "$in": [
-                "admin",
-                "inventory_manager",
-                "production_manager"
-              ]
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "inventory_manager"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "production_manager"
+              }
             }
-          }
+          ]
         }
       ]
     },
@@ -108,15 +124,23 @@
           "created_by": "{{user.email}}"
         },
         {
-          "user_condition": {
-            "role": {
-              "$in": [
-                "admin",
-                "inventory_manager",
-                "production_manager"
-              ]
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "inventory_manager"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "production_manager"
+              }
             }
-          }
+          ]
         }
       ]
     },

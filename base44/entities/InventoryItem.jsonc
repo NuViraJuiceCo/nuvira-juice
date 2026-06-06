@@ -94,36 +94,56 @@
   ],
   "rls": {
     "create": {
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "inventory_manager"
-          ]
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "inventory_manager"
+          }
         }
-      }
+      ]
     },
     "read": {
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "inventory_manager",
-            "production_manager",
-            "staff"
-          ]
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "inventory_manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "production_manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "staff"
+          }
         }
-      }
+      ]
     },
     "update": {
-      "user_condition": {
-        "role": {
-          "$in": [
-            "admin",
-            "inventory_manager"
-          ]
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "inventory_manager"
+          }
         }
-      }
+      ]
     },
     "delete": {
       "user_condition": {
