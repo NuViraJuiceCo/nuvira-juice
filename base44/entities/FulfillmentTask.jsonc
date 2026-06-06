@@ -6,9 +6,17 @@
       "type": "string",
       "description": "Reference to the parent Order entity (for subscription orders)"
     },
+    "base44_order_id": {
+      "type": "string",
+      "description": "Linked Customer App Order id when the task was created from a native Customer App operational order"
+    },
     "shopify_order_id": {
       "type": "string",
       "description": "Reference to native ShopifyOrder/operational order record"
+    },
+    "native_shopify_order_id": {
+      "type": "string",
+      "description": "Explicit native ShopifyOrder entity id for Customer App owned operational tasks"
     },
     "shopify_order_number": {
       "type": "string",
@@ -40,6 +48,18 @@
     "source_type": {
       "type": "string",
       "description": "Operational source type such as one_time, subscription, pickup, delivery, or POS"
+    },
+    "task_source": {
+      "type": "string",
+      "description": "Function or workflow that created the native fulfillment task"
+    },
+    "created_from_native_ops": {
+      "type": "boolean",
+      "description": "True when the task was created by a Customer App native operational workflow"
+    },
+    "order_type": {
+      "type": "string",
+      "description": "Order type copied from the native operational order, such as one_time, subscription, or pos"
     },
     "fulfillment_type": {
       "type": "string",
@@ -127,6 +147,18 @@
     "items_summary": {
       "type": "string",
       "description": "Short item summary for dense admin/driver task lists"
+    },
+    "line_item_count": {
+      "type": "number",
+      "description": "Safe count of line items represented by this task"
+    },
+    "total_price": {
+      "type": "number",
+      "description": "Safe order total copied from the native operational order for admin display"
+    },
+    "address_complete": {
+      "type": "boolean",
+      "description": "Whether required delivery address fields were present when the task was created"
     },
     "status": {
       "type": "string",
@@ -218,6 +250,10 @@
     "route_id": {
       "type": "string",
       "description": "Route plan id if assigned"
+    },
+    "delivery_zone_key": {
+      "type": "string",
+      "description": "Delivery zone key copied from the native operational order when available"
     },
     "route_stop_sequence": {
       "type": "number",

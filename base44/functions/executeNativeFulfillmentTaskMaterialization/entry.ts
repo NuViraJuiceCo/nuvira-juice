@@ -120,15 +120,24 @@ function hasNativeMarker(order) {
 
 function buildTaskDraft(order, body, requestId, actorEmail) {
   const deliveryDate = parseIsoDate(body.delivery_date || body.assigned_delivery_date || body.target_delivery_date, 'delivery_date');
-  const productionDate = parseIsoDate(body.production_date || body.target_production_date, 'production_date');
+  const productionDate = parseIsoDate(
+    body.production_date ||
+    body.target_production_date ||
+    order.production_date ||
+    order.assigned_production_day,
+    'production_date',
+  );
   const windowLabel = sanitizeText(body.delivery_window_label || order.delivery_window_label || order.requested_time_window, 120);
   const items = taskItemsFromOrder(order);
   const address = deliveryAddress(order);
   const now = new Date().toISOString();
+  const addressComplete = Boolean(order.address_line1 && order.address_city && order.address_state && order.address_postal_code);
 
   return {
     order_id: order.id,
+    base44_order_id: sanitizeId(order.base44_order_id, 120),
     shopify_order_id: order.id,
+    native_shopify_order_id: order.id,
     shopify_order_number: operationalText(order.shopify_order_number || order.order_number, 120),
     order_number: operationalText(order.shopify_order_number || order.order_number, 120),
     customer_name: operationalText(order.customer_name, 160),
@@ -136,6 +145,9 @@ function buildTaskDraft(order, body, requestId, actorEmail) {
     customer_phone: operationalText(order.customer_phone, 80),
     source_channel: sanitizeText(order.source_channel || 'customer_app', 80),
     source_type: sanitizeText(order.source_type || 'customer_app_native', 80),
+    task_source: 'executeNativeFulfillmentTaskMaterialization',
+    created_from_native_ops: true,
+    order_type: sanitizeText(order.order_type || 'one_time', 80),
     fulfillment_type: 'delivery',
     fulfillment_number: 1,
     delivery_date: deliveryDate,
@@ -152,12 +164,16 @@ function buildTaskDraft(order, body, requestId, actorEmail) {
     address_postal_code: operationalText(order.address_postal_code, 40),
     items,
     items_summary: lineItemsSummary(order.line_items),
+    line_item_count: items.length,
+    total_price: safeNumber(order.total_price ?? order.total ?? order.subtotal),
+    address_complete: addressComplete,
     status: 'scheduled',
     delivery_status: 'scheduled',
     production_status: sanitizeText(order.production_status, 80) || 'awaiting_production',
     payment_status: sanitizeText(order.payment_status || order.financial_status, 80),
     sync_status: 'native_task_materialized',
     schedule_source: 'native_admin_materialization',
+    delivery_zone_key: sanitizeText(order.delivery_zone_key, 80),
     internal_notes: sanitizeText(`Native fulfillment task materialized. Request=${requestId}.`, 500),
     review_status: null,
     review_reason: null,

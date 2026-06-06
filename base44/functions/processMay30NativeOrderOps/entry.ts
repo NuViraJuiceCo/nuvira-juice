@@ -167,6 +167,23 @@ function deliveryDateForOrder(order) {
   );
 }
 
+function productionDateForOrder(order) {
+  const firstFulfillment = Array.isArray(order?.fulfillments)
+    ? order.fulfillments.find(fulfillment => fulfillment?.production_date || fulfillment?.assigned_production_day)
+    : null;
+  return sanitizeText(
+    order?.assigned_production_day ||
+    order?.production_date ||
+    order?.assigned_production_date ||
+    order?.target_production_date ||
+    firstFulfillment?.assigned_production_day ||
+    firstFulfillment?.production_date ||
+    order?.first_fulfillment?.assigned_production_day ||
+    order?.first_fulfillment?.production_date,
+    40,
+  );
+}
+
 function isSubscriptionLike(order) {
   return normalizeLower(order?.order_type) === 'subscription' ||
     normalizeLower(order?.source_channel) === 'subscription' ||
@@ -263,13 +280,15 @@ function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus
   const fulfillmentMethod = normalizeLower(order?.fulfillment_method || order?.fulfillment_type) || 'delivery';
   const address = addressFromOrder(order);
   const now = new Date().toISOString();
+  const deliveryDate = deliveryDateForOrder(order);
+  const productionDate = productionDateForOrder(order);
   const productionDemand = buildProductionDemand(lineItems);
   const fulfillment = {
     fulfillment_number: 1,
     status: 'pending',
     fulfillment_method: fulfillmentMethod,
-    delivery_date: deliveryDateForOrder(order),
-    production_date: sanitizeText(order?.production_date, 40),
+    delivery_date: deliveryDate,
+    production_date: productionDate,
     delivery_window_label: sanitizeText(order?.delivery_window_label, 120),
     line_items: lineItems,
   };
@@ -301,11 +320,14 @@ function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus
       customer_order_date: sanitizeText(order?.created_date || order?.customer_order_date || now, 80),
       requested_delivery_date: sanitizeText(order?.requested_delivery_date || order?.estimated_delivery_date, 40),
       selected_delivery_date: sanitizeText(order?.selected_delivery_date || order?.assigned_delivery_date || order?.estimated_delivery_date, 40),
-      assigned_delivery_date: deliveryDateForOrder(order),
-      production_date: sanitizeText(order?.production_date, 40),
+      assigned_delivery_date: deliveryDate,
+      production_date: productionDate,
       delivery_window_label: sanitizeText(order?.delivery_window_label, 120),
       delivery_window_start: sanitizeText(order?.delivery_window_start, 80),
       delivery_window_end: sanitizeText(order?.delivery_window_end, 80),
+      delivery_zone_key: sanitizeText(order?.delivery_zone_key, 80),
+      delivery_zone_name: sanitizeText(order?.delivery_zone_name, 120),
+      delivery_zone_type: sanitizeText(order?.delivery_zone_type, 80),
       customer_notes: sanitizeText(order?.customer_notes || order?.notes, 300),
       stripe_checkout_session_id: sanitizeText(order?.stripe_checkout_session_id, 160),
       stripe_payment_intent_id: sanitizeText(order?.stripe_payment_intent_id, 160),
@@ -720,9 +742,26 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
     };
   }
 
+  const taskItems = Array.isArray(outputs.record.line_items)
+    ? outputs.record.line_items.map(item => ({
+        product_id: item.shopify_line_item_id || '',
+        title: item.title || 'Item',
+        price: item.price ?? 0,
+        quantity: item.quantity ?? 0,
+      }))
+    : [];
+  const addressComplete = Boolean(
+    outputs.record.address_line1 &&
+    outputs.record.address_city &&
+    outputs.record.address_state &&
+    outputs.record.address_postal_code
+  );
+
   const draft = {
     order_id: shopifyOrder.id,
+    base44_order_id: outputs.record.base44_order_id,
     shopify_order_id: shopifyOrder.id,
+    native_shopify_order_id: shopifyOrder.id,
     shopify_order_number: shopifyOrder.shopify_order_number || outputs.record.shopify_order_number,
     order_number: shopifyOrder.shopify_order_number || outputs.record.shopify_order_number,
     customer_name: outputs.record.customer_name,
@@ -730,6 +769,9 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
     customer_phone: outputs.record.customer_phone,
     source_channel: outputs.record.source_channel,
     source_type: outputs.record.source_type || source,
+    task_source: 'processMay30NativeOrderOps',
+    created_from_native_ops: true,
+    order_type: outputs.record.order_type || 'one_time',
     fulfillment_type: outputs.record.fulfillment_method || 'delivery',
     fulfillment_number: 1,
     delivery_date: deliveryDate,
@@ -752,26 +794,23 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
     address_city: outputs.record.address_city,
     address_state: outputs.record.address_state,
     address_postal_code: outputs.record.address_postal_code,
-    items: Array.isArray(outputs.record.line_items)
-      ? outputs.record.line_items.map(item => ({
-          product_id: item.shopify_line_item_id || '',
-          title: item.title || 'Item',
-          price: item.price ?? 0,
-          quantity: item.quantity ?? 0,
-        }))
-      : [],
+    items: taskItems,
     items_summary: Array.isArray(outputs.record.line_items)
       ? outputs.record.line_items
           .slice(0, 8)
           .map(item => `${safeNumber(item.quantity, 0)}x ${sanitizeText(item.title, 80) || 'Item'}`)
           .join(', ')
       : '',
+    line_item_count: taskItems.length,
+    total_price: safeNumber(outputs.record.total_price, 0),
+    address_complete: addressComplete,
     status: 'pending',
     delivery_status: 'pending',
     production_status: outputs.record.production_status,
     payment_status: outputs.record.payment_status,
     sync_status: outputs.record.sync_status,
     schedule_source: 'native_customer_app_paid_order_mirror',
+    delivery_zone_key: outputs.record.delivery_zone_key,
     notes: sanitizeText(
       `Native May 30 delivery task mirror. Source=${source}; event=${eventType}; request=${requestId}; idempotency=${idempotencyKey}`,
       500,
@@ -786,39 +825,7 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
   }, '-created_date', 1).catch(() => []);
 
   if (Array.isArray(existing) && existing.length > 0) {
-    const updated = await base44.asServiceRole.entities.FulfillmentTask.update(existing[0].id, {
-      shopify_order_id: draft.shopify_order_id,
-      shopify_order_number: draft.shopify_order_number,
-      order_number: draft.order_number,
-      customer_name: draft.customer_name,
-      customer_email: draft.customer_email,
-      customer_phone: draft.customer_phone,
-      source_channel: draft.source_channel,
-      source_type: draft.source_type,
-      fulfillment_type: draft.fulfillment_type,
-      delivery_date: draft.delivery_date,
-      scheduled_date: draft.scheduled_date,
-      assigned_delivery_date: draft.assigned_delivery_date,
-      production_date: draft.production_date,
-      time_window: draft.time_window,
-      delivery_window_label: draft.delivery_window_label,
-      address: draft.address,
-      delivery_address: draft.delivery_address,
-      address_line1: draft.address_line1,
-      address_line2: draft.address_line2,
-      address_city: draft.address_city,
-      address_state: draft.address_state,
-      address_postal_code: draft.address_postal_code,
-      items: draft.items,
-      items_summary: draft.items_summary,
-      delivery_status: draft.delivery_status,
-      production_status: draft.production_status,
-      payment_status: draft.payment_status,
-      sync_status: draft.sync_status,
-      schedule_source: draft.schedule_source,
-      notes: draft.notes,
-    });
-    return { action: 'updated', record: updated };
+    return { action: 'deduped_existing_task_not_backfilled', record: existing[0] };
   }
 
   const created = await base44.asServiceRole.entities.FulfillmentTask.create(draft);
