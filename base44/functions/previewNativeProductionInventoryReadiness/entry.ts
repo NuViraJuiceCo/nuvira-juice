@@ -5,6 +5,7 @@ const MAX_BLOCKERS = 40;
 const MAX_TEXT = 160;
 const OZ_TO_G = 28.3495;
 const SUPPORTED_STOCK_UNITS = new Set(['oz', 'fl oz', 'floz', 'g', 'gram', 'grams', 'kg', 'lb', 'lbs', 'l', 'liter', 'liters', 'ml']);
+const TRACE_INGREDIENT_UNITS = new Set(['pinch', 'dash', 'trace', 'to taste']);
 
 function normalizeText(value) {
   return (value ?? '').toString().trim();
@@ -64,6 +65,12 @@ function numberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isTraceIngredientQuantity(ingredient) {
+  const quantity = numberOrNull(ingredient?.quantity_oz);
+  const unit = normalizeLower(ingredient?.unit);
+  return (quantity === 0 || quantity === null) && TRACE_INGREDIENT_UNITS.has(unit);
 }
 
 function roundQuantity(value, decimals = 3) {
@@ -600,6 +607,7 @@ function computeIngredientNeeds(demandRows, indexes) {
   const aggregate = new Map();
   const blockers = [];
   const warnings = [];
+  const traceRows = [];
 
   for (const row of demandRows) {
     const recipe = row.recipe;
@@ -610,6 +618,18 @@ function computeIngredientNeeds(demandRows, indexes) {
       if (!ingredientName) continue;
       const recipeQuantityOz = safeNumber(ingredient?.quantity_oz, 0);
       if (recipeQuantityOz <= 0) {
+        if (isTraceIngredientQuantity(ingredient)) {
+          warnings.push(`trace_recipe_ingredient_quantity_pending:${row.product_name}:${ingredientName}`);
+          warnings.push(`procurement_conversion_pending:${ingredientName}`);
+          traceRows.push({
+            ingredient_name: ingredientName,
+            recipe_source: sanitizeText(recipe.product_name, 120),
+            source_product: sanitizeText(row.product_name, 120),
+            source_line_item: sanitizeText(row.source_line_item, 120),
+            unit: sanitizeText(ingredient?.unit, 40) || 'trace',
+          });
+          continue;
+        }
         blockers.push(`unsupported_or_missing_recipe_quantity:${row.product_name}:${ingredientName}`);
         continue;
       }
@@ -671,12 +691,15 @@ function computeIngredientNeeds(demandRows, indexes) {
     if (yieldMatch.status === 'ambiguous') {
       blockers.push(`ambiguous_ingredient_yield:${value.ingredient_name}`);
     } else if (yieldMatch.status === 'missing') {
-      blockers.push(`missing_ingredient_yield:${value.ingredient_name}`);
+      warnings.push(`yield_details_pending:${value.ingredient_name}`);
+      warnings.push(`procurement_conversion_pending:${value.ingredient_name}`);
     } else {
       yieldRecord = yieldMatch.record;
       const ozPerPurchaseUnit = numberOrNull(yieldRecord?.oz_per_purchase_unit);
       if (!ozPerPurchaseUnit || ozPerPurchaseUnit <= 0) {
-        blockers.push(`invalid_ingredient_yield:${value.ingredient_name}`);
+        warnings.push(`yield_details_pending:${value.ingredient_name}`);
+        warnings.push(`invalid_ingredient_yield_details:${value.ingredient_name}`);
+        warnings.push(`procurement_conversion_pending:${value.ingredient_name}`);
       } else {
         const trimWasteFactor = numberOrNull(yieldRecord?.trim_waste_factor) ?? 1;
         const unitsPerCase = numberOrNull(yieldRecord?.units_per_case);
@@ -713,7 +736,47 @@ function computeIngredientNeeds(demandRows, indexes) {
       procurement_unit: procurementUnit,
       procurement_case_quantity: procurementCaseQuantity,
       procurement_basis: procurementBasis,
+      yield_details_pending: yieldMatch.status === 'missing' ||
+        (yieldMatch.status === 'matched' && (!numberOrNull(yieldRecord?.oz_per_purchase_unit) || numberOrNull(yieldRecord?.oz_per_purchase_unit) <= 0)),
+      procurement_conversion_ready: Boolean(procurementUnit && procurementQuantity !== null),
       status,
+    });
+  }
+
+  for (const trace of traceRows) {
+    const inventoryMatch = firstMatch(indexes.inventoryIndex, trace.ingredient_name);
+    const yieldMatch = firstMatch(indexes.yieldIndex, trace.ingredient_name);
+    const inventoryItem = inventoryMatch.status === 'matched' ? inventoryMatch.record : null;
+    const yieldRecord = yieldMatch.status === 'matched' ? yieldMatch.record : null;
+    if (inventoryMatch.status === 'ambiguous') blockers.push(`ambiguous_inventory_item:${trace.ingredient_name}`);
+    if (yieldMatch.status === 'ambiguous') blockers.push(`ambiguous_ingredient_yield:${trace.ingredient_name}`);
+    if (yieldMatch.status === 'missing') warnings.push(`yield_details_pending:${trace.ingredient_name}`);
+    ingredientRows.push({
+      ingredient_name: trace.ingredient_name,
+      proposed_quantity: 0,
+      unit: trace.unit,
+      recipe_source: trace.recipe_source,
+      source_products: [trace.source_product].filter(Boolean),
+      source_line_items: [trace.source_line_item].filter(Boolean),
+      inventory_item_id: sanitizeId(inventoryItem?.id, 120),
+      inventory_item_name: sanitizeText(inventoryItem?.ingredient, 120),
+      inventory_unit: sanitizeText(inventoryItem?.unit, 40),
+      current_stock: numberOrNull(inventoryItem?.stock),
+      projected_stock: numberOrNull(inventoryItem?.stock),
+      procurement_needed: false,
+      shortfall_quantity: 0,
+      ingredient_yield_id: sanitizeId(yieldRecord?.id, 120),
+      ingredient_yield_name: sanitizeText(yieldRecord?.ingredient_name, 120),
+      purchase_unit: sanitizeText(yieldRecord?.purchase_unit, 40),
+      oz_per_purchase_unit: numberOrNull(yieldRecord?.oz_per_purchase_unit),
+      procurement_quantity: null,
+      procurement_unit: null,
+      procurement_case_quantity: null,
+      procurement_basis: 'trace_quantity_pending',
+      yield_details_pending: yieldMatch.status !== 'matched',
+      procurement_conversion_ready: false,
+      trace_quantity_pending: true,
+      status: 'trace_quantity_pending',
     });
   }
 
@@ -823,6 +886,16 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
   const ambiguousRecipeItems = recipeAttached.recipeRows.filter(row => row.recipe_match_status === 'ambiguous').map(row => row.product_name).filter(Boolean);
   const missingInventoryItems = ingredients.ingredientRows.filter(row => !row.inventory_item_id).map(row => row.ingredient_name).filter(Boolean);
   const missingYieldItems = ingredients.ingredientRows.filter(row => !row.ingredient_yield_id).map(row => row.ingredient_name).filter(Boolean);
+  const pendingYieldItems = ingredients.ingredientRows
+    .filter(row => row.yield_details_pending || !row.ingredient_yield_id)
+    .map(row => row.ingredient_name)
+    .filter(Boolean);
+  const traceIngredientItems = ingredients.ingredientRows
+    .filter(row => row.trace_quantity_pending)
+    .map(row => row.ingredient_name)
+    .filter(Boolean);
+  const procurementConversionReady = pendingYieldItems.length === 0 &&
+    !ingredients.ingredientRows.some(row => row.procurement_needed && row.procurement_quantity === null);
   const shortfallItems = ingredients.ingredientRows.filter(row => row.procurement_needed).map(row => ({
     ingredient_name: row.ingredient_name,
     shortfall_quantity: row.shortfall_quantity,
@@ -864,11 +937,18 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
       .slice(0, DEFAULT_MAX_ROWS),
     missing_inventory_items: [...new Set(missingInventoryItems)].slice(0, DEFAULT_MAX_ROWS),
     missing_yield_items: [...new Set(missingYieldItems)].slice(0, DEFAULT_MAX_ROWS),
+    pending_yield_items: [...new Set(pendingYieldItems)].slice(0, DEFAULT_MAX_ROWS),
+    yield_details_pending: pendingYieldItems.length > 0,
+    trace_ingredient_items: [...new Set(traceIngredientItems)].slice(0, DEFAULT_MAX_ROWS),
     inventory_shortfall_items: shortfallItems.slice(0, DEFAULT_MAX_ROWS),
     existing_production_batch_context_rows: existingBatchRows,
     production_ready: productionBlockers.length === 0 && recipeAttached.demandRows.length > 0,
     inventory_calculation_ready: inventoryBlockers.length === 0 && ingredients.ingredientRows.length > 0,
-    inventory_deduction_ready: productionBlockers.length === 0 && inventoryBlockers.length === 0 && !ingredients.ingredientRows.some(row => row.procurement_needed),
+    procurement_conversion_ready: procurementConversionReady,
+    inventory_deduction_ready: productionBlockers.length === 0 &&
+      inventoryBlockers.length === 0 &&
+      procurementConversionReady &&
+      !ingredients.ingredientRows.some(row => row.procurement_needed),
     purchase_order_ready: false,
     hub_fallback_required: true,
     classification: uniqueBlockers.length === 0

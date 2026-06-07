@@ -626,6 +626,8 @@ function NativeProductionInventoryReadinessPreview({
   const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
   const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
   const safety = preview?.safety || {};
+  const pendingYieldItems = Array.isArray(preview?.pending_yield_items) ? preview.pending_yield_items : [];
+  const traceIngredientItems = Array.isArray(preview?.trace_ingredient_items) ? preview.trace_ingredient_items : [];
   const exactOrderNumber = orderNumber?.trim();
 
   return (
@@ -689,6 +691,9 @@ function NativeProductionInventoryReadinessPreview({
             <StatusChip value={preview.production_ready ? 'Production demand ready' : 'Production demand blocked'} />
             <StatusChip value={preview.inventory_calculation_ready ? 'Inventory calculation ready' : 'Inventory calculation blocked'} />
             <StatusChip value={preview.inventory_deduction_ready ? 'Inventory deduction theoretically ready' : 'Inventory deduction held'} />
+            <StatusChip value={preview.procurement_conversion_ready ? 'Procurement conversion ready' : 'Procurement conversion pending'} />
+            {pendingYieldItems.length > 0 && <StatusChip value={`Yield details pending: ${pendingYieldItems.length}`} />}
+            {traceIngredientItems.length > 0 && <StatusChip value={`Trace ingredients pending: ${traceIngredientItems.length}`} />}
             <StatusChip value={preview.procurement_needed ? 'Procurement needed' : 'Procurement not needed'} />
             <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
             <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />

@@ -27,6 +27,7 @@ function loadFunctions(relativePath, exportNames, env = {}) {
 const fns = loadFunctions('base44/functions/previewNativeProductionMasterDataParity/entry.ts', [
   'getLookup',
   'safeLineItems',
+  'hubLookupNamesForLineItems',
   'buildParityReport',
   'buildRequiredRow',
   'recommendedNextAction',
@@ -59,6 +60,23 @@ const nativeOrder = { id: 'native_order_001', shopify_order_number: 'NV-MPZNKGNT
 const task = { id: 'task_001', native_shopify_order_id: 'native_order_001', order_number: 'NV-MPZNKGNT' };
 const lineItems = fns.safeLineItems({ body: {}, customerOrder, nativeOrder, task });
 assert.equal(lineItems.length, 4);
+
+const expandedHubNames = fns.hubLookupNamesForLineItems(lineItems, [
+  {
+    bundle_name: 'The NuVira Trio',
+    components: [
+      { product_name: 'Re-Nu', quantity: 1 },
+      { product_name: 'Aura', quantity: 1 },
+      { product_name: 'Oasis', quantity: 1 },
+    ],
+  },
+]);
+assert.ok(expandedHubNames.includes('The NuVira Trio'));
+assert.ok(expandedHubNames.includes('NuVira Trio'));
+assert.ok(expandedHubNames.includes('Re-Nu'));
+assert.ok(expandedHubNames.includes('Aura'));
+assert.ok(expandedHubNames.includes('Oasis'));
+assert.equal(expandedHubNames.includes('ReNu'), false);
 
 const hubData = {
   success: true,
@@ -166,6 +184,49 @@ assert.equal(missingYieldDeferred.inventory_deduction_ready, false);
 assert.equal(missingYieldDeferred.yield_details_pending, true);
 assert.equal(JSON.stringify(missingYieldDeferred.pending_yield_items), JSON.stringify(['Pineapple']));
 assert.equal(missingYieldDeferred.mirror_blockers.length, 0);
+
+const nativeAliasBundleHubComponents = fns.buildParityReport({
+  lookup,
+  customerOrder,
+  nativeOrder,
+  task,
+  lineItems: [{ title: 'The NuVira Trio', quantity: 1 }],
+  nativeData: {
+    recipes: [],
+    bundles: [{ id: 'native_bundle_trio', bundle_name: 'The NuVira Trio', components: [{ product_name: 'Re-Nu', quantity: 1 }, { product_name: 'Aura', quantity: 1 }, { product_name: 'Oasis', quantity: 1 }] }],
+    inventoryItems: [],
+    ingredientYields: [],
+  },
+  hubResult: {
+    ok: true,
+    data: {
+      ...hubData,
+      bundle_matches: [
+        { requested_name: 'The NuVira Trio', normalized_name: 'the nuvira trio', status: 'missing', count: 0, matches: [] },
+        { requested_name: 'NuVira Trio', normalized_name: 'nuvira trio', status: 'matched', count: 1, matches: [{ id: '69e8f55b06e17fbd88dbbc0c', name: 'NuVira Trio', components: [{ product_name: 'Re-Nu', quantity: 1 }, { product_name: 'Aura', quantity: 1 }, { product_name: 'Oasis', quantity: 1 }], field_compatibility_status: 'compatible' }] },
+      ],
+      component_recipe_matches: [
+        { requested_name: 'Re-Nu', normalized_name: 're nu', status: 'matched', count: 1, matches: [{ id: 'hub_recipe_renu', name: 'Re-Nu', ingredients: [{ ingredient_name: 'Cucumber', quantity_oz: 3 }], field_compatibility_status: 'compatible' }] },
+        { requested_name: 'Aura', normalized_name: 'aura', status: 'matched', count: 1, matches: [{ id: 'hub_recipe_aura', name: 'Aura', ingredients: [{ ingredient_name: 'Carrot', quantity_oz: 3 }], field_compatibility_status: 'compatible' }] },
+        { requested_name: 'Oasis', normalized_name: 'oasis', status: 'matched', count: 1, matches: [{ id: 'hub_recipe_oasis', name: 'Oasis', ingredients: [{ ingredient_name: 'Watermelon', quantity_oz: 3 }], field_compatibility_status: 'compatible' }] },
+      ],
+      inventory_matches: [
+        { requested_name: 'Cucumber', normalized_name: 'cucumber', status: 'missing', count: 0, matches: [] },
+        { requested_name: 'Carrot', normalized_name: 'carrot', status: 'missing', count: 0, matches: [] },
+        { requested_name: 'Watermelon', normalized_name: 'watermelon', status: 'missing', count: 0, matches: [] },
+      ],
+      yield_matches: [
+        { requested_name: 'Cucumber', normalized_name: 'cucumber', status: 'missing', count: 0, matches: [] },
+        { requested_name: 'Carrot', normalized_name: 'carrot', status: 'missing', count: 0, matches: [] },
+        { requested_name: 'Watermelon', normalized_name: 'watermelon', status: 'missing', count: 0, matches: [] },
+      ],
+    },
+  },
+});
+assert.equal(nativeAliasBundleHubComponents.required_master_data_rows.some(row => row.required_type === 'recipe' && row.required_name === 'Re-Nu' && row.hub_match_status === 'matched'), true);
+assert.equal(nativeAliasBundleHubComponents.required_master_data_rows.some(row => row.required_type === 'recipe' && row.required_name === 'Aura' && row.hub_match_status === 'matched'), true);
+assert.equal(nativeAliasBundleHubComponents.required_master_data_rows.some(row => row.required_type === 'recipe' && row.required_name === 'Oasis' && row.hub_match_status === 'matched'), true);
+assert.equal(nativeAliasBundleHubComponents.mirror_blockers.some(blocker => blocker.includes('Re-Nu') || blocker.includes('Aura') || blocker.includes('Oasis')), false);
 
 const existingNativeRecipe = fns.buildParityReport({
   lookup,
