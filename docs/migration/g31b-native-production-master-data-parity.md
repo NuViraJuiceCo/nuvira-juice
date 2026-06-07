@@ -71,18 +71,35 @@ Hub `Product` differs from Customer App `Product`:
 
 Therefore Product is treated as contextual and not a blocker for this master-data parity preview.
 
-## InventoryItem policy
+## InventoryItem / yield policy
 
 `InventoryItem` has two meanings:
 
 1. Operational master data: ingredient name, unit, category, supplier, reorder fields.
 2. Live stock state: current `stock` quantity.
 
-G31B exposes Hub stock as admin-only context but marks inventory rows with:
+G31E owner clarification sets NuVira's launch policy as make-to-order:
 
-- `inventory_stock_is_live_state_seed_decision_required`
+- `inventory_seed_policy: NON_STOCK_MASTER_DATA_ONLY`
+- Customer App stock quantities are seeded or kept at `0`.
+- Hub live stock is not mirrored as authoritative Customer App stock.
+- Stock shortfall is procurement context, not a production-demand blocker.
+- Missing detailed purchase/yield conversion values are deferred.
 
-A future mirror/import phase must explicitly decide whether to seed stock from Hub, seed stock at zero, or hold stock seeding for a separate inventory migration.
+Therefore missing `IngredientYield` purchase-conversion details can return warnings such as `yield_details_pending` and `procurement_conversion_pending` while still allowing recipe/product demand visibility and non-stock master-data mirror readiness.
+
+Missing yield details still block:
+
+- inventory deduction
+- purchase-unit conversion
+- purchase order automation
+
+Missing yield details do **not** block:
+
+- recipe matching
+- product demand rows
+- ingredient needs in recipe units / ounces
+- basic non-stock master-data mirror/import planning
 
 ## Current target
 
@@ -99,7 +116,8 @@ G31B uses the exact order line items, compares native master data counts to Hub 
 
 The preview classifies the next action as one of:
 
-- `ready_for_master_data_mirror`
+- `ready_for_non_stock_master_data_mirror`
+- `ready_with_deferred_yield_details`
 - `schema_gap_blocks_mirror`
 - `hub_master_data_missing`
 - `ambiguous_hub_match`
@@ -107,4 +125,4 @@ The preview classifies the next action as one of:
 - `customer_app_schema_missing`
 - `hold`
 
-A `ready_for_master_data_mirror` result means the next phase can propose a gated, exact-scope master-data seed/mirror preview and then a separately approved live seed. It does not approve a live seed by itself.
+A `ready_for_non_stock_master_data_mirror` or `ready_with_deferred_yield_details` result means the next phase can propose a gated, exact-scope non-stock master-data seed/mirror preview and then a separately approved live seed. It does not approve a live seed by itself.

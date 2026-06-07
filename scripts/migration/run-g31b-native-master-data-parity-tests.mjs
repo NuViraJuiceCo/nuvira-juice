@@ -107,9 +107,15 @@ assert.equal(report.missing_native_recipes.includes('Pineapple Juice'), true);
 assert.equal(report.missing_native_inventory_items.includes('Pineapple'), true);
 assert.equal(report.missing_native_ingredient_yields.includes('Pineapple'), true);
 assert.equal(report.mirror_blockers.length, 0);
-assert.equal(report.recommended_next_action, 'ready_for_master_data_mirror');
+assert.equal(report.recommended_next_action, 'ready_for_non_stock_master_data_mirror');
 assert.equal(report.native_production_readiness_after_mirror, true);
-assert.ok(report.warnings.includes('inventory_stock_is_live_state_seed_decision_required'));
+assert.equal(report.non_stock_master_data_seed_ready, true);
+assert.equal(report.production_master_data_ready, true);
+assert.equal(report.procurement_conversion_ready, true);
+assert.equal(report.inventory_deduction_ready, false);
+assert.equal(report.inventory_seed_policy, 'NON_STOCK_MASTER_DATA_ONLY');
+assert.equal(report.yield_policy, 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES');
+assert.ok(report.warnings.includes('inventory_seed_policy_non_stock_master_data_only'));
 
 const missingHubRecipe = fns.buildParityReport({
   lookup,
@@ -120,8 +126,9 @@ const missingHubRecipe = fns.buildParityReport({
   nativeData: { recipes: [], bundles: [], inventoryItems: [], ingredientYields: [] },
   hubResult: { ok: true, data: { ...hubData, recipe_matches: [{ requested_name: 'Pineapple Juice', normalized_name: 'pineapple juice', status: 'missing', count: 0, matches: [] }], component_recipe_matches: [], inventory_matches: [], yield_matches: [] } },
 });
-assert.equal(missingHubRecipe.recommended_next_action, 'hub_master_data_missing');
-assert.ok(missingHubRecipe.mirror_blockers.includes('missing_hub_recipe:Pineapple Juice'));
+assert.equal(missingHubRecipe.recommended_next_action, 'patch_remaining_master_data_blockers');
+assert.ok(missingHubRecipe.blockers.includes('missing_hub_recipe:Pineapple Juice'));
+assert.ok(missingHubRecipe.mirror_blockers.includes('hub_missing:recipe:Pineapple Juice'));
 
 const ambiguousHubBundle = fns.buildParityReport({
   lookup,
@@ -132,8 +139,33 @@ const ambiguousHubBundle = fns.buildParityReport({
   nativeData: { recipes: [], bundles: [], inventoryItems: [], ingredientYields: [] },
   hubResult: { ok: true, data: { ...hubData, bundle_matches: [{ requested_name: 'The NuVira Trio', normalized_name: 'the nuvira trio', status: 'ambiguous', count: 2, matches: [{ id: 'a', name: 'The NuVira Trio' }, { id: 'b', name: 'The NuVira Trio' }] }], component_recipe_matches: [], inventory_matches: [], yield_matches: [] } },
 });
-assert.equal(ambiguousHubBundle.recommended_next_action, 'ambiguous_hub_match');
-assert.ok(ambiguousHubBundle.mirror_blockers.includes('ambiguous_hub_bundle:The NuVira Trio'));
+assert.equal(ambiguousHubBundle.recommended_next_action, 'patch_remaining_master_data_blockers');
+assert.ok(ambiguousHubBundle.blockers.includes('ambiguous_hub_bundle:The NuVira Trio'));
+assert.ok(ambiguousHubBundle.mirror_blockers.includes('manual_mapping_required:bundle:The NuVira Trio'));
+
+const missingYieldDeferred = fns.buildParityReport({
+  lookup,
+  customerOrder,
+  nativeOrder,
+  task,
+  lineItems: [{ title: 'Pineapple Juice', quantity: 1 }],
+  nativeData: { recipes: [], bundles: [], inventoryItems: [], ingredientYields: [] },
+  hubResult: {
+    ok: true,
+    data: {
+      ...hubData,
+      yield_matches: [{ requested_name: 'Pineapple', normalized_name: 'pineapple', status: 'missing', count: 0, matches: [] }],
+    },
+  },
+});
+assert.equal(missingYieldDeferred.recommended_next_action, 'ready_with_deferred_yield_details');
+assert.equal(missingYieldDeferred.production_master_data_ready, true);
+assert.equal(missingYieldDeferred.non_stock_master_data_seed_ready, true);
+assert.equal(missingYieldDeferred.procurement_conversion_ready, false);
+assert.equal(missingYieldDeferred.inventory_deduction_ready, false);
+assert.equal(missingYieldDeferred.yield_details_pending, true);
+assert.equal(JSON.stringify(missingYieldDeferred.pending_yield_items), JSON.stringify(['Pineapple']));
+assert.equal(missingYieldDeferred.mirror_blockers.length, 0);
 
 const existingNativeRecipe = fns.buildParityReport({
   lookup,

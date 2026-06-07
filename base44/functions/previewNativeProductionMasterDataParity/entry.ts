@@ -4,6 +4,18 @@ const DEFAULT_MAX_ROWS = 120;
 const HUB_FETCH_TIMEOUT_MS = 6000;
 const MAX_BLOCKERS = 60;
 const MAX_TEXT = 160;
+const INVENTORY_SEED_POLICY = 'NON_STOCK_MASTER_DATA_ONLY';
+const YIELD_POLICY = 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES';
+const APPROVED_ALIAS_MAPPINGS = [
+  {
+    source_name: 'The NuVira Trio',
+    source_type: 'bundle',
+    target_type: 'bundle',
+    target_hub_name: 'NuVira Trio',
+    target_hub_id: '69e8f55b06e17fbd88dbbc0c',
+    approval_phrase: 'APPROVE ALIAS The NuVira Trio -> NuVira Trio',
+  },
+];
 
 function normalizeText(value) {
   return (value ?? '').toString().trim();
@@ -386,6 +398,108 @@ function hubRecordForRequiredRow(hubData, row) {
   return match?.status === 'matched' ? match.matches?.[0] || null : null;
 }
 
+function approvedAliasMappingForRow(row, hubData) {
+  if (!row || row.required_type !== 'bundle') return null;
+  if (!hubData) return null;
+  const mapping = APPROVED_ALIAS_MAPPINGS.find(item =>
+    item.source_type === row.required_type &&
+    normalizeKey(item.source_name) === normalizeKey(row.required_name)
+  );
+  if (!mapping) return null;
+  const directHubMatch = hubMatchForType(hubData, row.required_type, row.required_name);
+  if (directHubMatch.status === 'ambiguous') return null;
+  if (directHubMatch.status === 'matched') {
+    const directRecord = directHubMatch.matches?.[0] || null;
+    const directId = safeId(directRecord?.id);
+    const directName = safeText(directRecord?.name, 120);
+    if (directId !== mapping.target_hub_id && normalizeKey(directName) !== normalizeKey(mapping.target_hub_name)) {
+      return null;
+    }
+  }
+  const candidate = aliasCandidateForRow(hubData, row);
+  const candidateRecord = candidate?.candidate || null;
+  const candidateId = safeId(candidateRecord?.id);
+  const candidateName = safeText(candidateRecord?.name, 120);
+  if (candidateRecord && candidateId !== mapping.target_hub_id && normalizeKey(candidateName) !== normalizeKey(mapping.target_hub_name)) {
+    return null;
+  }
+  return {
+    ...mapping,
+    candidate: candidateRecord || {
+      id: mapping.target_hub_id,
+      name: mapping.target_hub_name,
+    },
+    alias_confidence: numberOrNull(candidate?.confidence) ?? 0.9,
+    alias_match_kind: candidate?.match_kind || 'owner_approved_alias',
+  };
+}
+
+function isMissingYieldRow(row) {
+  return row?.required_type === 'yield' && (row.blockers || []).some(blocker => blocker.startsWith('missing_hub_yield'));
+}
+
+function applyApprovedPoliciesToRequiredRow(row, hubData) {
+  if (!row) return row;
+  let blockers = [...(row.blockers || [])];
+  const warnings = [...(row.warnings || [])];
+  const policy = {};
+  let nextRow = { ...row };
+
+  const approvedAlias = approvedAliasMappingForRow(row, hubData);
+  if (approvedAlias) {
+    blockers = blockers.filter(blocker => !blocker.startsWith('missing_hub_bundle'));
+    warnings.push('approved_alias_mapping_applied');
+    policy.approved_alias_mapping = {
+      source_name: approvedAlias.source_name,
+      source_type: approvedAlias.source_type,
+      target_type: approvedAlias.target_type,
+      target_hub_name: approvedAlias.target_hub_name,
+      target_hub_id: approvedAlias.target_hub_id,
+      approval_phrase: approvedAlias.approval_phrase,
+    };
+    nextRow = {
+      ...nextRow,
+      hub_match_status: 'approved_alias',
+      hub_id: approvedAlias.target_hub_id,
+      hub_name: approvedAlias.target_hub_name,
+      field_compatibility_status: 'approved_alias_mapping',
+      mirror_readiness: 'ready_to_mirror_via_approved_alias',
+    };
+  }
+
+  if (isMissingYieldRow(row)) {
+    blockers = blockers.filter(blocker => !blocker.startsWith('missing_hub_yield'));
+    warnings.push('yield_details_pending');
+    warnings.push('procurement_conversion_pending');
+    warnings.push('inventory_deduction_held_pending_yield_policy');
+    warnings.push('purchase_order_automation_held_pending_yield_policy');
+    policy.yield_policy = YIELD_POLICY;
+    nextRow = {
+      ...nextRow,
+      field_compatibility_status: 'deferred_yield_details',
+      mirror_readiness: 'yield_details_deferred',
+    };
+  }
+
+  if (row.required_type === 'inventory' && row.mirror_readiness?.startsWith('ready_to_mirror')) {
+    warnings.push('inventory_seed_policy_non_stock_master_data_only');
+    warnings.push('stock_seeded_or_kept_zero_for_make_to_order');
+    warnings.push('inventory_deduction_held_pending_stock_yield_policy');
+    policy.inventory_seed_policy = INVENTORY_SEED_POLICY;
+    nextRow = {
+      ...nextRow,
+      mirror_readiness: 'ready_to_mirror_non_stock_master_data',
+    };
+  }
+
+  return {
+    ...nextRow,
+    blockers: [...new Set(blockers)],
+    warnings: [...new Set(warnings)],
+    ...policy,
+  };
+}
+
 function seedPreviewPayload(type, sourceRecord) {
   if (!sourceRecord) return null;
   if (type === 'bundle') {
@@ -479,25 +593,82 @@ function buildSeedPacketRow({ row, hubData }) {
   }
 
   if (row.mirror_readiness?.startsWith('ready_to_mirror') && hubRecord) {
-    const proposedAction = row.required_type === 'inventory'
-      ? 'mirror_hub_inventory_item_with_explicit_stock_seed_policy'
-      : `mirror_hub_${row.required_type}`;
+    if (row.required_type === 'inventory') {
+      const payload = seedPreviewPayload(row.required_type, hubRecord) || {};
+      return {
+        ...base,
+        status: 'mirror_ready_non_stock_master_data',
+        proposed_action: 'mirror_hub_inventory_item_non_stock_metadata_seed_zero_stock',
+        seed_ready: true,
+        hub_source_id: safeId(hubRecord.id),
+        hub_source_name: safeText(hubRecord.name, 120),
+        seed_payload_preview: {
+          ...payload,
+          inventory_seed_policy: INVENTORY_SEED_POLICY,
+          stock_seed_quantity: 0,
+          hub_stock_not_authoritative_for_customer_app: true,
+        },
+        inventory_seed_policy: INVENTORY_SEED_POLICY,
+        inventory_deduction_ready: false,
+        warnings: [...new Set([...(row.warnings || []), 'inventory_deduction_held_pending_stock_yield_policy'])],
+      };
+    }
     return {
       ...base,
-      status: row.required_type === 'inventory' ? 'mirror_ready_with_stock_seed_decision' : 'mirror_ready',
-      proposed_action: proposedAction,
-      seed_ready: row.required_type !== 'inventory',
+      status: 'mirror_ready',
+      proposed_action: `mirror_hub_${row.required_type}`,
+      seed_ready: true,
       hub_source_id: safeId(hubRecord.id),
       hub_source_name: safeText(hubRecord.name, 120),
       seed_payload_preview: seedPreviewPayload(row.required_type, hubRecord),
-      warnings: [
-        ...(row.warnings || []),
-        ...(row.required_type === 'inventory' ? ['inventory_stock_is_live_state_seed_decision_required'] : []),
-      ],
+      warnings: row.warnings || [],
     };
   }
 
-  if (aliasCandidate?.candidate) {
+  const approvedAlias = approvedAliasMappingForRow(row, hubData);
+  if (approvedAlias) {
+    const candidate = approvedAlias.candidate || {};
+    return {
+      ...base,
+      status: 'approved_alias_mapping',
+      proposed_action: 'apply_approved_bundle_alias_mapping',
+      seed_ready: true,
+      hub_source_id: approvedAlias.target_hub_id,
+      hub_source_name: approvedAlias.target_hub_name,
+      alias_candidate_type: approvedAlias.target_type,
+      alias_match_kind: approvedAlias.alias_match_kind,
+      alias_confidence: approvedAlias.alias_confidence,
+      alias_candidate_preview: seedPreviewPayload('bundle', candidate) || {
+        name: approvedAlias.target_hub_name,
+        id: approvedAlias.target_hub_id,
+      },
+      approved_alias_mapping: {
+        source_name: approvedAlias.source_name,
+        source_type: approvedAlias.source_type,
+        target_type: approvedAlias.target_type,
+        target_hub_name: approvedAlias.target_hub_name,
+        target_hub_id: approvedAlias.target_hub_id,
+        approval_phrase: approvedAlias.approval_phrase,
+      },
+      warnings: [...new Set([...(row.warnings || []), 'approved_alias_mapping_applied'])],
+    };
+  }
+
+  if (row.required_type === 'yield' && row.mirror_readiness === 'yield_details_deferred') {
+    return {
+      ...base,
+      status: 'yield_details_deferred',
+      proposed_action: 'defer_purchase_conversion_values',
+      seed_ready: true,
+      yield_policy: YIELD_POLICY,
+      procurement_conversion_ready: false,
+      inventory_deduction_ready: false,
+      purchase_order_automation_ready: false,
+      warnings: [...new Set([...(row.warnings || []), 'yield_details_pending', 'procurement_conversion_pending'])],
+    };
+  }
+
+  if (aliasCandidate?.candidate && row.required_type !== 'yield') {
     const candidate = aliasCandidate.candidate;
     const candidateType = aliasCandidate.candidate_type || row.required_type;
     return {
@@ -529,11 +700,14 @@ function buildSeedPacketRow({ row, hubData }) {
   if ((row.blockers || []).some(blocker => blocker.startsWith('missing_hub_yield'))) {
     return {
       ...base,
-      status: 'owner_input_required',
-      proposed_action: 'create_hub_yield_later_from_owner_supplied_values',
-      seed_ready: false,
-      owner_input_fields_required: ownerInputFieldsForRow(row),
-      warnings: [...(row.warnings || []), 'yield_values_not_inferred'],
+      status: 'yield_details_deferred',
+      proposed_action: 'defer_purchase_conversion_values',
+      seed_ready: true,
+      yield_policy: YIELD_POLICY,
+      procurement_conversion_ready: false,
+      inventory_deduction_ready: false,
+      purchase_order_automation_ready: false,
+      warnings: [...new Set([...(row.warnings || []), 'yield_details_pending', 'procurement_conversion_pending'])],
     };
   }
 
@@ -565,14 +739,20 @@ function buildSeedPacketRow({ row, hubData }) {
 }
 
 function buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult }) {
-  const seedPacketRows = (requiredRows || []).map(row => buildSeedPacketRow({ row, hubData }));
+  const policyAdjustedRows = (requiredRows || []).map(row => applyApprovedPoliciesToRequiredRow(row, hubData));
+  const seedPacketRows = policyAdjustedRows.map(row => buildSeedPacketRow({ row, hubData }));
   const blockedRows = seedPacketRows.filter(row => row.status === 'blocked' || row.status === 'hub_missing');
   const manualMappingRows = seedPacketRows.filter(row => row.status === 'manual_mapping_required');
   const ownerInputRows = seedPacketRows.filter(row => row.status === 'owner_input_required' || (row.owner_input_fields_required || []).length > 0);
   const hubMissingRows = seedPacketRows.filter(row => row.status === 'hub_missing' || row.status === 'owner_input_required');
-  const aliasRows = seedPacketRows.filter(row => row.alias_candidate_type);
-  const mirrorReadyRows = seedPacketRows.filter(row => row.status === 'mirror_ready' || row.status === 'mirror_ready_with_stock_seed_decision');
-  const inventoryPolicyRows = seedPacketRows.filter(row => row.entity_type === 'inventory' && row.status === 'mirror_ready_with_stock_seed_decision');
+  const aliasRows = seedPacketRows.filter(row => row.alias_candidate_type || row.approved_alias_mapping);
+  const pendingYieldRows = seedPacketRows.filter(row => row.status === 'yield_details_deferred');
+  const mirrorReadyRows = seedPacketRows.filter(row => [
+    'mirror_ready',
+    'mirror_ready_non_stock_master_data',
+    'approved_alias_mapping',
+    'yield_details_deferred',
+  ].includes(row.status));
   const blockers = [
     ...blockedRows.map(row => `${row.status}:${row.entity_type}:${row.customer_app_target_name}`),
     ...ownerInputRows.map(row => `owner_input_required:${row.entity_type}:${row.customer_app_target_name}`),
@@ -581,25 +761,43 @@ function buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult }) 
   ].filter(Boolean);
   const warnings = [
     ...new Set(seedPacketRows.flatMap(row => row.warnings || [])),
-    ...(inventoryPolicyRows.length > 0 ? ['inventory_stock_seed_policy_required_before_import'] : []),
+    ...(pendingYieldRows.length > 0 ? ['yield_details_pending', 'procurement_conversion_pending'] : []),
+    'inventory_deduction_held_pending_stock_yield_policy',
+    'purchase_order_automation_held_pending_yield_policy',
   ];
 
-  const seedPacketReady = seedPacketRows.length > 0 &&
-    blockers.length === 0 &&
-    inventoryPolicyRows.length === 0 &&
-    seedPacketRows.every(row => row.status === 'mirror_ready' || row.status === 'already_native');
+  const productionMasterDataReady = policyAdjustedRows.length > 0 && blockers.length === 0;
+  const nonStockMasterDataSeedReady = productionMasterDataReady && seedPacketRows.every(row => [
+    'mirror_ready',
+    'mirror_ready_non_stock_master_data',
+    'approved_alias_mapping',
+    'yield_details_deferred',
+    'already_native',
+  ].includes(row.status));
+  const procurementConversionReady = pendingYieldRows.length === 0 && seedPacketRows
+    .filter(row => row.entity_type === 'yield')
+    .every(row => row.status === 'mirror_ready' || row.status === 'already_native');
+  const inventoryDeductionReady = false;
 
   let nextAction = 'hold';
   if (!hubResult.ok) nextAction = 'hold';
-  else if (hubMissingRows.length > 0 || ownerInputRows.length > 0) nextAction = 'create_update_hub_master_data_first';
-  else if (manualMappingRows.length > 0) nextAction = 'patch_mappings_or_approve_aliases';
-  else if (inventoryPolicyRows.length > 0) nextAction = 'decide_inventory_stock_seed_policy';
-  else if (seedPacketReady) nextAction = 'ready_for_customer_app_master_data_mirror_approval';
+  else if (blockers.length > 0) nextAction = 'patch_remaining_master_data_blockers';
+  else if (pendingYieldRows.length > 0) nextAction = 'ready_with_deferred_yield_details';
+  else if (nonStockMasterDataSeedReady) nextAction = 'ready_for_non_stock_master_data_mirror';
 
   return {
-    required_rows: requiredRows.length,
+    required_rows: policyAdjustedRows.length,
     mirror_ready_row_count: mirrorReadyRows.length,
-    seed_packet_ready: seedPacketReady,
+    seed_packet_ready: nonStockMasterDataSeedReady,
+    non_stock_master_data_seed_ready: nonStockMasterDataSeedReady,
+    production_master_data_ready: productionMasterDataReady,
+    procurement_conversion_ready: procurementConversionReady,
+    inventory_deduction_ready: inventoryDeductionReady,
+    yield_details_pending: pendingYieldRows.length > 0,
+    pending_yield_items: compactNames(pendingYieldRows.map(row => row.customer_app_target_name)),
+    approved_alias_mappings: APPROVED_ALIAS_MAPPINGS.map(mapping => ({ ...mapping })),
+    inventory_seed_policy: INVENTORY_SEED_POLICY,
+    yield_policy: YIELD_POLICY,
     seed_packet_rows: seedPacketRows.slice(0, DEFAULT_MAX_ROWS),
     blocked_rows: blockedRows.slice(0, DEFAULT_MAX_ROWS),
     manual_mapping_required_rows: manualMappingRows.slice(0, DEFAULT_MAX_ROWS),
@@ -609,19 +807,29 @@ function buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult }) 
     blockers: [...new Set(blockers)].slice(0, MAX_BLOCKERS),
     warnings: [...new Set(warnings)].slice(0, MAX_BLOCKERS),
     next_action: nextAction,
+    policy_adjusted_required_rows: policyAdjustedRows.slice(0, DEFAULT_MAX_ROWS),
     master_data_gap_closure_preview: {
       dry_run: true,
       writes_performed: false,
-      seed_packet_ready: seedPacketReady,
+      seed_packet_ready: nonStockMasterDataSeedReady,
+      non_stock_master_data_seed_ready: nonStockMasterDataSeedReady,
+      production_master_data_ready: productionMasterDataReady,
+      procurement_conversion_ready: procurementConversionReady,
+      inventory_deduction_ready: inventoryDeductionReady,
+      yield_details_pending: pendingYieldRows.length > 0,
+      pending_yield_items: compactNames(pendingYieldRows.map(row => row.customer_app_target_name)),
+      approved_alias_mappings: APPROVED_ALIAS_MAPPINGS.map(mapping => ({ ...mapping })),
+      inventory_seed_policy: INVENTORY_SEED_POLICY,
+      yield_policy: YIELD_POLICY,
       next_action: nextAction,
-      required_rows: requiredRows.length,
+      required_rows: policyAdjustedRows.length,
       mirror_ready_rows: mirrorReadyRows.length,
       blocked_rows: blockedRows.length,
       manual_mapping_required_rows: manualMappingRows.length,
       owner_input_required_rows: ownerInputRows.length,
       hub_missing_rows: hubMissingRows.length,
       alias_candidate_rows: aliasRows.length,
-      inventory_stock_seed_policy_required: inventoryPolicyRows.length > 0,
+      inventory_stock_seed_policy_required: false,
     },
   };
 }
@@ -639,7 +847,10 @@ function buildRequiredRow({ type, name, sourceLineItem, nativeMatches, hubMatch 
   if (!nativePresent && hubStatus === 'missing') blockers.push(`missing_hub_${type}:${name}`);
   if (!nativePresent && hubStatus === 'ambiguous') blockers.push(`ambiguous_hub_${type}:${name}`);
   if (!nativePresent && hubStatus === 'matched' && compatibility.status !== 'compatible') blockers.push(...compatibility.blockers.map(item => `${type}_${item}:${name}`));
-  if (type === 'inventory') warnings.push('inventory_stock_is_live_state_seed_decision_required');
+  if (type === 'inventory') {
+    warnings.push('inventory_seed_policy_non_stock_master_data_only');
+    warnings.push('inventory_deduction_held_pending_stock_yield_policy');
+  }
 
   const mirrorReadiness = nativePresent
     ? 'already_native'
@@ -786,18 +997,20 @@ function buildParityReport({ lookup, customerOrder, nativeOrder, task, lineItems
     }));
   }
 
-  const rowBlockers = requiredRows.flatMap(row => row.blockers || []);
-  const rowWarnings = requiredRows.flatMap(row => row.warnings || []);
+  const gapClosurePreview = buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult });
+  const policyAdjustedRows = gapClosurePreview.policy_adjusted_required_rows || requiredRows.map(row => applyApprovedPoliciesToRequiredRow(row, hubData));
+  const rowBlockers = policyAdjustedRows.flatMap(row => row.blockers || []);
+  const rowWarnings = policyAdjustedRows.flatMap(row => row.warnings || []);
   blockers.push(...rowBlockers);
   warnings.push(...rowWarnings);
+  warnings.push(...(gapClosurePreview.warnings || []));
 
-  const missingNativeRows = requiredRows.filter(row => !row.native_present);
-  const mirrorReadyRows = requiredRows.filter(row => row.mirror_readiness?.startsWith('ready_to_mirror'));
+  const missingNativeRows = policyAdjustedRows.filter(row => !row.native_present);
+  const mirrorReadyRows = policyAdjustedRows.filter(row => row.mirror_readiness?.startsWith('ready_to_mirror') || row.mirror_readiness === 'yield_details_deferred');
   const uniqueBlockers = [...new Set(blockers)].slice(0, MAX_BLOCKERS);
   const uniqueWarnings = [...new Set(warnings)].slice(0, MAX_BLOCKERS);
-  const mirrorBlockers = [...new Set(rowBlockers.concat(!hubResult.ok ? [hubResult.error_code || 'hub_master_data_unavailable'] : []))].slice(0, MAX_BLOCKERS);
-  const nativeProductionReadinessAfterMirror = requiredRows.length > 0 && mirrorBlockers.length === 0;
-  const gapClosurePreview = buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult });
+  const mirrorBlockers = gapClosurePreview.blockers || [...new Set(rowBlockers.concat(!hubResult.ok ? [hubResult.error_code || 'hub_master_data_unavailable'] : []))].slice(0, MAX_BLOCKERS);
+  const nativeProductionReadinessAfterMirror = Boolean(gapClosurePreview.production_master_data_ready);
 
   return {
     success: true,
@@ -819,7 +1032,7 @@ function buildParityReport({ lookup, customerOrder, nativeOrder, task, lineItems
       ingredient_yield_count: nativeData.ingredientYields.length,
     },
     hub_counts: hubData?.counts || { recipe_count: 0, bundle_count: 0, inventory_item_count: 0, ingredient_yield_count: 0 },
-    required_master_data_rows: requiredRows.slice(0, DEFAULT_MAX_ROWS),
+    required_master_data_rows: policyAdjustedRows.slice(0, DEFAULT_MAX_ROWS),
     missing_native_recipes: namesByType(missingNativeRows, 'recipe'),
     missing_native_bundles: namesByType(missingNativeRows, 'bundle'),
     missing_native_inventory_items: namesByType(missingNativeRows, 'inventory'),
@@ -835,7 +1048,16 @@ function buildParityReport({ lookup, customerOrder, nativeOrder, task, lineItems
     blockers: uniqueBlockers,
     native_production_readiness_after_mirror: nativeProductionReadinessAfterMirror,
     hub_fallback_required: true,
-    recommended_next_action: recommendedNextAction({ requiredRows, mirrorBlockers, hubResult, missingNativeRows }),
+    recommended_next_action: gapClosurePreview.next_action || recommendedNextAction({ requiredRows: policyAdjustedRows, mirrorBlockers, hubResult, missingNativeRows }),
+    production_master_data_ready: gapClosurePreview.production_master_data_ready,
+    non_stock_master_data_seed_ready: gapClosurePreview.non_stock_master_data_seed_ready,
+    procurement_conversion_ready: gapClosurePreview.procurement_conversion_ready,
+    inventory_deduction_ready: gapClosurePreview.inventory_deduction_ready,
+    yield_details_pending: gapClosurePreview.yield_details_pending,
+    pending_yield_items: gapClosurePreview.pending_yield_items,
+    approved_alias_mappings: gapClosurePreview.approved_alias_mappings,
+    inventory_seed_policy: gapClosurePreview.inventory_seed_policy,
+    yield_policy: gapClosurePreview.yield_policy,
     hub_lookup: {
       available: hubResult.ok,
       error_code: hubResult.ok ? null : hubResult.error_code,
@@ -901,7 +1123,7 @@ function recommendedNextAction({ requiredRows, mirrorBlockers, hubResult, missin
   if (mirrorBlockers.some(item => item.startsWith('ambiguous_hub'))) return 'ambiguous_hub_match';
   if (mirrorBlockers.some(item => item.startsWith('ambiguous_native'))) return 'manual_mapping_required';
   if (requiredRows.length === 0) return 'hold';
-  if (missingNativeRows.length > 0 && mirrorBlockers.length === 0) return 'ready_for_master_data_mirror';
+  if (missingNativeRows.length > 0 && mirrorBlockers.length === 0) return 'ready_for_non_stock_master_data_mirror';
   return 'hold';
 }
 

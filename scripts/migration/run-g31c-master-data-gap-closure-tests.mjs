@@ -92,6 +92,9 @@ const hubData = {
   product_matches: [
     { requested_name: 'The NuVira Trio', normalized_name: 'the nuvira trio', status: 'matched', count: 1, matches: [{ id: 'hub_product_trio', name: 'The NuVira Trio', category: 'bundle' }] },
   ],
+  bundle_alias_candidates: [
+    { requested_name: 'The NuVira Trio', normalized_name: 'the nuvira trio', required_type: 'bundle', candidate_type: 'bundle', status: 'single_candidate', count: 1, candidates: [{ confidence: 0.9, match_kind: 'owner_approved_alias', candidate: { id: '69e8f55b06e17fbd88dbbc0c', name: 'NuVira Trio', component_count: 3 } }] },
+  ],
   yield_alias_candidates: [
     { requested_name: 'Black Salt', normalized_name: 'black salt', required_type: 'yield', candidate_type: 'yield', status: 'single_candidate', count: 1, candidates: [{ confidence: 0.9, match_kind: 'known_alias', candidate: { id: 'hub_yield_kala_namak', name: 'Kala Namak', purchase_unit: 'bag', oz_per_purchase_unit: 16 } }] },
   ],
@@ -107,27 +110,38 @@ assert.equal(readyYield.status, 'mirror_ready');
 assert.equal(readyYield.seed_payload_preview.oz_per_purchase_unit, 160);
 
 const productBundleCandidate = fns.buildSeedPacketRow({ row: missingBundleRow, hubData });
-assert.equal(productBundleCandidate.status, 'manual_mapping_required');
-assert.equal(productBundleCandidate.proposed_action, 'product_catalog_candidate_requires_manual_bundle_mapping');
-assert.ok(productBundleCandidate.owner_input_fields_required.includes('components.product_name'));
+assert.equal(productBundleCandidate.status, 'approved_alias_mapping');
+assert.equal(productBundleCandidate.proposed_action, 'apply_approved_bundle_alias_mapping');
+assert.equal(productBundleCandidate.hub_source_id, '69e8f55b06e17fbd88dbbc0c');
+assert.equal(productBundleCandidate.seed_ready, true);
 
 const aliasYieldCandidate = fns.buildSeedPacketRow({ row: missingBlackSaltYieldRow, hubData });
-assert.equal(aliasYieldCandidate.status, 'manual_mapping_required');
-assert.equal(aliasYieldCandidate.proposed_action, 'alias_existing_hub_yield');
-assert.equal(aliasYieldCandidate.hub_source_id, 'hub_yield_kala_namak');
+assert.equal(aliasYieldCandidate.status, 'yield_details_deferred');
+assert.equal(aliasYieldCandidate.proposed_action, 'defer_purchase_conversion_values');
+assert.equal(aliasYieldCandidate.procurement_conversion_ready, false);
+assert.equal(aliasYieldCandidate.inventory_deduction_ready, false);
 
 const missingYieldNoAlias = fns.buildSeedPacketRow({ row: { ...missingBlackSaltYieldRow, required_name: 'Beetroot', normalized_name: 'beetroot', blockers: ['missing_hub_yield:Beetroot'] }, hubData: { ...hubData, yield_alias_candidates: [] } });
-assert.equal(missingYieldNoAlias.status, 'owner_input_required');
-assert.ok(missingYieldNoAlias.owner_input_fields_required.includes('oz_per_purchase_unit'));
+assert.equal(missingYieldNoAlias.status, 'yield_details_deferred');
+assert.equal(missingYieldNoAlias.proposed_action, 'defer_purchase_conversion_values');
+assert.equal(missingYieldNoAlias.yield_policy, 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES');
 
 const closureWithManualRows = fns.buildMasterDataGapClosurePreview({ requiredRows: [readyRecipeRow, missingBundleRow, missingBlackSaltYieldRow], hubData, hubResult: { ok: true, data: hubData } });
-assert.equal(closureWithManualRows.seed_packet_ready, false);
-assert.equal(closureWithManualRows.manual_mapping_required_rows.length, 2);
-assert.equal(closureWithManualRows.next_action, 'create_update_hub_master_data_first');
+assert.equal(closureWithManualRows.seed_packet_ready, true);
+assert.equal(closureWithManualRows.non_stock_master_data_seed_ready, true);
+assert.equal(closureWithManualRows.production_master_data_ready, true);
+assert.equal(closureWithManualRows.procurement_conversion_ready, false);
+assert.equal(closureWithManualRows.inventory_deduction_ready, false);
+assert.equal(closureWithManualRows.yield_details_pending, true);
+assert.equal(JSON.stringify(closureWithManualRows.pending_yield_items), JSON.stringify(['Black Salt']));
+assert.equal(closureWithManualRows.manual_mapping_required_rows.length, 0);
+assert.equal(closureWithManualRows.owner_input_required_rows.length, 0);
+assert.equal(closureWithManualRows.blocked_rows.length, 0);
+assert.equal(closureWithManualRows.next_action, 'ready_with_deferred_yield_details');
 
 const closureReady = fns.buildMasterDataGapClosurePreview({ requiredRows: [readyRecipeRow, readyYieldRow], hubData, hubResult: { ok: true, data: hubData } });
 assert.equal(closureReady.seed_packet_ready, true);
-assert.equal(closureReady.next_action, 'ready_for_customer_app_master_data_mirror_approval');
+assert.equal(closureReady.next_action, 'ready_for_non_stock_master_data_mirror');
 
 const report = fns.buildParityReport({
   lookup: { orderNumber: 'NV-MPZNKGNT' },
@@ -143,5 +157,7 @@ assert.equal(report.dry_run, true);
 assert.equal(report.writes_performed, false);
 assert.equal(report.safety.master_data_imported, false);
 assert.ok(Array.isArray(report.seed_packet_rows));
+assert.equal(report.inventory_seed_policy, 'NON_STOCK_MASTER_DATA_ONLY');
+assert.equal(report.yield_policy, 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES');
 
-console.log('G31C Customer master-data gap closure tests passed');
+console.log('G31C/G31E Customer master-data gap closure tests passed');
