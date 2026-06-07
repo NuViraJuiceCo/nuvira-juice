@@ -881,6 +881,11 @@ function NativeProductionMasterDataParityPreview({
       : [];
   const inventorySeedPolicy = preview?.inventory_seed_policy || gapClosure.inventory_seed_policy;
   const yieldPolicy = preview?.yield_policy || gapClosure.yield_policy;
+  const nonStockImportPreview = preview?.customer_app_non_stock_master_data_import_preview || {};
+  const nonStockImportCreateRows = Array.isArray(nonStockImportPreview.create_rows) ? nonStockImportPreview.create_rows : [];
+  const nonStockImportDeferredRows = Array.isArray(nonStockImportPreview.deferred_rows) ? nonStockImportPreview.deferred_rows : [];
+  const nonStockImportBlockedRows = Array.isArray(nonStockImportPreview.blocked_rows) ? nonStockImportPreview.blocked_rows : [];
+  const nonStockImportReady = Boolean(preview?.non_stock_import_preview_ready ?? gapClosure.non_stock_import_preview_ready ?? nonStockImportPreview.import_ready);
 
   return (
     <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
@@ -1115,6 +1120,86 @@ function NativeProductionMasterDataParityPreview({
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {nonStockImportPreview?.dry_run && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold text-emerald-950">Customer App Non-Stock Mirror Import Preview</p>
+                  <p className="mt-1 text-[10px] text-emerald-900">
+                    G31F schema-safe import packet preview. It shows exact Customer App Recipe, Bundle, InventoryItem, and matched IngredientYield payloads that could be approved later. It does not create or update records.
+                  </p>
+                </div>
+                <StatusChip value={nonStockImportPreview.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                <StatCard
+                  label="Import Preview"
+                  value={nonStockImportReady ? 'Ready' : 'Held'}
+                  tone={nonStockImportReady ? 'success' : 'warning'}
+                />
+                <StatCard label="Create Rows" value={formatNumber(nonStockImportCreateRows.length)} tone={nonStockImportCreateRows.length > 0 ? 'success' : 'default'} />
+                <StatCard label="Deferred Rows" value={formatNumber(nonStockImportDeferredRows.length)} tone={nonStockImportDeferredRows.length > 0 ? 'warning' : 'default'} />
+                <StatCard label="Blocked Rows" value={formatNumber(nonStockImportBlockedRows.length)} tone={nonStockImportBlockedRows.length > 0 ? 'warning' : 'success'} />
+                <StatCard label="Procurement Conversion" value={nonStockImportPreview.procurement_conversion_ready ? 'Ready' : 'Pending'} tone="warning" />
+                <StatCard label="Inventory Deduction" value={nonStockImportPreview.inventory_deduction_ready ? 'Ready' : 'Held'} tone="warning" />
+              </div>
+
+              <div className="rounded-lg border border-emerald-200 bg-background/80 p-3">
+                <p className="text-xs font-bold text-foreground">Import packet policy</p>
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                  {[
+                    nonStockImportPreview.inventory_seed_policy ? `Inventory: ${formatLabel(nonStockImportPreview.inventory_seed_policy)}` : null,
+                    nonStockImportPreview.yield_policy ? `Yield: ${formatLabel(nonStockImportPreview.yield_policy)}` : null,
+                    nonStockImportPreview.next_action ? `Next: ${formatLabel(nonStockImportPreview.next_action)}` : null,
+                    nonStockImportPreview.required_approval_phrase_template ? `Approval template: ${nonStockImportPreview.required_approval_phrase_template}` : null,
+                  ].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+
+              {nonStockImportCreateRows.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-900 font-semibold">Create-if-missing preview rows</p>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                    {nonStockImportCreateRows.slice(0, 12).map((row, index) => (
+                      <div key={`${row.target_entity}-${row.match_value}-${index}`} className="rounded-lg border border-emerald-200 bg-background/80 p-3 space-y-1">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-foreground">{sanitizeAdminText(row.match_value) || 'Import row'}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {formatLabel(row.target_entity)} · {formatLabel(row.operation)} · {formatLabel(row.proposed_action)}
+                            </p>
+                          </div>
+                          <StatusChip value={row.import_ready ? 'Schema safe' : 'Held'} />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          {[
+                            row.source_hub_id ? `Hub ${row.source_hub_id}` : null,
+                            row.source_hub_name ? `Source ${sanitizeAdminText(row.source_hub_name)}` : null,
+                            row.match_field ? `Match ${row.match_field}` : null,
+                            row.payload?.stock === 0 && row.target_entity === 'InventoryItem' ? 'Stock seeded 0' : null,
+                          ].filter(Boolean).join(' · ') || 'No import source details returned.'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {nonStockImportDeferredRows.length > 0 && (
+                <div className="rounded-lg border border-emerald-200 bg-background/80 p-3">
+                  <p className="text-xs font-bold text-foreground">Deferred yield details</p>
+                  <p className="mt-2 text-[10px] text-muted-foreground">
+                    {nonStockImportDeferredRows.slice(0, 12).map(row => sanitizeAdminText(row.match_value)).filter(Boolean).join(', ')}
+                  </p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Deferred yield rows are not guessed and do not block production demand visibility. They keep procurement conversion, inventory deduction, and PO automation held.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
