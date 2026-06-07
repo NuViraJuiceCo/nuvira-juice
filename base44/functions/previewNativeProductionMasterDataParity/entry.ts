@@ -299,6 +299,39 @@ function compactNames(names) {
   return [...new Set((names || []).map(name => safeText(name, 120)).filter(Boolean))].slice(0, DEFAULT_MAX_ROWS);
 }
 
+function approvedAliasTargetNamesForLineItems(lineItems) {
+  const names = [];
+  for (const item of lineItems || []) {
+    const title = safeText(item?.title || item?.name, 120);
+    if (!title) continue;
+    for (const mapping of APPROVED_ALIAS_MAPPINGS) {
+      if (mapping.source_type === 'bundle' && normalizeKey(mapping.source_name) === normalizeKey(title)) {
+        names.push(mapping.target_hub_name);
+      }
+    }
+  }
+  return names;
+}
+
+function componentNamesFromNativeBundlesForLineItems(lineItems, nativeBundles) {
+  const bundleIndex = buildIndex(nativeBundles || [], row => row?.bundle_name);
+  const names = [];
+  for (const item of lineItems || []) {
+    const title = safeText(item?.title || item?.name, 120);
+    if (!title) continue;
+    names.push(...collectNamesFromNativeBundles(findMatches(bundleIndex, title), title).map(row => row.name));
+  }
+  return names;
+}
+
+function hubLookupNamesForLineItems(lineItems, nativeBundles = []) {
+  return compactNames([
+    ...(lineItems || []).map(item => item?.title || item?.name),
+    ...approvedAliasTargetNamesForLineItems(lineItems),
+    ...componentNamesFromNativeBundlesForLineItems(lineItems, nativeBundles),
+  ]);
+}
+
 async function fetchHubMasterDataParity(names) {
   const hubApiUrl = normalizeText(Deno.env.get('HUB_API_URL'));
   const secret = normalizeText(Deno.env.get('CUSTOMER_APP_SYNC_SECRET'));
@@ -1164,6 +1197,29 @@ function collectNamesFromHubBundles(hubData, lineItemNames) {
   return names;
 }
 
+function collectNamesFromApprovedAliasBundles(hubData, lineItemNames) {
+  const names = [];
+  if (!hubData) return names;
+  for (const name of lineItemNames || []) {
+    const mapping = APPROVED_ALIAS_MAPPINGS.find(item =>
+      item.source_type === 'bundle' &&
+      normalizeKey(item.source_name) === normalizeKey(name)
+    );
+    if (!mapping) continue;
+    const row = hubMatchForType(hubData, 'bundle', mapping.target_hub_name);
+    if (row.status !== 'matched') continue;
+    const bundle = row.matches?.find(match =>
+      safeId(match?.id) === mapping.target_hub_id ||
+      normalizeKey(match?.name) === normalizeKey(mapping.target_hub_name)
+    );
+    for (const component of bundle?.components || []) {
+      const componentName = safeText(component?.product_name, 120);
+      if (componentName) names.push({ name: componentName, source: name });
+    }
+  }
+  return names;
+}
+
 function collectNamesFromNativeBundles(nativeBundleMatches, sourceName) {
   const names = [];
   for (const bundle of nativeBundleMatches || []) {
@@ -1215,6 +1271,7 @@ function buildParityReport({ lookup, customerOrder, nativeOrder, task, lineItems
       bundleRequirements.push({ name: item.title, source: item.title });
       recipeRequirements.push(...collectNamesFromNativeBundles(nativeBundleMatches, item.title));
       recipeRequirements.push(...collectNamesFromHubBundles(hubData, [item.title]));
+      recipeRequirements.push(...collectNamesFromApprovedAliasBundles(hubData, [item.title]));
       if (hubBundle.status === 'missing' && nativeBundleMatches.length === 0 && hubRecipe.status === 'matched') {
         warnings.push(`line_item_looks_like_bundle_but_hub_recipe_matched:${item.title}`);
       }
@@ -1434,15 +1491,15 @@ Deno.serve(async (req) => {
     if (!nativeOrder && customerOrder) nativeOrder = await findNativeShopifyOrder(base44, customerOrder, lookup);
     const task = await findNativeFulfillmentTask(base44, customerOrder, nativeOrder, lookup);
     const lineItems = safeLineItems({ body, customerOrder, nativeOrder, task });
-    const requestedNames = compactNames(lineItems.map(item => item.title));
 
-    const [recipes, bundles, inventoryItems, ingredientYields, hubResult] = await Promise.all([
+    const [recipes, bundles, inventoryItems, ingredientYields] = await Promise.all([
       listEntity(base44, 'Recipe', '-updated_date', 700),
       listEntity(base44, 'Bundle', '-updated_date', 700),
       listEntity(base44, 'InventoryItem', '-updated_date', 700),
       listEntity(base44, 'IngredientYield', '-updated_date', 700),
-      fetchHubMasterDataParity(requestedNames),
     ]);
+    const requestedNames = hubLookupNamesForLineItems(lineItems, bundles);
+    const hubResult = await fetchHubMasterDataParity(requestedNames);
 
     const report = buildParityReport({
       lookup,

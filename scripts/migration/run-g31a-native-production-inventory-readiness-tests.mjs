@@ -242,6 +242,71 @@ assert.equal(missingInventoryReadiness.inventory_calculation_ready, false);
 assert.ok(missingInventoryReadiness.blockers.includes('missing_inventory_item:Spinach'));
 assert.equal(missingInventoryReadiness.classification, 'production_ready_inventory_master_data_blocked');
 
+const deferredYieldReadiness = fns.buildProductionReadiness({
+  customerOrder,
+  nativeOrder,
+  task,
+  lookup,
+  lineItems: [{ title: 'Radiance Shot', quantity: 1 }],
+  masterData: {
+    recipes: [{
+      id: 'recipe_radiance',
+      product_name: 'Radiance Shot',
+      yield_factor: 1,
+      ingredients: [{ ingredient_name: 'Beetroot', quantity_oz: 0.536, unit: 'oz' }],
+    }],
+    bundles,
+    products,
+    inventoryItems: [{ id: 'inventory_beetroot', ingredient: 'Beetroot', unit: 'lbs', stock: 0 }],
+    ingredientYields: [],
+  },
+  existingBatches: [],
+});
+assert.equal(deferredYieldReadiness.production_ready, true);
+assert.equal(deferredYieldReadiness.inventory_calculation_ready, true);
+assert.equal(deferredYieldReadiness.procurement_conversion_ready, false);
+assert.equal(deferredYieldReadiness.inventory_deduction_ready, false);
+assert.equal(deferredYieldReadiness.yield_details_pending, true);
+assert.equal(JSON.stringify(deferredYieldReadiness.pending_yield_items), JSON.stringify(['Beetroot']));
+assert.equal(JSON.stringify(deferredYieldReadiness.missing_yield_items), JSON.stringify(['Beetroot']));
+assert.equal(deferredYieldReadiness.blockers.includes('missing_ingredient_yield:Beetroot'), false);
+assert.ok(deferredYieldReadiness.warnings.includes('yield_details_pending:Beetroot'));
+assert.equal(deferredYieldReadiness.classification, 'production_inventory_preview_ready_procurement_needed');
+
+const tracePinchReadiness = fns.buildProductionReadiness({
+  customerOrder,
+  nativeOrder,
+  task,
+  lookup,
+  lineItems: [{ title: 'Reset Shot', quantity: 1 }],
+  masterData: {
+    recipes: [{
+      id: 'recipe_reset',
+      product_name: 'Reset Shot',
+      yield_factor: 1,
+      ingredients: [
+        { ingredient_name: 'Ginger', quantity_oz: 0.1, unit: 'oz' },
+        { ingredient_name: 'Black Salt', quantity_oz: 0, unit: 'pinch' },
+      ],
+    }],
+    bundles,
+    products,
+    inventoryItems: [
+      { id: 'inventory_ginger', ingredient: 'Ginger', unit: 'lbs', stock: 1 },
+      { id: 'inventory_black_salt', ingredient: 'Black Salt', unit: 'lbs', stock: 0 },
+    ],
+    ingredientYields: [
+      { id: 'yield_ginger', ingredient_name: 'Ginger', purchase_unit: 'lb', oz_per_purchase_unit: 16, units_per_case: 1, rounding_rule: 'round_up_unit' },
+    ],
+  },
+  existingBatches: [],
+});
+assert.equal(tracePinchReadiness.production_ready, true);
+assert.equal(tracePinchReadiness.blockers.includes('unsupported_or_missing_recipe_quantity:Reset Shot:Black Salt'), false);
+assert.ok(tracePinchReadiness.warnings.includes('trace_recipe_ingredient_quantity_pending:Reset Shot:Black Salt'));
+assert.equal(JSON.stringify(tracePinchReadiness.trace_ingredient_items), JSON.stringify(['Black Salt']));
+assert.equal(JSON.stringify(tracePinchReadiness.pending_yield_items), JSON.stringify(['Black Salt']));
+
 const missingBundleReadiness = fns.buildProductionReadiness({
   customerOrder,
   nativeOrder,
