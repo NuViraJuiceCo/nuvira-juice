@@ -44,6 +44,8 @@ const previewFns = loadFunctions('base44/functions/previewNativeFulfillmentTaskM
   'buildMetadataRepairPlan',
   'summarizePatch',
   'requirePreviewAccess',
+  'isApprovedRepairPatchField',
+  'unsupportedRepairPatchFields',
 ], {
   NATIVE_FULFILLMENT_TASK_METADATA_REPAIR_PREVIEW_SECRET: 'preview-secret',
 });
@@ -53,6 +55,8 @@ const executeFns = loadFunctions('base44/functions/executeNativeFulfillmentTaskM
   'envGateFailure',
   'allowlistIdentifiers',
   'buildMetadataRepairPlan',
+  'isApprovedRepairPatchField',
+  'unsupportedRepairPatchFields',
 ], {
   ENABLE_NATIVE_FULFILLMENT_TASK_METADATA_REPAIR_WRITES: 'true',
   NATIVE_FULFILLMENT_TASK_METADATA_REPAIR_KILL_SWITCH: 'false',
@@ -154,11 +158,35 @@ assert.equal(plan.patch.production_date, '2026-06-12');
 assert.equal(plan.patch.line_item_count, 2);
 assert.equal(plan.patch.total_price, 42);
 assert.equal(plan.patch.address_complete, true);
+assert.equal(plan.patch.customer_name, undefined);
+assert.equal(plan.patch.customer_phone, undefined);
+assert.equal(plan.patch.customer_email, undefined);
+assert.equal(plan.patch.items, undefined);
+assert.equal(plan.patch.order_type, undefined);
+assert.equal(previewFns.isApprovedRepairPatchField('base44_order_id'), true);
+assert.equal(previewFns.isApprovedRepairPatchField('customer_name'), false);
+assert.equal(previewFns.isApprovedRepairPatchField('customer_phone'), false);
+assert.equal(previewFns.isApprovedRepairPatchField('status'), false);
+assert.deepEqual(previewFns.unsupportedRepairPatchFields({
+  base44_order_id: 'order_001',
+  customer_name: 'Repair Owner',
+}), ['customer_name']);
+assert.ok(plan.warnings.includes('excluded_unapproved_repair_fields'));
+assert.deepEqual(Array.from(plan.excluded_unapproved_fields), [
+  'customer_email',
+  'customer_name',
+  'customer_phone',
+  'delivery_zone_key',
+  'fulfillment_number',
+  'items',
+  'order_type',
+]);
+assert.deepEqual(Array.from(plan.unsupported_patch_fields), []);
 assert.deepEqual(Array.from(plan.missing_display_fields_after), []);
 
 const summarizedPatch = previewFns.summarizePatch(plan.patch);
-assert.equal(summarizedPatch.customer_email, '[redacted email]');
-assert.equal(summarizedPatch.items.item_count, 2);
+assert.equal(summarizedPatch.customer_email, undefined);
+assert.equal(summarizedPatch.items, undefined);
 
 const completeTask = { ...incompleteTask, ...plan.patch };
 const noop = previewFns.buildMetadataRepairPlan({ task: completeTask, nativeOrder, customerOrder });
@@ -215,6 +243,11 @@ assert.equal(executeFns.envGateFailure({
   nativeOrder,
   customerOrder,
 }), 'actor_email_not_allowlisted');
+assert.equal(executeFns.isApprovedRepairPatchField('customer_phone'), false);
+assert.deepEqual(executeFns.unsupportedRepairPatchFields({
+  shopify_order_number: 'NV-G29-1001',
+  customer_phone: '555-0100',
+}), ['customer_phone']);
 
 const disabledFns = loadFunctions('base44/functions/executeNativeFulfillmentTaskMetadataRepair/entry.ts', [
   'gateSummary',
