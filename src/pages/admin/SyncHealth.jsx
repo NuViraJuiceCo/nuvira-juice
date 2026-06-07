@@ -1039,6 +1039,209 @@ function NativeProductionDemandMaterializationPreview({
   );
 }
 
+
+function NativeProductionLifecyclePreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onRun,
+}) {
+  const exactOrderNumber = orderNumber?.trim();
+  const batchRows = Array.isArray(preview?.batch_lifecycle_rows) ? preview.batch_lifecycle_rows : [];
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const startPreview = preview?.start_preview || {};
+  const completePreview = preview?.complete_preview || {};
+  const verifyPreview = preview?.verify_preview || {};
+  const compliancePreview = preview?.compliance_preview || {};
+  const cascadePreview = preview?.cascade_preview || {};
+  const safety = preview?.safety || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Native Production Lifecycle Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G31N read-only preview for native ProductionBatch start, complete, and verify readiness. It does not start, complete, verify, create compliance logs, mutate orders/tasks, deduct inventory, create purchase orders, call providers, send notifications, sync, repair, or replay.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning || !exactOrderNumber}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning || !exactOrderNumber
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Lifecycle Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Preview only. No Start, Complete, Verify, Pack Task, Bottle Order, compliance log, inventory deduction, purchase order, sync, repair, replay, provider, payment, or notification write is exposed from this panel.
+      </div>
+
+      {!exactOrderNumber && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Enter an exact paid native order number above before running the native production lifecycle preview.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard label="Batches" value={formatNumber(preview.batch_count)} tone={Number(preview.batch_count || 0) > 0 ? 'success' : 'warning'} />
+            <StatCard label="Ready to Start" value={formatNumber(startPreview.ready_count)} tone={Number(startPreview.ready_count || 0) > 0 ? 'success' : 'warning'} />
+            <StatCard label="Ready to Complete" value={formatNumber(completePreview.ready_count)} tone={Number(completePreview.ready_count || 0) > 0 ? 'success' : 'default'} />
+            <StatCard label="Ready to Verify" value={formatNumber(verifyPreview.ready_count)} tone={Number(verifyPreview.ready_count || 0) > 0 ? 'success' : 'default'} />
+            <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
+            <StatCard label="Generated" value={formatDateTime(preview.generated_at)} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+            <StatusChip value={preview.live_execution_approved ? 'Live execution approved' : 'Preview only'} />
+            <StatusChip value={preview.inventory_deduction_ready ? 'Inventory deduction ready' : 'Inventory deduction held'} />
+            <StatusChip value={preview.purchase_order_ready ? 'PO automation ready' : 'PO automation held'} />
+            <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
+            <StatusChip value={cascadePreview.customer_facing_status_impact || 'No customer status impact'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Order context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.order_number ? `Order ${preview.order_number}` : null,
+                  preview.customer_app_order_present ? 'Customer App order present' : 'Customer App order missing',
+                  preview.native_shopify_order_present ? 'Native mirror present' : 'Native mirror missing',
+                  preview.native_fulfillment_task_present ? 'Native task present' : 'Native task missing',
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Schedule context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.production_date ? `Production ${preview.production_date}` : 'Production date pending',
+                  preview.delivery_date ? `Delivery ${preview.delivery_date}` : 'Delivery date pending',
+                  preview.fulfillment_type ? formatLabel(preview.fulfillment_type) : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Next action</p>
+              <p className="mt-1 text-xs text-foreground">{formatLabel(preview.next_action)}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+              <p className="text-xs font-bold text-emerald-950">Start preview</p>
+              <p className="mt-1 text-[10px] text-emerald-900">{formatNumber(startPreview.ready_count)} ready · {formatNumber(startPreview.blocked_count)} blocked</p>
+              <p className="mt-2 text-[10px] text-emerald-900">Expected later writes: {(startPreview.expected_writes_if_later_approved || []).map(item => formatLabel(item)).join(', ') || 'None'}</p>
+            </div>
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+              <p className="text-xs font-bold text-cyan-950">Complete preview</p>
+              <p className="mt-1 text-[10px] text-cyan-900">{formatNumber(completePreview.ready_count)} ready · {formatNumber(completePreview.blocked_count)} blocked</p>
+              <p className="mt-2 text-[10px] text-cyan-900">Actual units and completion data are required before completion can pass.</p>
+            </div>
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+              <p className="text-xs font-bold text-cyan-950">Verify / compliance preview</p>
+              <p className="mt-1 text-[10px] text-cyan-900">{formatNumber(verifyPreview.ready_count)} ready · {formatNumber(verifyPreview.blocked_count)} blocked</p>
+              <p className="mt-2 text-[10px] text-cyan-900">Compliance log creation held. Missing data: {(compliancePreview.missing_compliance_data || []).map(item => formatLabel(item)).join(', ') || 'None returned'}.</p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Preview blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.map(blocker => <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No top-level lifecycle preview blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.slice(0, 16).map(warning => <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {batchRows.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native ProductionBatch lifecycle rows</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {batchRows.slice(0, 12).map((row, index) => (
+                  <div key={`${row.batch_id || row.production_batch_id}-${index}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-foreground">{sanitizeAdminText(row.product_name) || 'Product pending'}</p>
+                      <StatusChip value={row.classification || 'preview'} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {[
+                        sanitizeAdminText(row.batch_id || row.production_batch_id),
+                        row.production_date ? `Production ${row.production_date}` : null,
+                        row.current_status ? `Status ${formatLabel(row.current_status)}` : null,
+                        `Planned ${formatNumber(row.planned_units)} units`,
+                        row.next_allowed_transition ? `Next ${formatLabel(row.next_allowed_transition)}` : 'No next transition',
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <StatusChip value={row.can_start ? 'Can start preview' : 'Start blocked'} />
+                      <StatusChip value={row.can_complete ? 'Can complete preview' : 'Complete blocked'} />
+                      <StatusChip value={row.can_verify ? 'Can verify preview' : 'Verify blocked'} />
+                    </div>
+                    {Array.isArray(row.lifecycle_warnings) && row.lifecycle_warnings.length > 0 && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Warnings: {row.lifecycle_warnings.slice(0, 5).map(item => formatLabel(sanitizeAdminText(item))).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-border/50 bg-background p-3">
+            <p className="text-xs font-bold text-foreground">Cascade preview</p>
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              {[
+                cascadePreview.fulfillment_task_pack_cascade_ready ? 'Fulfillment task pack cascade ready' : 'Fulfillment task pack cascade held',
+                cascadePreview.shopify_order_bottled_cascade_ready ? 'ShopifyOrder bottled cascade ready' : 'ShopifyOrder bottled cascade held',
+                cascadePreview.no_task_order_mutation ? 'No task/order mutation' : 'Task/order write state unknown',
+              ].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NativeProductionMasterDataParityPreview({
   preview,
   isRunning,
@@ -1744,6 +1947,9 @@ export default function SyncHealth() {
   const [demandMaterializationPreview, setDemandMaterializationPreview] = useState(null);
   const [demandMaterializationPreviewError, setDemandMaterializationPreviewError] = useState('');
   const [isDemandMaterializationPreviewRunning, setIsDemandMaterializationPreviewRunning] = useState(false);
+  const [productionLifecyclePreview, setProductionLifecyclePreview] = useState(null);
+  const [productionLifecyclePreviewError, setProductionLifecyclePreviewError] = useState('');
+  const [isProductionLifecyclePreviewRunning, setIsProductionLifecyclePreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -1861,6 +2067,8 @@ export default function SyncHealth() {
     setMasterDataParityPreviewError('');
     setDemandMaterializationPreview(null);
     setDemandMaterializationPreviewError('');
+    setProductionLifecyclePreview(null);
+    setProductionLifecyclePreviewError('');
   };
 
   const runNativePilotApprovalPreview = async () => {
@@ -1932,6 +2140,30 @@ export default function SyncHealth() {
       setDemandMaterializationPreviewError(previewError?.message || 'Unable to run native production demand materialization preview.');
     } finally {
       setIsDemandMaterializationPreviewRunning(false);
+    }
+  };
+
+  const runNativeProductionLifecyclePreview = async () => {
+    setProductionLifecyclePreviewError('');
+    setIsProductionLifecyclePreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for production lifecycle preview.');
+      }
+      const res = await base44.functions.invoke('previewNativeProductionBatchLifecycle', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Native production lifecycle preview failed.');
+      }
+      setProductionLifecyclePreview(result);
+    } catch (previewError) {
+      setProductionLifecyclePreviewError(previewError?.message || 'Unable to run native production lifecycle preview.');
+    } finally {
+      setIsProductionLifecyclePreviewRunning(false);
     }
   };
 
@@ -2145,6 +2377,14 @@ export default function SyncHealth() {
           error={demandMaterializationPreviewError}
           orderNumber={cutoverOrderNumber}
           onRun={runNativeProductionDemandMaterializationPreview}
+        />
+
+        <NativeProductionLifecyclePreview
+          preview={productionLifecyclePreview}
+          isRunning={isProductionLifecyclePreviewRunning}
+          error={productionLifecyclePreviewError}
+          orderNumber={cutoverOrderNumber}
+          onRun={runNativeProductionLifecyclePreview}
         />
 
         <NativeProductionMasterDataParityPreview
