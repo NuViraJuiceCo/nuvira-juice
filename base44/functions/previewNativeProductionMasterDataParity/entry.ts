@@ -785,10 +785,13 @@ function buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult }) 
   else if (pendingYieldRows.length > 0) nextAction = 'ready_with_deferred_yield_details';
   else if (nonStockMasterDataSeedReady) nextAction = 'ready_for_non_stock_master_data_mirror';
 
+  const nonStockImportPreview = buildCustomerAppNonStockMirrorImportPreview(seedPacketRows);
+
   return {
     required_rows: policyAdjustedRows.length,
     mirror_ready_row_count: mirrorReadyRows.length,
     seed_packet_ready: nonStockMasterDataSeedReady,
+    non_stock_import_preview_ready: nonStockImportPreview.import_ready,
     non_stock_master_data_seed_ready: nonStockMasterDataSeedReady,
     production_master_data_ready: productionMasterDataReady,
     procurement_conversion_ready: procurementConversionReady,
@@ -804,6 +807,7 @@ function buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult }) 
     owner_input_required_rows: ownerInputRows.slice(0, DEFAULT_MAX_ROWS),
     hub_missing_rows: hubMissingRows.slice(0, DEFAULT_MAX_ROWS),
     alias_candidate_rows: aliasRows.slice(0, DEFAULT_MAX_ROWS),
+    customer_app_non_stock_master_data_import_preview: nonStockImportPreview,
     blockers: [...new Set(blockers)].slice(0, MAX_BLOCKERS),
     warnings: [...new Set(warnings)].slice(0, MAX_BLOCKERS),
     next_action: nextAction,
@@ -812,6 +816,7 @@ function buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult }) 
       dry_run: true,
       writes_performed: false,
       seed_packet_ready: nonStockMasterDataSeedReady,
+      non_stock_import_preview_ready: nonStockImportPreview.import_ready,
       non_stock_master_data_seed_ready: nonStockMasterDataSeedReady,
       production_master_data_ready: productionMasterDataReady,
       procurement_conversion_ready: procurementConversionReady,
@@ -829,7 +834,277 @@ function buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult }) 
       owner_input_required_rows: ownerInputRows.length,
       hub_missing_rows: hubMissingRows.length,
       alias_candidate_rows: aliasRows.length,
+      non_stock_import_create_rows: nonStockImportPreview.create_rows.length,
+      non_stock_import_deferred_rows: nonStockImportPreview.deferred_rows.length,
+      non_stock_import_blockers: nonStockImportPreview.blockers.length,
       inventory_stock_seed_policy_required: false,
+    },
+  };
+}
+
+function cleanObject(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map(item => cleanObject(item))
+      .filter(item => item !== null && item !== undefined && !(typeof item === 'object' && !Array.isArray(item) && Object.keys(item).length === 0));
+  }
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    const cleaned = cleanObject(item);
+    if (cleaned === null || cleaned === undefined || cleaned === '') continue;
+    if (Array.isArray(cleaned) && cleaned.length === 0) {
+      out[key] = cleaned;
+      continue;
+    }
+    if (typeof cleaned === 'object' && !Array.isArray(cleaned) && Object.keys(cleaned).length === 0) continue;
+    out[key] = cleaned;
+  }
+  return out;
+}
+
+function importMatchKey(entityName, value) {
+  return `${entityName}:${normalizeKey(value) || 'unknown'}`;
+}
+
+function schemaSafeRecipePayload(row) {
+  const source = row?.seed_payload_preview || {};
+  return cleanObject({
+    product_name: safeText(row?.customer_app_target_name || source.product_name, 120),
+    product_sku: safeText(source.product_sku, 80),
+    bottle_size_oz: numberOrNull(source.bottle_size_oz),
+    yield_factor: numberOrNull(source.yield_factor),
+    ingredients: (source.ingredients || []).slice(0, DEFAULT_MAX_ROWS).map(ingredient => cleanObject({
+      ingredient_name: safeText(ingredient?.ingredient_name, 120),
+      quantity_oz: numberOrNull(ingredient?.quantity_oz),
+      unit: safeText(ingredient?.unit, 40),
+    })).filter(ingredient => ingredient.ingredient_name),
+    is_active: source.is_active !== false,
+  });
+}
+
+function schemaSafeBundlePayload(row) {
+  const source = row?.seed_payload_preview || row?.alias_candidate_preview || {};
+  const approvedAlias = row?.approved_alias_mapping;
+  return cleanObject({
+    bundle_name: safeText(row?.customer_app_target_name || source.bundle_name || source.name, 120),
+    components: (source.components || []).slice(0, DEFAULT_MAX_ROWS).map(component => cleanObject({
+      product_name: safeText(component?.product_name, 120),
+      quantity: numberOrNull(component?.quantity),
+    })).filter(component => component.product_name),
+    fulfillment_count: numberOrNull(source.fulfillment_count),
+    is_active: source.is_active !== false,
+    notes: approvedAlias
+      ? safeText(`Mirrored from Hub Bundle "${approvedAlias.target_hub_name}" via owner-approved alias "${approvedAlias.source_name}".`, 240)
+      : null,
+  });
+}
+
+function schemaSafeInventoryPayload(row) {
+  const source = row?.seed_payload_preview || {};
+  const stockSeed = numberOrNull(source.stock_seed_quantity) ?? 0;
+  return cleanObject({
+    ingredient: safeText(row?.customer_app_target_name || source.ingredient, 120),
+    unit: safeText(source.unit, 40),
+    stock: stockSeed,
+    reorder_point: numberOrNull(source.reorder_point),
+    max_stock: numberOrNull(source.max_stock),
+    supplier: safeText(source.supplier, 120),
+    supplier_packaging_unit: safeText(source.supplier_packaging_unit, 40),
+    supplier_packaging_qty: safeText(source.supplier_packaging_qty, 80),
+    category: safeText(source.category, 80),
+    notes: 'Seeded under NON_STOCK_MASTER_DATA_ONLY. Hub stock was not mirrored as authoritative.',
+  });
+}
+
+function schemaSafeYieldPayload(row) {
+  const source = row?.seed_payload_preview || {};
+  return cleanObject({
+    ingredient_name: safeText(row?.customer_app_target_name || source.ingredient_name, 120),
+    purchase_unit: safeText(source.purchase_unit, 40),
+    oz_per_purchase_unit: numberOrNull(source.oz_per_purchase_unit),
+    trim_waste_factor: numberOrNull(source.trim_waste_factor),
+    units_per_case: numberOrNull(source.units_per_case),
+    split_case_allowed: source.split_case_allowed === true,
+    rounding_rule: safeText(source.rounding_rule, 80),
+    supplier: safeText(source.supplier, 120),
+  });
+}
+
+function validateImportPayload(entityName, payload) {
+  const blockers = [];
+  if (entityName === 'Recipe') {
+    if (!payload.product_name) blockers.push('recipe_product_name_required');
+    if (!Array.isArray(payload.ingredients)) blockers.push('recipe_ingredients_array_required');
+  } else if (entityName === 'Bundle') {
+    if (!payload.bundle_name) blockers.push('bundle_name_required');
+    if (!Array.isArray(payload.components)) blockers.push('bundle_components_array_required');
+    if (Array.isArray(payload.components) && payload.components.length === 0) blockers.push('bundle_components_required');
+  } else if (entityName === 'InventoryItem') {
+    if (!payload.ingredient) blockers.push('inventory_ingredient_required');
+    if (!payload.unit) blockers.push('inventory_unit_required');
+    if (numberOrNull(payload.stock) === null) blockers.push('inventory_stock_number_required');
+    if (numberOrNull(payload.reorder_point) === null) blockers.push('inventory_reorder_point_number_required');
+  } else if (entityName === 'IngredientYield') {
+    if (!payload.ingredient_name) blockers.push('yield_ingredient_name_required');
+    if (!payload.purchase_unit) blockers.push('yield_purchase_unit_required');
+    if (numberOrNull(payload.oz_per_purchase_unit) === null) blockers.push('yield_oz_per_purchase_unit_number_required');
+  } else {
+    blockers.push('unsupported_customer_app_master_data_entity');
+  }
+  return blockers;
+}
+
+function buildImportCreateRow(row, entityName, payload, proposedAction) {
+  const validationBlockers = validateImportPayload(entityName, payload);
+  const name = payload.product_name || payload.bundle_name || payload.ingredient || payload.ingredient_name || row?.customer_app_target_name;
+  return {
+    target_entity: entityName,
+    operation: 'create_if_missing',
+    proposed_action: proposedAction,
+    match_key: importMatchKey(entityName, name),
+    match_field: entityName === 'Recipe'
+      ? 'product_name'
+      : entityName === 'Bundle'
+        ? 'bundle_name'
+        : entityName === 'InventoryItem'
+          ? 'ingredient'
+          : 'ingredient_name',
+    match_value: safeText(name, 120),
+    source_line_item: row?.source_line_item,
+    source_entity_type: row?.entity_type,
+    source_hub_id: safeId(row?.hub_source_id),
+    source_hub_name: safeText(row?.hub_source_name, 120),
+    approved_alias_mapping: row?.approved_alias_mapping || null,
+    import_ready: validationBlockers.length === 0,
+    blockers: validationBlockers,
+    warnings: row?.warnings || [],
+    payload,
+  };
+}
+
+function buildCustomerAppNonStockMirrorImportPreview(seedPacketRows) {
+  const createRows = [];
+  const skippedRows = [];
+  const deferredRows = [];
+  const blockedRows = [];
+  const warnings = [
+    'preview_only_no_master_data_import_performed',
+    'hub_bridge_remains_fallback',
+    'inventory_stock_seeded_or_kept_zero',
+    'inventory_deduction_held',
+    'purchase_order_automation_held',
+  ];
+
+  for (const row of seedPacketRows || []) {
+    if (row.status === 'already_native') {
+      skippedRows.push({
+        target_entity: row.entity_type,
+        match_value: row.customer_app_target_name,
+        reason: 'already_native_no_seed',
+      });
+      continue;
+    }
+
+    if (row.status === 'yield_details_deferred') {
+      deferredRows.push({
+        target_entity: 'IngredientYield',
+        match_value: row.customer_app_target_name,
+        reason: 'yield_details_deferred_by_policy',
+        yield_policy: YIELD_POLICY,
+        procurement_conversion_ready: false,
+        inventory_deduction_ready: false,
+        purchase_order_automation_ready: false,
+        warnings: [...new Set([...(row.warnings || []), 'yield_details_pending'])],
+      });
+      continue;
+    }
+
+    if (row.entity_type === 'recipe' && row.status === 'mirror_ready') {
+      createRows.push(buildImportCreateRow(row, 'Recipe', schemaSafeRecipePayload(row), 'create_customer_app_recipe_from_hub_master_data'));
+      continue;
+    }
+
+    if (row.entity_type === 'bundle' && ['mirror_ready', 'approved_alias_mapping'].includes(row.status)) {
+      createRows.push(buildImportCreateRow(row, 'Bundle', schemaSafeBundlePayload(row), row.status === 'approved_alias_mapping'
+        ? 'create_customer_app_bundle_from_approved_alias'
+        : 'create_customer_app_bundle_from_hub_master_data'));
+      continue;
+    }
+
+    if (row.entity_type === 'inventory' && row.status === 'mirror_ready_non_stock_master_data') {
+      createRows.push(buildImportCreateRow(row, 'InventoryItem', schemaSafeInventoryPayload(row), 'create_customer_app_inventory_item_non_stock_seed_zero_stock'));
+      continue;
+    }
+
+    if (row.entity_type === 'yield' && row.status === 'mirror_ready') {
+      createRows.push(buildImportCreateRow(row, 'IngredientYield', schemaSafeYieldPayload(row), 'create_customer_app_ingredient_yield_from_hub_exact_values'));
+      continue;
+    }
+
+    blockedRows.push({
+      target_entity: row.entity_type,
+      match_value: row.customer_app_target_name,
+      status: row.status,
+      blockers: row.blockers || ['seed_row_not_import_ready'],
+      warnings: row.warnings || [],
+    });
+  }
+
+  const invalidCreateRows = createRows.filter(row => !row.import_ready);
+  blockedRows.push(...invalidCreateRows.map(row => ({
+    target_entity: row.target_entity,
+    match_value: row.match_value,
+    status: 'schema_validation_blocked',
+    blockers: row.blockers,
+    warnings: row.warnings,
+  })));
+
+  const importReady = blockedRows.length === 0 && createRows.length > 0 && invalidCreateRows.length === 0;
+  const rowsByEntity = createRows.reduce((acc, row) => {
+    acc[row.target_entity] = (acc[row.target_entity] || 0) + 1;
+    return acc;
+  }, {});
+
+  return {
+    success: true,
+    dry_run: true,
+    writes_performed: false,
+    import_ready: importReady,
+    preview_scope: 'exact_order_required_non_stock_production_master_data',
+    inventory_seed_policy: INVENTORY_SEED_POLICY,
+    yield_policy: YIELD_POLICY,
+    procurement_conversion_ready: false,
+    inventory_deduction_ready: false,
+    purchase_order_automation_ready: false,
+    create_rows: createRows.slice(0, DEFAULT_MAX_ROWS),
+    create_row_count: createRows.length,
+    create_rows_by_entity: rowsByEntity,
+    deferred_rows: deferredRows.slice(0, DEFAULT_MAX_ROWS),
+    deferred_row_count: deferredRows.length,
+    skipped_rows: skippedRows.slice(0, DEFAULT_MAX_ROWS),
+    skipped_row_count: skippedRows.length,
+    blocked_rows: blockedRows.slice(0, DEFAULT_MAX_ROWS),
+    blockers: [...new Set(blockedRows.flatMap(row => row.blockers || []))].slice(0, MAX_BLOCKERS),
+    warnings: [...new Set([...warnings, ...createRows.flatMap(row => row.warnings || []), ...deferredRows.flatMap(row => row.warnings || [])])].slice(0, MAX_BLOCKERS),
+    next_action: importReady ? 'approve_gated_customer_app_non_stock_master_data_import' : 'patch_import_preview_blockers',
+    required_approval_phrase_template: 'APPROVE G31G CUSTOMER APP NON STOCK MASTER DATA IMPORT <ORDER_NUMBER>',
+    safety: {
+      dry_run_only: true,
+      writes_performed: false,
+      recipe_records_created: false,
+      bundle_records_created: false,
+      inventory_records_created: false,
+      ingredient_yield_records_created: false,
+      production_batches_created: false,
+      inventory_deducted: false,
+      purchase_orders_created: false,
+      provider_calls_performed: false,
+      stripe_calls_performed: false,
+      shopify_api_calls_performed: false,
+      notifications_sent: false,
+      sync_repair_replay_performed: false,
+      hub_bridge_modified: false,
     },
   };
 }
@@ -1067,12 +1342,14 @@ function buildParityReport({ lookup, customerOrder, nativeOrder, task, lineItems
     required_rows: gapClosurePreview.required_rows,
     mirror_ready_row_count: gapClosurePreview.mirror_ready_row_count,
     seed_packet_ready: gapClosurePreview.seed_packet_ready,
+    non_stock_import_preview_ready: gapClosurePreview.non_stock_import_preview_ready,
     seed_packet_rows: gapClosurePreview.seed_packet_rows,
     blocked_rows: gapClosurePreview.blocked_rows,
     manual_mapping_required_rows: gapClosurePreview.manual_mapping_required_rows,
     owner_input_required_rows: gapClosurePreview.owner_input_required_rows,
     hub_missing_rows: gapClosurePreview.hub_missing_rows,
     alias_candidate_rows: gapClosurePreview.alias_candidate_rows,
+    customer_app_non_stock_master_data_import_preview: gapClosurePreview.customer_app_non_stock_master_data_import_preview,
     gap_closure_blockers: gapClosurePreview.blockers,
     gap_closure_warnings: gapClosurePreview.warnings,
     next_action: gapClosurePreview.next_action,
