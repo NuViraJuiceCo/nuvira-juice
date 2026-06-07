@@ -845,6 +845,200 @@ function NativeProductionInventoryReadinessPreview({
   );
 }
 
+
+function NativeProductionDemandMaterializationPreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onRun,
+}) {
+  const exactOrderNumber = orderNumber?.trim();
+  const blockers = Array.isArray(preview?.materialization_blockers) ? preview.materialization_blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const batchRows = Array.isArray(preview?.proposed_production_batch_rows) ? preview.proposed_production_batch_rows : [];
+  const sourceRows = Array.isArray(preview?.proposed_order_source_rows) ? preview.proposed_order_source_rows : [];
+  const demandRows = Array.isArray(preview?.product_demand_rows) ? preview.product_demand_rows : [];
+  const ingredientRows = Array.isArray(preview?.ingredient_need_rows) ? preview.ingredient_need_rows : [];
+  const existingRows = Array.isArray(preview?.existing_native_batch_matches) ? preview.existing_native_batch_matches : [];
+  const safety = preview?.safety || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <Database className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Native Production Demand Materialization Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G31K read-only preview of the native ProductionBatch plan that would be created later if an exact gated materialization command is approved. No batch, inventory, purchase-order, task, order, provider, notification, sync, repair, or replay action is available here.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning || !exactOrderNumber}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning || !exactOrderNumber
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Demand Materialization Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Preview only. No ProductionBatch, ManualProductionBatch, inventory deduction, purchase order, compliance log, sync, repair, replay, provider, payment, or notification write is exposed from this panel.
+      </div>
+
+      {!exactOrderNumber && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Enter an exact paid native order number above before running the native production demand materialization preview.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard label="Materialization" value={preview.materialization_ready ? 'Ready' : 'Held'} tone={preview.materialization_ready ? 'success' : 'warning'} />
+            <StatCard label="Proposed Batches" value={formatNumber(batchRows.length)} tone={batchRows.length > 0 ? 'success' : 'warning'} />
+            <StatCard label="Demand Rows" value={formatNumber(demandRows.length)} />
+            <StatCard label="Order Sources" value={formatNumber(sourceRows.length)} />
+            <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
+            <StatCard label="Generated" value={formatDateTime(preview.generated_at)} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={preview.production_ready ? 'Production ready' : 'Production blocked'} />
+            <StatusChip value={preview.procurement_needed ? 'Procurement needed' : 'Procurement not needed'} />
+            <StatusChip value={preview.procurement_conversion_ready ? 'Procurement conversion ready' : 'Procurement conversion pending'} />
+            <StatusChip value={preview.inventory_deduction_ready ? 'Inventory deduction ready' : 'Inventory deduction held'} />
+            <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
+            <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Order context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.order_number ? `Order ${preview.order_number}` : null,
+                  preview.customer_app_order_present ? 'Customer App order present' : 'Customer App order missing',
+                  preview.native_shopify_order_present ? 'Native mirror present' : 'Native mirror missing',
+                  preview.native_fulfillment_task_present ? 'Native task present' : 'Native task missing',
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Schedule context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.production_date ? `Production ${preview.production_date}` : 'Production date pending',
+                  preview.delivery_date ? `Delivery ${preview.delivery_date}` : 'Delivery date pending',
+                  preview.fulfillment_type ? formatLabel(preview.fulfillment_type) : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Next action</p>
+              <p className="mt-1 text-xs text-foreground">{formatLabel(preview.next_action)}</p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Materialization blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.map(blocker => <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No materialization blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.slice(0, 16).map(warning => <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {batchRows.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Proposed native ProductionBatch rows</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {batchRows.slice(0, 12).map((row, index) => (
+                  <div key={`${row.batch_key}-${index}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-foreground">{sanitizeAdminText(row.product_name) || 'Product pending'}</p>
+                      <StatusChip value={row.would_skip_existing ? 'Dedupe existing' : row.would_update_existing ? 'Would update existing' : row.would_create ? 'Would create' : 'Preview'} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {[
+                        row.batch_key,
+                        row.production_date ? `Production ${row.production_date}` : null,
+                        `Planned ${formatNumber(row.planned_units)} units`,
+                        `${formatNumber(row.source_order_count)} source orders`,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                    {row.existing_batch_key && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Existing: {sanitizeAdminText(row.existing_batch_key)} · {formatLabel(row.existing_batch_status)}{row.existing_batch_locked ? ' · locked' : ''}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sourceRows.length > 0 && (
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Order source rows</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {sourceRows.slice(0, 12).map(row => `${formatNumber(row.quantity_contribution)}x ${sanitizeAdminText(row.product_name)} from ${sanitizeAdminText(row.source_line_item)} (${formatLabel(row.demand_source_type)})`).join(' · ')}
+              </p>
+            </div>
+          )}
+
+          {existingRows.length > 0 && (
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Existing native batch context</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {existingRows.slice(0, 8).map(row => `${sanitizeAdminText(row.batch_id || row.production_batch_id)} · ${sanitizeAdminText(row.product_name)} · ${formatLabel(row.status)}${row.source_match ? ' · source match' : ''}`).join(' · ')}
+              </p>
+            </div>
+          )}
+
+          {ingredientRows.length > 0 && (
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Ingredient/procurement summary</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {ingredientRows.slice(0, 12).map(row => `${sanitizeAdminText(row.ingredient_name)}: need ${formatNumber(row.proposed_quantity)} ${row.unit || 'units'}${row.procurement_needed ? ' · procurement needed' : ''}${row.yield_details_pending ? ' · yield pending' : ''}`).join(' · ')}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NativeProductionMasterDataParityPreview({
   preview,
   isRunning,
@@ -1547,6 +1741,9 @@ export default function SyncHealth() {
   const [masterDataParityPreview, setMasterDataParityPreview] = useState(null);
   const [masterDataParityPreviewError, setMasterDataParityPreviewError] = useState('');
   const [isMasterDataParityPreviewRunning, setIsMasterDataParityPreviewRunning] = useState(false);
+  const [demandMaterializationPreview, setDemandMaterializationPreview] = useState(null);
+  const [demandMaterializationPreviewError, setDemandMaterializationPreviewError] = useState('');
+  const [isDemandMaterializationPreviewRunning, setIsDemandMaterializationPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -1662,6 +1859,8 @@ export default function SyncHealth() {
     setProductionInventoryPreviewError('');
     setMasterDataParityPreview(null);
     setMasterDataParityPreviewError('');
+    setDemandMaterializationPreview(null);
+    setDemandMaterializationPreviewError('');
   };
 
   const runNativePilotApprovalPreview = async () => {
@@ -1709,6 +1908,30 @@ export default function SyncHealth() {
       setProductionInventoryPreviewError(previewError?.message || 'Unable to run native production/inventory readiness preview.');
     } finally {
       setIsProductionInventoryPreviewRunning(false);
+    }
+  };
+
+  const runNativeProductionDemandMaterializationPreview = async () => {
+    setDemandMaterializationPreviewError('');
+    setIsDemandMaterializationPreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for production demand materialization preview.');
+      }
+      const res = await base44.functions.invoke('previewNativeProductionDemandMaterialization', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Native production demand materialization preview failed.');
+      }
+      setDemandMaterializationPreview(result);
+    } catch (previewError) {
+      setDemandMaterializationPreviewError(previewError?.message || 'Unable to run native production demand materialization preview.');
+    } finally {
+      setIsDemandMaterializationPreviewRunning(false);
     }
   };
 
@@ -1914,6 +2137,14 @@ export default function SyncHealth() {
           error={productionInventoryPreviewError}
           orderNumber={cutoverOrderNumber}
           onRun={runNativeProductionInventoryPreview}
+        />
+
+        <NativeProductionDemandMaterializationPreview
+          preview={demandMaterializationPreview}
+          isRunning={isDemandMaterializationPreviewRunning}
+          error={demandMaterializationPreviewError}
+          orderNumber={cutoverOrderNumber}
+          onRun={runNativeProductionDemandMaterializationPreview}
         />
 
         <NativeProductionMasterDataParityPreview
