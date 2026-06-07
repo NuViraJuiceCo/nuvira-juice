@@ -271,7 +271,50 @@ assert.equal(JSON.stringify(deferredYieldReadiness.pending_yield_items), JSON.st
 assert.equal(JSON.stringify(deferredYieldReadiness.missing_yield_items), JSON.stringify(['Beetroot']));
 assert.equal(deferredYieldReadiness.blockers.includes('missing_ingredient_yield:Beetroot'), false);
 assert.ok(deferredYieldReadiness.warnings.includes('yield_details_pending:Beetroot'));
-assert.equal(deferredYieldReadiness.classification, 'production_inventory_preview_ready_procurement_needed');
+assert.equal(deferredYieldReadiness.classification, 'production_ready_with_procurement_conversion_warnings');
+
+const deferredStockUnitReadiness = fns.buildProductionReadiness({
+  customerOrder,
+  nativeOrder,
+  task,
+  lookup,
+  lineItems: [{ title: 'Oasis', quantity: 1 }],
+  masterData: {
+    recipes: [{
+      id: 'recipe_oasis',
+      product_name: 'Oasis',
+      yield_factor: 1,
+      ingredients: [
+        { ingredient_name: 'Sea Salt', quantity_oz: 0.02, unit: 'oz' },
+        { ingredient_name: 'Black Pepper', quantity_oz: 0.01, unit: 'oz' },
+      ],
+    }],
+    bundles,
+    products,
+    inventoryItems: [
+      { id: 'inventory_sea_salt', ingredient: 'Sea Salt', unit: 'bottles', stock: 0 },
+      { id: 'inventory_black_pepper', ingredient: 'Black Pepper', unit: 'bottles', stock: 0 },
+    ],
+    ingredientYields: [
+      { id: 'yield_sea_salt', ingredient_name: 'Sea Salt', purchase_unit: 'lb', oz_per_purchase_unit: 16, units_per_case: 1, rounding_rule: 'exact' },
+      { id: 'yield_black_pepper', ingredient_name: 'Black Pepper', purchase_unit: 'lb', oz_per_purchase_unit: 16, units_per_case: 1, rounding_rule: 'exact' },
+    ],
+  },
+  existingBatches: [],
+});
+assert.equal(deferredStockUnitReadiness.production_ready, true);
+assert.equal(deferredStockUnitReadiness.inventory_calculation_ready, true);
+assert.equal(deferredStockUnitReadiness.procurement_conversion_ready, false);
+assert.equal(deferredStockUnitReadiness.inventory_deduction_ready, false);
+assert.equal(deferredStockUnitReadiness.blockers.includes('unsupported_stock_unit:Sea Salt'), false);
+assert.equal(deferredStockUnitReadiness.blockers.includes('unsupported_stock_unit:Black Pepper'), false);
+assert.equal(JSON.stringify(deferredStockUnitReadiness.deferred_stock_unit_items), JSON.stringify(['Black Pepper', 'Sea Salt']));
+assert.equal(JSON.stringify(deferredStockUnitReadiness.unsupported_stock_unit_items), JSON.stringify(['Black Pepper', 'Sea Salt']));
+assert.ok(deferredStockUnitReadiness.warnings.includes('unsupported_stock_unit_deferred:Sea Salt'));
+assert.ok(deferredStockUnitReadiness.warnings.includes('unsupported_stock_unit_deferred:Black Pepper'));
+assert.ok(deferredStockUnitReadiness.warnings.includes('procurement_conversion_pending:Sea Salt'));
+assert.ok(deferredStockUnitReadiness.warnings.includes('procurement_conversion_pending:Black Pepper'));
+assert.equal(deferredStockUnitReadiness.classification, 'production_ready_with_procurement_conversion_warnings');
 
 const tracePinchReadiness = fns.buildProductionReadiness({
   customerOrder,
