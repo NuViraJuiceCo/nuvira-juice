@@ -670,8 +670,16 @@ function computeIngredientNeeds(demandRows, indexes) {
       inventoryItem = inventoryMatch.record;
       const conversion = stockToOz(inventoryItem.stock, inventoryItem.unit);
       if (!conversion.ok) {
-        blockers.push(`${conversion.reason}:${value.ingredient_name}`);
-        status = conversion.reason;
+        if (conversion.reason === 'unsupported_stock_unit') {
+          warnings.push(`unsupported_stock_unit_deferred:${value.ingredient_name}`);
+          warnings.push(`procurement_conversion_pending:${value.ingredient_name}`);
+          shortfallQuantity = proposedQuantity;
+          procurementNeeded = proposedQuantity > 0;
+          status = 'unsupported_stock_unit_deferred';
+        } else {
+          blockers.push(`${conversion.reason}:${value.ingredient_name}`);
+          status = conversion.reason;
+        }
       } else {
         currentStock = roundQuantity(conversion.value, 3);
         shortfallQuantity = roundQuantity(Math.max(0, proposedQuantity - currentStock), 3) || 0;
@@ -700,6 +708,8 @@ function computeIngredientNeeds(demandRows, indexes) {
         warnings.push(`yield_details_pending:${value.ingredient_name}`);
         warnings.push(`invalid_ingredient_yield_details:${value.ingredient_name}`);
         warnings.push(`procurement_conversion_pending:${value.ingredient_name}`);
+      } else if (status === 'unsupported_stock_unit_deferred') {
+        procurementBasis = 'stock_unit_conversion_deferred';
       } else {
         const trimWasteFactor = numberOrNull(yieldRecord?.trim_waste_factor) ?? 1;
         const unitsPerCase = numberOrNull(yieldRecord?.units_per_case);
@@ -738,7 +748,8 @@ function computeIngredientNeeds(demandRows, indexes) {
       procurement_basis: procurementBasis,
       yield_details_pending: yieldMatch.status === 'missing' ||
         (yieldMatch.status === 'matched' && (!numberOrNull(yieldRecord?.oz_per_purchase_unit) || numberOrNull(yieldRecord?.oz_per_purchase_unit) <= 0)),
-      procurement_conversion_ready: Boolean(procurementUnit && procurementQuantity !== null),
+      procurement_conversion_ready: Boolean(procurementUnit && procurementQuantity !== null) && status !== 'unsupported_stock_unit_deferred',
+      unsupported_stock_unit_deferred: status === 'unsupported_stock_unit_deferred',
       status,
     });
   }
@@ -894,8 +905,17 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
     .filter(row => row.trace_quantity_pending)
     .map(row => row.ingredient_name)
     .filter(Boolean);
+  const deferredStockUnitItems = ingredients.ingredientRows
+    .filter(row => row.unsupported_stock_unit_deferred)
+    .map(row => row.ingredient_name)
+    .filter(Boolean);
   const procurementConversionReady = pendingYieldItems.length === 0 &&
+    deferredStockUnitItems.length === 0 &&
     !ingredients.ingredientRows.some(row => row.procurement_needed && row.procurement_quantity === null);
+  const procurementConversionWarnings = deferredStockUnitItems.length > 0 ||
+    pendingYieldItems.length > 0 ||
+    traceIngredientItems.length > 0 ||
+    uniqueWarnings.some(warning => normalizeText(warning).startsWith('procurement_conversion_pending'));
   const shortfallItems = ingredients.ingredientRows.filter(row => row.procurement_needed).map(row => ({
     ingredient_name: row.ingredient_name,
     shortfall_quantity: row.shortfall_quantity,
@@ -940,6 +960,8 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
     pending_yield_items: [...new Set(pendingYieldItems)].slice(0, DEFAULT_MAX_ROWS),
     yield_details_pending: pendingYieldItems.length > 0,
     trace_ingredient_items: [...new Set(traceIngredientItems)].slice(0, DEFAULT_MAX_ROWS),
+    deferred_stock_unit_items: [...new Set(deferredStockUnitItems)].slice(0, DEFAULT_MAX_ROWS),
+    unsupported_stock_unit_items: [...new Set(deferredStockUnitItems)].slice(0, DEFAULT_MAX_ROWS),
     inventory_shortfall_items: shortfallItems.slice(0, DEFAULT_MAX_ROWS),
     existing_production_batch_context_rows: existingBatchRows,
     production_ready: productionBlockers.length === 0 && recipeAttached.demandRows.length > 0,
@@ -952,7 +974,9 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
     purchase_order_ready: false,
     hub_fallback_required: true,
     classification: uniqueBlockers.length === 0
-      ? (ingredients.ingredientRows.some(row => row.procurement_needed) ? 'production_inventory_preview_ready_procurement_needed' : 'production_inventory_preview_ready')
+      ? (procurementConversionWarnings
+        ? 'production_ready_with_procurement_conversion_warnings'
+        : (ingredients.ingredientRows.some(row => row.procurement_needed) ? 'production_inventory_preview_ready_procurement_needed' : 'production_inventory_preview_ready'))
       : productionBlockers.length === 0 && inventoryBlockers.length > 0
         ? 'production_ready_inventory_master_data_blocked'
         : 'blocked_master_data_or_order_context',
