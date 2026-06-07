@@ -23,22 +23,40 @@ It adds:
   - default-off env gates required
   - exact order/task allowlist required
   - actor email allowlist required
+  - fail-closed approved-field whitelist required
   - idempotent `CommandLog` guard
   - updates only the existing native `FulfillmentTask`
 
 ## Metadata repaired
 
-When source data exists and the target task field is missing, the repair can fill:
+When source data exists and the target task field is missing, the repair can fill
+only approved operational display/linkage metadata:
 
-- order linkage: `order_id`, `base44_order_id`, `shopify_order_id`, `native_shopify_order_id`
+- order linkage: `base44_order_id`, `shopify_order_id`, `native_shopify_order_id`
 - order numbers: `shopify_order_number`, `order_number`
-- safe admin context: `customer_name`, `customer_email`, `customer_phone`
-- source markers: `source_channel`, `source_type`, `task_source`, `created_from_native_ops`, `order_type`
-- schedule/display fields: `delivery_date`, `scheduled_date`, `assigned_delivery_date`, `production_date`, `time_window`, `delivery_window_label`, `schedule_source`
-- safe item/total/address summaries: `items`, `items_summary`, `line_item_count`, `total_price`, `address_complete`, address fields, `delivery_zone_key`
+- source markers: `source_channel`, `source_type`, `task_source`, `created_from_native_ops`
+- schedule/display fields: `scheduled_date`, `assigned_delivery_date`, `production_date`, `time_window`, `delivery_window_label`, `schedule_source`
+- safe item/total/address summaries: `items_summary`, `line_item_count`, `total_price`, `address_complete`, approved address display fields
 - safe operational projections when missing: `delivery_status`, `production_status`, `payment_status`, `sync_status`
 
 Existing non-empty fields are preserved. Identity/link conflicts block the repair instead of being overwritten.
+
+The preview and executor intentionally exclude:
+
+- `customer_name`
+- `customer_phone`
+- customer email
+- raw item arrays
+- task `status`
+- payment/provider ids
+- route/proof/drop/delivery execution fields
+- any unrecognized patch field
+
+If derived source metadata contains unapproved fields, preview excludes them and
+reports `excluded_unapproved_repair_fields`. The executor enforces the same
+whitelist immediately before update and returns
+`repair_patch_contains_unapproved_fields` if any unsupported field ever reaches
+the live write plan.
 
 ## Live execution gates
 
@@ -84,7 +102,7 @@ The harness verifies:
 - preview admin/internal auth
 - missing display metadata detection
 - patch generation for an incomplete native task
-- redacted patch preview
+- whitelist enforcement and excluded customer fields
 - no-op behavior for complete tasks
 - conflict blockers for wrong task/order linkage
 - subscription/POS blockers

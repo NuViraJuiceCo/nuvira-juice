@@ -10,6 +10,38 @@ const DISPLAY_CRITICAL_FIELDS = [
   'schedule_source',
   'production_date',
 ];
+const APPROVED_REPAIR_PATCH_FIELDS = new Set([
+  'base44_order_id',
+  'shopify_order_id',
+  'native_shopify_order_id',
+  'shopify_order_number',
+  'order_number',
+  'source_channel',
+  'source_type',
+  'schedule_source',
+  'task_source',
+  'created_from_native_ops',
+  'scheduled_date',
+  'assigned_delivery_date',
+  'production_date',
+  'fulfillment_type',
+  'delivery_status',
+  'production_status',
+  'payment_status',
+  'sync_status',
+  'address',
+  'delivery_address',
+  'address_line1',
+  'address_city',
+  'address_state',
+  'address_postal_code',
+  'time_window',
+  'delivery_window_label',
+  'items_summary',
+  'line_item_count',
+  'total_price',
+  'address_complete',
+]);
 const SAFE_ARRAY_LIMIT = 40;
 
 function normalizeText(value) {
@@ -286,6 +318,14 @@ function isIdentityField(field) {
   ].includes(field);
 }
 
+function isApprovedRepairPatchField(field) {
+  return APPROVED_REPAIR_PATCH_FIELDS.has(field);
+}
+
+function unsupportedRepairPatchFields(patch) {
+  return Object.keys(patch || {}).filter(field => !isApprovedRepairPatchField(field)).sort();
+}
+
 function sameValue(a, b) {
   return normalizeLower(a) === normalizeLower(b);
 }
@@ -316,13 +356,22 @@ function buildMetadataRepairPlan({ task, nativeOrder, customerOrder }) {
   const source = sourceMetadata({ task, nativeOrder, customerOrder });
   const patch = {};
   const skippedExistingFields = [];
+  const excludedUnapprovedFields = [];
   for (const [field, value] of Object.entries(source)) {
     if (isEmptyValue(value)) continue;
+    if (!isApprovedRepairPatchField(field)) {
+      if (isEmptyValue(task?.[field])) excludedUnapprovedFields.push(field);
+      continue;
+    }
     if (isEmptyValue(task?.[field])) patch[field] = value;
     else if (!isIdentityField(field)) skippedExistingFields.push(field);
   }
 
+  const unsupportedFields = unsupportedRepairPatchFields(patch);
+  if (unsupportedFields.length > 0) blockers.push('repair_patch_contains_unapproved_fields');
+
   const missingDisplayFields = taskMissingDisplayFields({ ...task, ...patch });
+  if (excludedUnapprovedFields.length > 0) warnings.push('excluded_unapproved_repair_fields');
   if (missingDisplayFields.length > 0) warnings.push('display_metadata_still_incomplete_after_patch');
   if (Object.keys(patch).length === 0) warnings.push('no_missing_metadata_fields_to_repair');
 
@@ -333,6 +382,8 @@ function buildMetadataRepairPlan({ task, nativeOrder, customerOrder }) {
     warnings: safeStringArray([...new Set(warnings)]),
     patch,
     patch_fields: Object.keys(patch).sort(),
+    unsupported_patch_fields: safeStringArray(unsupportedFields, 80),
+    excluded_unapproved_fields: safeStringArray([...new Set(excludedUnapprovedFields)].sort(), 80),
     missing_display_fields_before: taskMissingDisplayFields(task),
     missing_display_fields_after: missingDisplayFields,
     skipped_existing_fields: safeStringArray(skippedExistingFields.sort(), 80),
@@ -503,6 +554,8 @@ async function buildRepairPreview({ base44, body, actor }) {
         warnings: [],
         patch: {},
         patch_fields: [],
+        unsupported_patch_fields: [],
+        excluded_unapproved_fields: [],
         missing_display_fields_before: task ? taskMissingDisplayFields(task) : [],
         missing_display_fields_after: task ? taskMissingDisplayFields(task) : [],
         skipped_existing_fields: [],
@@ -534,6 +587,8 @@ async function buildRepairPreview({ base44, body, actor }) {
         blockers: safeStringArray(plan.blockers),
         warnings: safeStringArray(plan.warnings),
         patch_fields: safeStringArray(plan.patch_fields, 100),
+        unsupported_patch_fields: safeStringArray(plan.unsupported_patch_fields, 80),
+        excluded_unapproved_fields: safeStringArray(plan.excluded_unapproved_fields, 80),
         patch_preview: summarizePatch(plan.patch),
         missing_display_fields_before: safeStringArray(plan.missing_display_fields_before, 80),
         missing_display_fields_after: safeStringArray(plan.missing_display_fields_after, 80),
