@@ -838,6 +838,201 @@ function NativeProductionInventoryReadinessPreview({
   );
 }
 
+function NativeProductionMasterDataParityPreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onRun,
+}) {
+  const exactOrderNumber = orderNumber?.trim();
+  const requiredRows = Array.isArray(preview?.required_master_data_rows) ? preview.required_master_data_rows : [];
+  const mirrorReadyRows = Array.isArray(preview?.mirror_ready_rows) ? preview.mirror_ready_rows : [];
+  const mirrorBlockers = Array.isArray(preview?.mirror_blockers) ? preview.mirror_blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const customerAppCounts = preview?.customer_app_counts || {};
+  const hubCounts = preview?.hub_counts || {};
+  const safety = preview?.safety || {};
+  const missingNativeRecipes = Array.isArray(preview?.missing_native_recipes) ? preview.missing_native_recipes : [];
+  const missingNativeBundles = Array.isArray(preview?.missing_native_bundles) ? preview.missing_native_bundles : [];
+  const missingNativeInventory = Array.isArray(preview?.missing_native_inventory_items) ? preview.missing_native_inventory_items : [];
+  const missingNativeYields = Array.isArray(preview?.missing_native_ingredient_yields) ? preview.missing_native_ingredient_yields : [];
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <Database className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Native Production Master Data Parity</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G31B read-only preview comparing Customer App native Recipe, Bundle, InventoryItem, and IngredientYield readiness against Hub master data. It does not import, seed, mirror, or write master data.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning || !exactOrderNumber}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning || !exactOrderNumber
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Master Data Parity Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Preview only. No Recipe, Bundle, InventoryItem, IngredientYield, ProductionBatch, inventory deduction, purchase order, sync, repair, or replay action is available from this panel.
+      </div>
+
+      {!exactOrderNumber && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Enter an exact paid native order number above before running the master-data parity preview.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard
+              label="Next Action"
+              value={formatLabel(preview.recommended_next_action)}
+              tone={mirrorBlockers.length > 0 ? 'warning' : 'success'}
+            />
+            <StatCard label="Required Rows" value={formatNumber(requiredRows.length)} />
+            <StatCard label="Mirror Ready" value={formatNumber(mirrorReadyRows.length)} tone={mirrorReadyRows.length > 0 ? 'success' : 'default'} />
+            <StatCard label="Mirror Blockers" value={formatNumber(mirrorBlockers.length)} tone={mirrorBlockers.length > 0 ? 'warning' : 'success'} />
+            <StatCard label="Line Items" value={formatNumber(preview.line_item_count)} />
+            <StatCard label="Generated" value={formatDateTime(preview.generated_at)} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={preview.native_production_readiness_after_mirror ? 'Ready after mirror' : 'Still blocked after mirror'} />
+            <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
+            <StatusChip value={preview.hub_lookup?.available ? 'Hub master data reachable' : 'Hub master data unavailable'} />
+            <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Customer App native counts</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {[
+                  `${formatNumber(customerAppCounts.recipe_count)} recipes`,
+                  `${formatNumber(customerAppCounts.bundle_count)} bundles`,
+                  `${formatNumber(customerAppCounts.inventory_item_count)} inventory items`,
+                  `${formatNumber(customerAppCounts.ingredient_yield_count)} yields`,
+                ].join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Hub master-data counts</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {[
+                  `${formatNumber(hubCounts.recipe_count)} recipes`,
+                  `${formatNumber(hubCounts.bundle_count)} bundles`,
+                  `${formatNumber(hubCounts.inventory_item_count)} inventory items`,
+                  `${formatNumber(hubCounts.ingredient_yield_count)} yields`,
+                ].join(' · ')}
+              </p>
+            </div>
+          </div>
+
+          {(missingNativeRecipes.length > 0 || missingNativeBundles.length > 0 || missingNativeInventory.length > 0 || missingNativeYields.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Missing native product master data</p>
+                <p className="mt-2 text-[10px] text-cyan-900">
+                  {[
+                    missingNativeRecipes.length > 0 ? `Recipes: ${missingNativeRecipes.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : null,
+                    missingNativeBundles.length > 0 ? `Bundles: ${missingNativeBundles.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : null,
+                  ].filter(Boolean).join(' · ') || 'No missing native recipe or bundle rows returned.'}
+                </p>
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Missing native ingredient master data</p>
+                <p className="mt-2 text-[10px] text-cyan-900">
+                  {[
+                    missingNativeInventory.length > 0 ? `Inventory: ${missingNativeInventory.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : null,
+                    missingNativeYields.length > 0 ? `Yields: ${missingNativeYields.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : null,
+                  ].filter(Boolean).join(' · ') || 'No missing native inventory or yield rows returned.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {(mirrorBlockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Mirror blockers</p>
+                {mirrorBlockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {mirrorBlockers.map(blocker => (
+                      <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No mirror blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.map(warning => (
+                      <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {requiredRows.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Required master-data rows</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {requiredRows.slice(0, 16).map((row, index) => (
+                  <div key={`${row.required_type}-${row.required_name}-${index}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground">{row.required_name || 'Master data row'}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {formatLabel(row.required_type)} · Source {row.source_line_item || 'not returned'}
+                        </p>
+                      </div>
+                      <StatusChip value={row.mirror_readiness || 'review'} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {[
+                        row.native_present ? 'Native present' : 'Native missing',
+                        row.hub_match_status ? `Hub ${formatLabel(row.hub_match_status)}` : null,
+                        row.field_compatibility_status ? `Schema ${formatLabel(row.field_compatibility_status)}` : null,
+                        row.hub_id ? `Hub ${row.hub_id}` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
   const summary = preview?.summary || {};
   const fetchStats = preview?.fetch_stats || {};
@@ -1109,6 +1304,9 @@ export default function SyncHealth() {
   const [productionInventoryPreview, setProductionInventoryPreview] = useState(null);
   const [productionInventoryPreviewError, setProductionInventoryPreviewError] = useState('');
   const [isProductionInventoryPreviewRunning, setIsProductionInventoryPreviewRunning] = useState(false);
+  const [masterDataParityPreview, setMasterDataParityPreview] = useState(null);
+  const [masterDataParityPreviewError, setMasterDataParityPreviewError] = useState('');
+  const [isMasterDataParityPreviewRunning, setIsMasterDataParityPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -1222,6 +1420,8 @@ export default function SyncHealth() {
     setPilotApprovalError('');
     setProductionInventoryPreview(null);
     setProductionInventoryPreviewError('');
+    setMasterDataParityPreview(null);
+    setMasterDataParityPreviewError('');
   };
 
   const runNativePilotApprovalPreview = async () => {
@@ -1269,6 +1469,30 @@ export default function SyncHealth() {
       setProductionInventoryPreviewError(previewError?.message || 'Unable to run native production/inventory readiness preview.');
     } finally {
       setIsProductionInventoryPreviewRunning(false);
+    }
+  };
+
+  const runNativeProductionMasterDataParityPreview = async () => {
+    setMasterDataParityPreviewError('');
+    setIsMasterDataParityPreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for master-data parity preview.');
+      }
+      const res = await base44.functions.invoke('previewNativeProductionMasterDataParity', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Native production master-data parity preview failed.');
+      }
+      setMasterDataParityPreview(result);
+    } catch (previewError) {
+      setMasterDataParityPreviewError(previewError?.message || 'Unable to run native production master-data parity preview.');
+    } finally {
+      setIsMasterDataParityPreviewRunning(false);
     }
   };
 
@@ -1450,6 +1674,14 @@ export default function SyncHealth() {
           error={productionInventoryPreviewError}
           orderNumber={cutoverOrderNumber}
           onRun={runNativeProductionInventoryPreview}
+        />
+
+        <NativeProductionMasterDataParityPreview
+          preview={masterDataParityPreview}
+          isRunning={isMasterDataParityPreviewRunning}
+          error={masterDataParityPreviewError}
+          orderNumber={cutoverOrderNumber}
+          onRun={runNativeProductionMasterDataParityPreview}
         />
 
         {showError && (
