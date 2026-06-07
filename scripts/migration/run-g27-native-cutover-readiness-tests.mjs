@@ -50,6 +50,7 @@ const fns = loadFunctions('base44/functions/previewNativeOrderCutoverReadiness/e
   'summarizeTarget',
   'aggregateReadiness',
   'gateSummary',
+  'buildHubRetirementReadiness',
   'requirePreviewAccess',
 ], {
   NATIVE_SAFE_SYNC_PREVIEW_SECRET: 'preview-secret',
@@ -62,6 +63,26 @@ const fns = loadFunctions('base44/functions/previewNativeOrderCutoverReadiness/e
   ENABLE_MAY30_NATIVE_ORDER_OPS: 'true',
   MAY30_NATIVE_ORDER_OPS_SECRET: 'configured',
   ENABLE_NATIVE_FULFILLMENT_TASK_MATERIALIZATION_WRITES: 'false',
+  NATIVE_FULFILLMENT_TASK_MATERIALIZATION_KILL_SWITCH: 'true',
+  NATIVE_FULFILLMENT_TASK_MATERIALIZATION_ORDER_ALLOWLIST: 'G27-1001',
+  NATIVE_FULFILLMENT_TASK_MATERIALIZATION_ALLOWED_EMAILS: 'owner@example.test',
+  ENABLE_NATIVE_FULFILLMENT_TASK_LIFECYCLE_WRITES: 'false',
+  NATIVE_FULFILLMENT_TASK_LIFECYCLE_KILL_SWITCH: 'true',
+  NATIVE_FULFILLMENT_TASK_LIFECYCLE_TASK_ALLOWLIST: 'native_task_001',
+  NATIVE_FULFILLMENT_TASK_LIFECYCLE_ALLOWED_EMAILS: 'owner@example.test',
+  NATIVE_FULFILLMENT_TASK_LIFECYCLE_ALLOWED_ACTIONS: 'pack,out_for_delivery,delivered_operational',
+  ENABLE_NATIVE_PRODUCTION_BATCH_LIFECYCLE_WRITES: 'false',
+  NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH: 'true',
+  NATIVE_PRODUCTION_BATCH_LIFECYCLE_BATCH_ALLOWLIST: 'batch_001',
+  NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_EMAILS: 'owner@example.test',
+  NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS: 'start,complete,verify',
+  ENABLE_NATIVE_ORDER_SCHEDULE_CORRECTION_WRITES: 'false',
+  NATIVE_ORDER_SCHEDULE_CORRECTION_KILL_SWITCH: 'true',
+  NATIVE_ORDER_SCHEDULE_CORRECTION_ORDER_ALLOWLIST: 'G27-1001',
+  NATIVE_ORDER_SCHEDULE_CORRECTION_ALLOWED_EMAILS: 'owner@example.test',
+  ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH: 'false',
+  NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH: 'true',
+  ENABLE_NATIVE_SAFE_SYNC_PARITY_LOG: 'false',
 });
 
 const lookup = fns.getLookup({
@@ -236,6 +257,14 @@ assert.equal(gates.native_safe_sync_writer.broad_real_order_mode, false);
 assert.equal(gates.native_safe_sync_writer.order_allowlist_count, 1);
 assert.equal(gates.may30_native_order_ops.enabled, true);
 assert.equal(gates.native_fulfillment_task_materialization.enabled, false);
+assert.equal(gates.native_fulfillment_task_materialization.order_allowlist_count, 1);
+assert.equal(gates.native_fulfillment_task_lifecycle.enabled, false);
+assert.equal(gates.native_fulfillment_task_lifecycle.broad_real_task_mode, false);
+assert.equal(gates.native_fulfillment_task_lifecycle.action_allowlist_count, 3);
+assert.equal(gates.native_production_batch_lifecycle.enabled, false);
+assert.equal(gates.native_production_batch_lifecycle.broad_real_batch_mode, false);
+assert.equal(gates.native_order_schedule_correction.enabled, false);
+assert.equal(gates.native_order_schedule_correction.broad_real_order_mode, false);
 
 const readiness = fns.aggregateReadiness([createNativeSummary, existingNativeSummary], gates);
 assert.equal(readiness.classification, 'pilot_ready_with_exact_order_approval');
@@ -246,6 +275,22 @@ assert.equal(readiness.live_pilot_requires_exact_order_approval, true);
 assert.equal(JSON.stringify(readiness.blockers), JSON.stringify([]));
 assert.ok(readiness.warnings.includes('native_safe_sync_writer_disabled_for_broad_real_orders'));
 assert.ok(readiness.warnings.includes('native_task_materialization_writes_disabled'));
+
+const hubRetirement = fns.buildHubRetirementReadiness(gates);
+assert.equal(hubRetirement.status, 'not_ready_to_retire_hub');
+assert.equal(hubRetirement.hub_bridge_fallback_required, true);
+assert.equal(hubRetirement.hub_retirement_approved, false);
+assert.equal(hubRetirement.live_writes_required_for_this_check, false);
+assert.ok(hubRetirement.blockers.includes('native_order_writer_not_approved_for_broad_real_orders'));
+assert.ok(hubRetirement.blockers.includes('inventory_procurement_native_ownership_not_validated'));
+assert.ok(hubRetirement.blockers.includes('delivery_route_proof_native_ownership_not_validated'));
+assert.ok(hubRetirement.blockers.includes('notification_behavior_native_ownership_not_validated'));
+assert.ok(hubRetirement.blockers.includes('refund_payment_reversal_native_ownership_not_validated'));
+assert.ok(hubRetirement.blockers.includes('hub_retirement_reconciliation_reporting_not_finalized'));
+assert.ok(hubRetirement.blockers.includes('hub_bridge_retirement_not_approved'));
+assert.equal(hubRetirement.subsystems.length, 12);
+assert.equal(hubRetirement.subsystems.find(item => item.key === 'hub_bridge_fallback')?.status, 'required_fallback_active');
+assert.equal(hubRetirement.subsystems.find(item => item.key === 'native_fulfillment_task_lifecycle')?.status, 'disabled_or_not_configured');
 
 const holdReadiness = fns.aggregateReadiness([blockedSummary], {
   ...gates,

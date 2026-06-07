@@ -4,6 +4,7 @@ const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 10;
 const MAX_TASK_SUMMARY = 5;
 const MAX_BLOCKERS = 20;
+const MAX_SUBSYSTEM_SUMMARY = 12;
 
 function normalizeText(value) {
   return (value ?? '').toString().trim();
@@ -23,6 +24,30 @@ function parseCsv(value) {
 
 function countCsv(value) {
   return parseCsv(value).length;
+}
+
+function envEnabled(name) {
+  return Deno.env.get(name) === 'true';
+}
+
+function guardedWriteGate({
+  enabledFlag,
+  killSwitchFlag,
+  allowlistFlag,
+  actorAllowlistFlag,
+  actionAllowlistFlag,
+  broadModeKey = 'broad_real_order_mode',
+}) {
+  const allowlistCount = countCsv(Deno.env.get(allowlistFlag));
+  const gate = {
+    enabled: envEnabled(enabledFlag),
+    kill_switch: envEnabled(killSwitchFlag),
+    allowlist_count: allowlistCount,
+    actor_allowlist_count: countCsv(Deno.env.get(actorAllowlistFlag)),
+  };
+  if (actionAllowlistFlag) gate.action_allowlist_count = countCsv(Deno.env.get(actionAllowlistFlag));
+  gate[broadModeKey] = gate.enabled && allowlistCount === 0;
+  return gate;
 }
 
 function safeLimit(value) {
@@ -274,6 +299,220 @@ function gateSummary() {
       actor_allowlist_count: countCsv(Deno.env.get('NATIVE_FULFILLMENT_TASK_MATERIALIZATION_ALLOWED_EMAILS')),
       broad_real_order_mode: Deno.env.get('ENABLE_NATIVE_FULFILLMENT_TASK_MATERIALIZATION_WRITES') === 'true' && countCsv(Deno.env.get('NATIVE_FULFILLMENT_TASK_MATERIALIZATION_ORDER_ALLOWLIST')) === 0,
     },
+    native_fulfillment_task_lifecycle: guardedWriteGate({
+      enabledFlag: 'ENABLE_NATIVE_FULFILLMENT_TASK_LIFECYCLE_WRITES',
+      killSwitchFlag: 'NATIVE_FULFILLMENT_TASK_LIFECYCLE_KILL_SWITCH',
+      allowlistFlag: 'NATIVE_FULFILLMENT_TASK_LIFECYCLE_TASK_ALLOWLIST',
+      actorAllowlistFlag: 'NATIVE_FULFILLMENT_TASK_LIFECYCLE_ALLOWED_EMAILS',
+      actionAllowlistFlag: 'NATIVE_FULFILLMENT_TASK_LIFECYCLE_ALLOWED_ACTIONS',
+      broadModeKey: 'broad_real_task_mode',
+    }),
+    native_production_batch_lifecycle: guardedWriteGate({
+      enabledFlag: 'ENABLE_NATIVE_PRODUCTION_BATCH_LIFECYCLE_WRITES',
+      killSwitchFlag: 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH',
+      allowlistFlag: 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_BATCH_ALLOWLIST',
+      actorAllowlistFlag: 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_EMAILS',
+      actionAllowlistFlag: 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS',
+      broadModeKey: 'broad_real_batch_mode',
+    }),
+    native_order_schedule_correction: guardedWriteGate({
+      enabledFlag: 'ENABLE_NATIVE_ORDER_SCHEDULE_CORRECTION_WRITES',
+      killSwitchFlag: 'NATIVE_ORDER_SCHEDULE_CORRECTION_KILL_SWITCH',
+      allowlistFlag: 'NATIVE_ORDER_SCHEDULE_CORRECTION_ORDER_ALLOWLIST',
+      actorAllowlistFlag: 'NATIVE_ORDER_SCHEDULE_CORRECTION_ALLOWED_EMAILS',
+    }),
+    native_notification_flags: {
+      admin_push_enabled: envEnabled('ENABLE_ADMIN_PUSH_NOTIFICATIONS'),
+      order_processed_admin_push_enabled: envEnabled('ENABLE_ADMIN_ORDER_PROCESSED_PUSH'),
+      customer_push_enabled: envEnabled('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS'),
+      customer_delivery_status_notifications_enabled: envEnabled('ENABLE_CUSTOMER_DELIVERY_STATUS_NOTIFICATIONS'),
+      order_status_notifications_enabled: envEnabled('ENABLE_ORDER_STATUS_NOTIFICATIONS'),
+      upcoming_delivery_notifications_enabled: envEnabled('ENABLE_UPCOMING_DELIVERY_NOTIFICATIONS'),
+      notification_campaign_sends_enabled: envEnabled('ENABLE_NOTIFICATION_CAMPAIGN_SENDS'),
+    },
+    refund_payment_flags: {
+      admin_manual_refunds_enabled: envEnabled('ENABLE_ADMIN_MANUAL_REFUNDS'),
+      admin_subscription_cancel_refund_enabled: envEnabled('ENABLE_ADMIN_SUBSCRIPTION_CANCEL_REFUND'),
+    },
+    delivery_route_flags: {
+      delivery_route_optimization_enabled: envEnabled('ENABLE_DELIVERY_ROUTE_OPTIMIZATION'),
+      hub_delivery_status_sync_enabled: envEnabled('ENABLE_HUB_DELIVERY_STATUS_SYNC'),
+      out_for_delivery_notification_sync_enabled: envEnabled('ENABLE_OUT_FOR_DELIVERY_NOTIFICATION_RUN_SYNC'),
+    },
+    native_safe_sync_parity: {
+      dark_launch_enabled: envEnabled('ENABLE_NATIVE_SAFE_SYNC_DARK_LAUNCH'),
+      dark_launch_kill_switch: envEnabled('NATIVE_SAFE_SYNC_DARK_LAUNCH_KILL_SWITCH'),
+      parity_log_enabled: envEnabled('ENABLE_NATIVE_SAFE_SYNC_PARITY_LOG'),
+      preview_available: true,
+    },
+  };
+}
+
+function subsystemSummary({ key, label, status, blockers = [], warnings = [], evidence = [] }) {
+  return {
+    key,
+    label,
+    status,
+    blockers: blockers.slice(0, MAX_BLOCKERS),
+    warnings: warnings.slice(0, MAX_BLOCKERS),
+    evidence: evidence.slice(0, MAX_BLOCKERS).map(item => sanitizeText(item, 140)).filter(Boolean),
+  };
+}
+
+function statusForGuardedExactOrderGate(gate, unsafeBroadKey = 'broad_real_order_mode') {
+  if (gate?.[unsafeBroadKey]) return 'unsafe_broad_mode_enabled';
+  if (gate?.enabled && !gate?.kill_switch && gate?.allowlist_count > 0 && gate?.actor_allowlist_count > 0) return 'exact_scope_gate_ready';
+  if (gate?.enabled && gate?.kill_switch) return 'guarded_by_kill_switch';
+  return 'disabled_or_not_configured';
+}
+
+function buildHubRetirementReadiness(gates) {
+  const subsystems = [
+    subsystemSummary({
+      key: 'paid_order_native_ingestion',
+      label: 'Paid Customer App order native ingestion',
+      status: gates.may30_native_order_ops.enabled ? 'native_ops_available_with_hub_fallback' : 'not_auto_active_for_future_orders',
+      warnings: gates.may30_native_order_ops.enabled ? [] : ['native_paid_order_ops_future_order_trigger_not_confirmed'],
+      evidence: [
+        gates.may30_native_order_ops.enabled ? 'May 30 native ops flag enabled' : 'May 30 native ops flag disabled',
+        'Hub bridge remains fallback',
+      ],
+    }),
+    subsystemSummary({
+      key: 'native_shopify_order_mirror',
+      label: 'Native ShopifyOrder mirror ownership',
+      status: gates.native_safe_sync_writer.broad_real_order_mode ? 'unsafe_broad_mode_enabled' : 'guarded_exact_order_or_disabled',
+      blockers: gates.native_safe_sync_writer.broad_real_order_mode ? ['native_safe_sync_writer_broad_mode_enabled_unexpectedly'] : ['native_order_writer_not_approved_for_broad_real_orders'],
+      warnings: gates.native_safe_sync_writer.enabled ? ['native_order_writer_requires_exact_scope_gate_review'] : ['native_order_writer_disabled_for_broad_real_orders'],
+      evidence: [
+        `writer enabled: ${gates.native_safe_sync_writer.enabled}`,
+        `order allowlist count: ${gates.native_safe_sync_writer.order_allowlist_count}`,
+      ],
+    }),
+    subsystemSummary({
+      key: 'native_fulfillment_task_materialization',
+      label: 'Native FulfillmentTask materialization',
+      status: gates.native_fulfillment_task_materialization.broad_real_order_mode ? 'unsafe_broad_mode_enabled' : 'guarded_exact_order_or_disabled',
+      blockers: gates.native_fulfillment_task_materialization.broad_real_order_mode ? ['native_task_materialization_broad_mode_enabled_unexpectedly'] : ['native_task_materialization_not_approved_for_broad_real_orders'],
+      warnings: gates.native_fulfillment_task_materialization.enabled ? ['native_task_materialization_requires_exact_scope_gate_review'] : ['native_task_materialization_writes_disabled'],
+      evidence: [
+        `task materialization enabled: ${gates.native_fulfillment_task_materialization.enabled}`,
+        `order allowlist count: ${gates.native_fulfillment_task_materialization.order_allowlist_count}`,
+      ],
+    }),
+    subsystemSummary({
+      key: 'native_fulfillment_task_lifecycle',
+      label: 'Native FulfillmentTask lifecycle commands',
+      status: statusForGuardedExactOrderGate(gates.native_fulfillment_task_lifecycle, 'broad_real_task_mode'),
+      blockers: gates.native_fulfillment_task_lifecycle.broad_real_task_mode ? ['native_task_lifecycle_broad_task_mode_enabled_unexpectedly'] : ['native_task_lifecycle_not_validated_for_broad_operations'],
+      warnings: ['route_proof_drop_delivery_command_coverage_still_requires_separate_validation'],
+      evidence: [
+        `lifecycle enabled: ${gates.native_fulfillment_task_lifecycle.enabled}`,
+        `task allowlist count: ${gates.native_fulfillment_task_lifecycle.allowlist_count}`,
+        `action allowlist count: ${gates.native_fulfillment_task_lifecycle.action_allowlist_count || 0}`,
+      ],
+    }),
+    subsystemSummary({
+      key: 'native_production_batch_lifecycle',
+      label: 'Native production batch lifecycle',
+      status: statusForGuardedExactOrderGate(gates.native_production_batch_lifecycle, 'broad_real_batch_mode'),
+      blockers: gates.native_production_batch_lifecycle.broad_real_batch_mode ? ['native_production_batch_broad_mode_enabled_unexpectedly'] : ['native_production_batch_lifecycle_not_validated_for_broad_operations'],
+      warnings: ['production_start_complete_verify_ownership_requires_separate_validation'],
+      evidence: [
+        `production lifecycle enabled: ${gates.native_production_batch_lifecycle.enabled}`,
+        `batch allowlist count: ${gates.native_production_batch_lifecycle.allowlist_count}`,
+      ],
+    }),
+    subsystemSummary({
+      key: 'native_schedule_correction',
+      label: 'Native order schedule correction',
+      status: statusForGuardedExactOrderGate(gates.native_order_schedule_correction),
+      blockers: gates.native_order_schedule_correction.broad_real_order_mode ? ['native_schedule_correction_broad_mode_enabled_unexpectedly'] : ['native_schedule_correction_not_validated_for_broad_operations'],
+      warnings: ['schedule_correction_remains_exact_order_only_until_approved'],
+      evidence: [
+        `schedule correction enabled: ${gates.native_order_schedule_correction.enabled}`,
+        `order allowlist count: ${gates.native_order_schedule_correction.allowlist_count}`,
+      ],
+    }),
+    subsystemSummary({
+      key: 'inventory_procurement_ownership',
+      label: 'Inventory and procurement ownership',
+      status: 'not_native_owned_for_cutover',
+      blockers: ['inventory_procurement_native_ownership_not_validated'],
+      warnings: ['do_not_retire_hub_until_inventory_deduction_and_purchase_order_paths_are_validated'],
+      evidence: ['Readiness gate found no approved broad native inventory/procurement cutover contract'],
+    }),
+    subsystemSummary({
+      key: 'delivery_route_proof_ownership',
+      label: 'Delivery route, proof, and drop ownership',
+      status: 'partial_not_cutover_ready',
+      blockers: ['delivery_route_proof_native_ownership_not_validated'],
+      warnings: [
+        gates.delivery_route_flags.hub_delivery_status_sync_enabled ? 'hub_delivery_status_sync_flag_enabled' : 'hub_delivery_status_sync_not_part_of_native_cutover',
+        gates.delivery_route_flags.delivery_route_optimization_enabled ? 'route_optimization_flag_enabled_requires_separate_validation' : 'route_optimization_not_enabled_for_cutover',
+      ],
+      evidence: ['Fulfillment lifecycle command coverage is separate from full delivery execution/proof ownership'],
+    }),
+    subsystemSummary({
+      key: 'notification_ownership',
+      label: 'Notification ownership',
+      status: 'not_cutover_validated',
+      blockers: ['notification_behavior_native_ownership_not_validated'],
+      warnings: [
+        gates.native_notification_flags.customer_push_enabled ? 'customer_push_notifications_flag_enabled_requires_separate_cutover_validation' : 'customer_push_notifications_not_enabled_for_cutover',
+        gates.native_notification_flags.order_status_notifications_enabled ? 'order_status_notifications_flag_enabled_requires_separate_cutover_validation' : 'order_status_notifications_not_enabled_for_cutover',
+      ],
+      evidence: ['No notification send is part of this readiness preview'],
+    }),
+    subsystemSummary({
+      key: 'refund_payment_reversal_ownership',
+      label: 'Refund and payment reversal ownership',
+      status: 'not_cutover_validated',
+      blockers: ['refund_payment_reversal_native_ownership_not_validated'],
+      warnings: [
+        gates.refund_payment_flags.admin_manual_refunds_enabled ? 'manual_refunds_flag_enabled_requires_separate_cutover_validation' : 'manual_refunds_not_enabled_for_cutover',
+        gates.refund_payment_flags.admin_subscription_cancel_refund_enabled ? 'subscription_cancel_refund_flag_enabled_requires_separate_cutover_validation' : 'subscription_cancel_refund_not_enabled_for_cutover',
+      ],
+      evidence: ['Refund/payment reversal paths are intentionally outside this order cutover preview'],
+    }),
+    subsystemSummary({
+      key: 'reconciliation_reporting',
+      label: 'Reconciliation and parity reporting',
+      status: gates.native_safe_sync_parity.preview_available ? 'read_only_parity_available' : 'not_available',
+      blockers: ['hub_retirement_reconciliation_reporting_not_finalized'],
+      warnings: [
+        gates.native_safe_sync_parity.dark_launch_enabled && !gates.native_safe_sync_parity.dark_launch_kill_switch ? 'dark_launch_comparison_enabled' : 'dark_launch_comparison_not_active',
+        gates.native_safe_sync_parity.parity_log_enabled ? 'parity_log_flag_enabled_requires_volume_review' : 'parity_log_not_enabled_for_cutover',
+      ],
+      evidence: ['previewNativeSafeSyncLiveOrderParity is reused for dry-run target checks'],
+    }),
+    subsystemSummary({
+      key: 'hub_bridge_fallback',
+      label: 'Hub bridge fallback',
+      status: 'required_fallback_active',
+      blockers: ['hub_bridge_retirement_not_approved'],
+      warnings: ['hub_bridge_must_remain_until_all_native_subsystems_are_validated'],
+      evidence: ['Current migration contract keeps Hub bridge as fallback'],
+    }),
+  ];
+
+  const blockers = [...new Set(subsystems.flatMap(item => item.blockers || []))].slice(0, MAX_BLOCKERS);
+  const warnings = [...new Set(subsystems.flatMap(item => item.warnings || []))].slice(0, MAX_BLOCKERS);
+
+  return {
+    status: blockers.length > 0 ? 'not_ready_to_retire_hub' : warnings.length > 0 ? 'review_required_before_hub_retirement' : 'ready_to_retire_hub',
+    subsystem_count: subsystems.length,
+    blocker_count: blockers.length,
+    warning_count: warnings.length,
+    blockers,
+    warnings,
+    hub_bridge_fallback_required: true,
+    hub_retirement_approved: false,
+    live_writes_required_for_this_check: false,
+    next_action: blockers.length > 0
+      ? 'validate_blocked_native_subsystems_before_hub_retirement'
+      : 'perform_final_cutover_approval_review',
+    subsystems: subsystems.slice(0, MAX_SUBSYSTEM_SUMMARY),
   };
 }
 
@@ -437,6 +676,7 @@ Deno.serve(async (req) => {
 
     const gates = gateSummary();
     const readiness = aggregateReadiness(summaries, gates);
+    const hubRetirementReadiness = buildHubRetirementReadiness(gates);
 
     return Response.json({
       success: readiness.blockers.length === 0,
@@ -447,6 +687,7 @@ Deno.serve(async (req) => {
       source,
       event_type: eventType,
       readiness,
+      hub_retirement_readiness: hubRetirementReadiness,
       gates,
       targets: summaries,
       safety: {

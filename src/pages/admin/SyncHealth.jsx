@@ -233,9 +233,13 @@ function NativeCutoverReadinessPreview({
   onRunPilotApproval,
 }) {
   const readiness = preview?.readiness || {};
+  const hubRetirement = preview?.hub_retirement_readiness || {};
   const gates = preview?.gates || {};
   const targets = Array.isArray(preview?.targets) ? preview.targets : [];
   const safety = preview?.safety || {};
+  const retirementSubsystems = Array.isArray(hubRetirement.subsystems) ? hubRetirement.subsystems : [];
+  const retirementBlockers = Array.isArray(hubRetirement.blockers) ? hubRetirement.blockers : [];
+  const retirementWarnings = Array.isArray(hubRetirement.warnings) ? hubRetirement.warnings : [];
   const nativeWriter = gates.native_safe_sync_writer || {};
   const may30Ops = gates.may30_native_order_ops || {};
   const taskMaterialization = gates.native_fulfillment_task_materialization || {};
@@ -388,6 +392,7 @@ function NativeCutoverReadinessPreview({
 
           <div className="flex flex-wrap gap-2">
             <StatusChip value={readiness.next_action || 'review'} />
+            {hubRetirement.status && <StatusChip value={`Hub retirement: ${formatLabel(hubRetirement.status)}`} />}
             <StatusChip value={readiness.hub_bridge_remains_fallback ? 'Hub bridge remains fallback' : 'Hub fallback missing'} />
             <StatusChip value={readiness.live_pilot_requires_exact_order_approval ? 'Exact order approval required' : 'Approval state unknown'} />
             <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
@@ -425,6 +430,82 @@ function NativeCutoverReadinessPreview({
               </p>
             </div>
           </div>
+
+          {retirementSubsystems.length > 0 && (
+            <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-purple-950">Hub Retirement Operational Readiness</p>
+                  <p className="text-[10px] text-purple-900 mt-0.5">
+                    G30 read-only subsystem map. This is separate from exact-order pilot readiness and does not approve Hub retirement.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusChip value={formatLabel(hubRetirement.status || 'review')} />
+                  <StatusChip value={hubRetirement.hub_bridge_fallback_required ? 'Hub fallback required' : 'Fallback status unknown'} />
+                  <StatusChip value={hubRetirement.live_writes_required_for_this_check === false ? 'No live writes required' : 'Write state unknown'} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <StatCard label="Subsystems" value={formatNumber(hubRetirement.subsystem_count)} />
+                <StatCard label="Retirement Blockers" value={formatNumber(hubRetirement.blocker_count)} tone={Number(hubRetirement.blocker_count || 0) > 0 ? 'warning' : 'success'} />
+                <StatCard label="Retirement Warnings" value={formatNumber(hubRetirement.warning_count)} tone={Number(hubRetirement.warning_count || 0) > 0 ? 'warning' : 'default'} />
+                <StatCard label="Next Action" value={formatLabel(hubRetirement.next_action || 'review')} />
+              </div>
+
+              {(retirementBlockers.length > 0 || retirementWarnings.length > 0) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-purple-200 bg-background p-3">
+                    <p className="text-xs font-bold text-purple-950">Hub retirement blockers</p>
+                    {retirementBlockers.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-[10px] text-purple-900">
+                        {retirementBlockers.map(blocker => (
+                          <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-[10px] text-purple-900">No Hub-retirement blockers returned.</p>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-purple-200 bg-background p-3">
+                    <p className="text-xs font-bold text-purple-950">Hub retirement warnings</p>
+                    {retirementWarnings.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-[10px] text-purple-900">
+                        {retirementWarnings.map(warning => (
+                          <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-[10px] text-purple-900">No Hub-retirement warnings returned.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {retirementSubsystems.map(subsystem => {
+                  const subsystemBlockers = Array.isArray(subsystem.blockers) ? subsystem.blockers : [];
+                  const subsystemWarnings = Array.isArray(subsystem.warnings) ? subsystem.warnings : [];
+                  return (
+                    <div key={subsystem.key || subsystem.label} className="rounded-lg border border-purple-200 bg-background p-3 space-y-2">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-xs font-semibold text-foreground">{subsystem.label || formatLabel(subsystem.key || 'Subsystem')}</p>
+                        <StatusChip value={formatLabel(subsystem.status || 'review')} />
+                      </div>
+                      {(subsystemBlockers.length > 0 || subsystemWarnings.length > 0) && (
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          {subsystemBlockers.length > 0 ? `Blockers: ${subsystemBlockers.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : ''}
+                          {subsystemBlockers.length > 0 && subsystemWarnings.length > 0 ? ' · ' : ''}
+                          {subsystemWarnings.length > 0 ? `Warnings: ${subsystemWarnings.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">

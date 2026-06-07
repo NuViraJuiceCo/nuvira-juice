@@ -10,6 +10,7 @@ It answers:
 - whether an exact order is ready for a separately approved native pilot
 - whether native writer/task gates are still guarded instead of broadly enabled
 - what blockers or warnings remain before any Hub retirement step
+- which operational subsystems still block full Hub retirement
 
 ## Implementation
 
@@ -25,6 +26,7 @@ It answers:
 - reads Customer App `Order`, native `ShopifyOrder`, and native `FulfillmentTask`
 - invokes the existing `previewNativeSafeSyncLiveOrderParity` dry-run function to reuse the safe parity planner
 - returns only sanitized summaries, readiness classifications, gate state, blockers, warnings, and safety booleans
+- returns a separate `hub_retirement_readiness` map so exact-order pilot readiness is not confused with approval to retire Hub
 
 ### Admin UI
 
@@ -37,6 +39,7 @@ Adds a "Native Cutover Readiness Gate" panel with:
 - aggregate readiness classification
 - target order readiness cards
 - native safeSync writer, May 30 native ops, and native task materialization gate summaries
+- Hub retirement operational subsystem readiness
 - blocker/warning lists
 - explicit dry-run/no-write safety language
 
@@ -60,6 +63,27 @@ Aggregate classifications:
 - `review_required`
 
 `pilot_ready_with_exact_order_approval` is not permission to run a live mutation. It means the read-only planner found at least one target that may be suitable for a separately approved exact-order pilot.
+
+## G30 Hub retirement operational readiness
+
+The preview also returns `hub_retirement_readiness`, a read-only subsystem map for the work still required before Hub can be retired. It intentionally does not block exact-order pilot packet generation because a clean pilot target is different from full operational cutover readiness.
+
+Subsystems currently reported:
+
+- paid Customer App order native ingestion
+- native ShopifyOrder mirror ownership
+- native FulfillmentTask materialization
+- native FulfillmentTask lifecycle commands
+- native production batch lifecycle
+- native schedule correction
+- inventory and procurement ownership
+- delivery route, proof, and drop ownership
+- notification ownership
+- refund and payment reversal ownership
+- reconciliation and parity reporting
+- Hub bridge fallback
+
+Expected current status before full cutover is `not_ready_to_retire_hub`. Hub bridge remains fallback until every subsystem is independently validated and explicitly approved.
 
 ## Safety boundary
 
@@ -98,6 +122,7 @@ This in-memory harness verifies:
 - target readiness classifications
 - aggregate readiness classification
 - gate summary handling without broad real-order mode
+- Hub retirement subsystem blockers remain separate from exact-order pilot readiness
 
 ## Recommended next migration step
 
@@ -110,4 +135,4 @@ Use G27 to monitor the next natural paid Customer App delivery order. If it repo
 - idempotency key
 - explicit no-provider/no-notification/no-production/inventory side-effect boundary unless separately approved
 
-Do not retire Hub until native production, inventory/procurement, fulfillment command, notification, refund, and reconciliation ownership are independently validated.
+Do not retire Hub until native production, inventory/procurement, fulfillment command, notification, refund/payment reversal, delivery/proof/route, and reconciliation ownership are independently validated.
