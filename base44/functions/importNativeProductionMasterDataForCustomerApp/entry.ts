@@ -141,11 +141,6 @@ function expectedPreviewSecret() {
     normalizeText(Deno.env.get('HUB_SYNC_SECRET'));
 }
 
-function previewUrlFromRequest(req) {
-  const url = new URL(req.url);
-  return `${url.origin}/api/functions/previewNativeProductionMasterDataParity`;
-}
-
 function exactTargetBlockers(lookup) {
   const blockers = [];
   if (lookup.orderNumber !== TARGET_ORDER_NUMBER) blockers.push('target_order_number_mismatch');
@@ -179,42 +174,42 @@ function gateFailure({ actorEmail, lookup }) {
   return null;
 }
 
-async function fetchFreshPreview(req, lookup) {
+async function fetchFreshPreview(base44, lookup) {
   const secret = expectedPreviewSecret();
   if (!secret) {
     return { ok: false, status: 409, error_code: 'preview_secret_not_configured', data: null };
   }
 
-  const response = await fetch(previewUrlFromRequest(req), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-secret': secret,
-    },
-    body: JSON.stringify({
+  try {
+    const response = await base44.asServiceRole.functions.invoke('previewNativeProductionMasterDataParity', {
       mode: 'dry_run',
       order_number: TARGET_ORDER_NUMBER,
       customer_app_order_id: lookup.customerAppOrderId || TARGET_CUSTOMER_APP_ORDER_ID,
       native_shopify_order_id: lookup.nativeShopifyOrderId || TARGET_NATIVE_SHOPIFY_ORDER_ID,
       native_fulfillment_task_id: lookup.nativeFulfillmentTaskId || TARGET_NATIVE_FULFILLMENT_TASK_ID,
       request_id: `${lookup.requestId || 'g31g'}:fresh_preview`,
-    }),
-  }).catch(error => ({
-    ok: false,
-    status: 502,
-    json: async () => ({ success: false, error_code: 'fresh_preview_fetch_failed', message: safeText(error?.message || 'Preview fetch failed') }),
-  }));
-
-  const data = await response.json().catch(() => null);
-  if (!response.ok || !data?.success) {
+      _internal_secret: secret,
+    });
+    const data = response?.data || response;
+    if (!data?.success) {
+      return {
+        ok: false,
+        status: 409,
+        error_code: data?.error_code || 'fresh_preview_not_successful',
+        data,
+      };
+    }
+    return { ok: true, status: 200, data };
+  } catch (error) {
+    const status = error?.response?.status || error?.status || 502;
+    const data = error?.response?.data || error?.data || null;
     return {
       ok: false,
-      status: response.status || 502,
-      error_code: data?.error_code || `fresh_preview_http_${response.status || 502}`,
+      status,
+      error_code: data?.error_code || `fresh_preview_invoke_${status}`,
       data,
     };
   }
-  return { ok: true, status: response.status, data };
 }
 
 function fieldValueForRow(row) {
@@ -509,7 +504,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const freshPreview = await fetchFreshPreview(req, lookup);
+    const freshPreview = await fetchFreshPreview(base44, lookup);
     if (!freshPreview.ok) {
       return jsonResponse({
         success: false,

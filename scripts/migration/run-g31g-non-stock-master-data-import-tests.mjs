@@ -175,4 +175,36 @@ const gated = loadFunctions('base44/functions/importNativeProductionMasterDataFo
 assert.equal(gated.gateFailure({ actorEmail: 'owner@example.com', lookup: { orderNumber: 'NV-MPZNKGNT' } }), null);
 assert.equal(gated.gateFailure({ actorEmail: 'other@example.com', lookup: { orderNumber: 'NV-MPZNKGNT' } }), 'actor_email_not_allowlisted');
 
+
+const invokeFns = loadFunctions('base44/functions/importNativeProductionMasterDataForCustomerApp/entry.ts', ['fetchFreshPreview'], {
+  CUSTOMER_APP_SYNC_SECRET: 'preview-secret',
+});
+let invokedName = null;
+let invokedPayload = null;
+const previewResult = await invokeFns.fetchFreshPreview({
+  asServiceRole: {
+    functions: {
+      invoke: async (name, payload) => {
+        invokedName = name;
+        invokedPayload = payload;
+        return { data: { success: true, order_number: 'NV-MPZNKGNT' } };
+      },
+    },
+  },
+}, { requestId: 'req_123' });
+assert.equal(previewResult.ok, true);
+assert.equal(invokedName, 'previewNativeProductionMasterDataParity');
+assert.equal(invokedPayload._internal_secret, 'preview-secret');
+assert.equal(invokedPayload.order_number, 'NV-MPZNKGNT');
+
+const failedInvoke = await invokeFns.fetchFreshPreview({
+  asServiceRole: {
+    functions: {
+      invoke: async () => ({ data: { success: false, error_code: 'preview_failed' } }),
+    },
+  },
+}, { requestId: 'req_124' });
+assert.equal(failedInvoke.ok, false);
+assert.equal(failedInvoke.error_code, 'preview_failed');
+
 console.log('G31G non-stock master-data import tests passed');
