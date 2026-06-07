@@ -37,7 +37,7 @@ only approved operational display/linkage metadata:
 - source markers: `source_channel`, `source_type`, `task_source`, `created_from_native_ops`
 - schedule/display fields: `scheduled_date`, `assigned_delivery_date`, `production_date`, `time_window`, `delivery_window_label`, `schedule_source`
 - safe item/total/address summaries: `items_summary`, `line_item_count`, `total_price`, `address_complete`, approved address display fields
-- safe operational projections when missing: `delivery_status`, `production_status`, `payment_status`, `sync_status`
+- safe operational projections when missing: `production_status`, `payment_status`, `sync_status`
 
 Existing non-empty fields are preserved. Identity/link conflicts block the repair instead of being overwritten.
 
@@ -46,6 +46,7 @@ The preview and executor intentionally exclude:
 - `customer_name`
 - `customer_phone`
 - customer email
+- delivery lifecycle status fields such as `delivery_status`
 - raw item arrays
 - task `status`
 - payment/provider ids
