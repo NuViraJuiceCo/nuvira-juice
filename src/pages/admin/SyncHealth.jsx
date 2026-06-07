@@ -857,6 +857,13 @@ function NativeProductionMasterDataParityPreview({
   const missingNativeBundles = Array.isArray(preview?.missing_native_bundles) ? preview.missing_native_bundles : [];
   const missingNativeInventory = Array.isArray(preview?.missing_native_inventory_items) ? preview.missing_native_inventory_items : [];
   const missingNativeYields = Array.isArray(preview?.missing_native_ingredient_yields) ? preview.missing_native_ingredient_yields : [];
+  const gapClosure = preview?.master_data_gap_closure_preview || {};
+  const seedPacketRows = Array.isArray(preview?.seed_packet_rows) ? preview.seed_packet_rows : [];
+  const blockedRows = Array.isArray(preview?.blocked_rows) ? preview.blocked_rows : [];
+  const manualMappingRows = Array.isArray(preview?.manual_mapping_required_rows) ? preview.manual_mapping_required_rows : [];
+  const ownerInputRows = Array.isArray(preview?.owner_input_required_rows) ? preview.owner_input_required_rows : [];
+  const hubMissingRows = Array.isArray(preview?.hub_missing_rows) ? preview.hub_missing_rows : [];
+  const aliasCandidateRows = Array.isArray(preview?.alias_candidate_rows) ? preview.alias_candidate_rows : [];
 
   return (
     <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
@@ -966,6 +973,93 @@ function NativeProductionMasterDataParityPreview({
                     missingNativeYields.length > 0 ? `Yields: ${missingNativeYields.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}` : null,
                   ].filter(Boolean).join(' · ') || 'No missing native inventory or yield rows returned.'}
                 </p>
+              </div>
+            </div>
+          )}
+
+          {seedPacketRows.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold text-amber-950">Master Data Gap Closure Preview</p>
+                  <p className="mt-1 text-[10px] text-amber-900">
+                    Read-only seed packet preview. No Bundle, Recipe, InventoryItem, IngredientYield, ProductionBatch, inventory, or purchase-order writes are available here.
+                  </p>
+                </div>
+                <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                <StatCard
+                  label="Seed Packet"
+                  value={preview.seed_packet_ready ? 'Ready' : 'Not Ready'}
+                  tone={preview.seed_packet_ready ? 'success' : 'warning'}
+                />
+                <StatCard label="Gap Next Action" value={formatLabel(preview.next_action || gapClosure.next_action)} tone="warning" />
+                <StatCard label="Seed Rows" value={formatNumber(seedPacketRows.length)} />
+                <StatCard label="Blocked" value={formatNumber(blockedRows.length)} tone={blockedRows.length > 0 ? 'warning' : 'success'} />
+                <StatCard label="Manual / Alias" value={formatNumber(manualMappingRows.length)} tone={manualMappingRows.length > 0 ? 'warning' : 'default'} />
+                <StatCard label="Owner Input" value={formatNumber(ownerInputRows.length)} tone={ownerInputRows.length > 0 ? 'warning' : 'default'} />
+              </div>
+
+              {(hubMissingRows.length > 0 || aliasCandidateRows.length > 0) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-amber-200 bg-background/80 p-3">
+                    <p className="text-xs font-bold text-foreground">Hub missing / owner-input rows</p>
+                    {hubMissingRows.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                        {hubMissingRows.slice(0, 8).map((row, index) => (
+                          <li key={`${row.entity_type}-${row.customer_app_target_name}-${index}`}>
+                            • {formatLabel(row.entity_type)}: {sanitizeAdminText(row.customer_app_target_name)} · {formatLabel(row.proposed_action)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-[10px] text-muted-foreground">No Hub-missing rows returned.</p>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-amber-200 bg-background/80 p-3">
+                    <p className="text-xs font-bold text-foreground">Alias / manual mapping candidates</p>
+                    {aliasCandidateRows.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                        {aliasCandidateRows.slice(0, 8).map((row, index) => (
+                          <li key={`${row.entity_type}-${row.customer_app_target_name}-${index}`}>
+                            • {formatLabel(row.entity_type)}: {sanitizeAdminText(row.customer_app_target_name)} → {sanitizeAdminText(row.hub_source_name || row.alias_candidate_type || 'candidate')} · {formatLabel(row.proposed_action)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-[10px] text-muted-foreground">No alias/manual mapping candidates returned.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-wider text-amber-900 font-semibold">Seed packet rows</p>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                  {seedPacketRows.slice(0, 12).map((row, index) => (
+                    <div key={`${row.entity_type}-${row.customer_app_target_name}-${index}`} className="rounded-lg border border-amber-200 bg-background/80 p-3 space-y-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-foreground">{sanitizeAdminText(row.customer_app_target_name) || 'Seed row'}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {formatLabel(row.entity_type)} · {formatLabel(row.status)} · {formatLabel(row.proposed_action)}
+                          </p>
+                        </div>
+                        <StatusChip value={row.seed_ready ? 'Seed ready' : 'Held'} />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        {[
+                          row.hub_source_id ? `Hub ${row.hub_source_id}` : null,
+                          row.hub_source_name ? `Source ${sanitizeAdminText(row.hub_source_name)}` : null,
+                          row.alias_confidence ? `Alias confidence ${formatNumber(row.alias_confidence)}` : null,
+                          Array.isArray(row.owner_input_fields_required) && row.owner_input_fields_required.length > 0 ? `Owner input: ${row.owner_input_fields_required.join(', ')}` : null,
+                        ].filter(Boolean).join(' · ') || 'No Hub source details returned.'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
