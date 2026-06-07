@@ -52,25 +52,14 @@ function row(target_entity, match_value, payload, extra = {}) {
 }
 
 const createRows = [
-  row('Bundle', 'The NuVira Trio', {
-    bundle_name: 'The NuVira Trio',
-    components: [
-      { product_name: 'Pineapple Juice', quantity: 1 },
-      { product_name: 'Reset Shot', quantity: 1 },
-      { product_name: 'Radiance Shot', quantity: 1 },
-    ],
-    fulfillment_count: 1,
-    is_active: true,
-    notes: 'Mirrored from Hub Bundle "NuVira Trio" via owner-approved alias "The NuVira Trio".',
-  }, { source_hub_id: '69e8f55b06e17fbd88dbbc0c' }),
-  ...['Pineapple Juice', 'Reset Shot', 'Radiance Shot'].map(name => row('Recipe', name, {
+  ...['Re-Nu', 'Aura', 'Oasis'].map(name => row('Recipe', name, {
     product_name: name,
     bottle_size_oz: 12,
     yield_factor: 1.05,
-    ingredients: [{ ingredient_name: name === 'Pineapple Juice' ? 'Pineapple' : 'Ginger', quantity_oz: 1, unit: 'oz' }],
+    ingredients: [{ ingredient_name: name === 'Re-Nu' ? 'Cucumber' : 'Carrot', quantity_oz: 1, unit: 'oz' }],
     is_active: true,
   })),
-  ...['Pineapple', 'Lemon', 'Ginger', 'Black Salt', 'Beetroot', 'Red Apple'].map(name => row('InventoryItem', name, {
+  ...['Cucumber', 'Green Apple', 'Celery', 'Kale', 'Carrot', 'Orange', 'Coconut Water', 'Sea Salt', 'Watermelon', 'Black Pepper'].map(name => row('InventoryItem', name, {
     ingredient: name,
     unit: 'lbs',
     stock: 0,
@@ -80,7 +69,7 @@ const createRows = [
     category: name === 'Black Salt' ? 'Spices & Herbs' : 'Produce',
     notes: 'Seeded under NON_STOCK_MASTER_DATA_ONLY. Hub stock was not mirrored as authoritative.',
   })),
-  ...['Pineapple', 'Lemon', 'Ginger', 'Red Apple'].map(name => row('IngredientYield', name, {
+  ...['Cucumber', 'Green Apple', 'Celery', 'Kale', 'Carrot', 'Orange', 'Coconut Water', 'Sea Salt', 'Watermelon', 'Black Pepper'].map(name => row('IngredientYield', name, {
     ingredient_name: name,
     purchase_unit: 'case',
     oz_per_purchase_unit: 160,
@@ -100,6 +89,13 @@ const preview = {
   native_fulfillment_task_id: '6a22ffdaf675ea79e30575aa',
   production_master_data_ready: true,
   non_stock_import_preview_ready: true,
+  approved_alias_mappings: [{
+    source_name: 'The NuVira Trio',
+    source_type: 'bundle',
+    target_type: 'bundle',
+    target_hub_name: 'NuVira Trio',
+    target_hub_id: '69e8f55b06e17fbd88dbbc0c',
+  }],
   inventory_seed_policy: 'NON_STOCK_MASTER_DATA_ONLY',
   yield_policy: 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES',
   procurement_conversion_ready: false,
@@ -110,7 +106,7 @@ const preview = {
     yield_policy: 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES',
     procurement_conversion_ready: false,
     inventory_deduction_ready: false,
-    create_row_count: 14,
+    create_row_count: 23,
     create_rows: createRows,
     deferred_row_count: 2,
     deferred_rows: [
@@ -125,12 +121,12 @@ const preview = {
 
 const validation = fns.validateImportPreview(preview);
 assert.equal(validation.ready, true);
-assert.equal(validation.createRows.length, 14);
+assert.equal(validation.createRows.length, 23);
 const counts = fns.entityCounts(validation.createRows);
-assert.equal(counts.Bundle, 1);
 assert.equal(counts.Recipe, 3);
-assert.equal(counts.InventoryItem, 6);
-assert.equal(counts.IngredientYield, 4);
+assert.equal(counts.Bundle || 0, 0);
+assert.equal(counts.InventoryItem, 10);
+assert.equal(counts.IngredientYield, 10);
 assert.equal(validation.createRows.some(item => item.target_entity === 'IngredientYield' && ['Black Salt', 'Beetroot'].includes(item.match_value)), false);
 assert.equal(validation.createRows.filter(item => item.target_entity === 'InventoryItem').every(item => item.payload.stock === 0), true);
 
@@ -147,9 +143,26 @@ badYield.customer_app_non_stock_master_data_import_preview.create_rows.push(row(
   purchase_unit: 'bag',
   oz_per_purchase_unit: 16,
 }));
-badYield.customer_app_non_stock_master_data_import_preview.create_row_count = 15;
+badYield.customer_app_non_stock_master_data_import_preview.create_row_count = 24;
 assert.equal(fns.validateImportPreview(badYield).ready, false);
 assert.ok(fns.validateImportPreview(badYield).blockers.some(item => item.includes('deferred_yield_would_be_created')));
+
+const unexpectedBundle = structuredClone(preview);
+unexpectedBundle.customer_app_non_stock_master_data_import_preview.create_rows = structuredClone(createRows);
+unexpectedBundle.customer_app_non_stock_master_data_import_preview.create_rows.push(row('Bundle', 'The NuVira Trio', {
+  bundle_name: 'The NuVira Trio',
+  components: [{ product_name: 'Re-Nu', quantity: 1 }],
+  fulfillment_count: 1,
+  is_active: true,
+}));
+unexpectedBundle.customer_app_non_stock_master_data_import_preview.create_row_count = 24;
+assert.equal(fns.validateImportPreview(unexpectedBundle).ready, false);
+assert.ok(fns.validateImportPreview(unexpectedBundle).blockers.includes('unexpected_bundle_create_row'));
+
+const missingAlias = structuredClone(preview);
+missingAlias.approved_alias_mappings = [];
+assert.equal(fns.validateImportPreview(missingAlias).ready, false);
+assert.ok(fns.validateImportPreview(missingAlias).blockers.includes('approved_trio_alias_mapping_missing'));
 
 const extraField = structuredClone(preview);
 extraField.customer_app_non_stock_master_data_import_preview.create_rows = structuredClone(createRows);
@@ -207,4 +220,4 @@ const failedInvoke = await invokeFns.fetchFreshPreview({
 assert.equal(failedInvoke.ok, false);
 assert.equal(failedInvoke.error_code, 'preview_failed');
 
-console.log('G31G non-stock master-data import tests passed');
+console.log('G31I component non-stock master-data import tests passed');
