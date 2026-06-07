@@ -612,6 +612,232 @@ function NativeCutoverReadinessPreview({
   );
 }
 
+function NativeProductionInventoryReadinessPreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onRun,
+}) {
+  const demandRows = Array.isArray(preview?.production_demand_rows) ? preview.production_demand_rows : [];
+  const bundleRows = Array.isArray(preview?.bundle_decomposition_rows) ? preview.bundle_decomposition_rows : [];
+  const recipeRows = Array.isArray(preview?.recipe_match_rows) ? preview.recipe_match_rows : [];
+  const ingredientRows = Array.isArray(preview?.ingredient_need_rows) ? preview.ingredient_need_rows : [];
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const safety = preview?.safety || {};
+  const exactOrderNumber = orderNumber?.trim();
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <Database className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Native Production / Inventory Readiness</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G31A exact-order read-only preview. It translates native paid order line items into production demand, recipe demand, and ingredient/procurement context without creating batches, deducting inventory, or creating purchase orders.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning || !exactOrderNumber}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning || !exactOrderNumber
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Production / Inventory Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Uses the exact order number from the Native Cutover Readiness Gate above. This panel is preview-only: no production batch, inventory deduction, purchase order, provider call, notification, sync, repair, or replay can be run from here.
+      </div>
+
+      {!exactOrderNumber && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Enter an exact paid native order number above before running the production/inventory readiness preview.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard
+              label="Classification"
+              value={formatLabel(preview.classification)}
+              tone={blockers.length > 0 ? 'warning' : 'success'}
+            />
+            <StatCard label="Demand Rows" value={formatNumber(demandRows.length)} tone={demandRows.length > 0 ? 'success' : 'default'} />
+            <StatCard label="Ingredient Rows" value={formatNumber(ingredientRows.length)} tone={ingredientRows.length > 0 ? 'success' : 'default'} />
+            <StatCard label="Procurement Needed" value={formatNumber(preview.procurement_needed_count)} tone={Number(preview.procurement_needed_count || 0) > 0 ? 'warning' : 'success'} />
+            <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
+            <StatCard label="Generated" value={formatDateTime(preview.generated_at)} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={preview.production_ready ? 'Production demand ready' : 'Production demand blocked'} />
+            <StatusChip value={preview.inventory_calculation_ready ? 'Inventory calculation ready' : 'Inventory calculation blocked'} />
+            <StatusChip value={preview.inventory_deduction_ready ? 'Inventory deduction theoretically ready' : 'Inventory deduction held'} />
+            <StatusChip value={preview.procurement_needed ? 'Procurement needed' : 'Procurement not needed'} />
+            <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
+            <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Order context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.order_number ? `Order ${preview.order_number}` : null,
+                  preview.customer_app_order_present ? 'Customer App order present' : 'Customer App order missing',
+                  preview.native_shopify_order_present ? 'Native mirror present' : 'Native mirror missing',
+                  preview.native_fulfillment_task_present ? 'Native task present' : 'Native task missing',
+                  `${formatNumber(preview.line_item_count)} line items`,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Schedule context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.production_date ? `Production ${preview.production_date}` : 'Production date pending',
+                  preview.delivery_date ? `Delivery ${preview.delivery_date}` : 'Delivery date pending',
+                  preview.fulfillment_type ? formatLabel(preview.fulfillment_type) : null,
+                  preview.order_type ? formatLabel(preview.order_type) : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Master data read</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  `${formatNumber(preview.master_data_summary?.recipe_count)} recipes`,
+                  `${formatNumber(preview.master_data_summary?.bundle_count)} bundles`,
+                  `${formatNumber(preview.master_data_summary?.inventory_item_count)} inventory items`,
+                  `${formatNumber(preview.master_data_summary?.ingredient_yield_count)} yields`,
+                ].join(' · ')}
+              </p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Production / inventory blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.map(blocker => (
+                      <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.map(warning => (
+                      <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {demandRows.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Production demand rows</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {demandRows.slice(0, 12).map((row, index) => (
+                  <div key={`${row.product_name}-${row.source_line_item}-${index}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-1">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-foreground">{row.product_name || 'Product pending'}</p>
+                      <StatusChip value={row.recipe_match_status || 'recipe pending'} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {[
+                        `Qty ${formatNumber(row.quantity)}`,
+                        row.source_line_item ? `From ${row.source_line_item}` : null,
+                        row.bundle_name ? `Bundle ${row.bundle_name}` : null,
+                        row.recipe_name ? `Recipe ${row.recipe_name}` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {bundleRows.length > 0 && (
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Bundle decomposition</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {bundleRows.slice(0, 12).map(row => `${formatNumber(row.total_component_quantity)}x ${row.component_product_name} from ${row.bundle_name}`).join(' · ')}
+              </p>
+            </div>
+          )}
+
+          {recipeRows.length > 0 && (
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Recipe matching</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {recipeRows.slice(0, 12).map(row => `${row.product_name}: ${formatLabel(row.recipe_match_status)}`).join(' · ')}
+              </p>
+            </div>
+          )}
+
+          {ingredientRows.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ingredient and procurement needs</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {ingredientRows.slice(0, 12).map((row, index) => (
+                  <div key={`${row.ingredient_name}-${index}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-foreground">{row.ingredient_name || 'Ingredient pending'}</p>
+                      <StatusChip value={row.procurement_needed ? 'Procurement needed' : row.status || 'covered'} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {[
+                        `Need ${formatNumber(row.proposed_quantity)} ${row.unit || 'units'}`,
+                        row.current_stock !== null && row.current_stock !== undefined ? `Stock ${formatNumber(row.current_stock)} ${row.unit || ''}` : 'Stock unavailable',
+                        row.projected_stock !== null && row.projected_stock !== undefined ? `Projected ${formatNumber(row.projected_stock)} ${row.unit || ''}` : null,
+                        row.shortfall_quantity ? `Shortfall ${formatNumber(row.shortfall_quantity)} ${row.unit || ''}` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {[
+                        row.inventory_item_name ? `Inventory ${row.inventory_item_name}` : 'Inventory match missing',
+                        row.ingredient_yield_name ? `Yield ${row.ingredient_yield_name}` : 'Yield match missing',
+                        row.procurement_quantity ? `Procure ${formatNumber(row.procurement_quantity)} ${row.procurement_unit || row.purchase_unit || ''}` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
   const summary = preview?.summary || {};
   const fetchStats = preview?.fetch_stats || {};
@@ -880,6 +1106,9 @@ export default function SyncHealth() {
   const [pilotApprovalPreview, setPilotApprovalPreview] = useState(null);
   const [pilotApprovalError, setPilotApprovalError] = useState('');
   const [isPilotApprovalRunning, setIsPilotApprovalRunning] = useState(false);
+  const [productionInventoryPreview, setProductionInventoryPreview] = useState(null);
+  const [productionInventoryPreviewError, setProductionInventoryPreviewError] = useState('');
+  const [isProductionInventoryPreviewRunning, setIsProductionInventoryPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -987,6 +1216,14 @@ export default function SyncHealth() {
     }
   };
 
+  const updateCutoverOrderNumber = value => {
+    setCutoverOrderNumber(value);
+    setPilotApprovalPreview(null);
+    setPilotApprovalError('');
+    setProductionInventoryPreview(null);
+    setProductionInventoryPreviewError('');
+  };
+
   const runNativePilotApprovalPreview = async () => {
     setPilotApprovalError('');
     setIsPilotApprovalRunning(true);
@@ -1008,6 +1245,30 @@ export default function SyncHealth() {
       setPilotApprovalError(previewError?.message || 'Unable to generate native pilot approval packet.');
     } finally {
       setIsPilotApprovalRunning(false);
+    }
+  };
+
+  const runNativeProductionInventoryPreview = async () => {
+    setProductionInventoryPreviewError('');
+    setIsProductionInventoryPreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for production/inventory readiness preview.');
+      }
+      const res = await base44.functions.invoke('previewNativeProductionInventoryReadiness', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Native production/inventory readiness preview failed.');
+      }
+      setProductionInventoryPreview(result);
+    } catch (previewError) {
+      setProductionInventoryPreviewError(previewError?.message || 'Unable to run native production/inventory readiness preview.');
+    } finally {
+      setIsProductionInventoryPreviewRunning(false);
     }
   };
 
@@ -1175,12 +1436,20 @@ export default function SyncHealth() {
           isRunning={isCutoverPreviewRunning}
           error={cutoverPreviewError}
           orderNumber={cutoverOrderNumber}
-          onOrderNumberChange={setCutoverOrderNumber}
+          onOrderNumberChange={updateCutoverOrderNumber}
           onRun={runNativeCutoverReadinessPreview}
           pilotApproval={pilotApprovalPreview}
           isPilotApprovalRunning={isPilotApprovalRunning}
           pilotApprovalError={pilotApprovalError}
           onRunPilotApproval={runNativePilotApprovalPreview}
+        />
+
+        <NativeProductionInventoryReadinessPreview
+          preview={productionInventoryPreview}
+          isRunning={isProductionInventoryPreviewRunning}
+          error={productionInventoryPreviewError}
+          orderNumber={cutoverOrderNumber}
+          onRun={runNativeProductionInventoryPreview}
         />
 
         {showError && (
