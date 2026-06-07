@@ -10,7 +10,7 @@ const POLICY_FLAG = 'NATIVE_PRODUCTION_MASTER_DATA_IMPORT_POLICY';
 const REQUIRED_POLICY = 'NON_STOCK_MASTER_DATA_ONLY';
 const REQUIRED_YIELD_POLICY = 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES';
 const CONFIRMATION_PHRASE = 'import_customer_app_non_stock_master_data';
-const OWNER_APPROVAL_PHRASE = 'APPROVE G31G CUSTOMER APP NON STOCK MASTER DATA IMPORT NV-MPZNKGNT';
+const OWNER_APPROVAL_PHRASE = 'APPROVE G31I CUSTOMER APP NON STOCK COMPONENT MASTER DATA IMPORT NV-MPZNKGNT';
 const TARGET_ORDER_NUMBER = 'NV-MPZNKGNT';
 const TARGET_CUSTOMER_APP_ORDER_ID = '6a219a3f4adcda5856c3d579';
 const TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a22ffda400eb806eb3ca945';
@@ -20,17 +20,15 @@ const MAX_TEXT = 180;
 const MAX_ROWS = 120;
 
 const EXPECTED_CREATE_COUNTS = Object.freeze({
-  Bundle: 1,
   Recipe: 3,
-  InventoryItem: 6,
-  IngredientYield: 4,
+  InventoryItem: 10,
+  IngredientYield: 10,
 });
 
 const EXPECTED_NAMES = Object.freeze({
-  Bundle: ['The NuVira Trio'],
-  Recipe: ['Pineapple Juice', 'Reset Shot', 'Radiance Shot'],
-  InventoryItem: ['Pineapple', 'Lemon', 'Ginger', 'Black Salt', 'Beetroot', 'Red Apple'],
-  IngredientYield: ['Pineapple', 'Lemon', 'Ginger', 'Red Apple'],
+  Recipe: ['Re-Nu', 'Aura', 'Oasis'],
+  InventoryItem: ['Cucumber', 'Green Apple', 'Celery', 'Kale', 'Carrot', 'Orange', 'Coconut Water', 'Sea Salt', 'Watermelon', 'Black Pepper'],
+  IngredientYield: ['Cucumber', 'Green Apple', 'Celery', 'Kale', 'Carrot', 'Orange', 'Coconut Water', 'Sea Salt', 'Watermelon', 'Black Pepper'],
 });
 
 const DEFERRED_YIELD_NAMES = Object.freeze(['Black Salt', 'Beetroot']);
@@ -301,7 +299,7 @@ function validateImportPreview(preview) {
   if (preview?.inventory_deduction_ready !== false || importPreview.inventory_deduction_ready !== false) blockers.push('inventory_deduction_should_remain_held');
   if (preview?.production_master_data_ready !== true) blockers.push('production_master_data_not_ready');
 
-  if (Number(importPreview.create_row_count) !== 14 || createRows.length !== 14) blockers.push('unexpected_create_row_count');
+  if (Number(importPreview.create_row_count) !== 23 || createRows.length !== 23) blockers.push('unexpected_create_row_count');
   if (Number(importPreview.deferred_row_count) !== 2 || deferredRows.length !== 2) blockers.push('unexpected_deferred_row_count');
   if ((importPreview.blocked_rows || []).length > 0 || (importPreview.blockers || []).length > 0) blockers.push('fresh_preview_contains_blockers');
 
@@ -318,9 +316,13 @@ function validateImportPreview(preview) {
     if (yieldNames.includes(normalizeKey(deferredName))) blockers.push(`deferred_yield_would_be_created:${deferredName}`);
   }
 
-  const trioRow = createRows.find(row => row.target_entity === 'Bundle' && normalizeKey(fieldValueForRow(row)) === normalizeKey('The NuVira Trio'));
-  if (!trioRow) blockers.push('approved_trio_alias_row_missing');
-  if (trioRow && trioRow.source_hub_id !== TARGET_TRIO_HUB_BUNDLE_ID) blockers.push('approved_trio_alias_hub_id_mismatch');
+  const approvedAlias = (preview?.approved_alias_mappings || []).find(mapping =>
+    normalizeKey(mapping?.source_name) === normalizeKey('The NuVira Trio') &&
+    normalizeKey(mapping?.target_hub_name) === normalizeKey('NuVira Trio')
+  );
+  if (!approvedAlias) blockers.push('approved_trio_alias_mapping_missing');
+  if (approvedAlias && approvedAlias.target_hub_id !== TARGET_TRIO_HUB_BUNDLE_ID) blockers.push('approved_trio_alias_hub_id_mismatch');
+  if (createRows.some(row => row.target_entity === 'Bundle')) blockers.push('unexpected_bundle_create_row');
 
   for (const row of createRows) {
     if (row.operation !== 'create_if_missing') blockers.push(`unsupported_operation:${row.operation || 'missing'}`);
@@ -381,6 +383,7 @@ async function createCommandLog({ base44, status, idempotencyKey, requestId, use
       inventory_seed_policy: REQUIRED_POLICY,
       yield_policy: REQUIRED_YIELD_POLICY,
       approved_alias: 'The NuVira Trio -> NuVira Trio',
+      import_phase: 'G31I_component_master_data',
     },
     result,
     error_code: errorCode || null,
@@ -393,7 +396,7 @@ async function createCommandLog({ base44, status, idempotencyKey, requestId, use
     function_name: FUNCTION_NAME,
     related_order_number: TARGET_ORDER_NUMBER,
     related_order_id: TARGET_CUSTOMER_APP_ORDER_ID,
-    notes: 'G31G exact Customer App non-stock production master-data import. Creates only approved Recipe, Bundle, InventoryItem, and exact IngredientYield rows. No Black Salt/Beetroot yield, inventory deduction, PO, ProductionBatch, provider, notification, sync, repair, order, or task writes.',
+    notes: 'G31I exact Customer App non-stock component production master-data import. Creates only approved Re-Nu/Aura/Oasis Recipe rows plus approved component InventoryItem and exact IngredientYield rows. No Black Salt/Beetroot yield, inventory deduction, PO, ProductionBatch, provider, notification, sync, repair, order, or task writes.',
   });
 }
 
