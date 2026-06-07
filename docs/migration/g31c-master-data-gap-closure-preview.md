@@ -2,7 +2,9 @@
 
 ## Scope
 
-G31C extends the read-only native production master-data parity preview with a seed-packet preview. It is intended to explain exactly which Recipe, Bundle, InventoryItem, and IngredientYield rows would still need mirror/import planning before native production and procurement can run without Hub.
+G31C extends the read-only native production master-data parity preview with a seed-packet preview. G31E updates that preview with owner-approved make-to-order policies so it can distinguish production-demand readiness from procurement conversion and inventory deduction readiness.
+
+It is intended to explain exactly which Recipe, Bundle, InventoryItem, and IngredientYield rows would still need mirror/import planning before native production and procurement can run without Hub.
 
 This phase is read-only:
 
@@ -22,7 +24,7 @@ For `NV-MPZNKGNT`, G31B reported 16 required rows, 13 mirror-ready rows, and 3 b
 - missing Hub IngredientYield: `Black Salt`
 - missing Hub IngredientYield: `Beetroot`
 
-G31C resolves those gaps only by read-only candidate analysis. It does not create the missing Hub rows or seed Customer App master data.
+G31C resolves those gaps only by read-only candidate analysis. G31E owner clarification changes two of the missing Hub `IngredientYield` gaps from launch blockers to deferred purchase-conversion warnings. It does not create the missing Hub rows or seed Customer App master data.
 
 ## Gap closure behavior
 
@@ -40,10 +42,52 @@ The preview now returns:
 
 A seed packet is considered ready only when every required missing native row is mirror-ready and no inventory live-stock seed policy, alias mapping, or owner-input decision is outstanding.
 
+After G31E, the preview also returns:
+
+- `production_master_data_ready`
+- `non_stock_master_data_seed_ready`
+- `procurement_conversion_ready`
+- `inventory_deduction_ready`
+- `yield_details_pending`
+- `pending_yield_items`
+- `approved_alias_mappings`
+- `inventory_seed_policy`
+- `yield_policy`
+
 ## Inventory stock policy
 
-`InventoryItem.stock` is live operational state, not pure master data. G31C can include it in read-only preview context, but any future mirror/import phase must explicitly decide whether to seed stock values, zero them, or mirror only non-stock master-data fields.
+`InventoryItem.stock` is live operational state, not pure master data. G31E owner clarification approves:
+
+```text
+APPROVE INVENTORY SEED POLICY: NON_STOCK_MASTER_DATA_ONLY
+```
+
+Meaning:
+
+- mirror ingredient/product master data
+- seed or keep Customer App stock quantities at `0`
+- do not mirror Hub stock as authoritative
+- do not treat stock shortfall as fatal
+- show stock shortfall as `procurement_needed`
+
+G31E also approves:
+
+```text
+APPROVE YIELD POLICY: DEFER_DETAILED_PURCHASE_CONVERSION_VALUES
+```
+
+Missing `IngredientYield` purchase-conversion details are warnings, not blockers, for production-demand visibility and basic non-stock master-data mirror planning. They still block inventory deduction, purchase-unit conversion, and purchase order automation.
 
 ## Expected next decisions
 
-If G31C returns Hub-missing or owner-input rows, update/approve Hub master data first. If G31C returns alias rows, approve an explicit mapping before any Customer App import. Only after all rows are mirror-ready or explicitly mapped should a gated Customer App master-data mirror/import command be scoped.
+If G31C/G31E returns true Hub-missing Recipe, Bundle, or InventoryItem rows, update/approve Hub master data first. If it returns alias rows, approve an explicit mapping before any Customer App import.
+
+For `NV-MPZNKGNT`, the owner-approved alias:
+
+```text
+APPROVE ALIAS The NuVira Trio -> NuVira Trio
+```
+
+allows the preview to treat the Hub Bundle `NuVira Trio` (`69e8f55b06e17fbd88dbbc0c`) as the mapped source for `The NuVira Trio`.
+
+Only after all true blockers are cleared or explicitly mapped should a gated Customer App non-stock master-data mirror/import command be scoped. Inventory deduction and PO automation remain separate held phases.

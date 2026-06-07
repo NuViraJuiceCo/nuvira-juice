@@ -864,6 +864,23 @@ function NativeProductionMasterDataParityPreview({
   const ownerInputRows = Array.isArray(preview?.owner_input_required_rows) ? preview.owner_input_required_rows : [];
   const hubMissingRows = Array.isArray(preview?.hub_missing_rows) ? preview.hub_missing_rows : [];
   const aliasCandidateRows = Array.isArray(preview?.alias_candidate_rows) ? preview.alias_candidate_rows : [];
+  const productionMasterDataReady = Boolean(preview?.production_master_data_ready ?? gapClosure.production_master_data_ready);
+  const nonStockSeedReady = Boolean(preview?.non_stock_master_data_seed_ready ?? gapClosure.non_stock_master_data_seed_ready ?? preview?.seed_packet_ready);
+  const procurementConversionReady = Boolean(preview?.procurement_conversion_ready ?? gapClosure.procurement_conversion_ready);
+  const inventoryDeductionReady = Boolean(preview?.inventory_deduction_ready ?? gapClosure.inventory_deduction_ready);
+  const yieldDetailsPending = Boolean(preview?.yield_details_pending ?? gapClosure.yield_details_pending);
+  const pendingYieldItems = Array.isArray(preview?.pending_yield_items)
+    ? preview.pending_yield_items
+    : Array.isArray(gapClosure.pending_yield_items)
+      ? gapClosure.pending_yield_items
+      : [];
+  const approvedAliasMappings = Array.isArray(preview?.approved_alias_mappings)
+    ? preview.approved_alias_mappings
+    : Array.isArray(gapClosure.approved_alias_mappings)
+      ? gapClosure.approved_alias_mappings
+      : [];
+  const inventorySeedPolicy = preview?.inventory_seed_policy || gapClosure.inventory_seed_policy;
+  const yieldPolicy = preview?.yield_policy || gapClosure.yield_policy;
 
   return (
     <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
@@ -873,7 +890,7 @@ function NativeProductionMasterDataParityPreview({
           <div>
             <h2 className="text-sm font-bold text-foreground">Native Production Master Data Parity</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              G31B read-only preview comparing Customer App native Recipe, Bundle, InventoryItem, and IngredientYield readiness against Hub master data. It does not import, seed, mirror, or write master data.
+              G31B/G31E read-only preview comparing Customer App native Recipe, Bundle, InventoryItem, and IngredientYield readiness against Hub master data and approved make-to-order seed policies. It does not import, seed, mirror, or write master data.
             </p>
           </div>
         </div>
@@ -924,10 +941,47 @@ function NativeProductionMasterDataParityPreview({
 
           <div className="flex flex-wrap gap-2">
             <StatusChip value={preview.native_production_readiness_after_mirror ? 'Ready after mirror' : 'Still blocked after mirror'} />
+            <StatusChip value={productionMasterDataReady ? 'Production master data ready' : 'Production master data blocked'} />
+            <StatusChip value={nonStockSeedReady ? 'Non-stock mirror ready' : 'Non-stock mirror held'} />
+            <StatusChip value={procurementConversionReady ? 'Procurement conversion ready' : 'Procurement conversion pending'} />
+            <StatusChip value={inventoryDeductionReady ? 'Inventory deduction ready' : 'Inventory deduction held'} />
             <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
             <StatusChip value={preview.hub_lookup?.available ? 'Hub master data reachable' : 'Hub master data unavailable'} />
             <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
           </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <StatCard label="Production Master Data" value={productionMasterDataReady ? 'Ready' : 'Blocked'} tone={productionMasterDataReady ? 'success' : 'warning'} />
+            <StatCard label="Non-Stock Seed" value={nonStockSeedReady ? 'Ready' : 'Held'} tone={nonStockSeedReady ? 'success' : 'warning'} />
+            <StatCard label="Procurement Conversion" value={procurementConversionReady ? 'Ready' : 'Pending'} tone={procurementConversionReady ? 'success' : 'warning'} />
+            <StatCard label="Inventory Deduction" value={inventoryDeductionReady ? 'Ready' : 'Held'} tone={inventoryDeductionReady ? 'warning' : 'default'} />
+            <StatCard label="Yield Details" value={yieldDetailsPending ? 'Pending' : 'Complete'} tone={yieldDetailsPending ? 'warning' : 'success'} />
+          </div>
+
+          {(inventorySeedPolicy || yieldPolicy || pendingYieldItems.length > 0 || approvedAliasMappings.length > 0) && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-emerald-950">Approved make-to-order master-data policy</p>
+              <p className="text-[10px] text-emerald-900">
+                {[
+                  inventorySeedPolicy ? `Inventory seed policy: ${formatLabel(inventorySeedPolicy)}` : null,
+                  yieldPolicy ? `Yield policy: ${formatLabel(yieldPolicy)}` : null,
+                  pendingYieldItems.length > 0 ? `Pending yield details: ${pendingYieldItems.map(item => sanitizeAdminText(item)).join(', ')}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+              {approvedAliasMappings.length > 0 && (
+                <ul className="space-y-1 text-[10px] text-emerald-900">
+                  {approvedAliasMappings.slice(0, 6).map((mapping, index) => (
+                    <li key={`${mapping.source_name}-${mapping.target_hub_id || index}`}>
+                      • Approved alias: {sanitizeAdminText(mapping.source_name)} → {sanitizeAdminText(mapping.target_hub_name)}{mapping.target_hub_id ? ` · Hub ${mapping.target_hub_id}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-[10px] text-emerald-900">
+                Missing yield purchase-conversion details remain warnings only for production demand visibility; inventory deduction and PO automation remain held.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
             <div className="rounded-lg border border-border/50 bg-background p-3">
@@ -992,8 +1046,8 @@ function NativeProductionMasterDataParityPreview({
               <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
                 <StatCard
                   label="Seed Packet"
-                  value={preview.seed_packet_ready ? 'Ready' : 'Not Ready'}
-                  tone={preview.seed_packet_ready ? 'success' : 'warning'}
+                  value={nonStockSeedReady ? 'Ready' : 'Not Ready'}
+                  tone={nonStockSeedReady ? 'success' : 'warning'}
                 />
                 <StatCard label="Gap Next Action" value={formatLabel(preview.next_action || gapClosure.next_action)} tone="warning" />
                 <StatCard label="Seed Rows" value={formatNumber(seedPacketRows.length)} />
