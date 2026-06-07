@@ -333,6 +333,299 @@ function hubMatchForType(hubData, type, name) {
   return { requested_name: safeText(name, 120), normalized_name: normalizeKey(name), status: 'missing', count: 0, matches: [] };
 }
 
+function firstCandidateFromRows(rows, type, name, candidateTypes = []) {
+  const key = normalizeKey(name);
+  const candidates = (rows || [])
+    .filter(row => row?.required_type === type && normalizeKey(row?.requested_name) === key)
+    .filter(row => candidateTypes.length === 0 || candidateTypes.includes(row?.candidate_type))
+    .flatMap(row => (row?.candidates || []).map(candidate => ({
+      ...candidate,
+      requested_name: row.requested_name,
+      required_type: row.required_type,
+      candidate_type: row.candidate_type,
+      status: row.status,
+    })))
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+  return candidates[0] || null;
+}
+
+function productMatchForName(hubData, name) {
+  const row = firstHubMatch(hubData?.product_matches || [], name);
+  if (row.status === 'matched') {
+    return {
+      confidence: 1,
+      match_kind: 'exact_product_catalog_match',
+      required_type: 'bundle',
+      candidate_type: 'product',
+      candidate: row.matches?.[0],
+    };
+  }
+  return firstCandidateFromRows(hubData?.product_alias_candidates || hubData?.alias_candidate_rows, 'bundle', name, ['product']);
+}
+
+function aliasCandidateForRow(hubData, row) {
+  if (!hubData || !row) return null;
+  if (row.required_type === 'bundle') {
+    return firstCandidateFromRows(hubData.bundle_alias_candidates || hubData.alias_candidate_rows, 'bundle', row.required_name, ['bundle']) ||
+      productMatchForName(hubData, row.required_name);
+  }
+  if (row.required_type === 'recipe') {
+    return firstCandidateFromRows(hubData.recipe_alias_candidates || hubData.alias_candidate_rows, 'recipe', row.required_name, ['recipe']);
+  }
+  if (row.required_type === 'inventory') {
+    return firstCandidateFromRows(hubData.inventory_alias_candidates || hubData.alias_candidate_rows, 'inventory', row.required_name, ['inventory']);
+  }
+  if (row.required_type === 'yield') {
+    return firstCandidateFromRows(hubData.yield_alias_candidates || hubData.alias_candidate_rows, 'yield', row.required_name, ['yield']);
+  }
+  return null;
+}
+
+function hubRecordForRequiredRow(hubData, row) {
+  const match = hubMatchForType(hubData, row.required_type, row.required_name);
+  return match?.status === 'matched' ? match.matches?.[0] || null : null;
+}
+
+function seedPreviewPayload(type, sourceRecord) {
+  if (!sourceRecord) return null;
+  if (type === 'bundle') {
+    return {
+      bundle_name: safeText(sourceRecord.name, 120),
+      component_count: Array.isArray(sourceRecord.components) ? sourceRecord.components.length : 0,
+      components: (sourceRecord.components || []).slice(0, DEFAULT_MAX_ROWS).map(component => ({
+        product_name: safeText(component?.product_name, 120),
+        quantity: numberOrNull(component?.quantity),
+      })).filter(component => component.product_name),
+      fulfillment_count: numberOrNull(sourceRecord.fulfillment_count),
+      is_active: sourceRecord.is_active !== false,
+    };
+  }
+  if (type === 'recipe') {
+    return {
+      product_name: safeText(sourceRecord.name, 120),
+      product_sku: safeText(sourceRecord.product_sku, 80),
+      bottle_size_oz: numberOrNull(sourceRecord.bottle_size_oz),
+      yield_factor: numberOrNull(sourceRecord.yield_factor),
+      ingredient_count: Array.isArray(sourceRecord.ingredients) ? sourceRecord.ingredients.length : 0,
+      ingredients: (sourceRecord.ingredients || []).slice(0, DEFAULT_MAX_ROWS).map(ingredient => ({
+        ingredient_name: safeText(ingredient?.ingredient_name, 120),
+        quantity_oz: numberOrNull(ingredient?.quantity_oz),
+        unit: safeText(ingredient?.unit, 40),
+      })).filter(ingredient => ingredient.ingredient_name),
+      is_active: sourceRecord.is_active !== false,
+    };
+  }
+  if (type === 'inventory') {
+    return {
+      ingredient: safeText(sourceRecord.name, 120),
+      unit: safeText(sourceRecord.unit, 40),
+      category: safeText(sourceRecord.category, 80),
+      supplier: safeText(sourceRecord.supplier, 120),
+      stock: numberOrNull(sourceRecord.stock),
+      reorder_point: numberOrNull(sourceRecord.reorder_point),
+      max_stock: numberOrNull(sourceRecord.max_stock),
+      supplier_packaging_unit: safeText(sourceRecord.supplier_packaging_unit, 40),
+      supplier_packaging_qty: safeText(sourceRecord.supplier_packaging_qty, 80),
+      stock_is_live_state: true,
+    };
+  }
+  if (type === 'yield') {
+    return {
+      ingredient_name: safeText(sourceRecord.name, 120),
+      purchase_unit: safeText(sourceRecord.purchase_unit, 40),
+      oz_per_purchase_unit: numberOrNull(sourceRecord.oz_per_purchase_unit),
+      trim_waste_factor: numberOrNull(sourceRecord.trim_waste_factor),
+      units_per_case: numberOrNull(sourceRecord.units_per_case),
+      split_case_allowed: sourceRecord.split_case_allowed === true,
+      rounding_rule: safeText(sourceRecord.rounding_rule, 80),
+      supplier: safeText(sourceRecord.supplier, 120),
+    };
+  }
+  return null;
+}
+
+function ownerInputFieldsForRow(row) {
+  if (row?.required_type === 'yield') {
+    return ['ingredient_name', 'purchase_unit', 'oz_per_purchase_unit', 'trim_waste_factor', 'units_per_case', 'rounding_rule'];
+  }
+  if (row?.required_type === 'bundle') {
+    return ['bundle_name', 'components.product_name', 'components.quantity', 'fulfillment_count'];
+  }
+  return [];
+}
+
+function buildSeedPacketRow({ row, hubData }) {
+  const hubRecord = hubRecordForRequiredRow(hubData, row);
+  const aliasCandidate = aliasCandidateForRow(hubData, row);
+  const base = {
+    source_line_item: row.source_line_item,
+    entity_type: row.required_type,
+    customer_app_target_name: row.required_name,
+    normalized_name: row.normalized_name,
+    native_present: row.native_present,
+    hub_match_status: row.hub_match_status,
+    field_compatibility_status: row.field_compatibility_status,
+    blockers: row.blockers || [],
+    warnings: row.warnings || [],
+  };
+
+  if (row.native_present) {
+    return {
+      ...base,
+      status: 'already_native',
+      proposed_action: 'already_native_no_seed',
+      seed_ready: false,
+    };
+  }
+
+  if (row.mirror_readiness?.startsWith('ready_to_mirror') && hubRecord) {
+    const proposedAction = row.required_type === 'inventory'
+      ? 'mirror_hub_inventory_item_with_explicit_stock_seed_policy'
+      : `mirror_hub_${row.required_type}`;
+    return {
+      ...base,
+      status: row.required_type === 'inventory' ? 'mirror_ready_with_stock_seed_decision' : 'mirror_ready',
+      proposed_action: proposedAction,
+      seed_ready: row.required_type !== 'inventory',
+      hub_source_id: safeId(hubRecord.id),
+      hub_source_name: safeText(hubRecord.name, 120),
+      seed_payload_preview: seedPreviewPayload(row.required_type, hubRecord),
+      warnings: [
+        ...(row.warnings || []),
+        ...(row.required_type === 'inventory' ? ['inventory_stock_is_live_state_seed_decision_required'] : []),
+      ],
+    };
+  }
+
+  if (aliasCandidate?.candidate) {
+    const candidate = aliasCandidate.candidate;
+    const candidateType = aliasCandidate.candidate_type || row.required_type;
+    return {
+      ...base,
+      status: 'manual_mapping_required',
+      proposed_action: candidateType === 'product' && row.required_type === 'bundle'
+        ? 'product_catalog_candidate_requires_manual_bundle_mapping'
+        : `alias_existing_hub_${candidateType}`,
+      seed_ready: false,
+      hub_source_id: safeId(candidate.id),
+      hub_source_name: safeText(candidate.name, 120),
+      alias_candidate_type: candidateType,
+      alias_match_kind: aliasCandidate.match_kind,
+      alias_confidence: numberOrNull(aliasCandidate.confidence),
+      alias_candidate_preview: seedPreviewPayload(candidateType === 'product' ? 'product' : row.required_type, candidate) || {
+        name: safeText(candidate.name, 120),
+        category: safeText(candidate.category, 80),
+      },
+      owner_input_fields_required: candidateType === 'product' && row.required_type === 'bundle' ? ownerInputFieldsForRow(row) : [],
+      warnings: [
+        ...(row.warnings || []),
+        candidateType === 'product' && row.required_type === 'bundle'
+          ? 'product_catalog_candidate_is_not_bundle_master_data'
+          : 'alias_requires_explicit_mapping_approval',
+      ],
+    };
+  }
+
+  if ((row.blockers || []).some(blocker => blocker.startsWith('missing_hub_yield'))) {
+    return {
+      ...base,
+      status: 'owner_input_required',
+      proposed_action: 'create_hub_yield_later_from_owner_supplied_values',
+      seed_ready: false,
+      owner_input_fields_required: ownerInputFieldsForRow(row),
+      warnings: [...(row.warnings || []), 'yield_values_not_inferred'],
+    };
+  }
+
+  if ((row.blockers || []).some(blocker => blocker.startsWith('missing_hub'))) {
+    return {
+      ...base,
+      status: 'hub_missing',
+      proposed_action: `cannot_seed_missing_hub_${row.required_type}`,
+      seed_ready: false,
+      owner_input_fields_required: ownerInputFieldsForRow(row),
+    };
+  }
+
+  if ((row.blockers || []).some(blocker => blocker.startsWith('ambiguous_hub') || blocker.startsWith('ambiguous_native'))) {
+    return {
+      ...base,
+      status: 'manual_mapping_required',
+      proposed_action: 'resolve_ambiguous_master_data_mapping',
+      seed_ready: false,
+    };
+  }
+
+  return {
+    ...base,
+    status: 'blocked',
+    proposed_action: 'hold',
+    seed_ready: false,
+  };
+}
+
+function buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult }) {
+  const seedPacketRows = (requiredRows || []).map(row => buildSeedPacketRow({ row, hubData }));
+  const blockedRows = seedPacketRows.filter(row => row.status === 'blocked' || row.status === 'hub_missing');
+  const manualMappingRows = seedPacketRows.filter(row => row.status === 'manual_mapping_required');
+  const ownerInputRows = seedPacketRows.filter(row => row.status === 'owner_input_required' || (row.owner_input_fields_required || []).length > 0);
+  const hubMissingRows = seedPacketRows.filter(row => row.status === 'hub_missing' || row.status === 'owner_input_required');
+  const aliasRows = seedPacketRows.filter(row => row.alias_candidate_type);
+  const mirrorReadyRows = seedPacketRows.filter(row => row.status === 'mirror_ready' || row.status === 'mirror_ready_with_stock_seed_decision');
+  const inventoryPolicyRows = seedPacketRows.filter(row => row.entity_type === 'inventory' && row.status === 'mirror_ready_with_stock_seed_decision');
+  const blockers = [
+    ...blockedRows.map(row => `${row.status}:${row.entity_type}:${row.customer_app_target_name}`),
+    ...ownerInputRows.map(row => `owner_input_required:${row.entity_type}:${row.customer_app_target_name}`),
+    ...manualMappingRows.map(row => `manual_mapping_required:${row.entity_type}:${row.customer_app_target_name}`),
+    ...(!hubResult.ok ? [hubResult.error_code || 'hub_lookup_unavailable'] : []),
+  ].filter(Boolean);
+  const warnings = [
+    ...new Set(seedPacketRows.flatMap(row => row.warnings || [])),
+    ...(inventoryPolicyRows.length > 0 ? ['inventory_stock_seed_policy_required_before_import'] : []),
+  ];
+
+  const seedPacketReady = seedPacketRows.length > 0 &&
+    blockers.length === 0 &&
+    inventoryPolicyRows.length === 0 &&
+    seedPacketRows.every(row => row.status === 'mirror_ready' || row.status === 'already_native');
+
+  let nextAction = 'hold';
+  if (!hubResult.ok) nextAction = 'hold';
+  else if (hubMissingRows.length > 0 || ownerInputRows.length > 0) nextAction = 'create_update_hub_master_data_first';
+  else if (manualMappingRows.length > 0) nextAction = 'patch_mappings_or_approve_aliases';
+  else if (inventoryPolicyRows.length > 0) nextAction = 'decide_inventory_stock_seed_policy';
+  else if (seedPacketReady) nextAction = 'ready_for_customer_app_master_data_mirror_approval';
+
+  return {
+    required_rows: requiredRows.length,
+    mirror_ready_row_count: mirrorReadyRows.length,
+    seed_packet_ready: seedPacketReady,
+    seed_packet_rows: seedPacketRows.slice(0, DEFAULT_MAX_ROWS),
+    blocked_rows: blockedRows.slice(0, DEFAULT_MAX_ROWS),
+    manual_mapping_required_rows: manualMappingRows.slice(0, DEFAULT_MAX_ROWS),
+    owner_input_required_rows: ownerInputRows.slice(0, DEFAULT_MAX_ROWS),
+    hub_missing_rows: hubMissingRows.slice(0, DEFAULT_MAX_ROWS),
+    alias_candidate_rows: aliasRows.slice(0, DEFAULT_MAX_ROWS),
+    blockers: [...new Set(blockers)].slice(0, MAX_BLOCKERS),
+    warnings: [...new Set(warnings)].slice(0, MAX_BLOCKERS),
+    next_action: nextAction,
+    master_data_gap_closure_preview: {
+      dry_run: true,
+      writes_performed: false,
+      seed_packet_ready: seedPacketReady,
+      next_action: nextAction,
+      required_rows: requiredRows.length,
+      mirror_ready_rows: mirrorReadyRows.length,
+      blocked_rows: blockedRows.length,
+      manual_mapping_required_rows: manualMappingRows.length,
+      owner_input_required_rows: ownerInputRows.length,
+      hub_missing_rows: hubMissingRows.length,
+      alias_candidate_rows: aliasRows.length,
+      inventory_stock_seed_policy_required: inventoryPolicyRows.length > 0,
+    },
+  };
+}
+
 function buildRequiredRow({ type, name, sourceLineItem, nativeMatches, hubMatch }) {
   const nativeStatus = statusForMatches(nativeMatches);
   const nativePresent = nativeStatus === 'matched';
@@ -504,6 +797,7 @@ function buildParityReport({ lookup, customerOrder, nativeOrder, task, lineItems
   const uniqueWarnings = [...new Set(warnings)].slice(0, MAX_BLOCKERS);
   const mirrorBlockers = [...new Set(rowBlockers.concat(!hubResult.ok ? [hubResult.error_code || 'hub_master_data_unavailable'] : []))].slice(0, MAX_BLOCKERS);
   const nativeProductionReadinessAfterMirror = requiredRows.length > 0 && mirrorBlockers.length === 0;
+  const gapClosurePreview = buildMasterDataGapClosurePreview({ requiredRows, hubData, hubResult });
 
   return {
     success: true,
@@ -534,6 +828,7 @@ function buildParityReport({ lookup, customerOrder, nativeOrder, task, lineItems
     hub_bundle_matches: hubData?.bundle_matches || [],
     hub_inventory_matches: hubData?.inventory_matches || [],
     hub_yield_matches: hubData?.yield_matches || [],
+    hub_product_matches: hubData?.product_matches || [],
     mirror_ready_rows: mirrorReadyRows.slice(0, DEFAULT_MAX_ROWS),
     mirror_blockers: mirrorBlockers,
     warnings: uniqueWarnings,
@@ -547,6 +842,19 @@ function buildParityReport({ lookup, customerOrder, nativeOrder, task, lineItems
       message: hubResult.ok ? null : hubResult.message,
       truncated: Boolean(hubData?.truncated),
     },
+    required_rows: gapClosurePreview.required_rows,
+    mirror_ready_row_count: gapClosurePreview.mirror_ready_row_count,
+    seed_packet_ready: gapClosurePreview.seed_packet_ready,
+    seed_packet_rows: gapClosurePreview.seed_packet_rows,
+    blocked_rows: gapClosurePreview.blocked_rows,
+    manual_mapping_required_rows: gapClosurePreview.manual_mapping_required_rows,
+    owner_input_required_rows: gapClosurePreview.owner_input_required_rows,
+    hub_missing_rows: gapClosurePreview.hub_missing_rows,
+    alias_candidate_rows: gapClosurePreview.alias_candidate_rows,
+    gap_closure_blockers: gapClosurePreview.blockers,
+    gap_closure_warnings: gapClosurePreview.warnings,
+    next_action: gapClosurePreview.next_action,
+    master_data_gap_closure_preview: gapClosurePreview.master_data_gap_closure_preview,
     safety: {
       dry_run_only: true,
       writes_performed: false,
