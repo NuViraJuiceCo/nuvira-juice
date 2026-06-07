@@ -169,12 +169,14 @@ assert.equal(plan.patch.address_complete, true);
 assert.equal(plan.patch.customer_name, undefined);
 assert.equal(plan.patch.customer_phone, undefined);
 assert.equal(plan.patch.customer_email, undefined);
+assert.equal(plan.patch.delivery_status, undefined);
 assert.equal(plan.patch.delivery_address, undefined);
 assert.equal(plan.patch.items, undefined);
 assert.equal(plan.patch.order_type, undefined);
 assert.equal(previewFns.isApprovedRepairPatchField('base44_order_id'), true);
 assert.equal(previewFns.isApprovedRepairPatchField('customer_name'), false);
 assert.equal(previewFns.isApprovedRepairPatchField('customer_phone'), false);
+assert.equal(previewFns.isApprovedRepairPatchField('delivery_status'), false);
 assert.equal(previewFns.isApprovedRepairPatchField('delivery_address'), false);
 assert.equal(previewFns.isApprovedRepairPatchField('status'), false);
 assert.deepEqual(Array.from(previewFns.unsupportedRepairPatchFields({
@@ -195,20 +197,24 @@ assert.deepEqual(plain(previewFns.validateRepairPatch({
 });
 assert.deepEqual(plain(previewFns.validateRepairPatch({
   delivery_address: '123 Test St',
+  delivery_status: 'pending',
   total_price: '42',
 })), {
   ok: false,
-  unsupported_patch_fields: ['delivery_address'],
+  unsupported_patch_fields: ['delivery_address', 'delivery_status'],
   invalid_patch_type_fields: ['total_price'],
 });
 assert.ok(plan.warnings.includes('excluded_unapproved_repair_fields'));
 assert.ok(plan.excluded_repair_fields.includes('delivery_address'));
+assert.ok(plan.excluded_repair_fields.includes('delivery_status'));
 assert.equal(plan.excluded_repair_reasons.delivery_address, 'object_field_not_required_for_metadata_repair');
+assert.equal(plan.excluded_repair_reasons.delivery_status, 'delivery_lifecycle_field_not_metadata_repair');
 assert.deepEqual(Array.from(plan.excluded_unapproved_fields), [
   'customer_email',
   'customer_name',
   'customer_phone',
   'delivery_address',
+  'delivery_status',
   'delivery_zone_key',
   'fulfillment_number',
   'items',
@@ -277,6 +283,7 @@ assert.equal(executeFns.envGateFailure({
   customerOrder,
 }), 'actor_email_not_allowlisted');
 assert.equal(executeFns.isApprovedRepairPatchField('customer_phone'), false);
+assert.equal(executeFns.isApprovedRepairPatchField('delivery_status'), false);
 assert.equal(executeFns.isApprovedRepairPatchField('delivery_address'), false);
 assert.equal(executeFns.shouldSkipForIdempotency(null), false);
 assert.equal(executeFns.shouldSkipForIdempotency({ status: 'failed' }), false);
@@ -288,11 +295,12 @@ assert.deepEqual(Array.from(executeFns.unsupportedRepairPatchFields({
 })), ['customer_phone']);
 assert.deepEqual(plain(executeFns.validateRepairPatch({
   shopify_order_number: 'NV-G29-1001',
+  delivery_status: 'pending',
   delivery_address: { line1: '123 Test St' },
   address_complete: 'true',
 })), {
   ok: false,
-  unsupported_patch_fields: ['delivery_address'],
+  unsupported_patch_fields: ['delivery_address', 'delivery_status'],
   invalid_patch_type_fields: ['address_complete'],
 });
 

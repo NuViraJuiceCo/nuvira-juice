@@ -25,7 +25,6 @@ const APPROVED_REPAIR_PATCH_FIELDS = new Set([
   'assigned_delivery_date',
   'production_date',
   'fulfillment_type',
-  'delivery_status',
   'production_status',
   'payment_status',
   'sync_status',
@@ -43,6 +42,7 @@ const APPROVED_REPAIR_PATCH_FIELDS = new Set([
 ]);
 const SCHEMA_UNSAFE_REPAIR_FIELDS = {
   delivery_address: 'object_field_not_required_for_metadata_repair',
+  delivery_status: 'delivery_lifecycle_field_not_metadata_repair',
   items: 'array_field_not_required_for_metadata_repair',
 };
 const APPROVED_REPAIR_PATCH_FIELD_TYPES = {
@@ -60,7 +60,6 @@ const APPROVED_REPAIR_PATCH_FIELD_TYPES = {
   assigned_delivery_date: ['string'],
   production_date: ['string'],
   fulfillment_type: ['string'],
-  delivery_status: ['string'],
   production_status: ['string'],
   payment_status: ['string'],
   sync_status: ['string'],
