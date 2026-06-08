@@ -1337,6 +1337,10 @@ function NativePostVerifyCascadePreview({
   const warnings = Array.isArray(preview?.cascade_warnings) ? preview.cascade_warnings : [];
   const batchRows = Array.isArray(preview?.target_batch_rows) ? preview.target_batch_rows : [];
   const safety = preview?.safety || {};
+  const taskPackAlreadySatisfied = Boolean(preview?.task_pack_already_satisfied || taskPreview.task_pack_already_satisfied || taskPreview.task_already_satisfied);
+  const taskPackAvailable = Boolean(taskPreview.pack_command_available);
+  const taskPackLabel = taskPackAlreadySatisfied ? 'Packed' : taskPackAvailable ? 'Ready' : 'Held';
+  const taskPackTone = taskPackAlreadySatisfied || taskPackAvailable ? 'success' : 'warning';
 
   return (
     <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
@@ -1346,7 +1350,7 @@ function NativePostVerifyCascadePreview({
           <div>
             <h2 className="text-sm font-bold text-foreground">Native Post-Verify Cascade Preview</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              G31W/G31X read-only preview for native FulfillmentTask pack readiness, native ShopifyOrder bottled/packed readiness, customer-facing status impact, and notification impact after production verify. The FulfillmentTask Pack command is available only behind exact gated approval; this panel does not pack tasks, bottle orders, update customer status, notify customers, sync, repair, or mutate records.
+              G31W/G31X/G31Z read-only preview for native FulfillmentTask pack state, native ShopifyOrder bottled/packed readiness, customer-facing status impact, and notification impact after production verify. Pack and bottle commands are available only behind exact gated approval; this panel does not pack tasks, bottle orders, update customer status, notify customers, sync, repair, or mutate records.
             </p>
           </div>
         </div>
@@ -1385,7 +1389,7 @@ function NativePostVerifyCascadePreview({
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
             <StatCard label="Verified Batches" value={formatNumber(preview.verified_batch_count)} tone={Number(preview.verified_batch_count || 0) > 0 ? 'success' : 'warning'} />
             <StatCard label="Compliance Logs" value={formatNumber(preview.compliance_log_count)} tone={Number(preview.compliance_log_count || 0) > 0 ? 'success' : 'warning'} />
-            <StatCard label="Task Pack" value={taskPreview.pack_cascade_allowed ? 'Ready' : 'Held'} tone={taskPreview.pack_cascade_allowed ? 'success' : 'warning'} />
+            <StatCard label="Task Pack" value={taskPackLabel} tone={taskPackTone} />
             <StatCard label="Order Bottle" value={orderPreview.order_bottle_cascade_allowed ? 'Ready' : 'Held'} tone={orderPreview.order_bottle_cascade_allowed ? 'success' : 'warning'} />
             <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
             <StatCard label="Generated" value={formatDateTime(preview.generated_at)} />
@@ -1436,9 +1440,9 @@ function NativePostVerifyCascadePreview({
                 ].filter(Boolean).join(' · ')}
               </p>
               <div className="flex flex-wrap gap-2">
-                <StatusChip value={taskPreview.pack_cascade_allowed ? 'Pack preview ready' : 'Pack preview held'} />
+                <StatusChip value={taskPackAlreadySatisfied ? 'Task already packed' : taskPackAvailable ? 'Pack preview ready' : 'Pack preview held'} />
                 <StatusChip value={taskPreview.pack_command_gated ? 'Pack command gated' : 'Pack command not exposed'} />
-                <StatusChip value={taskPreview.pack_requires_exact_approval ? 'Exact approval required' : 'Approval status unknown'} />
+                <StatusChip value={taskPreview.pack_requires_exact_approval ? 'Exact approval required' : taskPackAlreadySatisfied ? 'Pack deduped' : 'Approval status unknown'} />
                 <StatusChip value={taskPreview.would_update_task_status ? `Would propose ${taskPreview.proposed_task_status}` : 'No task write now'} />
                 <StatusChip value="No delivery mutation" />
               </div>
@@ -1460,6 +1464,8 @@ function NativePostVerifyCascadePreview({
               </p>
               <div className="flex flex-wrap gap-2">
                 <StatusChip value={orderPreview.order_bottle_cascade_allowed ? 'Bottle preview ready' : 'Bottle preview held'} />
+                <StatusChip value={orderPreview.bottle_command_gated ? 'Bottle command gated' : 'Bottle command not exposed'} />
+                <StatusChip value={orderPreview.bottle_requires_exact_approval ? 'Exact approval required' : orderPreview.already_bottled ? 'Bottle deduped' : 'Approval status unknown'} />
                 <StatusChip value={orderPreview.would_update_native_shopify_order ? `Would propose ${orderPreview.proposed_production_status}` : 'No order write now'} />
                 <StatusChip value="Customer sync held" />
               </div>

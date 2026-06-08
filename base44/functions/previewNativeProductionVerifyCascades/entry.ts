@@ -262,6 +262,7 @@ function buildTaskPackPreview({ task, allVerified, complianceReady, batches }) {
   const currentStatus = sanitizeText(task?.status, 80) || null;
   const currentDeliveryStatus = sanitizeText(task?.delivery_status, 80) || null;
   const currentProductionStatus = sanitizeText(task?.production_status, 80) || null;
+  const alreadyPacked = ['packed', 'bottled_packed'].includes(normalizeLower(task?.status));
 
   if (!task) blockers.push('missing_native_fulfillment_task');
   if (!allVerified) blockers.push('not_all_batches_verified_logged');
@@ -272,9 +273,10 @@ function buildTaskPackPreview({ task, allVerified, complianceReady, batches }) {
   if (task?.delivery_status && ['out_for_delivery', 'delivered', 'unable_to_deliver', 'cancelled', 'canceled'].includes(normalizeLower(task.delivery_status))) {
     blockers.push('delivery_lifecycle_already_advanced');
   }
-  if (task && ['packed', 'bottled_packed'].includes(normalizeLower(task.status))) warnings.push('task_already_packed_or_bottled');
+  if (alreadyPacked) warnings.push('task_already_packed_or_bottled');
 
   const allowed = blockers.length === 0;
+  const packCommandAvailable = allowed && !alreadyPacked;
   return {
     task_id: sanitizeId(task?.id, 120) || null,
     task_display_id: sanitizeId(task?.fulfillment_task_id, 180) || null,
@@ -282,18 +284,21 @@ function buildTaskPackPreview({ task, allVerified, complianceReady, batches }) {
     current_delivery_status: currentDeliveryStatus,
     current_production_status: currentProductionStatus,
     pack_cascade_allowed: allowed,
-    would_update_task_status: allowed && normalizeLower(currentStatus) !== 'packed',
+    task_pack_already_satisfied: allowed && alreadyPacked,
+    task_already_satisfied: allowed && alreadyPacked,
+    pack_action_state: allowed ? (alreadyPacked ? 'already_packed' : 'ready_to_pack') : 'held',
+    would_update_task_status: packCommandAvailable && normalizeLower(currentStatus) !== 'packed',
     proposed_task_status: allowed ? 'packed' : null,
-    would_update_production_status: allowed && normalizeLower(currentProductionStatus) !== 'packed',
+    would_update_production_status: packCommandAvailable && normalizeLower(currentProductionStatus) !== 'packed',
     proposed_production_status: allowed ? 'packed' : null,
     would_update_delivery_status: false,
     proposed_delivery_status: currentDeliveryStatus,
     blockers,
     warnings,
-    pack_command_available: allowed,
+    pack_command_available: packCommandAvailable,
     pack_command_gated: true,
-    pack_requires_exact_approval: true,
-    projected_writes_if_later_approved: allowed ? ['FulfillmentTask.status', 'FulfillmentTask.production_status', 'FulfillmentTask.packed_at', 'FulfillmentTask.audit_trail', 'CommandLog'] : [],
+    pack_requires_exact_approval: packCommandAvailable,
+    projected_writes_if_later_approved: packCommandAvailable ? ['FulfillmentTask.status', 'FulfillmentTask.production_status', 'FulfillmentTask.packed_at', 'FulfillmentTask.audit_trail', 'CommandLog'] : [],
   };
 }
 
@@ -310,9 +315,13 @@ function buildOrderBottlePreview({ nativeOrder, customerOrder, task, allVerified
   if (!allVerified) blockers.push('not_all_batches_verified_logged');
   if (!complianceReady) blockers.push('missing_batch_compliance_logs');
   if (batches.length === 0) blockers.push('missing_native_production_batches');
+  if (!task) blockers.push('missing_native_fulfillment_task');
+  if (task && !['packed', 'bottled_packed'].includes(normalizeLower(task.status))) blockers.push('native_fulfillment_task_not_packed');
+  if (task && !['packed', 'bottled_packed'].includes(normalizeLower(task.production_status))) blockers.push('native_fulfillment_task_production_status_not_packed');
   if (['subscription', 'multi_delivery'].includes(type) || mode === 'multi_delivery' || nativeOrder?.is_subscription === true) blockers.push('subscription_multi_delivery_order_bottle_blocked');
   if (['canceled', 'cancelled', 'refunded'].includes(normalizeLower(currentProductionStatus)) || ['refunded', 'voided'].includes(normalizeLower(currentPaymentStatus))) blockers.push('order_cancelled_or_refunded');
-  if (['packed', 'in_cold_storage', 'assigned_for_delivery', 'fulfilled'].includes(normalizeLower(currentProductionStatus))) warnings.push('order_production_status_already_after_bottle');
+  if (['labeled', 'qc_checked', 'packed', 'in_cold_storage', 'assigned_for_pickup', 'assigned_for_delivery', 'fulfilled'].includes(normalizeLower(currentProductionStatus))) blockers.push('order_production_status_already_after_bottle');
+  if (normalizeLower(currentProductionStatus) === 'bottled') warnings.push('native_shopify_order_already_bottled');
 
   const allowed = blockers.length === 0;
   return {
@@ -326,6 +335,10 @@ function buildOrderBottlePreview({ nativeOrder, customerOrder, task, allVerified
     is_subscription: nativeOrder?.is_subscription === true || customerOrder?.is_subscription === true || type === 'subscription',
     order_bottle_cascade_allowed: allowed,
     would_update_native_shopify_order: allowed && normalizeLower(currentProductionStatus) !== 'bottled',
+    bottle_command_available: allowed && normalizeLower(currentProductionStatus) !== 'bottled',
+    bottle_command_gated: true,
+    bottle_requires_exact_approval: allowed && normalizeLower(currentProductionStatus) !== 'bottled',
+    already_bottled: allowed && normalizeLower(currentProductionStatus) === 'bottled',
     proposed_production_status: allowed ? 'bottled' : null,
     proposed_fulfillment_status: currentFulfillmentStatus,
     would_update_fulfillment_status: false,
@@ -333,7 +346,7 @@ function buildOrderBottlePreview({ nativeOrder, customerOrder, task, allVerified
     notifications_deferred: true,
     blockers,
     warnings,
-    projected_writes_if_later_approved: allowed ? ['ShopifyOrder.production_status', 'ShopifyOrder.workflow_checklist.bottled', 'ShopifyOrder.internal_notes', 'CommandLog'] : [],
+    projected_writes_if_later_approved: allowed && normalizeLower(currentProductionStatus) !== 'bottled' ? ['ShopifyOrder.production_status', 'ShopifyOrder.audit_trail', 'CommandLog'] : [],
   };
 }
 
@@ -389,15 +402,18 @@ function buildPreview({ customerOrder, nativeOrder, task, batches, complianceLog
   const shopifyOrderBottlePreview = buildOrderBottlePreview({ nativeOrder, customerOrder, task, allVerified, complianceReady, batches: targetBatchRows });
   const impacts = buildImpactPreviews();
 
-  const taskReady = taskPackPreview.pack_cascade_allowed === true;
+  const taskReady = taskPackPreview.pack_command_available === true;
+  const taskAlreadySatisfied = taskPackPreview.task_pack_already_satisfied === true;
   const orderReady = shopifyOrderBottlePreview.order_bottle_cascade_allowed === true;
   const nextAction = taskReady && orderReady
     ? 'plan_gated_native_task_pack_and_order_bottle_commands'
     : taskReady
       ? 'plan_gated_native_fulfillment_task_pack_command'
-      : orderReady
+      : taskAlreadySatisfied && orderReady
         ? 'plan_gated_native_shopify_order_bottle_command'
-        : 'hold_post_verify_cascades';
+        : orderReady
+          ? 'plan_gated_native_shopify_order_bottle_command'
+          : 'hold_post_verify_cascades';
 
   return {
     success: true,
@@ -431,6 +447,7 @@ function buildPreview({ customerOrder, nativeOrder, task, batches, complianceLog
     cascade_blockers: [...new Set(cascadeBlockers)].slice(0, DEFAULT_MAX_ROWS),
     cascade_warnings: [...new Set([...cascadeWarnings, ...taskPackPreview.warnings, ...shopifyOrderBottlePreview.warnings])].slice(0, DEFAULT_MAX_ROWS),
     task_pack_ready: taskReady,
+    task_pack_already_satisfied: taskAlreadySatisfied,
     shopify_order_bottle_ready: orderReady,
     customer_facing_status_held: true,
     notifications_held: true,
