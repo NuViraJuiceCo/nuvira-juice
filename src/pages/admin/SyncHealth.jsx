@@ -2051,6 +2051,165 @@ function NativeDeliveryWorkflowReadinessPreview({
   );
 }
 
+
+function DeliveryCompletionReconciliationPreview({
+  preview,
+  isRunning,
+  error,
+  onRun,
+}) {
+  const rows = Array.isArray(preview?.preview_rows) ? preview.preview_rows : [];
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const mapping = preview?.status_mapping_audit || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Delivery Completion Reconciliation Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G32H read-only preview for direct delivered reconciliation and historical fulfilled Hub backfill. This panel does not mark delivered, backfill records, update Customer App status, append status history, send notifications, write proof/drop/route fields, sync, repair, or mutate records.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Completion Reconciliation Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Preview only. Notification policy is NO_NOTIFICATION. Proof/drop policy is held/not required for reconciliation. Live delivered or backfill corrections require separate exact approval.
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard label="Rows" value={formatNumber(rows.length)} />
+            <StatCard label="Writes" value={preview.writes_performed === false ? 'None' : 'Unknown'} tone={preview.writes_performed === false ? 'success' : 'warning'} />
+            <StatCard label="Notifications" value={preview.notification_policy || 'Unknown'} tone="success" />
+            <StatCard label="Proof/Drop" value="Held" tone="warning" />
+            <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
+            <StatCard label="Next" value={formatLabel(preview.next_action)} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={preview?.safety?.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+            <StatusChip value="Customer status held" />
+            <StatusChip value="Status history held" />
+            <StatusChip value="Notifications held" />
+            <StatusChip value="Proof/drop/route held" />
+            <StatusChip value="Hub mutation not proposed" />
+            {mapping?.fulfillment_task?.status_value && <StatusChip value={`Task delivered maps to ${mapping.fulfillment_task.status_value}`} />}
+            {mapping?.native_shopify_order?.fulfillment_status_value && <StatusChip value={`Order fulfillment maps to ${mapping.native_shopify_order.fulfillment_status_value}`} />}
+          </div>
+
+          {rows.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              {rows.map((row, index) => (
+                <div key={`${row.order_number || index}-${row.target_type || 'row'}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold text-foreground">{row.order_number || 'Order pending'}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatLabel(row.target_type)} · {formatLabel(row.proposed_correction_mode)}</p>
+                    </div>
+                    <StatusChip value={row.reconciliation_needed ? 'Reconciliation needed' : 'No reconciliation needed'} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <StatCard label="Customer App" value={row.customer_app_order_present ? 'Present' : 'Missing'} tone={row.customer_app_order_present ? 'success' : 'warning'} />
+                    <StatCard label="Native Order" value={row.native_shopify_order_present ? 'Present' : 'Missing'} tone={row.native_shopify_order_present ? 'success' : 'warning'} />
+                    <StatCard label="Native Task" value={row.native_fulfillment_task_present ? 'Present' : 'Missing'} tone={row.native_fulfillment_task_present ? 'success' : 'warning'} />
+                    <StatCard label="Hub Order" value={row.hub_order_present ? 'Present' : 'Not used'} tone={row.hub_order_present ? 'success' : 'default'} />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {[
+                      row.current_customer_order_status ? `Customer ${formatLabel(row.current_customer_order_status)}` : null,
+                      row.current_native_task_status ? `Task ${formatLabel(row.current_native_task_status)}` : null,
+                      row.current_native_delivery_status ? `Delivery ${formatLabel(row.current_native_delivery_status)}` : null,
+                      row.current_native_shopify_fulfillment_status ? `Fulfillment ${formatLabel(row.current_native_shopify_fulfillment_status)}` : null,
+                      row.hub_fulfillment_status ? `Hub fulfillment ${formatLabel(row.hub_fulfillment_status)}` : null,
+                    ].filter(Boolean).join(' · ') || formatLabel(row.operational_reality_classification)}
+                  </p>
+                  {Array.isArray(row.proposed_field_changes) && row.proposed_field_changes.length > 0 && (
+                    <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-2">
+                      <p className="text-[10px] font-bold text-emerald-950">Previewed future field changes</p>
+                      <ul className="mt-1 space-y-1 text-[10px] text-emerald-900">
+                        {row.proposed_field_changes.slice(0, 8).map((change, changeIndex) => (
+                          <li key={`${change.field}-${changeIndex}`}>• {change.record}: {change.field} → {formatLabel(change.to)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(row.records_that_would_be_created) && row.records_that_would_be_created.length > 0 && (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50 p-2">
+                      <p className="text-[10px] font-bold text-blue-950">Historical backfill preview</p>
+                      <p className="mt-1 text-[10px] text-blue-900">Would create, if separately approved: {row.records_that_would_be_created.map(item => formatLabel(item)).join(', ')}</p>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <StatusChip value={row.notification_would_send ? 'Would notify' : 'No notification'} />
+                    <StatusChip value={row.proof_drop_impact?.proof_drop_required ? 'Proof/drop required' : 'Proof/drop held'} />
+                    <StatusChip value={row.customer_status_impact?.customer_status_update_held ? 'Customer status held' : 'Customer status unknown'} />
+                    <StatusChip value={row.next_action || 'next action pending'} />
+                  </div>
+                  {Array.isArray(row.blockers) && row.blockers.length > 0 && (
+                    <p className="text-[10px] text-cyan-900">Blockers: {row.blockers.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}</p>
+                  )}
+                  {Array.isArray(row.warnings) && row.warnings.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground">Warnings: {row.warnings.slice(0, 6).map(item => formatLabel(sanitizeAdminText(item))).join(', ')}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Top-level blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.slice(0, 12).map(blocker => <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No top-level blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.slice(0, 12).map(warning => <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NativeProductionMasterDataParityPreview({
   preview,
   isRunning,
@@ -2771,6 +2930,9 @@ export default function SyncHealth() {
   const [deliveryWorkflowPreview, setDeliveryWorkflowPreview] = useState(null);
   const [deliveryWorkflowPreviewError, setDeliveryWorkflowPreviewError] = useState('');
   const [isDeliveryWorkflowPreviewRunning, setIsDeliveryWorkflowPreviewRunning] = useState(false);
+  const [deliveryCompletionPreview, setDeliveryCompletionPreview] = useState(null);
+  const [deliveryCompletionPreviewError, setDeliveryCompletionPreviewError] = useState('');
+  const [isDeliveryCompletionPreviewRunning, setIsDeliveryCompletionPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -3105,6 +3267,43 @@ export default function SyncHealth() {
     }
   };
 
+
+  const runDeliveryCompletionReconciliationPreview = async () => {
+    setDeliveryCompletionPreviewError('');
+    setIsDeliveryCompletionPreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim() || 'NV-MPZNKGNT';
+      const res = await base44.functions.invoke('previewNativeDeliveryCompletionReconciliation', {
+        mode: 'dry_run',
+        correction_mode: 'DIRECT_DELIVERED_NO_NOTIFICATION',
+        notification_policy: 'NO_NOTIFICATION',
+        proof_drop_policy: 'HELD_NOT_REQUIRED_FOR_RECONCILIATION',
+        targets: [
+          {
+            order_number: exactOrderNumber,
+            customer_app_order_id: '6a219a3f4adcda5856c3d579',
+            native_shopify_order_id: '6a22ffda400eb806eb3ca945',
+            native_fulfillment_task_id: '6a22ffdaf675ea79e30575aa',
+            correction_mode: 'DIRECT_DELIVERED_NO_NOTIFICATION',
+          },
+          {
+            hub_order_number: '1052',
+            correction_mode: 'HISTORICAL_HUB_FULFILLED_BACKFILL_NO_NOTIFICATION',
+          },
+        ],
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Delivery completion reconciliation preview failed.');
+      }
+      setDeliveryCompletionPreview(result);
+    } catch (previewError) {
+      setDeliveryCompletionPreviewError(previewError?.message || 'Unable to run delivery completion reconciliation preview.');
+    } finally {
+      setIsDeliveryCompletionPreviewRunning(false);
+    }
+  };
+
   const runNativeProductionMasterDataParityPreview = async () => {
     setMasterDataParityPreviewError('');
     setIsMasterDataParityPreviewRunning(true);
@@ -3355,6 +3554,13 @@ export default function SyncHealth() {
           error={deliveryWorkflowPreviewError}
           orderNumber={cutoverOrderNumber}
           onRun={runNativeDeliveryWorkflowReadinessPreview}
+        />
+
+        <DeliveryCompletionReconciliationPreview
+          preview={deliveryCompletionPreview}
+          isRunning={isDeliveryCompletionPreviewRunning}
+          error={deliveryCompletionPreviewError}
+          onRun={runDeliveryCompletionReconciliationPreview}
         />
 
         <NativeProductionMasterDataParityPreview
