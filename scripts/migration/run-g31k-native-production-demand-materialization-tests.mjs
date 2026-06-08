@@ -261,11 +261,15 @@ const existingMatchingBatch = {
   planned_units: 2,
   order_sources: [{ order_number: 'NV-MPZNKGNT', order_id: 'base44_order_001', quantity: 2 }],
 };
-const existingMatchingPreview = fns.buildMaterializationPreview({ readiness: baseReadiness, existingBatches: [existingMatchingBatch] });
+const existingMatchingReadiness = readinessFor({ existingBatches: [existingMatchingBatch] });
+const existingMatchingPreview = fns.buildMaterializationPreview({ readiness: existingMatchingReadiness, existingBatches: [existingMatchingBatch] });
 const greenExistingRow = existingMatchingPreview.proposed_production_batch_rows.find(row => row.product_name === 'Green Juice');
 assert.equal(greenExistingRow.would_create, false);
 assert.equal(greenExistingRow.would_skip_existing, true);
 assert.ok(existingMatchingPreview.warnings.includes('existing_native_batch_already_contains_order_source'));
+assert.ok(existingMatchingPreview.warnings.includes('existing_native_production_batches_detected'));
+assert.equal(existingMatchingPreview.warnings.includes('native_production_batch_not_created'), false);
+assert.equal(existingMatchingPreview.existing_native_batch_matches[0].status, 'planned');
 
 const conflictingBatch = {
   id: 'batch_green_locked',
@@ -281,5 +285,6 @@ const conflictPreview = fns.buildMaterializationPreview({ readiness: baseReadine
 assert.equal(conflictPreview.materialization_ready, false);
 assert.ok(conflictPreview.materialization_blockers.some(blocker => blocker.startsWith('existing_conflicting_native_batch:')));
 assert.equal(conflictPreview.safety.production_batches_created, false);
+assert.equal(conflictPreview.proposed_production_batch_rows[0].existing_batch_status, 'in_production');
 
 console.log('G31K native production demand materialization tests passed');

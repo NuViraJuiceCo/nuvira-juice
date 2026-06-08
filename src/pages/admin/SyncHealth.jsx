@@ -98,12 +98,49 @@ function formatLabel(value) {
     .join(' ');
 }
 
+const SAFE_ADMIN_PRODUCTION_LABELS = new Set([
+  'planned',
+  'ready_for_production',
+  'in_production',
+  'completed_pending_verification',
+  'verified_logged',
+  'archived',
+  'blocked',
+  'held',
+  'pending',
+  'completed',
+]);
+
 function sanitizeAdminText(value) {
   if (!value) return '';
   return value
     .toString()
-    .replace(/\b(?:ch|re|pi|cs|cus|sub|evt|in|pm|seti|si|src|tok|po|li)_[A-Za-z0-9]{8,}\b/g, '[redacted]')
+    .replace(/\b(?:ch|re|pi|cs|cus|sub|evt|in|pm|seti|si|src|tok|po|li)_[A-Za-z0-9]{8,}\b/g, match => (SAFE_ADMIN_PRODUCTION_LABELS.has(match.toLowerCase()) ? match : '[redacted]'))
     .replace(/\bgid:\/\/shopify\/[A-Za-z]+\/[A-Za-z0-9_-]+\b/g, '[redacted]');
+}
+
+function lifecycleStartChip(row) {
+  if (row?.start_state === 'already_started') return 'Start already started';
+  if (row?.can_start) return 'Can start preview';
+  if (row?.start_state === 'not_applicable_terminal_or_completed') return 'Start not applicable';
+  return 'Start blocked';
+}
+
+function lifecycleStatusChip(row) {
+  if (row?.current_status === 'in_production') return 'In Production';
+  return row?.classification || 'preview';
+}
+
+function lifecycleCompleteChip(row) {
+  if (row?.can_complete) return 'Can complete preview';
+  if (row?.complete_state === 'complete_blocked_missing_completion_fields') return 'Complete pending actual units';
+  return 'Complete blocked';
+}
+
+function lifecycleVerifyChip(row) {
+  if (row?.can_verify) return 'Can verify preview';
+  if (row?.verify_state === 'verify_blocked_until_completion') return 'Verify held until complete';
+  return 'Verify blocked';
 }
 
 function statusClass(value) {
@@ -998,7 +1035,7 @@ function NativeProductionDemandMaterializationPreview({
                     </p>
                     {row.existing_batch_key && (
                       <p className="text-[10px] text-muted-foreground">
-                        Existing: {sanitizeAdminText(row.existing_batch_key)} · {formatLabel(row.existing_batch_status)}{row.existing_batch_locked ? ' · locked' : ''}
+                        Existing: {sanitizeAdminText(row.existing_batch_key)} · {formatLabel(sanitizeAdminText(row.existing_batch_status))}{row.existing_batch_locked ? ' · locked' : ''}
                       </p>
                     )}
                   </div>
@@ -1020,7 +1057,7 @@ function NativeProductionDemandMaterializationPreview({
             <div className="rounded-lg border border-border/50 bg-background p-3">
               <p className="text-xs font-bold text-foreground">Existing native batch context</p>
               <p className="mt-2 text-[10px] text-muted-foreground">
-                {existingRows.slice(0, 8).map(row => `${sanitizeAdminText(row.batch_id || row.production_batch_id)} · ${sanitizeAdminText(row.product_name)} · ${formatLabel(row.status)}${row.source_match ? ' · source match' : ''}`).join(' · ')}
+                {existingRows.slice(0, 8).map(row => `${sanitizeAdminText(row.batch_id || row.production_batch_id)} · ${sanitizeAdminText(row.product_name)} · ${formatLabel(sanitizeAdminText(row.status))}${row.source_match ? ' · source match' : ''}`).join(' · ')}
               </p>
             </div>
           )}
@@ -1104,7 +1141,7 @@ function NativeProductionLifecyclePreview({
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
             <StatCard label="Batches" value={formatNumber(preview.batch_count)} tone={Number(preview.batch_count || 0) > 0 ? 'success' : 'warning'} />
-            <StatCard label="Ready to Start" value={formatNumber(startPreview.ready_count)} tone={Number(startPreview.ready_count || 0) > 0 ? 'success' : 'warning'} />
+            <StatCard label="Ready to Start" value={formatNumber(startPreview.ready_count)} tone={Number(startPreview.ready_count || 0) > 0 ? 'success' : 'default'} />
             <StatCard label="Ready to Complete" value={formatNumber(completePreview.ready_count)} tone={Number(completePreview.ready_count || 0) > 0 ? 'success' : 'default'} />
             <StatCard label="Ready to Verify" value={formatNumber(verifyPreview.ready_count)} tone={Number(verifyPreview.ready_count || 0) > 0 ? 'success' : 'default'} />
             <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
@@ -1151,7 +1188,7 @@ function NativeProductionLifecyclePreview({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
             <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
               <p className="text-xs font-bold text-emerald-950">Start preview</p>
-              <p className="mt-1 text-[10px] text-emerald-900">{formatNumber(startPreview.ready_count)} ready · {formatNumber(startPreview.blocked_count)} blocked</p>
+              <p className="mt-1 text-[10px] text-emerald-900">{formatNumber(startPreview.ready_count)} ready · {formatNumber(startPreview.blocked_count)} blocked{Number(startPreview.already_started_count || 0) > 0 ? ` · ${formatNumber(startPreview.already_started_count)} already started` : ''}</p>
               <p className="mt-2 text-[10px] text-emerald-900">Expected later writes: {(startPreview.expected_writes_if_later_approved || []).map(item => formatLabel(item)).join(', ') || 'None'}</p>
             </div>
             <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
@@ -1199,21 +1236,21 @@ function NativeProductionLifecyclePreview({
                   <div key={`${row.batch_id || row.production_batch_id}-${index}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <p className="text-xs font-semibold text-foreground">{sanitizeAdminText(row.product_name) || 'Product pending'}</p>
-                      <StatusChip value={row.classification || 'preview'} />
+                      <StatusChip value={lifecycleStatusChip(row)} />
                     </div>
                     <p className="text-[10px] text-muted-foreground">
                       {[
                         sanitizeAdminText(row.batch_id || row.production_batch_id),
                         row.production_date ? `Production ${row.production_date}` : null,
-                        row.current_status ? `Status ${formatLabel(row.current_status)}` : null,
+                        row.current_status ? `Status ${formatLabel(sanitizeAdminText(row.current_status))}` : null,
                         `Planned ${formatNumber(row.planned_units)} units`,
-                        row.next_allowed_transition ? `Next ${formatLabel(row.next_allowed_transition)}` : 'No next transition',
+                        row.next_allowed_transition ? `Next ${formatLabel(row.next_allowed_transition)}` : row.start_state === 'already_started' ? 'Next Complete after actual units' : 'No next transition',
                       ].filter(Boolean).join(' · ')}
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <StatusChip value={row.can_start ? 'Can start preview' : 'Start blocked'} />
-                      <StatusChip value={row.can_complete ? 'Can complete preview' : 'Complete blocked'} />
-                      <StatusChip value={row.can_verify ? 'Can verify preview' : 'Verify blocked'} />
+                      <StatusChip value={lifecycleStartChip(row)} />
+                      <StatusChip value={lifecycleCompleteChip(row)} />
+                      <StatusChip value={lifecycleVerifyChip(row)} />
                     </div>
                     {Array.isArray(row.lifecycle_warnings) && row.lifecycle_warnings.length > 0 && (
                       <p className="text-[10px] text-muted-foreground">

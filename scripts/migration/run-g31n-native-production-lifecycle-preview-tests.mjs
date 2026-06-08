@@ -151,6 +151,8 @@ assert.equal(previewAuth.ok, true);
 const planned = makeBatch();
 let row = fns.buildBatchLifecycleRow({ batch: planned, actorEmail: 'admin@example.test', requestId: 'g31n_test', now: '2026-06-07T00:00:00.000Z', complianceLogs: [] });
 assert.equal(row.classification, 'ready_to_start_preview_only');
+assert.equal(row.current_status, 'planned');
+assert.equal(row.start_state, 'ready_to_start_preview_only');
 assert.equal(row.can_start, true);
 assert.equal(row.can_complete, false);
 assert.equal(row.can_verify, false);
@@ -168,9 +170,16 @@ assert.equal(row.can_start, false);
 
 row = fns.buildBatchLifecycleRow({ batch: makeBatch({ status: 'in_production', actual_start_time: '2026-06-07T01:00:00.000Z', actual_units: 1 }), actorEmail: 'admin@example.test', requestId: 'g31n_complete', now: '2026-06-07T02:00:00.000Z', complianceLogs: [] });
 assert.equal(row.classification, 'ready_to_complete_preview_only');
+assert.equal(row.current_status, 'in_production');
+assert.equal(row.start_state, 'already_started');
+assert.equal(row.complete_state, 'ready_to_complete_preview_only');
 assert.equal(row.can_complete, true);
 
 row = fns.buildBatchLifecycleRow({ batch: makeBatch({ status: 'in_production', actual_start_time: '2026-06-07T01:00:00.000Z' }), actorEmail: 'admin@example.test', requestId: 'g31n_missing_actual', now: '2026-06-07T02:00:00.000Z', complianceLogs: [] });
+assert.equal(row.current_status, 'in_production');
+assert.equal(row.start_state, 'already_started');
+assert.equal(row.complete_state, 'complete_blocked_missing_completion_fields');
+assert.equal(row.verify_state, 'verify_blocked_until_completion');
 assert.equal(row.can_complete, false);
 assert.ok(row.complete_blockers.includes('missing_actual_units'));
 assert.equal(row.can_start, false);
@@ -236,6 +245,18 @@ response = await handler(req(store.base44, {}, 'GET'));
 assert.equal(response.status, 405);
 assert.equal((await json(response)).error_code, 'method_not_allowed');
 
+
+store = makeStore({ productionBatches: [makeBatch({ status: 'in_production', actual_start_time: '2026-06-07T01:00:00.000Z' })] });
+response = await handler(req(store.base44, { mode: 'dry_run', order_number: 'NV-MPZNKGNT' }));
+assert.equal(response.status, 200);
+body = await json(response);
+assert.equal(body.start_preview.ready_count, 0);
+assert.equal(body.start_preview.blocked_count, 0);
+assert.equal(body.start_preview.already_started_count, 1);
+assert.equal(body.next_action, 'plan_native_complete_production_preview_or_command');
+assert.equal(body.batch_lifecycle_rows[0].current_status, 'in_production');
+assert.equal(body.batch_lifecycle_rows[0].start_state, 'already_started');
+
 store = makeStore();
 response = await handler(req(store.base44, { mode: 'live', order_number: 'NV-MPZNKGNT' }));
 assert.equal(response.status, 400);
@@ -249,5 +270,8 @@ body = await json(response);
 assert.equal(body.success, false);
 assert.ok(body.blockers.includes('native_production_batches_not_found'));
 assert.equal(store.writes.length, 0);
+
+row = fns.buildBatchLifecycleRow({ batch: makeBatch({ status: 'in_12345678' }), actorEmail: 'admin@example.test', requestId: 'g31q_redaction', now: '2026-06-07T00:00:00.000Z', complianceLogs: [] });
+assert.equal(row.current_status, '[redacted provider id]');
 
 console.log('G31N native production lifecycle preview tests passed');
