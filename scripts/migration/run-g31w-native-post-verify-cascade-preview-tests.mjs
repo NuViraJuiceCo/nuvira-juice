@@ -187,12 +187,24 @@ assert.equal(preview.writes_performed, false);
 assert.equal(preview.verified_batch_count, 6);
 assert.equal(preview.compliance_log_count, 6);
 assert.equal(preview.task_pack_preview.pack_cascade_allowed, true);
-assert.equal(preview.shopify_order_bottle_preview.order_bottle_cascade_allowed, true);
+assert.equal(preview.task_pack_ready, true);
+assert.equal(preview.shopify_order_bottle_preview.order_bottle_cascade_allowed, false);
+assert.ok(preview.shopify_order_bottle_preview.blockers.includes('native_fulfillment_task_not_packed'));
 assert.equal(preview.customer_status_impact_preview.would_touch_customer_app_order, false);
 assert.equal(preview.notification_impact_preview.would_send_notification, false);
 assert.equal(preview.safety.fulfillment_task_updated, false);
 assert.equal(preview.safety.native_shopify_order_updated, false);
 assert.equal(preview.safety.notifications_sent, false);
+
+const packedTaskContext = context({ task: { status: 'packed', production_status: 'packed', packed_at: '2026-06-08T18:00:10.444Z' } });
+preview = fns.buildPreview({ ...packedTaskContext, commandLogs: [{ id: 'cmd_verify', command_type: 'native_production_batch_verify', status: 'success' }], lookup: { orderNumber: 'NV-MPZNKGNT', productionDate: '2026-06-05', requestId: 'g31z_ready' }, auth: { actor_type: 'admin', actor_role: 'admin' } });
+assert.equal(preview.task_pack_ready, false);
+assert.equal(preview.task_pack_already_satisfied, true);
+assert.equal(preview.task_pack_preview.pack_command_available, false);
+assert.equal(preview.task_pack_preview.pack_action_state, 'already_packed');
+assert.equal(preview.shopify_order_bottle_preview.order_bottle_cascade_allowed, true);
+assert.equal(preview.shopify_order_bottle_preview.bottle_command_available, true);
+assert.equal(preview.next_action, 'plan_gated_native_shopify_order_bottle_command');
 
 const missingCompliance = context({ complianceLogs: [] });
 preview = fns.buildPreview({ ...missingCompliance, commandLogs: [], lookup: { orderNumber: 'NV-MPZNKGNT', productionDate: '2026-06-05' }, auth: { actor_type: 'admin', actor_role: 'admin' } });
@@ -226,7 +238,7 @@ assert.equal(body.success, true);
 assert.equal(body.verified_batch_count, 6);
 assert.equal(body.compliance_log_count, 6);
 assert.equal(body.task_pack_preview.pack_cascade_allowed, true);
-assert.equal(body.shopify_order_bottle_preview.order_bottle_cascade_allowed, true);
+assert.equal(body.shopify_order_bottle_preview.order_bottle_cascade_allowed, false);
 assert.equal(store.writes.length, 0);
 
 response = await handler(req(store.base44, {}, 'GET'));
