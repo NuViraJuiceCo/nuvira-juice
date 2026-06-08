@@ -125,12 +125,11 @@ Forbidden inputs include custom status overrides, delivery status overrides, Sho
 
 ## Pre-write validation
 
-The command runs a fresh `previewNativeProductionVerifyCascades` service invocation immediately before any write and requires:
+The command performs fresh exact-target validation immediately before any write. G31Y-PATCH1 uses direct local preflight reads by default, with service-preview invocation available only behind explicit opt-in, and requires:
 
-- `success: true`
-- `dry_run: true`
-- `writes_performed: false`
 - exact order/task/native order ids
+- Customer App Order present and paid/captured
+- native ShopifyOrder present
 - `task_pack_ready: true`
 - six verified native `ProductionBatch` rows
 - six readable `BatchComplianceLog` rows

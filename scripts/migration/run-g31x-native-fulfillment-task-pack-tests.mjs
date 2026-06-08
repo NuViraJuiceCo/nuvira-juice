@@ -29,9 +29,9 @@ function loadCommandHarness(env = {}) {
   const filePath = path.join(repoRoot, 'base44/functions/packNativeProductionFulfillmentTaskForCustomerApp/entry.ts');
   let source = fs.readFileSync(filePath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
-  source += `\nglobalThis.__exports = { gateFailure, exactTargetBlockers, validateFreshPreview, preflightTargetContext, buildPackPatch, validatePackPatch, updateFulfillmentTaskPack, requireAdmin, getLookup };\n`;
+  source += `\nglobalThis.__exports = { gateFailure, exactTargetBlockers, fetchFreshPreview, validateFreshPreview, preflightTargetContext, buildLocalFreshPackPreview, buildPackPatch, validatePackPatch, updateFulfillmentTaskPack, createCommandLogSafe, updateCommandLogSafe, requireAdmin, getLookup };\n`;
   const context = vm.createContext({
-    console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response,
+    console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, setTimeout,
     createClientFromRequest: req => req.__base44,
     Deno: { env: { get: key => env[key] || '' }, serve: handler => { context.globalThis.__handler = handler; } },
     globalThis: {},
@@ -202,7 +202,7 @@ function makePreview(overrides = {}) {
   };
 }
 
-function makeStore({ user = { role: 'admin', email: 'owner@example.test' }, preview = makePreview(), customerOrder = makeCustomerOrder(), nativeOrder = makeNativeOrder(), task = makeTask(), productionBatches = makeBatches(), complianceLogs = makeComplianceLogs(productionBatches), commandLogs = [] } = {}) {
+function makeStore({ user = { role: 'admin', email: 'owner@example.test' }, preview = makePreview(), previewInvokeError = null, customerOrder = makeCustomerOrder(), nativeOrder = makeNativeOrder(), task = makeTask(), productionBatches = makeBatches(), complianceLogs = makeComplianceLogs(productionBatches), commandLogs = [], failCommandLogCreate = false, failCommandLogUpdate = false } = {}) {
   const store = {
     customerOrders: customerOrder ? [{ ...customerOrder }] : [],
     nativeOrders: nativeOrder ? [{ ...nativeOrder }] : [],
@@ -226,6 +226,7 @@ function makeStore({ user = { role: 'admin', email: 'owner@example.test' }, prev
     get: async id => rowsFor(name).find(row => row.id === id) || null,
     filter: async filter => rowsFor(name).filter(row => matchFilter(row, filter)),
     create: async payload => {
+      if (name === 'CommandLog' && failCommandLogCreate) throw new Error('simulated CommandLog create failure');
       const row = { id: `${name.toLowerCase()}_${rowsFor(name).length + 1}`, ...payload };
       if (name === 'CommandLog') store.commandLogs.push(row);
       else store.otherWrites.push({ op: 'create', name, payload });
@@ -234,6 +235,7 @@ function makeStore({ user = { role: 'admin', email: 'owner@example.test' }, prev
     update: async (id, patch) => {
       const row = rowsFor(name).find(item => item.id === id);
       if (!row) throw new Error(`${name} not found`);
+      if (name === 'CommandLog' && failCommandLogUpdate) throw new Error('simulated CommandLog update failure');
       if (name !== 'FulfillmentTask' && name !== 'CommandLog') store.otherWrites.push({ op: 'update', name, id, patch });
       Object.assign(row, patch);
       return row;
@@ -246,6 +248,7 @@ function makeStore({ user = { role: 'admin', email: 'owner@example.test' }, prev
     } },
     asServiceRole: {
       functions: { invoke: async (name, body) => {
+        if (previewInvokeError) throw previewInvokeError;
         assert.equal(name, 'previewNativeProductionVerifyCascades');
         assert.equal(body.order_number, 'NV-MPZNKGNT');
         assert.equal(body.native_fulfillment_task_id, '6a22ffdaf675ea79e30575aa');
@@ -294,6 +297,9 @@ assert.equal(taskPreview.pack_requires_exact_approval, true);
 
 const harness = loadCommandHarness({ NATIVE_SAFE_SYNC_PREVIEW_SECRET: 'preview-secret' });
 const { exports: fns, handler, env } = harness;
+const commandSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/packNativeProductionFulfillmentTaskForCustomerApp/entry.ts'), 'utf8');
+assert.equal(commandSource.includes('g31y_patch1_safe_pack_command_error_handling'), true);
+assert.equal(/fetch\s*\(/.test(commandSource), false);
 
 let lookup = fns.getLookup(liveBody());
 assert.equal(fns.exactTargetBlockers(lookup).length, 0);
@@ -316,6 +322,24 @@ assert.equal(validation.ready, true);
 validation = fns.validateFreshPreview(makePreview({ preview: { task_pack_ready: false } }));
 assert.equal(validation.ready, false);
 assert.ok(validation.blockers.includes('fresh_preview_task_pack_not_ready'));
+validation = fns.validateFreshPreview({ success: true, dry_run: true, writes_performed: false });
+assert.equal(validation.ready, false);
+assert.ok(validation.blockers.includes('fresh_preview_order_number_mismatch'));
+
+let storeSetup = makeStore();
+let preflight = await fns.preflightTargetContext(storeSetup.base44);
+const localPreview = fns.buildLocalFreshPackPreview(preflight);
+assert.equal(localPreview.preview_source, 'local_preflight');
+assert.equal(localPreview.task_pack_ready, true);
+assert.equal(fns.validateFreshPreview(localPreview).ready, true);
+
+const previewError = new Error('simulated preview invoke failure');
+previewError.status = 502;
+storeSetup = makeStore({ previewInvokeError: previewError });
+let previewFailure = await fns.fetchFreshPreview(storeSetup.base44, lookup);
+assert.equal(previewFailure.ok, false);
+assert.equal(previewFailure.status, 502);
+assert.equal(previewFailure.error_code, 'native_fulfillment_task_pack_preview_failed');
 
 let patch = fns.buildPackPatch({ task: makeTask(), commandLogId: 'cmd_1', actorEmail: 'owner@example.test', requestId: 'req_1', now: '2026-06-08T18:00:00.000Z' });
 assert.equal(patch.status, 'packed');
@@ -323,9 +347,10 @@ assert.equal(patch.production_status, 'packed');
 assert.equal(patch.delivery_status, undefined);
 assert.equal(fns.validatePackPatch(patch).length, 0);
 assert.ok(fns.validatePackPatch({ ...patch, delivery_status: 'ready_for_delivery' }).includes('unapproved_fulfillment_task_pack_field:delivery_status'));
+assert.deepEqual(Object.keys(patch).sort(), ['audit_trail', 'command_log_id', 'packed_at', 'production_status', 'status'].sort());
 
-let storeSetup = makeStore();
-let preflight = await fns.preflightTargetContext(storeSetup.base44);
+storeSetup = makeStore();
+preflight = await fns.preflightTargetContext(storeSetup.base44);
 assert.equal(preflight.ready, true);
 assert.equal(preflight.mode, 'pack');
 
@@ -386,6 +411,49 @@ body = await json(response);
 assert.equal(response.status, 409);
 assert.ok(body.blockers.includes('native_fulfillment_task_terminal_or_delivery_advanced'));
 assert.equal(body.writes_performed, false);
+
+storeSetup = makeStore({ previewInvokeError: previewError });
+response = await handler(req(storeSetup.base44, liveBody({ request_id: 'g31x_pack_local_preview' })));
+body = await json(response);
+assert.equal(response.status, 200);
+assert.equal(body.success, true);
+assert.equal(body.writes_performed, true);
+assert.equal(storeSetup.store.tasks[0].status, 'packed');
+assert.equal(storeSetup.store.nativeOrders[0].production_status, 'awaiting_production');
+assert.equal(storeSetup.store.commandLogs.length, 1);
+
+env.NATIVE_FULFILLMENT_TASK_PACK_USE_SERVICE_PREVIEW = 'true';
+storeSetup = makeStore({ previewInvokeError: previewError });
+response = await handler(req(storeSetup.base44, liveBody({ request_id: 'g31x_pack_service_preview_failure' })));
+body = await json(response);
+assert.equal(response.status, 409);
+assert.equal(body.success, false);
+assert.equal(body.error_code, 'native_fulfillment_task_pack_preview_failed');
+assert.equal(body.preview_status, 502);
+assert.equal(body.writes_performed, false);
+assert.equal(storeSetup.store.tasks[0].status, 'pending');
+assert.equal(storeSetup.store.commandLogs.length, 0);
+env.NATIVE_FULFILLMENT_TASK_PACK_USE_SERVICE_PREVIEW = 'false';
+
+storeSetup = makeStore({ failCommandLogCreate: true });
+response = await handler(req(storeSetup.base44, liveBody({ request_id: 'g31x_pack_command_log_create_failure' })));
+body = await json(response);
+assert.equal(response.status, 500);
+assert.equal(body.error_code, 'native_fulfillment_task_pack_command_log_create_failed');
+assert.equal(body.writes_performed, false);
+assert.equal(body.native_fulfillment_task_updated, false);
+assert.equal(storeSetup.store.tasks[0].status, 'pending');
+
+storeSetup = makeStore({ failCommandLogUpdate: true });
+response = await handler(req(storeSetup.base44, liveBody({ request_id: 'g31x_pack_command_log_update_failure' })));
+body = await json(response);
+assert.equal(response.status, 500);
+assert.equal(body.error_code, 'native_fulfillment_task_pack_command_log_update_failed');
+assert.equal(body.writes_performed, true);
+assert.equal(body.reconciliation_required, true);
+assert.equal(body.native_fulfillment_task_updated, true);
+assert.equal(storeSetup.store.tasks[0].status, 'packed');
+assert.equal(storeSetup.store.nativeOrders[0].production_status, 'awaiting_production');
 
 storeSetup = makeStore();
 response = await handler(req(storeSetup.base44, liveBody()));
