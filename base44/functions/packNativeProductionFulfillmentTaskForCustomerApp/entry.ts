@@ -10,6 +10,7 @@ const TASK_ALLOWLIST_FLAG = 'NATIVE_FULFILLMENT_TASK_PACK_TASK_ALLOWLIST';
 const POLICY_FLAG = 'NATIVE_FULFILLMENT_TASK_PACK_POLICY';
 const REQUIRED_POLICY = 'EXACT_VERIFIED_ORDER_TASK_ONLY';
 const CONFIRMATION_PHRASE = 'pack_native_fulfillment_task_for_customer_app';
+const G31Y_PATCH1_MARKER = 'g31y_patch1_safe_pack_command_error_handling';
 const TARGET_ORDER_NUMBER = 'NV-MPZNKGNT';
 const TARGET_CUSTOMER_APP_ORDER_ID = '6a219a3f4adcda5856c3d579';
 const TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a22ffda400eb806eb3ca945';
@@ -221,6 +222,16 @@ function expectedPreviewSecret() {
     normalizeText(Deno.env.get('HUB_SYNC_SECRET'));
 }
 
+function shouldUseServicePreview() {
+  return Deno.env.get('NATIVE_FULFILLMENT_TASK_PACK_USE_SERVICE_PREVIEW') === 'true';
+}
+
+function previewFailureCode(status) {
+  return status === 408 || status === 504
+    ? 'native_fulfillment_task_pack_preview_timeout'
+    : 'native_fulfillment_task_pack_preview_failed';
+}
+
 function getLookup(body) {
   return {
     orderNumber: normalizeText(body?.order_number || body?.shopify_order_number).replace(/^#/, ''),
@@ -293,7 +304,7 @@ async function fetchFreshPreview(base44, lookup) {
   if (!secret) return { ok: false, status: 409, error_code: 'preview_secret_not_configured', data: null };
 
   try {
-    const response = await base44.asServiceRole.functions.invoke('previewNativeProductionVerifyCascades', {
+    const invokePromise = base44.asServiceRole.functions.invoke('previewNativeProductionVerifyCascades', {
       mode: 'dry_run',
       order_number: TARGET_ORDER_NUMBER,
       customer_app_order_id: lookup.customerAppOrderId || TARGET_CUSTOMER_APP_ORDER_ID,
@@ -303,15 +314,24 @@ async function fetchFreshPreview(base44, lookup) {
       request_id: `${lookup.requestId || 'g31x'}:fresh_post_verify_cascade_preview`,
       _internal_secret: secret,
     });
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        const error = new Error('Fresh post-verify cascade preview invocation timed out');
+        error.status = 504;
+        error.code = 'native_fulfillment_task_pack_preview_timeout';
+        reject(error);
+      }, 8000);
+    });
+    const response = await Promise.race([invokePromise, timeoutPromise]);
     const data = response?.data || response;
     if (!data?.success) {
-      return { ok: false, status: 409, error_code: data?.error_code || 'fresh_post_verify_cascade_preview_not_successful', data };
+      return { ok: false, status: 409, error_code: data?.error_code || 'native_fulfillment_task_pack_preview_failed', data };
     }
     return { ok: true, status: 200, data };
   } catch (error) {
     const status = error?.response?.status || error?.status || 502;
     const data = error?.response?.data || error?.data || null;
-    return { ok: false, status, error_code: data?.error_code || `fresh_post_verify_cascade_preview_invoke_${status}`, data };
+    return { ok: false, status, error_code: data?.error_code || error?.code || previewFailureCode(status), data };
   }
 }
 
@@ -447,6 +467,72 @@ function summarizeBatch(batch) {
     actual_units: roundQuantity(batch?.actual_units, 3),
     verified_at_present: Boolean(batch?.verified_at),
     compliance_log_id_present: Boolean(batch?.compliance_log_id),
+  };
+}
+
+function buildLocalFreshPackPreview(preflight) {
+  const task = preflight?.task || {};
+  const taskStatus = normalizeLower(task?.status);
+  const alreadyPacked = ALREADY_PACKED_TASK_STATUSES.has(taskStatus);
+  return {
+    success: preflight?.ready === true,
+    dry_run: true,
+    writes_performed: false,
+    preview_source: 'local_preflight',
+    patch_marker: G31Y_PATCH1_MARKER,
+    order_number: TARGET_ORDER_NUMBER,
+    customer_app_order_id: TARGET_CUSTOMER_APP_ORDER_ID,
+    native_shopify_order_id: TARGET_NATIVE_SHOPIFY_ORDER_ID,
+    native_fulfillment_task_id: TARGET_NATIVE_FULFILLMENT_TASK_ID,
+    production_date: TARGET_PRODUCTION_DATE,
+    delivery_date: TARGET_DELIVERY_DATE,
+    customer_app_order_present: Boolean(preflight?.customerOrder?.id),
+    native_shopify_order_present: Boolean(preflight?.nativeOrder?.id),
+    native_fulfillment_task_present: Boolean(task?.id),
+    verified_batch_count: Array.isArray(preflight?.batches) ? preflight.batches.length : 0,
+    production_batch_count: Array.isArray(preflight?.batches) ? preflight.batches.length : 0,
+    compliance_log_count: Array.isArray(preflight?.complianceLogs) ? preflight.complianceLogs.length : 0,
+    task_pack_ready: preflight?.ready === true,
+    task_pack_preview: {
+      task_id: TARGET_NATIVE_FULFILLMENT_TASK_ID,
+      current_task_status: safeText(task?.status, 80) || null,
+      current_delivery_status: safeText(task?.delivery_status, 80) || null,
+      current_production_status: safeText(task?.production_status, 80) || null,
+      pack_cascade_allowed: preflight?.ready === true,
+      would_update_task_status: !alreadyPacked,
+      proposed_task_status: PACKED_TASK_STATUS,
+      would_update_production_status: normalizeLower(task?.production_status) !== PACKED_PRODUCTION_STATUS,
+      proposed_production_status: PACKED_PRODUCTION_STATUS,
+      would_update_delivery_status: false,
+      proposed_delivery_status: safeText(task?.delivery_status, 80) || null,
+      blockers: [],
+      warnings: uniqueStrings(preflight?.warnings || [], 40),
+      pack_command_available: true,
+      pack_command_gated: true,
+      pack_requires_exact_approval: true,
+    },
+    customer_status_impact_preview: {
+      would_touch_customer_app_order: false,
+      customer_facing_status_changes_held: true,
+      status_history_append_held: true,
+      delivered_status_held: true,
+      production_status_customer_projection_held: true,
+      expected_customer_status_after_this_phase: 'unchanged',
+    },
+    notification_impact_preview: {
+      would_send_notification: false,
+      notification_types_held: ['packed', 'bottled', 'ready_for_delivery', 'delivered'],
+      non_confirmation_notifications_disabled_until_separate_approval: true,
+    },
+    cascade_blockers: [],
+    cascade_warnings: uniqueStrings([
+      'shopify_order_bottle_cascade_held_until_separate_approval',
+      'customer_facing_status_held',
+      'notifications_held',
+      'hub_fallback_required',
+      ...(preflight?.warnings || []),
+    ], 80),
+    safety: safetyResult(),
   };
 }
 
@@ -595,6 +681,23 @@ async function updateFulfillmentTaskPack({ base44, task, commandLogId, actorEmai
   return summarizeTask(updated, previousStatus);
 }
 
+async function createCommandLogSafe(args) {
+  try {
+    const commandLog = await createCommandLog(args);
+    if (!commandLog?.id) {
+      return { ok: false, error_code: 'native_fulfillment_task_pack_command_log_missing_id', commandLog: null };
+    }
+    return { ok: true, commandLog };
+  } catch (error) {
+    return {
+      ok: false,
+      error_code: error?.code || 'native_fulfillment_task_pack_command_log_create_failed',
+      message: error?.message || 'CommandLog create failed',
+      commandLog: null,
+    };
+  }
+}
+
 async function createCommandLog({ base44, status, idempotencyKey, requestId, user, result, errorCode, errorMessage }) {
   const now = new Date().toISOString();
   return base44.asServiceRole.entities.CommandLog.create({
@@ -650,8 +753,21 @@ async function updateCommandLog({ base44, commandLogId, status, result, errorCod
   });
 }
 
+async function updateCommandLogSafe(args) {
+  try {
+    return { ok: true, commandLog: await updateCommandLog(args) };
+  } catch (error) {
+    return {
+      ok: false,
+      error_code: error?.code || 'native_fulfillment_task_pack_command_log_update_failed',
+      message: error?.message || 'CommandLog update failed',
+    };
+  }
+}
+
 function safetyResult(extra = {}) {
   return {
+    fulfillment_task_updated: false,
     native_fulfillment_task_updated: false,
     task_packed: false,
     native_shopify_order_updated: false,
@@ -738,29 +854,6 @@ Deno.serve(async (req) => {
       }, 409);
     }
 
-    const freshPreview = await fetchFreshPreview(base44, lookup);
-    if (!freshPreview.ok) {
-      return jsonResponse({
-        success: false,
-        skipped: true,
-        error_code: freshPreview.error_code || 'fresh_post_verify_cascade_preview_failed',
-        preview_status: freshPreview.status,
-        writes_performed: false,
-      }, freshPreview.status || 409);
-    }
-
-    const validation = validateFreshPreview(freshPreview.data);
-    if (!validation.ready) {
-      return jsonResponse({
-        success: false,
-        skipped: true,
-        error_code: 'fresh_post_verify_cascade_preview_not_clean',
-        blockers: validation.blockers,
-        warnings: validation.warnings,
-        writes_performed: false,
-      }, 409);
-    }
-
     const preflight = await preflightTargetContext(base44);
     if (!preflight.ready) {
       return jsonResponse({
@@ -775,7 +868,7 @@ Deno.serve(async (req) => {
     }
 
     if (preflight.mode === 'already_packed') {
-      const commandLog = await createCommandLog({
+      const skippedLog = await createCommandLogSafe({
         base44,
         status: 'skipped',
         idempotencyKey,
@@ -790,6 +883,15 @@ Deno.serve(async (req) => {
           ...safetyResult(),
         },
       });
+      if (!skippedLog.ok) {
+        return jsonResponse({
+          success: false,
+          skipped: true,
+          error_code: skippedLog.error_code,
+          message: 'Native FulfillmentTask pack skipped but CommandLog creation failed safely.',
+          writes_performed: false,
+        }, 500);
+      }
       return jsonResponse({
         success: true,
         skipped: true,
@@ -797,7 +899,7 @@ Deno.serve(async (req) => {
         reason: 'native_fulfillment_task_already_packed',
         request_id: lookup.requestId,
         idempotency_key: idempotencyKey,
-        command_log_id: safeId(commandLog?.id, 120) || null,
+        command_log_id: safeId(skippedLog.commandLog?.id, 120) || null,
         order_number: TARGET_ORDER_NUMBER,
         native_fulfillment_task_id: TARGET_NATIVE_FULFILLMENT_TASK_ID,
         writes_performed: false,
@@ -808,7 +910,32 @@ Deno.serve(async (req) => {
       });
     }
 
-    const commandLog = await createCommandLog({
+    const freshPreview = shouldUseServicePreview()
+      ? await fetchFreshPreview(base44, lookup)
+      : { ok: true, status: 200, data: buildLocalFreshPackPreview(preflight) };
+    if (!freshPreview.ok) {
+      return jsonResponse({
+        success: false,
+        skipped: true,
+        error_code: freshPreview.error_code || 'native_fulfillment_task_pack_preview_failed',
+        preview_status: freshPreview.status,
+        writes_performed: false,
+      }, 409);
+    }
+
+    const validation = validateFreshPreview(freshPreview.data);
+    if (!validation.ready) {
+      return jsonResponse({
+        success: false,
+        skipped: true,
+        error_code: 'fresh_post_verify_cascade_preview_not_clean',
+        blockers: validation.blockers,
+        warnings: validation.warnings,
+        writes_performed: false,
+      }, 409);
+    }
+
+    const commandLogCreate = await createCommandLogSafe({
       base44,
       status: 'running',
       idempotencyKey,
@@ -825,8 +952,21 @@ Deno.serve(async (req) => {
         customer_app_order_updated: false,
         native_shopify_order_updated: false,
         notifications_sent: false,
+        preview_source: freshPreview.data?.preview_source || 'service_preview',
+        patch_marker: G31Y_PATCH1_MARKER,
       },
     });
+    if (!commandLogCreate.ok) {
+      return jsonResponse({
+        success: false,
+        skipped: false,
+        error_code: commandLogCreate.error_code,
+        message: 'Native FulfillmentTask pack validation passed, but CommandLog creation failed before any task update.',
+        writes_performed: false,
+        native_fulfillment_task_updated: false,
+      }, 500);
+    }
+    const commandLog = commandLogCreate.commandLog;
 
     let updatedTask = null;
     try {
@@ -838,7 +978,7 @@ Deno.serve(async (req) => {
         requestId: lookup.requestId,
       });
     } catch (error) {
-      await updateCommandLog({
+      await updateCommandLogSafe({
         base44,
         commandLogId: commandLog?.id,
         status: 'failed',
@@ -851,7 +991,7 @@ Deno.serve(async (req) => {
         },
         errorCode: error?.code || 'fulfillment_task_pack_write_failed',
         errorMessage: error?.message || 'FulfillmentTask pack write failed',
-      }).catch(() => null);
+      });
       return jsonResponse({
         success: false,
         skipped: false,
@@ -861,7 +1001,7 @@ Deno.serve(async (req) => {
       }, 500);
     }
 
-    await updateCommandLog({
+    const successLogUpdate = await updateCommandLogSafe({
       base44,
       commandLogId: commandLog?.id,
       status: 'success',
@@ -875,9 +1015,29 @@ Deno.serve(async (req) => {
         production_status_to: PACKED_PRODUCTION_STATUS,
         verified_batch_count: preflight.batches.length,
         compliance_log_count: preflight.complianceLogs.length,
+        patch_marker: G31Y_PATCH1_MARKER,
         ...safetyResult({ native_fulfillment_task_updated: true, task_packed: true }),
       },
     });
+    if (!successLogUpdate.ok) {
+      return jsonResponse({
+        success: false,
+        skipped: false,
+        error_code: successLogUpdate.error_code,
+        message: 'Native FulfillmentTask was packed, but CommandLog finalization failed. Reconciliation required before retry.',
+        request_id: lookup.requestId,
+        idempotency_key: idempotencyKey,
+        command_log_id: safeId(commandLog?.id, 120) || null,
+        order_number: TARGET_ORDER_NUMBER,
+        native_fulfillment_task_id: TARGET_NATIVE_FULFILLMENT_TASK_ID,
+        writes_performed: true,
+        reconciliation_required: true,
+        native_fulfillment_task_updated: true,
+        task_packed: true,
+        updated_task: updatedTask,
+        safety: safetyResult({ native_fulfillment_task_updated: true, task_packed: true }),
+      }, 500);
+    }
 
     return jsonResponse({
       success: true,
