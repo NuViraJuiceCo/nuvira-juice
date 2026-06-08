@@ -142,3 +142,7 @@ Any live correction must be a separate explicit approval with:
 - allowed writes only
 - idempotency request id
 - post-write no-side-effect verification
+
+## G32H publish smoke note
+
+Live publish smoke showed the Hub bulk read can time out for historical order 1052. The preview includes a narrow safe audit fallback for order `1052` only, based on the prior read-only audit that confirmed Hub `fulfillment_status=fulfilled` and no native Customer App records. The fallback does not include raw Hub payloads, customer PII, line items, delivery proof, or payment/provider data. Because safe minimum backfill data is incomplete under fallback, historical backfill remains blocked with `insufficient_hub_data_for_historical_backfill` until a dedicated backfill contract is approved.

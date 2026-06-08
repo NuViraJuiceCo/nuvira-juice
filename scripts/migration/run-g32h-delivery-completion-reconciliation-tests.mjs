@@ -13,7 +13,7 @@ function loadHarness(env = {}) {
   let source = fs.readFileSync(filePath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
   source = source.replace(/^export \{[\s\S]*?\};\s*$/m, '');
-  source += `\nglobalThis.__exports = { READ_ONLY_SAFETY, statusMappingAudit, buildNativeDeliveredRow, buildHistoricalHubBackfillRow, buildResponse, targetSpecsFromBody, lookupFromBody, commonPolicyBlockers, safeHubOrderStatus, DELIVERED_TASK_STATUS, DELIVERED_DELIVERY_STATUS, SHOPIFY_ORDER_FULFILLED_STATUS, CUSTOMER_ORDER_DELIVERED_STATUS };\n`;
+  source += `\nglobalThis.__exports = { READ_ONLY_SAFETY, statusMappingAudit, buildNativeDeliveredRow, buildHistoricalHubBackfillRow, buildResponse, targetSpecsFromBody, lookupFromBody, commonPolicyBlockers, safeHubOrderStatus, auditedHubFallbackOrder, DELIVERED_TASK_STATUS, DELIVERED_DELIVERY_STATUS, SHOPIFY_ORDER_FULFILLED_STATUS, CUSTOMER_ORDER_DELIVERED_STATUS };\n`;
   const context = vm.createContext({
     console, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response,
     createClientFromRequest: req => req.__base44,
@@ -209,6 +209,28 @@ assert.ok(hubRow.records_that_would_be_created.includes('Native ShopifyOrder his
 assert.ok(hubRow.warnings.includes('native_delivered_command_not_applicable_without_native_task'));
 assert.equal(hubRow.notification_would_send, false);
 assert.equal(hubRow.proof_drop_impact.proof_drop_required, false);
+
+
+const fallback1052 = fns.auditedHubFallbackOrder('1052');
+assert.equal(fallback1052.shopify_order_number, '1052');
+assert.equal(fallback1052.fulfillment_status, 'fulfilled');
+assert.equal(fns.safeHubOrderStatus(fallback1052).audit_fallback_used, true);
+
+hubRow = fns.buildHistoricalHubBackfillRow({
+  spec: { orderNumber: '1052', hubOrderNumber: '1052' },
+  hubOrder: fallback1052,
+  hubTasks: [],
+  customerOrder: null,
+  nativeOrder: null,
+  task: null,
+  policy: policy({ correctionMode: 'HISTORICAL_HUB_FULFILLED_BACKFILL_NO_NOTIFICATION' }),
+});
+assert.equal(hubRow.hub_order_present, true);
+assert.equal(hubRow.hub_fulfillment_status, 'fulfilled');
+assert.equal(hubRow.operational_reality_classification, 'hub_fulfilled_native_missing');
+assert.ok(hubRow.blockers.includes('insufficient_hub_data_for_historical_backfill'));
+assert.ok(hubRow.warnings.includes('hub_safe_audit_fallback_used'));
+assert.equal(hubRow.historical_backfill_decision.native_shopify_order_mirror_preview_ready, false);
 
 hubRow = fns.buildHistoricalHubBackfillRow({
   spec: { orderNumber: '1052', hubOrderNumber: '1052' },
