@@ -152,6 +152,7 @@ const planned = makeBatch();
 let row = fns.buildBatchLifecycleRow({ batch: planned, actorEmail: 'admin@example.test', requestId: 'g31n_test', now: '2026-06-07T00:00:00.000Z', complianceLogs: [] });
 assert.equal(row.classification, 'ready_to_start_preview_only');
 assert.equal(row.current_status, 'planned');
+assert.equal(row.next_lifecycle_step, 'start');
 assert.equal(row.start_state, 'ready_to_start_preview_only');
 assert.equal(row.can_start, true);
 assert.equal(row.can_complete, false);
@@ -166,17 +167,20 @@ assert.ok(row.start_blockers.includes('batch_locked'));
 
 row = fns.buildBatchLifecycleRow({ batch: makeBatch({ status: 'verified_logged', verified_at: '2026-06-07T00:00:00.000Z' }), actorEmail: 'admin@example.test', requestId: 'g31n_terminal', now: '2026-06-07T00:00:00.000Z', complianceLogs: [] });
 assert.equal(row.classification, 'already_completed_or_verified');
+assert.equal(row.next_lifecycle_step, 'lifecycle_complete');
 assert.equal(row.can_start, false);
 
 row = fns.buildBatchLifecycleRow({ batch: makeBatch({ status: 'in_production', actual_start_time: '2026-06-07T01:00:00.000Z', actual_units: 1 }), actorEmail: 'admin@example.test', requestId: 'g31n_complete', now: '2026-06-07T02:00:00.000Z', complianceLogs: [] });
 assert.equal(row.classification, 'ready_to_complete_preview_only');
 assert.equal(row.current_status, 'in_production');
+assert.equal(row.next_lifecycle_step, 'complete');
 assert.equal(row.start_state, 'already_started');
 assert.equal(row.complete_state, 'ready_to_complete_preview_only');
 assert.equal(row.can_complete, true);
 
 row = fns.buildBatchLifecycleRow({ batch: makeBatch({ status: 'in_production', actual_start_time: '2026-06-07T01:00:00.000Z' }), actorEmail: 'admin@example.test', requestId: 'g31n_missing_actual', now: '2026-06-07T02:00:00.000Z', complianceLogs: [] });
 assert.equal(row.current_status, 'in_production');
+assert.equal(row.next_lifecycle_step, 'complete');
 assert.equal(row.start_state, 'already_started');
 assert.equal(row.complete_state, 'complete_blocked_missing_completion_fields');
 assert.equal(row.verify_state, 'verify_blocked_until_completion');
@@ -185,7 +189,12 @@ assert.ok(row.complete_blockers.includes('missing_actual_units'));
 assert.equal(row.can_start, false);
 
 row = fns.buildBatchLifecycleRow({ batch: makeBatch({ status: 'completed_pending_verification', actual_start_time: '2026-06-07T01:00:00.000Z', actual_end_time: '2026-06-07T02:00:00.000Z', actual_units: 1 }), actorEmail: 'admin@example.test', requestId: 'g31n_verify_missing', now: '2026-06-07T03:00:00.000Z', complianceLogs: [] });
+assert.equal(row.current_status, 'completed_pending_verification');
+assert.equal(row.next_lifecycle_step, 'verify');
+assert.equal(row.complete_state, 'already_completed_pending_verification');
+assert.equal(row.verify_state, 'verify_blocked_missing_compliance_fields');
 assert.equal(row.can_verify, false);
+assert.ok(row.complete_blockers.includes('already_completed'));
 assert.ok(row.verify_blockers.includes('missing_ph_result'));
 assert.ok(row.verify_blockers.includes('missing_batch_pass_fail'));
 
@@ -205,6 +214,7 @@ row = fns.buildBatchLifecycleRow({
   complianceLogs: [],
 });
 assert.equal(row.classification, 'ready_to_verify_preview_only');
+assert.equal(row.next_lifecycle_step, 'verify');
 assert.equal(row.can_verify, true);
 
 let store = makeStore({ productionBatches: [
@@ -255,7 +265,22 @@ assert.equal(body.start_preview.blocked_count, 0);
 assert.equal(body.start_preview.already_started_count, 1);
 assert.equal(body.next_action, 'plan_native_complete_production_preview_or_command');
 assert.equal(body.batch_lifecycle_rows[0].current_status, 'in_production');
+assert.equal(body.batch_lifecycle_rows[0].next_lifecycle_step, 'complete');
 assert.equal(body.batch_lifecycle_rows[0].start_state, 'already_started');
+assert.ok(body.warnings.includes('production_in_progress_complete_preview_pending_completion_data'));
+assert.ok(!body.warnings.includes('production_completed_verify_preview_pending_compliance_qc_data'));
+
+store = makeStore({ productionBatches: [makeBatch({ status: 'completed_pending_verification', actual_start_time: '2026-06-07T01:00:00.000Z', actual_end_time: '2026-06-07T02:00:00.000Z', actual_units: 1, completed_by: 'admin@example.test' })] });
+response = await handler(req(store.base44, { mode: 'dry_run', order_number: 'NV-MPZNKGNT' }));
+assert.equal(response.status, 200);
+body = await json(response);
+assert.equal(body.next_action, 'plan_native_verify_production_preview_or_command');
+assert.equal(body.batch_lifecycle_rows[0].current_status, 'completed_pending_verification');
+assert.equal(body.batch_lifecycle_rows[0].next_lifecycle_step, 'verify');
+assert.equal(body.batch_lifecycle_rows[0].complete_state, 'already_completed_pending_verification');
+assert.equal(body.batch_lifecycle_rows[0].verify_state, 'verify_blocked_missing_compliance_fields');
+assert.ok(body.warnings.includes('production_completed_verify_preview_pending_compliance_qc_data'));
+assert.ok(!body.warnings.includes('production_already_started_complete_preview_pending_completion_data'));
 
 store = makeStore();
 response = await handler(req(store.base44, { mode: 'live', order_number: 'NV-MPZNKGNT' }));

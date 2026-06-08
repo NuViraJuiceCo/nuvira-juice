@@ -127,20 +127,34 @@ function lifecycleStartChip(row) {
 }
 
 function lifecycleStatusChip(row) {
-  if (row?.current_status === 'in_production') return 'In Production';
+  if (row?.current_status) return formatLabel(sanitizeAdminText(row.current_status));
   return row?.classification || 'preview';
 }
 
 function lifecycleCompleteChip(row) {
   if (row?.can_complete) return 'Can complete preview';
+  if (row?.complete_state === 'already_completed_pending_verification') return 'Complete already completed';
+  if (row?.complete_state === 'not_applicable_already_verified_or_archived') return 'Complete not applicable';
   if (row?.complete_state === 'complete_blocked_missing_completion_fields') return 'Complete pending actual units';
   return 'Complete blocked';
 }
 
 function lifecycleVerifyChip(row) {
   if (row?.can_verify) return 'Can verify preview';
+  if (row?.verify_state === 'verify_blocked_missing_compliance_fields') return 'Verify held pending compliance/QC data';
   if (row?.verify_state === 'verify_blocked_until_completion') return 'Verify held until complete';
+  if (row?.verify_state === 'not_applicable_already_verified_or_archived') return 'Verify not applicable';
   return 'Verify blocked';
+}
+
+function lifecycleNextText(row) {
+  if (row?.next_allowed_transition) return `Next ${formatLabel(row.next_allowed_transition)}`;
+  if (row?.next_lifecycle_step === 'verify') return 'Next Verify Production';
+  if (row?.next_lifecycle_step === 'complete') return 'Next Complete Production';
+  if (row?.next_lifecycle_step === 'start') return 'Next Start Production';
+  if (row?.next_lifecycle_step === 'lifecycle_complete') return 'Lifecycle complete';
+  if (row?.start_state === 'already_started' && row?.complete_state === 'complete_blocked_missing_completion_fields') return 'Next Complete after actual units';
+  return 'No next transition';
 }
 
 function statusClass(value) {
@@ -1096,6 +1110,8 @@ function NativeProductionLifecyclePreview({
   const completionRequiredFields = Array.isArray(preview?.completion_required_fields) ? preview.completion_required_fields : ['actual_units'];
   const completionPreviewReady = Boolean(preview?.completion_preview_ready);
   const actualUnitsSuppliedCount = Number(preview?.actual_units_supplied_count || 0);
+  const completedPendingCount = batchRows.filter(row => sanitizeAdminText(row.current_status).toLowerCase() === 'completed_pending_verification').length;
+  const inProductionCount = batchRows.filter(row => sanitizeAdminText(row.current_status).toLowerCase() === 'in_production').length;
   const safety = preview?.safety || {};
 
   return (
@@ -1201,7 +1217,11 @@ function NativeProductionLifecyclePreview({
                 G31R v1 completion requires exact actual units for every batch. Supplied in this preview: {formatNumber(actualUnitsSuppliedCount)}. Required fields: {completionRequiredFields.map(item => formatLabel(item)).join(', ')}.
               </p>
               <p className="mt-1 text-[10px] text-cyan-900">
-                {completionPreviewReady ? 'Completion preview would be ready with the supplied actual units.' : 'Completion remains held until actual units are supplied and a separate live command is approved.'}
+                {completionPreviewReady
+                  ? 'Completion preview would be ready with the supplied actual units.'
+                  : completedPendingCount > 0 && inProductionCount === 0
+                    ? 'Completion is already recorded for the native batches. Verification remains held pending compliance/QC data and separate approval.'
+                    : 'Completion remains held until actual units are supplied and a separate live command is approved.'}
               </p>
             </div>
             <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
@@ -1252,7 +1272,7 @@ function NativeProductionLifecyclePreview({
                         row.production_date ? `Production ${row.production_date}` : null,
                         row.current_status ? `Status ${formatLabel(sanitizeAdminText(row.current_status))}` : null,
                         `Planned ${formatNumber(row.planned_units)} units`,
-                        row.next_allowed_transition ? `Next ${formatLabel(row.next_allowed_transition)}` : row.start_state === 'already_started' ? 'Next Complete after actual units' : 'No next transition',
+                        lifecycleNextText(row),
                       ].filter(Boolean).join(' · ')}
                     </p>
                     <div className="flex flex-wrap gap-2">

@@ -729,6 +729,17 @@ function nextAllowedTransition({ startPlan, completePlan, verifyPlan }) {
   return null;
 }
 
+function nextLifecycleStepFor({ batch, startPlan, completePlan, verifyPlan }) {
+  const status = normalizeLower(batch.status);
+  if (TERMINAL_STATUSES.has(status) || batch.verified_at || batch.verified_by || batch.compliance_log_id) return 'lifecycle_complete';
+  if (status === 'completed_pending_verification') return 'verify';
+  if (status === 'in_production') return 'complete';
+  if (startPlan.blockers.length === 0) return 'start';
+  if (completePlan.blockers.length === 0) return 'complete';
+  if (verifyPlan.blockers.length === 0) return 'verify';
+  return null;
+}
+
 function startStateFor({ batch, startBlockers }) {
   const status = normalizeLower(batch.status);
   if (status === 'in_production' || batch.actual_start_time) return 'already_started';
@@ -740,7 +751,8 @@ function completeStateFor({ batch, completeBlockers }) {
   const status = normalizeLower(batch.status);
   if (completeBlockers.length === 0) return 'ready_to_complete_preview_only';
   if (status === 'in_production') return 'complete_blocked_missing_completion_fields';
-  if (status === 'completed_pending_verification' || TERMINAL_STATUSES.has(status)) return 'not_applicable_already_completed_or_verified';
+  if (status === 'completed_pending_verification') return 'already_completed_pending_verification';
+  if (TERMINAL_STATUSES.has(status)) return 'not_applicable_already_verified_or_archived';
   return 'complete_blocked';
 }
 
@@ -788,6 +800,8 @@ function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceL
     can_complete: completeBlockers.length === 0,
     can_verify: verifyBlockers.length === 0,
     next_allowed_transition: nextAllowedTransition({ startPlan, completePlan, verifyPlan }),
+    next_lifecycle_step: nextLifecycleStepFor({ batch, startPlan, completePlan, verifyPlan }),
+    next_lifecycle_step_label: sanitizeLifecycleStatus(nextLifecycleStepFor({ batch, startPlan, completePlan, verifyPlan }) || '', 80) || null,
     start_blockers: startBlockers,
     complete_blockers: completeBlockers,
     verify_blockers: verifyBlockers,
@@ -916,7 +930,8 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
 
   if (rows.some(row => row.is_locked)) warnings.push('one_or_more_batches_locked');
   if (rows.some(row => row.current_status === 'planned' || row.current_status === 'ready_for_production')) warnings.push('complete_and_verify_held_until_start_and_completion_data_exist');
-  if (rows.some(row => row.start_state === 'already_started')) warnings.push('production_already_started_complete_preview_pending_completion_data');
+  if (rows.some(row => normalizeLower(row.current_status) === 'in_production')) warnings.push('production_in_progress_complete_preview_pending_completion_data');
+  if (rows.some(row => normalizeLower(row.current_status) === 'completed_pending_verification')) warnings.push('production_completed_verify_preview_pending_compliance_qc_data');
   if (rows.some(row => row.lifecycle_warnings.includes('inventory_deduction_held'))) warnings.push('inventory_deduction_held');
   warnings.push('purchase_order_automation_held');
   warnings.push('hub_fallback_required');
@@ -942,6 +957,9 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
   }));
   const completionPreviewReady = rows.length > 0 && completePreview.ready_count === rows.length && blockers.length === 0;
   const actualUnitsSuppliedCount = rows.filter(row => safeNumber(row.completion_actual_units_preview) !== null).length;
+  const hasInProductionRows = rows.some(row => normalizeLower(row.current_status) === 'in_production');
+  const hasCompletedPendingVerificationRows = rows.some(row => normalizeLower(row.current_status) === 'completed_pending_verification');
+  const allLifecycleComplete = rows.length > 0 && rows.every(row => row.next_lifecycle_step === 'lifecycle_complete');
   const nextAction = blockers.length > 0
     ? 'hold_lifecycle_preview_blockers'
     : startPreview.ready_count > 0
@@ -950,9 +968,13 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
         ? 'plan_gated_native_complete_production_command_with_actual_units'
         : verifyPreview.ready_count > 0
           ? 'plan_gated_native_verify_production_command'
-          : rows.some(row => row.start_state === 'already_started')
-            ? 'plan_native_complete_production_preview_or_command'
-            : 'review_lifecycle_state_or_hub_fallback';
+          : hasCompletedPendingVerificationRows
+            ? 'plan_native_verify_production_preview_or_command'
+            : hasInProductionRows
+              ? 'plan_native_complete_production_preview_or_command'
+              : allLifecycleComplete
+                ? 'lifecycle_complete_or_archived'
+                : 'review_lifecycle_state_or_hub_fallback';
 
   return {
     success: blockers.length === 0,
