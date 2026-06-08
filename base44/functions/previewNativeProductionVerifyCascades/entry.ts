@@ -321,9 +321,11 @@ function buildOrderBottlePreview({ nativeOrder, customerOrder, task, allVerified
   if (['subscription', 'multi_delivery'].includes(type) || mode === 'multi_delivery' || nativeOrder?.is_subscription === true) blockers.push('subscription_multi_delivery_order_bottle_blocked');
   if (['canceled', 'cancelled', 'refunded'].includes(normalizeLower(currentProductionStatus)) || ['refunded', 'voided'].includes(normalizeLower(currentPaymentStatus))) blockers.push('order_cancelled_or_refunded');
   if (['labeled', 'qc_checked', 'packed', 'in_cold_storage', 'assigned_for_pickup', 'assigned_for_delivery', 'fulfilled'].includes(normalizeLower(currentProductionStatus))) blockers.push('order_production_status_already_after_bottle');
-  if (normalizeLower(currentProductionStatus) === 'bottled') warnings.push('native_shopify_order_already_bottled');
+  const alreadyBottled = normalizeLower(currentProductionStatus) === 'bottled';
+  if (alreadyBottled) warnings.push('native_shopify_order_already_bottled');
 
   const allowed = blockers.length === 0;
+  const bottleCommandAvailable = allowed && !alreadyBottled;
   return {
     native_shopify_order_id: sanitizeId(nativeOrder?.id, 120) || null,
     order_number: sanitizeText(nativeOrder?.shopify_order_number || customerOrder?.order_number, 120) || null,
@@ -334,11 +336,13 @@ function buildOrderBottlePreview({ nativeOrder, customerOrder, task, allVerified
     fulfillment_mode: mode,
     is_subscription: nativeOrder?.is_subscription === true || customerOrder?.is_subscription === true || type === 'subscription',
     order_bottle_cascade_allowed: allowed,
-    would_update_native_shopify_order: allowed && normalizeLower(currentProductionStatus) !== 'bottled',
-    bottle_command_available: allowed && normalizeLower(currentProductionStatus) !== 'bottled',
+    shopify_order_bottle_already_satisfied: allowed && alreadyBottled,
+    bottle_action_state: allowed && alreadyBottled ? 'already_bottled' : bottleCommandAvailable ? 'ready_to_bottle' : 'held',
+    would_update_native_shopify_order: bottleCommandAvailable,
+    bottle_command_available: bottleCommandAvailable,
     bottle_command_gated: true,
-    bottle_requires_exact_approval: allowed && normalizeLower(currentProductionStatus) !== 'bottled',
-    already_bottled: allowed && normalizeLower(currentProductionStatus) === 'bottled',
+    bottle_requires_exact_approval: bottleCommandAvailable,
+    already_bottled: allowed && alreadyBottled,
     proposed_production_status: allowed ? 'bottled' : null,
     proposed_fulfillment_status: currentFulfillmentStatus,
     would_update_fulfillment_status: false,
@@ -346,7 +350,7 @@ function buildOrderBottlePreview({ nativeOrder, customerOrder, task, allVerified
     notifications_deferred: true,
     blockers,
     warnings,
-    projected_writes_if_later_approved: allowed && normalizeLower(currentProductionStatus) !== 'bottled' ? ['ShopifyOrder.production_status', 'ShopifyOrder.audit_trail', 'CommandLog'] : [],
+    projected_writes_if_later_approved: bottleCommandAvailable ? ['ShopifyOrder.production_status', 'ShopifyOrder.audit_trail', 'CommandLog'] : [],
   };
 }
 
@@ -392,8 +396,6 @@ function buildPreview({ customerOrder, nativeOrder, task, batches, complianceLog
   if (targetBatchRows.length > 0 && !complianceReady) cascadeBlockers.push('missing_batch_compliance_logs');
 
   if (complianceIdWithoutLogRows.length > 0) cascadeWarnings.push('compliance_log_id_present_without_log_row');
-  cascadeWarnings.push('task_pack_cascade_held_until_separate_approval');
-  cascadeWarnings.push('shopify_order_bottle_cascade_held_until_separate_approval');
   cascadeWarnings.push('customer_facing_status_held');
   cascadeWarnings.push('notifications_held');
   cascadeWarnings.push('hub_fallback_required');
@@ -404,16 +406,23 @@ function buildPreview({ customerOrder, nativeOrder, task, batches, complianceLog
 
   const taskReady = taskPackPreview.pack_command_available === true;
   const taskAlreadySatisfied = taskPackPreview.task_pack_already_satisfied === true;
-  const orderReady = shopifyOrderBottlePreview.order_bottle_cascade_allowed === true;
-  const nextAction = taskReady && orderReady
-    ? 'plan_gated_native_task_pack_and_order_bottle_commands'
-    : taskReady
-      ? 'plan_gated_native_fulfillment_task_pack_command'
-      : taskAlreadySatisfied && orderReady
-        ? 'plan_gated_native_shopify_order_bottle_command'
-        : orderReady
-          ? 'plan_gated_native_shopify_order_bottle_command'
-          : 'hold_post_verify_cascades';
+  const orderReady = shopifyOrderBottlePreview.bottle_command_available === true;
+  const orderAlreadySatisfied = shopifyOrderBottlePreview.shopify_order_bottle_already_satisfied === true;
+  const allPostVerifyNativeCascadesSatisfied = taskAlreadySatisfied && orderAlreadySatisfied;
+  cascadeWarnings.push(taskAlreadySatisfied ? 'task_pack_already_satisfied' : 'task_pack_cascade_held_until_separate_approval');
+  cascadeWarnings.push(orderAlreadySatisfied ? 'shopify_order_bottle_already_satisfied' : 'shopify_order_bottle_cascade_held_until_separate_approval');
+  let nextAction = 'hold_post_verify_cascades';
+  if (allPostVerifyNativeCascadesSatisfied) {
+    nextAction = 'post_verify_cascades_already_satisfied_customer_status_held';
+  } else if (taskReady && orderReady) {
+    nextAction = 'plan_gated_native_task_pack_and_order_bottle_commands';
+  } else if (taskReady) {
+    nextAction = 'plan_gated_native_fulfillment_task_pack_command';
+  } else if (taskAlreadySatisfied && orderReady) {
+    nextAction = 'plan_gated_native_shopify_order_bottle_command';
+  } else if (orderReady) {
+    nextAction = 'plan_gated_native_shopify_order_bottle_command';
+  }
 
   return {
     success: true,
@@ -449,6 +458,8 @@ function buildPreview({ customerOrder, nativeOrder, task, batches, complianceLog
     task_pack_ready: taskReady,
     task_pack_already_satisfied: taskAlreadySatisfied,
     shopify_order_bottle_ready: orderReady,
+    shopify_order_bottle_already_satisfied: orderAlreadySatisfied,
+    post_verify_native_cascades_already_satisfied: allPostVerifyNativeCascadesSatisfied,
     customer_facing_status_held: true,
     notifications_held: true,
     inventory_deduction_held: true,
