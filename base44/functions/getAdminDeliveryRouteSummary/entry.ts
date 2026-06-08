@@ -136,6 +136,7 @@ function sanitizeStop(stop) {
     bag_return_required: stop.bag_return_required ?? null,
     bag_return_count: stop.bag_return_count ?? null,
     data_source: stop.data_source || null,
+    hub_fallback_context: stop.hub_fallback_context || null,
   };
 }
 
@@ -269,6 +270,23 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
       });
     });
 
+  const allNativeTaskRows = tasks
+    .map(task => {
+      const order = ordersById.get(task.order_id) || ordersByBase44Id.get(task.order_id) || {};
+      return sanitizeStop({
+        task_id: task.id,
+        order_number: order.shopify_order_number || order.order_number || task.order_number,
+        source_type: task.source_type || order.source_type || order.source_channel || 'customer_app_native',
+        task_status: task.status || 'pending',
+        delivery_status: task.delivery_status || order.fulfillment_status,
+        fulfillment_status: order.fulfillment_status,
+        delivery_date: normalizeDate(task.delivery_date || task.scheduled_date || task.assigned_delivery_date),
+        delivery_window_label: task.delivery_window_label || order.delivery_window_label || order.requested_time_window,
+        data_source: 'customer_app_native_task',
+      });
+    })
+    .filter(stop => stop.order_number && stop.delivery_date);
+
   const taskOrderNumbers = new Set(fromTasks.map(stop => normalizeLower(stop.order_number)).filter(Boolean));
   const fromOrders = orders
     .filter(order => normalizeDate(order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date) === deliveryDate)
@@ -330,8 +348,62 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
       completed,
       unscheduled_delivery_orders: unscheduled,
     },
+    native_schedule_index: allNativeTaskRows,
     source_available: allStops.length > 0 || unscheduled.length > 0,
   };
+}
+
+function orderKey(value) {
+  return normalizeLower(value).replace(/^#/, '');
+}
+
+function reconcileHubRowsWithNativeSchedule({ hubRows, nativeScheduleIndex, deliveryDate, section }) {
+  const rows = [];
+  const suppressed = [];
+  const nativeByOrder = new Map(
+    (nativeScheduleIndex || [])
+      .filter(row => row.order_number)
+      .map(row => [orderKey(row.order_number), row]),
+  );
+
+  for (const hubRow of hubRows || []) {
+    const key = orderKey(hubRow.order_number);
+    const nativeRow = nativeByOrder.get(key);
+    if (!nativeRow) {
+      rows.push(hubRow);
+      continue;
+    }
+
+    const hubDate = normalizeDate(hubRow.delivery_date);
+    const nativeDate = normalizeDate(nativeRow.delivery_date);
+    const isStale = Boolean(nativeDate && hubDate && nativeDate !== hubDate);
+    const isDuplicate = Boolean(nativeDate && (!hubDate || nativeDate === hubDate));
+    const context = {
+      order_number: hubRow.order_number || null,
+      section,
+      hub_delivery_date: hubDate || null,
+      native_delivery_date: nativeDate || null,
+      native_task_id: nativeRow.task_id || null,
+      merge_status: isStale
+        ? 'native_schedule_active_hub_fallback_stale_date'
+        : 'native_schedule_preferred_hub_duplicate',
+    };
+
+    if (isStale || isDuplicate) {
+      suppressed.push({ ...context, suppressed_from_active_summary: true });
+      continue;
+    }
+
+    rows.push({
+      ...hubRow,
+      hub_fallback_context: {
+        ...context,
+        merge_status: 'hub_fallback_visible_no_native_date_conflict',
+      },
+    });
+  }
+
+  return { rows, suppressed };
 }
 
 Deno.serve(async (req) => {
@@ -403,8 +475,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    const hubActive = hubData ? hubData.sections.delivery_stops.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
-    const hubCompleted = hubData ? hubData.sections.completed.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
+    const hubActiveRaw = hubData ? hubData.sections.delivery_stops.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
+    const hubCompletedRaw = hubData ? hubData.sections.completed.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
+    const activeReconciliation = reconcileHubRowsWithNativeSchedule({
+      hubRows: hubActiveRaw,
+      nativeScheduleIndex: nativeData.native_schedule_index,
+      deliveryDate,
+      section: 'delivery_stops',
+    });
+    const completedReconciliation = reconcileHubRowsWithNativeSchedule({
+      hubRows: hubCompletedRaw,
+      nativeScheduleIndex: nativeData.native_schedule_index,
+      deliveryDate,
+      section: 'completed',
+    });
+    const hubActive = activeReconciliation.rows;
+    const hubCompleted = completedReconciliation.rows;
+    const suppressedHubRows = [...activeReconciliation.suppressed, ...completedReconciliation.suppressed];
     const hubOrderNumbers = new Set([...hubActive, ...hubCompleted].map(stop => normalizeLower(stop.order_number)).filter(Boolean));
     const nativeActive = nativeData.sections.delivery_stops.filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
     const nativeCompleted = nativeData.sections.completed.filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
@@ -435,7 +522,20 @@ Deno.serve(async (req) => {
         native_available: nativeData.source_available,
         native_read_only: true,
       },
-      warnings: [hubWarning].filter(Boolean),
+      hub_fallback_reconciliation: {
+        merge_status: suppressedHubRows.length > 0
+          ? 'native_schedule_preferred_hub_fallback_rows_suppressed'
+          : 'no_stale_hub_fallback_rows_suppressed',
+        stale_hub_fallback_detected: suppressedHubRows.some(row => row.merge_status === 'native_schedule_active_hub_fallback_stale_date'),
+        suppressed_hub_row_count: suppressedHubRows.length,
+        suppressed_hub_rows: suppressedHubRows.slice(0, 20),
+        native_schedule_preferred: suppressedHubRows.length > 0,
+      },
+      warnings: [
+        hubWarning,
+        suppressedHubRows.some(row => row.merge_status === 'native_schedule_active_hub_fallback_stale_date') ? 'hub_fallback_stale_date_detected' : null,
+        suppressedHubRows.length > 0 ? 'native_schedule_preferred_hub_fallback_rows_suppressed' : null,
+      ].filter(Boolean),
     });
   } catch (error) {
     console.error('[getAdminDeliveryRouteSummary] Error:', error.message);
