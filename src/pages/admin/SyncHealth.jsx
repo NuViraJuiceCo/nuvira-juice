@@ -1320,6 +1320,207 @@ function NativeProductionLifecyclePreview({
   );
 }
 
+
+function NativePostVerifyCascadePreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onRun,
+}) {
+  const exactOrderNumber = orderNumber?.trim();
+  const taskPreview = preview?.task_pack_preview || {};
+  const orderPreview = preview?.shopify_order_bottle_preview || {};
+  const customerImpact = preview?.customer_status_impact_preview || {};
+  const notificationImpact = preview?.notification_impact_preview || {};
+  const blockers = Array.isArray(preview?.cascade_blockers) ? preview.cascade_blockers : [];
+  const warnings = Array.isArray(preview?.cascade_warnings) ? preview.cascade_warnings : [];
+  const batchRows = Array.isArray(preview?.target_batch_rows) ? preview.target_batch_rows : [];
+  const safety = preview?.safety || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Native Post-Verify Cascade Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G31W read-only preview for native FulfillmentTask pack readiness, native ShopifyOrder bottled/packed readiness, customer-facing status impact, and notification impact after production verify. It does not pack tasks, bottle orders, update customer status, notify customers, sync, repair, or mutate records.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning || !exactOrderNumber}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning || !exactOrderNumber
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Post-Verify Cascade Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Preview only. No Pack Task, Bottle Order, Customer App Order status, notification, inventory deduction, purchase order, delivery/proof/drop/route, sync, repair, replay, provider, payment, or Shopify API write is exposed from this panel.
+      </div>
+
+      {!exactOrderNumber && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Enter an exact verified native order number above before running the native post-verify cascade preview.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard label="Verified Batches" value={formatNumber(preview.verified_batch_count)} tone={Number(preview.verified_batch_count || 0) > 0 ? 'success' : 'warning'} />
+            <StatCard label="Compliance Logs" value={formatNumber(preview.compliance_log_count)} tone={Number(preview.compliance_log_count || 0) > 0 ? 'success' : 'warning'} />
+            <StatCard label="Task Pack" value={taskPreview.pack_cascade_allowed ? 'Ready' : 'Held'} tone={taskPreview.pack_cascade_allowed ? 'success' : 'warning'} />
+            <StatCard label="Order Bottle" value={orderPreview.order_bottle_cascade_allowed ? 'Ready' : 'Held'} tone={orderPreview.order_bottle_cascade_allowed ? 'success' : 'warning'} />
+            <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
+            <StatCard label="Generated" value={formatDateTime(preview.generated_at)} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={safety.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+            <StatusChip value={preview.customer_facing_status_held ? 'Customer status held' : 'Customer status impact unknown'} />
+            <StatusChip value={preview.notifications_held ? 'Notifications held' : 'Notification impact unknown'} />
+            <StatusChip value={preview.inventory_deduction_held ? 'Inventory deduction held' : 'Inventory deduction unknown'} />
+            <StatusChip value={preview.purchase_order_automation_held ? 'PO automation held' : 'PO state unknown'} />
+            <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Order context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.order_number ? `Order ${preview.order_number}` : null,
+                  preview.native_fulfillment_task_present ? 'Native task present' : 'Native task missing',
+                  preview.native_shopify_order_present ? 'Native order present' : 'Native order missing',
+                  preview.production_date ? `Production ${preview.production_date}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Next action</p>
+              <p className="mt-1 text-xs text-foreground">{formatLabel(preview.next_action)}</p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Prior verify context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {preview?.prior_command_context?.verify_command_log_present ? 'Verify CommandLog present' : 'Verify CommandLog not detected'} · {formatNumber(preview?.prior_command_context?.command_log_count || 0)} command logs
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-emerald-950">FulfillmentTask pack preview</p>
+              <p className="text-[10px] text-emerald-900">
+                {[
+                  taskPreview.task_id ? `Task ${taskPreview.task_id}` : 'Task id pending',
+                  taskPreview.current_task_status ? `Current ${formatLabel(taskPreview.current_task_status)}` : null,
+                  taskPreview.current_delivery_status ? `Delivery ${formatLabel(taskPreview.current_delivery_status)}` : null,
+                  taskPreview.current_production_status ? `Production ${formatLabel(taskPreview.current_production_status)}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={taskPreview.pack_cascade_allowed ? 'Pack preview ready' : 'Pack preview held'} />
+                <StatusChip value={taskPreview.would_update_task_status ? `Would propose ${taskPreview.proposed_task_status}` : 'No task write now'} />
+                <StatusChip value="No delivery mutation" />
+              </div>
+              {Array.isArray(taskPreview.blockers) && taskPreview.blockers.length > 0 && (
+                <p className="text-[10px] text-emerald-900">Blockers: {taskPreview.blockers.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}</p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-cyan-950">Native ShopifyOrder bottle/pack preview</p>
+              <p className="text-[10px] text-cyan-900">
+                {[
+                  orderPreview.native_shopify_order_id ? `Native ${orderPreview.native_shopify_order_id}` : 'Native order id pending',
+                  orderPreview.current_production_status ? `Current ${formatLabel(orderPreview.current_production_status)}` : null,
+                  orderPreview.current_fulfillment_status ? `Fulfillment ${formatLabel(orderPreview.current_fulfillment_status)}` : null,
+                  orderPreview.order_type ? `Type ${formatLabel(orderPreview.order_type)}` : null,
+                  orderPreview.fulfillment_mode ? `Mode ${formatLabel(orderPreview.fulfillment_mode)}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={orderPreview.order_bottle_cascade_allowed ? 'Bottle preview ready' : 'Bottle preview held'} />
+                <StatusChip value={orderPreview.would_update_native_shopify_order ? `Would propose ${orderPreview.proposed_production_status}` : 'No order write now'} />
+                <StatusChip value="Customer sync held" />
+              </div>
+              {Array.isArray(orderPreview.blockers) && orderPreview.blockers.length > 0 && (
+                <p className="text-[10px] text-cyan-900">Blockers: {orderPreview.blockers.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Customer-facing status impact</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {customerImpact.would_touch_customer_app_order ? 'Customer App Order would be touched by a later approved command.' : 'Customer App Order remains untouched in this preview.'} Status history append held: {customerImpact.status_history_append_held ? 'yes' : 'unknown'} · Delivered/customer status held: {customerImpact.customer_facing_status_changes_held ? 'yes' : 'unknown'}.
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Notification impact</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {notificationImpact.would_send_notification ? 'A later command could send notifications.' : 'No notification is sent by this preview.'} Held types: {(notificationImpact.notification_types_held || []).map(item => formatLabel(item)).join(', ') || 'Not returned'}.
+              </p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Cascade blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.map(blocker => <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No top-level cascade blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.slice(0, 16).map(warning => <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {batchRows.length > 0 && (
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Verified batch context</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {batchRows.slice(0, 8).map(row => `${sanitizeAdminText(row.batch_id)} · ${sanitizeAdminText(row.product_name)} · ${formatLabel(row.status)} · logs ${formatNumber(row.compliance_log_count)}`).join(' · ')}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NativeProductionMasterDataParityPreview({
   preview,
   isRunning,
@@ -2028,6 +2229,9 @@ export default function SyncHealth() {
   const [productionLifecyclePreview, setProductionLifecyclePreview] = useState(null);
   const [productionLifecyclePreviewError, setProductionLifecyclePreviewError] = useState('');
   const [isProductionLifecyclePreviewRunning, setIsProductionLifecyclePreviewRunning] = useState(false);
+  const [postVerifyCascadePreview, setPostVerifyCascadePreview] = useState(null);
+  const [postVerifyCascadePreviewError, setPostVerifyCascadePreviewError] = useState('');
+  const [isPostVerifyCascadePreviewRunning, setIsPostVerifyCascadePreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -2242,6 +2446,30 @@ export default function SyncHealth() {
       setProductionLifecyclePreviewError(previewError?.message || 'Unable to run native production lifecycle preview.');
     } finally {
       setIsProductionLifecyclePreviewRunning(false);
+    }
+  };
+
+  const runNativePostVerifyCascadePreview = async () => {
+    setPostVerifyCascadePreviewError('');
+    setIsPostVerifyCascadePreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for post-verify cascade preview.');
+      }
+      const res = await base44.functions.invoke('previewNativeProductionVerifyCascades', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Native post-verify cascade preview failed.');
+      }
+      setPostVerifyCascadePreview(result);
+    } catch (previewError) {
+      setPostVerifyCascadePreviewError(previewError?.message || 'Unable to run native post-verify cascade preview.');
+    } finally {
+      setIsPostVerifyCascadePreviewRunning(false);
     }
   };
 
@@ -2463,6 +2691,14 @@ export default function SyncHealth() {
           error={productionLifecyclePreviewError}
           orderNumber={cutoverOrderNumber}
           onRun={runNativeProductionLifecyclePreview}
+        />
+
+        <NativePostVerifyCascadePreview
+          preview={postVerifyCascadePreview}
+          isRunning={isPostVerifyCascadePreviewRunning}
+          error={postVerifyCascadePreviewError}
+          orderNumber={cutoverOrderNumber}
+          onRun={runNativePostVerifyCascadePreview}
         />
 
         <NativeProductionMasterDataParityPreview
