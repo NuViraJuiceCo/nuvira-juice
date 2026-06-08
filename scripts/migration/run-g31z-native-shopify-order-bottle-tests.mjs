@@ -354,6 +354,30 @@ assert.equal(cascadePreview.shopify_order_bottle_ready, true);
 assert.equal(cascadePreview.shopify_order_bottle_preview.proposed_production_status, 'bottled');
 assert.equal(cascadePreview.shopify_order_bottle_preview.bottle_command_available, true);
 assert.equal(cascadePreview.next_action, 'plan_gated_native_shopify_order_bottle_command');
+assert.ok(cascadePreview.cascade_warnings.includes('shopify_order_bottle_cascade_held_until_separate_approval'));
+
+cascadePreview = cascadeFns.buildPreview({
+  customerOrder: makeCustomerOrder(),
+  nativeOrder: makeNativeOrder({ production_status: 'bottled' }),
+  task: makeTask(),
+  batches: makeBatches(),
+  complianceLogs: makeComplianceLogs(),
+  commandLogs: [],
+  lookup: { orderNumber: 'NV-MPZNKGNT', productionDate: '2026-06-05' },
+  auth: { actor_type: 'admin', actor_role: 'admin' },
+});
+assert.equal(cascadePreview.task_pack_ready, false);
+assert.equal(cascadePreview.task_pack_already_satisfied, true);
+assert.equal(cascadePreview.shopify_order_bottle_ready, false);
+assert.equal(cascadePreview.shopify_order_bottle_already_satisfied, true);
+assert.equal(cascadePreview.post_verify_native_cascades_already_satisfied, true);
+assert.equal(cascadePreview.shopify_order_bottle_preview.bottle_command_available, false);
+assert.equal(cascadePreview.shopify_order_bottle_preview.bottle_action_state, 'already_bottled');
+assert.equal(cascadePreview.shopify_order_bottle_preview.would_update_native_shopify_order, false);
+assert.equal(cascadePreview.next_action, 'post_verify_cascades_already_satisfied_customer_status_held');
+assert.equal(cascadePreview.next_action.includes('bottle_command'), false);
+assert.ok(cascadePreview.cascade_warnings.includes('shopify_order_bottle_already_satisfied'));
+assert.equal(cascadePreview.cascade_warnings.includes('shopify_order_bottle_cascade_held_until_separate_approval'), false);
 
 const harness = loadCommandHarness({ NATIVE_SAFE_SYNC_PREVIEW_SECRET: 'preview-secret' });
 const { exports: fns, handler, env } = harness;
@@ -526,6 +550,7 @@ body = await json(response);
 assert.equal(response.status, 500);
 assert.equal(body.error_code, 'native_shopify_order_bottle_command_log_update_failed');
 assert.equal(body.writes_performed, true);
+assert.equal(body.safety.writes_performed, true);
 assert.equal(body.reconciliation_required, true);
 assert.equal(body.native_shopify_order_updated, true);
 assert.equal(storeSetup.store.nativeOrders[0].production_status, 'bottled');
@@ -537,6 +562,7 @@ body = await json(response);
 assert.equal(response.status, 200);
 assert.equal(body.success, true);
 assert.equal(body.writes_performed, true);
+assert.equal(body.safety.writes_performed, true);
 assert.equal(body.native_shopify_order_updated, true);
 assert.equal(body.shopify_order_bottled, true);
 assert.equal(body.native_fulfillment_task_updated, false);
@@ -552,6 +578,9 @@ assert.equal(storeSetup.store.tasks[0].production_status, 'packed');
 assert.equal(storeSetup.store.customerOrders[0].status, 'scheduled_for_juicing');
 assert.equal(storeSetup.store.commandLogs.length, 1);
 assert.equal(storeSetup.store.commandLogs[0].status, 'success');
+assert.equal(storeSetup.store.commandLogs[0].result.writes_performed, true);
+assert.equal(storeSetup.store.commandLogs[0].result.native_shopify_order_updated, true);
+assert.equal(storeSetup.store.commandLogs[0].result.shopify_order_bottled, true);
 assert.equal(storeSetup.store.otherWrites.length, 0);
 
 response = await handler(req(storeSetup.base44, liveBody()));

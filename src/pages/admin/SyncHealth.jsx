@@ -1341,6 +1341,10 @@ function NativePostVerifyCascadePreview({
   const taskPackAvailable = Boolean(taskPreview.pack_command_available);
   const taskPackLabel = taskPackAlreadySatisfied ? 'Packed' : taskPackAvailable ? 'Ready' : 'Held';
   const taskPackTone = taskPackAlreadySatisfied || taskPackAvailable ? 'success' : 'warning';
+  const orderBottleAlreadySatisfied = Boolean(preview?.shopify_order_bottle_already_satisfied || orderPreview.shopify_order_bottle_already_satisfied || orderPreview.already_bottled);
+  const orderBottleAvailable = Boolean(orderPreview.bottle_command_available || preview?.shopify_order_bottle_ready);
+  const orderBottleLabel = orderBottleAlreadySatisfied ? 'Bottled' : orderBottleAvailable ? 'Ready' : 'Held';
+  const orderBottleTone = orderBottleAlreadySatisfied || orderBottleAvailable ? 'success' : 'warning';
 
   return (
     <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
@@ -1390,7 +1394,7 @@ function NativePostVerifyCascadePreview({
             <StatCard label="Verified Batches" value={formatNumber(preview.verified_batch_count)} tone={Number(preview.verified_batch_count || 0) > 0 ? 'success' : 'warning'} />
             <StatCard label="Compliance Logs" value={formatNumber(preview.compliance_log_count)} tone={Number(preview.compliance_log_count || 0) > 0 ? 'success' : 'warning'} />
             <StatCard label="Task Pack" value={taskPackLabel} tone={taskPackTone} />
-            <StatCard label="Order Bottle" value={orderPreview.order_bottle_cascade_allowed ? 'Ready' : 'Held'} tone={orderPreview.order_bottle_cascade_allowed ? 'success' : 'warning'} />
+            <StatCard label="Order Bottle" value={orderBottleLabel} tone={orderBottleTone} />
             <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
             <StatCard label="Generated" value={formatDateTime(preview.generated_at)} />
           </div>
@@ -1463,9 +1467,9 @@ function NativePostVerifyCascadePreview({
                 ].filter(Boolean).join(' · ')}
               </p>
               <div className="flex flex-wrap gap-2">
-                <StatusChip value={orderPreview.order_bottle_cascade_allowed ? 'Bottle preview ready' : 'Bottle preview held'} />
+                <StatusChip value={orderBottleAlreadySatisfied ? 'Order already bottled' : orderBottleAvailable ? 'Bottle preview ready' : 'Bottle preview held'} />
                 <StatusChip value={orderPreview.bottle_command_gated ? 'Bottle command gated' : 'Bottle command not exposed'} />
-                <StatusChip value={orderPreview.bottle_requires_exact_approval ? 'Exact approval required' : orderPreview.already_bottled ? 'Bottle deduped' : 'Approval status unknown'} />
+                <StatusChip value={orderPreview.bottle_requires_exact_approval ? 'Exact approval required' : orderBottleAlreadySatisfied ? 'Bottle deduped' : 'Approval status unknown'} />
                 <StatusChip value={orderPreview.would_update_native_shopify_order ? `Would propose ${orderPreview.proposed_production_status}` : 'No order write now'} />
                 <StatusChip value="Customer sync held" />
               </div>

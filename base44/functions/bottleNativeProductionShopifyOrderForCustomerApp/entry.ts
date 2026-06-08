@@ -833,6 +833,13 @@ function safetyResult(extra = {}) {
   };
 }
 
+function writeSafetyResult(extra = {}) {
+  return safetyResult({
+    writes_performed: true,
+    ...extra,
+  });
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -1045,6 +1052,7 @@ Deno.serve(async (req) => {
       commandLogId: commandLog?.id,
       status: 'success',
       result: {
+        ...writeSafetyResult({ native_shopify_order_updated: true, shopify_order_bottled: true }),
         writes_performed: true,
         native_shopify_order_updated: true,
         shopify_order_bottled: true,
@@ -1055,7 +1063,6 @@ Deno.serve(async (req) => {
         verified_batch_count: preflight.batches.length,
         compliance_log_count: preflight.complianceLogs.length,
         patch_marker: G31Z_MARKER,
-        ...safetyResult({ native_shopify_order_updated: true, shopify_order_bottled: true }),
       },
     });
     if (!successLogUpdate.ok) {
@@ -1074,7 +1081,7 @@ Deno.serve(async (req) => {
         native_shopify_order_updated: true,
         shopify_order_bottled: true,
         updated_native_order: updatedOrder,
-        safety: safetyResult({ native_shopify_order_updated: true, shopify_order_bottled: true }),
+        safety: writeSafetyResult({ native_shopify_order_updated: true, shopify_order_bottled: true }),
       }, 500);
     }
 
@@ -1113,7 +1120,7 @@ Deno.serve(async (req) => {
       shopify_calls: false,
       sync_retry_repair_run: false,
       hub_records_updated: false,
-      safety: safetyResult({ native_shopify_order_updated: true, shopify_order_bottled: true }),
+      safety: writeSafetyResult({ native_shopify_order_updated: true, shopify_order_bottled: true }),
     });
   } catch (error) {
     console.error(`[${FUNCTION_NAME}] failed safely: ${error?.message || 'unknown error'}`);

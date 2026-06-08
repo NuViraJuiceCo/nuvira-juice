@@ -205,6 +205,25 @@ assert.equal(preview.task_pack_preview.pack_action_state, 'already_packed');
 assert.equal(preview.shopify_order_bottle_preview.order_bottle_cascade_allowed, true);
 assert.equal(preview.shopify_order_bottle_preview.bottle_command_available, true);
 assert.equal(preview.next_action, 'plan_gated_native_shopify_order_bottle_command');
+assert.ok(preview.cascade_warnings.includes('shopify_order_bottle_cascade_held_until_separate_approval'));
+
+const alreadyBottledContext = context({
+  task: { status: 'packed', production_status: 'packed', packed_at: '2026-06-08T18:00:10.444Z' },
+  nativeOrder: { production_status: 'bottled' },
+});
+preview = fns.buildPreview({ ...alreadyBottledContext, commandLogs: [{ id: 'cmd_bottle', command_type: 'native_shopify_order_bottle', status: 'success' }], lookup: { orderNumber: 'NV-MPZNKGNT', productionDate: '2026-06-05', requestId: 'g32b_already_bottled' }, auth: { actor_type: 'admin', actor_role: 'admin' } });
+assert.equal(preview.task_pack_ready, false);
+assert.equal(preview.task_pack_already_satisfied, true);
+assert.equal(preview.shopify_order_bottle_ready, false);
+assert.equal(preview.shopify_order_bottle_already_satisfied, true);
+assert.equal(preview.post_verify_native_cascades_already_satisfied, true);
+assert.equal(preview.shopify_order_bottle_preview.order_bottle_cascade_allowed, true);
+assert.equal(preview.shopify_order_bottle_preview.bottle_command_available, false);
+assert.equal(preview.shopify_order_bottle_preview.would_update_native_shopify_order, false);
+assert.equal(preview.shopify_order_bottle_preview.already_bottled, true);
+assert.equal(preview.next_action, 'post_verify_cascades_already_satisfied_customer_status_held');
+assert.ok(preview.cascade_warnings.includes('shopify_order_bottle_already_satisfied'));
+assert.equal(preview.cascade_warnings.includes('shopify_order_bottle_cascade_held_until_separate_approval'), false);
 
 const missingCompliance = context({ complianceLogs: [] });
 preview = fns.buildPreview({ ...missingCompliance, commandLogs: [], lookup: { orderNumber: 'NV-MPZNKGNT', productionDate: '2026-06-05' }, auth: { actor_type: 'admin', actor_role: 'admin' } });
