@@ -1346,7 +1346,7 @@ function NativePostVerifyCascadePreview({
           <div>
             <h2 className="text-sm font-bold text-foreground">Native Post-Verify Cascade Preview</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              G31W read-only preview for native FulfillmentTask pack readiness, native ShopifyOrder bottled/packed readiness, customer-facing status impact, and notification impact after production verify. It does not pack tasks, bottle orders, update customer status, notify customers, sync, repair, or mutate records.
+              G31W/G31X read-only preview for native FulfillmentTask pack readiness, native ShopifyOrder bottled/packed readiness, customer-facing status impact, and notification impact after production verify. The FulfillmentTask Pack command is available only behind exact gated approval; this panel does not pack tasks, bottle orders, update customer status, notify customers, sync, repair, or mutate records.
             </p>
           </div>
         </div>
@@ -1437,6 +1437,8 @@ function NativePostVerifyCascadePreview({
               </p>
               <div className="flex flex-wrap gap-2">
                 <StatusChip value={taskPreview.pack_cascade_allowed ? 'Pack preview ready' : 'Pack preview held'} />
+                <StatusChip value={taskPreview.pack_command_gated ? 'Pack command gated' : 'Pack command not exposed'} />
+                <StatusChip value={taskPreview.pack_requires_exact_approval ? 'Exact approval required' : 'Approval status unknown'} />
                 <StatusChip value={taskPreview.would_update_task_status ? `Would propose ${taskPreview.proposed_task_status}` : 'No task write now'} />
                 <StatusChip value="No delivery mutation" />
               </div>
