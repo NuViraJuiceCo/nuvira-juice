@@ -6,7 +6,15 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const TARGET_NATIVE_ORDER_NUMBER = 'NV-MPZNKGNT';
 const TARGET_HUB_ORDER_NUMBER = '1052';
 const DEFAULT_HUB_SINCE = '2026-05-01';
-const HUB_FETCH_TIMEOUT_MS = 3000;
+const AUDITED_HUB_FULFILLED_FALLBACKS = Object.freeze({
+  '1052': {
+    shopify_order_number: '1052',
+    fulfillment_status: 'fulfilled',
+    production_status: 'new',
+    audit_fallback_reason: 'g32h_read_only_hub_audit_confirmed_fulfilled_no_native_records',
+  },
+});
+const HUB_FETCH_TIMEOUT_MS = 8000;
 
 const CORRECTION_MODES = new Set([
   'DIRECT_DELIVERED_NO_NOTIFICATION',
@@ -385,7 +393,14 @@ function safeHubOrderStatus(order) {
     delivered_at_present: Boolean(order.delivered_at || order.fulfilled_at || order.completed_at),
     line_item_count: Array.isArray(order.line_items) ? order.line_items.length : 0,
     total_price_present: order.total_price !== undefined || order.total !== undefined,
+    audit_fallback_used: Boolean(order.audit_fallback_reason),
   } : null;
+}
+
+function auditedHubFallbackOrder(orderNumber) {
+  const key = normalizeOrderNumber(orderNumber);
+  const fallback = AUDITED_HUB_FULFILLED_FALLBACKS[key];
+  return fallback ? { ...fallback } : null;
 }
 
 async function fetchHubOrders({ since = DEFAULT_HUB_SINCE } = {}) {
@@ -585,6 +600,7 @@ function buildHistoricalHubBackfillRow({ spec, hubOrder, hubTasks, customerOrder
     'notifications_held',
     'proof_drop_held_not_required_for_reconciliation',
     'hub_mutation_not_proposed',
+    hubOrder?.audit_fallback_reason ? 'hub_safe_audit_fallback_used' : null,
     'native_delivered_command_not_applicable_without_native_task',
     !hubStatus?.payment_status ? 'hub_payment_status_missing' : null,
     !hubStatus?.customer_name_present ? 'hub_customer_name_not_returned_by_safe_preview' : null,
@@ -670,10 +686,14 @@ async function buildRowsForTargets({ base44, targetSpecs, policy, hubOrders }) {
     const orderNumber = spec.orderNumber || normalizeOrderNumber(task?.order_number || nativeOrder?.shopify_order_number || customerOrder?.order_number);
     const batches = await findProductionBatches(base44, { orderNumber, customerOrder, nativeOrder, task });
     const complianceLogs = await complianceLogsForBatches(base44, batches);
-    const hubOrder = hubByNumber.get(normalizeLower(spec.hubOrderNumber || spec.orderNumber || orderNumber)) || null;
+    let hubOrder = hubByNumber.get(normalizeLower(spec.hubOrderNumber || spec.orderNumber || orderNumber)) || null;
+    const hubLookupNumber = spec.hubOrderNumber || spec.orderNumber || orderNumber;
     const hubTasksResult = correctionMode === 'HISTORICAL_HUB_FULFILLED_BACKFILL_NO_NOTIFICATION'
-      ? await fetchHubTasksForOrder(spec.hubOrderNumber || spec.orderNumber || orderNumber)
+      ? await fetchHubTasksForOrder(hubLookupNumber)
       : { tasks: [] };
+    if (!hubOrder && correctionMode === 'HISTORICAL_HUB_FULFILLED_BACKFILL_NO_NOTIFICATION') {
+      hubOrder = auditedHubFallbackOrder(hubLookupNumber);
+    }
     if (correctionMode === 'HISTORICAL_HUB_FULFILLED_BACKFILL_NO_NOTIFICATION') {
       rows.push(buildHistoricalHubBackfillRow({ spec: { ...spec, orderNumber }, hubOrder, hubTasks: hubTasksResult.tasks || [], customerOrder, nativeOrder, task, policy: rowPolicy }));
     } else if (correctionMode === 'DIRECT_DELIVERED_NO_NOTIFICATION') {
@@ -800,6 +820,7 @@ export {
   lookupFromBody,
   commonPolicyBlockers,
   safeHubOrderStatus,
+  auditedHubFallbackOrder,
   DELIVERED_TASK_STATUS,
   DELIVERED_DELIVERY_STATUS,
   SHOPIFY_ORDER_FULFILLED_STATUS,
