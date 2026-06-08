@@ -1533,6 +1533,182 @@ function NativePostVerifyCascadePreview({
   );
 }
 
+function CustomerStatusNotificationImpactPreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onRun,
+}) {
+  const exactOrderNumber = orderNumber?.trim();
+  const statusImpact = preview?.customer_status_impact_preview || {};
+  const notificationPreview = preview?.notification_preview || statusImpact.notification_preview || {};
+  const historyPreview = preview?.status_history_preview || statusImpact.status_history_preview || {};
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const statusReady = Boolean(preview?.status_update_ready || statusImpact.status_update_ready);
+  const statusHeld = preview?.status_update_held !== false && statusImpact.status_update_held !== false;
+  const notificationHeld = preview?.notification_held !== false && notificationPreview.notification_held !== false;
+  const proposedStatus = preview?.proposed_customer_order_status || statusImpact.proposed_customer_order_status;
+  const currentStatus = preview?.current_customer_order_status || statusImpact.current_customer_order_status;
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Customer Status / Notification Impact Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G32C read-only preview for customer-facing status and notification impact after native production verify, task pack, and order bottle. This panel does not update Customer App Order, append status history, create notifications, send push/SMS/email/in-app messages, sync, repair, or mutate records.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning || !exactOrderNumber}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning || !exactOrderNumber
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Customer Impact Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Preview only. No Customer App Order status update, status_history append, notification create/send, delivery/proof/drop/route, sync, repair, replay, provider, payment, Shopify API, inventory, or purchase-order write is exposed from this panel.
+      </div>
+
+      {!exactOrderNumber && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Enter an exact native order number above before running the customer status / notification impact preview.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard label="Production Verified" value={preview.production_verified ? 'Yes' : 'No'} tone={preview.production_verified ? 'success' : 'warning'} />
+            <StatCard label="Task Packed" value={preview.task_packed ? 'Yes' : 'No'} tone={preview.task_packed ? 'success' : 'warning'} />
+            <StatCard label="Order Bottled" value={preview.native_order_bottled ? 'Yes' : 'No'} tone={preview.native_order_bottled ? 'success' : 'warning'} />
+            <StatCard label="Customer Status" value={currentStatus ? formatLabel(currentStatus) : 'Unknown'} />
+            <StatCard label="Proposed Status" value={proposedStatus ? formatLabel(proposedStatus) : 'Held'} tone={statusReady ? 'success' : 'warning'} />
+            <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={preview?.safety?.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+            <StatusChip value={statusReady ? 'Status-only path preview-ready' : 'Status update not ready'} />
+            <StatusChip value={statusHeld ? 'Customer status held' : 'Customer status hold unknown'} />
+            <StatusChip value={notificationHeld ? 'Notifications held' : 'Notification hold unknown'} />
+            <StatusChip value={notificationPreview.status_only_path_available_without_notification ? 'No-notification status path' : 'Notification policy review needed'} />
+            <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Order context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.order_number ? `Order ${preview.order_number}` : null,
+                  preview.customer_app_order_present ? 'Customer order present' : 'Customer order missing',
+                  preview.native_shopify_order_present ? 'Native order present' : 'Native order missing',
+                  preview.native_fulfillment_task_present ? 'Native task present' : 'Native task missing',
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Next action</p>
+              <p className="mt-1 text-xs text-foreground">{formatLabel(preview.next_action)}</p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Notification path</p>
+              <p className="mt-1 text-xs text-foreground">
+                {notificationPreview.automatic_notification_would_send_if_status_updated ? 'Auto-send risk if status updated' : 'No auto-send projected'} · {notificationPreview.proposed_notification_subtype ? formatLabel(notificationPreview.proposed_notification_subtype) : 'No subtype configured'}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-emerald-950">Customer-facing status preview</p>
+              <p className="text-[10px] text-emerald-900">
+                {[
+                  currentStatus ? `Current ${formatLabel(currentStatus)}` : 'Current status unknown',
+                  proposedStatus ? `Proposed ${formatLabel(proposedStatus)}` : 'Proposed status held',
+                  statusImpact.customer_order_type ? `Type ${formatLabel(statusImpact.customer_order_type)}` : null,
+                  statusImpact.fulfillment_mode ? `Mode ${formatLabel(statusImpact.fulfillment_mode)}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={statusReady ? 'Status-only command can be planned' : statusImpact.status_update_already_satisfied ? 'Status already satisfied' : 'Status update held'} />
+                <StatusChip value={historyPreview.would_append ? 'Status history preview generated' : 'No status history append now'} />
+                <StatusChip value="No Customer App Order write now" />
+                <StatusChip value="Customer-facing change held" />
+              </div>
+              {historyPreview.preview_entry && (
+                <p className="text-[10px] text-emerald-900">
+                  Preview history entry: {formatLabel(historyPreview.preview_entry.status)} · {sanitizeAdminText(historyPreview.preview_entry.message)}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-cyan-950">Notification impact preview</p>
+              <p className="text-[10px] text-cyan-900">
+                {notificationPreview.notes || 'Notification impact remains held.'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={notificationPreview.notification_would_send ? 'Would send notification' : 'No notification sent'} />
+                <StatusChip value={notificationPreview.automatic_notification_would_send_if_status_updated ? 'Auto-send risk' : 'Auto-send not projected'} />
+                <StatusChip value={notificationPreview.notification_held ? 'Notification held' : 'Notification hold unknown'} />
+                <StatusChip value="Push/SMS/email/in-app held" />
+              </div>
+              <p className="text-[10px] text-cyan-900">
+                Existing notification rows: {formatNumber(notificationPreview.existing_notification_count_for_order)} · Existing message logs: {formatNumber(notificationPreview.existing_message_log_count_for_order)}
+              </p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Impact blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.map(blocker => <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No impact blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Impact warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.slice(0, 16).map(warning => <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NativeProductionMasterDataParityPreview({
   preview,
   isRunning,
@@ -2244,6 +2420,9 @@ export default function SyncHealth() {
   const [postVerifyCascadePreview, setPostVerifyCascadePreview] = useState(null);
   const [postVerifyCascadePreviewError, setPostVerifyCascadePreviewError] = useState('');
   const [isPostVerifyCascadePreviewRunning, setIsPostVerifyCascadePreviewRunning] = useState(false);
+  const [customerStatusImpactPreview, setCustomerStatusImpactPreview] = useState(null);
+  const [customerStatusImpactPreviewError, setCustomerStatusImpactPreviewError] = useState('');
+  const [isCustomerStatusImpactPreviewRunning, setIsCustomerStatusImpactPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -2363,6 +2542,10 @@ export default function SyncHealth() {
     setDemandMaterializationPreviewError('');
     setProductionLifecyclePreview(null);
     setProductionLifecyclePreviewError('');
+    setPostVerifyCascadePreview(null);
+    setPostVerifyCascadePreviewError('');
+    setCustomerStatusImpactPreview(null);
+    setCustomerStatusImpactPreviewError('');
   };
 
   const runNativePilotApprovalPreview = async () => {
@@ -2482,6 +2665,30 @@ export default function SyncHealth() {
       setPostVerifyCascadePreviewError(previewError?.message || 'Unable to run native post-verify cascade preview.');
     } finally {
       setIsPostVerifyCascadePreviewRunning(false);
+    }
+  };
+
+  const runCustomerStatusNotificationImpactPreview = async () => {
+    setCustomerStatusImpactPreviewError('');
+    setIsCustomerStatusImpactPreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for customer status / notification impact preview.');
+      }
+      const res = await base44.functions.invoke('previewNativeCustomerStatusNotificationImpact', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Customer status / notification impact preview failed.');
+      }
+      setCustomerStatusImpactPreview(result);
+    } catch (previewError) {
+      setCustomerStatusImpactPreviewError(previewError?.message || 'Unable to run customer status / notification impact preview.');
+    } finally {
+      setIsCustomerStatusImpactPreviewRunning(false);
     }
   };
 
@@ -2711,6 +2918,14 @@ export default function SyncHealth() {
           error={postVerifyCascadePreviewError}
           orderNumber={cutoverOrderNumber}
           onRun={runNativePostVerifyCascadePreview}
+        />
+
+        <CustomerStatusNotificationImpactPreview
+          preview={customerStatusImpactPreview}
+          isRunning={isCustomerStatusImpactPreviewRunning}
+          error={customerStatusImpactPreviewError}
+          orderNumber={cutoverOrderNumber}
+          onRun={runCustomerStatusNotificationImpactPreview}
         />
 
         <NativeProductionMasterDataParityPreview
