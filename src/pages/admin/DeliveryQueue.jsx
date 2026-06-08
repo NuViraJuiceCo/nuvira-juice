@@ -1617,6 +1617,8 @@ export default function DeliveryQueue() {
   const deliveryStops = data?.sections?.delivery_stops || [];
   const completedStops = data?.sections?.completed || [];
   const unscheduledStops = data?.sections?.unscheduled_delivery_orders || [];
+  const hubFallbackReconciliation = data?.hub_fallback_reconciliation || {};
+  const suppressedHubRows = hubFallbackReconciliation.suppressed_hub_rows || [];
   const hasRows = deliveryStops.length > 0 || completedStops.length > 0 || unscheduledStops.length > 0;
 
   async function refreshDeliveryActionSummaries() {
@@ -1708,6 +1710,40 @@ export default function DeliveryQueue() {
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        {suppressedHubRows.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-semibold text-amber-950">Hub fallback stale-date context</p>
+                <p className="text-[10px] text-amber-900">
+                  Native corrected schedule rows are preferred. Stale or duplicate Hub fallback rows are not shown as separate active delivery stops for this date, but remain visible here for audit context.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200">
+                {formatLabel(hubFallbackReconciliation.merge_status)}
+              </span>
+              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200">
+                Suppressed Hub rows: {suppressedHubRows.length}
+              </span>
+              {hubFallbackReconciliation.stale_hub_fallback_detected && (
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200">
+                  Hub fallback stale date detected
+                </span>
+              )}
+            </div>
+            <div className="space-y-1">
+              {suppressedHubRows.slice(0, 5).map(row => (
+                <p key={`${row.order_number}-${row.hub_delivery_date}-${row.native_delivery_date}`} className="text-[10px] text-amber-900">
+                  {row.order_number}: Hub {row.hub_delivery_date || 'date pending'} → native {row.native_delivery_date || 'date pending'} · {formatLabel(row.merge_status)}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
 
         <May30ReadinessPanel
           title="Fulfillment / delivery ops"

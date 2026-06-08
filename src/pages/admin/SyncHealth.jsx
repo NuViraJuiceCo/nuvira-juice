@@ -1872,6 +1872,185 @@ function ScheduleExceptionCorrectionPreview({
   );
 }
 
+function NativeDeliveryWorkflowReadinessPreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onRun,
+}) {
+  const exactOrderNumber = orderNumber?.trim();
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const nativeRow = preview?.native_delivery_row || {};
+  const hubRows = Array.isArray(preview?.stale_hub_fallback_rows) ? preview.stale_hub_fallback_rows : [];
+  const outPreview = preview?.out_for_delivery_preview || {};
+  const deliveredPreview = preview?.delivered_preview || {};
+  const customerImpact = preview?.customer_status_impact_preview || {};
+  const notificationImpact = preview?.notification_impact_preview || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Native Delivery Workflow Readiness Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G32F read-only preview for native delivery workflow readiness and stale Hub fallback date context. This panel does not mark Out For Delivery, mark Delivered, update delivery status, append status history, send notifications, write proof/drop/route data, sync, repair, or mutate records.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning || !exactOrderNumber}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning || !exactOrderNumber
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Delivery Workflow Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Preview only. Out For Delivery and Delivered lifecycle commands remain separate, exact-gated planning items. Customer status, notifications, Hub fallback, proof/drop/route, and delivery status remain held.
+      </div>
+
+      {!exactOrderNumber && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Enter the exact target order number above before running the delivery workflow readiness preview.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard label="Native Task" value={preview.native_task_present ? 'Present' : 'Missing'} tone={preview.native_task_present ? 'success' : 'warning'} />
+            <StatCard label="Delivery Date" value={preview.delivery_date || 'Unknown'} />
+            <StatCard label="Hub Fallback" value={preview.hub_task_present ? 'Present' : 'Not found'} tone={preview.stale_hub_fallback_detected ? 'warning' : 'success'} />
+            <StatCard label="Out For Delivery" value={outPreview.out_for_delivery_ready ? 'Ready / Held' : 'Held'} tone={outPreview.out_for_delivery_ready ? 'success' : 'warning'} />
+            <StatCard label="Delivered" value={deliveredPreview.delivered_ready ? 'Ready' : 'Held'} tone="warning" />
+            <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={preview?.safety?.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+            <StatusChip value={preview.route_summary_merge_status ? formatLabel(preview.route_summary_merge_status) : 'Route merge not returned'} />
+            <StatusChip value={preview.stale_hub_fallback_detected ? 'Hub fallback stale date detected' : 'No stale Hub fallback detected'} />
+            <StatusChip value={preview.customer_status_held ? 'Customer status held' : 'Customer status unknown'} />
+            <StatusChip value={preview.notifications_held ? 'Notifications held' : 'Notifications unknown'} />
+            <StatusChip value="Proof/drop/route held" />
+            <StatusChip value="Hub fallback active" />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native delivery row</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  nativeRow.task_id ? `Task ${nativeRow.task_id}` : null,
+                  nativeRow.delivery_date ? `Delivery ${nativeRow.delivery_date}` : null,
+                  nativeRow.task_status ? `Task ${formatLabel(nativeRow.task_status)}` : null,
+                  nativeRow.delivery_status ? `Delivery ${formatLabel(nativeRow.delivery_status)}` : null,
+                ].filter(Boolean).join(' · ') || 'Not returned'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Hub fallback context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {hubRows.length > 0
+                  ? hubRows.map(row => `Hub ${row.delivery_date || 'date pending'} vs native ${nativeRow.delivery_date || 'date pending'}`).join(' · ')
+                  : 'No stale Hub fallback row returned.'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Next action</p>
+              <p className="mt-1 text-xs text-foreground">{formatLabel(preview.next_action)}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-emerald-950">Out For Delivery preview</p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={outPreview.out_for_delivery_ready ? 'Preview-ready' : 'Not ready'} />
+                <StatusChip value={outPreview.out_for_delivery_held ? 'Held pending command approval' : 'Hold unknown'} />
+                <StatusChip value={outPreview.command_gated ? 'Command gated' : 'Command not exposed'} />
+                <StatusChip value={outPreview.would_update_native_fulfillment_task ? `Would propose ${formatLabel(outPreview.proposed_delivery_status)}` : 'No delivery write now'} />
+                <StatusChip value={outPreview.would_send_notification ? 'Would notify' : 'No notification now'} />
+              </div>
+              {Array.isArray(outPreview.blockers) && outPreview.blockers.length > 0 && (
+                <p className="text-[10px] text-emerald-900">Blockers: {outPreview.blockers.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}</p>
+              )}
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-amber-950">Delivered preview</p>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip value={deliveredPreview.delivered_held ? 'Delivered held' : 'Delivered state unknown'} />
+                <StatusChip value={deliveredPreview.proof_drop_policy_required ? 'Proof/drop policy required' : 'Proof policy unknown'} />
+                <StatusChip value={deliveredPreview.route_completion_policy_required ? 'Route policy required' : 'Route policy unknown'} />
+                <StatusChip value={deliveredPreview.would_send_notification ? 'Would notify' : 'No notification now'} />
+              </div>
+              {Array.isArray(deliveredPreview.blockers) && deliveredPreview.blockers.length > 0 && (
+                <p className="text-[10px] text-amber-900">Blockers: {deliveredPreview.blockers.map(item => formatLabel(sanitizeAdminText(item))).join(', ')}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Customer status impact</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                Current customer status: {formatLabel(customerImpact.current_customer_order_status)} · Customer-facing delivery status held: {customerImpact.customer_facing_status_changes_held ? 'yes' : 'unknown'} · Status history append held: {customerImpact.status_history_append_held ? 'yes' : 'unknown'}.
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-xs font-bold text-foreground">Notification impact</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                Would send notification: {notificationImpact.would_send_notification ? 'yes' : 'no'} · Channels held: {(notificationImpact.notification_channels_held || []).map(item => formatLabel(item)).join(', ') || 'not returned'}.
+              </p>
+            </div>
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Delivery blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.map(blocker => <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No top-level delivery blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.slice(0, 16).map(warning => <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NativeProductionMasterDataParityPreview({
   preview,
   isRunning,
@@ -2589,6 +2768,9 @@ export default function SyncHealth() {
   const [scheduleExceptionPreview, setScheduleExceptionPreview] = useState(null);
   const [scheduleExceptionPreviewError, setScheduleExceptionPreviewError] = useState('');
   const [isScheduleExceptionPreviewRunning, setIsScheduleExceptionPreviewRunning] = useState(false);
+  const [deliveryWorkflowPreview, setDeliveryWorkflowPreview] = useState(null);
+  const [deliveryWorkflowPreviewError, setDeliveryWorkflowPreviewError] = useState('');
+  const [isDeliveryWorkflowPreviewRunning, setIsDeliveryWorkflowPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -2714,6 +2896,8 @@ export default function SyncHealth() {
     setCustomerStatusImpactPreviewError('');
     setScheduleExceptionPreview(null);
     setScheduleExceptionPreviewError('');
+    setDeliveryWorkflowPreview(null);
+    setDeliveryWorkflowPreviewError('');
   };
 
   const runNativePilotApprovalPreview = async () => {
@@ -2889,6 +3073,35 @@ export default function SyncHealth() {
       setScheduleExceptionPreviewError(previewError?.message || 'Unable to run schedule exception correction preview.');
     } finally {
       setIsScheduleExceptionPreviewRunning(false);
+    }
+  };
+
+  const runNativeDeliveryWorkflowReadinessPreview = async () => {
+    setDeliveryWorkflowPreviewError('');
+    setIsDeliveryWorkflowPreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for delivery workflow readiness preview.');
+      }
+      const res = await base44.functions.invoke('previewNativeDeliveryWorkflowReadiness', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+        customer_app_order_id: '6a219a3f4adcda5856c3d579',
+        native_shopify_order_id: '6a22ffda400eb806eb3ca945',
+        native_fulfillment_task_id: '6a22ffdaf675ea79e30575aa',
+        delivery_date: '2026-06-08',
+        production_date: '2026-06-07',
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Native delivery workflow readiness preview failed.');
+      }
+      setDeliveryWorkflowPreview(result);
+    } catch (previewError) {
+      setDeliveryWorkflowPreviewError(previewError?.message || 'Unable to run native delivery workflow readiness preview.');
+    } finally {
+      setIsDeliveryWorkflowPreviewRunning(false);
     }
   };
 
@@ -3134,6 +3347,14 @@ export default function SyncHealth() {
           error={scheduleExceptionPreviewError}
           orderNumber={cutoverOrderNumber}
           onRun={runScheduleExceptionCorrectionPreview}
+        />
+
+        <NativeDeliveryWorkflowReadinessPreview
+          preview={deliveryWorkflowPreview}
+          isRunning={isDeliveryWorkflowPreviewRunning}
+          error={deliveryWorkflowPreviewError}
+          orderNumber={cutoverOrderNumber}
+          onRun={runNativeDeliveryWorkflowReadinessPreview}
         />
 
         <NativeProductionMasterDataParityPreview
