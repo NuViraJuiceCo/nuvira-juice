@@ -1093,6 +1093,9 @@ function NativeProductionLifecyclePreview({
   const verifyPreview = preview?.verify_preview || {};
   const compliancePreview = preview?.compliance_preview || {};
   const cascadePreview = preview?.cascade_preview || {};
+  const completionRequiredFields = Array.isArray(preview?.completion_required_fields) ? preview.completion_required_fields : ['actual_units'];
+  const completionPreviewReady = Boolean(preview?.completion_preview_ready);
+  const actualUnitsSuppliedCount = Number(preview?.actual_units_supplied_count || 0);
   const safety = preview?.safety || {};
 
   return (
@@ -1194,7 +1197,12 @@ function NativeProductionLifecyclePreview({
             <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
               <p className="text-xs font-bold text-cyan-950">Complete preview</p>
               <p className="mt-1 text-[10px] text-cyan-900">{formatNumber(completePreview.ready_count)} ready · {formatNumber(completePreview.blocked_count)} blocked</p>
-              <p className="mt-2 text-[10px] text-cyan-900">Actual units and completion data are required before completion can pass.</p>
+              <p className="mt-2 text-[10px] text-cyan-900">
+                G31R v1 completion requires exact actual units for every batch. Supplied in this preview: {formatNumber(actualUnitsSuppliedCount)}. Required fields: {completionRequiredFields.map(item => formatLabel(item)).join(', ')}.
+              </p>
+              <p className="mt-1 text-[10px] text-cyan-900">
+                {completionPreviewReady ? 'Completion preview would be ready with the supplied actual units.' : 'Completion remains held until actual units are supplied and a separate live command is approved.'}
+              </p>
             </div>
             <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
               <p className="text-xs font-bold text-cyan-950">Verify / compliance preview</p>
