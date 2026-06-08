@@ -866,7 +866,6 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
 
   if (ingredients.ingredientRows.some(row => row.procurement_needed)) warnings.push('inventory_shortfall_procurement_needed');
   warnings.push('hub_fallback_required');
-  warnings.push('native_production_batch_not_created');
   warnings.push('inventory_deduction_held');
   warnings.push('purchase_order_automation_held');
 
