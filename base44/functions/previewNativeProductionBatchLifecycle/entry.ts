@@ -76,6 +76,11 @@ function isPositiveNumber(value) {
   return numberValue !== null && numberValue > 0;
 }
 
+function isNonNegativeNumber(value) {
+  const numberValue = safeNumber(value);
+  return numberValue !== null && numberValue >= 0;
+}
+
 function safeStringArray(value, maxLength = 120) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, SAFE_ARRAY_LIMIT).map((item) => sanitizeText(item, maxLength)).filter(Boolean);
@@ -94,6 +99,53 @@ function parseRequestedBatchIds(value) {
   const text = normalizeText(value);
   if (!text) return [];
   return uniqueStrings(text.split(',').map(item => item.trim()), 180);
+}
+
+function parseActualUnitsPreviewMap(body) {
+  const sources = [
+    body?.batch_actual_units,
+    body?.actual_units_by_batch_id,
+  ];
+  const source = sources.find(item => item && typeof item === 'object' && !Array.isArray(item)) || {};
+  const actualUnitsByBatchId = {};
+  const actualUnitsBlockers = [];
+  for (const [rawBatchId, rawUnits] of Object.entries(source)) {
+    const batchId = sanitizeId(rawBatchId, 180);
+    if (!batchId) {
+      actualUnitsBlockers.push('invalid_actual_units_batch_id');
+      continue;
+    }
+    const units = safeNumber(rawUnits);
+    if (units === null || units < 0) {
+      actualUnitsBlockers.push(`invalid_actual_units:${batchId}`);
+      continue;
+    }
+    actualUnitsByBatchId[batchId] = units;
+  }
+
+  const productSource = body?.actual_units_by_product_name;
+  const actualUnitsByProductName = {};
+  if (productSource && typeof productSource === 'object' && !Array.isArray(productSource)) {
+    for (const [rawProductName, rawUnits] of Object.entries(productSource)) {
+      const productName = sanitizeText(rawProductName, 120);
+      if (!productName) {
+        actualUnitsBlockers.push('invalid_actual_units_product_name');
+        continue;
+      }
+      const units = safeNumber(rawUnits);
+      if (units === null || units < 0) {
+        actualUnitsBlockers.push(`invalid_actual_units:${productName}`);
+        continue;
+      }
+      actualUnitsByProductName[normalizeLower(productName)] = units;
+    }
+  }
+
+  return {
+    actualUnitsByBatchId,
+    actualUnitsByProductName,
+    actualUnitsBlockers: uniqueStrings(actualUnitsBlockers),
+  };
 }
 
 function getPreviewSecret() {
@@ -147,6 +199,7 @@ async function requirePreviewAccess({ base44, req, body }) {
 }
 
 function getLookup(body) {
+  const actualUnitsPreview = parseActualUnitsPreviewMap(body || {});
   return {
     orderId: normalizeText(body?.customer_app_order_id || body?.base44_order_id || body?.order_id),
     nativeOrderId: normalizeText(body?.native_shopify_order_id || body?.native_order_id || body?.shopify_order_id),
@@ -155,6 +208,7 @@ function getLookup(body) {
     productionDate: normalizeText(body?.production_date || body?.expected_production_date),
     requestId: normalizeText(body?.request_id),
     batchIds: parseRequestedBatchIds(body?.batch_ids || body?.batch_id || body?.production_batch_ids || body?.production_batch_id),
+    ...actualUnitsPreview,
   };
 }
 
@@ -311,6 +365,10 @@ function buildBaseSummary(batch) {
     is_locked: batch.is_locked === true,
     planned_units: safeNumber(batch.planned_units),
     actual_units: safeNumber(batch.actual_units),
+    actual_start_time: sanitizeText(batch.actual_start_time, 80) || null,
+    actual_end_time: sanitizeText(batch.actual_end_time, 80) || null,
+    started_by: sanitizeText(batch.started_by, 120) || null,
+    completed_by: sanitizeText(batch.completed_by, 120) || null,
     order_sources_count: orderSources.length,
     safe_order_source_summaries: safeOrderSourceSummaries(orderSources),
     ingredients_used_count: ingredients.length,
@@ -406,18 +464,10 @@ function planComplete({ batch, actorEmail, requestId, now, completionInput }) {
   if (batch.compliance_log_id || batch.verified_at || batch.verified_by) blockers.push('already_verified_logged');
 
   const actualUnits = completionInput.actual_units ?? completionInput.actual_quantity_produced ?? batch.actual_units;
-  if (!isPositiveNumber(actualUnits)) blockers.push('missing_actual_units');
+  if (!isNonNegativeNumber(actualUnits)) blockers.push('missing_actual_units');
 
-  const bottlesProduced = safeNumber(completionInput.bottles_produced ?? batch.bottles_produced);
-  const bottlesRejectedOrWasted = safeNumber(completionInput.bottles_rejected_or_wasted ?? batch.bottles_rejected_or_wasted);
-  const finalUsableQuantity = safeNumber(completionInput.final_usable_quantity ?? batch.final_usable_quantity);
-  const storageLocation = sanitizeText(completionInput.storage_location ?? batch.storage_location, 120);
-  const useByDate = sanitizeText(completionInput.use_by_date ?? batch.use_by_date, 40);
-
-  if (bottlesProduced === null) warnings.push('bottles_produced_not_provided');
-  if (finalUsableQuantity === null) warnings.push('final_usable_quantity_not_provided');
-  if (!storageLocation) warnings.push('storage_location_not_provided');
-  if (!useByDate) warnings.push('use_by_date_not_provided');
+  warnings.push('completion_v1_actual_units_only');
+  warnings.push('qc_compliance_fields_deferred_to_verify');
   if (!Array.isArray(batch.ingredients_used) || batch.ingredients_used.length === 0) warnings.push('ingredients_used_not_present_inventory_deduction_held');
   if (batch.procurement_needed === true) warnings.push('procurement_needed_does_not_block_completion_preview');
   if (normalizeLower(batch.inventory_deduction_status || batch.ingredient_usage_status).includes('held')) warnings.push('inventory_deduction_held');
@@ -427,11 +477,6 @@ function planComplete({ batch, actorEmail, requestId, now, completionInput }) {
     actual_end_time: now,
     completed_by: sanitizeText(actorEmail, 120) || 'native_preview_actor',
     actual_units: Number(actualUnits),
-    ...(bottlesProduced !== null ? { bottles_produced: bottlesProduced } : {}),
-    ...(bottlesRejectedOrWasted !== null ? { bottles_rejected_or_wasted: bottlesRejectedOrWasted } : {}),
-    ...(finalUsableQuantity !== null ? { final_usable_quantity: finalUsableQuantity } : {}),
-    ...(storageLocation ? { storage_location: storageLocation } : {}),
-    ...(useByDate ? { use_by_date: useByDate } : {}),
     audit_trail_append: {
       timestamp: now,
       action: 'production_batch_complete',
@@ -708,15 +753,24 @@ function verifyStateFor({ batch, verifyBlockers }) {
   return 'verify_blocked';
 }
 
-function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceLogs }) {
+function completionInputForBatch(batch, lookup) {
+  const batchId = sanitizeId(batch?.batch_id, 180);
+  const productName = normalizeLower(batch?.product_name);
+  const actualUnits = lookup?.actualUnitsByBatchId?.[batchId] ?? lookup?.actualUnitsByProductName?.[productName];
+  return actualUnits === undefined ? {} : { actual_units: actualUnits };
+}
+
+function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceLogs, lookup }) {
+  const completionInput = completionInputForBatch(batch, lookup);
   const startPlan = planStart({ batch, actorEmail, requestId, now });
-  const completePlan = planComplete({ batch, actorEmail, requestId, now, completionInput: {} });
+  const completePlan = planComplete({ batch, actorEmail, requestId, now, completionInput });
   const verifyPlan = planVerify({ batch, actorEmail, requestId, now, verificationInput: {} });
   const startBlockers = uniqueStrings(startPlan.blockers);
   const completeBlockers = uniqueStrings(completePlan.blockers);
   const verifyBlockers = uniqueStrings(verifyPlan.blockers);
   const lifecycleWarnings = uniqueStrings([...startPlan.warnings, ...completePlan.warnings, ...verifyPlan.warnings]);
   const classification = classifyLifecycle({ batch, startPlan, completePlan, verifyPlan });
+  const completionActualUnits = safeNumber(completionInput.actual_units);
 
   return {
     ...buildBaseSummary(batch),
@@ -726,6 +780,10 @@ function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceL
     start_state: startStateFor({ batch, startBlockers }),
     complete_state: completeStateFor({ batch, completeBlockers }),
     verify_state: verifyStateFor({ batch, verifyBlockers }),
+    completion_actual_units_preview: completionActualUnits,
+    completion_required_fields: ['actual_units'],
+    completion_optional_fields: [],
+    completion_data_contract: 'exact_batch_actual_units_only',
     can_start: startBlockers.length === 0,
     can_complete: completeBlockers.length === 0,
     can_verify: verifyBlockers.length === 0,
@@ -843,6 +901,9 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
   if (!task && lookup.batchIds.length === 0) warnings.push('native_fulfillment_task_missing_or_not_required_for_batch_only_preview');
   if (!productionDate) warnings.push('production_date_missing_or_inferred_from_batches');
   if (!Array.isArray(batches) || batches.length === 0) blockers.push('native_production_batches_not_found');
+  if (Array.isArray(lookup.actualUnitsBlockers) && lookup.actualUnitsBlockers.length > 0) {
+    blockers.push(...lookup.actualUnitsBlockers);
+  }
 
   const rows = (batches || []).map(batch => buildBatchLifecycleRow({
     batch,
@@ -850,6 +911,7 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     requestId: lookup.requestId,
     now,
     complianceLogs,
+    lookup,
   }));
 
   if (rows.some(row => row.is_locked)) warnings.push('one_or_more_batches_locked');
@@ -865,12 +927,27 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
   const verifyPreview = summarizeAction(rows, 'verify');
   const compliancePreview = buildCompliancePreview(rows, complianceLogs);
   const cascadePreview = buildCascadePreview({ rows, nativeOrder, task });
+  const completionRows = rows.map(row => ({
+    batch_id: row.batch_id || row.production_batch_id,
+    product_name: row.product_name,
+    current_status: row.current_status,
+    complete_state: row.complete_state,
+    can_complete: row.can_complete,
+    actual_start_time_present: Boolean(row.actual_start_time),
+    actual_units_preview: row.completion_actual_units_preview,
+    required_fields: row.completion_required_fields || ['actual_units'],
+    projected_writes_if_later_approved: row.expected_complete_writes_if_approved || [],
+    blockers: row.complete_blockers || [],
+    warnings: row.lifecycle_warnings || [],
+  }));
+  const completionPreviewReady = rows.length > 0 && completePreview.ready_count === rows.length && blockers.length === 0;
+  const actualUnitsSuppliedCount = rows.filter(row => safeNumber(row.completion_actual_units_preview) !== null).length;
   const nextAction = blockers.length > 0
     ? 'hold_lifecycle_preview_blockers'
     : startPreview.ready_count > 0
       ? 'plan_gated_native_start_production_command'
       : completePreview.ready_count > 0
-        ? 'plan_gated_native_complete_production_command'
+        ? 'plan_gated_native_complete_production_command_with_actual_units'
         : verifyPreview.ready_count > 0
           ? 'plan_gated_native_verify_production_command'
           : rows.some(row => row.start_state === 'already_started')
@@ -897,6 +974,14 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     batch_lifecycle_rows: rows,
     start_preview: startPreview,
     complete_preview: completePreview,
+    completion_preview_ready: completionPreviewReady,
+    complete_ready_count: completePreview.ready_count,
+    complete_blocked_count: completePreview.blocked_count,
+    actual_units_supplied_count: actualUnitsSuppliedCount,
+    completion_required_fields: ['actual_units'],
+    completion_optional_fields: [],
+    completion_data_contract: 'exact_batch_actual_units_only',
+    completion_rows: completionRows,
     verify_preview: verifyPreview,
     compliance_preview: compliancePreview,
     cascade_preview: cascadePreview,
