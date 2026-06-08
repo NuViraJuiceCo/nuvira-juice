@@ -1560,7 +1560,7 @@ function CustomerStatusNotificationImpactPreview({
           <div>
             <h2 className="text-sm font-bold text-foreground">Customer Status / Notification Impact Preview</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              G32C read-only preview for customer-facing status and notification impact after native production verify, task pack, and order bottle. This panel does not update Customer App Order, append status history, create notifications, send push/SMS/email/in-app messages, sync, repair, or mutate records.
+              G32C/G32D read-only preview for customer-facing status and notification impact after native production verify, task pack, and order bottle. It also shows whether the status-only command is available but gated. This panel does not update Customer App Order, append status history, create notifications, send push/SMS/email/in-app messages, sync, repair, or mutate records.
             </p>
           </div>
         </div>
@@ -1611,6 +1611,9 @@ function CustomerStatusNotificationImpactPreview({
             <StatusChip value={statusHeld ? 'Customer status held' : 'Customer status hold unknown'} />
             <StatusChip value={notificationHeld ? 'Notifications held' : 'Notification hold unknown'} />
             <StatusChip value={notificationPreview.status_only_path_available_without_notification ? 'No-notification status path' : 'Notification policy review needed'} />
+            <StatusChip value={preview.status_command_available ? 'Status-only command available but gated' : 'Status command not available'} />
+            <StatusChip value={`Notification policy: ${sanitizeAdminText(preview.notification_policy_required || 'NO_NOTIFICATION')}`} />
+            <StatusChip value={preview.status_requires_exact_approval ? 'Exact approval required' : 'Exact approval held'} />
             <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
           </div>
 
@@ -1651,6 +1654,8 @@ function CustomerStatusNotificationImpactPreview({
               </p>
               <div className="flex flex-wrap gap-2">
                 <StatusChip value={statusReady ? 'Status-only command can be planned' : statusImpact.status_update_already_satisfied ? 'Status already satisfied' : 'Status update held'} />
+                <StatusChip value={preview.status_command_gated ? 'Status command gated' : 'Status command gate unknown'} />
+                <StatusChip value={preview.notification_policy_required === 'NO_NOTIFICATION' ? 'NO_NOTIFICATION required' : 'Notification policy review'} />
                 <StatusChip value={historyPreview.would_append ? 'Status history preview generated' : 'No status history append now'} />
                 <StatusChip value="No Customer App Order write now" />
                 <StatusChip value="Customer-facing change held" />
