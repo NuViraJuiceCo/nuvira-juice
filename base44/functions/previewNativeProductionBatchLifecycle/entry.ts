@@ -209,6 +209,7 @@ function getLookup(body) {
     requestId: normalizeText(body?.request_id),
     batchIds: parseRequestedBatchIds(body?.batch_ids || body?.batch_id || body?.production_batch_ids || body?.production_batch_id),
     ...actualUnitsPreview,
+    ...parseVerificationPreviewData(body || {}),
   };
 }
 
@@ -501,8 +502,75 @@ function planComplete({ batch, actorEmail, requestId, now, completionInput }) {
 }
 
 function normalizePassFail(value) {
+  if (value === true) return 'passed';
+  if (value === false) return 'failed';
   const text = normalizeLower(value);
-  return ['passed', 'failed'].includes(text) ? text : '';
+  if (['passed', 'pass', 'true', 'yes', 'ok'].includes(text)) return 'passed';
+  if (['failed', 'fail', 'false', 'no'].includes(text)) return 'failed';
+  return '';
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+function firstOwnValue(object, keys) {
+  const source = safeObject(object);
+  for (const key of keys) {
+    if (hasOwn(source, key)) return source[key];
+  }
+  return undefined;
+}
+
+function normalizeVerificationInput(source, label, blockers) {
+  const input = safeObject(source);
+  const normalized = {};
+  const pHResultRaw = firstOwnValue(input, ['pH_result', 'ph_result', 'ph_value']);
+  if (pHResultRaw !== undefined) {
+    const pHResult = safeNumber(pHResultRaw);
+    if (pHResult === null) blockers.push(`invalid_ph_result:${label}`);
+    else normalized.pH_result = pHResult;
+  }
+
+  const pHStatusRaw = firstOwnValue(input, ['pH_passed_failed', 'ph_passed_failed', 'pH_passed', 'ph_passed']);
+  if (pHStatusRaw !== undefined) {
+    const pHStatus = normalizePassFail(pHStatusRaw);
+    if (!pHStatus) blockers.push(`invalid_ph_pass_fail:${label}`);
+    else normalized.pH_passed_failed = pHStatus;
+  }
+
+  const batchStatusRaw = firstOwnValue(input, ['passed_failed', 'batch_passed_failed', 'batch_passed']);
+  if (batchStatusRaw !== undefined) {
+    const batchStatus = normalizePassFail(batchStatusRaw);
+    if (!batchStatus) blockers.push(`invalid_batch_pass_fail:${label}`);
+    else normalized.passed_failed = batchStatus;
+  }
+
+  const verificationNotes = sanitizeText(input.verification_notes || input.notes, 600);
+  if (verificationNotes) normalized.verification_notes = verificationNotes;
+  if (Array.isArray(input.staff_on_duty)) normalized.staff_on_duty = safeStringArray(input.staff_on_duty, 120);
+  if (input.corrective_action_required === true) normalized.corrective_action_required = true;
+  return normalized;
+}
+
+function parseVerificationPreviewData(body) {
+  const blockers = [];
+  const globalInput = normalizeVerificationInput(body?.verification_data, 'global', blockers);
+  const byBatchSource = safeObject(body?.verification_data_by_batch_id || body?.verification_data_by_batch || body?.batch_verification_data);
+  const verificationDataByBatchId = {};
+  for (const [rawBatchId, rawData] of Object.entries(byBatchSource)) {
+    const batchId = sanitizeId(rawBatchId, 180);
+    if (!batchId) {
+      blockers.push('invalid_verification_data_batch_id');
+      continue;
+    }
+    verificationDataByBatchId[batchId] = normalizeVerificationInput(rawData, batchId, blockers);
+  }
+  return {
+    verificationData: globalInput,
+    verificationDataByBatchId,
+    verificationDataBlockers: uniqueStrings(blockers),
+  };
 }
 
 function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
@@ -518,8 +586,8 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
   if (batch.compliance_log_id || batch.verified_at || batch.verified_by) blockers.push('already_verified_logged');
 
   const pHResult = verificationInput.pH_result ?? verificationInput.ph_result ?? verificationInput.ph_value ?? batch.pH_result;
-  const pHStatus = normalizePassFail(verificationInput.pH_passed_failed ?? verificationInput.ph_passed_failed ?? batch.pH_passed_failed);
-  const passedFailed = normalizePassFail(verificationInput.passed_failed ?? batch.passed_failed);
+  const pHStatus = normalizePassFail(verificationInput.pH_passed_failed ?? verificationInput.ph_passed_failed ?? verificationInput.pH_passed ?? verificationInput.ph_passed ?? batch.pH_passed_failed);
+  const passedFailed = normalizePassFail(verificationInput.passed_failed ?? verificationInput.batch_passed_failed ?? verificationInput.batch_passed ?? batch.passed_failed);
   const staffOnDuty = Array.isArray(verificationInput.staff_on_duty)
     ? verificationInput.staff_on_duty
     : (Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty : []);
@@ -772,11 +840,31 @@ function completionInputForBatch(batch, lookup) {
   return actualUnits === undefined ? {} : { actual_units: actualUnits };
 }
 
+function verificationInputForBatch(batch, lookup) {
+  const batchId = sanitizeId(batch?.batch_id, 180);
+  return {
+    ...safeObject(lookup?.verificationData),
+    ...safeObject(lookup?.verificationDataByBatchId?.[batchId]),
+  };
+}
+
+function safeVerificationPreviewSummary(input) {
+  const source = safeObject(input);
+  return {
+    pH_result: safeNumber(source.pH_result),
+    pH_passed_failed: normalizePassFail(source.pH_passed_failed),
+    passed_failed: normalizePassFail(source.passed_failed),
+    verification_notes_present: Boolean(source.verification_notes),
+    staff_on_duty_count: Array.isArray(source.staff_on_duty) ? source.staff_on_duty.length : 0,
+  };
+}
+
 function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceLogs, lookup }) {
   const completionInput = completionInputForBatch(batch, lookup);
+  const verificationInput = verificationInputForBatch(batch, lookup);
   const startPlan = planStart({ batch, actorEmail, requestId, now });
   const completePlan = planComplete({ batch, actorEmail, requestId, now, completionInput });
-  const verifyPlan = planVerify({ batch, actorEmail, requestId, now, verificationInput: {} });
+  const verifyPlan = planVerify({ batch, actorEmail, requestId, now, verificationInput });
   const startBlockers = uniqueStrings(startPlan.blockers);
   const completeBlockers = uniqueStrings(completePlan.blockers);
   const verifyBlockers = uniqueStrings(verifyPlan.blockers);
@@ -796,6 +884,11 @@ function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceL
     completion_required_fields: ['actual_units'],
     completion_optional_fields: [],
     completion_data_contract: 'exact_batch_actual_units_only',
+    verification_input_preview: safeVerificationPreviewSummary(verificationInput),
+    verification_required_fields: ['pH_result', 'pH_passed', 'batch_passed'],
+    verification_optional_fields: ['verification_notes', 'staff_on_duty'],
+    verification_data_contract: 'exact_batch_verification_data_only',
+    verification_compliance_log_draft: verifyPlan.compliance_log_draft || null,
     can_start: startBlockers.length === 0,
     can_complete: completeBlockers.length === 0,
     can_verify: verifyBlockers.length === 0,
@@ -830,7 +923,7 @@ function summarizeAction(rows, action) {
     ? ['ProductionBatch.status', 'ProductionBatch.actual_start_time', 'ProductionBatch.started_by', 'ProductionBatch.audit_trail']
     : action === 'complete'
       ? ['ProductionBatch.status', 'ProductionBatch.actual_end_time', 'ProductionBatch.completed_by', 'ProductionBatch.actual_units', 'ProductionBatch.audit_trail']
-      : ['ProductionBatch.status', 'ProductionBatch.verified_by', 'ProductionBatch.verified_at', 'ProductionBatch.compliance_log_id', 'BatchComplianceLog', 'ProductionBatch.audit_trail'];
+      : ['BatchComplianceLog', 'ProductionBatch.status', 'ProductionBatch.verified_by', 'ProductionBatch.verified_at', 'ProductionBatch.pH_result', 'ProductionBatch.pH_passed_failed', 'ProductionBatch.passed_failed', 'ProductionBatch.compliance_log_id', 'ProductionBatch.audit_trail'];
   return {
     action,
     preview_only: true,
@@ -918,6 +1011,9 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
   if (Array.isArray(lookup.actualUnitsBlockers) && lookup.actualUnitsBlockers.length > 0) {
     blockers.push(...lookup.actualUnitsBlockers);
   }
+  if (Array.isArray(lookup.verificationDataBlockers) && lookup.verificationDataBlockers.length > 0) {
+    blockers.push(...lookup.verificationDataBlockers);
+  }
 
   const rows = (batches || []).map(batch => buildBatchLifecycleRow({
     batch,
@@ -955,8 +1051,26 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     blockers: row.complete_blockers || [],
     warnings: row.lifecycle_warnings || [],
   }));
+  const verificationRows = rows.map(row => ({
+    batch_id: row.batch_id || row.production_batch_id,
+    product_name: row.product_name,
+    current_status: row.current_status,
+    verify_state: row.verify_state,
+    can_verify: row.can_verify,
+    actual_units_present: safeNumber(row.actual_units) !== null,
+    actual_end_time_present: Boolean(row.actual_end_time),
+    verification_input_preview: row.verification_input_preview,
+    required_fields: row.verification_required_fields || ['pH_result', 'pH_passed', 'batch_passed'],
+    optional_fields: row.verification_optional_fields || ['verification_notes', 'staff_on_duty'],
+    compliance_log_draft_ready: Boolean(row.verification_compliance_log_draft),
+    projected_writes_if_later_approved: row.expected_verify_writes_if_approved || [],
+    blockers: row.verify_blockers || [],
+    warnings: row.lifecycle_warnings || [],
+  }));
   const completionPreviewReady = rows.length > 0 && completePreview.ready_count === rows.length && blockers.length === 0;
+  const verificationPreviewReady = rows.length > 0 && verifyPreview.ready_count === rows.length && blockers.length === 0;
   const actualUnitsSuppliedCount = rows.filter(row => safeNumber(row.completion_actual_units_preview) !== null).length;
+  const verificationDataSuppliedCount = rows.filter(row => safeNumber(row.verification_input_preview?.pH_result) !== null && Boolean(row.verification_input_preview?.pH_passed_failed) && Boolean(row.verification_input_preview?.passed_failed)).length;
   const hasInProductionRows = rows.some(row => normalizeLower(row.current_status) === 'in_production');
   const hasCompletedPendingVerificationRows = rows.some(row => normalizeLower(row.current_status) === 'completed_pending_verification');
   const allLifecycleComplete = rows.length > 0 && rows.every(row => row.next_lifecycle_step === 'lifecycle_complete');
@@ -1005,6 +1119,14 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     completion_data_contract: 'exact_batch_actual_units_only',
     completion_rows: completionRows,
     verify_preview: verifyPreview,
+    verification_preview_ready: verificationPreviewReady,
+    verify_ready_count: verifyPreview.ready_count,
+    verify_blocked_count: verifyPreview.blocked_count,
+    verification_data_supplied_count: verificationDataSuppliedCount,
+    verification_required_fields: ['pH_result', 'pH_passed', 'batch_passed'],
+    verification_optional_fields: ['verification_notes', 'staff_on_duty'],
+    verification_data_contract: 'exact_batch_verification_data_only',
+    verification_rows: verificationRows,
     compliance_preview: compliancePreview,
     cascade_preview: cascadePreview,
     blockers: uniqueStrings(blockers),

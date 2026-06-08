@@ -148,11 +148,11 @@ function lifecycleVerifyChip(row) {
 }
 
 function lifecycleNextText(row) {
-  if (row?.next_allowed_transition) return `Next ${formatLabel(row.next_allowed_transition)}`;
   if (row?.next_lifecycle_step === 'verify') return 'Next Verify Production';
   if (row?.next_lifecycle_step === 'complete') return 'Next Complete Production';
   if (row?.next_lifecycle_step === 'start') return 'Next Start Production';
   if (row?.next_lifecycle_step === 'lifecycle_complete') return 'Lifecycle complete';
+  if (row?.next_allowed_transition) return `Next ${formatLabel(row.next_allowed_transition)}`;
   if (row?.start_state === 'already_started' && row?.complete_state === 'complete_blocked_missing_completion_fields') return 'Next Complete after actual units';
   return 'No next transition';
 }
@@ -1108,8 +1108,11 @@ function NativeProductionLifecyclePreview({
   const compliancePreview = preview?.compliance_preview || {};
   const cascadePreview = preview?.cascade_preview || {};
   const completionRequiredFields = Array.isArray(preview?.completion_required_fields) ? preview.completion_required_fields : ['actual_units'];
+  const verificationRequiredFields = Array.isArray(preview?.verification_required_fields) ? preview.verification_required_fields : ['pH_result', 'pH_passed', 'batch_passed'];
   const completionPreviewReady = Boolean(preview?.completion_preview_ready);
+  const verificationPreviewReady = Boolean(preview?.verification_preview_ready);
   const actualUnitsSuppliedCount = Number(preview?.actual_units_supplied_count || 0);
+  const verificationDataSuppliedCount = Number(preview?.verification_data_supplied_count || 0);
   const completedPendingCount = batchRows.filter(row => sanitizeAdminText(row.current_status).toLowerCase() === 'completed_pending_verification').length;
   const inProductionCount = batchRows.filter(row => sanitizeAdminText(row.current_status).toLowerCase() === 'in_production').length;
   const safety = preview?.safety || {};
@@ -1227,7 +1230,17 @@ function NativeProductionLifecyclePreview({
             <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
               <p className="text-xs font-bold text-cyan-950">Verify / compliance preview</p>
               <p className="mt-1 text-[10px] text-cyan-900">{formatNumber(verifyPreview.ready_count)} ready · {formatNumber(verifyPreview.blocked_count)} blocked</p>
-              <p className="mt-2 text-[10px] text-cyan-900">Compliance log creation held. Missing data: {(compliancePreview.missing_compliance_data || []).map(item => formatLabel(item)).join(', ') || 'None returned'}.</p>
+              <p className="mt-2 text-[10px] text-cyan-900">
+                G31U v1 verification requires exact compliance/QC data for every batch. Supplied in this preview: {formatNumber(verificationDataSuppliedCount)}. Required fields: {verificationRequiredFields.map(item => formatLabel(item)).join(', ')}.
+              </p>
+              <p className="mt-1 text-[10px] text-cyan-900">
+                {verificationPreviewReady
+                  ? 'Verify preview would be ready with the supplied pH and pass/fail data. Live verification still requires separate exact approval.'
+                  : 'Verify remains held pending pH result, pH pass/fail, and batch pass/fail data plus separate approval.'}
+              </p>
+              <p className="mt-1 text-[10px] text-cyan-900">
+                BatchComplianceLog creation is previewed only. Task/order cascades, inventory deduction, purchase orders, notifications, and customer-facing statuses remain held. Missing data: {(compliancePreview.missing_compliance_data || []).map(item => formatLabel(item)).join(', ') || 'None returned'}.
+              </p>
             </div>
           </div>
 
