@@ -1714,6 +1714,164 @@ function CustomerStatusNotificationImpactPreview({
   );
 }
 
+function ScheduleExceptionCorrectionPreview({
+  preview,
+  isRunning,
+  error,
+  orderNumber,
+  onRun,
+}) {
+  const exactOrderNumber = orderNumber?.trim();
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const fieldChanges = Array.isArray(preview?.proposed_field_changes) ? preview.proposed_field_changes : [];
+  const recordsToUpdate = Array.isArray(preview?.records_to_update) ? preview.records_to_update : [];
+  const recordsNotUpdated = Array.isArray(preview?.records_not_updated) ? preview.records_not_updated : [];
+  const currentTaskDates = preview?.current_dates?.native_fulfillment_task || {};
+  const proposedDates = preview?.proposed_dates || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Schedule Exception Correction Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G32D-SCHED read-only preview for the exact NV-MPZNKGNT one-order production/delivery date exception. It does not update Customer App Order, native ShopifyOrder, FulfillmentTask, ProductionBatch, BatchComplianceLog, status history, customer status, notifications, delivery/proof/drop/route state, sync, repair, or global scheduling logic.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning || !exactOrderNumber}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning || !exactOrderNumber
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing...' : 'Run Schedule Exception Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Preview only. Date-only correction can be planned separately; this panel exposes no correction button and leaves delivery window, customer status, notifications, batches, compliance logs, and delivery workflow untouched.
+      </div>
+
+      {!exactOrderNumber && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
+          Enter the exact target order number above before running the schedule exception correction preview.
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <StatCard label="Correction Needed" value={preview.correction_needed ? 'Yes' : 'No'} tone={preview.correction_needed ? 'warning' : 'success'} />
+            <StatCard label="Mode" value={formatLabel(preview.correction_mode)} />
+            <StatCard label="Current Delivery" value={currentTaskDates.delivery_date || currentTaskDates.scheduled_date || 'Unknown'} />
+            <StatCard label="Proposed Delivery" value={proposedDates.actual_delivery_date || 'Missing'} tone={proposedDates.actual_delivery_date ? 'success' : 'warning'} />
+            <StatCard label="Records" value={formatNumber(recordsToUpdate.length)} tone={recordsToUpdate.length > 0 ? 'warning' : 'success'} />
+            <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={preview?.safety?.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+            <StatusChip value={preview.window_update_status === 'not_updated_date_only' ? 'Window left unchanged' : formatLabel(preview.window_update_status)} />
+            <StatusChip value="Customer status held" />
+            <StatusChip value="Notifications held" />
+            <StatusChip value="ProductionBatch dates unchanged" />
+            <StatusChip value="Compliance log dates unchanged" />
+            <StatusChip value={preview.hub_fallback_required ? 'Hub fallback required' : 'Hub fallback state unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Order context</p>
+              <p className="mt-1 text-xs text-foreground">
+                {[
+                  preview.order_number ? `Order ${preview.order_number}` : null,
+                  preview.expected_current_recorded_dates?.production_date ? `Recorded production ${preview.expected_current_recorded_dates.production_date}` : null,
+                  preview.expected_current_recorded_dates?.delivery_date ? `Recorded delivery ${preview.expected_current_recorded_dates.delivery_date}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Proposed actual dates</p>
+              <p className="mt-1 text-xs text-foreground">
+                Production {proposedDates.actual_production_date || 'missing'} · Delivery {proposedDates.actual_delivery_date || 'missing'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Next action</p>
+              <p className="mt-1 text-xs text-foreground">{formatLabel(preview.next_action)}</p>
+            </div>
+          </div>
+
+          {fieldChanges.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs font-bold text-amber-950">Proposed field changes if separately approved</p>
+              <div className="mt-2 space-y-1 text-[10px] text-amber-900">
+                {fieldChanges.slice(0, 18).map(change => (
+                  <p key={`${change.record_type}-${change.record_id}-${change.field}`}>
+                    • {sanitizeAdminText(change.record_type)} {sanitizeAdminText(change.field)}: {sanitizeAdminText(change.from ?? 'null')} → {sanitizeAdminText(change.to ?? 'null')}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recordsNotUpdated.length > 0 && (
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+              <p className="text-xs font-bold text-cyan-950">Records intentionally not updated</p>
+              <div className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                {recordsNotUpdated.map(record => (
+                  <p key={`${record.record_type}-${record.reason}`}>
+                    • {sanitizeAdminText(record.record_type)} · {formatLabel(record.reason)}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Correction blockers</p>
+                {blockers.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {blockers.map(blocker => <li key={blocker}>• {formatLabel(sanitizeAdminText(blocker))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No correction blockers returned.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                {warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[10px] text-cyan-900">
+                    {warnings.slice(0, 16).map(warning => <li key={warning}>• {formatLabel(sanitizeAdminText(warning))}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-[10px] text-cyan-900">No warnings returned.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NativeProductionMasterDataParityPreview({
   preview,
   isRunning,
@@ -2428,6 +2586,9 @@ export default function SyncHealth() {
   const [customerStatusImpactPreview, setCustomerStatusImpactPreview] = useState(null);
   const [customerStatusImpactPreviewError, setCustomerStatusImpactPreviewError] = useState('');
   const [isCustomerStatusImpactPreviewRunning, setIsCustomerStatusImpactPreviewRunning] = useState(false);
+  const [scheduleExceptionPreview, setScheduleExceptionPreview] = useState(null);
+  const [scheduleExceptionPreviewError, setScheduleExceptionPreviewError] = useState('');
+  const [isScheduleExceptionPreviewRunning, setIsScheduleExceptionPreviewRunning] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
@@ -2551,6 +2712,8 @@ export default function SyncHealth() {
     setPostVerifyCascadePreviewError('');
     setCustomerStatusImpactPreview(null);
     setCustomerStatusImpactPreviewError('');
+    setScheduleExceptionPreview(null);
+    setScheduleExceptionPreviewError('');
   };
 
   const runNativePilotApprovalPreview = async () => {
@@ -2694,6 +2857,38 @@ export default function SyncHealth() {
       setCustomerStatusImpactPreviewError(previewError?.message || 'Unable to run customer status / notification impact preview.');
     } finally {
       setIsCustomerStatusImpactPreviewRunning(false);
+    }
+  };
+
+  const runScheduleExceptionCorrectionPreview = async () => {
+    setScheduleExceptionPreviewError('');
+    setIsScheduleExceptionPreviewRunning(true);
+    try {
+      const exactOrderNumber = cutoverOrderNumber.trim();
+      if (!exactOrderNumber) {
+        throw new Error('Exact order number is required for schedule exception correction preview.');
+      }
+      const res = await base44.functions.invoke('previewNativeScheduleExceptionCorrection', {
+        mode: 'dry_run',
+        order_number: exactOrderNumber,
+        customer_app_order_id: '6a219a3f4adcda5856c3d579',
+        native_shopify_order_id: '6a22ffda400eb806eb3ca945',
+        native_fulfillment_task_id: '6a22ffdaf675ea79e30575aa',
+        current_recorded_production_date: '2026-06-05',
+        current_recorded_delivery_date: '2026-06-06',
+        proposed_actual_production_date: '2026-06-07',
+        proposed_actual_delivery_date: '2026-06-08',
+        correction_mode: 'DATE_ONLY',
+      });
+      const result = res?.data || res;
+      if (!result || result.error || (result.success === false && result.error_code)) {
+        throw new Error(result?.message || result?.error || result?.error_code || 'Schedule exception correction preview failed.');
+      }
+      setScheduleExceptionPreview(result);
+    } catch (previewError) {
+      setScheduleExceptionPreviewError(previewError?.message || 'Unable to run schedule exception correction preview.');
+    } finally {
+      setIsScheduleExceptionPreviewRunning(false);
     }
   };
 
@@ -2931,6 +3126,14 @@ export default function SyncHealth() {
           error={customerStatusImpactPreviewError}
           orderNumber={cutoverOrderNumber}
           onRun={runCustomerStatusNotificationImpactPreview}
+        />
+
+        <ScheduleExceptionCorrectionPreview
+          preview={scheduleExceptionPreview}
+          isRunning={isScheduleExceptionPreviewRunning}
+          error={scheduleExceptionPreviewError}
+          orderNumber={cutoverOrderNumber}
+          onRun={runScheduleExceptionCorrectionPreview}
         />
 
         <NativeProductionMasterDataParityPreview
