@@ -284,12 +284,15 @@ function buildTaskPackPreview({ task, allVerified, complianceReady, batches }) {
     pack_cascade_allowed: allowed,
     would_update_task_status: allowed && normalizeLower(currentStatus) !== 'packed',
     proposed_task_status: allowed ? 'packed' : null,
-    would_update_production_status: allowed && normalizeLower(currentProductionStatus) !== 'verified_logged',
-    proposed_production_status: allowed ? 'verified_logged' : null,
+    would_update_production_status: allowed && normalizeLower(currentProductionStatus) !== 'packed',
+    proposed_production_status: allowed ? 'packed' : null,
     would_update_delivery_status: false,
     proposed_delivery_status: currentDeliveryStatus,
     blockers,
     warnings,
+    pack_command_available: allowed,
+    pack_command_gated: true,
+    pack_requires_exact_approval: true,
     projected_writes_if_later_approved: allowed ? ['FulfillmentTask.status', 'FulfillmentTask.production_status', 'FulfillmentTask.packed_at', 'FulfillmentTask.audit_trail', 'CommandLog'] : [],
   };
 }
