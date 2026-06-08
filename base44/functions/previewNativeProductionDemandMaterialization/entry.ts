@@ -6,6 +6,18 @@ const MAX_TEXT = 160;
 const OZ_TO_G = 28.3495;
 const SUPPORTED_STOCK_UNITS = new Set(['oz', 'fl oz', 'floz', 'g', 'gram', 'grams', 'kg', 'lb', 'lbs', 'l', 'liter', 'liters', 'ml']);
 const TRACE_INGREDIENT_UNITS = new Set(['pinch', 'dash', 'trace', 'to taste']);
+const SAFE_PRODUCTION_LIFECYCLE_LABELS = new Set([
+  'planned',
+  'ready_for_production',
+  'in_production',
+  'completed_pending_verification',
+  'verified_logged',
+  'archived',
+  'blocked',
+  'held',
+  'pending',
+  'completed',
+]);
 
 function normalizeText(value) {
   return (value ?? '').toString().trim();
@@ -39,13 +51,26 @@ function matchKeys(value) {
   return [...new Set([exact, singular].filter(Boolean))];
 }
 
+function redactProviderLikeToken(match) {
+  return SAFE_PRODUCTION_LIFECYCLE_LABELS.has(normalizeLower(match)) ? match : '[redacted provider id]';
+}
+
+function sanitizeLifecycleStatus(value, maxLength = 80) {
+  const raw = normalizeSingleLine(value);
+  if (!raw) return null;
+  if (SAFE_PRODUCTION_LIFECYCLE_LABELS.has(normalizeLower(raw))) {
+    return raw.length > maxLength ? `${raw.slice(0, maxLength - 1).trim()}...` : raw;
+  }
+  return sanitizeText(raw, maxLength);
+}
+
 function sanitizeText(value, maxLength = MAX_TEXT) {
   const text = normalizeSingleLine(value)
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted email]')
     .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
     .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
     .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]')
-    .replace(/\b(?:ch|re|pi|cs|cus|sub|evt|in|pm|seti|si|src|tok|po|li)_[A-Za-z0-9]{8,}\b/g, '[redacted provider id]')
+    .replace(/\b(?:ch|re|pi|cs|cus|sub|evt|in|pm|seti|si|src|tok|po|li)_[A-Za-z0-9]{8,}\b/g, redactProviderLikeToken)
     .replace(/\bgid:\/\/shopify\/[A-Za-z]+\/[A-Za-z0-9_-]+\b/g, '[redacted shopify id]');
   if (!text) return null;
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
@@ -866,7 +891,6 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
 
   if (ingredients.ingredientRows.some(row => row.procurement_needed)) warnings.push('inventory_shortfall_procurement_needed');
   warnings.push('hub_fallback_required');
-  warnings.push('native_production_batch_not_created');
   warnings.push('inventory_deduction_held');
   warnings.push('purchase_order_automation_held');
 
@@ -883,11 +907,16 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
       batch_id: sanitizeText(batch.batch_id, 120),
       product_name: sanitizeText(batch.product_name, 120),
       production_date: sanitizeText(batch.production_date, 40),
-      status: sanitizeText(batch.status, 80),
+      status: sanitizeLifecycleStatus(batch.status, 80),
       planned_units: numberOrNull(batch.planned_units),
       source: normalizeLower(batch.source_system).includes('hub') ? 'hub' : 'customer_app_native_or_unknown',
     }));
-  if (existingBatchRows.length === 0) warnings.push('existing_native_production_batch_missing');
+  if (existingBatchRows.length === 0) {
+    warnings.push('existing_native_production_batch_missing');
+    warnings.push('native_production_batch_not_created');
+  } else {
+    warnings.push('existing_native_production_batches_detected');
+  }
 
   const uniqueBlockers = [...new Set(blockers)].slice(0, MAX_BLOCKERS);
   const uniqueWarnings = [...new Set(warnings)].slice(0, MAX_BLOCKERS);
@@ -1044,7 +1073,7 @@ function safeExistingBatchRows(existingBatches, readiness, identifiers) {
       batch_id: sanitizeText(batch?.batch_id, 120),
       product_name: sanitizeText(batch?.product_name, 120),
       production_date: sanitizeText(batch?.production_date, 40),
-      status: sanitizeText(batch?.status, 80),
+      status: sanitizeLifecycleStatus(batch?.status, 80),
       planned_units: numberOrNull(batch?.planned_units),
       is_locked: batch?.is_locked === true,
       source_match: batchContainsOrderSource(batch, identifiers),
@@ -1119,7 +1148,7 @@ function buildProposedBatchRows({ readiness, existingBatches, identifiers }) {
       would_skip_existing: Boolean(exactSourceBatch),
       existing_batch_id: sanitizeId(existingBatch?.id, 120),
       existing_batch_key: sanitizeText(existingBatch?.batch_id, 120),
-      existing_batch_status: sanitizeText(existingBatch?.status, 80),
+      existing_batch_status: sanitizeLifecycleStatus(existingBatch?.status, 80),
       existing_batch_locked: existingBatch?.is_locked === true,
       procurement_needed: readiness.procurement_needed === true,
       inventory_deduction_ready: false,

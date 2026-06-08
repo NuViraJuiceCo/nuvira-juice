@@ -5,6 +5,18 @@ const STARTABLE_STATUSES = new Set(['planned', 'ready_for_production']);
 const COMPLETABLE_STATUSES = new Set(['in_production']);
 const VERIFYABLE_STATUSES = new Set(['completed_pending_verification']);
 const TERMINAL_STATUSES = new Set(['verified_logged', 'archived']);
+const SAFE_PRODUCTION_LIFECYCLE_LABELS = new Set([
+  'planned',
+  'ready_for_production',
+  'in_production',
+  'completed_pending_verification',
+  'verified_logged',
+  'archived',
+  'blocked',
+  'held',
+  'pending',
+  'completed',
+]);
 const SAFE_ARRAY_LIMIT = 40;
 const SAFE_SUMMARY_LIMIT = 12;
 const DEFAULT_LIST_LIMIT = 500;
@@ -21,6 +33,19 @@ function normalizeLower(value) {
   return normalizeSingleLine(value).toLowerCase();
 }
 
+function redactProviderLikeToken(match) {
+  return SAFE_PRODUCTION_LIFECYCLE_LABELS.has(normalizeLower(match)) ? match : '[redacted provider id]';
+}
+
+function sanitizeLifecycleStatus(value, maxLength = 80) {
+  const raw = normalizeSingleLine(value);
+  if (!raw) return '';
+  if (SAFE_PRODUCTION_LIFECYCLE_LABELS.has(normalizeLower(raw))) {
+    return raw.length > maxLength ? `${raw.slice(0, maxLength - 1).trim()}...` : raw;
+  }
+  return sanitizeText(raw, maxLength);
+}
+
 function sanitizeText(value, maxLength = 160) {
   const text = normalizeSingleLine(value)
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted email]')
@@ -28,7 +53,7 @@ function sanitizeText(value, maxLength = 160) {
     .replace(/\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Circle|Cir|Way|Place|Pl)\b/gi, '[redacted address]')
     .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
     .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]')
-    .replace(/\b(?:ch|re|pi|cs|cus|sub|evt|in|pm|seti|si|src|tok|po|li)_[A-Za-z0-9]{8,}\b/g, '[redacted provider id]')
+    .replace(/\b(?:ch|re|pi|cs|cus|sub|evt|in|pm|seti|si|src|tok|po|li)_[A-Za-z0-9]{8,}\b/g, redactProviderLikeToken)
     .replace(/\bgid:\/\/shopify\/[A-Za-z]+\/[A-Za-z0-9_-]+\b/g, '[redacted shopify id]');
 
   if (!text) return '';
@@ -280,7 +305,7 @@ function buildBaseSummary(batch) {
     batch_id: sanitizeId(batch.batch_id) || null,
     product_name: sanitizeText(batch.product_name, 120) || null,
     product_category: sanitizeText(batch.product_category, 80) || null,
-    current_status: sanitizeText(batch.status, 80) || null,
+    current_status: sanitizeLifecycleStatus(batch.status, 80) || null,
     production_status: sanitizeText(batch.production_status, 80) || null,
     production_date: sanitizeText(batch.production_date, 40) || null,
     is_locked: batch.is_locked === true,
@@ -659,6 +684,30 @@ function nextAllowedTransition({ startPlan, completePlan, verifyPlan }) {
   return null;
 }
 
+function startStateFor({ batch, startBlockers }) {
+  const status = normalizeLower(batch.status);
+  if (status === 'in_production' || batch.actual_start_time) return 'already_started';
+  if (TERMINAL_STATUSES.has(status) || batch.actual_end_time || batch.completed_by || batch.verified_at || batch.verified_by || batch.compliance_log_id) return 'not_applicable_terminal_or_completed';
+  return startBlockers.length === 0 ? 'ready_to_start_preview_only' : 'start_blocked';
+}
+
+function completeStateFor({ batch, completeBlockers }) {
+  const status = normalizeLower(batch.status);
+  if (completeBlockers.length === 0) return 'ready_to_complete_preview_only';
+  if (status === 'in_production') return 'complete_blocked_missing_completion_fields';
+  if (status === 'completed_pending_verification' || TERMINAL_STATUSES.has(status)) return 'not_applicable_already_completed_or_verified';
+  return 'complete_blocked';
+}
+
+function verifyStateFor({ batch, verifyBlockers }) {
+  const status = normalizeLower(batch.status);
+  if (verifyBlockers.length === 0) return 'ready_to_verify_preview_only';
+  if (status === 'completed_pending_verification') return 'verify_blocked_missing_compliance_fields';
+  if (status === 'in_production') return 'verify_blocked_until_completion';
+  if (TERMINAL_STATUSES.has(status)) return 'not_applicable_already_verified_or_archived';
+  return 'verify_blocked';
+}
+
 function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceLogs }) {
   const startPlan = planStart({ batch, actorEmail, requestId, now });
   const completePlan = planComplete({ batch, actorEmail, requestId, now, completionInput: {} });
@@ -672,7 +721,11 @@ function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceL
   return {
     ...buildBaseSummary(batch),
     classification,
-    current_status: sanitizeText(batch.status || 'planned', 80) || null,
+    current_status: sanitizeLifecycleStatus(batch.status || 'planned', 80) || null,
+    current_status_label: sanitizeLifecycleStatus(batch.status || 'planned', 80) || null,
+    start_state: startStateFor({ batch, startBlockers }),
+    complete_state: completeStateFor({ batch, completeBlockers }),
+    verify_state: verifyStateFor({ batch, verifyBlockers }),
     can_start: startBlockers.length === 0,
     can_complete: completeBlockers.length === 0,
     can_verify: verifyBlockers.length === 0,
@@ -697,7 +750,10 @@ function summarizeAction(rows, action) {
   const key = `can_${action}`;
   const blockerKey = `${action}_blockers`;
   const readyRows = rows.filter(row => row[key] === true);
-  const blockedRows = rows.filter(row => row[key] !== true);
+  const alreadyStartedRows = action === 'start'
+    ? rows.filter(row => row.start_state === 'already_started')
+    : [];
+  const blockedRows = rows.filter(row => row[key] !== true && !(action === 'start' && row.start_state === 'already_started'));
   const expectedWrites = action === 'start'
     ? ['ProductionBatch.status', 'ProductionBatch.actual_start_time', 'ProductionBatch.started_by', 'ProductionBatch.audit_trail']
     : action === 'complete'
@@ -708,6 +764,7 @@ function summarizeAction(rows, action) {
     preview_only: true,
     ready_count: readyRows.length,
     blocked_count: blockedRows.length,
+    already_started_count: alreadyStartedRows.length,
     ready_batch_ids: readyRows.map(row => row.batch_id || row.production_batch_id).filter(Boolean),
     blocked_rows: blockedRows.slice(0, SAFE_SUMMARY_LIMIT).map(row => ({
       batch_id: row.batch_id || row.production_batch_id,
@@ -797,6 +854,7 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
 
   if (rows.some(row => row.is_locked)) warnings.push('one_or_more_batches_locked');
   if (rows.some(row => row.current_status === 'planned' || row.current_status === 'ready_for_production')) warnings.push('complete_and_verify_held_until_start_and_completion_data_exist');
+  if (rows.some(row => row.start_state === 'already_started')) warnings.push('production_already_started_complete_preview_pending_completion_data');
   if (rows.some(row => row.lifecycle_warnings.includes('inventory_deduction_held'))) warnings.push('inventory_deduction_held');
   warnings.push('purchase_order_automation_held');
   warnings.push('hub_fallback_required');
@@ -815,7 +873,9 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
         ? 'plan_gated_native_complete_production_command'
         : verifyPreview.ready_count > 0
           ? 'plan_gated_native_verify_production_command'
-          : 'review_lifecycle_state_or_hub_fallback';
+          : rows.some(row => row.start_state === 'already_started')
+            ? 'plan_native_complete_production_preview_or_command'
+            : 'review_lifecycle_state_or_hub_fallback';
 
   return {
     success: blockers.length === 0,
