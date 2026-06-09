@@ -103,6 +103,14 @@
       "type": "string",
       "description": "Linked Shopify product ID (auto-populated after first sync)"
     },
+    "shopify_handle": {
+      "type": "string",
+      "description": "Linked Shopify product handle for storefront and Meta product links"
+    },
+    "shopify_variant_id": {
+      "type": "string",
+      "description": "Default Shopify variant ID used by cart permalinks"
+    },
     "consumption_instructions": {
       "type": "array",
       "description": "Daily consumption schedule for this bundle/program",

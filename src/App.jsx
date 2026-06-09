@@ -13,6 +13,7 @@ import { CartProvider } from '@/lib/cartContext';
 import AppLayout from '@/components/layout/AppLayout';
 import SplashScreen from '@/components/SplashScreen';
 import ProductDetail from '@/pages/ProductDetail';
+import ShopifyCartPermalink from '@/pages/ShopifyCartPermalink';
 import Checkout from '@/pages/Checkout';
 import OrderConfirmation from '@/pages/OrderConfirmation';
 import OrderIncomplete from '@/pages/OrderIncomplete';
@@ -181,8 +182,10 @@ const AuthenticatedApp = () => {
           <Route path="/" element={<Home />} />
           <Route path="/shop" element={<Shop />} />
           <Route path="/shop/:id" element={<ProductDetail />} />
+          <Route path="/products/:handle" element={<ProductDetail />} />
           <Route path="/program/:key" element={<ProgramDetail />} />
           <Route path="/cart" element={<Cart />} />
+          <Route path="/cart/:cartItems" element={<ShopifyCartPermalink />} />
           <Route path="/notifications" element={<ProtectedRoute element={<Notifications />} user={user} />} />
           <Route path="/account" element={<ProtectedRoute element={<Account />} user={user} />} />
           <Route path="/account/orders" element={<ProtectedRoute element={<OrderHistory />} user={user} />} />

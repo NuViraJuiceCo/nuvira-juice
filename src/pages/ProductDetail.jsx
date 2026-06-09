@@ -3,7 +3,7 @@ import SEO from '@/components/SEO';
 
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Minus, Plus, ShoppingBag, Leaf } from 'lucide-react';
 import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
@@ -12,20 +12,51 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
 
+function normalizeProductLookup(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .toLowerCase();
+}
+
+function slugifyProductTitle(value) {
+  return normalizeProductLookup(value)
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function productLookupKeys(product) {
+  return [
+    product?.id,
+    product?.shopify_handle,
+    product?.handle,
+    product?.shopify_product_id,
+    product?.shopify_variant_id,
+    slugifyProductTitle(product?.title),
+  ]
+    .filter(Boolean)
+    .map(normalizeProductLookup);
+}
+
 export default function ProductDetail() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const id = window.location.pathname.split('/').pop();
+  const { id, handle } = useParams();
+  const routeIdentifier = decodeURIComponent(handle || id || window.location.pathname.split('/').pop() || '');
+  const normalizedRouteIdentifier = normalizeProductLookup(routeIdentifier);
   const navigate = useNavigate();
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
 
   const { data: product, isLoading } = useQuery({
-    queryKey: ['product', id],
+    queryKey: ['product', normalizedRouteIdentifier],
     queryFn: async () => {
-      const products = await base44.entities.Product.filter({ id });
-      return products[0];
+      const directMatches = await base44.entities.Product.filter({ id: routeIdentifier });
+      if (directMatches[0]) return directMatches[0];
+
+      const products = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 200);
+      return products.find((candidate) => productLookupKeys(candidate).includes(normalizedRouteIdentifier));
     },
-    enabled: !!id,
+    enabled: !!normalizedRouteIdentifier,
   });
 
   const { data: relatedProducts = [] } = useQuery({
@@ -34,7 +65,7 @@ export default function ProductDetail() {
     enabled: !!product?.category,
   });
 
-  const related = relatedProducts.filter(p => p.id !== id).slice(0, 4);
+  const related = relatedProducts.filter(p => p.id !== product?.id).slice(0, 4);
 
   const handleAddToCart = () => {
     if (!product) return;
