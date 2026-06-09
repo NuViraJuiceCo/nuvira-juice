@@ -328,38 +328,54 @@ export default function Cart() {
         {subtotal > 0 && subtotal < 144 && (
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-foreground/50 mb-3 px-0.5">Complete Your Routine</p>
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {PROGRAMS.slice(0, 2).map((program, idx) => (
                 <Link key={program.key} to={`/program/${program.key}`}>
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.05 }}
-                    className="flex items-center gap-3.5 rounded-2xl p-3.5 active:scale-[0.98] transition-transform"
+                    className="relative overflow-hidden rounded-2xl active:scale-[0.98] transition-transform"
                     style={{
-                      background: program.gradientBg,
                       border: `1.5px solid ${program.borderColor}`,
-                      boxShadow: `0 4px 14px ${program.shadowColor}, 0 1px 4px rgba(0,0,0,0.05)`,
+                      boxShadow: `0 6px 20px ${program.shadowColor}, 0 1px 4px rgba(0,0,0,0.06)`,
                     }}
                   >
-                    {/* Icon Chip */}
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-xl"
-                      style={{ background: program.chipBg, border: `1.5px solid ${program.chipBorder}` }}
-                    >
-                      {program.emoji}
-                    </div>
+                    {/* Photo strip */}
+                    {program.image && (
+                      <div className="relative h-28 overflow-hidden">
+                        <img
+                          src={program.image}
+                          alt={program.name}
+                          className={`w-full h-full object-cover ${program.imagePosition || 'object-center'}`}
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/70" />
+                        {/* Name overlay */}
+                        <div className="absolute bottom-2.5 left-3.5 right-3.5 flex items-end justify-between">
+                          <div>
+                            <p className="font-heading text-base font-bold text-white drop-shadow leading-tight">
+                              {program.name} <span className="text-sm">{program.emoji}</span>
+                            </p>
+                            <p className="text-white/80 text-[10px] font-semibold">{program.tagline}</p>
+                          </div>
+                          <div
+                            className="text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0"
+                            style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.3)' }}
+                          >
+                            ${program.price}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold" style={{ color: 'rgba(0,0,0,0.82)' }}>{program.name}</p>
-                      <p className="text-[10px] mt-0.5" style={{ color: 'rgba(0,0,0,0.55)' }}>{program.composition}</p>
-                    </div>
-
-                    {/* Price & CTA */}
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold" style={{ color: 'rgba(0,0,0,0.82)' }}>${program.price}</p>
-                      <p className="text-[10px] font-bold mt-1" style={{ color: program.accentColor }}>View →</p>
+                    {/* Bottom info strip */}
+                    <div className="flex items-center justify-between px-3.5 py-2.5" style={{ background: program.gradientBg }}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: program.dotColor }} />
+                        <p className="text-[11px] font-semibold" style={{ color: 'rgba(0,0,0,0.70)' }}>{program.composition} · {program.bottles} bottles</p>
+                      </div>
+                      <p className="text-[11px] font-bold" style={{ color: program.accentColor }}>View Program →</p>
                     </div>
                   </motion.div>
                 </Link>
