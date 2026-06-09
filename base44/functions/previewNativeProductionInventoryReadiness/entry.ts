@@ -344,8 +344,6 @@ function batchMatchesLookup(batch, lookup, { customerOrder, nativeOrder, task, o
     const candidates = [batch?.id, batch?.batch_id, batch?.production_batch_id].map(value => normalizeText(value)).filter(Boolean);
     if (lookup.batchIds.some(id => candidates.includes(id))) return true;
   }
-  if (productionDate && batchDate && batchDate !== productionDate) return false;
-
   const targetValues = [
     orderNumber,
     nativeOrder?.id,
@@ -359,7 +357,9 @@ function batchMatchesLookup(batch, lookup, { customerOrder, nativeOrder, task, o
   if (targetValues.length === 0) return Boolean(productionDate && batchDate === productionDate);
 
   const sourceText = `${JSON.stringify(batch?.order_sources || [])} ${JSON.stringify(batch?.related_orders || [])} ${normalizeText(batch?.order_number)} ${normalizeText(batch?.shopify_order_number)} ${normalizeText(batch?.base44_order_id)} ${normalizeText(batch?.native_shopify_order_id)} ${normalizeText(batch?.native_fulfillment_task_id)}`;
-  return targetValues.some(value => sourceText.includes(value));
+  const matchesTarget = targetValues.some(value => sourceText.includes(value));
+  if (matchesTarget) return true;
+  return Boolean(productionDate && batchDate === productionDate);
 }
 
 function paymentStatus(customerOrder, nativeOrder) {
