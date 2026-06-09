@@ -2983,6 +2983,134 @@ function HistoricalBackfillDisabledGateCheck({ result, isRunning, error, onRun }
   );
 }
 
+function HistoricalCustomerTaskBackfillImpactPreview({ preview, isRunning, error, onRun }) {
+  const heldRecords = Array.isArray(preview?.held_records) ? preview.held_records : [];
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const customerImpact = preview?.customer_facing_impact || {};
+  const deliveryImpact = preview?.delivery_queue_impact || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Historical Customer / Task Backfill Impact Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G32N read-only preview for Hub order 1052 after the native ShopifyOrder mirror exists. Customer App Order and FulfillmentTask backfill remain held.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-background text-foreground border-border hover:bg-muted'
+          }`}
+        >
+          {isRunning ? 'Previewing impact...' : 'Run Customer / Task Impact Preview'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        No Writes Performed. This panel does not create Customer App Order, FulfillmentTask, notifications, proof/drop/route fields, Hub mutations, sync, repair, or replay actions.
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <StatCard label="Hub Order" value={preview?.hub_order_number || '1052'} sublabel={preview?.hub_order_present ? 'present' : 'not run'} tone={preview?.hub_order_present ? 'success' : 'default'} />
+        <StatCard label="Native Mirror" value={preview?.native_shopify_order_present ? 'Present' : 'Not Run'} tone={preview ? (preview.native_shopify_order_present ? 'success' : 'danger') : 'default'} />
+        <StatCard label="Customer Order" value={preview?.customer_app_order_present ? 'Present' : 'Missing / Held'} tone={preview ? (preview.customer_app_order_present ? 'warning' : 'success') : 'default'} />
+        <StatCard label="Native Task" value={preview?.native_fulfillment_task_present ? 'Present' : 'Missing / Held'} tone={preview ? (preview.native_fulfillment_task_present ? 'warning' : 'success') : 'default'} />
+        <StatCard label="Writes" value={preview ? String(preview.writes_performed === true) : 'Not Run'} tone={preview && preview.writes_performed !== true ? 'success' : preview ? 'danger' : 'default'} />
+      </div>
+
+      {preview && (
+        <div className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-amber-950">Customer-facing impact</p>
+              <div className="flex flex-wrap gap-1.5">
+                <StatusChip value={preview.customer_app_order_backfill_recommendation || 'customer backfill held'} />
+                <StatusChip value={customerImpact.risk_level || 'risk pending'} />
+                <StatusChip value={customerImpact.notification_would_send ? 'notification projected' : 'notifications held'} />
+              </div>
+              <p className="text-[10px] text-amber-900">
+                {formatLabel(customerImpact.order_history_visibility || 'customer order creation remains held')}
+              </p>
+            </div>
+            <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-cyan-950">Delivery queue impact</p>
+              <div className="flex flex-wrap gap-1.5">
+                <StatusChip value={preview.native_fulfillment_task_backfill_recommendation || 'task backfill held'} />
+                <StatusChip value={deliveryImpact.risk_level || 'risk pending'} />
+                <StatusChip value={deliveryImpact.active_delivery_queue_row_projected ? 'active row projected' : 'no active row projected'} />
+              </div>
+              <p className="text-[10px] text-cyan-900">
+                {formatLabel(deliveryImpact.reason || 'native task backfill remains held')}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold text-foreground">Native ShopifyOrder mirror sufficiency</p>
+              <StatusChip value={preview.native_shopify_order_mirror_sufficient_for_admin_historical_context ? 'mirror sufficient' : 'review further'} />
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
+              <span>Native id: {preview.native_shopify_order_id || 'not returned'}</span>
+              <span>Risk: {formatLabel(preview.backfill_risk_level || 'not run')}</span>
+              <span>Customer recommended: {String(preview.customer_app_order_backfill_recommended === true)}</span>
+              <span>Task recommended: {String(preview.native_fulfillment_task_backfill_recommended === true)}</span>
+            </div>
+          </div>
+
+          {heldRecords.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-amber-950">Held records</p>
+              <div className="flex flex-wrap gap-1.5">
+                {heldRecords.map(record => (
+                  <StatusChip key={`${record.record_type}-${record.action}-${record.recommendation || ''}`} value={`${record.record_type} ${record.action}`} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {blockers.length > 0 && (
+                <div className="rounded-lg border border-red-100 bg-red-50 p-3">
+                  <p className="text-xs font-bold text-red-900">Blockers</p>
+                  <p className="text-[10px] text-red-800 mt-1">{blockers.map(formatLabel).join(' · ')}</p>
+                </div>
+              )}
+              {warnings.length > 0 && (
+                <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3">
+                  <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                  <p className="text-[10px] text-cyan-800 mt-1">{warnings.slice(0, 10).map(formatLabel).join(' · ')}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-lg border border-border/50 bg-background p-3 text-xs text-muted-foreground">
+            Next action: <span className="font-semibold text-foreground">{formatLabel(preview?.next_action)}</span>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 
 function NativeCustomerAppContext({ context }) {
   const summary = context?.summary || {};
@@ -3080,6 +3208,9 @@ export default function SyncHealth() {
   const [historicalBackfillDisabledBoundary, setHistoricalBackfillDisabledBoundary] = useState(null);
   const [historicalBackfillDisabledBoundaryError, setHistoricalBackfillDisabledBoundaryError] = useState('');
   const [isHistoricalBackfillDisabledBoundaryRunning, setIsHistoricalBackfillDisabledBoundaryRunning] = useState(false);
+  const [historicalCustomerTaskBackfillImpact, setHistoricalCustomerTaskBackfillImpact] = useState(null);
+  const [historicalCustomerTaskBackfillImpactError, setHistoricalCustomerTaskBackfillImpactError] = useState('');
+  const [isHistoricalCustomerTaskBackfillImpactRunning, setIsHistoricalCustomerTaskBackfillImpactRunning] = useState(false);
   const [cutoverOrderNumber, setCutoverOrderNumber] = useState('');
   const [cutoverPreview, setCutoverPreview] = useState(null);
   const [cutoverPreviewError, setCutoverPreviewError] = useState('');
@@ -3265,6 +3396,33 @@ export default function SyncHealth() {
       }
     } finally {
       setIsHistoricalBackfillDisabledBoundaryRunning(false);
+    }
+  };
+
+  const runHistoricalCustomerTaskBackfillImpactPreview = async () => {
+    setHistoricalCustomerTaskBackfillImpactError('');
+    setIsHistoricalCustomerTaskBackfillImpactRunning(true);
+    try {
+      const res = await base44.functions.invoke('previewHistoricalCustomerOrderFulfillmentBackfillImpact', {
+        mode: 'dry_run',
+        hub_order_number: '1052',
+        native_shopify_order_id: '6a2848655450ef3556960d99',
+        preview_mode: 'HISTORICAL_CUSTOMER_ORDER_FULFILLMENT_BACKFILL_IMPACT',
+        notification_policy: 'NO_NOTIFICATION',
+        customer_app_order_backfill: 'PREVIEW_ONLY',
+        native_fulfillment_task_backfill: 'PREVIEW_ONLY',
+        proof_drop_policy: 'HELD_NOT_REQUIRED_FOR_RECONCILIATION',
+        request_id: 'g32n_preview_hub_1052_customer_task_impact_sync_health',
+      });
+      const result = res?.data || res;
+      if (!result?.success) {
+        throw new Error(result?.message || result?.error_code || 'Historical customer/task backfill impact preview failed.');
+      }
+      setHistoricalCustomerTaskBackfillImpact(result);
+    } catch (previewError) {
+      setHistoricalCustomerTaskBackfillImpactError(previewError?.message || 'Unable to run historical customer/task backfill impact preview.');
+    } finally {
+      setIsHistoricalCustomerTaskBackfillImpactRunning(false);
     }
   };
 
@@ -3752,6 +3910,13 @@ export default function SyncHealth() {
           isRunning={isHistoricalBackfillDisabledBoundaryRunning}
           error={historicalBackfillDisabledBoundaryError}
           onRun={runHistoricalBackfillDisabledBoundaryCheck}
+        />
+
+        <HistoricalCustomerTaskBackfillImpactPreview
+          preview={historicalCustomerTaskBackfillImpact}
+          isRunning={isHistoricalCustomerTaskBackfillImpactRunning}
+          error={historicalCustomerTaskBackfillImpactError}
+          onRun={runHistoricalCustomerTaskBackfillImpactPreview}
         />
 
         <NativeCutoverReadinessPreview
