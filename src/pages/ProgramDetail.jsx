@@ -103,12 +103,24 @@ export default function ProgramDetail() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`bg-gradient-to-br ${program.color} border ${program.border} rounded-2xl p-6 mb-6`}
+          className="rounded-2xl p-6 mb-6 relative overflow-hidden"
+          style={{
+            background: program.gradientBg,
+            border: `1.5px solid ${program.borderColor}`,
+            boxShadow: `0 12px 40px ${program.shadowColor}, 0 2px 8px rgba(0,0,0,0.07)`,
+          }}
         >
-          <div className="text-4xl mb-3">{program.emoji}</div>
-          <h1 className="font-heading text-3xl font-bold mb-1 text-gray-900">{program.name}</h1>
-          <p className={`text-sm font-semibold ${program.accent} mb-3`}>{program.tagline}</p>
-          <p className="text-sm text-gray-700 leading-relaxed">{program.description}</p>
+          {/* Subtle radial highlight */}
+          <div className="absolute top-0 right-0 w-40 h-40 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${program.dotColor}22 0%, transparent 70%)` }} />
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl mb-4 relative z-10"
+            style={{ background: program.chipBg, border: `1.5px solid ${program.chipBorder}` }}
+          >
+            {program.emoji}
+          </div>
+          <h1 className="font-heading text-3xl font-bold mb-1 relative z-10" style={{ color: 'rgba(0,0,0,0.85)' }}>{program.name}</h1>
+          <p className="text-sm font-semibold mb-3 relative z-10" style={{ color: program.accentColor }}>{program.tagline}</p>
+          <p className="text-sm leading-relaxed relative z-10" style={{ color: 'rgba(0,0,0,0.68)' }}>{program.description}</p>
         </motion.div>
 
         {/* Program Details */}
@@ -136,9 +148,24 @@ export default function ProgramDetail() {
           </div>
 
           {/* Composition */}
-          <div className={`flex items-center gap-2 p-3 rounded-xl bg-gradient-to-br ${program.color} border ${program.border}`}>
-            <div className={`w-2.5 h-2.5 rounded-full ${program.dot} shrink-0`} />
-            <p className="text-sm font-semibold text-gray-800">{program.composition}</p>
+          <div
+            className="flex items-center gap-2.5 p-3 rounded-xl"
+            style={{
+              background: program.gradientBg,
+              border: `1.5px solid ${program.borderColor}`,
+              boxShadow: `0 3px 12px ${program.shadowColor}`,
+            }}
+          >
+            <span
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
+              style={{ background: program.chipBg, border: `1px solid ${program.chipBorder}` }}
+            >
+              {program.emoji}
+            </span>
+            <div>
+              <p className="text-xs font-bold" style={{ color: program.accentColor }}>{program.name} Formula</p>
+              <p className="text-sm font-semibold" style={{ color: 'rgba(0,0,0,0.75)' }}>{program.composition}</p>
+            </div>
           </div>
 
           {/* Perks */}

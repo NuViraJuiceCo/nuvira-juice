@@ -232,8 +232,11 @@ export default function Cart() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  className="bg-card rounded-2xl border border-border/50 p-3.5 shadow-sm"
-                  style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)` }}
+                  className="bg-card rounded-2xl p-3.5"
+                  style={{
+                    border: '1px solid hsl(var(--border) / 0.6)',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04)',
+                  }}
                 >
                   <div className="flex gap-3">
                     <div className="w-16 h-16 bg-secondary/50 rounded-xl overflow-hidden shrink-0">
@@ -265,30 +268,46 @@ export default function Cart() {
                   </div>
 
                   {/* Bundle Details */}
-                  {item.category === 'bundle' && (item.is_program || item.title?.includes('Trio')) && item.bundle_composition?.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-border/40 space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Includes</p>
-                      {item.bundle_composition.map(comp => {
-                        const juice = juices.find(j => j.id === comp.product_id || j.title?.toLowerCase().includes(comp.product_name?.toLowerCase()));
-                        return (
-                          <div key={comp.product_id} className="bg-secondary/40 rounded-lg p-2.5 flex items-center gap-2">
-                            <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
-                              {juice?.image_url ? (
-                                <img src={juice.image_url} alt={comp.product_name} className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-sm">🍊</div>
-                              )}
+                  {item.category === 'bundle' && (item.is_program || item.title?.includes('Trio')) && item.bundle_composition?.length > 0 && (() => {
+                    const prog = PROGRAMS.find(p => item.title?.toLowerCase().includes(p.key));
+                    return (
+                      <div className="mt-3 pt-3 border-t border-border/40 space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Includes</p>
+                        {item.bundle_composition.map(comp => {
+                          const juice = juices.find(j => j.id === comp.product_id || j.title?.toLowerCase().includes(comp.product_name?.toLowerCase()));
+                          return (
+                            <div
+                              key={comp.product_id}
+                              className="rounded-xl p-2.5 flex items-center gap-2"
+                              style={prog ? {
+                                background: prog.gradientBg,
+                                border: `1px solid ${prog.borderColor}`,
+                              } : {
+                                background: 'hsl(var(--secondary) / 0.4)',
+                                border: '1px solid hsl(var(--border) / 0.4)',
+                              }}
+                            >
+                              <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-muted shadow-sm">
+                                {juice?.image_url ? (
+                                  <img src={juice.image_url} alt={comp.product_name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-sm">🍊</div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold" style={{ color: prog ? prog.accentColor : 'hsl(var(--foreground))' }}>{comp.product_name}</p>
+                                <p className="text-[10px] text-muted-foreground">{comp.quantity} bottle{comp.quantity !== 1 ? 's' : ''}</p>
+                              </div>
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                                style={prog ? { background: prog.chipBg, color: prog.accentColor } : { color: 'hsl(var(--muted-foreground))' }}
+                              >×{comp.quantity}</span>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-foreground">{comp.product_name}</p>
-                              <p className="text-[10px] text-muted-foreground">{comp.quantity} bottle{comp.quantity !== 1 ? 's' : ''}</p>
-                            </div>
-                            <span className="text-xs font-bold text-muted-foreground">×{comp.quantity}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   {/* Bundle Composer */}
                   {item.category === 'bundle' && !item.is_program && !item.title?.includes('Trio') && item.bundle_composition?.length === 0 && item.bottles_per_unit && (
@@ -312,35 +331,35 @@ export default function Cart() {
             <div className="space-y-2.5">
               {PROGRAMS.slice(0, 2).map((program, idx) => (
                 <Link key={program.key} to={`/program/${program.key}`}>
-                  <motion.div 
-                    initial={{ opacity: 0, y: 8 }} 
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.05 }}
-                    className="flex items-center gap-3.5 rounded-2xl p-3.5 border backdrop-blur-sm transition-all hover:border-opacity-100 active:scale-[0.98]"
+                    className="flex items-center gap-3.5 rounded-2xl p-3.5 active:scale-[0.98] transition-transform"
                     style={{
-                      background: `rgba(11, 61, 46, 0.08)`,
-                      borderColor: `${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}20`,
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+                      background: program.gradientBg,
+                      border: `1.5px solid ${program.borderColor}`,
+                      boxShadow: `0 4px 14px ${program.shadowColor}, 0 1px 4px rgba(0,0,0,0.05)`,
                     }}
                   >
                     {/* Icon Chip */}
-                    <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-base"
-                      style={{ background: `${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}15`, border: `1px solid ${program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B'}25` }}
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-xl"
+                      style={{ background: program.chipBg, border: `1.5px solid ${program.chipBorder}` }}
                     >
                       {program.emoji}
                     </div>
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-foreground">{program.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{program.composition}</p>
+                      <p className="text-xs font-bold" style={{ color: 'rgba(0,0,0,0.82)' }}>{program.name}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: 'rgba(0,0,0,0.55)' }}>{program.composition}</p>
                     </div>
 
                     {/* Price & CTA */}
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-foreground">${program.price}</p>
-                      <p className="text-[10px] font-semibold mt-1" style={{ color: program.color.split(' ')[1].split('-')[1] === 'orange' ? '#EA8C55' : program.color.split(' ')[1].split('-')[1] === 'red' ? '#FF6B6B' : '#7BA05B' }}>View</p>
+                      <p className="text-sm font-bold" style={{ color: 'rgba(0,0,0,0.82)' }}>${program.price}</p>
+                      <p className="text-[10px] font-bold mt-1" style={{ color: program.accentColor }}>View →</p>
                     </div>
                   </motion.div>
                 </Link>
