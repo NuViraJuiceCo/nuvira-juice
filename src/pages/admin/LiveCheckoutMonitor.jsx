@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CheckCircle, XCircle, Clock, RefreshCw, AlertCircle } from 'lucide-react';
+import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 
 function StatusBadge({ value }) {
   if (!value) return <span className="text-xs text-muted-foreground">—</span>;
@@ -78,13 +79,13 @@ export default function LiveCheckoutMonitor() {
   const verdict = result?.verdict;
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <div>
-          <h1 className="font-heading text-2xl font-bold mb-1">Live Checkout Monitor</h1>
-          <p className="text-sm text-muted-foreground">Read-only. No repairs or manual sync during test window.</p>
-        </div>
-
+    <div className="min-h-screen bg-background pb-10">
+      <AdminOpsHeader
+        title="Live Checkout Monitor"
+        subtitle="Read-only. No repairs or manual sync during test window."
+        badge="Read-only"
+      />
+      <div className="max-w-3xl mx-auto p-6 space-y-6">
         {/* Input */}
         <div className="flex gap-2">
           <Input
