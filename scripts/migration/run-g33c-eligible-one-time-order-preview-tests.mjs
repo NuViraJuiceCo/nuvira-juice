@@ -219,6 +219,17 @@ assert.equal(preview.candidate_rows[0].eligibility_classification, 'paid_but_tas
 assert.ok(preview.candidate_rows[0].warnings.includes('native_fulfillment_task_missing_task_preview_required'));
 assert.equal(preview.candidate_rows[0].next_action, 'run_native_task_materialization_preview_only');
 
+scenario = makeStore({
+  orders: [makeOrder({ status: 'delivered' })],
+  nativeOrders: [makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled' })],
+  tasks: [makeTask({ status: 'delivered', delivery_status: 'delivered' })],
+});
+preview = await fns.buildPreview({ base44: scenario.base44, lookup: fns.getLookup({ order_number: 'NV-G33C-GOOD' }) });
+assert.equal(preview.candidate_rows[0].eligible_for_second_controlled_pilot, false);
+assert.equal(preview.candidate_rows[0].already_native_complete, true);
+assert.equal(preview.candidate_rows[0].eligibility_classification, 'no_action_needed_already_native_complete');
+assert.equal(preview.candidate_rows[0].next_action, 'no_action_already_native_complete');
+
 assert.ok(!source.includes('previewNativeProductionDemandMaterialization'));
 assert.ok(!source.includes('previewNativeDeliveryWorkflowReadiness'));
 assert.ok(!source.includes('base44.functions.invoke'));

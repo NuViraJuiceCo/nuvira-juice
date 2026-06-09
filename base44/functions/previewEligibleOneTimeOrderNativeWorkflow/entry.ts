@@ -355,6 +355,19 @@ function subscriptionOrMultiDelivery(order, nativeOrder, task) {
     Boolean(nativeOrder?.is_subscription || nativeOrder?.stripe_subscription_id || task?.stripe_subscription_id || task?.customer_app_subscription_id);
 }
 
+function alreadyNativeComplete(order, nativeOrder, task) {
+  const customerStatus = normalizeLower(order?.status);
+  const nativeFulfillmentStatus = normalizeLower(nativeOrder?.fulfillment_status || nativeOrder?.shopify_fulfillment_status);
+  const taskStatus = normalizeLower(task?.status);
+  const taskDeliveryStatus = normalizeLower(task?.delivery_status);
+  return ['delivered', 'fulfilled', 'completed'].includes(customerStatus) ||
+    (
+      ['fulfilled', 'delivered', 'completed'].includes(nativeFulfillmentStatus) &&
+      ['delivered', 'completed'].includes(taskStatus) &&
+      ['delivered', 'completed'].includes(taskDeliveryStatus)
+    );
+}
+
 function reviewQueueHasOpenBlocker(rows) {
   return (rows || []).some(row => {
     const status = normalizeLower(row?.status || row?.review_status || row?.resolution_status);
@@ -380,6 +393,7 @@ function classifyRow({ customerOrder, nativeOrder, task, customerOrders, nativeO
   const lineItems = lineItemCount(customerOrder, nativeOrder, task);
   const duplicateRisks = duplicateRiskFor({ customerOrders, nativeOrders, tasks });
   const reviewBlocker = reviewQueueHasOpenBlocker(reviewRows);
+  const nativeAlreadyComplete = alreadyNativeComplete(customerOrder, nativeOrder, task);
 
   if (!customerOrder?.id) blockers.push('customer_app_order_missing');
   if (!paid) blockers.push('payment_not_paid_or_captured');
@@ -400,6 +414,7 @@ function classifyRow({ customerOrder, nativeOrder, task, customerOrders, nativeO
   else if (subscriptionOrMultiDelivery(customerOrder, nativeOrder, task)) classification = 'unsupported_subscription_or_multi_delivery';
   else if (duplicateRisks.length) classification = 'duplicate_or_deduped';
   else if (reviewBlocker) classification = 'needs_review';
+  else if (nativeAlreadyComplete) classification = 'no_action_needed_already_native_complete';
   else if (!lineItems || !['delivery', 'pickup'].includes(fulfillType)) classification = 'insufficient_data';
   else if (!nativeOrder?.id) classification = 'paid_but_native_mirror_missing';
   else if (!task?.id) classification = 'paid_but_task_missing';
@@ -469,6 +484,7 @@ function nextActionFor(classification, eligible) {
   if (classification === 'duplicate_or_deduped') return 'resolve_duplicate_risk_before_pilot';
   if (classification === 'unsupported_subscription_or_multi_delivery') return 'hold_for_subscription_or_multi_delivery_workflow';
   if (classification === 'cancelled_or_refunded') return 'no_action_cancelled_or_refunded';
+  if (classification === 'no_action_needed_already_native_complete') return 'no_action_already_native_complete';
   return 'wait_for_next_natural_paid_one_time_order';
 }
 
@@ -508,6 +524,7 @@ async function buildCandidateRow(base44, seed) {
   const duplicateRisks = duplicateRiskFor({ customerOrders, nativeOrders, tasks });
   const fulfillmentType = fulfillmentTypeFor(customerOrder, nativeOrder, task);
   const orderType = orderTypeFor(customerOrder, nativeOrder, task);
+  const nativeAlreadyComplete = alreadyNativeComplete(customerOrder, nativeOrder, task);
 
   return {
     order_number: orderNumber || seedOrderNumber || null,
@@ -532,6 +549,7 @@ async function buildCandidateRow(base44, seed) {
     total_quantity: totalQuantity(customerOrder, nativeOrder, task),
     cancelled_or_refunded: isCancelledOrRefunded(customerOrder, nativeOrder),
     subscription_or_multi_delivery: subscriptionOrMultiDelivery(customerOrder, nativeOrder, task),
+    already_native_complete: nativeAlreadyComplete,
     review_queue_present: (reviewRows || []).length > 0,
     review_queue_status: summarizeLogRows(reviewRows),
     duplicate_risk: duplicateRisks.length > 0,
