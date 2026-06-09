@@ -8,7 +8,6 @@ import {
   BarChart3,
   Bell,
   CalendarDays,
-  ChevronRight,
   ClipboardList,
   Package,
   ShieldCheck,
@@ -521,79 +520,52 @@ function OperationsSnapshot({ user }) {
   );
 }
 
-function Badge({ label }) {
-  const lower = label.toLowerCase();
-  const tone = lower.includes('hub')
-    ? 'hub'
-    : lower.includes('controlled') || lower.includes('write')
-      ? 'warning'
-      : lower.includes('may 30')
-        ? 'source'
-        : lower.includes('read-only')
-          ? 'neutral'
-          : 'neutral';
-  return <AdminStatusPill label={label} tone={tone} />;
-}
-
-function cardVisibilityTone(title) {
+function tileGradient(title) {
   const key = title.toLowerCase();
-  if (key.includes('order')) return { border: 'border-sky-500', gradient: 'from-sky-500 to-blue-700' };
-  if (key.includes('pos') || key.includes('event')) return { border: 'border-fuchsia-500', gradient: 'from-fuchsia-500 to-purple-700' };
-  if (key.includes('production')) return { border: 'border-lime-500', gradient: 'from-lime-500 to-emerald-700' };
-  if (key.includes('inventory')) return { border: 'border-rose-500', gradient: 'from-rose-500 to-red-700' };
-  if (key.includes('delivery')) return { border: 'border-emerald-500', gradient: 'from-emerald-500 to-green-700' };
-  if (key.includes('calendar')) return { border: 'border-cyan-500', gradient: 'from-cyan-500 to-teal-700' };
-  if (key.includes('resource')) return { border: 'border-indigo-500', gradient: 'from-indigo-500 to-blue-700' };
-  if (key.includes('alert')) return { border: 'border-red-500', gradient: 'from-red-500 to-rose-700' };
-  if (key.includes('sync')) return { border: 'border-violet-500', gradient: 'from-violet-500 to-indigo-700' };
-  return { border: 'border-slate-600', gradient: 'from-slate-600 to-slate-800' };
+  if (key.includes('admin order')) return 'from-sky-500 to-blue-700';
+  if (key.includes('pos') || key.includes('event')) return 'from-fuchsia-500 to-purple-700';
+  if (key.includes('shopify')) return 'from-green-500 to-emerald-700';
+  if (key.includes('live checkout')) return 'from-cyan-500 to-teal-700';
+  if (key.includes('production queue')) return 'from-lime-500 to-emerald-700';
+  if (key.includes('production planning')) return 'from-yellow-500 to-orange-600';
+  if (key.includes('inventory')) return 'from-rose-500 to-red-700';
+  if (key.includes('compliance')) return 'from-violet-500 to-purple-700';
+  if (key.includes('delivery')) return 'from-emerald-500 to-green-700';
+  if (key.includes('calendar')) return 'from-cyan-500 to-blue-600';
+  if (key.includes('resources')) return 'from-indigo-500 to-blue-700';
+  if (key.includes('product image')) return 'from-pink-500 to-rose-600';
+  if (key.includes('ops alert')) return 'from-red-500 to-rose-700';
+  if (key.includes('sync health')) return 'from-violet-500 to-indigo-700';
+  if (key.includes('sync status')) return 'from-slate-500 to-slate-700';
+  if (key.includes('loyalty')) return 'from-amber-500 to-yellow-600';
+  if (key.includes('bag return')) return 'from-teal-500 to-cyan-700';
+  if (key.includes('notifications')) return 'from-orange-500 to-red-600';
+  return 'from-slate-500 to-slate-700';
 }
 
-function OperationCard({ card }) {
+function AppIconTile({ card }) {
   const Icon = card.icon;
-  const tone = cardVisibilityTone(card.title);
-
+  const gradient = tileGradient(card.title);
   return (
-    <Link to={card.route} className="block">
-      <div className={`group overflow-hidden rounded-xl border bg-card active:scale-[0.99] transition-all hover:-translate-y-0.5 hover:shadow-md ${tone.border}`}>
-        <div className={`h-1.5 bg-gradient-to-r ${tone.gradient}`} />
-        <div className="p-4">
-        <div className="flex items-start gap-3">
-          <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${tone.gradient} flex items-center justify-center shrink-0 shadow-sm`}>
-            <Icon className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="text-sm font-black text-foreground">{card.title}</h3>
-                <p className="text-xs font-medium text-muted-foreground mt-1 leading-relaxed">{card.description}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground/70 shrink-0 group-hover:translate-x-0.5 transition-transform" />
-            </div>
-
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {card.badges.map(badge => (
-                <Badge key={badge} label={badge} />
-              ))}
-            </div>
-          </div>
-        </div>
-        </div>
+    <Link to={card.route} className="flex flex-col items-center gap-1.5 active:scale-90 transition-transform">
+      <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-md`}>
+        <Icon className="w-7 h-7 text-white" />
       </div>
+      <span className="text-[10px] font-semibold text-center text-foreground leading-tight max-w-[72px] line-clamp-2">{card.title}</span>
     </Link>
   );
 }
 
-function OperationSection({ section }) {
+function AppIconSection({ section }) {
   return (
-    <section className="space-y-3">
-      <div>
-        <h2 className="text-sm font-black text-foreground">{section.title}</h2>
-        <p className="text-xs font-medium text-muted-foreground mt-0.5">{section.description}</p>
+    <section className="space-y-2">
+      <div className="flex items-center gap-2">
+        <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground">{section.title}</h2>
+        <div className="flex-1 h-px bg-border/50" />
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-x-3 gap-y-4">
         {section.cards.map(card => (
-          <OperationCard key={card.route} card={card} />
+          <AppIconTile key={card.route} card={card} />
         ))}
       </div>
     </section>
@@ -638,7 +610,7 @@ export default function Operations() {
         />
 
         {sections.map(section => (
-          <OperationSection key={section.title} section={section} />
+          <AppIconSection key={section.title} section={section} />
         ))}
 
         <OperationsSnapshot user={user} />
