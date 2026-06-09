@@ -80,6 +80,15 @@ function formatNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function timestampForRequestId(date = new Date()) {
+  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function statusFromErrorMessage(message) {
+  const match = (message || '').toString().match(/status(?:\s+code)?\s+(\d{3})/i);
+  return match ? Number(match[1]) : null;
+}
+
 function isPosCancellationPreviewRow(row) {
   return [
     'historical_pos_test_order_cancelled',
@@ -2908,6 +2917,72 @@ function HistoricalHubFulfilledBackfill1052Preview({ preview, isRunning, error, 
   );
 }
 
+function HistoricalBackfillDisabledGateCheck({ result, isRunning, error, onRun }) {
+  const expectedDisabled =
+    result?.error_code === 'historical_hub_fulfilled_native_shopify_order_backfill_disabled' ||
+    result?.error_code === 'kill_switch_active';
+  const writesPerformed = result?.writes_performed === true;
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Historical Backfill Disabled-Gate Check</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G32L-BND2 admin-only diagnostic for Hub order 1052. It calls the gated command with gates closed and displays only safe status fields.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-background text-foreground border-border hover:bg-muted'
+          }`}
+        >
+          {isRunning ? 'Checking gate...' : 'Run Disabled-Gate Check'}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+        Diagnostic only. This panel does not open gates, expose secrets, inspect browser storage, run live backfill, or create/update records.
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <StatCard label="HTTP / Function Status" value={result?.http_status || 'Not Run'} tone={result?.http_status === 409 ? 'success' : result ? 'warning' : 'default'} />
+        <StatCard label="Success" value={result ? String(result.success === true) : 'Not Run'} />
+        <StatCard label="Skipped" value={result?.skipped === undefined || result?.skipped === null ? 'Not Returned' : String(result.skipped === true)} />
+        <StatCard label="Error Code" value={result?.error_code ? formatLabel(result.error_code) : 'Not Run'} tone={expectedDisabled ? 'success' : result ? 'warning' : 'default'} />
+        <StatCard label="Writes Performed" value={result ? String(writesPerformed) : 'Not Run'} tone={result && !writesPerformed ? 'success' : result ? 'danger' : 'default'} />
+      </div>
+
+      {result && (
+        <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <StatusChip value={expectedDisabled ? 'disabled boundary observed' : 'review boundary result'} />
+            <StatusChip value={writesPerformed ? 'writes flag true' : 'writes performed false'} />
+            <StatusChip value="no live backfill controls" />
+          </div>
+          <p className="text-[10px] text-muted-foreground break-words">
+            Request id: <span className="font-semibold text-foreground">{result.request_id || 'Not returned'}</span>
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 
 function NativeCustomerAppContext({ context }) {
   const summary = context?.summary || {};
@@ -3002,6 +3077,9 @@ export default function SyncHealth() {
   const [historicalFulfilled1052Preview, setHistoricalFulfilled1052Preview] = useState(null);
   const [historicalFulfilled1052PreviewError, setHistoricalFulfilled1052PreviewError] = useState('');
   const [isHistoricalFulfilled1052PreviewRunning, setIsHistoricalFulfilled1052PreviewRunning] = useState(false);
+  const [historicalBackfillDisabledBoundary, setHistoricalBackfillDisabledBoundary] = useState(null);
+  const [historicalBackfillDisabledBoundaryError, setHistoricalBackfillDisabledBoundaryError] = useState('');
+  const [isHistoricalBackfillDisabledBoundaryRunning, setIsHistoricalBackfillDisabledBoundaryRunning] = useState(false);
   const [cutoverOrderNumber, setCutoverOrderNumber] = useState('');
   const [cutoverPreview, setCutoverPreview] = useState(null);
   const [cutoverPreviewError, setCutoverPreviewError] = useState('');
@@ -3141,6 +3219,52 @@ export default function SyncHealth() {
       setHistoricalFulfilled1052PreviewError(previewError?.message || 'Unable to run Hub order 1052 fulfilled backfill preview.');
     } finally {
       setIsHistoricalFulfilled1052PreviewRunning(false);
+    }
+  };
+
+  const runHistoricalBackfillDisabledBoundaryCheck = async () => {
+    const requestId = `g32l_bnd2_disabled_historical_backfill_1052_${timestampForRequestId()}`;
+    const requestBody = {
+      mode: 'live',
+      hub_order_number: '1052',
+      correction_mode: 'HISTORICAL_HUB_FULFILLED_BACKFILL_NO_NOTIFICATION',
+      notification_policy: 'NO_NOTIFICATION',
+      proof_drop_policy: 'HELD_NOT_REQUIRED_FOR_RECONCILIATION',
+      customer_app_order_backfill: 'HELD',
+      native_fulfillment_task_backfill: 'HELD',
+      request_id: requestId,
+      confirmation: 'backfill_historical_hub_fulfilled_native_shopify_order_no_notification',
+    };
+
+    setHistoricalBackfillDisabledBoundaryError('');
+    setIsHistoricalBackfillDisabledBoundaryRunning(true);
+    try {
+      const res = await base44.functions.invoke('backfillHistoricalHubFulfilledNativeShopifyOrderForCustomerApp', requestBody);
+      const result = res?.data || res || {};
+      setHistoricalBackfillDisabledBoundary({
+        request_id: requestId,
+        http_status: result.http_status || result.status || result.function_status || 'Not returned',
+        success: result.success === true,
+        skipped: result.skipped,
+        error_code: result.error_code || null,
+        writes_performed: result.writes_performed === true,
+      });
+    } catch (boundaryError) {
+      const data = boundaryError?.response?.data || boundaryError?.data || {};
+      const errorMessage = boundaryError?.message || '';
+      setHistoricalBackfillDisabledBoundary({
+        request_id: requestId,
+        http_status: boundaryError?.response?.status || boundaryError?.status || data.status || statusFromErrorMessage(errorMessage) || 'Not returned',
+        success: data.success === true,
+        skipped: data.skipped,
+        error_code: data.error_code || data.error || null,
+        writes_performed: data.writes_performed === true,
+      });
+      if (!data.error_code && !data.error) {
+        setHistoricalBackfillDisabledBoundaryError('Disabled-gate check returned an error without a structured error_code.');
+      }
+    } finally {
+      setIsHistoricalBackfillDisabledBoundaryRunning(false);
     }
   };
 
@@ -3621,6 +3745,13 @@ export default function SyncHealth() {
           isRunning={isHistoricalFulfilled1052PreviewRunning}
           error={historicalFulfilled1052PreviewError}
           onRun={runHistoricalFulfilled1052Preview}
+        />
+
+        <HistoricalBackfillDisabledGateCheck
+          result={historicalBackfillDisabledBoundary}
+          isRunning={isHistoricalBackfillDisabledBoundaryRunning}
+          error={historicalBackfillDisabledBoundaryError}
+          onRun={runHistoricalBackfillDisabledBoundaryCheck}
         />
 
         <NativeCutoverReadinessPreview
