@@ -8,7 +8,9 @@ This phase does not open gates, run live commands, create native records, update
 
 ## Function
 
-- `base44/functions/previewEligibleOneTimeOrderNativeWorkflow/entry.ts`
+- Deployed runtime: `base44/functions/previewNativeOrderCutoverReadiness/entry.ts` with `preview_mode: ELIGIBLE_ONE_TIME_ORDER_NATIVE_WORKFLOW`.
+- Requested/alias function name: `previewEligibleOneTimeOrderNativeWorkflow`.
+- Reason for deployed alias: Base44 CLI currently blocks creating new function records on this app because the app is above the CLI function-count creation limit. G33C therefore extends the already-deployed read-only cutover readiness preview instead of adding a new remote function.
 - Auth: admin session or internal preview secret.
 - Public unauthenticated POST returns `401`.
 - GET and other non-POST methods return `405`.
@@ -131,7 +133,7 @@ Neither order is approved for live pilot by G33C itself. The function must retur
 
 ## Admin UI
 
-`/admin/sync-health` includes a read-only panel titled **Eligible One-Time Order Native Workflow Preview**. It supports:
+`/admin/sync-health` includes a read-only panel titled **Eligible One-Time Order Native Workflow Preview**. The panel invokes `previewNativeOrderCutoverReadiness` with `preview_mode: ELIGIBLE_ONE_TIME_ORDER_NATIVE_WORKFLOW`. It supports:
 
 - exact order preview by order number,
 - recent candidate scan,
@@ -165,7 +167,7 @@ The function exposes a fixed `READ_ONLY_SAFETY` object with all write/provider/s
 
 ## Next phase
 
-After merge and publish, run boundary checks and read-only previews for `NV-MON367R7` and `NV-MODIHVQQ`.
+After merge and publish, run boundary checks against `previewNativeOrderCutoverReadiness` and read-only G33C-mode previews for `NV-MON367R7` and `NV-MODIHVQQ`.
 
 Possible next actions:
 

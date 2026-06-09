@@ -3589,12 +3589,14 @@ export default function SyncHealth() {
       const payload = mode === 'RECENT_CANDIDATE_SCAN'
         ? {
             mode: 'RECENT_CANDIDATE_SCAN',
+            preview_mode: 'ELIGIBLE_ONE_TIME_ORDER_NATIVE_WORKFLOW',
             max_recent_candidates: 10,
             include_hub_context: true,
             request_id: `g33c_recent_candidate_scan_${timestampForRequestId()}`,
           }
         : {
             mode: 'EXACT_ORDER_PREVIEW',
+            preview_mode: 'ELIGIBLE_ONE_TIME_ORDER_NATIVE_WORKFLOW',
             order_number: exactOrderNumber,
             include_hub_context: true,
             request_id: `g33c_exact_order_preview_${exactOrderNumber || 'missing'}_${timestampForRequestId()}`,
@@ -3602,7 +3604,7 @@ export default function SyncHealth() {
       if (mode !== 'RECENT_CANDIDATE_SCAN' && !exactOrderNumber) {
         throw new Error('Exact order number is required for exact one-time order preview.');
       }
-      const res = await base44.functions.invoke('previewEligibleOneTimeOrderNativeWorkflow', payload);
+      const res = await base44.functions.invoke('previewNativeOrderCutoverReadiness', payload);
       const result = res?.data || res;
       if (!result || result.success === false) {
         throw new Error(result?.message || result?.error_code || 'Eligible one-time order preview failed.');

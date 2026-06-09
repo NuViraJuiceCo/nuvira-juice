@@ -103,11 +103,11 @@ async function readJsonBody(req) {
 }
 
 function unauthorized() {
-  return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized' }, { status: 401 });
+  return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized', writes_performed: false }, { status: 401 });
 }
 
 function forbidden() {
-  return Response.json({ success: false, error_code: 'forbidden', message: 'Admin access required' }, { status: 403 });
+  return Response.json({ success: false, error_code: 'forbidden', message: 'Admin access required', writes_performed: false }, { status: 403 });
 }
 
 async function requirePreviewAccess({ base44, req, body }) {
@@ -632,10 +632,444 @@ async function buildTargets(base44, body) {
   return listCandidateCustomerOrders(base44, limit);
 }
 
+const G33C_DEFAULT_RECENT_LIMIT = 10;
+const G33C_MAX_RECENT_LIMIT = 25;
+const G33C_PREVIEW_MODE = 'ELIGIBLE_ONE_TIME_ORDER_NATIVE_WORKFLOW';
+
+const G33C_ALLOWED_BODY_KEYS = new Set([
+  'mode',
+  'preview_mode',
+  'preview_bundle',
+  'preview_bundle_mode',
+  'candidate_mode',
+  'order_number',
+  'shopify_order_number',
+  'customer_app_order_id',
+  'base44_order_id',
+  'order_id',
+  'max_recent_candidates',
+  'limit',
+  'include_hub_context',
+  'request_id',
+  '_internal_secret',
+  'internal_secret',
+]);
+
+const G33C_READ_ONLY_SAFETY = Object.freeze({
+  dry_run_only: true,
+  writes_performed: false,
+  gates_opened: false,
+  live_commands_run: false,
+  customer_app_order_created: false,
+  customer_app_order_updated: false,
+  native_shopify_order_created: false,
+  native_shopify_order_updated: false,
+  native_fulfillment_task_created: false,
+  native_fulfillment_task_updated: false,
+  production_batch_created: false,
+  production_batch_updated: false,
+  batch_compliance_log_created: false,
+  batch_compliance_log_updated: false,
+  notifications_created: false,
+  notifications_sent: false,
+  message_logs_created: false,
+  provider_calls_performed: false,
+  stripe_calls_performed: false,
+  shopify_api_calls_performed: false,
+  sync_repair_replay_performed: false,
+  inventory_deducted: false,
+  purchase_order_created: false,
+  hub_records_updated: false,
+  hub_bridge_modified: false,
+});
+
+function isG33CPreviewRequest(body) {
+  const mode = normalizeText(body?.mode).toUpperCase();
+  const previewMode = normalizeText(body?.preview_mode || body?.preview_bundle).toUpperCase();
+  return previewMode === G33C_PREVIEW_MODE || ['EXACT_ORDER_PREVIEW', 'RECENT_CANDIDATE_SCAN'].includes(mode);
+}
+
+function g33cUnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G33C_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g33cLookup(body) {
+  const orderNumber = normalizeOrderNumber(body?.order_number || body?.shopify_order_number);
+  const requestedMode = normalizeText(body?.preview_bundle_mode || body?.candidate_mode || body?.mode).toUpperCase();
+  const maxRecentRaw = Number(body?.max_recent_candidates || body?.limit || G33C_DEFAULT_RECENT_LIMIT);
+  const maxRecentCandidates = Number.isFinite(maxRecentRaw)
+    ? Math.max(1, Math.min(G33C_MAX_RECENT_LIMIT, Math.floor(maxRecentRaw)))
+    : G33C_DEFAULT_RECENT_LIMIT;
+  return {
+    mode: ['EXACT_ORDER_PREVIEW', 'RECENT_CANDIDATE_SCAN'].includes(requestedMode)
+      ? requestedMode
+      : orderNumber || body?.customer_app_order_id || body?.base44_order_id || body?.order_id
+        ? 'EXACT_ORDER_PREVIEW'
+        : 'RECENT_CANDIDATE_SCAN',
+    orderNumber,
+    customerAppOrderId: normalizeText(body?.customer_app_order_id || body?.base44_order_id || body?.order_id),
+    maxRecentCandidates,
+    includeHubContext: body?.include_hub_context !== false,
+  };
+}
+
+function g33cOrderKey(value) {
+  return normalizeOrderNumber(value).toLowerCase();
+}
+
+function g33cMatchesOrder(row, orderNumber, customerOrderId) {
+  const orderKey = g33cOrderKey(orderNumber);
+  if (customerOrderId && [row?.base44_order_id, row?.order_id, row?.customer_app_order_id].some(value => normalizeText(value) === customerOrderId)) return true;
+  if (!orderKey) return false;
+  return [row?.order_number, row?.shopify_order_number, row?.source_order_number, row?.customer_order_number, row?.hub_order_number]
+    .some(value => g33cOrderKey(value) === orderKey);
+}
+
+function g33cUnique(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows || []) {
+    const key = row?.id || JSON.stringify(row).slice(0, 120);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+async function g33cFilter(base44, entityName, filter, sort = '-created_date', limit = 20) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  if (!entity?.filter) return [];
+  const rows = await entity.filter(filter, sort, limit).catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function g33cList(base44, entityName, sort = '-created_date', limit = 100) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  if (!entity?.list) return [];
+  const rows = await entity.list(sort, limit).catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function g33cCustomerOrders(base44, lookup) {
+  const rows = [];
+  if (lookup.customerAppOrderId) {
+    const byId = await base44.asServiceRole?.entities?.Order?.filter({ id: lookup.customerAppOrderId }, '-created_date', 1).catch(() => []);
+    rows.push(...(Array.isArray(byId) ? byId : []));
+  }
+  if (lookup.orderNumber) {
+    rows.push(...await g33cFilter(base44, 'Order', { order_number: lookup.orderNumber }, '-created_date', 10));
+    rows.push(...await g33cFilter(base44, 'Order', { order_number: `#${lookup.orderNumber}` }, '-created_date', 10));
+  }
+  return g33cUnique(rows);
+}
+
+async function g33cNativeOrders(base44, orderNumber, customerOrderId) {
+  const rows = [];
+  if (customerOrderId) rows.push(...await g33cFilter(base44, 'ShopifyOrder', { base44_order_id: customerOrderId }, '-created_date', 10));
+  if (orderNumber) {
+    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { shopify_order_number: orderNumber }, '-created_date', 10));
+    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { shopify_order_number: `#${orderNumber}` }, '-created_date', 10));
+  }
+  return g33cUnique(rows).filter(row => g33cMatchesOrder(row, orderNumber, customerOrderId));
+}
+
+async function g33cTasks(base44, orderNumber, customerOrderId, nativeOrderId) {
+  const rows = [];
+  if (customerOrderId) {
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { base44_order_id: customerOrderId }, '-created_date', 20));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { order_id: customerOrderId }, '-created_date', 20));
+  }
+  if (nativeOrderId) {
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { native_shopify_order_id: nativeOrderId }, '-created_date', 20));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_id: nativeOrderId }, '-created_date', 20));
+  }
+  if (orderNumber) {
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { order_number: orderNumber }, '-created_date', 20));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_number: orderNumber }, '-created_date', 20));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_number: `#${orderNumber}` }, '-created_date', 20));
+  }
+  return g33cUnique(rows).filter(row => g33cMatchesOrder(row, orderNumber, customerOrderId) || (nativeOrderId && [row?.native_shopify_order_id, row?.shopify_order_id].includes(nativeOrderId)));
+}
+
+async function g33cLogs(base44, entityName, orderNumber, customerOrderId, limit = 20) {
+  const rows = [];
+  if (customerOrderId) {
+    rows.push(...await g33cFilter(base44, entityName, { base44_order_id: customerOrderId }, '-created_date', limit));
+    rows.push(...await g33cFilter(base44, entityName, { order_id: customerOrderId }, '-created_date', limit));
+    rows.push(...await g33cFilter(base44, entityName, { customer_app_order_id: customerOrderId }, '-created_date', limit));
+  }
+  if (orderNumber) {
+    rows.push(...await g33cFilter(base44, entityName, { order_number: orderNumber }, '-created_date', limit));
+    rows.push(...await g33cFilter(base44, entityName, { shopify_order_number: orderNumber }, '-created_date', limit));
+    rows.push(...await g33cFilter(base44, entityName, { source_order_number: orderNumber }, '-created_date', limit));
+  }
+  return g33cUnique(rows).filter(row => g33cMatchesOrder(row, orderNumber, customerOrderId));
+}
+
+async function g33cBatches(base44, orderNumber, customerOrderId, nativeOrderId, taskId) {
+  const rows = await g33cList(base44, 'ProductionBatch', '-production_date', 800);
+  return rows.filter(batch => {
+    if (customerOrderId && [batch?.base44_order_id, batch?.order_id, batch?.source_order_id].includes(customerOrderId)) return true;
+    if (nativeOrderId && [batch?.native_shopify_order_id, batch?.shopify_order_id].includes(nativeOrderId)) return true;
+    if (taskId && [batch?.native_fulfillment_task_id, batch?.fulfillment_task_id].includes(taskId)) return true;
+    return g33cMatchesOrder(batch, orderNumber, customerOrderId);
+  });
+}
+
+async function g33cComplianceLogs(base44, batches) {
+  const rows = [];
+  for (const batch of batches || []) {
+    if (batch?.batch_id) rows.push(...await g33cFilter(base44, 'BatchComplianceLog', { batch_id: batch.batch_id }, '-created_date', 10));
+    if (batch?.id) rows.push(...await g33cFilter(base44, 'BatchComplianceLog', { source_production_batch_id: batch.id }, '-created_date', 10));
+  }
+  return g33cUnique(rows);
+}
+
+function g33cStatuses(rows) {
+  const statuses = [...new Set((rows || []).map(row => sanitizeText(row?.status || row?.sync_status || row?.review_status || row?.result_status || row?.error_code || row?.action, 120)).filter(Boolean))];
+  return { count: Array.isArray(rows) ? rows.length : 0, statuses: statuses.slice(0, 8), latest_status: statuses[0] || null };
+}
+
+function g33cPaid(order, nativeOrder) {
+  return order?.payment_captured === true || paymentStatus(order) === 'paid' || normalizeLower(nativeOrder?.payment_status || nativeOrder?.financial_status) === 'paid';
+}
+
+function g33cCancelledOrRefunded(order, nativeOrder) {
+  const values = [order?.status, order?.payment_status, order?.financial_status, nativeOrder?.fulfillment_status, nativeOrder?.production_status, nativeOrder?.financial_status, nativeOrder?.payment_status].map(normalizeLower);
+  return Boolean(order?.canceled_at || order?.deleted_at || order?.do_not_recover) ||
+    values.some(value => ['cancelled', 'canceled', 'refunded', 'partially_refunded', 'voided'].includes(value));
+}
+
+function g33cOrderType(order, nativeOrder, task) {
+  const nativeType = normalizeLower(nativeOrder?.order_type || nativeOrder?.source_type || task?.order_type || task?.source_type);
+  if (nativeType) return nativeType;
+  if (normalizeLower(nativeOrder?.source_channel) === 'subscription' || nativeOrder?.is_subscription) return 'subscription';
+  return 'one_time';
+}
+
+function g33cSubscriptionOrMulti(nativeOrder, task) {
+  return normalizeLower(nativeOrder?.order_type || nativeOrder?.source_type || task?.order_type || task?.source_type) === 'subscription' ||
+    normalizeLower(nativeOrder?.fulfillment_mode) === 'multi_delivery' ||
+    normalizeLower(task?.fulfillment_type) === 'subscription_delivery' ||
+    Boolean(nativeOrder?.is_subscription || nativeOrder?.stripe_subscription_id || task?.stripe_subscription_id || task?.customer_app_subscription_id);
+}
+
+function g33cAlreadyComplete(order, nativeOrder, task) {
+  const customerStatus = normalizeLower(order?.status);
+  const nativeFulfillmentStatus = normalizeLower(nativeOrder?.fulfillment_status || nativeOrder?.shopify_fulfillment_status);
+  const taskStatus = normalizeLower(task?.status);
+  const taskDeliveryStatus = normalizeLower(task?.delivery_status);
+  return ['delivered', 'fulfilled', 'completed'].includes(customerStatus) ||
+    (['fulfilled', 'delivered', 'completed'].includes(nativeFulfillmentStatus) && ['delivered', 'completed'].includes(taskStatus) && ['delivered', 'completed'].includes(taskDeliveryStatus));
+}
+
+function g33cReviewBlocker(rows) {
+  return (rows || []).some(row => {
+    const status = normalizeLower(row?.status || row?.review_status || row?.resolution_status);
+    return !status || !['resolved', 'closed', 'ignored', 'safe', 'deduped', 'not_applicable', 'test_only'].includes(status);
+  });
+}
+
+function g33cClassification({ customerOrder, nativeOrder, task, customerOrders, nativeOrders, tasks, reviewRows }) {
+  const blockers = [];
+  const warnings = [];
+  const paid = g33cPaid(customerOrder, nativeOrder);
+  const cancelled = g33cCancelledOrRefunded(customerOrder, nativeOrder);
+  const fulfillType = fulfillmentMethod(customerOrder) || normalizeLower(nativeOrder?.fulfillment_method || task?.fulfillment_type);
+  const items = lineItemCount(customerOrder) || (Array.isArray(nativeOrder?.line_items) ? nativeOrder.line_items.length : 0) || (Array.isArray(task?.items) ? task.items.length : 0) || safeNumber(nativeOrder?.line_item_count || task?.line_item_count, 0);
+  const duplicateRisks = [];
+  if ((customerOrders || []).length > 1) duplicateRisks.push('multiple_customer_app_orders_match');
+  if ((nativeOrders || []).length > 1) duplicateRisks.push('multiple_native_shopify_orders_match');
+  if ((tasks || []).length > 1) duplicateRisks.push('multiple_native_fulfillment_tasks_match');
+  const reviewBlocker = g33cReviewBlocker(reviewRows);
+
+  if (!customerOrder?.id) blockers.push('customer_app_order_missing');
+  if (!paid) blockers.push('payment_not_paid_or_captured');
+  if (cancelled) blockers.push('cancelled_or_refunded');
+  if (g33cSubscriptionOrMulti(nativeOrder, task)) blockers.push('subscription_or_multi_delivery_not_supported');
+  if (!items) blockers.push('missing_line_items');
+  if (!['delivery', 'pickup'].includes(fulfillType)) blockers.push('ambiguous_delivery_or_pickup_classification');
+  if (reviewBlocker) blockers.push('order_review_queue_blocker');
+  blockers.push(...duplicateRisks);
+
+  if (!nativeOrder?.id) warnings.push('native_shopify_order_missing_mirror_preview_required');
+  if (!task?.id) warnings.push('native_fulfillment_task_missing_task_preview_required');
+
+  let classification = 'eligible_next_one_time_order_candidate';
+  if (!customerOrder?.id) classification = 'insufficient_data';
+  else if (!paid) classification = 'pending_payment_do_not_process';
+  else if (cancelled) classification = 'cancelled_or_refunded';
+  else if (g33cSubscriptionOrMulti(nativeOrder, task)) classification = 'unsupported_subscription_or_multi_delivery';
+  else if (duplicateRisks.length) classification = 'duplicate_or_deduped';
+  else if (reviewBlocker) classification = 'needs_review';
+  else if (g33cAlreadyComplete(customerOrder, nativeOrder, task)) classification = 'no_action_needed_already_native_complete';
+  else if (!items || !['delivery', 'pickup'].includes(fulfillType)) classification = 'insufficient_data';
+  else if (!nativeOrder?.id) classification = 'paid_but_native_mirror_missing';
+  else if (!task?.id) classification = 'paid_but_task_missing';
+
+  return { eligible: classification === 'eligible_next_one_time_order_candidate', classification, blockers, warnings, duplicateRisks };
+}
+
+function g33cNextAction(classification, eligible) {
+  if (eligible) return 'run_g33d_second_exact_controlled_pilot_approval_packet';
+  if (classification === 'paid_but_native_mirror_missing') return 'run_native_mirror_parity_preview_only';
+  if (classification === 'paid_but_task_missing') return 'run_native_task_materialization_preview_only';
+  if (classification === 'pending_payment_do_not_process') return 'wait_for_payment_capture';
+  if (classification === 'needs_review') return 'resolve_order_review_queue_before_pilot';
+  if (classification === 'insufficient_data') return 'collect_exact_order_identity_and_rerun_preview';
+  if (classification === 'duplicate_or_deduped') return 'resolve_duplicate_risk_before_pilot';
+  if (classification === 'unsupported_subscription_or_multi_delivery') return 'hold_for_subscription_or_multi_delivery_workflow';
+  if (classification === 'cancelled_or_refunded') return 'no_action_cancelled_or_refunded';
+  if (classification === 'no_action_needed_already_native_complete') return 'no_action_already_native_complete';
+  return 'wait_for_next_natural_paid_one_time_order';
+}
+
+async function g33cCandidateRow(base44, seed) {
+  const seedOrderNumber = normalizeOrderNumber(seed?.order_number || seed?.shopify_order_number || seed?.orderNumber);
+  const seedCustomerOrderId = normalizeText(seed?.customer_app_order_id || seed?.base44_order_id || seed?.order_id || seed?.id);
+  const lookup = { orderNumber: seedOrderNumber, customerAppOrderId: seedCustomerOrderId };
+  const customerOrders = seed?.__entity === 'Order' && seed?.id ? g33cUnique([seed, ...await g33cCustomerOrders(base44, lookup)]) : await g33cCustomerOrders(base44, lookup);
+  const customerOrder = customerOrders[0] || null;
+  const orderNumber = normalizeOrderNumber(customerOrder?.order_number || seedOrderNumber);
+  const customerOrderId = normalizeText(customerOrder?.id || seedCustomerOrderId);
+  const nativeOrders = await g33cNativeOrders(base44, orderNumber, customerOrderId);
+  const nativeOrder = nativeOrders[0] || null;
+  const tasks = await g33cTasks(base44, orderNumber, customerOrderId, nativeOrder?.id);
+  const task = tasks[0] || null;
+  const [orderSyncRows, reviewRows, commandRows, parityRows] = await Promise.all([
+    g33cLogs(base44, 'OrderSyncLog', orderNumber, customerOrderId, 20),
+    g33cLogs(base44, 'OrderReviewQueue', orderNumber, customerOrderId, 20),
+    g33cLogs(base44, 'CommandLog', orderNumber, customerOrderId, 20),
+    g33cLogs(base44, 'SafeSyncParityLog', orderNumber, customerOrderId, 20),
+  ]);
+  const batches = await g33cBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id);
+  const complianceLogs = await g33cComplianceLogs(base44, batches);
+  const classification = g33cClassification({ customerOrder, nativeOrder, task, customerOrders, nativeOrders, tasks, reviewRows });
+  const batchCount = batches.length;
+  const verifiedBatchCount = batches.filter(batch => normalizeLower(batch?.status || batch?.lifecycle_status || batch?.production_status) === 'verified_logged').length;
+  const taskStatus = normalizeLower(task?.status);
+  const taskDeliveryStatus = normalizeLower(task?.delivery_status);
+  const nativeProductionStatus = normalizeLower(nativeOrder?.production_status);
+  const nativeFulfillmentStatus = normalizeLower(nativeOrder?.fulfillment_status);
+  const lineItems = lineItemCount(customerOrder) || (Array.isArray(nativeOrder?.line_items) ? nativeOrder.line_items.length : 0) || safeNumber(nativeOrder?.line_item_count || task?.line_item_count, 0);
+  const fulfillType = fulfillmentMethod(customerOrder) || normalizeLower(nativeOrder?.fulfillment_method || task?.fulfillment_type);
+
+  return {
+    order_number: orderNumber || seedOrderNumber || null,
+    customer_app_order_id: customerOrderId || null,
+    native_shopify_order_id: nativeOrder?.id || null,
+    native_fulfillment_task_id: task?.id || null,
+    hub_order_id: null,
+    hub_task_id: null,
+    hub_order_present: null,
+    hub_task_present: null,
+    hub_context_status: 'derived_from_local_bridge_context_only',
+    customer_app_order_present: Boolean(customerOrder?.id),
+    payment_status: sanitizeText(customerOrder?.payment_status || customerOrder?.financial_status || nativeOrder?.payment_status || nativeOrder?.financial_status, 80),
+    payment_captured: customerOrder?.payment_captured === true,
+    is_paid: g33cPaid(customerOrder, nativeOrder),
+    order_status: sanitizeText(customerOrder?.status || nativeOrder?.order_status, 80),
+    order_type: g33cOrderType(customerOrder, nativeOrder, task),
+    source_type: sanitizeText(nativeOrder?.source_type || task?.source_type || customerOrder?.source_type, 80),
+    fulfillment_type: fulfillType || null,
+    delivery_or_pickup_date: sanitizeText(customerOrder?.assigned_delivery_date || customerOrder?.estimated_delivery_date || customerOrder?.preorder_fulfillment_date || nativeOrder?.assigned_delivery_date || nativeOrder?.selected_delivery_date || task?.delivery_date || task?.scheduled_date, 40),
+    line_item_count: lineItems,
+    total_quantity: safeNumber(Array.isArray(customerOrder?.items) ? customerOrder.items.reduce((sum, item) => sum + safeNumber(item?.quantity, 0), 0) : 0, 0),
+    cancelled_or_refunded: g33cCancelledOrRefunded(customerOrder, nativeOrder),
+    subscription_or_multi_delivery: g33cSubscriptionOrMulti(nativeOrder, task),
+    already_native_complete: g33cAlreadyComplete(customerOrder, nativeOrder, task),
+    review_queue_present: reviewRows.length > 0,
+    review_queue_status: g33cStatuses(reviewRows),
+    duplicate_risk: classification.duplicateRisks.length > 0,
+    duplicate_risk_reasons: classification.duplicateRisks,
+    native_shopify_order_present: Boolean(nativeOrder?.id),
+    native_fulfillment_task_present: Boolean(task?.id),
+    hub_bridge_present: orderSyncRows.length > 0 || Boolean(nativeOrder?.sync_status),
+    hub_bridge_status: sanitizeText(nativeOrder?.sync_status || g33cStatuses(orderSyncRows).latest_status, 140),
+    order_sync_log_status: g33cStatuses(orderSyncRows),
+    safe_sync_parity_log_status: g33cStatuses(parityRows),
+    command_log_status: g33cStatuses(commandRows),
+    safeSync_native_mirror_status: nativeOrder?.id ? 'native_mirror_present' : 'native_mirror_missing_preview_required',
+    master_data_ready: null,
+    production_inventory_ready: null,
+    production_demand_preview_ready: null,
+    production_batch_materialized: batchCount > 0,
+    production_batch_count: batchCount,
+    verified_batch_count: verifiedBatchCount,
+    compliance_log_count: complianceLogs.length,
+    production_lifecycle_state: batchCount === 0 ? 'not_applicable_until_production_batches_exist' : verifiedBatchCount === batchCount ? 'verified_logged' : 'production_batches_present_not_fully_verified',
+    production_blockers: batchCount > 0 && verifiedBatchCount < batchCount ? ['production_batches_not_fully_verified'] : [],
+    production_warnings: batchCount === 0 ? ['not_applicable_until_production_batches_exist'] : [],
+    task_pack_state: !task?.id ? 'not_applicable_until_task_exists' : ['packed', 'bottled_packed', 'delivered'].includes(taskStatus) ? taskStatus : 'task_not_packed',
+    native_order_bottle_state: !nativeOrder?.id ? 'not_applicable_until_native_order_exists' : ['bottled', 'fulfilled'].includes(nativeProductionStatus) ? nativeProductionStatus : 'order_not_bottled',
+    customer_status_state: 'not_applicable_until_downstream_preview',
+    delivery_state: !task?.id ? 'not_applicable_until_task_exists' : taskDeliveryStatus || taskStatus || 'pending',
+    notification_policy_state: 'held_no_notification',
+    native_order_fulfillment_state: nativeFulfillmentStatus || 'unknown',
+    eligible_for_second_controlled_pilot: classification.eligible,
+    recommended_pilot_type: classification.eligible ? 'second_exact_controlled_one_time_order_pilot' : 'not_recommended',
+    exact_gates_required: true,
+    eligibility_classification: classification.classification,
+    blockers: classification.blockers,
+    warnings: [...new Set([...classification.warnings, ...(batchCount === 0 ? ['not_applicable_until_production_batches_exist'] : [])])],
+    next_action: g33cNextAction(classification.classification, classification.eligible),
+  };
+}
+
+async function buildG33CPreview(base44, body) {
+  const lookup = g33cLookup(body);
+  const blockers = [];
+  const warnings = [];
+  let seeds = [];
+  if (lookup.mode === 'EXACT_ORDER_PREVIEW') {
+    if (!lookup.orderNumber && !lookup.customerAppOrderId) blockers.push('order_number_or_customer_app_order_id_required');
+    else seeds = [{ order_number: lookup.orderNumber, customer_app_order_id: lookup.customerAppOrderId }];
+  } else if (lookup.mode === 'RECENT_CANDIDATE_SCAN') {
+    const rows = await g33cList(base44, 'Order', '-created_date', Math.max(lookup.maxRecentCandidates * 4, 25));
+    seeds = rows.filter(row => row?.order_number).slice(0, lookup.maxRecentCandidates).map(row => ({ ...row, __entity: 'Order' }));
+    if (!seeds.length) warnings.push('no_recent_customer_app_orders_returned');
+  } else {
+    blockers.push('unsupported_mode');
+  }
+  const candidateRows = [];
+  for (const seed of seeds) candidateRows.push(await g33cCandidateRow(base44, seed));
+  const eligibleRows = candidateRows.filter(row => row.eligible_for_second_controlled_pilot);
+  return {
+    success: blockers.length === 0,
+    dry_run: true,
+    writes_performed: false,
+    generated_at: new Date().toISOString(),
+    function_name: 'previewNativeOrderCutoverReadiness',
+    preview_mode: G33C_PREVIEW_MODE,
+    requested_function_alias: 'previewEligibleOneTimeOrderNativeWorkflow',
+    mode: lookup.mode,
+    include_hub_context: lookup.includeHubContext,
+    scanned_count: candidateRows.length,
+    selected_order_number: lookup.mode === 'EXACT_ORDER_PREVIEW' ? (candidateRows[0]?.order_number || lookup.orderNumber || null) : null,
+    eligible_candidate_count: eligibleRows.length,
+    eligible_candidate_found: eligibleRows.length > 0,
+    candidate_rows: candidateRows,
+    blockers,
+    warnings,
+    next_action: blockers.length
+      ? 'fix_preview_request_and_rerun'
+      : eligibleRows.length
+        ? 'plan_g33d_second_exact_controlled_pilot_for_clean_candidate'
+        : lookup.mode === 'EXACT_ORDER_PREVIEW'
+          ? (candidateRows[0]?.next_action || 'wait_for_next_natural_paid_one_time_order')
+          : 'wait_for_next_natural_paid_one_time_order_or_run_exact_order_preview',
+    safety: G33C_READ_ONLY_SAFETY,
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
-      return Response.json({ success: false, error_code: 'method_not_allowed', message: 'POST required' }, { status: 405 });
+      return Response.json({ success: false, error_code: 'method_not_allowed', message: 'POST required', writes_performed: false }, { status: 405 });
     }
 
     const base44 = createClientFromRequest(req);
@@ -645,12 +1079,29 @@ Deno.serve(async (req) => {
     }
 
     const body = parsed.body || {};
-    if (body.mode && body.mode !== 'dry_run') {
+    const g33cPreviewRequest = isG33CPreviewRequest(body);
+    if (g33cPreviewRequest) {
+      const unsupported = g33cUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
+    if (!g33cPreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
     const auth = await requirePreviewAccess({ base44, req, body });
     if (!auth.ok) return auth.response;
+
+    if (g33cPreviewRequest) {
+      const preview = await buildG33CPreview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
 
     const source = sanitizeText(body?.source || 'customer_app', 80) || 'customer_app';
     const eventType = sanitizeText(body?.event_type || body?.event || 'order.created', 100) || 'order.created';
