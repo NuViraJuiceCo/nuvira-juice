@@ -2809,6 +2809,106 @@ function HistoricalBackfillPreview({ preview, isRunning, error, onRun }) {
   );
 }
 
+function HistoricalHubFulfilledBackfill1052Preview({ preview, isRunning, error, onRun }) {
+  const proposedRecords = Array.isArray(preview?.proposed_records) ? preview.proposed_records : [];
+  const heldRecords = Array.isArray(preview?.held_records) ? preview.held_records : [];
+  const blockers = Array.isArray(preview?.data_quality_blockers) ? preview.data_quality_blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const nativeMirror = proposedRecords.find(record => record?.record_type === 'Native ShopifyOrder') || proposedRecords[0] || {};
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Historical Hub Fulfilled Backfill Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G32J read-only preview for Hub order 1052. Customer App Order, native task, Hub mutation, notifications, and proof/drop remain held.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isRunning}
+          onClick={onRun}
+          className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+            isRunning
+              ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+              : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+          }`}
+        >
+          {isRunning ? 'Previewing 1052...' : 'Run 1052 Preview'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <StatCard label="Hub Order" value={preview?.hub_order_number || '1052'} sublabel={preview?.hub_order_present ? 'present' : 'not run'} tone={preview?.hub_order_present ? 'success' : 'default'} />
+        <StatCard label="Hub Fulfillment" value={formatLabel(preview?.hub_fulfillment_status || 'not run')} />
+        <StatCard label="Customer Order" value={preview?.local_customer_app_order_present ? 'Present' : 'Missing'} tone={preview ? (preview.local_customer_app_order_present ? 'warning' : 'success') : 'default'} />
+        <StatCard label="Native Order" value={preview?.native_shopify_order_present ? 'Present' : 'Missing'} tone={preview ? (preview.native_shopify_order_present ? 'warning' : 'success') : 'default'} />
+        <StatCard label="Native Task" value={preview?.native_fulfillment_task_present ? 'Present' : 'Missing'} tone={preview ? (preview.native_fulfillment_task_present ? 'warning' : 'success') : 'default'} />
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {preview && (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+            No Writes Performed. Native ShopifyOrder mirror is preview-only; live backfill requires separate exact approval.
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold text-foreground">Proposed native mirror</p>
+                <StatusChip value={nativeMirror.ready_for_dedicated_live_contract ? 'preview ready' : 'held'} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
+                <span>Production: {formatLabel(nativeMirror.proposed_safe_fields?.production_status || 'held')}</span>
+                <span>Fulfillment: {formatLabel(nativeMirror.proposed_safe_fields?.fulfillment_status || 'held')}</span>
+                <span>Line items: {formatNumber(nativeMirror.proposed_safe_fields?.line_item_count || 0)}</span>
+                <span>Customer identity: {nativeMirror.proposed_safe_fields?.customer_identity_present_not_printed ? 'present, not printed' : 'missing/held'}</span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-amber-950">Held records</p>
+              <div className="flex flex-wrap gap-1.5">
+                {heldRecords.map(record => (
+                  <StatusChip key={`${record.record_type}-${record.action}`} value={`${record.record_type} ${record.action}`} />
+                ))}
+              </div>
+            </div>
+          </div>
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {blockers.length > 0 && (
+                <div className="rounded-lg border border-red-100 bg-red-50 p-3">
+                  <p className="text-xs font-bold text-red-900">Data quality blockers</p>
+                  <p className="text-[10px] text-red-800 mt-1">{blockers.map(formatLabel).join(' · ')}</p>
+                </div>
+              )}
+              {warnings.length > 0 && (
+                <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3">
+                  <p className="text-xs font-bold text-cyan-950">Warnings</p>
+                  <p className="text-[10px] text-cyan-800 mt-1">{warnings.slice(0, 8).map(formatLabel).join(' · ')}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="rounded-lg border border-border/50 bg-background p-3 text-xs text-muted-foreground">
+            Next action: <span className="font-semibold text-foreground">{formatLabel(preview?.next_action)}</span>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+
 function NativeCustomerAppContext({ context }) {
   const summary = context?.summary || {};
   const reviewIssues = Array.isArray(context?.recent_review_issues) ? context.recent_review_issues : [];
@@ -2899,6 +2999,9 @@ export default function SyncHealth() {
   const [backfillPreview, setBackfillPreview] = useState(null);
   const [backfillPreviewError, setBackfillPreviewError] = useState('');
   const [isBackfillPreviewRunning, setIsBackfillPreviewRunning] = useState(false);
+  const [historicalFulfilled1052Preview, setHistoricalFulfilled1052Preview] = useState(null);
+  const [historicalFulfilled1052PreviewError, setHistoricalFulfilled1052PreviewError] = useState('');
+  const [isHistoricalFulfilled1052PreviewRunning, setIsHistoricalFulfilled1052PreviewRunning] = useState(false);
   const [cutoverOrderNumber, setCutoverOrderNumber] = useState('');
   const [cutoverPreview, setCutoverPreview] = useState(null);
   const [cutoverPreviewError, setCutoverPreviewError] = useState('');
@@ -3014,6 +3117,30 @@ export default function SyncHealth() {
       setBackfillPreviewError(previewError?.message || 'Unable to run historical backfill preview.');
     } finally {
       setIsBackfillPreviewRunning(false);
+    }
+  };
+
+
+  const runHistoricalFulfilled1052Preview = async () => {
+    setHistoricalFulfilled1052PreviewError('');
+    setIsHistoricalFulfilled1052PreviewRunning(true);
+    try {
+      const res = await base44.functions.invoke('previewHistoricalHubFulfilledNativeBackfill', {
+        hub_order_number: '1052',
+        correction_mode: 'HISTORICAL_HUB_FULFILLED_BACKFILL_NO_NOTIFICATION',
+        notification_policy: 'NO_NOTIFICATION',
+        proof_drop_policy: 'HELD_NOT_REQUIRED_FOR_RECONCILIATION',
+        request_id: 'g32j_preview_hub_1052_sync_health',
+      });
+      const result = res?.data || res;
+      if (!result?.success) {
+        throw new Error(result?.message || result?.error_code || 'Historical Hub fulfilled preview failed.');
+      }
+      setHistoricalFulfilled1052Preview(result);
+    } catch (previewError) {
+      setHistoricalFulfilled1052PreviewError(previewError?.message || 'Unable to run Hub order 1052 fulfilled backfill preview.');
+    } finally {
+      setIsHistoricalFulfilled1052PreviewRunning(false);
     }
   };
 
@@ -3485,6 +3612,15 @@ export default function SyncHealth() {
           isRunning={isBackfillPreviewRunning}
           error={backfillPreviewError}
           onRun={runHistoricalBackfillPreview}
+        />
+
+
+
+        <HistoricalHubFulfilledBackfill1052Preview
+          preview={historicalFulfilled1052Preview}
+          isRunning={isHistoricalFulfilled1052PreviewRunning}
+          error={historicalFulfilled1052PreviewError}
+          onRun={runHistoricalFulfilled1052Preview}
         />
 
         <NativeCutoverReadinessPreview
