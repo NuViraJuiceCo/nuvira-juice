@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const DEFAULT_MAX_ROWS = 80;
+const PROCUREMENT_VISIBILITY_MODE = 'NATIVE_PROCUREMENT_VISIBILITY';
+const INVENTORY_POLICY_NON_STOCK = 'NON_STOCK_MASTER_DATA_ONLY';
 const MAX_BLOCKERS = 40;
 const MAX_TEXT = 160;
 const OZ_TO_G = 28.3495;
@@ -137,11 +139,24 @@ function getLookup(body) {
     taskId: normalizeText(body?.native_fulfillment_task_id || body?.fulfillment_task_id || body?.task_id),
     orderNumber: normalizeText(body?.order_number || body?.shopify_order_number || body?.number).replace(/^#/, ''),
     requestId: normalizeText(body?.request_id),
+    productionDate: normalizeText(body?.production_date),
+    previewMode: normalizeText(body?.preview_mode || body?.previewMode),
+    batchIds: Array.isArray(body?.batch_ids)
+      ? body.batch_ids.map(value => normalizeText(value)).filter(Boolean).slice(0, DEFAULT_MAX_ROWS)
+      : [],
   };
 }
 
 function hasExactLookup(lookup) {
   return Boolean(lookup.orderId || lookup.nativeOrderId || lookup.taskId || lookup.orderNumber);
+}
+
+function isProcurementVisibilityMode(body, lookup = getLookup(body || {})) {
+  return normalizeText(body?.preview_mode || lookup.previewMode) === PROCUREMENT_VISIBILITY_MODE;
+}
+
+function hasProcurementVisibilityTarget(lookup) {
+  return hasExactLookup(lookup) || Boolean(lookup.productionDate) || (lookup.batchIds || []).length > 0;
 }
 
 async function listEntity(base44, entityName, sort = '-created_date', limit = DEFAULT_MAX_ROWS) {
@@ -222,7 +237,11 @@ async function findNativeFulfillmentTask(base44, customerOrder, nativeOrder, loo
 function addToIndex(index, value, record) {
   for (const key of matchKeys(value)) {
     if (!index.has(key)) index.set(key, []);
-    index.get(key).push(record);
+    const bucket = index.get(key);
+    const recordId = normalizeText(record?.id);
+    if (!bucket.some(existing => existing === record || (recordId && normalizeText(existing?.id) === recordId))) {
+      bucket.push(record);
+    }
   }
 }
 
@@ -289,10 +308,58 @@ function safeLineItems({ customerOrder, nativeOrder, task }) {
         quantity: lineItemQuantity(item),
         variant_title: sanitizeText(item?.variant_title, 120),
         source_line_item_id: sanitizeId(item?.id || item?.shopify_line_item_id || item?.product_id, 120),
+        source_batch_id: sanitizeId(item?.source_batch_id || item?.batch_id || item?.production_batch_id, 120),
       })).filter(item => item.title && item.quantity > 0);
     }
   }
   return [];
+}
+
+
+function batchQuantity(batch) {
+  return safeNumber(batch?.planned_units, 0) ||
+    safeNumber(batch?.actual_units, 0) ||
+    safeNumber(batch?.final_usable_quantity, 0) ||
+    safeNumber(batch?.bottles_produced, 0) ||
+    0;
+}
+
+function productionBatchLineItems(batches) {
+  return (batches || [])
+    .slice(0, DEFAULT_MAX_ROWS)
+    .map(batch => ({
+      title: sanitizeText(batch?.product_name, 120),
+      sku: sanitizeText(batch?.product_sku || batch?.sku, 80),
+      quantity: batchQuantity(batch),
+      variant_title: sanitizeText(batch?.bottle_size, 120),
+      source_line_item_id: sanitizeId(batch?.batch_id || batch?.id, 120),
+      source_batch_id: sanitizeId(batch?.id || batch?.batch_id, 120),
+    }))
+    .filter(item => item.title && item.quantity > 0);
+}
+
+function batchMatchesLookup(batch, lookup, { customerOrder, nativeOrder, task, orderNumber, productionDate }) {
+  const batchDate = normalizeText(batch?.production_date);
+  if (lookup?.batchIds?.length > 0) {
+    const candidates = [batch?.id, batch?.batch_id, batch?.production_batch_id].map(value => normalizeText(value)).filter(Boolean);
+    if (lookup.batchIds.some(id => candidates.includes(id))) return true;
+  }
+  if (productionDate && batchDate && batchDate !== productionDate) return false;
+
+  const targetValues = [
+    orderNumber,
+    nativeOrder?.id,
+    customerOrder?.id,
+    task?.id,
+    lookup?.nativeOrderId,
+    lookup?.orderId,
+    lookup?.taskId,
+  ].map(value => normalizeText(value)).filter(Boolean);
+
+  if (targetValues.length === 0) return Boolean(productionDate && batchDate === productionDate);
+
+  const sourceText = `${JSON.stringify(batch?.order_sources || [])} ${JSON.stringify(batch?.related_orders || [])} ${normalizeText(batch?.order_number)} ${normalizeText(batch?.shopify_order_number)} ${normalizeText(batch?.base44_order_id)} ${normalizeText(batch?.native_shopify_order_id)} ${normalizeText(batch?.native_fulfillment_task_id)}`;
+  return targetValues.some(value => sourceText.includes(value));
 }
 
 function paymentStatus(customerOrder, nativeOrder) {
@@ -488,6 +555,7 @@ function expandLineItems(lineItems, indexes) {
           bundle_component: componentName,
           demand_source_type: 'bundle_component',
           recipe_match_status: 'pending',
+          source_batch_id: sanitizeId(item?.source_batch_id, 120),
         };
         rows.push(row);
         bundleRows.push({
@@ -497,6 +565,7 @@ function expandLineItems(lineItems, indexes) {
           component_product_name: componentName,
           component_quantity: safeNumber(component?.quantity, 0),
           total_component_quantity: componentQty,
+          source_batch_id: sanitizeId(item?.source_batch_id, 120),
         });
       }
       continue;
@@ -535,6 +604,7 @@ function expandLineItems(lineItems, indexes) {
       demand_source_type: 'direct_line_item',
       size_oz: lineItemSizeOz(item, productRecord),
       recipe_match_status: 'pending',
+      source_batch_id: sanitizeId(item?.source_batch_id, 120),
     });
   }
 
@@ -626,6 +696,7 @@ function computeIngredientNeeds(demandRows, indexes) {
             recipe_source: sanitizeText(recipe.product_name, 120),
             source_product: sanitizeText(row.product_name, 120),
             source_line_item: sanitizeText(row.source_line_item, 120),
+            source_batch_id: sanitizeId(row.source_batch_id, 120),
             unit: sanitizeText(ingredient?.unit, 40) || 'trace',
           });
           continue;
@@ -641,11 +712,13 @@ function computeIngredientNeeds(demandRows, indexes) {
         recipe_sources: new Set(),
         source_products: new Set(),
         source_line_items: new Set(),
+        source_batch_ids: new Set(),
       };
       current.proposed_quantity += recipeQuantityOz * safeNumber(row.quantity, 0) * yieldFactor;
       current.recipe_sources.add(sanitizeText(recipe.product_name, 120));
       current.source_products.add(sanitizeText(row.product_name, 120));
       current.source_line_items.add(sanitizeText(row.source_line_item, 120));
+      if (row.source_batch_id) current.source_batch_ids.add(sanitizeId(row.source_batch_id, 120));
       aggregate.set(key, current);
     }
   }
@@ -731,9 +804,12 @@ function computeIngredientNeeds(demandRows, indexes) {
       recipe_source: [...value.recipe_sources].filter(Boolean).sort().join(', '),
       source_products: [...value.source_products].filter(Boolean).sort(),
       source_line_items: [...value.source_line_items].filter(Boolean).sort(),
+      source_batch_ids: [...value.source_batch_ids].filter(Boolean).sort(),
       inventory_item_id: sanitizeId(inventoryItem?.id, 120),
       inventory_item_name: sanitizeText(inventoryItem?.ingredient, 120),
       inventory_unit: sanitizeText(inventoryItem?.unit, 40),
+      supplier: sanitizeText(inventoryItem?.supplier, 120),
+      category: sanitizeText(inventoryItem?.category, 80),
       current_stock: currentStock,
       projected_stock: projectedStock,
       procurement_needed: procurementNeeded,
@@ -769,9 +845,12 @@ function computeIngredientNeeds(demandRows, indexes) {
       recipe_source: trace.recipe_source,
       source_products: [trace.source_product].filter(Boolean),
       source_line_items: [trace.source_line_item].filter(Boolean),
+      source_batch_ids: [trace.source_batch_id].filter(Boolean),
       inventory_item_id: sanitizeId(inventoryItem?.id, 120),
       inventory_item_name: sanitizeText(inventoryItem?.ingredient, 120),
       inventory_unit: sanitizeText(inventoryItem?.unit, 40),
+      supplier: sanitizeText(inventoryItem?.supplier, 120),
+      category: sanitizeText(inventoryItem?.category, 80),
       current_stock: numberOrNull(inventoryItem?.stock),
       projected_stock: numberOrNull(inventoryItem?.stock),
       procurement_needed: false,
@@ -829,10 +908,11 @@ function safeProductionDemandRows(rows) {
     recipe_match_status: sanitizeText(row.recipe_match_status, 80),
     recipe_id: sanitizeId(row.recipe_id, 120),
     recipe_name: sanitizeText(row.recipe_name, 120),
+    source_batch_id: sanitizeId(row.source_batch_id, 120),
   }));
 }
 
-function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, lineItems, masterData, existingBatches }) {
+function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, lineItems, masterData, existingBatches, requireOrderContext = true }) {
   const blockers = [];
   const warnings = [];
   const orderNumber = sanitizeText(lookup.orderNumber || nativeOrder?.shopify_order_number || customerOrder?.order_number || task?.order_number, 120);
@@ -840,18 +920,18 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
   const captured = isPaymentCaptured(customerOrder);
   const type = orderType(customerOrder, nativeOrder);
   const fulfillment = fulfillmentMethod(customerOrder, nativeOrder, task);
-  const productionDate = productionDateForOrder(customerOrder, nativeOrder, task);
+  const productionDate = lookup?.productionDate || productionDateForOrder(customerOrder, nativeOrder, task);
   const deliveryDate = deliveryDateForOrder(customerOrder, nativeOrder, task);
 
-  if (!customerOrder) blockers.push('order_not_found');
+  if (requireOrderContext && !customerOrder) blockers.push('order_not_found');
   if (customerOrder && !paid) blockers.push('order_not_paid');
   if (customerOrder && !captured) blockers.push('payment_not_captured');
-  if (!nativeOrder) blockers.push('missing_native_shopify_order');
-  if (!task) blockers.push('missing_native_fulfillment_task');
-  if (lineItems.length === 0) blockers.push('missing_line_items');
-  blockers.push(...linkageBlockers({ customerOrder, nativeOrder, task, lookup, orderNumber }));
-  if (['subscription', 'multi_delivery'].includes(type) || nativeOrder?.is_subscription === true) blockers.push('subscription_multi_delivery_out_of_scope');
-  if (['pos', 'event'].includes(type) || fulfillment === 'pos') blockers.push('pos_event_order_out_of_scope');
+  if (requireOrderContext && !nativeOrder) blockers.push('missing_native_shopify_order');
+  if (requireOrderContext && !task) blockers.push('missing_native_fulfillment_task');
+  if (lineItems.length === 0) blockers.push(requireOrderContext ? 'missing_line_items' : 'missing_production_demand');
+  if (requireOrderContext) blockers.push(...linkageBlockers({ customerOrder, nativeOrder, task, lookup, orderNumber }));
+  if (requireOrderContext && (['subscription', 'multi_delivery'].includes(type) || nativeOrder?.is_subscription === true)) blockers.push('subscription_multi_delivery_out_of_scope');
+  if (requireOrderContext && (['pos', 'event'].includes(type) || fulfillment === 'pos')) blockers.push('pos_event_order_out_of_scope');
   if (!productionDate) warnings.push('production_date_missing_or_pending');
 
   const indexes = buildIndexes(masterData);
@@ -870,12 +950,7 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
   warnings.push('purchase_order_automation_held');
 
   const existingBatchRows = (existingBatches || [])
-    .filter(batch => {
-      const batchDate = normalizeText(batch.production_date);
-      if (productionDate && batchDate && batchDate !== productionDate) return false;
-      const sourceText = JSON.stringify(batch?.order_sources || []) + JSON.stringify(batch?.related_orders || []);
-      return sourceText.includes(orderNumber || '') || sourceText.includes(nativeOrder?.id || '') || sourceText.includes(customerOrder?.id || '');
-    })
+    .filter(batch => batchMatchesLookup(batch, lookup, { customerOrder, nativeOrder, task, orderNumber, productionDate }))
     .slice(0, 12)
     .map(batch => ({
       production_batch_id: sanitizeId(batch.id, 120),
@@ -999,6 +1074,177 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
   };
 }
 
+
+function procurementNeededReason(row) {
+  if (row?.trace_quantity_pending) return 'trace_quantity_pending_no_procurement_quantity';
+  if (!row?.inventory_item_id) return 'missing_inventory_item';
+  if (row?.unsupported_stock_unit_deferred) return 'stock_unit_conversion_pending';
+  if (row?.yield_details_pending) return 'yield_details_pending';
+  if (row?.procurement_needed) return 'stock_shortfall_or_non_stock_policy';
+  return 'covered_or_no_procurement_needed';
+}
+
+function enhanceIngredientNeedRows(rows) {
+  return (rows || []).map(row => ({
+    ...row,
+    needed_quantity: row.proposed_quantity,
+    needed_unit: row.unit,
+    source_product: Array.isArray(row.source_products) ? row.source_products.join(', ') : sanitizeText(row.source_products, 160),
+    source_recipe: sanitizeText(row.recipe_source, 160),
+    source_batch_id: Array.isArray(row.source_batch_ids) && row.source_batch_ids.length === 1 ? row.source_batch_ids[0] : null,
+    matched_inventory_item_id: row.inventory_item_id,
+    matched_inventory_item_name: row.inventory_item_name,
+    matched_yield_id: row.ingredient_yield_id,
+    stock_authoritative: false,
+    procurement_needed_reason: procurementNeededReason(row),
+    stock_unit_conversion_pending: Boolean(row.unsupported_stock_unit_deferred),
+    inventory_deduction_ready: false,
+    purchase_order_ready: false,
+  }));
+}
+
+function buildProcurementSummaryRows(ingredientRows) {
+  return (ingredientRows || [])
+    .filter(row => row.procurement_needed || row.yield_details_pending || row.unsupported_stock_unit_deferred || row.trace_quantity_pending)
+    .map(row => ({
+      ingredient_name: row.ingredient_name,
+      total_needed_quantity: row.needed_quantity ?? row.proposed_quantity,
+      unit: row.needed_unit || row.unit,
+      source_products: Array.isArray(row.source_products) ? row.source_products : [],
+      source_batch_ids: Array.isArray(row.source_batch_ids) ? row.source_batch_ids : [],
+      matched_inventory_item_id: row.matched_inventory_item_id || row.inventory_item_id,
+      current_stock: row.current_stock,
+      stock_authoritative: false,
+      procurement_needed: Boolean(row.procurement_needed || row.yield_details_pending || row.unsupported_stock_unit_deferred),
+      supplier: sanitizeText(row.supplier, 120),
+      category: sanitizeText(row.category, 80),
+      yield_details_status: row.yield_details_pending ? 'pending' : (row.matched_yield_id || row.ingredient_yield_id ? 'present' : 'not_required_or_missing'),
+      purchase_conversion_status: row.unsupported_stock_unit_deferred || row.yield_details_pending || row.trace_quantity_pending || !row.procurement_conversion_ready
+        ? 'pending'
+        : 'ready',
+      notes: [
+        row.yield_details_pending ? 'yield_details_pending' : null,
+        row.unsupported_stock_unit_deferred ? 'stock_unit_conversion_pending' : null,
+        row.trace_quantity_pending ? 'trace_quantity_pending' : null,
+        row.procurement_needed ? 'procurement_needed' : null,
+      ].filter(Boolean),
+    }));
+}
+
+function buildDeferredYieldRows(ingredientRows) {
+  return (ingredientRows || [])
+    .filter(row => row.yield_details_pending)
+    .map(row => ({
+      ingredient_name: row.ingredient_name,
+      matched_yield_id: row.matched_yield_id || row.ingredient_yield_id || null,
+      status: 'yield_details_pending',
+      inventory_deduction_ready: false,
+      purchase_order_ready: false,
+    }));
+}
+
+function buildDeferredStockUnitRows(ingredientRows) {
+  return (ingredientRows || [])
+    .filter(row => row.unsupported_stock_unit_deferred || row.stock_unit_conversion_pending)
+    .map(row => ({
+      ingredient_name: row.ingredient_name,
+      inventory_unit: row.inventory_unit,
+      status: 'stock_unit_conversion_pending',
+      inventory_deduction_ready: false,
+      purchase_order_ready: false,
+    }));
+}
+
+function buildMissingMasterDataRows(readiness) {
+  const rows = [];
+  for (const item of readiness.missing_recipe_items || []) rows.push({ type: 'Recipe', name: item, blocker: 'missing_recipe' });
+  for (const item of readiness.missing_bundle_items || []) rows.push({ type: 'Bundle', name: item, blocker: 'missing_bundle_mapping' });
+  for (const item of readiness.missing_inventory_items || []) rows.push({ type: 'InventoryItem', name: item, blocker: 'missing_inventory_item' });
+  for (const item of readiness.ambiguous_recipe_items || []) rows.push({ type: 'Recipe', name: item, blocker: 'ambiguous_recipe_match' });
+  return rows.slice(0, DEFAULT_MAX_ROWS);
+}
+
+function procurementVisibilityClassification({ readiness, ingredientRows, missingMasterDataRows }) {
+  const blockers = readiness.blockers || [];
+  if (blockers.some(blocker => normalizeText(blocker).startsWith('unknown_product_mapping') || normalizeText(blocker).startsWith('missing_recipe') || normalizeText(blocker).startsWith('recipe_has_no_ingredients'))) return 'blocked_missing_recipe';
+  if (missingMasterDataRows.some(row => row.type === 'Recipe')) return 'blocked_missing_recipe';
+  if (missingMasterDataRows.some(row => row.type === 'Bundle')) return 'blocked_missing_bundle_mapping';
+  if (missingMasterDataRows.some(row => row.type === 'InventoryItem')) return 'blocked_missing_inventory_item';
+  if (blockers.some(blocker => normalizeText(blocker).startsWith('ambiguous'))) return 'blocked_ambiguous_mapping';
+  if (blockers.some(blocker => normalizeText(blocker).startsWith('unsupported_or_missing_recipe_quantity'))) return 'blocked_unsupported_recipe_quantity';
+  if ((readiness.production_demand_rows || []).length === 0) return 'not_applicable_no_production_demand';
+  if (ingredientRows.some(row => row.yield_details_pending || row.unsupported_stock_unit_deferred || row.trace_quantity_pending)) return 'ready_with_deferred_yield_details';
+  return 'ready_for_manual_procurement_visibility';
+}
+
+function buildProcurementVisibilityPreview(readiness) {
+  const ingredientRows = enhanceIngredientNeedRows(readiness.ingredient_need_rows || []);
+  const procurementSummaryRows = buildProcurementSummaryRows(ingredientRows);
+  const deferredYieldRows = buildDeferredYieldRows(ingredientRows);
+  const deferredStockUnitRows = buildDeferredStockUnitRows(ingredientRows);
+  const missingMasterDataRows = buildMissingMasterDataRows(readiness);
+  const policyWarnings = [
+    'stock_not_authoritative',
+    'non_stock_master_data_policy',
+    readiness.procurement_needed ? 'procurement_needed' : null,
+    ...deferredYieldRows.map(row => `yield_details_pending:${row.ingredient_name}`),
+    ...deferredStockUnitRows.map(row => `stock_unit_conversion_pending:${row.ingredient_name}`),
+    'inventory_deduction_held',
+    'purchase_order_automation_held',
+    'hub_fallback_required',
+  ].filter(Boolean);
+  const warnings = [...new Set([...(readiness.warnings || []), ...policyWarnings])].slice(0, MAX_BLOCKERS);
+  const classification = procurementVisibilityClassification({ readiness, ingredientRows, missingMasterDataRows });
+  const blockers = (readiness.blockers || []).filter(blocker => !normalizeText(blocker).startsWith('missing_ingredient_yield')).slice(0, MAX_BLOCKERS);
+  const visibilityReady = blockers.length === 0 && ingredientRows.length > 0 && !classification.startsWith('blocked') && classification !== 'not_applicable_no_production_demand';
+
+  return {
+    ...readiness,
+    preview_mode: PROCUREMENT_VISIBILITY_MODE,
+    requested_function_alias: 'previewNativeProcurementNeedsForProduction',
+    inventory_policy: INVENTORY_POLICY_NON_STOCK,
+    stock_authoritative: false,
+    product_demand_count: (readiness.production_demand_rows || []).length,
+    production_batch_count: (readiness.existing_production_batch_context_rows || []).length,
+    ingredient_need_count: ingredientRows.length,
+    procurement_needed: procurementSummaryRows.some(row => row.procurement_needed) || Boolean(readiness.procurement_needed),
+    procurement_needed_count: procurementSummaryRows.filter(row => row.procurement_needed).length || readiness.procurement_needed_count || 0,
+    procurement_visibility_ready: visibilityReady,
+    procurement_visibility_classification: classification,
+    procurement_conversion_ready: false,
+    inventory_deduction_ready: false,
+    inventory_deduction_held: true,
+    purchase_order_ready: false,
+    purchase_order_automation_held: true,
+    ingredient_need_rows: ingredientRows.slice(0, DEFAULT_MAX_ROWS),
+    procurement_summary_rows: procurementSummaryRows.slice(0, DEFAULT_MAX_ROWS),
+    deferred_yield_rows: deferredYieldRows.slice(0, DEFAULT_MAX_ROWS),
+    deferred_stock_unit_rows: deferredStockUnitRows.slice(0, DEFAULT_MAX_ROWS),
+    missing_master_data_rows: missingMasterDataRows,
+    blockers,
+    warnings,
+    hub_fallback_required: true,
+    next_action: visibilityReady
+      ? 'use_manual_procurement_visibility_keep_inventory_deduction_and_po_held'
+      : 'resolve_procurement_visibility_blockers_before_manual_procurement_use',
+    safety: {
+      ...(readiness.safety || {}),
+      dry_run_only: true,
+      writes_performed: false,
+      inventory_deducted: false,
+      inventory_stock_updated: false,
+      purchase_orders_created: false,
+      purchase_orders_updated: false,
+      provider_calls_performed: false,
+      stripe_calls_performed: false,
+      shopify_api_calls_performed: false,
+      notifications_sent: false,
+      sync_repair_replay_performed: false,
+      hub_bridge_modified: false,
+    },
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -1015,8 +1261,9 @@ Deno.serve(async (req) => {
     }
 
     const lookup = getLookup(body);
-    if (!hasExactLookup(lookup)) {
-      return Response.json({ success: false, error_code: 'exact_order_required', message: 'order_number or exact target id is required' }, { status: 400 });
+    const procurementVisibilityMode = isProcurementVisibilityMode(body, lookup);
+    if (!hasExactLookup(lookup) && !(procurementVisibilityMode && hasProcurementVisibilityTarget(lookup))) {
+      return Response.json({ success: false, error_code: procurementVisibilityMode ? 'procurement_visibility_target_required' : 'exact_order_required', message: procurementVisibilityMode ? 'order_number, production_date, native target id, or batch_ids is required' : 'order_number or exact target id is required' }, { status: 400 });
     }
 
     const base44 = createClientFromRequest(req);
@@ -1030,7 +1277,7 @@ Deno.serve(async (req) => {
     }
     if (!nativeOrder && customerOrder) nativeOrder = await findNativeShopifyOrder(base44, customerOrder, lookup);
     const task = await findNativeFulfillmentTask(base44, customerOrder, nativeOrder, lookup);
-    const lineItems = safeLineItems({ customerOrder, nativeOrder, task });
+    let lineItems = safeLineItems({ customerOrder, nativeOrder, task });
 
     const [recipes, bundles, products, inventoryItems, ingredientYields, existingBatches] = await Promise.all([
       listEntity(base44, 'Recipe', 'product_name', 500),
@@ -1041,6 +1288,17 @@ Deno.serve(async (req) => {
       listEntity(base44, 'ProductionBatch', '-production_date', 500),
     ]);
 
+    const scopedBatches = existingBatches.filter(batch => batchMatchesLookup(batch, lookup, {
+      customerOrder,
+      nativeOrder,
+      task,
+      orderNumber: lookup.orderNumber || nativeOrder?.shopify_order_number || customerOrder?.order_number || task?.order_number,
+      productionDate: lookup.productionDate || productionDateForOrder(customerOrder, nativeOrder, task),
+    }));
+    if (procurementVisibilityMode && lineItems.length === 0 && scopedBatches.length > 0) {
+      lineItems = productionBatchLineItems(scopedBatches);
+    }
+
     const readiness = buildProductionReadiness({
       customerOrder,
       nativeOrder,
@@ -1048,11 +1306,13 @@ Deno.serve(async (req) => {
       lookup,
       lineItems,
       masterData: { recipes, bundles, products, inventoryItems, ingredientYields },
-      existingBatches,
+      existingBatches: scopedBatches.length > 0 ? scopedBatches : existingBatches,
+      requireOrderContext: !procurementVisibilityMode || hasExactLookup(lookup),
     });
+    const response = procurementVisibilityMode ? buildProcurementVisibilityPreview(readiness) : readiness;
 
     return Response.json({
-      ...readiness,
+      ...response,
       function_name: 'previewNativeProductionInventoryReadiness',
       generated_at: new Date().toISOString(),
       request_id: sanitizeId(lookup.requestId, 120),

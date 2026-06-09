@@ -697,9 +697,9 @@ function NativeProductionInventoryReadinessPreview({
         <div className="flex items-start gap-2 min-w-0">
           <Database className="w-4 h-4 text-primary mt-0.5 shrink-0" />
           <div>
-            <h2 className="text-sm font-bold text-foreground">Native Production / Inventory Readiness</h2>
+            <h2 className="text-sm font-bold text-foreground">Native Procurement Visibility Preview</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              G31A exact-order read-only preview. It translates native paid order line items into production demand, recipe demand, and ingredient/procurement context without creating batches, deducting inventory, or creating purchase orders.
+              G34B read-only preview. It translates native production demand into ingredient procurement visibility with non-authoritative stock, inventory deduction held, and PurchaseOrder automation held.
             </p>
           </div>
         </div>
@@ -713,17 +713,17 @@ function NativeProductionInventoryReadinessPreview({
               : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
           }`}
         >
-          {isRunning ? 'Previewing...' : 'Run Production / Inventory Preview'}
+          {isRunning ? 'Previewing...' : 'Run Procurement Visibility Preview'}
         </button>
       </div>
 
       <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
-        Uses the exact order number from the Native Cutover Readiness Gate above. This panel is preview-only: no production batch, inventory deduction, purchase order, provider call, notification, sync, repair, or replay can be run from here.
+        Uses the exact order number from the Native Cutover Readiness Gate above. This panel is preview-only: no stock update, inventory deduction, PurchaseOrder creation, provider call, notification, sync, repair, replay, or Hub mutation can be run from here.
       </div>
 
       {!exactOrderNumber && (
         <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-background p-3">
-          Enter an exact paid native order number above before running the production/inventory readiness preview.
+          Enter an exact native order number above before running the procurement visibility preview.
         </p>
       )}
 
@@ -749,9 +749,12 @@ function NativeProductionInventoryReadinessPreview({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <StatusChip value={preview.procurement_visibility_ready ? 'Procurement visibility ready' : 'Procurement visibility blocked'} />
             <StatusChip value={preview.production_ready ? 'Production demand ready' : 'Production demand blocked'} />
-            <StatusChip value={preview.inventory_calculation_ready ? 'Inventory calculation ready' : 'Inventory calculation blocked'} />
-            <StatusChip value={preview.inventory_deduction_ready ? 'Inventory deduction theoretically ready' : 'Inventory deduction held'} />
+            <StatusChip value={preview.stock_authoritative === false ? 'Stock not authoritative' : 'Stock authority unknown'} />
+            <StatusChip value={preview.inventory_policy || 'Inventory policy pending'} />
+            <StatusChip value={preview.inventory_deduction_ready ? 'Inventory deduction ready' : 'Inventory deduction held'} />
+            <StatusChip value={preview.purchase_order_ready ? 'PurchaseOrder ready' : 'PurchaseOrder automation held'} />
             <StatusChip value={preview.procurement_conversion_ready ? 'Procurement conversion ready' : 'Procurement conversion pending'} />
             {pendingYieldItems.length > 0 && <StatusChip value={`Yield details pending: ${pendingYieldItems.length}`} />}
             {traceIngredientItems.length > 0 && <StatusChip value={`Trace ingredients pending: ${traceIngredientItems.length}`} />}
@@ -795,6 +798,23 @@ function NativeProductionInventoryReadinessPreview({
                   `${formatNumber(preview.master_data_summary?.ingredient_yield_count)} yields`,
                 ].join(' · ')}
               </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Inventory policy</p>
+              <p className="mt-1 text-xs text-blue-950">
+                {formatLabel(preview.inventory_policy || 'NON_STOCK_MASTER_DATA_ONLY')} · Stock authoritative: {preview.stock_authoritative === false ? 'No' : 'Unknown'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3">
+              <p className="text-[10px] uppercase tracking-wider text-cyan-800 font-semibold">Held automation</p>
+              <p className="mt-1 text-xs text-cyan-950">Inventory deduction held · PurchaseOrder automation held · No writes performed</p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Next action</p>
+              <p className="mt-1 text-xs text-foreground">{formatLabel(preview.next_action || preview.procurement_visibility_classification || 'Preview only')}</p>
             </div>
           </div>
 
@@ -866,6 +886,30 @@ function NativeProductionInventoryReadinessPreview({
               <p className="mt-2 text-[10px] text-muted-foreground">
                 {recipeRows.slice(0, 12).map(row => `${row.product_name}: ${formatLabel(row.recipe_match_status)}`).join(' · ')}
               </p>
+            </div>
+          )}
+
+          {Array.isArray(preview.procurement_summary_rows) && preview.procurement_summary_rows.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Grouped procurement summary</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {preview.procurement_summary_rows.slice(0, 12).map((row, index) => (
+                  <div key={`${row.ingredient_name}-${index}`} className="rounded-lg border border-cyan-100 bg-cyan-50 p-3 space-y-1">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-cyan-950">{row.ingredient_name || 'Ingredient pending'}</p>
+                      <StatusChip value={row.purchase_conversion_status || 'conversion pending'} />
+                    </div>
+                    <p className="text-[10px] text-cyan-900">
+                      {[
+                        `Need ${formatNumber(row.total_needed_quantity)} ${row.unit || 'units'}`,
+                        row.current_stock !== null && row.current_stock !== undefined ? `Stock ${formatNumber(row.current_stock)} non-authoritative` : 'Stock unavailable',
+                        row.supplier ? `Supplier ${sanitizeAdminText(row.supplier)}` : null,
+                        row.notes?.length ? row.notes.map(note => formatLabel(note)).join(', ') : null,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -3692,10 +3736,11 @@ export default function SyncHealth() {
     try {
       const exactOrderNumber = cutoverOrderNumber.trim();
       if (!exactOrderNumber) {
-        throw new Error('Exact order number is required for production/inventory readiness preview.');
+        throw new Error('Exact order number is required for procurement visibility preview.');
       }
       const res = await base44.functions.invoke('previewNativeProductionInventoryReadiness', {
         mode: 'dry_run',
+        preview_mode: 'NATIVE_PROCUREMENT_VISIBILITY',
         order_number: exactOrderNumber,
       });
       const result = res?.data || res;
@@ -3704,7 +3749,7 @@ export default function SyncHealth() {
       }
       setProductionInventoryPreview(result);
     } catch (previewError) {
-      setProductionInventoryPreviewError(previewError?.message || 'Unable to run native production/inventory readiness preview.');
+      setProductionInventoryPreviewError(previewError?.message || 'Unable to run native procurement visibility preview.');
     } finally {
       setIsProductionInventoryPreviewRunning(false);
     }
