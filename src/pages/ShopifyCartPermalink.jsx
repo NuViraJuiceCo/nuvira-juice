@@ -3,9 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ShoppingBag, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
+import { appParams } from '@/lib/app-params';
 
 function getCartExtras(product) {
   const extra = {};
@@ -24,6 +24,25 @@ function getCartExtras(product) {
   return extra;
 }
 
+async function resolveLatestShopifyCartPermalink(cartItems) {
+  const apiBaseUrl = appParams.appBaseUrl || '';
+  const response = await fetch(`${apiBaseUrl}/api/apps/${appParams.appId}/functions/resolveShopifyCartPermalink`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-App-Id': appParams.appId,
+    },
+    body: JSON.stringify({ cart: decodeURIComponent(cartItems) }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || `Cart resolver failed with HTTP ${response.status}`);
+  }
+  return data;
+}
+
 export default function ShopifyCartPermalink() {
   const { cartItems = '' } = useParams();
   const navigate = useNavigate();
@@ -37,9 +56,7 @@ export default function ShopifyCartPermalink() {
 
     const resolveCart = async () => {
       try {
-        const response = await base44.functions.invoke('resolveShopifyCartPermalink', {
-          cart: decodeURIComponent(cartItems),
-        });
+        const response = await resolveLatestShopifyCartPermalink(cartItems);
 
         const items = response?.data?.items || response?.items || [];
         if (!items.length) {
