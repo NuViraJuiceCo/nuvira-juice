@@ -50,6 +50,7 @@ Deno.serve(async (req) => {
       product_type: product.category || '',
       status: product.is_available !== false ? 'active' : 'draft',
       tags: (product.tags || []).join(', '),
+      ...(product.shopify_handle ? { handle: product.shopify_handle } : {}),
       metafields_global_title_tag: metaTitle,
       metafields_global_description_tag: metaDescription,
       metafields: [
@@ -123,12 +124,21 @@ Deno.serve(async (req) => {
   const shopifyData = await shopifyRes.json();
   const createdProduct = shopifyData.product;
 
-  // If it was a new product, save the Shopify product ID back to Base44
+  const productUpdates: Record<string, string> = {};
   if (!shopifyProductId && createdProduct?.id) {
-    await base44.asServiceRole.entities.Product.update(product.id, {
-      shopify_product_id: String(createdProduct.id),
-    });
-    console.log('Saved shopify_product_id back to Base44 product:', createdProduct.id);
+    productUpdates.shopify_product_id = String(createdProduct.id);
+  }
+  if (createdProduct?.handle && product.shopify_handle !== createdProduct.handle) {
+    productUpdates.shopify_handle = createdProduct.handle;
+  }
+  const defaultVariantId = createdProduct?.variants?.[0]?.id;
+  if (defaultVariantId && product.shopify_variant_id !== String(defaultVariantId)) {
+    productUpdates.shopify_variant_id = String(defaultVariantId);
+  }
+
+  if (Object.keys(productUpdates).length > 0) {
+    await base44.asServiceRole.entities.Product.update(product.id, productUpdates);
+    console.log('Saved Shopify identifiers back to Base44 product:', productUpdates);
   }
 
   console.log('Successfully synced product to Shopify:', createdProduct?.id);

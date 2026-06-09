@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
         product_type: product.category || '',
         status: product.is_available !== false ? 'active' : 'draft',
         tags: (product.tags || []).join(', '),
+        ...(product.shopify_handle ? { handle: product.shopify_handle } : {}),
         variants: [{
           price: String(product.price || 0),
           compare_at_price: product.compare_at_price ? String(product.compare_at_price) : null,
@@ -82,13 +83,23 @@ Deno.serve(async (req) => {
     }
 
     const shopifyData = await shopifyRes.json();
-    const createdId = shopifyData.product?.id;
+    const createdProduct = shopifyData.product;
+    const createdId = createdProduct?.id;
 
-    // Save shopify_product_id back if it was a new product
+    const productUpdates: Record<string, string> = {};
     if (!shopifyProductId && createdId) {
-      await base44.asServiceRole.entities.Product.update(product.id, {
-        shopify_product_id: String(createdId),
-      });
+      productUpdates.shopify_product_id = String(createdId);
+    }
+    if (createdProduct?.handle && product.shopify_handle !== createdProduct.handle) {
+      productUpdates.shopify_handle = createdProduct.handle;
+    }
+    const defaultVariantId = createdProduct?.variants?.[0]?.id;
+    if (defaultVariantId && product.shopify_variant_id !== String(defaultVariantId)) {
+      productUpdates.shopify_variant_id = String(defaultVariantId);
+    }
+
+    if (Object.keys(productUpdates).length > 0) {
+      await base44.asServiceRole.entities.Product.update(product.id, productUpdates);
     }
 
     console.log(`Synced: ${product.title} → Shopify ID ${createdId}`);
