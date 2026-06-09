@@ -43,7 +43,7 @@ export default function ShopifyDashboard() {
         title="Shopify Integration"
         subtitle="Operations Hub"
         badge="Hub-backed"
-        onBack={() => navigate('/account')}
+        onBack={() => navigate('/admin/operations')}
         actions={<Zap className="h-4 w-4 text-muted-foreground" />}
       />
 

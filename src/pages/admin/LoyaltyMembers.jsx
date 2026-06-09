@@ -46,7 +46,7 @@ export default function LoyaltyMembers() {
         title="Loyalty Members"
         subtitle={`${filteredMembers.length} members`}
         badge="Read-only"
-        backTo="/admin/orders"
+        backTo="/admin/operations"
       />
 
       <div className="p-4 space-y-4">

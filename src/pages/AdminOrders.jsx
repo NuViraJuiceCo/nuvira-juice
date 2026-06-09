@@ -1283,7 +1283,7 @@ export default function AdminOrders() {
         title="Order Management"
         subtitle={`${orders.length} total orders`}
         badge="Hub + Native"
-        onBack={() => navigate('/account')}
+        onBack={() => navigate('/admin/operations')}
       />
 
       <LiveCustomerContextPanel

@@ -221,7 +221,7 @@ export default function BagReturnAdmin() {
         subtitle="Verify bag returns · Issue NuVira Credits"
         badge="Frozen"
         badgeTone="warning"
-        onBack={() => navigate('/account')}
+        onBack={() => navigate('/admin/operations')}
         actions={<Leaf className="h-4 w-4 text-muted-foreground" />}
       />
 

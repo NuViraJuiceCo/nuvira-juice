@@ -186,7 +186,7 @@ export default function AdminProducts() {
         subtitle="Tap an image to upload a new one"
         badge="Admin"
         badgeTone="native"
-        onBack={() => navigate('/account')}
+        onBack={() => navigate('/admin/operations')}
       />
 
       {/* Search */}
