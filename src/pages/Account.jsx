@@ -5,7 +5,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 
 import {
-  Activity, ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, ClipboardList, Zap, ImagePlus, Leaf, Crown, Wallet, Star, Package, Truck, ShieldCheck, Store
+  ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, Leaf, Crown, Wallet, Star, Package
 } from 'lucide-react';
 import CreditWallet from '@/components/account/CreditWallet';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
@@ -34,18 +34,6 @@ const brandItems = [
 
 const adminToolItems = [
   { icon: Settings, label: 'Operations', path: '/admin/operations', desc: 'Admin command center' },
-  { icon: ClipboardList, label: 'Orders', path: '/admin/orders', desc: 'Customer, order, fulfillment, and timeline context' },
-  { icon: Store, label: 'POS / Event Orders', path: '/admin/pos-orders', desc: 'Shopify POS event orders and source labels' },
-  { icon: Calendar, label: 'Production Planning', path: '/admin/production-planning', desc: 'Product demand and procurement needs' },
-  { icon: Package, label: 'Production Queue', path: '/admin/production-queue', desc: 'Controlled batch lifecycle actions' },
-  { icon: Truck, label: 'Delivery Queue', path: '/admin/delivery-queue', desc: 'Driver assignment, Out For Delivery, Delivered' },
-  { icon: ShieldCheck, label: 'Compliance Ops', path: '/admin/compliance-ops', desc: 'Logs, checklists, batch records, audit export' },
-  { icon: Package, label: 'Inventory Status', path: '/admin/inventory-status', desc: 'Stock, supplier, reorder, and procurement view' },
-  { icon: Activity, label: 'Sync Health', path: '/admin/sync-health', desc: 'Bridge errors, review issues, disabled tools' },
-  { icon: Bell, label: 'Ops Alerts', path: '/admin/ops-alerts', desc: 'Sanitized operations inbox' },
-  { icon: Zap, label: 'Shopify', path: '/admin/shopify', desc: 'POS/webhook visibility and gated exact-order tools' },
-  { icon: Activity, label: 'Live Checkout Monitor', path: '/admin/live-monitor', desc: 'One-order checkout trace visibility' },
-  { icon: ImagePlus, label: 'Product Images', path: '/admin/products', desc: 'Catalog photo management' },
 ];
 
 function AdminToolRow({ item, index, isLast }) {
