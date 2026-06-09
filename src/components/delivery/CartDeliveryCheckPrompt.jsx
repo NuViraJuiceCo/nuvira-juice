@@ -32,7 +32,7 @@ export default function CartDeliveryCheckPrompt() {
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setExpanded(true)}
-              className="text-[10px] font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
+              className="text-[10px] font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform nuvira-gradient-button"
             >
               Check My Area
             </button>
