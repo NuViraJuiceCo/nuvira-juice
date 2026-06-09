@@ -2917,6 +2917,157 @@ function HistoricalHubFulfilledBackfill1052Preview({ preview, isRunning, error, 
   );
 }
 
+
+function EligibleOneTimeOrderNativeWorkflowPreview({ preview, isRunning, error, orderNumber, onOrderNumberChange, onRunExact, onRunRecent }) {
+  const rows = Array.isArray(preview?.candidate_rows) ? preview.candidate_rows : [];
+  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
+  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+
+  return (
+    <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Eligible One-Time Order Native Workflow Preview</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              G33C read-only preview bundle for proposed one-time order candidates. It resolves exact IDs, native mirror/task context, review blockers, production readiness state, Hub fallback context, and next safe action without creating mirrors/tasks, opening gates, syncing, repairing, notifying, or mutating records.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={isRunning}
+            onClick={onRunRecent}
+            className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+              isRunning
+                ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+                : 'bg-background text-foreground border-border hover:bg-muted'
+            }`}
+          >
+            {isRunning ? 'Previewing...' : 'Recent Scan'}
+          </button>
+          <button
+            type="button"
+            disabled={isRunning || !orderNumber.trim()}
+            onClick={onRunExact}
+            className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+              isRunning || !orderNumber.trim()
+                ? 'bg-muted text-muted-foreground border-border cursor-not-allowed'
+                : 'bg-nuvira-gradient text-white border-primary hover:opacity-90'
+            }`}
+          >
+            {isRunning ? 'Previewing...' : 'Exact Preview'}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Order Number</span>
+          <input
+            type="text"
+            value={orderNumber}
+            onChange={event => onOrderNumberChange(event.target.value)}
+            placeholder="NV-MON367R7 or NV-MODIHVQQ"
+            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          />
+        </label>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900 self-end">
+          No Writes Performed. Exact pilot approval remains separate.
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <StatCard label="Mode" value={formatLabel(preview?.mode || 'not run')} />
+        <StatCard label="Scanned" value={formatNumber(preview?.scanned_count || 0)} />
+        <StatCard label="Eligible" value={formatNumber(preview?.eligible_candidate_count || 0)} tone={preview?.eligible_candidate_count > 0 ? 'success' : preview ? 'warning' : 'default'} />
+        <StatCard label="Writes" value={preview ? String(preview.writes_performed === true) : 'Not Run'} tone={preview && preview.writes_performed !== true ? 'success' : preview ? 'danger' : 'default'} />
+        <StatCard label="Next" value={formatLabel(preview?.next_action || 'not run')} />
+      </div>
+
+      {preview && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-1.5">
+            <StatusChip value={preview?.safety?.writes_performed === false ? 'No writes performed' : 'Write state unknown'} />
+            <StatusChip value="Hub fallback active" />
+            <StatusChip value="No live controls" />
+            <StatusChip value="Exact gates still required" />
+          </div>
+
+          {(blockers.length > 0 || warnings.length > 0) && (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {blockers.length > 0 && (
+                <div className="rounded-lg border border-red-100 bg-red-50 p-3">
+                  <p className="text-xs font-bold text-red-900">Preview blockers</p>
+                  <p className="text-[10px] text-red-800 mt-1">{blockers.map(formatLabel).join(' · ')}</p>
+                </div>
+              )}
+              {warnings.length > 0 && (
+                <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3">
+                  <p className="text-xs font-bold text-cyan-950">Preview warnings</p>
+                  <p className="text-[10px] text-cyan-800 mt-1">{warnings.map(formatLabel).join(' · ')}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {rows.length === 0 ? (
+            <div className="rounded-lg border border-border/50 bg-background p-3 text-xs text-muted-foreground">
+              No candidate rows returned.
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {rows.slice(0, 8).map(row => (
+                <div key={`${row.order_number || 'order'}-${row.customer_app_order_id || row.native_shopify_order_id || 'unknown'}`} className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-foreground">{row.order_number || 'Order pending'}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {[row.customer_app_order_id ? `Customer ${row.customer_app_order_id}` : 'Customer id missing', row.native_shopify_order_id ? `Native ${row.native_shopify_order_id}` : 'Native mirror missing', row.native_fulfillment_task_id ? `Task ${row.native_fulfillment_task_id}` : 'Task missing'].join(' · ')}
+                      </p>
+                    </div>
+                    <StatusChip value={row.eligibility_classification || 'preview'} />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <StatusChip value={row.is_paid ? 'Paid' : 'Payment held'} />
+                    <StatusChip value={row.payment_captured ? 'Captured' : 'Capture unknown'} />
+                    <StatusChip value={row.fulfillment_type || 'fulfillment unknown'} />
+                    <StatusChip value={row.native_shopify_order_present ? 'Native mirror present' : 'Native mirror missing'} />
+                    <StatusChip value={row.native_fulfillment_task_present ? 'Native task present' : 'Native task missing'} />
+                    <StatusChip value={row.review_queue_present ? 'Review context present' : 'No review context'} />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <StatCard label="Line Items" value={formatNumber(row.line_item_count || 0)} tone={row.line_item_count > 0 ? 'success' : 'warning'} />
+                    <StatCard label="Production" value={formatLabel(row.production_lifecycle_state || 'not applicable')} />
+                    <StatCard label="Delivery" value={formatLabel(row.delivery_state || 'not applicable')} />
+                    <StatCard label="Pilot Eligible" value={row.eligible_for_second_controlled_pilot ? 'Yes' : 'No'} tone={row.eligible_for_second_controlled_pilot ? 'success' : 'warning'} />
+                  </div>
+                  {(row.blockers?.length > 0 || row.warnings?.length > 0) && (
+                    <p className="text-[10px] text-muted-foreground">
+                      {[...(row.blockers || []).map(item => `Blocker: ${formatLabel(item)}`), ...(row.warnings || []).map(item => `Warning: ${formatLabel(item)}`)].join(' · ')}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Next safe action: <span className="font-semibold text-foreground">{formatLabel(row.next_action)}</span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function HistoricalBackfillDisabledGateCheck({ result, isRunning, error, onRun }) {
   const expectedDisabled =
     result?.error_code === 'historical_hub_fulfilled_native_shopify_order_backfill_disabled' ||
@@ -3211,6 +3362,10 @@ export default function SyncHealth() {
   const [historicalCustomerTaskBackfillImpact, setHistoricalCustomerTaskBackfillImpact] = useState(null);
   const [historicalCustomerTaskBackfillImpactError, setHistoricalCustomerTaskBackfillImpactError] = useState('');
   const [isHistoricalCustomerTaskBackfillImpactRunning, setIsHistoricalCustomerTaskBackfillImpactRunning] = useState(false);
+  const [eligibleOneTimeOrderPreview, setEligibleOneTimeOrderPreview] = useState(null);
+  const [eligibleOneTimeOrderPreviewError, setEligibleOneTimeOrderPreviewError] = useState('');
+  const [isEligibleOneTimeOrderPreviewRunning, setIsEligibleOneTimeOrderPreviewRunning] = useState(false);
+  const [eligibleOneTimeOrderNumber, setEligibleOneTimeOrderNumber] = useState('NV-MON367R7');
   const [cutoverOrderNumber, setCutoverOrderNumber] = useState('');
   const [cutoverPreview, setCutoverPreview] = useState(null);
   const [cutoverPreviewError, setCutoverPreviewError] = useState('');
@@ -3423,6 +3578,40 @@ export default function SyncHealth() {
       setHistoricalCustomerTaskBackfillImpactError(previewError?.message || 'Unable to run historical customer/task backfill impact preview.');
     } finally {
       setIsHistoricalCustomerTaskBackfillImpactRunning(false);
+    }
+  };
+
+  const runEligibleOneTimeOrderPreview = async mode => {
+    setEligibleOneTimeOrderPreviewError('');
+    setIsEligibleOneTimeOrderPreviewRunning(true);
+    try {
+      const exactOrderNumber = eligibleOneTimeOrderNumber.trim();
+      const payload = mode === 'RECENT_CANDIDATE_SCAN'
+        ? {
+            mode: 'RECENT_CANDIDATE_SCAN',
+            max_recent_candidates: 10,
+            include_hub_context: true,
+            request_id: `g33c_recent_candidate_scan_${timestampForRequestId()}`,
+          }
+        : {
+            mode: 'EXACT_ORDER_PREVIEW',
+            order_number: exactOrderNumber,
+            include_hub_context: true,
+            request_id: `g33c_exact_order_preview_${exactOrderNumber || 'missing'}_${timestampForRequestId()}`,
+          };
+      if (mode !== 'RECENT_CANDIDATE_SCAN' && !exactOrderNumber) {
+        throw new Error('Exact order number is required for exact one-time order preview.');
+      }
+      const res = await base44.functions.invoke('previewEligibleOneTimeOrderNativeWorkflow', payload);
+      const result = res?.data || res;
+      if (!result || result.success === false) {
+        throw new Error(result?.message || result?.error_code || 'Eligible one-time order preview failed.');
+      }
+      setEligibleOneTimeOrderPreview(result);
+    } catch (previewError) {
+      setEligibleOneTimeOrderPreviewError(previewError?.message || 'Unable to run eligible one-time order preview.');
+    } finally {
+      setIsEligibleOneTimeOrderPreviewRunning(false);
     }
   };
 
@@ -3917,6 +4106,20 @@ export default function SyncHealth() {
           isRunning={isHistoricalCustomerTaskBackfillImpactRunning}
           error={historicalCustomerTaskBackfillImpactError}
           onRun={runHistoricalCustomerTaskBackfillImpactPreview}
+        />
+
+        <EligibleOneTimeOrderNativeWorkflowPreview
+          preview={eligibleOneTimeOrderPreview}
+          isRunning={isEligibleOneTimeOrderPreviewRunning}
+          error={eligibleOneTimeOrderPreviewError}
+          orderNumber={eligibleOneTimeOrderNumber}
+          onOrderNumberChange={value => {
+            setEligibleOneTimeOrderNumber(value);
+            setEligibleOneTimeOrderPreview(null);
+            setEligibleOneTimeOrderPreviewError('');
+          }}
+          onRunExact={() => runEligibleOneTimeOrderPreview('EXACT_ORDER_PREVIEW')}
+          onRunRecent={() => runEligibleOneTimeOrderPreview('RECENT_CANDIDATE_SCAN')}
         />
 
         <NativeCutoverReadinessPreview
