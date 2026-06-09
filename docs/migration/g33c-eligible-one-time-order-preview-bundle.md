@@ -114,8 +114,11 @@ Candidate rows can be classified as:
 - `unsupported_subscription_or_multi_delivery`
 - `cancelled_or_refunded`
 - `insufficient_data`
+- `no_action_needed_already_native_complete`
 
 If no row is eligible, the top-level next action remains to wait for the next natural paid one-time order or run an exact preview for a proposed order number.
+
+Already completed native lifecycle examples, including the proven `NV-MPZNKGNT` path, must not be counted as eligible new pilot candidates in recent scans. They should return `no_action_needed_already_native_complete`.
 
 ## Candidate targets for first smoke
 
