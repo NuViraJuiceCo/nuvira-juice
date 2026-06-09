@@ -67,16 +67,25 @@ function variantIdMatches(variant: Record<string, unknown>, requestedVariantId: 
   });
 }
 
-async function fetchShopifyVariant(variantId: string) {
+function getShopifyAdminConfig() {
   const SHOPIFY_API_TOKEN = Deno.env.get('SHOPIFY_API_TOKEN');
   const SHOPIFY_STORE_URL = Deno.env.get('SHOPIFY_STORE_URL');
 
   if (!SHOPIFY_API_TOKEN || !SHOPIFY_STORE_URL) return null;
 
-  const storeHost = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '');
-  const response = await fetch(`https://${storeHost}/admin/api/2024-01/variants/${variantId}.json`, {
+  return {
+    token: SHOPIFY_API_TOKEN,
+    storeHost: SHOPIFY_STORE_URL.replace(/^https?:\/\//, ''),
+  };
+}
+
+async function fetchShopifyVariant(variantId: string) {
+  const config = getShopifyAdminConfig();
+  if (!config) return null;
+
+  const response = await fetch(`https://${config.storeHost}/admin/api/2024-01/variants/${variantId}.json`, {
     headers: {
-      'X-Shopify-Access-Token': SHOPIFY_API_TOKEN,
+      'X-Shopify-Access-Token': config.token,
       'Content-Type': 'application/json',
     },
   });
@@ -92,6 +101,38 @@ async function fetchShopifyVariant(variantId: string) {
     productId: data.variant.product_id ? String(data.variant.product_id) : null,
     sku: data.variant.sku ? String(data.variant.sku) : '',
     title: data.variant.title ? String(data.variant.title) : '',
+  };
+}
+
+async function fetchShopifyProduct(productId: string) {
+  const config = getShopifyAdminConfig();
+  const cleanProductId = shopifyNumericId(productId);
+  if (!config || !cleanProductId) return null;
+
+  const response = await fetch(`https://${config.storeHost}/admin/api/2024-01/products/${cleanProductId}.json`, {
+    headers: {
+      'X-Shopify-Access-Token': config.token,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    console.warn('Unable to resolve Shopify product from Admin API:', cleanProductId, response.status);
+    return null;
+  }
+
+  const data = await response.json();
+  if (!data?.product) return null;
+
+  return {
+    shopify_product_id: String(data.product.id),
+    title: data.product.title,
+    handle: data.product.handle,
+    variants: (data.product.variants || []).map((variant: Record<string, unknown>) => ({
+      shopify_variant_id: variant.id ? String(variant.id) : '',
+      title: variant.title,
+      sku: variant.sku || '',
+    })),
   };
 }
 
@@ -143,12 +184,23 @@ Deno.serve(async (req) => {
     const productById = new Map<string, Record<string, unknown>>();
     const productByLookupKey = new Map<string, Record<string, unknown>>();
 
+    const setProductByShopifyProductId = (shopifyProductId: unknown, product: Record<string, unknown>) => {
+      const direct = String(shopifyProductId || '');
+      const numeric = shopifyNumericId(shopifyProductId);
+      if (direct) productByShopifyProductId.set(direct, product);
+      if (numeric) productByShopifyProductId.set(numeric, product);
+    };
+
+    const getProductByShopifyProductId = (shopifyProductId: unknown) =>
+      productByShopifyProductId.get(String(shopifyProductId || '')) ||
+      productByShopifyProductId.get(shopifyNumericId(shopifyProductId));
+
     for (const product of products) {
       if (product.id) {
         productById.set(String(product.id), product);
       }
       if (product.shopify_product_id) {
-        productByShopifyProductId.set(String(product.shopify_product_id), product);
+        setProductByShopifyProductId(product.shopify_product_id, product);
       }
       if (product.shopify_variant_id) {
         productByShopifyVariantId.set(String(product.shopify_variant_id), product);
@@ -184,9 +236,8 @@ Deno.serve(async (req) => {
       if (variantSku && productById.has(variantSku)) return productById.get(variantSku);
 
       const shopifyProductId = shopifyProduct.shopify_product_id ? String(shopifyProduct.shopify_product_id) : '';
-      if (shopifyProductId && productByShopifyProductId.has(shopifyProductId)) {
-        return productByShopifyProductId.get(shopifyProductId);
-      }
+      const productByShopifyId = getProductByShopifyProductId(shopifyProductId);
+      if (productByShopifyId) return productByShopifyId;
 
       return findProductByLookup(variantSku, shopifyProduct.handle, shopifyProduct.title);
     };
@@ -214,11 +265,16 @@ Deno.serve(async (req) => {
       if (!product) {
         const shopifyVariant = await fetchShopifyVariant(item.variantId);
         shopifyProductId = shopifyVariant?.productId || null;
-        if (shopifyProductId && productByShopifyProductId.has(shopifyProductId)) {
-          product = productByShopifyProductId.get(shopifyProductId);
-        }
+        product = getProductByShopifyProductId(shopifyProductId);
         if (!product && shopifyVariant?.sku) {
           product = productById.get(shopifyVariant.sku) || findProductByLookup(shopifyVariant.sku);
+        }
+        if (!product && shopifyProductId) {
+          const shopifyProduct = await fetchShopifyProduct(shopifyProductId);
+          const matchingVariant = shopifyProduct?.variants?.find((variant: Record<string, unknown>) =>
+            variantIdMatches(variant, item.variantId)
+          ) || null;
+          product = findProductForShopifyProduct(shopifyProduct, matchingVariant || shopifyVariant);
         }
       }
 
