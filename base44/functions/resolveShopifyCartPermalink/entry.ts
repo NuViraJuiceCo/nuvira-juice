@@ -1,9 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const KNOWN_VARIANT_PRODUCT_TITLES: Record<string, string> = {
-  // Current Meta/Instagram Oasis cart permalink variant.
-  '43220774944858': 'OASIS',
+const PUBLIC_SHOPIFY_CATALOG_URL = 'https://nuvira-juice-company.myshopify.com/products.json?limit=250';
+const PUBLIC_SHOPIFY_CATALOG_CACHE_MS = 5 * 60 * 1000;
+
+const KNOWN_VARIANT_PRODUCTS: Record<string, { productId: string; shopifyProductId: string; title: string }> = {
+  // Current public Shopify/Meta variants. SKU values are Base44 Product ids.
+  '43296833077338': { productId: '69e95a6b3b4d04fb9b9599d7', shopifyProductId: '7892143210586', title: 'Reset Shot' },
+  '43296833011802': { productId: '69e95a6b3b4d04fb9b9599d6', shopifyProductId: '7892143177818', title: 'Hydration Shot' },
+  '43296833044570': { productId: '69e95a6b3b4d04fb9b9599d5', shopifyProductId: '7892143145050', title: 'Radiance Shot' },
+  '43220774944858': { productId: '69d490ce699b5f1ac4dde497', shopifyProductId: '7868010987610', title: 'OASIS' },
+  '43220774846554': { productId: '69d490ce699b5f1ac4dde496', shopifyProductId: '7868010954842', title: 'RE-NU' },
+  '43220774813786': { productId: '69d490ce699b5f1ac4dde495', shopifyProductId: '7868010922074', title: 'AURA' },
+  '43222070198362': { productId: '69d490ce699b5f1ac4dde498', shopifyProductId: '7867922514010', title: 'The NuVira Trio' },
+  '43222071115866': { productId: '69d5b9df48ee4ce27d9eb8fc', shopifyProductId: '7867922153562', title: 'Watermelon Juice' },
+  '43222071181402': { productId: '69d5b9df48ee4ce27d9eb8fb', shopifyProductId: '7867922120794', title: 'Pineapple Juice' },
+  '43255063445594': { productId: '69d5b9df48ee4ce27d9eb8fa', shopifyProductId: '7867922088026', title: 'Orange Juice' },
 };
+
+let publicShopifyCatalogCache: {
+  expiresAt: number;
+  products: Array<Record<string, unknown>>;
+} | null = null;
 
 function parseCartItems(raw: unknown) {
   return String(raw || '')
@@ -136,6 +153,40 @@ async function fetchShopifyProduct(productId: string) {
   };
 }
 
+async function fetchPublicShopifyCatalog() {
+  if (publicShopifyCatalogCache && publicShopifyCatalogCache.expiresAt > Date.now()) {
+    return publicShopifyCatalogCache.products;
+  }
+
+  const response = await fetch(PUBLIC_SHOPIFY_CATALOG_URL, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    console.warn('Unable to resolve public Shopify catalog:', response.status);
+    return [];
+  }
+
+  const data = await response.json();
+  const products = (data?.products || []).map((product: Record<string, unknown>) => ({
+    shopify_product_id: product.id ? String(product.id) : '',
+    title: product.title,
+    handle: product.handle,
+    variants: (Array.isArray(product.variants) ? product.variants : []).map((variant: Record<string, unknown>) => ({
+      shopify_variant_id: variant.id ? String(variant.id) : '',
+      title: variant.title,
+      sku: variant.sku || '',
+    })),
+  }));
+
+  publicShopifyCatalogCache = {
+    expiresAt: Date.now() + PUBLIC_SHOPIFY_CATALOG_CACHE_MS,
+    products,
+  };
+
+  return products;
+}
+
 function sanitizeProduct(product: Record<string, unknown>) {
   return {
     id: product.id,
@@ -242,12 +293,50 @@ Deno.serve(async (req) => {
       return findProductByLookup(variantSku, shopifyProduct.handle, shopifyProduct.title);
     };
 
+    const getKnownVariantProduct = (variantId: string) => {
+      const knownVariant = KNOWN_VARIANT_PRODUCTS[variantId];
+      if (!knownVariant) return { product: null, shopifyProductId: null };
+
+      const product =
+        productById.get(knownVariant.productId) ||
+        getProductByShopifyProductId(knownVariant.shopifyProductId) ||
+        findProductByLookup(knownVariant.title);
+
+      return {
+        product,
+        shopifyProductId: knownVariant.shopifyProductId,
+      };
+    };
+
+    let publicShopifyProductsForRequest: Array<Record<string, unknown>> | null = null;
+    const findPublicShopifyProductForVariant = async (variantId: string) => {
+      if (!publicShopifyProductsForRequest) {
+        publicShopifyProductsForRequest = await fetchPublicShopifyCatalog();
+      }
+
+      let matchedVariant: Record<string, unknown> | null = null;
+      const shopifyProduct = publicShopifyProductsForRequest.find((candidate) => {
+        matchedVariant = ((candidate.variants || []) as Array<Record<string, unknown>>).find((variant) =>
+          variantIdMatches(variant, variantId)
+        ) || null;
+        return Boolean(matchedVariant);
+      });
+
+      return { shopifyProduct, matchedVariant };
+    };
+
     const resolvedItems = [];
     const unresolvedItems = [];
 
     for (const item of requestedItems) {
-      let product = productByShopifyVariantId.get(item.variantId) || findProductByLookup(KNOWN_VARIANT_PRODUCT_TITLES[item.variantId]);
+      let product = productByShopifyVariantId.get(item.variantId);
       let shopifyProductId = product?.shopify_product_id ? String(product.shopify_product_id) : null;
+
+      if (!product) {
+        const knownVariant = getKnownVariantProduct(item.variantId);
+        product = knownVariant.product;
+        shopifyProductId = knownVariant.shopifyProductId;
+      }
 
       if (!product) {
         let matchedVariant: Record<string, unknown> | null = null;
@@ -258,6 +347,12 @@ Deno.serve(async (req) => {
           return Boolean(matchedVariant);
         });
 
+        shopifyProductId = shopifyProduct?.shopify_product_id ? String(shopifyProduct.shopify_product_id) : null;
+        product = findProductForShopifyProduct(shopifyProduct, matchedVariant);
+      }
+
+      if (!product) {
+        const { shopifyProduct, matchedVariant } = await findPublicShopifyProductForVariant(item.variantId);
         shopifyProductId = shopifyProduct?.shopify_product_id ? String(shopifyProduct.shopify_product_id) : null;
         product = findProductForShopifyProduct(shopifyProduct, matchedVariant);
       }
