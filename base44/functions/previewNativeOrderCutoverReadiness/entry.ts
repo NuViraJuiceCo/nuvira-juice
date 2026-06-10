@@ -740,11 +740,21 @@ function g33cUnique(rows) {
   return out;
 }
 
-async function g33cFilter(base44, entityName, filter, sort = '-created_date', limit = 20) {
+function g35dSleep(ms) {
+  if (typeof setTimeout !== 'function') return Promise.resolve();
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function g33cFilter(base44, entityName, filter, sort = '-created_date', limit = 20, options = {}) {
   const entity = base44.asServiceRole?.entities?.[entityName];
   if (!entity?.filter) return [];
-  const rows = await entity.filter(filter, sort, limit).catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  const attempts = options?.retryEmpty ? 2 : 1;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const rows = await entity.filter(filter, sort, limit).catch(() => []);
+    if (Array.isArray(rows) && rows.length > 0) return rows;
+    if (attempt < attempts) await g35dSleep(options?.retryDelayMs || 150);
+  }
+  return [];
 }
 
 async function g33cList(base44, entityName, sort = '-created_date', limit = 100) {
@@ -757,22 +767,22 @@ async function g33cList(base44, entityName, sort = '-created_date', limit = 100)
 async function g33cCustomerOrders(base44, lookup) {
   const rows = [];
   if (lookup.customerAppOrderId) {
-    const byId = await base44.asServiceRole?.entities?.Order?.filter({ id: lookup.customerAppOrderId }, '-created_date', 1).catch(() => []);
+    const byId = await g33cFilter(base44, 'Order', { id: lookup.customerAppOrderId }, '-created_date', 1, { retryEmpty: true });
     rows.push(...(Array.isArray(byId) ? byId : []));
   }
   if (lookup.orderNumber) {
-    rows.push(...await g33cFilter(base44, 'Order', { order_number: lookup.orderNumber }, '-created_date', 10));
-    rows.push(...await g33cFilter(base44, 'Order', { order_number: `#${lookup.orderNumber}` }, '-created_date', 10));
+    rows.push(...await g33cFilter(base44, 'Order', { order_number: lookup.orderNumber }, '-created_date', 10, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'Order', { order_number: `#${lookup.orderNumber}` }, '-created_date', 10, { retryEmpty: true }));
   }
   return g33cUnique(rows);
 }
 
 async function g33cNativeOrders(base44, orderNumber, customerOrderId) {
   const rows = [];
-  if (customerOrderId) rows.push(...await g33cFilter(base44, 'ShopifyOrder', { base44_order_id: customerOrderId }, '-created_date', 10));
+  if (customerOrderId) rows.push(...await g33cFilter(base44, 'ShopifyOrder', { base44_order_id: customerOrderId }, '-created_date', 10, { retryEmpty: true }));
   if (orderNumber) {
-    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { shopify_order_number: orderNumber }, '-created_date', 10));
-    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { shopify_order_number: `#${orderNumber}` }, '-created_date', 10));
+    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { shopify_order_number: orderNumber }, '-created_date', 10, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { shopify_order_number: `#${orderNumber}` }, '-created_date', 10, { retryEmpty: true }));
   }
   return g33cUnique(rows).filter(row => g33cMatchesOrder(row, orderNumber, customerOrderId));
 }
@@ -780,17 +790,17 @@ async function g33cNativeOrders(base44, orderNumber, customerOrderId) {
 async function g33cTasks(base44, orderNumber, customerOrderId, nativeOrderId) {
   const rows = [];
   if (customerOrderId) {
-    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { base44_order_id: customerOrderId }, '-created_date', 20));
-    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { order_id: customerOrderId }, '-created_date', 20));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { base44_order_id: customerOrderId }, '-created_date', 20, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { order_id: customerOrderId }, '-created_date', 20, { retryEmpty: true }));
   }
   if (nativeOrderId) {
-    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { native_shopify_order_id: nativeOrderId }, '-created_date', 20));
-    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_id: nativeOrderId }, '-created_date', 20));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { native_shopify_order_id: nativeOrderId }, '-created_date', 20, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_id: nativeOrderId }, '-created_date', 20, { retryEmpty: true }));
   }
   if (orderNumber) {
-    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { order_number: orderNumber }, '-created_date', 20));
-    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_number: orderNumber }, '-created_date', 20));
-    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_number: `#${orderNumber}` }, '-created_date', 20));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { order_number: orderNumber }, '-created_date', 20, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_number: orderNumber }, '-created_date', 20, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_number: `#${orderNumber}` }, '-created_date', 20, { retryEmpty: true }));
   }
   return g33cUnique(rows).filter(row => g33cMatchesOrder(row, orderNumber, customerOrderId) || (nativeOrderId && [row?.native_shopify_order_id, row?.shopify_order_id].includes(nativeOrderId)));
 }
@@ -1167,7 +1177,7 @@ function g35bLookup(body) {
 
 async function g35bNativeOrders(base44, lookup, customerOrder) {
   const rows = [];
-  if (lookup.nativeOrderId) rows.push(...await g33cFilter(base44, 'ShopifyOrder', { id: lookup.nativeOrderId }, '-created_date', 5));
+  if (lookup.nativeOrderId) rows.push(...await g33cFilter(base44, 'ShopifyOrder', { id: lookup.nativeOrderId }, '-created_date', 5, { retryEmpty: true }));
   rows.push(...await g33cNativeOrders(base44, lookup.orderNumber || normalizeOrderNumber(customerOrder?.order_number), lookup.customerAppOrderId || customerOrder?.id));
   return g33cUnique(rows);
 }
@@ -1349,7 +1359,7 @@ async function g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrd
   }
   const candidateDates = Array.isArray(context?.candidateDates) ? context.candidateDates : [];
   for (const productionDate of candidateDates) {
-    rows.push(...await g33cFilter(base44, 'ProductionBatch', { production_date: productionDate }, '-production_date', 100));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { production_date: productionDate }, '-production_date', 100, { retryEmpty: true }));
   }
 
   const listed = await g33cList(base44, 'ProductionBatch', '-production_date', 1000);

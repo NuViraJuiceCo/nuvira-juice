@@ -14,7 +14,7 @@ function loadHarness({ env = {} } = {}) {
   source = source.replace(/^import .*$/gm, '');
   source += `\nglobalThis.__exports = { G35H_PREVIEW_MODE, G35H_PATCH1_BATCH_LINKAGE_MARKER, isG35HPreviewRequest, buildG35HPreview, buildG35BPreview, G35B_READ_ONLY_SAFETY, G35B_STATUS_SCHEMA_COMPATIBILITY };\n`;
   const context = vm.createContext({
-    console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, Promise,
+    console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, Promise, setTimeout,
     createClientFromRequest: req => req.__base44,
     Deno: { env: { get: key => env[key] || '' }, serve: handler => { context.globalThis.__handler = handler; } },
     globalThis: {},
@@ -124,12 +124,43 @@ function makeStore({
   reviewRows = [],
   commandLogs = [],
   parityLogs = [],
+  emptyOrderReadsBeforeReal = 0,
+  emptyNativeOrderReadsBeforeReal = 0,
+  emptyTaskReadsBeforeReal = 0,
   emptyProductionBatchReadsBeforeReal = 0,
   emptyProductionBatchListReadsBeforeReal = 0,
 } = {}) {
-  const store = { orders, nativeOrders, tasks, batches, complianceLogs, orderSyncLogs, reviewRows, commandLogs, parityLogs, writes: [], emptyProductionBatchReadsBeforeReal, emptyProductionBatchListReadsBeforeReal };
+  const store = {
+    orders,
+    nativeOrders,
+    tasks,
+    batches,
+    complianceLogs,
+    orderSyncLogs,
+    reviewRows,
+    commandLogs,
+    parityLogs,
+    writes: [],
+    emptyOrderReadsBeforeReal,
+    emptyNativeOrderReadsBeforeReal,
+    emptyTaskReadsBeforeReal,
+    emptyProductionBatchReadsBeforeReal,
+    emptyProductionBatchListReadsBeforeReal,
+  };
   const rowsFor = name => ({ Order: store.orders, ShopifyOrder: store.nativeOrders, FulfillmentTask: store.tasks, ProductionBatch: store.batches, BatchComplianceLog: store.complianceLogs, OrderSyncLog: store.orderSyncLogs, OrderReviewQueue: store.reviewRows, CommandLog: store.commandLogs, SafeSyncParityLog: store.parityLogs }[name] || []);
   const maybeRowsFor = name => {
+    if (name === 'Order' && store.emptyOrderReadsBeforeReal > 0) {
+      store.emptyOrderReadsBeforeReal -= 1;
+      return [];
+    }
+    if (name === 'ShopifyOrder' && store.emptyNativeOrderReadsBeforeReal > 0) {
+      store.emptyNativeOrderReadsBeforeReal -= 1;
+      return [];
+    }
+    if (name === 'FulfillmentTask' && store.emptyTaskReadsBeforeReal > 0) {
+      store.emptyTaskReadsBeforeReal -= 1;
+      return [];
+    }
     if (name === 'ProductionBatch' && store.emptyProductionBatchReadsBeforeReal > 0) {
       store.emptyProductionBatchReadsBeforeReal -= 1;
       return [];
@@ -287,6 +318,32 @@ assert.equal(fullImpactPreview.production_batch_count, 6);
 assert.equal(fullImpactPreview.batch_compliance_log_count, 6);
 assert.ok(fullImpactPreview.proposed_production_batch_impact.batch_linkage_method.includes('deterministic_native_batch_id'));
 assert.ok(fullImpactPreview.proposed_production_batch_impact.batch_linkage_method.includes('order_sources'));
+assert.equal(fullImpactPreview.writes_performed, false);
+
+scenario = makeStore({
+  orders: [makeOrder({ status: 'delivered', production_date: '2026-06-17' })],
+  nativeOrders: [makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled', production_date: '2026-06-17' })],
+  tasks: [makeTask({ status: 'delivered', delivery_status: 'delivered', production_date: '2026-06-17' })],
+  batches: indirectDateWindowBatches,
+  complianceLogs: sixComplianceLogs,
+  emptyOrderReadsBeforeReal: 1,
+  emptyNativeOrderReadsBeforeReal: 1,
+  emptyTaskReadsBeforeReal: 1,
+  emptyProductionBatchReadsBeforeReal: 1,
+});
+fullImpactPreview = await fns.buildG35BPreview(scenario.base44, {
+  preview_mode: 'NATIVE_REFUND_IMPACT',
+  order_number: ORDER.orderNumber,
+  refund_type: 'full',
+  event_source: 'test_fixture',
+  request_id: 'g35h_patch3_full_empty_first_read_regression',
+});
+assert.equal(fullImpactPreview.order_found, true);
+assert.equal(fullImpactPreview.lifecycle_state, 'delivered');
+assert.equal(fullImpactPreview.production_batch_count, 6);
+assert.equal(fullImpactPreview.verified_logged_batch_count, 6);
+assert.equal(fullImpactPreview.batch_compliance_log_count, 6);
+assert.equal(fullImpactPreview.locked_compliance_log_count, 6);
 assert.equal(fullImpactPreview.writes_performed, false);
 
 scenario = makeStore({
