@@ -1,5 +1,5 @@
 {
-  "schema_version": "g35f_refund_impact_fixture_matrix_v1",
+  "schema_version": "g35k_refund_impact_fixture_matrix_v2",
   "fixture_policy": {
     "synthetic_only": true,
     "no_real_customer_pii": true,
@@ -69,8 +69,7 @@
         "order_found": true,
         "lifecycle_state": "before_native_ops",
         "lifecycle_risk_level": "low_risk_preview_only",
-        "next_action": "schema_gap_blocks_native_refund_command",
-        "blockers_include": ["customer_order_status_refund_value_unsupported", "customer_order_cancelled_value_unsupported"],
+        "next_action": "native_refund_preview_ready_full_refund_pre_production",
         "production_batch_count": 0,
         "batch_compliance_log_count": 0,
         "native_order_present": false,
@@ -87,8 +86,7 @@
         "order_found": true,
         "lifecycle_state": "native_order_created_only",
         "lifecycle_risk_level": "low_risk_preview_only",
-        "next_action": "schema_gap_blocks_native_refund_command",
-        "blockers_include": ["customer_order_status_refund_value_unsupported", "customer_order_cancelled_value_unsupported"],
+        "next_action": "native_refund_preview_ready_full_refund_pre_production",
         "native_order_present": true,
         "task_present": false,
         "native_order_proposed_payment_status": "refunded",
@@ -105,8 +103,7 @@
         "order_found": true,
         "lifecycle_state": "task_scheduled_or_packed",
         "lifecycle_risk_level": "review_required",
-        "next_action": "schema_gap_blocks_native_refund_command",
-        "blockers_include": ["customer_order_status_refund_value_unsupported"],
+        "next_action": "full_refund_preview_ready_task_cancellation_impact",
         "task_proposed_action": "preview_task_cancellation_impact",
         "would_cancel_task": false
       }
@@ -120,7 +117,7 @@
         "success": true,
         "lifecycle_state": "production_batches_planned",
         "lifecycle_risk_level": "review_required",
-        "next_action": "schema_gap_blocks_native_refund_command",
+        "next_action": "full_refund_preview_ready_batch_recalculation_impact",
         "production_batch_count": 2,
         "batch_compliance_log_count": 0,
         "batch_action": "preview_order_source_removal_and_planned_units_recalculation",
@@ -137,7 +134,7 @@
         "success": true,
         "lifecycle_state": "production_started",
         "lifecycle_risk_level": "high_risk_manual_only",
-        "next_action": "schema_gap_blocks_native_refund_command",
+        "next_action": "production_started_manual_review_required",
         "blockers_include": ["production_started_manual_review_required"],
         "batch_action": "hold_batch_mutation_manual_review_only",
         "production_batch_mutation_proposed": false
@@ -152,7 +149,7 @@
         "success": true,
         "lifecycle_state": "production_completed",
         "lifecycle_risk_level": "high_risk_manual_only",
-        "next_action": "schema_gap_blocks_native_refund_command",
+        "next_action": "production_completed_manual_review_required",
         "blockers_include": ["production_completed_manual_review_required"],
         "batch_action": "hold_batch_mutation_manual_review_only"
       }
@@ -166,7 +163,7 @@
         "success": true,
         "lifecycle_state": "production_verified",
         "lifecycle_risk_level": "high_risk_manual_only",
-        "next_action": "schema_gap_blocks_native_refund_command",
+        "next_action": "production_verified_manual_review_required",
         "blockers_include": ["production_verified_manual_review_required"],
         "production_batch_count": 1,
         "verified_logged_batch_count": 1,
@@ -184,7 +181,7 @@
         "success": true,
         "lifecycle_state": "task_packed",
         "lifecycle_risk_level": "review_required",
-        "next_action": "schema_gap_blocks_native_refund_command",
+        "next_action": "full_refund_review_required_task_packed",
         "task_proposed_action": "preview_task_cancellation_impact",
         "would_cancel_task": false
       }
@@ -258,8 +255,7 @@
       "expected": {
         "success": true,
         "stripe_event_id_present": false,
-        "next_action": "schema_gap_blocks_native_refund_command",
-        "blockers_include": ["customer_order_status_refund_value_unsupported"],
+        "next_action": "native_refund_preview_ready_full_refund_pre_production",
         "future_command_should": "continue_preview_only"
       }
     },
@@ -305,24 +301,25 @@
       "expected": {
         "success": true,
         "order_found": true,
-        "next_action": "schema_gap_blocks_native_refund_command",
+        "next_action": "already_refunded_or_terminal_review_required",
+        "blockers_include": ["already_refunded_or_terminal_review_required"],
+        "review_queue_incident_type": "already_refunded_terminal_refund_review",
         "customer_current_payment_status": "refunded",
         "native_current_payment_status": "refunded"
       }
     },
     {
       "name": "schema_gap_customer_order_status_refunded",
-      "description": "Customer App Order.status=refunded remains unsupported and must surface as schema gap rather than mutation path.",
+      "description": "Customer App Order.status refund/cancel values remain unsupported and are surfaced as schema-policy notes while preview uses refund-specific fields.",
       "request": { "order_number": "SYN-SCHEMA-GAP", "refund_type": "full", "refund_amount": 42.00, "stripe_event_id": "evt_test_schema_gap" },
       "state": { "customer_order": true, "native_order": true, "fulfillment_task": false, "production_batches": [], "compliance_logs": [] },
       "expected": {
         "success": true,
         "customer_order_status_refund_value_supported": false,
         "customer_order_cancelled_value_supported": false,
-        "blockers_include": ["customer_order_status_refund_value_unsupported", "customer_order_cancelled_value_unsupported"],
-        "customer_proposed_status": "refunded",
+        "customer_proposed_status": null,
         "customer_proposed_status_supported": false,
-        "next_action": "schema_gap_blocks_native_refund_command"
+        "next_action": "native_refund_preview_ready_full_refund_pre_production"
       }
     },
     {
