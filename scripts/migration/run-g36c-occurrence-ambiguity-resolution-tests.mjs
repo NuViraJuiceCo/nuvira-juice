@@ -160,6 +160,8 @@ const results = [];
   assert.equal(preview.matching_task_count, 2);
   assert.equal(preview.duplicate_occurrence_risk?.detected, true);
   assert.ok(preview.blockers.includes('duplicate_occurrence_risk'));
+  assert.equal(preview.candidate_rows[0].duplicate_group_count, 2);
+  assert.equal(preview.candidate_rows[0].classification, 'duplicate_hub_task_same_occurrence');
   assert.equal(preview.g36d_ready, false);
   assertNoWrites(preview, scenario.store, 'duplicate task risk');
   results.push('two_matching_tasks_duplicate_occurrence_risk');
