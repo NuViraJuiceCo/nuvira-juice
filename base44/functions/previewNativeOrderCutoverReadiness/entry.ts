@@ -1674,7 +1674,7 @@ async function g35hResolveRefundReadContext(base44, lookup) {
 async function g35hResolveRefundReadContextStable(base44, lookup) {
   const contexts = [];
   const exactFastPath = g35iPrev1ExactRefundIdentifiersSupplied(lookup);
-  const attempts = exactFastPath ? 2 : 3;
+  const attempts = 3;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     contexts.push(exactFastPath
       ? await g35hResolveRefundReadContextExactFast(base44, lookup)
