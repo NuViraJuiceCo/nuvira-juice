@@ -78,3 +78,12 @@ G35I-PREV1 does not:
 ## Recommendation
 
 After publish, rerun the exact-id G35H preview for `NV-MPZNKGNT`. If it returns stable 6/6 linkage, G35H can again serve as the pre-write dependency for a future owner-approved G35J planning phase. If it still times out, hold G35J and investigate Base44 function invocation/runtime limits separately.
+
+## PREV1 follow-up: list-first exact linkage
+
+Live PREV1 validation showed the first exact-fast patch returned 6/6 counts but still spent too long and failed closed on compliance read consistency. The follow-up narrows the exact path further:
+
+- ProductionBatch linkage uses the bounded list first and only falls back to direct field filters if no list match is found.
+- BatchComplianceLog linkage uses the bounded list first and only falls back to direct filters if the list cannot cover the linked batches.
+- Empty direct filter retries are avoided for the known exact-id path.
+- The fail-closed read-consistency behavior remains unchanged.
