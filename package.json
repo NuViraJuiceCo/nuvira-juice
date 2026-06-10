@@ -15,7 +15,7 @@
     "cap:android": "npm run cap:sync && npx cap open android"
   },
   "dependencies": {
-    "@base44/sdk": "^0.8.31",
+    "@base44/sdk": "^0.8.32",
     "@base44/vite-plugin": "^1.0.21",
     "@capacitor-firebase/messaging": "^8.2.0",
     "@capacitor/app": "^8.1.0",
