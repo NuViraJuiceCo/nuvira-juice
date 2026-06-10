@@ -1080,7 +1080,7 @@ async function buildG33CPreview(base44, body) {
 
 const G35B_PREVIEW_MODE = 'NATIVE_REFUND_IMPACT';
 const G35B_REFUND_TYPES = new Set(['full', 'partial', 'unknown']);
-const G35B_EVENT_SOURCES = new Set(['stripe_webhook', 'stripe_webhook_shadow', 'admin_preview', 'test_fixture']);
+const G35B_EVENT_SOURCES = new Set(['stripe_webhook', 'stripe_webhook_shadow', 'admin_preview', 'admin_shadow_preview', 'test_fixture', 'synthetic_fixture']);
 const G35K_FULL_REFUND_PREPRODUCTION_MARKER = 'g35k_full_refund_preproduction_preview_hardening';
 
 const G35B_ALLOWED_BODY_KEYS = new Set([
@@ -2487,6 +2487,340 @@ async function buildG35HPreview(base44, body) {
   };
 }
 
+
+
+const G35L_PREVIEW_MODE = 'STRIPE_REFUND_WEBHOOK_SHADOW_PREVIEW';
+const G35L_SUPPORTED_EVENT_TYPES = new Set(['charge.refunded', 'refund.created', 'refund.updated', 'charge.refund.updated']);
+const G35L_EVENT_SOURCES = new Set(['admin_shadow_preview', 'synthetic_fixture', 'stripe_webhook_shadow']);
+const G35L_ALLOWED_BODY_KEYS = new Set([
+  ...G35B_ALLOWED_BODY_KEYS,
+  'event_type',
+  'payment_intent_id',
+  'payment_intent',
+  'stripe_payment_intent_id',
+  'charge_id',
+  'stripe_charge_id',
+]);
+
+function isG35LPreviewRequest(body) {
+  const previewMode = normalizeText(body?.preview_mode).toUpperCase();
+  return previewMode === G35L_PREVIEW_MODE;
+}
+
+function g35lUnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G35L_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g35lLookup(body) {
+  const baseLookup = g35bLookup(body);
+  const eventType = normalizeLower(body?.event_type || 'unknown');
+  const eventSource = normalizeLower(body?.event_source || 'admin_shadow_preview');
+  return {
+    ...baseLookup,
+    eventType: eventType || 'unknown',
+    eventSource: G35L_EVENT_SOURCES.has(eventSource) ? eventSource : 'admin_shadow_preview',
+    paymentIntentId: normalizeText(body?.payment_intent_id || body?.payment_intent || body?.stripe_payment_intent_id),
+    chargeId: normalizeText(body?.charge_id || body?.stripe_charge_id),
+  };
+}
+
+function g35lIdempotencyKey(lookup) {
+  if (lookup?.stripeEventId) return { key: lookup.stripeEventId, source: 'stripe_event_id' };
+  if (lookup?.stripeRefundId) return { key: lookup.stripeRefundId, source: 'stripe_refund_id' };
+  if (lookup?.requestId && lookup?.eventSource === 'admin_shadow_preview') return { key: lookup.requestId, source: 'request_id_admin_shadow_preview' };
+  return { key: null, source: 'missing' };
+}
+
+function g35lSafeProviderIdPresent(value) {
+  return Boolean(normalizeText(value));
+}
+
+function g35lRowMatchesRefundId(row, stripeRefundId) {
+  if (!stripeRefundId) return false;
+  const values = [row?.stripe_refund_id, row?.refund_id, row?.idempotency_key, row?.related_stripe_refund_id];
+  if (values.some(value => normalizeText(value) === stripeRefundId)) return true;
+  const payload = row?.metadata || row?.details || row?.data || row?.payload || {};
+  return [payload?.stripe_refund_id, payload?.refund_id, payload?.related_stripe_refund_id].some(value => normalizeText(value) === stripeRefundId);
+}
+
+function g35lSafeLogSummary(row) {
+  return {
+    id: row?.id || null,
+    status: sanitizeText(row?.status || row?.sync_status || row?.review_status || row?.action, 80),
+    action: sanitizeText(row?.action || row?.hub_action || row?.command_type || row?.incident_type, 100),
+    stripe_event_id_present: Boolean(row?.stripe_event_id || row?.related_stripe_event_id || row?.event_id),
+    stripe_refund_id_present: Boolean(row?.stripe_refund_id || row?.refund_id || row?.related_stripe_refund_id),
+  };
+}
+
+async function g35lLocalOrderRowsByPaymentIntentOrCharge(base44, lookup) {
+  const rows = [];
+  if (lookup.paymentIntentId) {
+    rows.push(...await g33cFilter(base44, 'Order', { stripe_payment_intent_id: lookup.paymentIntentId }, '-created_date', 10, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'Order', { payment_intent_id: lookup.paymentIntentId }, '-created_date', 10, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'Order', { paymentIntentId: lookup.paymentIntentId }, '-created_date', 10, { retryEmpty: true }));
+  }
+  if (lookup.chargeId) {
+    rows.push(...await g33cFilter(base44, 'Order', { stripe_charge_id: lookup.chargeId }, '-created_date', 10, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'Order', { charge_id: lookup.chargeId }, '-created_date', 10, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'Order', { latest_charge: lookup.chargeId }, '-created_date', 10, { retryEmpty: true }));
+  }
+  return g33cUnique(rows);
+}
+
+async function g35lLocalNativeRowsByPaymentIntentOrCharge(base44, lookup) {
+  const rows = [];
+  if (lookup.paymentIntentId) {
+    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { stripe_payment_intent_id: lookup.paymentIntentId }, '-created_date', 10, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { payment_intent_id: lookup.paymentIntentId }, '-created_date', 10, { retryEmpty: true }));
+  }
+  if (lookup.chargeId) {
+    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { stripe_charge_id: lookup.chargeId }, '-created_date', 10, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ShopifyOrder', { charge_id: lookup.chargeId }, '-created_date', 10, { retryEmpty: true }));
+  }
+  return g33cUnique(rows);
+}
+
+async function g35lResolveOrderIdentifiers(base44, lookup) {
+  const customerRows = await g33cCustomerOrders(base44, lookup);
+  let customerOrder = customerRows[0] || null;
+  let nativeRows = [];
+  if (lookup.nativeOrderId) nativeRows.push(...await g33cFilter(base44, 'ShopifyOrder', { id: lookup.nativeOrderId }, '-created_date', 5, { retryEmpty: true }));
+  nativeRows.push(...await g35bNativeOrders(base44, lookup, customerOrder));
+  let nativeOrder = g33cUnique(nativeRows)[0] || null;
+  let orderLookupStrategy = lookup.customerAppOrderId
+    ? 'customer_app_order_id'
+    : lookup.nativeOrderId
+      ? 'native_shopify_order_id'
+      : lookup.orderNumber
+        ? 'order_number'
+        : 'none';
+
+  if (!customerOrder && !nativeOrder && (lookup.paymentIntentId || lookup.chargeId)) {
+    const paymentOrders = await g35lLocalOrderRowsByPaymentIntentOrCharge(base44, lookup);
+    customerOrder = paymentOrders[0] || null;
+    if (customerOrder?.id) orderLookupStrategy = lookup.paymentIntentId ? 'payment_intent_id_local_order' : 'charge_id_local_order';
+  }
+  if (!nativeOrder && (lookup.paymentIntentId || lookup.chargeId)) {
+    const paymentNativeRows = await g35lLocalNativeRowsByPaymentIntentOrCharge(base44, lookup);
+    nativeOrder = paymentNativeRows[0] || null;
+    if (nativeOrder?.id && orderLookupStrategy === 'none') orderLookupStrategy = lookup.paymentIntentId ? 'payment_intent_id_local_native_order' : 'charge_id_local_native_order';
+  }
+  if (!customerOrder && nativeOrder?.base44_order_id) {
+    const byNativeOrder = await g33cCustomerOrders(base44, { orderNumber: normalizeOrderNumber(nativeOrder?.shopify_order_number || lookup.orderNumber), customerAppOrderId: nativeOrder.base44_order_id });
+    customerOrder = byNativeOrder[0] || null;
+  }
+  const orderNumber = normalizeOrderNumber(customerOrder?.order_number || nativeOrder?.shopify_order_number || lookup.orderNumber);
+  const customerOrderId = normalizeText(customerOrder?.id || lookup.customerAppOrderId || nativeOrder?.base44_order_id);
+  if (!nativeOrder && (orderNumber || customerOrderId || lookup.nativeOrderId)) {
+    nativeRows = await g35bNativeOrders(base44, { ...lookup, orderNumber, customerAppOrderId: customerOrderId }, customerOrder);
+    nativeOrder = nativeRows[0] || null;
+  }
+  const nativeOrderId = normalizeText(nativeOrder?.id || lookup.nativeOrderId);
+  const tasks = await g33cTasks(base44, orderNumber, customerOrderId, nativeOrderId, lookup.taskId);
+  const task = tasks[0] || null;
+  return {
+    order_lookup_strategy: orderLookupStrategy,
+    order_found: Boolean(customerOrder?.id || nativeOrder?.id || task?.id),
+    order_number: orderNumber || null,
+    customer_app_order_id: customerOrderId || null,
+    native_shopify_order_id: nativeOrderId || null,
+    native_fulfillment_task_id: normalizeText(task?.id || lookup.taskId) || null,
+    payment_intent_id_present: g35lSafeProviderIdPresent(lookup.paymentIntentId),
+    charge_id_present: g35lSafeProviderIdPresent(lookup.chargeId),
+  };
+}
+
+async function g35lLogsByRefundId(base44, entityName, stripeRefundId) {
+  if (!stripeRefundId) return [];
+  const rows = [];
+  rows.push(...await g33cFilter(base44, entityName, { stripe_refund_id: stripeRefundId }, '-created_date', 25));
+  rows.push(...await g33cFilter(base44, entityName, { refund_id: stripeRefundId }, '-created_date', 25));
+  rows.push(...await g33cFilter(base44, entityName, { idempotency_key: stripeRefundId }, '-created_date', 25));
+  return g33cUnique(rows);
+}
+
+async function g35lIdempotencyPreview(base44, lookup, identifiers) {
+  const [baseOrderSyncRows, refundOrderSyncRows, baseCommandRows, refundCommandRows, reviewRows] = await Promise.all([
+    g35bLogs(base44, 'OrderSyncLog', { orderNumber: identifiers.order_number, customerOrderId: identifiers.customer_app_order_id, stripeEventId: lookup.stripeEventId }, 25),
+    g35lLogsByRefundId(base44, 'OrderSyncLog', lookup.stripeRefundId),
+    g35bLogs(base44, 'CommandLog', { orderNumber: identifiers.order_number, customerOrderId: identifiers.customer_app_order_id, stripeEventId: lookup.stripeEventId }, 25),
+    g35lLogsByRefundId(base44, 'CommandLog', lookup.stripeRefundId),
+    g35hReviewRows(base44, {
+      orderNumber: identifiers.order_number,
+      customerOrderId: identifiers.customer_app_order_id,
+      nativeOrderId: identifiers.native_shopify_order_id,
+      stripeEventId: lookup.stripeEventId,
+      stripeRefundId: lookup.stripeRefundId,
+    }),
+  ]);
+  const orderSyncRows = g33cUnique([...baseOrderSyncRows, ...refundOrderSyncRows]);
+  const commandRows = g33cUnique([...baseCommandRows, ...refundCommandRows]);
+  const stripeRefundMatches = [
+    ...orderSyncRows.filter(row => g35lRowMatchesRefundId(row, lookup.stripeRefundId)),
+    ...commandRows.filter(row => g35lRowMatchesRefundId(row, lookup.stripeRefundId)),
+    ...reviewRows.filter(row => g35lRowMatchesRefundId(row, lookup.stripeRefundId)),
+  ];
+  const eventStatus = g35bIdempotencyStatus({ stripeEventId: lookup.stripeEventId, orderSyncRows, commandRows });
+  const duplicateRefundIdDetected = lookup.stripeRefundId && stripeRefundMatches.length > 0;
+  return {
+    ...eventStatus,
+    idempotency_key: g35lIdempotencyKey(lookup).key,
+    idempotency_key_source: g35lIdempotencyKey(lookup).source,
+    duplicate_stripe_refund_id_detected: Boolean(duplicateRefundIdDetected),
+    duplicate_event_detected: Boolean(eventStatus.duplicate_event_detected || duplicateRefundIdDetected),
+    stripe_refund_id_match_count: stripeRefundMatches.length,
+    matching_stripe_refund_rows: stripeRefundMatches.slice(0, 5).map(g35lSafeLogSummary),
+    existing_review_queue_count: reviewRows.length,
+    matching_review_queue_rows: reviewRows.slice(0, 5).map(g35lSafeLogSummary),
+  };
+}
+
+function g35lShadowNextAction({ eventTypeSupported, normalizedRefundType, duplicateDetected, impactNextAction, blockers, orderFound }) {
+  if (!eventTypeSupported) return 'unsupported_stripe_refund_event_type';
+  if (duplicateDetected) return 'duplicate_refund_event_detected';
+  if ((blockers || []).includes('refund_amount_required_for_partial_refund_review')) return 'missing_refund_amount_for_partial_preview';
+  if ((blockers || []).includes('refund_currency_required_for_partial_refund_review')) return 'missing_refund_amount_for_partial_preview';
+  if (!orderFound) return 'unknown_order_refund_review_required';
+  if (normalizedRefundType === 'partial') return 'shadow_preview_partial_refund_review_required';
+  if (normalizedRefundType === 'full' && ['delivered_refund_manual_review_required', 'production_started_manual_review_required', 'production_completed_manual_review_required', 'production_verified_manual_review_required', 'full_refund_review_required_task_packed'].includes(impactNextAction)) return 'shadow_preview_full_refund_manual_review_required';
+  if (normalizedRefundType === 'full') return impactNextAction || 'hub_refund_source_of_truth';
+  return 'hub_refund_source_of_truth';
+}
+
+async function buildG35LPreview(base44, body) {
+  const lookup = g35lLookup(body);
+  const blockers = [];
+  const warnings = [];
+  const eventTypeSupported = G35L_SUPPORTED_EVENT_TYPES.has(lookup.eventType);
+  const refundCurrencySupplied = Boolean(normalizeText(body?.refund_currency || body?.currency));
+  if (!eventTypeSupported) blockers.push('unsupported_stripe_refund_event_type');
+  if (!lookup.refundType) blockers.push('refund_type_required_full_partial_or_unknown');
+  if (lookup.refundType === 'partial' && (lookup.refundAmount === null || lookup.refundAmount <= 0)) blockers.push('refund_amount_required_for_partial_refund_review');
+  if (lookup.refundType === 'partial' && !refundCurrencySupplied) blockers.push('refund_currency_required_for_partial_refund_review');
+  if (!lookup.orderNumber && !lookup.customerAppOrderId && !lookup.nativeOrderId && !lookup.taskId && !lookup.paymentIntentId && !lookup.chargeId && !lookup.stripeEventId && !lookup.stripeRefundId) blockers.push('order_or_refund_identifier_required');
+  warnings.push('stripe_refund_webhook_shadow_preview_only', 'provider_calls_disabled', 'notifications_held', 'hub_fallback_required');
+
+  const identifiers = await g35lResolveOrderIdentifiers(base44, lookup);
+  if (!identifiers.order_found && (lookup.paymentIntentId || lookup.chargeId)) warnings.push('local_payment_identifier_lookup_found_no_order_provider_calls_disabled');
+
+  const idempotencyStatus = await g35lIdempotencyPreview(base44, lookup, identifiers);
+  if (idempotencyStatus.duplicate_event_detected) blockers.push('duplicate_refund_event_detected');
+
+  let impactPreview = null;
+  if (eventTypeSupported && lookup.refundType === 'partial' && !blockers.includes('refund_amount_required_for_partial_refund_review') && !blockers.includes('refund_currency_required_for_partial_refund_review')) {
+    impactPreview = await buildG35HPreview(base44, {
+      preview_mode: G35H_PREVIEW_MODE,
+      order_number: identifiers.order_number || lookup.orderNumber,
+      customer_app_order_id: identifiers.customer_app_order_id || lookup.customerAppOrderId,
+      native_shopify_order_id: identifiers.native_shopify_order_id || lookup.nativeOrderId,
+      native_fulfillment_task_id: identifiers.native_fulfillment_task_id || lookup.taskId,
+      stripe_event_id: lookup.stripeEventId,
+      stripe_refund_id: lookup.stripeRefundId,
+      refund_type: 'partial',
+      refund_amount: lookup.refundAmount,
+      refund_currency: lookup.currency,
+      refund_reason: lookup.refundReason,
+      event_source: 'stripe_webhook_shadow',
+      request_id: lookup.requestId,
+    });
+  } else if (eventTypeSupported && lookup.refundType === 'full') {
+    impactPreview = await buildG35BPreview(base44, {
+      preview_mode: G35B_PREVIEW_MODE,
+      order_number: identifiers.order_number || lookup.orderNumber,
+      customer_app_order_id: identifiers.customer_app_order_id || lookup.customerAppOrderId,
+      native_shopify_order_id: identifiers.native_shopify_order_id || lookup.nativeOrderId,
+      native_fulfillment_task_id: identifiers.native_fulfillment_task_id || lookup.taskId,
+      stripe_event_id: lookup.stripeEventId,
+      stripe_refund_id: lookup.stripeRefundId,
+      refund_type: 'full',
+      refund_amount: lookup.refundAmount,
+      refund_currency: lookup.currency,
+      refund_reason: lookup.refundReason,
+      event_source: 'stripe_webhook_shadow',
+      request_id: lookup.requestId,
+    });
+  } else if (eventTypeSupported && lookup.refundType === 'unknown') {
+    warnings.push('unknown_refund_type_review_required');
+  }
+
+  const duplicateDetected = Boolean(idempotencyStatus.duplicate_event_detected);
+  const normalizedRefundType = lookup.refundType || lookup.rawRefundType || 'unknown';
+  const nextAction = g35lShadowNextAction({
+    eventTypeSupported,
+    normalizedRefundType,
+    duplicateDetected,
+    impactNextAction: impactPreview?.next_action,
+    blockers,
+    orderFound: identifiers.order_found || Boolean(impactPreview?.order_found),
+  });
+  if (!identifiers.order_found && !impactPreview?.order_found) warnings.push('unknown_order_refund_review_required');
+  if (normalizedRefundType === 'partial') warnings.push('partial_refund_review_only_no_automatic_mutation');
+  if (normalizedRefundType === 'full') warnings.push('full_refund_shadow_preview_no_native_write_command');
+
+  return {
+    success: blockers.length === 0,
+    dry_run: true,
+    writes_performed: false,
+    generated_at: new Date().toISOString(),
+    function_name: 'previewNativeOrderCutoverReadiness',
+    requested_function_alias: 'previewStripeRefundWebhookShadowImpact',
+    preview_mode: G35L_PREVIEW_MODE,
+    event_type: lookup.eventType,
+    event_type_supported: eventTypeSupported,
+    stripe_event_id: lookup.stripeEventId ? sanitizeText(lookup.stripeEventId, 120) : null,
+    stripe_refund_id: lookup.stripeRefundId ? sanitizeText(lookup.stripeRefundId, 120) : null,
+    payment_intent_id_present: Boolean(lookup.paymentIntentId),
+    charge_id_present: Boolean(lookup.chargeId),
+    normalized_refund_type: normalizedRefundType,
+    normalized_refund_amount: lookup.refundAmount,
+    normalized_refund_currency: lookup.currency,
+    event_source: lookup.eventSource,
+    request_id: lookup.requestId || null,
+    provider_call_impact: false,
+    order_lookup_result: identifiers.order_found ? 'linked_local_order_context' : 'unknown_order_no_provider_lookup',
+    order_lookup_strategy: identifiers.order_lookup_strategy,
+    linked_order_number: identifiers.order_number,
+    linked_customer_app_order_id: identifiers.customer_app_order_id,
+    linked_native_shopify_order_id: identifiers.native_shopify_order_id,
+    linked_native_fulfillment_task_id: identifiers.native_fulfillment_task_id,
+    idempotency_status: idempotencyStatus,
+    refund_impact_preview: impactPreview,
+    proposed_order_review_queue_impact: impactPreview?.proposed_order_review_queue_impact || impactPreview?.proposed_review_queue_impact || (identifiers.order_found ? null : { proposed_action: 'unknown_order_refund_review_required', would_create_now: false, incident_type: 'refund_received_unknown_order' }),
+    proposed_customer_app_order_impact: impactPreview?.proposed_customer_app_order_impact || null,
+    proposed_native_shopify_order_impact: impactPreview?.proposed_native_shopify_order_impact || null,
+    proposed_fulfillment_task_impact: impactPreview?.proposed_fulfillment_task_impact || null,
+    proposed_production_batch_impact: impactPreview?.proposed_production_batch_impact || null,
+    proposed_compliance_impact: impactPreview?.proposed_compliance_impact || {
+      batch_compliance_log_count: impactPreview?.batch_compliance_log_count || 0,
+      locked_compliance_log_count: impactPreview?.locked_compliance_log_count || 0,
+      compliance_history_preserved: true,
+      compliance_history_mutation_proposed: false,
+      proposed_action: 'preserve_compliance_history_no_mutation',
+    },
+    notification_impact: impactPreview?.notification_impact || {
+      notification_would_send: false,
+      notification_held: true,
+      notification_rows_created: false,
+      message_logs_created: false,
+    },
+    blockers: [...new Set(blockers)],
+    warnings: [...new Set([...(impactPreview?.warnings || []), ...warnings])],
+    next_action: nextAction,
+    hub_fallback_required: true,
+    hub_fallback_impact: {
+      hub_fallback_required: true,
+      hub_bridge_modified: false,
+      hub_records_updated: false,
+      source_of_truth: 'hub_refund_source_of_truth',
+    },
+    safety: G35B_READ_ONLY_SAFETY,
+  };
+}
+
 async function buildG35BPreview(base44, body) {
   const lookup = g35bLookup(body);
   const requestBlockers = [];
@@ -2660,6 +2994,7 @@ Deno.serve(async (req) => {
     const g33cPreviewRequest = isG33CPreviewRequest(body);
     const g35bPreviewRequest = isG35BPreviewRequest(body);
     const g35hPreviewRequest = isG35HPreviewRequest(body);
+    const g35lPreviewRequest = isG35LPreviewRequest(body);
     if (g33cPreviewRequest) {
       const unsupported = g33cUnsupportedBodyKey(body);
       if (unsupported) {
@@ -2678,7 +3013,13 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
-    if (!g33cPreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (g35lPreviewRequest) {
+      const unsupported = g35lUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
+    if (!g33cPreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
@@ -2707,6 +3048,16 @@ Deno.serve(async (req) => {
 
     if (g35hPreviewRequest) {
       const preview = await buildG35HPreview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
+
+    if (g35lPreviewRequest) {
+      const preview = await buildG35LPreview(base44, body);
       return Response.json({
         ...preview,
         actor_type: auth.actor_type,
