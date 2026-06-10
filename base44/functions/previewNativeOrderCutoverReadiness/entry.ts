@@ -4078,8 +4078,12 @@ function g36cResolveTaskKey(row, lookup) {
   return `order_date:${orderNumber}:${deliveryDate}`;
 }
 
+function g36cResolveExplicitOccurrenceId(row) {
+  return normalizeText(row?.occurrence_id || row?.fulfillment_id || row?.fulfillment?.id);
+}
+
 function g36cResolveOccurrenceGroupKey(row, lookup) {
-  const occurrenceId = g36cOccurrenceId(row);
+  const occurrenceId = g36cResolveExplicitOccurrenceId(row);
   if (occurrenceId) return `occurrence:${occurrenceId}`;
   const orderNumber = g36cOrderNumber(row) || lookup.parentOrderNumber || '';
   const deliveryDate = g36cDeliveryDate(row) || '';
