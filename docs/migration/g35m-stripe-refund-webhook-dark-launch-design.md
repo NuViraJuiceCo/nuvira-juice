@@ -51,7 +51,19 @@ G35M does not:
 - publish Base44
 - mutate live records
 
-## 3. Current Customer App Stripe webhook refund behavior audit
+## 3. Current refund preview capabilities
+
+G35M builds on the already-published read-only preview capabilities:
+
+- `STRIPE_REFUND_WEBHOOK_SHADOW_PREVIEW` accepts normalized safe refund-like input only.
+- Full refunds route to `NATIVE_REFUND_IMPACT`.
+- Partial refunds route to `NATIVE_PARTIAL_REFUND_REVIEW_IMPACT`.
+- Delivered and verified orders preserve `ProductionBatch` and `BatchComplianceLog` history in preview.
+- Partial refunds produce a future `OrderReviewQueue` draft preview only; no queue row is created.
+- Preview paths require no provider calls, no notifications, and no native writes.
+- G35H/PATCH5 read consistency policy requires stable exact-ID preview data before any future prewrite dependency can be trusted.
+
+## 4. Current Customer App Stripe webhook refund behavior audit
 
 Audited Customer App files:
 
@@ -60,7 +72,7 @@ Audited Customer App files:
 - `base44/functions/previewNativeOrderCutoverReadiness/entry.ts`
 - relevant refund/payment fields on `Order`, `ShopifyOrder`, `OrderSyncLog`, `CommandLog`, and `OrderReviewQueue`
 
-### 3.1 Signature and error boundary
+### 4.1 Signature and error boundary
 
 `stripeWebhook` currently reads the request body and `stripe-signature` header, then calls Stripe's webhook signature verification before routing events.
 
@@ -72,7 +84,7 @@ If signature verification fails:
 
 The future dark-launch shadow must run only after this existing validation succeeds.
 
-### 3.2 Currently handled payment/order event types
+### 4.2 Currently handled payment/order event types
 
 The current webhook has explicit handling for these important event types:
 
@@ -87,7 +99,7 @@ The current webhook has explicit handling for these important event types:
 
 Other event types fall through to the final safe `received:true` response.
 
-### 3.3 Current `charge.refunded` behavior
+### 4.3 Current `charge.refunded` behavior
 
 `charge.refunded` is an active mutating path today.
 
@@ -121,7 +133,7 @@ Current behavior includes:
 
 This behavior is the live source-of-truth path today and is intentionally not changed in G35M.
 
-### 3.4 Current partial refund behavior
+### 4.4 Current partial refund behavior
 
 The current `charge.refunded` one-time path detects partial refunds but still marks the Customer App `Order` as refunded and logs the event. This is a known parity/policy gap from G35A-G35L.
 
@@ -135,7 +147,7 @@ Approved future native policy is different:
 
 G35M does not patch the current live path. It only designs a future default-off shadow path to compare future behavior safely.
 
-### 3.5 Current `refund.updated` behavior
+### 4.5 Current `refund.updated` behavior
 
 `refund.updated` is explicitly handled.
 
@@ -148,7 +160,7 @@ Current behavior:
 
 This is also a mutating path and must not be changed by G35M.
 
-### 3.6 Refund event types not explicitly handled today
+### 4.6 Refund event types not explicitly handled today
 
 From the Customer App code audit:
 
@@ -159,7 +171,7 @@ They fall through to the generic `received:true` response unless Stripe aliases 
 
 G35L already supports these event types in read-only shadow preview input, but G35M does not wire them into live webhook routing.
 
-### 3.7 Hub call paths
+### 4.7 Hub call paths
 
 Current refund-related Hub behavior from Customer App code:
 
@@ -169,7 +181,7 @@ Current refund-related Hub behavior from Customer App code:
 
 Hub remains the refund source of truth. G35M does not change Hub calls.
 
-### 3.8 Notification behavior
+### 4.8 Notification behavior
 
 Current webhook paths can invoke notifications:
 
@@ -179,7 +191,7 @@ Current webhook paths can invoke notifications:
 
 The future dark-launch shadow must not send notifications and must not create notification/message rows.
 
-## 4. Dark-launch gate contract
+## 5. Dark-launch gate contract
 
 A future implementation should use default-off gates:
 
@@ -209,6 +221,8 @@ STRIPE_REFUND_WEBHOOK_SHADOW_POLICY=READ_ONLY_NO_MUTATION_NO_PROVIDER_CALLS
 - No provider calls.
 - No Hub mutation.
 - No raw payload storage.
+- No provider IDs broadly printed in customer-facing UI.
+- No auth headers or webhook signatures exposed.
 
 ### Gate evaluation order
 
@@ -225,7 +239,7 @@ Future code should evaluate gates in this order:
 
 If any gate fails, the shadow branch should skip silently or report safe internal metadata without changing normal webhook behavior.
 
-## 5. Runtime integration strategy for a future phase
+## 6. Runtime integration strategy for a future phase
 
 A future implementation should integrate with `stripeWebhook` as a non-blocking observer branch.
 
@@ -268,7 +282,7 @@ Future shadow preview should have a short bounded timeout. If it times out:
 - record only safe in-memory diagnostic output if available
 - return the normal webhook response
 
-## 6. Normalized event contract
+## 7. Normalized event contract
 
 Future shadow code should extract a minimal normalized event summary.
 
@@ -283,8 +297,10 @@ Example shape:
   "payment_intent_id": "pi_xxx",
   "charge_id": "ch_xxx",
   "refund_type": "partial",
-  "refund_amount": 500,
-  "refund_currency": "usd",
+  "source_refund_amount_minor": 500,
+  "refund_amount": 5.0,
+  "refund_currency": "USD",
+  "amount_conversion": "stripe_minor_units_to_decimal",
   "event_source": "stripe_webhook_shadow",
   "raw_payload_included": false
 }
@@ -325,29 +341,54 @@ Forbidden fields:
 - command/write flags
 - notification payloads
 
-### Amount units
+### Amount units and conversion
 
-Stripe webhook objects generally use minor currency units. The future normalization layer must explicitly document whether `refund_amount` sent to preview is minor units or dollars.
+Use cents/minor units only when the Stripe source object uses minor units, and document the conversion explicitly.
 
-Recommendation:
+Recommended convention for the future shadow normalizer:
 
-- Normalize to Customer App preview convention before calling `STRIPE_REFUND_WEBHOOK_SHADOW_PREVIEW`.
-- Include a safe metadata note such as `normalized_amount_source: stripe_minor_units_to_decimal` if diagnostics are later approved.
+- Read Stripe source amount in minor units when the source field is a Stripe amount field.
+- Convert to Customer App preview decimal amount before calling `STRIPE_REFUND_WEBHOOK_SHADOW_PREVIEW`.
+- Include safe conversion metadata such as `amount_conversion: stripe_minor_units_to_decimal` in in-memory preview input/output if needed.
 - Do not store raw event objects to preserve the original Stripe amount context.
+- Do not print provider IDs broadly in customer-facing UI.
+- Do not expose auth headers or webhook signatures.
 
-## 7. Event-to-preview routing
+Example:
 
-Future shadow routing should match G35L:
+```text
+source_refund_amount_minor=500
+refund_amount=5.00
+refund_currency=USD
+amount_conversion=stripe_minor_units_to_decimal
+```
 
-| Normalized refund type | Preview route | Expected action |
+## 8. Preview routing design
+
+Future shadow routing should match G35L exactly:
+
+| Condition | Preview route / classification | Required behavior |
 | --- | --- | --- |
-| `full` | `NATIVE_REFUND_IMPACT` through G35L shadow mode | manual review for delivered/fulfilled, low-risk preview for early states |
-| `partial` | `NATIVE_PARTIAL_REFUND_REVIEW_IMPACT` through G35L shadow mode | review queue draft preview only |
-| `unknown` | G35L shadow unknown classification | manual review / Hub source-of-truth hold |
+| full refund | `NATIVE_REFUND_IMPACT` | no native write, no queue write, no provider call, no notification |
+| partial refund | `NATIVE_PARTIAL_REFUND_REVIEW_IMPACT` | review queue draft preview only; no queue write |
+| unknown refund type | `unknown_refund_review_required` | manual review classification only |
+| unknown order | `unknown_order_refund_review_required` | no provider enrichment |
+| duplicate `stripe_event_id` | `duplicate_refund_event_detected` | duplicate classification only |
+| partial refund missing amount | `missing_refund_amount_for_partial_preview` | no review queue readiness |
+| delivered/verified order | manual review | preserve production/compliance history |
+
+Global routing rules:
+
+- no native write
+- no queue write
+- no provider call
+- no notification
+- no Hub mutation
+- no Customer App `Order.status=refunded/cancelled/canceled`
 
 If refund type cannot be determined without provider calls:
 
-- return unknown/refund review classification
+- return `unknown_refund_review_required`
 - do not call Stripe
 - do not call Shopify
 - do not create logs or queues
@@ -359,7 +400,15 @@ If order cannot be linked locally:
 - do not call Shopify to enrich
 - do not mutate Hub
 
-## 8. Idempotency and duplicate preview design
+For any future prewrite dependency:
+
+- exact IDs are preferred over broad lookup
+- `preview_data_stable:true` is required
+- `read_consistency.stable:true` is required
+- no read consistency blockers are allowed
+- no command/write planning should proceed from inconclusive preview data
+
+## 9. Idempotency and duplicate preview design
 
 Future shadow preview may read only existing local records to classify duplicate context:
 
@@ -377,7 +426,7 @@ Duplicate indicators:
 
 Shadow preview must not create idempotency rows. If no safe idempotency record exists, it should report that idempotency is unproven, not create one.
 
-## 9. Logging policy
+## 10. Safe logging design
 
 Initial future dark-launch should use:
 
@@ -385,15 +434,52 @@ Initial future dark-launch should use:
 STRIPE_REFUND_WEBHOOK_SHADOW_LOGGING_MODE=none
 ```
 
-No `OrderSyncLog`, `CommandLog`, `OrderReviewQueue`, `Notification`, or `CustomerMessageDeliveryLog` should be created.
+Preferred initial behavior:
 
-A later logging phase may propose safe redacted diagnostics, but that must be a separate approval because it would mutate records.
+- no persistent logging
+- console warning only for disabled/skipped shadow
+- no `OrderSyncLog`, `CommandLog`, `OrderReviewQueue`, `Notification`, or `CustomerMessageDeliveryLog` creation
+
+Future persistent logging, if approved later, should use a dedicated redacted entity, not `OrderSyncLog` or `CommandLog`, unless command/write behavior is actually being executed.
+
+Proposed future entity name:
+
+```text
+RefundWebhookShadowLog
+```
+
+Safe fields only:
+
+- `request_id`
+- `stripe_event_id_hash` or redacted id
+- `event_type`
+- `refund_type`
+- `refund_amount`
+- `refund_currency`
+- `order_number` if resolved
+- `preview_classification`
+- `blockers`
+- `warnings`
+- `read_consistency_stable`
+- `writes_performed:false`
+- `created_at`
+
+Do not store:
+
+- raw Stripe payload
+- raw provider payload
+- webhook signature
+- auth headers
+- secrets
+- customer PII
+- card/payment method details
+- full stack traces
 
 Allowed console diagnostics, if used:
 
 - event type
 - whether shadow gate skipped/runs
-- safe event id suffix-free/non-secret full id only if already accepted as safe operational id
+- redacted or hashed event id only
 - preview next action
 - writes performed false
 - provider calls false
@@ -406,9 +492,10 @@ Forbidden diagnostics:
 - secrets
 - payment method/card details
 - raw customer PII
-- stack traces returned to Stripe
+- full stack traces
+- provider IDs in customer-facing UI
 
-## 10. Failure behavior
+## 11. Failure behavior
 
 Shadow failure must fail closed and non-blocking.
 
@@ -423,32 +510,35 @@ Shadow failure must fail closed and non-blocking.
 | read consistency unstable | preview returns blocker/inconclusive; no write readiness |
 | duplicate event detected | duplicate classification only; no log/queue write |
 
-## 11. Test matrix for future implementation
+## 12. Test matrix for future implementation
 
 A future G35N/G35O implementation should include local harness coverage for:
 
-1. Gates disabled returns skip/no-op with no preview call.
-2. Kill switch active returns skip/no-op with no preview call.
-3. Unsupported event type skips or classifies unsupported without side effects.
-4. `charge.refunded` full refund normalizes and routes to G35L full shadow preview.
-5. `refund.created` partial refund normalizes and routes to G35L partial review preview.
-6. `refund.updated` succeeded normalizes without invoking current repair behavior from shadow.
-7. `charge.refund.updated` normalizes if Stripe sends it.
-8. Missing amount for partial refund returns missing amount classification.
-9. Unknown local order returns unknown-order review classification.
-10. Duplicate `stripe_event_id` returns duplicate classification.
-11. Duplicate `stripe_refund_id` returns duplicate classification.
-12. Delivered order full refund preserves batch/compliance history in preview.
-13. Delivered order partial refund returns review queue draft preview only.
-14. Preview timeout does not alter Stripe webhook response.
-15. Preview exception does not alter Stripe webhook response.
-16. No raw payload accepted or stored.
-17. No provider calls.
-18. No notifications.
-19. No logs/queues created while logging mode is `none`.
-20. No order/task/batch/compliance/inventory/PO/Hub mutation.
+1. Gate disabled returns normal webhook behavior; shadow skipped.
+2. Kill switch active skips shadow.
+3. Unsupported event type skipped.
+4. Allowed full refund event runs shadow preview only.
+5. Allowed partial refund event runs shadow review preview only.
+6. Unknown order returns review-required preview only.
+7. Duplicate event id returns duplicate classification.
+8. Shadow preview failure does not alter webhook response.
+9. Shadow timeout does not alter webhook response.
+10. No raw payload persisted.
+11. No provider calls.
+12. No notifications.
+13. No record mutations.
+14. `charge.refunded` full refund normalizes and routes to G35L full shadow preview.
+15. `refund.created` partial refund normalizes and routes to G35L partial review preview.
+16. `refund.updated` succeeded normalizes without invoking current repair behavior from shadow.
+17. `charge.refund.updated` normalizes if Stripe sends it.
+18. Missing amount for partial refund returns `missing_refund_amount_for_partial_preview`.
+19. Duplicate `stripe_refund_id` returns duplicate classification.
+20. Delivered order full refund preserves batch/compliance history in preview.
+21. Delivered order partial refund returns review queue draft preview only.
+22. No logs/queues created while logging mode is `none`.
+23. No order/task/batch/compliance/inventory/PO/Hub mutation.
 
-## 12. Future rollout sequence
+## 13. Future rollout sequence
 
 Recommended sequence:
 
@@ -487,7 +577,23 @@ Only if needed:
 - Propose safe redacted diagnostic record schema/contract.
 - Separate approval required because any logging creates records.
 
-## 13. Hard stops before real webhook dark-launch
+## 14. Risk and hard stops before real webhook dark-launch
+
+Hard stops:
+
+1. Any need to store raw Stripe payload.
+2. Any need to bypass Stripe signature verification.
+3. Any shadow path that can fail the live webhook.
+4. Any broad event sampling.
+5. Any review queue write.
+6. Any Customer App/native order mutation.
+7. Any notification send.
+8. Any provider call.
+9. Any Hub mutation.
+10. Any use of `Order.status=refunded/cancelled/canceled`.
+11. Any attempt to make Customer App refund source of truth before parity is approved.
+12. Any creation of `OrderSyncLog`, `CommandLog`, or `OrderReviewQueue` as part of shadow-only observation.
+13. Any exposure of auth headers, webhook signatures, secrets, raw provider payloads, customer PII, or card/payment method details.
 
 Do not wire shadow into `stripeWebhook` until all are true:
 
@@ -504,7 +610,7 @@ Do not wire shadow into `stripeWebhook` until all are true:
 11. G35L preview remains stable for known exact-id orders.
 12. Hub refund source-of-truth policy remains explicit.
 
-## 14. Recommendation
+## 15. Recommendation
 
 Close G35M as docs/design only.
 
@@ -513,7 +619,9 @@ Keep Hub as refund source of truth. Keep G35J held until there is a real partial
 Recommended next phase:
 
 ```text
-G35N — local harness for future default-off stripeWebhook shadow gate evaluation
+G35N — default-off Stripe refund webhook shadow implementation, no persistent logging, exact event/order allowlist only
 ```
+
+Alternative: hold until a real refund event is expected.
 
 Do not implement runtime `stripeWebhook` shadow wiring until a separate owner-approved phase.
