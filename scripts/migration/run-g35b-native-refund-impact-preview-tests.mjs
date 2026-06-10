@@ -145,9 +145,11 @@ assert.equal(preview.lifecycle_state, 'native_order_created_only');
 assert.equal(preview.lifecycle_risk_level, 'low_risk_preview_only');
 assert.equal(preview.proposed_native_shopify_order_impact.proposed_payment_status, 'refunded');
 assert.equal(preview.proposed_native_shopify_order_impact.proposed_production_status, 'canceled');
-assert.equal(preview.proposed_customer_app_order_impact.proposed_status_supported, false);
-assert.ok(preview.blockers.includes('customer_order_status_refund_value_unsupported'));
-assert.equal(preview.next_action, 'schema_gap_blocks_native_refund_command');
+assert.equal(preview.proposed_customer_app_order_impact.status_mutation_proposed, false);
+assert.equal(preview.proposed_customer_app_order_impact.proposed_status, null);
+assert.equal(preview.proposed_customer_app_order_impact.proposed_refund_fields.refund_status, 'fully_refunded');
+assert.ok(preview.status_schema_policy_notes.includes('refund_state_uses_payment_refund_fields'));
+assert.equal(preview.next_action, 'native_refund_preview_ready_full_refund_pre_production');
 assert.equal(scenario.store.writes.length, 0);
 
 scenario = makeStore({ batches: [makeBatch()] });
