@@ -12,7 +12,7 @@ const functionPath = path.join(repoRoot, 'base44/functions/previewNativeOrderCut
 function loadHarness({ env = {} } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
-  source += `\nglobalThis.__exports = { G35H_PREVIEW_MODE, isG35HPreviewRequest, buildG35HPreview, G35B_READ_ONLY_SAFETY, G35B_STATUS_SCHEMA_COMPATIBILITY };\n`;
+  source += `\nglobalThis.__exports = { G35H_PREVIEW_MODE, G35H_PATCH1_BATCH_LINKAGE_MARKER, isG35HPreviewRequest, buildG35HPreview, buildG35BPreview, G35B_READ_ONLY_SAFETY, G35B_STATUS_SCHEMA_COMPATIBILITY };\n`;
   const context = vm.createContext({
     console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, Promise,
     createClientFromRequest: req => req.__base44,
@@ -121,13 +121,21 @@ function makeStore({
   reviewRows = [],
   commandLogs = [],
   parityLogs = [],
+  emptyProductionBatchReadsBeforeReal = 0,
 } = {}) {
-  const store = { orders, nativeOrders, tasks, batches, complianceLogs, orderSyncLogs, reviewRows, commandLogs, parityLogs, writes: [] };
+  const store = { orders, nativeOrders, tasks, batches, complianceLogs, orderSyncLogs, reviewRows, commandLogs, parityLogs, writes: [], emptyProductionBatchReadsBeforeReal };
   const rowsFor = name => ({ Order: store.orders, ShopifyOrder: store.nativeOrders, FulfillmentTask: store.tasks, ProductionBatch: store.batches, BatchComplianceLog: store.complianceLogs, OrderSyncLog: store.orderSyncLogs, OrderReviewQueue: store.reviewRows, CommandLog: store.commandLogs, SafeSyncParityLog: store.parityLogs }[name] || []);
+  const maybeRowsFor = name => {
+    if (name === 'ProductionBatch' && store.emptyProductionBatchReadsBeforeReal > 0) {
+      store.emptyProductionBatchReadsBeforeReal -= 1;
+      return [];
+    }
+    return rowsFor(name);
+  };
   const match = (row, filter) => Object.entries(filter || {}).every(([key, value]) => row?.[key] === value);
   const api = name => ({
-    list: async () => rowsFor(name),
-    filter: async filter => rowsFor(name).filter(row => match(row, filter)),
+    list: async () => maybeRowsFor(name),
+    filter: async filter => maybeRowsFor(name).filter(row => match(row, filter)),
     get: async id => rowsFor(name).find(row => row?.id === id) || null,
     create: async payload => { store.writes.push({ op: 'create', name, payload }); throw new Error(`unexpected create ${name}`); },
     update: async (id, patch) => { store.writes.push({ op: 'update', name, id, patch }); throw new Error(`unexpected update ${name}`); },
@@ -161,6 +169,7 @@ async function previewFor(scenario, body = {}) {
 
 const { exports: fns, handler, source } = loadHarness({ env: { NATIVE_SAFE_SYNC_PREVIEW_SECRET: 'preview-secret' } });
 assert.equal(fns.G35H_PREVIEW_MODE, 'NATIVE_PARTIAL_REFUND_REVIEW_IMPACT');
+assert.equal(fns.G35H_PATCH1_BATCH_LINKAGE_MARKER, 'g35h_patch1_reuse_native_refund_impact_batch_linkage');
 assert.equal(fns.isG35HPreviewRequest({ preview_mode: 'NATIVE_PARTIAL_REFUND_REVIEW_IMPACT' }), true);
 assert.equal(fns.G35B_READ_ONLY_SAFETY.writes_performed, false);
 
@@ -194,25 +203,69 @@ assert.ok(preview.blockers.includes('refund_amount_required_for_partial_refund_r
 assert.equal(preview.next_action, 'provide_refund_amount_for_review_preview');
 assert.equal(scenario.store.writes.length, 0);
 
+const sixBatches = Array.from({ length: 6 }, (_, index) => makeBatch(index));
+const sixComplianceLogs = Array.from({ length: 6 }, (_, index) => makeComplianceLog(index));
 scenario = makeStore({
   orders: [makeOrder({ status: 'delivered' })],
   nativeOrders: [makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled' })],
   tasks: [makeTask({ status: 'delivered', delivery_status: 'delivered' })],
-  batches: [makeBatch(0), makeBatch(1)],
-  complianceLogs: [makeComplianceLog(0), makeComplianceLog(1)],
+  batches: sixBatches,
+  complianceLogs: sixComplianceLogs,
 });
 preview = await previewFor(scenario);
 assert.equal(preview.lifecycle_state, 'delivered');
 assert.equal(preview.lifecycle_risk_level, 'manual_review_required');
 assert.equal(preview.next_action, 'partial_refund_manual_review_required');
-assert.equal(preview.production_batch_count, 2);
-assert.equal(preview.batch_compliance_log_count, 2);
+assert.equal(preview.production_batch_count, 6);
+assert.equal(preview.verified_logged_batch_count, 6);
+assert.equal(preview.batch_compliance_log_count, 6);
+assert.equal(preview.locked_compliance_log_count, 6);
 assert.equal(preview.proposed_order_review_queue_impact.safe_queue_draft.priority, 'high');
 assert.equal(preview.proposed_fulfillment_task_impact.would_cancel_task, false);
 assert.equal(preview.proposed_production_batch_impact.mutation_proposed, false);
+assert.equal(preview.proposed_production_batch_impact.deletion_proposed, false);
+assert.equal(preview.proposed_production_batch_impact.compliance_history_preserved, true);
 assert.equal(preview.proposed_compliance_impact.compliance_history_preserved, true);
 assert.equal(preview.proposed_compliance_impact.compliance_history_mutation_proposed, false);
+assert.equal(preview.g35h_patch1_batch_linkage.fallback_used, false);
+assert.ok(preview.warnings.includes('verified_production_history_preserved'));
+assert.ok(preview.warnings.includes('locked_compliance_logs_preserved'));
 assert.ok(preview.warnings.includes('delivered_partial_refund_manual_review_required'));
+assert.equal(scenario.store.writes.length, 0);
+
+let fullImpactPreview = await fns.buildG35BPreview(scenario.base44, {
+  preview_mode: 'NATIVE_REFUND_IMPACT',
+  order_number: ORDER.orderNumber,
+  refund_type: 'full',
+  event_source: 'test_fixture',
+  request_id: 'g35h_patch1_full_regression',
+});
+assert.equal(fullImpactPreview.production_batch_count, 6);
+assert.equal(fullImpactPreview.batch_compliance_log_count, 6);
+assert.equal(fullImpactPreview.writes_performed, false);
+
+scenario = makeStore({
+  orders: [makeOrder({ status: 'delivered' })],
+  nativeOrders: [makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled' })],
+  tasks: [makeTask({ status: 'delivered', delivery_status: 'delivered' })],
+  batches: sixBatches,
+  complianceLogs: sixComplianceLogs,
+  emptyProductionBatchReadsBeforeReal: 12,
+});
+preview = await previewFor(scenario);
+assert.equal(preview.production_batch_count, 6);
+assert.equal(preview.verified_logged_batch_count, 6);
+assert.equal(preview.batch_compliance_log_count, 6);
+assert.equal(preview.locked_compliance_log_count, 6);
+assert.equal(preview.g35h_patch1_batch_linkage.fallback_used, true);
+assert.equal(preview.g35h_patch1_batch_linkage.fallback_status, 'native_refund_impact_linkage_reused');
+assert.equal(preview.g35h_patch1_batch_linkage.direct_production_batch_count, 0);
+assert.equal(preview.g35h_patch1_batch_linkage.fallback_production_batch_count, 6);
+assert.ok(preview.proposed_production_batch_impact.batch_linkage_warnings.includes(fns.G35H_PATCH1_BATCH_LINKAGE_MARKER));
+assert.ok(preview.warnings.includes(fns.G35H_PATCH1_BATCH_LINKAGE_MARKER));
+assert.equal(preview.proposed_order_review_queue_impact.safe_queue_draft.incident_type, 'partial_refund_review_required');
+assert.equal(preview.production_batch_mutation_proposed, false);
+assert.equal(preview.compliance_log_mutation_proposed, false);
 assert.equal(scenario.store.writes.length, 0);
 
 scenario = makeStore({ reviewRows: [{ id: 'review_existing', incident_type: 'partial_refund_review_required', existing_order_number: ORDER.orderNumber, existing_order_id: ORDER.customerOrderId, status: 'pending' }] });

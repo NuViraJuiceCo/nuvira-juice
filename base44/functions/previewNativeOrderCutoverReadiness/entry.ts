@@ -1756,6 +1756,85 @@ function g35hReviewReason({ lookup, lifecycleState }) {
     : 'partial_refund_requires_manual_review');
 }
 
+const G35H_PATCH1_BATCH_LINKAGE_MARKER = 'g35h_patch1_reuse_native_refund_impact_batch_linkage';
+
+function g35hPatch1AnnotatedImpact(impact, directImpact) {
+  const batchWarnings = Array.isArray(impact?.batch_linkage_warnings) ? impact.batch_linkage_warnings : [];
+  return {
+    ...impact,
+    batch_linkage_warnings: [...new Set([...batchWarnings, G35H_PATCH1_BATCH_LINKAGE_MARKER])],
+    g35h_patch1_linkage_source: 'native_refund_impact_reuse',
+    g35h_patch1_direct_production_batch_count: safeNumber(directImpact?.production_batch_count, 0),
+    g35h_patch1_direct_batch_compliance_log_count: safeNumber(directImpact?.batch_compliance_log_count, 0),
+  };
+}
+
+async function g35hPatch1ProductionBatchImpact(base44, body, lookup, directImpact, { orderFound }) {
+  const directBatchCount = safeNumber(directImpact?.production_batch_count, 0);
+  const directComplianceCount = safeNumber(directImpact?.batch_compliance_log_count, 0);
+  if (!orderFound || directBatchCount > 0 || directComplianceCount > 0) {
+    return {
+      productionBatchImpact: directImpact,
+      patch1: {
+        marker: G35H_PATCH1_BATCH_LINKAGE_MARKER,
+        fallback_used: false,
+        fallback_status: directBatchCount > 0 || directComplianceCount > 0 ? 'direct_linkage_satisfied' : 'not_needed',
+        direct_production_batch_count: directBatchCount,
+        direct_batch_compliance_log_count: directComplianceCount,
+        fallback_production_batch_count: null,
+        fallback_batch_compliance_log_count: null,
+      },
+    };
+  }
+
+  const fallbackBody = {
+    ...body,
+    preview_mode: G35B_PREVIEW_MODE,
+    refund_type: 'partial',
+    refund_amount: lookup.refundAmount,
+    refund_currency: lookup.currency,
+    currency: lookup.currency,
+    event_source: lookup.eventSource,
+    request_id: lookup.requestId,
+  };
+
+  const fallback = await buildG35BPreview(base44, fallbackBody).catch(error => ({
+    success: false,
+    error_code: 'g35h_patch1_batch_linkage_fallback_failed',
+    message: sanitizeText(error?.message || error, 180),
+  }));
+  const fallbackImpact = fallback?.proposed_production_batch_impact;
+  const fallbackBatchCount = safeNumber(fallbackImpact?.production_batch_count, 0);
+  const fallbackComplianceCount = safeNumber(fallbackImpact?.batch_compliance_log_count, 0);
+  if (fallbackBatchCount > 0 || fallbackComplianceCount > 0) {
+    return {
+      productionBatchImpact: g35hPatch1AnnotatedImpact(fallbackImpact, directImpact),
+      patch1: {
+        marker: G35H_PATCH1_BATCH_LINKAGE_MARKER,
+        fallback_used: true,
+        fallback_status: 'native_refund_impact_linkage_reused',
+        direct_production_batch_count: directBatchCount,
+        direct_batch_compliance_log_count: directComplianceCount,
+        fallback_production_batch_count: fallbackBatchCount,
+        fallback_batch_compliance_log_count: fallbackComplianceCount,
+      },
+    };
+  }
+
+  return {
+    productionBatchImpact: directImpact,
+    patch1: {
+      marker: G35H_PATCH1_BATCH_LINKAGE_MARKER,
+      fallback_used: true,
+      fallback_status: fallback?.error_code || 'fallback_found_no_related_batch_history',
+      direct_production_batch_count: directBatchCount,
+      direct_batch_compliance_log_count: directComplianceCount,
+      fallback_production_batch_count: fallbackBatchCount,
+      fallback_batch_compliance_log_count: fallbackComplianceCount,
+    },
+  };
+}
+
 function g35hReviewQueueImpact({ orderNumber, customerOrderId, nativeOrderId, orderFound, lookup, duplicateReviewDetected, duplicateEventDetected, refundAmount, currency, lifecycleState, productionBatchImpact, existingReviewRows }) {
   if (duplicateEventDetected) {
     return {
@@ -1845,7 +1924,8 @@ async function buildG35HPreview(base44, body) {
   const complianceLogs = await g35dRefundComplianceLogs(base44, batches);
   const orderFound = Boolean(customerOrder?.id || nativeOrder?.id || task?.id);
   const lifecycleState = g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs });
-  const productionBatchImpact = g35bProductionBatchImpact({ batches, complianceLogs, refundType: 'partial', lifecycleState, orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id, taskId: task?.id });
+  const directProductionBatchImpact = g35bProductionBatchImpact({ batches, complianceLogs, refundType: 'partial', lifecycleState, orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id, taskId: task?.id });
+  const { productionBatchImpact, patch1: patch1BatchLinkage } = await g35hPatch1ProductionBatchImpact(base44, body, lookup, directProductionBatchImpact, { orderFound });
   const idempotencyStatus = g35bIdempotencyStatus({ stripeEventId: lookup.stripeEventId, orderSyncRows, commandRows });
   const partialReviewRows = reviewRows.filter(g35hPartialReviewLike);
   const duplicateReviewDetected = partialReviewRows.length > 0;
@@ -1855,6 +1935,7 @@ async function buildG35HPreview(base44, body) {
   if (lifecycleState === 'delivered') warnings.push('delivered_partial_refund_manual_review_required');
   if (productionBatchImpact.verified_logged_batch_count > 0) warnings.push('verified_production_history_preserved');
   if (productionBatchImpact.locked_compliance_log_count > 0) warnings.push('locked_compliance_logs_preserved');
+  if (patch1BatchLinkage.fallback_used && productionBatchImpact.production_batch_count > 0) warnings.push(G35H_PATCH1_BATCH_LINKAGE_MARKER);
   warnings.push('partial_refund_review_only_no_automatic_mutation', 'notifications_held', 'provider_calls_disabled', 'inventory_reversal_not_proposed', 'purchase_order_reversal_not_proposed', 'hub_fallback_required');
 
   const blockers = [...requestBlockers];
@@ -1917,6 +1998,9 @@ async function buildG35HPreview(base44, body) {
     proposed_native_shopify_order_impact: g35hNativeOrderImpact({ nativeOrder, refundAmount: lookup.refundAmount, currency: lookup.currency, lookup }),
     proposed_fulfillment_task_impact: g35bTaskImpact({ task, refundType: 'partial', lifecycleState }),
     proposed_production_batch_impact: productionBatchImpact,
+    production_batch_mutation_proposed: false,
+    compliance_log_mutation_proposed: false,
+    g35h_patch1_batch_linkage: patch1BatchLinkage,
     proposed_compliance_impact: {
       batch_compliance_log_count: productionBatchImpact.batch_compliance_log_count,
       locked_compliance_log_count: productionBatchImpact.locked_compliance_log_count,
