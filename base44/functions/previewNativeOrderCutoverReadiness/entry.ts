@@ -1528,6 +1528,105 @@ function g35hReadConsistencyBlockers(readConsistency) {
   return blockers;
 }
 
+
+function g35iPrev1ExactRefundIdentifiersSupplied(lookup) {
+  return Boolean(lookup?.orderNumber && lookup?.customerAppOrderId && lookup?.nativeOrderId && lookup?.taskId);
+}
+
+async function g35iPrev1ExactRefundBatches(base44, { orderNumber, customerOrderId, nativeOrderId, taskId }) {
+  const rows = [];
+  if (customerOrderId) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { base44_order_id: customerOrderId }, '-production_date', 25, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { order_id: customerOrderId }, '-production_date', 25, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { customer_app_order_id: customerOrderId }, '-production_date', 25, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { source_order_id: customerOrderId }, '-production_date', 25, { retryEmpty: true }));
+  }
+  if (nativeOrderId) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { native_shopify_order_id: nativeOrderId }, '-production_date', 25, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { shopify_order_id: nativeOrderId }, '-production_date', 25, { retryEmpty: true }));
+  }
+  if (taskId) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { native_fulfillment_task_id: taskId }, '-production_date', 25, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { fulfillment_task_id: taskId }, '-production_date', 25, { retryEmpty: true }));
+  }
+  if (orderNumber) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { order_number: orderNumber }, '-production_date', 25, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { shopify_order_number: orderNumber }, '-production_date', 25, { retryEmpty: true }));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { source_order_number: orderNumber }, '-production_date', 25, { retryEmpty: true }));
+  }
+
+  const listed = await g33cList(base44, 'ProductionBatch', '-production_date', G35I_PREV1_EXACT_READ_LIST_LIMIT);
+  rows.push(...listed);
+
+  return g35dUniqueAnnotated(rows.flatMap(batch => {
+    const match = g35dBatchMatchInfo(batch, { orderNumber, customerOrderId, nativeOrderId, taskId });
+    return match.matched ? [{ ...batch, __g35d_linkage_methods: [...new Set([...(batch.__g35d_linkage_methods || []), ...match.methods, G35I_PREV1_EXACT_READ_FAST_PATH_MARKER])] }] : [];
+  }));
+}
+
+async function g35iPrev1ExactRefundComplianceLogs(base44, batches) {
+  const rows = [];
+  for (const batch of batches || []) {
+    if (batch?.compliance_log_id) rows.push(...await g33cFilter(base44, 'BatchComplianceLog', { id: batch.compliance_log_id }, '-created_date', 5, { retryEmpty: true }));
+    if (batch?.batch_id) rows.push(...await g33cFilter(base44, 'BatchComplianceLog', { batch_id: batch.batch_id }, '-created_date', 10, { retryEmpty: true }));
+    if (batch?.id) rows.push(...await g33cFilter(base44, 'BatchComplianceLog', { source_production_batch_id: batch.id }, '-created_date', 10, { retryEmpty: true }));
+  }
+
+  const listed = await g33cList(base44, 'BatchComplianceLog', '-created_date', G35I_PREV1_EXACT_READ_LIST_LIMIT);
+  rows.push(...listed);
+
+  return g35dUniqueAnnotated(rows.flatMap(log => {
+    const match = g35dComplianceMatchInfo(log, batches);
+    return match.matched ? [{ ...log, __g35d_linkage_methods: [...new Set([...(log.__g35d_linkage_methods || []), ...match.methods, G35I_PREV1_EXACT_READ_FAST_PATH_MARKER])] }] : [];
+  }));
+}
+
+async function g35hResolveRefundReadContextExactFast(base44, lookup) {
+  const exactOrderRows = await g33cFilter(base44, 'Order', { id: lookup.customerAppOrderId }, '-created_date', 1, { retryEmpty: true });
+  let customerOrder = exactOrderRows[0] || null;
+  if (!customerOrder && lookup.orderNumber) {
+    const fallbackOrderRows = await g33cFilter(base44, 'Order', { order_number: lookup.orderNumber }, '-created_date', 5, { retryEmpty: true });
+    customerOrder = fallbackOrderRows[0] || null;
+  }
+
+  const exactNativeRows = await g33cFilter(base44, 'ShopifyOrder', { id: lookup.nativeOrderId }, '-created_date', 1, { retryEmpty: true });
+  let nativeOrder = exactNativeRows[0] || null;
+  if (!nativeOrder && customerOrder?.id) {
+    const fallbackNativeRows = await g33cFilter(base44, 'ShopifyOrder', { base44_order_id: customerOrder.id }, '-created_date', 5, { retryEmpty: true });
+    nativeOrder = fallbackNativeRows.find(row => normalizeText(row?.id) === lookup.nativeOrderId) || fallbackNativeRows[0] || null;
+  }
+
+  const orderNumber = normalizeOrderNumber(customerOrder?.order_number || nativeOrder?.shopify_order_number || lookup.orderNumber);
+  const customerOrderId = normalizeText(customerOrder?.id || lookup.customerAppOrderId || nativeOrder?.base44_order_id);
+  const nativeOrderId = normalizeText(nativeOrder?.id || lookup.nativeOrderId);
+
+  const exactTaskRows = await g33cFilter(base44, 'FulfillmentTask', { id: lookup.taskId }, '-created_date', 1, { retryEmpty: true });
+  let task = exactTaskRows[0] || null;
+  if (!task && (orderNumber || customerOrderId || nativeOrderId)) {
+    const fallbackTasks = await g33cTasks(base44, orderNumber, customerOrderId, nativeOrderId, lookup.taskId);
+    task = fallbackTasks.find(row => normalizeText(row?.id) === lookup.taskId) || fallbackTasks[0] || null;
+  }
+  const taskId = normalizeText(task?.id || lookup.taskId);
+
+  const batches = await g35iPrev1ExactRefundBatches(base44, { orderNumber, customerOrderId, nativeOrderId, taskId });
+  const complianceLogs = await g35iPrev1ExactRefundComplianceLogs(base44, batches);
+
+  return {
+    customerOrder,
+    nativeOrder,
+    task,
+    orderNumber,
+    customerOrderId,
+    nativeOrderId,
+    taskId,
+    batches,
+    complianceLogs,
+    orderFound: Boolean(customerOrder?.id || nativeOrder?.id || task?.id),
+    exact_id_fast_path_used: true,
+    exact_id_fast_path_marker: G35I_PREV1_EXACT_READ_FAST_PATH_MARKER,
+  };
+}
+
 async function g35hResolveRefundReadContext(base44, lookup) {
   const initialCustomerOrders = await g33cCustomerOrders(base44, { orderNumber: lookup.orderNumber, customerAppOrderId: lookup.customerAppOrderId });
   let customerOrder = initialCustomerOrders[0] || null;
@@ -1566,13 +1665,22 @@ async function g35hResolveRefundReadContext(base44, lookup) {
 
 async function g35hResolveRefundReadContextStable(base44, lookup) {
   const contexts = [];
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    contexts.push(await g35hResolveRefundReadContext(base44, lookup));
-    if (attempt < 3) await g35dSleep(250);
+  const exactFastPath = g35iPrev1ExactRefundIdentifiersSupplied(lookup);
+  const attempts = exactFastPath ? 2 : 3;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    contexts.push(exactFastPath
+      ? await g35hResolveRefundReadContextExactFast(base44, lookup)
+      : await g35hResolveRefundReadContext(base44, lookup));
+    if (attempt < attempts) await g35dSleep(exactFastPath ? 100 : 250);
   }
-  const readConsistency = g35hBuildReadConsistency(contexts, lookup);
+  const readConsistency = {
+    ...g35hBuildReadConsistency(contexts, lookup),
+    exact_id_fast_path_used: exactFastPath,
+    exact_id_fast_path_marker: exactFastPath ? G35I_PREV1_EXACT_READ_FAST_PATH_MARKER : null,
+    exact_id_bounded_list_limit: exactFastPath ? G35I_PREV1_EXACT_READ_LIST_LIMIT : null,
+  };
   const selected = contexts[(readConsistency.selected_attempt || 1) - 1] || contexts[0] || {};
-  return { ...selected, readConsistency };
+  return { ...selected, readConsistency, exact_id_fast_path_used: exactFastPath, exact_id_fast_path_marker: exactFastPath ? G35I_PREV1_EXACT_READ_FAST_PATH_MARKER : null };
 }
 
 function g35dStatusSummary(rows) {
@@ -1853,6 +1961,8 @@ function g35bIdempotencyStatus({ stripeEventId, orderSyncRows, commandRows }) {
 }
 
 const G35H_PREVIEW_MODE = 'NATIVE_PARTIAL_REFUND_REVIEW_IMPACT';
+const G35I_PREV1_EXACT_READ_FAST_PATH_MARKER = 'g35i_prev1_exact_refund_preview_fast_path';
+const G35I_PREV1_EXACT_READ_LIST_LIMIT = 250;
 
 function isG35HPreviewRequest(body) {
   const previewMode = normalizeText(body?.preview_mode).toUpperCase();
@@ -1990,7 +2100,7 @@ function g35hPatch1AnnotatedImpact(impact, directImpact) {
   };
 }
 
-async function g35hPatch1ProductionBatchImpact(base44, body, lookup, directImpact, { orderFound }) {
+async function g35hPatch1ProductionBatchImpact(base44, body, lookup, directImpact, { orderFound, skipFallback = false } = {}) {
   const directBatchCount = safeNumber(directImpact?.production_batch_count, 0);
   const directComplianceCount = safeNumber(directImpact?.batch_compliance_log_count, 0);
   if (!orderFound || directBatchCount > 0 || directComplianceCount > 0) {
@@ -2000,6 +2110,21 @@ async function g35hPatch1ProductionBatchImpact(base44, body, lookup, directImpac
         marker: G35H_PATCH1_BATCH_LINKAGE_MARKER,
         fallback_used: false,
         fallback_status: directBatchCount > 0 || directComplianceCount > 0 ? 'direct_linkage_satisfied' : 'not_needed',
+        direct_production_batch_count: directBatchCount,
+        direct_batch_compliance_log_count: directComplianceCount,
+        fallback_production_batch_count: null,
+        fallback_batch_compliance_log_count: null,
+      },
+    };
+  }
+
+  if (skipFallback) {
+    return {
+      productionBatchImpact: directImpact,
+      patch1: {
+        marker: G35H_PATCH1_BATCH_LINKAGE_MARKER,
+        fallback_used: false,
+        fallback_status: 'fallback_skipped_exact_read_fast_path_or_unstable_reads',
         direct_production_batch_count: directBatchCount,
         direct_batch_compliance_log_count: directComplianceCount,
         fallback_production_batch_count: null,
@@ -2130,7 +2255,7 @@ async function buildG35HPreview(base44, body) {
   ]);
   const lifecycleState = g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs });
   const directProductionBatchImpact = g35bProductionBatchImpact({ batches, complianceLogs, refundType: 'partial', lifecycleState, orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id, taskId: task?.id });
-  const { productionBatchImpact, patch1: patch1BatchLinkage } = await g35hPatch1ProductionBatchImpact(base44, body, lookup, directProductionBatchImpact, { orderFound });
+  const { productionBatchImpact, patch1: patch1BatchLinkage } = await g35hPatch1ProductionBatchImpact(base44, body, lookup, directProductionBatchImpact, { orderFound, skipFallback: resolvedContext.exact_id_fast_path_used || !readConsistency.stable });
   const idempotencyStatus = g35bIdempotencyStatus({ stripeEventId: lookup.stripeEventId, orderSyncRows, commandRows });
   const partialReviewRows = reviewRows.filter(g35hPartialReviewLike);
   const duplicateReviewDetected = partialReviewRows.length > 0;
@@ -2203,6 +2328,8 @@ async function buildG35HPreview(base44, body) {
     order_found: orderFound,
     preview_data_stable: previewDataStable,
     read_consistency: readConsistency,
+    g35i_prev1_exact_read_fast_path: Boolean(resolvedContext.exact_id_fast_path_used),
+    g35i_prev1_exact_read_fast_path_marker: resolvedContext.exact_id_fast_path_marker || null,
     command_readiness_safe: false,
     future_review_queue_command_planning_possible: futureReviewQueueCommandPlanningPossible,
     customer_app_order_present: Boolean(customerOrder?.id),
@@ -2325,6 +2452,8 @@ async function buildG35BPreview(base44, body) {
     order_found: orderFound,
     preview_data_stable: previewDataStable,
     read_consistency: readConsistency,
+    g35i_prev1_exact_read_fast_path: Boolean(resolvedContext.exact_id_fast_path_used),
+    g35i_prev1_exact_read_fast_path_marker: resolvedContext.exact_id_fast_path_marker || null,
     command_readiness_safe: false,
     future_refund_command_planning_possible: false,
     customer_app_order_present: Boolean(customerOrder?.id),
