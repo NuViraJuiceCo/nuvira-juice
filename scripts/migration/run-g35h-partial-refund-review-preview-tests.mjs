@@ -12,9 +12,10 @@ const functionPath = path.join(repoRoot, 'base44/functions/previewNativeOrderCut
 function loadHarness({ env = {} } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
-  source += `\nglobalThis.__exports = { G35H_PREVIEW_MODE, G35H_PATCH1_BATCH_LINKAGE_MARKER, isG35HPreviewRequest, buildG35HPreview, buildG35BPreview, G35B_READ_ONLY_SAFETY, G35B_STATUS_SCHEMA_COMPATIBILITY };\n`;
+  source += `\nglobalThis.__exports = { G35H_PREVIEW_MODE, G35H_PATCH1_BATCH_LINKAGE_MARKER, isG35HPreviewRequest, buildG35HPreview, buildG35BPreview, g35hBuildReadConsistency, g35hReadConsistencyBlockers, G35B_READ_ONLY_SAFETY, G35B_STATUS_SCHEMA_COMPATIBILITY };\n`;
   const context = vm.createContext({
-    console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, Promise, setTimeout,
+    console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, Promise,
+    setTimeout: callback => { callback(); return 0; },
     createClientFromRequest: req => req.__base44,
     Deno: { env: { get: key => env[key] || '' }, serve: handler => { context.globalThis.__handler = handler; } },
     globalThis: {},
@@ -374,6 +375,100 @@ assert.equal(preview.proposed_order_review_queue_impact.safe_queue_draft.inciden
 assert.equal(preview.production_batch_mutation_proposed, false);
 assert.equal(preview.compliance_log_mutation_proposed, false);
 assert.equal(scenario.store.writes.length, 0);
+
+scenario = makeStore({
+  orders: [makeOrder({ status: 'delivered' })],
+  nativeOrders: [makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled' })],
+  tasks: [makeTask({ status: 'delivered', delivery_status: 'delivered' })],
+  batches: sixBatches,
+  complianceLogs: sixComplianceLogs,
+});
+preview = await previewFor(scenario, {
+  customer_app_order_id: ORDER.customerOrderId,
+  native_shopify_order_id: ORDER.nativeOrderId,
+  native_fulfillment_task_id: ORDER.taskId,
+});
+assert.equal(preview.preview_data_stable, true);
+assert.equal(preview.read_consistency.stable, true);
+assert.equal(preview.read_consistency.expected_identifiers_supplied, true);
+assert.equal(preview.read_consistency.order_read_stable, true);
+assert.equal(preview.read_consistency.native_order_read_stable, true);
+assert.equal(preview.read_consistency.task_read_stable, true);
+assert.equal(preview.read_consistency.batch_read_stable, true);
+assert.equal(preview.read_consistency.compliance_read_stable, true);
+assert.equal(preview.command_readiness_safe, false);
+assert.equal(preview.future_review_queue_command_planning_possible, true);
+assert.equal(preview.production_batch_count, 6);
+assert.equal(preview.batch_compliance_log_count, 6);
+assert.equal(preview.proposed_order_review_queue_impact.safe_queue_draft.incident_type, 'partial_refund_review_required');
+assert.equal(scenario.store.writes.length, 0);
+
+const stableReadContext = {
+  customerOrder: makeOrder({ status: 'delivered' }),
+  nativeOrder: makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled' }),
+  task: makeTask({ status: 'delivered', delivery_status: 'delivered' }),
+  batches: sixBatches,
+  complianceLogs: sixComplianceLogs,
+};
+const emptyReadContext = { customerOrder: null, nativeOrder: null, task: null, batches: [], complianceLogs: [] };
+let readConsistency = fns.g35hBuildReadConsistency([emptyReadContext, stableReadContext, stableReadContext], {
+  customerAppOrderId: ORDER.customerOrderId,
+  nativeOrderId: ORDER.nativeOrderId,
+  taskId: ORDER.taskId,
+});
+assert.equal(readConsistency.stable, true);
+assert.equal(readConsistency.order_read_stable, true);
+assert.ok(readConsistency.fallback_used.includes('order_empty_read_recovered_or_detected'));
+readConsistency = fns.g35hBuildReadConsistency([stableReadContext, emptyReadContext, emptyReadContext], {
+  customerAppOrderId: ORDER.customerOrderId,
+  nativeOrderId: ORDER.nativeOrderId,
+  taskId: ORDER.taskId,
+});
+assert.equal(readConsistency.stable, false);
+assert.ok(readConsistency.inconsistent_sections.includes('order'));
+assert.ok(readConsistency.inconsistent_sections.includes('batch'));
+let consistencyBlockers = fns.g35hReadConsistencyBlockers(readConsistency);
+assert.ok(consistencyBlockers.includes('read_consistency_unstable'));
+assert.ok(consistencyBlockers.includes('exact_order_read_unstable'));
+assert.ok(consistencyBlockers.includes('production_batch_read_unstable'));
+readConsistency = fns.g35hBuildReadConsistency([
+  stableReadContext,
+  { ...stableReadContext, nativeOrder: null },
+  { ...stableReadContext, nativeOrder: null },
+], { nativeOrderId: ORDER.nativeOrderId });
+assert.equal(readConsistency.native_order_read_stable, false);
+consistencyBlockers = fns.g35hReadConsistencyBlockers(readConsistency);
+assert.ok(consistencyBlockers.includes('native_order_read_unstable'));
+
+const dateOnlyBatches = sixBatches.map((batch, index) => ({
+  ...batch,
+  id: `date_only_batch_${index}`,
+  batch_id: `UNRELATED-DATE-ONLY-${index}`,
+  base44_order_id: null,
+  order_id: null,
+  customer_app_order_id: null,
+  source_order_id: null,
+  native_shopify_order_id: null,
+  shopify_order_id: null,
+  native_fulfillment_task_id: null,
+  fulfillment_task_id: null,
+  order_number: null,
+  shopify_order_number: null,
+  source_order_number: null,
+  order_sources: [],
+}));
+scenario = makeStore({
+  orders: [makeOrder({ status: 'delivered' })],
+  nativeOrders: [makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled' })],
+  tasks: [makeTask({ status: 'delivered', delivery_status: 'delivered' })],
+  batches: dateOnlyBatches,
+  complianceLogs: sixComplianceLogs,
+});
+preview = await previewFor(scenario);
+assert.equal(preview.preview_data_stable, true);
+assert.equal(preview.production_batch_count, 0);
+assert.equal(preview.batch_compliance_log_count, 0);
+assert.equal(preview.proposed_order_review_queue_impact.safe_queue_draft.incident_type, 'partial_refund_review_required');
 
 scenario = makeStore({ reviewRows: [{ id: 'review_existing', incident_type: 'partial_refund_review_required', existing_order_number: ORDER.orderNumber, existing_order_id: ORDER.customerOrderId, status: 'pending' }] });
 preview = await previewFor(scenario);
