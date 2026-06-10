@@ -787,8 +787,9 @@ async function g33cNativeOrders(base44, orderNumber, customerOrderId) {
   return g33cUnique(rows).filter(row => g33cMatchesOrder(row, orderNumber, customerOrderId));
 }
 
-async function g33cTasks(base44, orderNumber, customerOrderId, nativeOrderId) {
+async function g33cTasks(base44, orderNumber, customerOrderId, nativeOrderId, taskId = '') {
   const rows = [];
+  if (taskId) rows.push(...await g33cFilter(base44, 'FulfillmentTask', { id: taskId }, '-created_date', 5, { retryEmpty: true }));
   if (customerOrderId) {
     rows.push(...await g33cFilter(base44, 'FulfillmentTask', { base44_order_id: customerOrderId }, '-created_date', 20, { retryEmpty: true }));
     rows.push(...await g33cFilter(base44, 'FulfillmentTask', { order_id: customerOrderId }, '-created_date', 20, { retryEmpty: true }));
@@ -802,7 +803,7 @@ async function g33cTasks(base44, orderNumber, customerOrderId, nativeOrderId) {
     rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_number: orderNumber }, '-created_date', 20, { retryEmpty: true }));
     rows.push(...await g33cFilter(base44, 'FulfillmentTask', { shopify_order_number: `#${orderNumber}` }, '-created_date', 20, { retryEmpty: true }));
   }
-  return g33cUnique(rows).filter(row => g33cMatchesOrder(row, orderNumber, customerOrderId) || (nativeOrderId && [row?.native_shopify_order_id, row?.shopify_order_id].includes(nativeOrderId)));
+  return g33cUnique(rows).filter(row => (taskId && normalizeText(row?.id) === taskId) || g33cMatchesOrder(row, orderNumber, customerOrderId) || (nativeOrderId && [row?.native_shopify_order_id, row?.shopify_order_id].includes(nativeOrderId)));
 }
 
 async function g33cLogs(base44, entityName, orderNumber, customerOrderId, limit = 20) {
@@ -1092,6 +1093,8 @@ const G35B_ALLOWED_BODY_KEYS = new Set([
   'native_shopify_order_id',
   'native_order_id',
   'shopify_order_id',
+  'native_fulfillment_task_id',
+  'fulfillment_task_id',
   'stripe_event_id',
   'stripe_refund_id',
   'refund_type',
@@ -1163,6 +1166,7 @@ function g35bLookup(body) {
     orderNumber: normalizeOrderNumber(body?.order_number || body?.shopify_order_number),
     customerAppOrderId: normalizeText(body?.customer_app_order_id || body?.base44_order_id || body?.order_id),
     nativeOrderId: normalizeText(body?.native_shopify_order_id || body?.native_order_id || body?.shopify_order_id),
+    taskId: normalizeText(body?.native_fulfillment_task_id || body?.fulfillment_task_id),
     stripeEventId: normalizeText(body?.stripe_event_id),
     stripeRefundId: normalizeText(body?.stripe_refund_id),
     refundType: G35B_REFUND_TYPES.has(refundType) ? refundType : '',
@@ -1424,6 +1428,151 @@ async function g35dRefundComplianceLogsWithRetry(base44, batches) {
   await g35dSleep(300);
   logs = await g35dRefundComplianceLogs(base44, batches);
   return logs;
+}
+
+function g35hStableRowKey(row, fallbackKey = '') {
+  return normalizeText(row?.id || row?.batch_id || row?.request_id || fallbackKey);
+}
+
+function g35hStableKey(rows, fallbackPrefix = 'row') {
+  const keys = (rows || []).map((row, index) => g35hStableRowKey(row, `${fallbackPrefix}_${index}`)).filter(Boolean).sort();
+  return keys.join('|');
+}
+
+function g35hReadSectionConsensus(contexts, section, getKey, expectedPresent = false) {
+  const keys = contexts.map(context => normalizeText(getKey(context)));
+  const counts = new Map();
+  for (const key of keys) counts.set(key, (counts.get(key) || 0) + 1);
+  const nonEmptyEntries = [...counts.entries()].filter(([key]) => Boolean(key));
+  const emptyCount = counts.get('') || 0;
+  const bestNonEmpty = nonEmptyEntries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] || null;
+  let stable = false;
+  let selectedKey = '';
+  if (bestNonEmpty && bestNonEmpty[1] >= 2) {
+    stable = true;
+    selectedKey = bestNonEmpty[0];
+  } else if (!bestNonEmpty && !expectedPresent) {
+    stable = true;
+    selectedKey = '';
+  } else if (nonEmptyEntries.length === 1 && emptyCount === 0) {
+    stable = true;
+    selectedKey = nonEmptyEntries[0][0];
+  }
+
+  return {
+    section,
+    stable,
+    selected_key: selectedKey,
+    observed_keys: [...new Set(keys)].filter(Boolean).slice(0, 8),
+    empty_attempts: emptyCount,
+    non_empty_attempts: keys.length - emptyCount,
+  };
+}
+
+function g35hContextScore(context) {
+  return (
+    (context?.customerOrder?.id ? 1000 : 0) +
+    (context?.nativeOrder?.id ? 1000 : 0) +
+    (context?.task?.id ? 1000 : 0) +
+    ((context?.batches || []).length * 100) +
+    ((context?.complianceLogs || []).length * 50)
+  );
+}
+
+function g35hBuildReadConsistency(contexts, lookup) {
+  const expectedIdentifiersSupplied = Boolean(lookup.customerAppOrderId || lookup.nativeOrderId || lookup.taskId);
+  const sections = {
+    order: g35hReadSectionConsensus(contexts, 'order', context => context?.customerOrder?.id, Boolean(lookup.customerAppOrderId)),
+    native_order: g35hReadSectionConsensus(contexts, 'native_order', context => context?.nativeOrder?.id, Boolean(lookup.nativeOrderId)),
+    task: g35hReadSectionConsensus(contexts, 'task', context => context?.task?.id, Boolean(lookup.taskId)),
+    batch: g35hReadSectionConsensus(contexts, 'batch', context => g35hStableKey(context?.batches, 'batch'), false),
+    compliance: g35hReadSectionConsensus(contexts, 'compliance', context => g35hStableKey(context?.complianceLogs, 'compliance'), false),
+  };
+  const inconsistentSections = Object.values(sections).filter(section => !section.stable).map(section => section.section);
+  const stable = inconsistentSections.length === 0;
+  const rankedContexts = contexts
+    .map((context, index) => ({ context, index, score: g35hContextScore(context) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const selectedIndex = rankedContexts[0]?.index || 0;
+  const fallbackUsed = [];
+  for (const section of Object.values(sections)) {
+    if (section.empty_attempts > 0 && section.non_empty_attempts > 0) fallbackUsed.push(`${section.section}_empty_read_recovered_or_detected`);
+  }
+  return {
+    stable,
+    attempts: contexts.length,
+    selected_attempt: selectedIndex + 1,
+    order_read_stable: sections.order.stable,
+    native_order_read_stable: sections.native_order.stable,
+    task_read_stable: sections.task.stable,
+    batch_read_stable: sections.batch.stable,
+    compliance_read_stable: sections.compliance.stable,
+    expected_identifiers_supplied: expectedIdentifiersSupplied,
+    exact_customer_app_order_id_supplied: Boolean(lookup.customerAppOrderId),
+    exact_native_shopify_order_id_supplied: Boolean(lookup.nativeOrderId),
+    exact_native_fulfillment_task_id_supplied: Boolean(lookup.taskId),
+    inconsistent_sections: inconsistentSections,
+    fallback_used: fallbackUsed,
+    blocker_required: !stable,
+  };
+}
+
+function g35hReadConsistencyBlockers(readConsistency) {
+  if (readConsistency?.stable) return [];
+  const blockers = ['read_consistency_unstable'];
+  if (!readConsistency?.order_read_stable) blockers.push('exact_order_read_unstable');
+  if (!readConsistency?.native_order_read_stable) blockers.push('native_order_read_unstable');
+  if (!readConsistency?.task_read_stable) blockers.push('native_fulfillment_task_read_unstable');
+  if (!readConsistency?.batch_read_stable) blockers.push('production_batch_read_unstable');
+  if (!readConsistency?.compliance_read_stable) blockers.push('compliance_log_read_unstable');
+  return blockers;
+}
+
+async function g35hResolveRefundReadContext(base44, lookup) {
+  const initialCustomerOrders = await g33cCustomerOrders(base44, { orderNumber: lookup.orderNumber, customerAppOrderId: lookup.customerAppOrderId });
+  let customerOrder = initialCustomerOrders[0] || null;
+  let nativeOrders = await g35bNativeOrders(base44, lookup, customerOrder);
+  let nativeOrder = nativeOrders[0] || null;
+  if (!customerOrder && nativeOrder?.base44_order_id) {
+    const byNativeCustomer = await g33cCustomerOrders(base44, { orderNumber: normalizeOrderNumber(nativeOrder?.shopify_order_number || lookup.orderNumber), customerAppOrderId: nativeOrder.base44_order_id });
+    customerOrder = byNativeCustomer[0] || null;
+  }
+  const orderNumber = normalizeOrderNumber(customerOrder?.order_number || nativeOrder?.shopify_order_number || lookup.orderNumber);
+  const customerOrderId = normalizeText(customerOrder?.id || lookup.customerAppOrderId || nativeOrder?.base44_order_id);
+  if (!nativeOrder && (orderNumber || customerOrderId || lookup.nativeOrderId)) {
+    nativeOrders = await g35bNativeOrders(base44, { ...lookup, orderNumber, customerAppOrderId: customerOrderId }, customerOrder);
+    nativeOrder = nativeOrders[0] || null;
+  }
+  const nativeOrderId = nativeOrder?.id || lookup.nativeOrderId;
+  const tasks = await g33cTasks(base44, orderNumber, customerOrderId, nativeOrderId, lookup.taskId);
+  const task = tasks[0] || null;
+  const taskId = task?.id || lookup.taskId;
+  const batchCandidateDates = g35dRefundBatchCandidateDates(customerOrder, nativeOrder, task);
+  const batches = await g35dRefundBatchesWithRetry(base44, orderNumber, customerOrderId, nativeOrderId, taskId, { candidateDates: batchCandidateDates });
+  const complianceLogs = await g35dRefundComplianceLogsWithRetry(base44, batches);
+  return {
+    customerOrder,
+    nativeOrder,
+    task,
+    orderNumber,
+    customerOrderId,
+    nativeOrderId,
+    taskId,
+    batches,
+    complianceLogs,
+    orderFound: Boolean(customerOrder?.id || nativeOrder?.id || task?.id),
+  };
+}
+
+async function g35hResolveRefundReadContextStable(base44, lookup) {
+  const contexts = [];
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    contexts.push(await g35hResolveRefundReadContext(base44, lookup));
+    if (attempt < 3) await g35dSleep(250);
+  }
+  const readConsistency = g35hBuildReadConsistency(contexts, lookup);
+  const selected = contexts[(readConsistency.selected_attempt || 1) - 1] || contexts[0] || {};
+  return { ...selected, readConsistency };
 }
 
 function g35dStatusSummary(rows) {
@@ -1968,34 +2117,17 @@ async function buildG35HPreview(base44, body) {
   const warnings = [];
   if (lookup.rawRefundType !== 'partial') requestBlockers.push('refund_type_must_be_partial_for_partial_refund_review_preview');
   if (lookup.refundAmount === null || lookup.refundAmount <= 0) requestBlockers.push('refund_amount_required_for_partial_refund_review');
-  if (!lookup.orderNumber && !lookup.customerAppOrderId && !lookup.nativeOrderId && !lookup.stripeEventId && !lookup.stripeRefundId) requestBlockers.push('order_or_refund_event_identifier_required');
+  if (!lookup.orderNumber && !lookup.customerAppOrderId && !lookup.nativeOrderId && !lookup.taskId && !lookup.stripeEventId && !lookup.stripeRefundId) requestBlockers.push('order_or_refund_event_identifier_required');
 
-  const initialCustomerOrders = await g33cCustomerOrders(base44, { orderNumber: lookup.orderNumber, customerAppOrderId: lookup.customerAppOrderId });
-  let customerOrder = initialCustomerOrders[0] || null;
-  let nativeOrders = await g35bNativeOrders(base44, lookup, customerOrder);
-  let nativeOrder = nativeOrders[0] || null;
-  if (!customerOrder && nativeOrder?.base44_order_id) {
-    const byNativeCustomer = await g33cCustomerOrders(base44, { orderNumber: normalizeOrderNumber(nativeOrder?.shopify_order_number || lookup.orderNumber), customerAppOrderId: nativeOrder.base44_order_id });
-    customerOrder = byNativeCustomer[0] || null;
-  }
-  const orderNumber = normalizeOrderNumber(customerOrder?.order_number || nativeOrder?.shopify_order_number || lookup.orderNumber);
-  const customerOrderId = normalizeText(customerOrder?.id || lookup.customerAppOrderId || nativeOrder?.base44_order_id);
-  if (!nativeOrder && (orderNumber || customerOrderId)) {
-    nativeOrders = await g35bNativeOrders(base44, { ...lookup, orderNumber, customerAppOrderId: customerOrderId }, customerOrder);
-    nativeOrder = nativeOrders[0] || null;
-  }
-  const tasks = await g33cTasks(base44, orderNumber, customerOrderId, nativeOrder?.id || lookup.nativeOrderId);
-  const task = tasks[0] || null;
+  const resolvedContext = await g35hResolveRefundReadContextStable(base44, lookup);
+  const { customerOrder, nativeOrder, task, orderNumber, customerOrderId, batches, complianceLogs, orderFound, readConsistency } = resolvedContext;
+  const readConsistencyBlockers = g35hReadConsistencyBlockers(readConsistency);
   const [orderSyncRows, commandRows, parityRows, reviewRows] = await Promise.all([
     g35bLogs(base44, 'OrderSyncLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35bLogs(base44, 'CommandLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35bLogs(base44, 'SafeSyncParityLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35hReviewRows(base44, { orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id || lookup.nativeOrderId, stripeEventId: lookup.stripeEventId, stripeRefundId: lookup.stripeRefundId }),
   ]);
-  const batchCandidateDates = g35dRefundBatchCandidateDates(customerOrder, nativeOrder, task);
-  const batches = await g35dRefundBatchesWithRetry(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id, { candidateDates: batchCandidateDates });
-  const complianceLogs = await g35dRefundComplianceLogsWithRetry(base44, batches);
-  const orderFound = Boolean(customerOrder?.id || nativeOrder?.id || task?.id);
   const lifecycleState = g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs });
   const directProductionBatchImpact = g35bProductionBatchImpact({ batches, complianceLogs, refundType: 'partial', lifecycleState, orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id, taskId: task?.id });
   const { productionBatchImpact, patch1: patch1BatchLinkage } = await g35hPatch1ProductionBatchImpact(base44, body, lookup, directProductionBatchImpact, { orderFound });
@@ -2004,24 +2136,40 @@ async function buildG35HPreview(base44, body) {
   const duplicateReviewDetected = partialReviewRows.length > 0;
   const duplicateEventDetected = idempotencyStatus.duplicate_event_detected;
 
-  if (!orderFound && !requestBlockers.includes('order_or_refund_event_identifier_required')) warnings.push('unknown_order_review_required');
+  if (!readConsistency.stable) warnings.push('read_consistency_unstable');
+  if (readConsistency.stable && !orderFound && !requestBlockers.includes('order_or_refund_event_identifier_required')) warnings.push('unknown_order_review_required');
   if (lifecycleState === 'delivered') warnings.push('delivered_partial_refund_manual_review_required');
   if (productionBatchImpact.verified_logged_batch_count > 0) warnings.push('verified_production_history_preserved');
   if (productionBatchImpact.locked_compliance_log_count > 0) warnings.push('locked_compliance_logs_preserved');
   if (patch1BatchLinkage.fallback_used && productionBatchImpact.production_batch_count > 0) warnings.push(G35H_PATCH1_BATCH_LINKAGE_MARKER);
   warnings.push('partial_refund_review_only_no_automatic_mutation', 'notifications_held', 'provider_calls_disabled', 'inventory_reversal_not_proposed', 'purchase_order_reversal_not_proposed', 'hub_fallback_required');
 
-  const blockers = [...requestBlockers];
+  const blockers = [...requestBlockers, ...readConsistencyBlockers];
+  const previewDataStable = readConsistency.stable;
+  const futureReviewQueueCommandPlanningPossible = previewDataStable && blockers.length === 0 && orderFound && !duplicateReviewDetected && !duplicateEventDetected;
   let nextAction = 'partial_refund_review_required';
   if (requestBlockers.includes('refund_amount_required_for_partial_refund_review')) nextAction = 'provide_refund_amount_for_review_preview';
   else if (requestBlockers.includes('refund_type_must_be_partial_for_partial_refund_review_preview')) nextAction = 'use_native_refund_impact_preview_for_non_partial_refund';
   else if (requestBlockers.length) nextAction = 'fix_preview_request_and_rerun';
+  else if (readConsistencyBlockers.length) nextAction = readConsistency.expected_identifiers_supplied ? 'retry_preview_after_read_consistency_stabilizes' : 'provide_exact_ids_for_preview';
   else if (duplicateEventDetected) nextAction = 'duplicate_refund_event_detected';
   else if (duplicateReviewDetected) nextAction = 'duplicate_partial_refund_review_already_exists';
   else if (!orderFound) nextAction = 'unknown_order_review_required';
   else if (lifecycleState === 'delivered') nextAction = 'partial_refund_manual_review_required';
 
-  const reviewQueueImpact = g35hReviewQueueImpact({
+  const reviewQueueImpact = readConsistencyBlockers.length ? {
+    proposed_action: 'read_consistency_unstable_no_review_queue_draft',
+    would_create_now: false,
+    draft_recommended_for_future_command: false,
+    incident_type: 'partial_refund_review_required',
+    status: 'blocked_by_read_consistency',
+    source: 'native_refund_impact_preview',
+    recommended_action: 'retry_preview_after_read_consistency_stabilizes',
+    duplicate_review_detected: duplicateReviewDetected,
+    duplicate_refund_event_detected: duplicateEventDetected,
+    existing_review_queue_rows: partialReviewRows.slice(0, 5).map(g35hReviewRowSummary),
+    safe_queue_draft: null,
+  } : g35hReviewQueueImpact({
     orderNumber,
     customerOrderId,
     nativeOrderId: nativeOrder?.id || lookup.nativeOrderId,
@@ -2053,6 +2201,10 @@ async function buildG35HPreview(base44, body) {
     event_source: lookup.eventSource,
     request_id: lookup.requestId || null,
     order_found: orderFound,
+    preview_data_stable: previewDataStable,
+    read_consistency: readConsistency,
+    command_readiness_safe: false,
+    future_review_queue_command_planning_possible: futureReviewQueueCommandPlanningPossible,
     customer_app_order_present: Boolean(customerOrder?.id),
     native_shopify_order_present: Boolean(nativeOrder?.id),
     native_fulfillment_task_present: Boolean(task?.id),
@@ -2110,35 +2262,17 @@ async function buildG35BPreview(base44, body) {
   const requestBlockers = [];
   const warnings = [];
   if (!lookup.refundType) requestBlockers.push('refund_type_required_full_partial_or_unknown');
-  if (!lookup.orderNumber && !lookup.customerAppOrderId && !lookup.nativeOrderId && !lookup.stripeEventId) requestBlockers.push('order_or_stripe_event_identifier_required');
+  if (!lookup.orderNumber && !lookup.customerAppOrderId && !lookup.nativeOrderId && !lookup.taskId && !lookup.stripeEventId) requestBlockers.push('order_or_stripe_event_identifier_required');
 
-  const initialCustomerOrders = await g33cCustomerOrders(base44, { orderNumber: lookup.orderNumber, customerAppOrderId: lookup.customerAppOrderId });
-  let customerOrder = initialCustomerOrders[0] || null;
-  let nativeOrders = await g35bNativeOrders(base44, lookup, customerOrder);
-  let nativeOrder = nativeOrders[0] || null;
-  if (!customerOrder && nativeOrder?.base44_order_id) {
-    const byNativeCustomer = await g33cCustomerOrders(base44, { orderNumber: normalizeOrderNumber(nativeOrder?.shopify_order_number || lookup.orderNumber), customerAppOrderId: nativeOrder.base44_order_id });
-    customerOrder = byNativeCustomer[0] || null;
-  }
-
-  const orderNumber = normalizeOrderNumber(customerOrder?.order_number || nativeOrder?.shopify_order_number || lookup.orderNumber);
-  const customerOrderId = normalizeText(customerOrder?.id || lookup.customerAppOrderId || nativeOrder?.base44_order_id);
-  if (!nativeOrder && (orderNumber || customerOrderId)) {
-    nativeOrders = await g35bNativeOrders(base44, { ...lookup, orderNumber, customerAppOrderId: customerOrderId }, customerOrder);
-    nativeOrder = nativeOrders[0] || null;
-  }
-  const tasks = await g33cTasks(base44, orderNumber, customerOrderId, nativeOrder?.id);
-  const task = tasks[0] || null;
+  const resolvedContext = await g35hResolveRefundReadContextStable(base44, lookup);
+  const { customerOrder, nativeOrder, task, orderNumber, customerOrderId, batches, complianceLogs, orderFound, readConsistency } = resolvedContext;
+  const readConsistencyBlockers = g35hReadConsistencyBlockers(readConsistency);
   const [orderSyncRows, reviewRows, commandRows, parityRows] = await Promise.all([
     g35bLogs(base44, 'OrderSyncLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35bLogs(base44, 'OrderReviewQueue', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35bLogs(base44, 'CommandLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35bLogs(base44, 'SafeSyncParityLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
   ]);
-  const batchCandidateDates = g35dRefundBatchCandidateDates(customerOrder, nativeOrder, task);
-  const batches = await g35dRefundBatchesWithRetry(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id, { candidateDates: batchCandidateDates });
-  const complianceLogs = await g35dRefundComplianceLogsWithRetry(base44, batches);
-  const orderFound = Boolean(customerOrder?.id || nativeOrder?.id || task?.id);
   const subscriptionOrMulti = g33cSubscriptionOrMulti(nativeOrder, task);
   const lifecycleState = g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs });
   const lifecycleRiskLevel = g35bRiskLevel(lifecycleState);
@@ -2150,16 +2284,21 @@ async function buildG35BPreview(base44, body) {
   liveBlockers.push(...statusSchemaCompatibility.schema_gap_blockers);
   if (['production_started', 'production_completed', 'production_verified', 'delivered', 'historical_fulfilled'].includes(lifecycleState)) liveBlockers.push(`${lifecycleState}_manual_review_required`);
   if (idempotencyStatus.duplicate_event_detected) liveBlockers.push('duplicate_refund_event_detected');
-  if (!orderFound) warnings.push('unknown_order_review_required');
+  if (!readConsistency.stable) warnings.push('read_consistency_unstable');
+  if (readConsistency.stable && !orderFound) warnings.push('unknown_order_review_required');
   if (lookup.refundType === 'partial') warnings.push('partial_refund_review_only_no_automatic_mutation');
   if (productionBatchImpact.verified_logged_batch_count > 0) warnings.push('verified_production_history_preserved');
   if (productionBatchImpact.locked_compliance_log_count > 0) warnings.push('locked_compliance_logs_preserved');
   if (lifecycleState === 'delivered') warnings.push('delivered_refund_manual_review_required');
   warnings.push('notifications_held', 'provider_calls_disabled', 'inventory_reversal_not_proposed', 'purchase_order_reversal_not_proposed', 'hub_fallback_required');
 
+  const blockers = [...requestBlockers, ...readConsistencyBlockers];
+  const previewDataStable = readConsistency.stable;
   const nextAction = requestBlockers.length
     ? 'fix_preview_request_and_rerun'
-    : g35bNextAction({
+    : readConsistencyBlockers.length
+      ? (readConsistency.expected_identifiers_supplied ? 'retry_preview_after_read_consistency_stabilizes' : 'provide_exact_ids_for_preview')
+      : g35bNextAction({
       refundType: lookup.refundType,
       orderFound,
       duplicateEventDetected: idempotencyStatus.duplicate_event_detected,
@@ -2169,7 +2308,7 @@ async function buildG35BPreview(base44, body) {
     });
 
   return {
-    success: requestBlockers.length === 0,
+    success: blockers.length === 0,
     dry_run: true,
     writes_performed: false,
     generated_at: new Date().toISOString(),
@@ -2184,6 +2323,10 @@ async function buildG35BPreview(base44, body) {
     stripe_event_id: lookup.stripeEventId ? sanitizeText(lookup.stripeEventId, 120) : null,
     request_id: lookup.requestId || null,
     order_found: orderFound,
+    preview_data_stable: previewDataStable,
+    read_consistency: readConsistency,
+    command_readiness_safe: false,
+    future_refund_command_planning_possible: false,
     customer_app_order_present: Boolean(customerOrder?.id),
     native_shopify_order_present: Boolean(nativeOrder?.id),
     native_fulfillment_task_present: Boolean(task?.id),
@@ -2230,7 +2373,7 @@ async function buildG35BPreview(base44, body) {
       safe_sync_parity_log_status: g33cStatuses(parityRows),
       review_queue_status: g33cStatuses(reviewRows),
     },
-    blockers: [...new Set([...requestBlockers, ...liveBlockers])],
+    blockers: [...new Set([...blockers, ...liveBlockers])],
     warnings: [...new Set(warnings)],
     next_action: nextAction,
     safety: G35B_READ_ONLY_SAFETY,
