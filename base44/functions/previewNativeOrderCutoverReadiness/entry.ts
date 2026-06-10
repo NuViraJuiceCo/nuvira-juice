@@ -1284,7 +1284,49 @@ function g35dUniqueAnnotated(rows) {
   return [...byKey.values()];
 }
 
-async function g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrderId, taskId) {
+function g35dDateOnly(value) {
+  const text = normalizeText(value);
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+}
+
+function g35dShiftDate(dateText, offsetDays) {
+  const dateOnly = g35dDateOnly(dateText);
+  if (!dateOnly) return '';
+  const [year, month, day] = dateOnly.split('-').map(value => Number(value));
+  if (!year || !month || !day) return '';
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function g35dRefundBatchCandidateDates(...rows) {
+  const seeds = [];
+  for (const row of rows || []) {
+    if (!row) continue;
+    seeds.push(
+      row.production_date,
+      row.planned_production_date,
+      row.juice_date,
+      row.delivery_date,
+      row.scheduled_date,
+      row.scheduled_delivery_date,
+      row.fulfillment_date,
+    );
+  }
+  const dates = new Set();
+  for (const seed of seeds) {
+    const dateOnly = g35dDateOnly(seed);
+    if (!dateOnly) continue;
+    for (let offset = -3; offset <= 3; offset += 1) {
+      const shifted = g35dShiftDate(dateOnly, offset);
+      if (shifted) dates.add(shifted);
+    }
+  }
+  return [...dates].sort();
+}
+
+async function g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrderId, taskId, context = {}) {
   const rows = [];
   if (customerOrderId) {
     rows.push(...await g33cFilter(base44, 'ProductionBatch', { base44_order_id: customerOrderId }, '-production_date', 50));
@@ -1304,6 +1346,10 @@ async function g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrd
     rows.push(...await g33cFilter(base44, 'ProductionBatch', { order_number: orderNumber }, '-production_date', 50));
     rows.push(...await g33cFilter(base44, 'ProductionBatch', { shopify_order_number: orderNumber }, '-production_date', 50));
     rows.push(...await g33cFilter(base44, 'ProductionBatch', { source_order_number: orderNumber }, '-production_date', 50));
+  }
+  const candidateDates = Array.isArray(context?.candidateDates) ? context.candidateDates : [];
+  for (const productionDate of candidateDates) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { production_date: productionDate }, '-production_date', 100));
   }
 
   const listed = await g33cList(base44, 'ProductionBatch', '-production_date', 1000);
@@ -1920,7 +1966,8 @@ async function buildG35HPreview(base44, body) {
     g35bLogs(base44, 'SafeSyncParityLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35hReviewRows(base44, { orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id || lookup.nativeOrderId, stripeEventId: lookup.stripeEventId, stripeRefundId: lookup.stripeRefundId }),
   ]);
-  const batches = await g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id);
+  const batchCandidateDates = g35dRefundBatchCandidateDates(customerOrder, nativeOrder, task);
+  const batches = await g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id, { candidateDates: batchCandidateDates });
   const complianceLogs = await g35dRefundComplianceLogs(base44, batches);
   const orderFound = Boolean(customerOrder?.id || nativeOrder?.id || task?.id);
   const lifecycleState = g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs });
@@ -2062,7 +2109,8 @@ async function buildG35BPreview(base44, body) {
     g35bLogs(base44, 'CommandLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35bLogs(base44, 'SafeSyncParityLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
   ]);
-  const batches = await g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id);
+  const batchCandidateDates = g35dRefundBatchCandidateDates(customerOrder, nativeOrder, task);
+  const batches = await g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id, { candidateDates: batchCandidateDates });
   const complianceLogs = await g35dRefundComplianceLogs(base44, batches);
   const orderFound = Boolean(customerOrder?.id || nativeOrder?.id || task?.id);
   const subscriptionOrMulti = g33cSubscriptionOrMulti(nativeOrder, task);
