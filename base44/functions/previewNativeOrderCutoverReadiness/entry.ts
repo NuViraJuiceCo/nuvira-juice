@@ -1066,6 +1066,480 @@ async function buildG33CPreview(base44, body) {
   };
 }
 
+
+const G35B_PREVIEW_MODE = 'NATIVE_REFUND_IMPACT';
+const G35B_REFUND_TYPES = new Set(['full', 'partial', 'unknown']);
+const G35B_EVENT_SOURCES = new Set(['stripe_webhook', 'admin_preview', 'test_fixture']);
+
+const G35B_ALLOWED_BODY_KEYS = new Set([
+  'mode',
+  'preview_mode',
+  'order_number',
+  'shopify_order_number',
+  'customer_app_order_id',
+  'base44_order_id',
+  'order_id',
+  'native_shopify_order_id',
+  'native_order_id',
+  'shopify_order_id',
+  'stripe_event_id',
+  'refund_type',
+  'refund_amount',
+  'currency',
+  'event_source',
+  'request_id',
+  '_internal_secret',
+  'internal_secret',
+]);
+
+const G35B_READ_ONLY_SAFETY = Object.freeze({
+  dry_run_only: true,
+  writes_performed: false,
+  refunds_processed: false,
+  customer_app_order_updated: false,
+  native_shopify_order_updated: false,
+  native_fulfillment_task_updated: false,
+  production_batch_updated: false,
+  batch_compliance_log_updated: false,
+  order_review_queue_created: false,
+  order_sync_log_created: false,
+  command_log_created: false,
+  tasks_cancelled: false,
+  order_sources_removed: false,
+  batches_recalculated: false,
+  inventory_deducted_or_restored: false,
+  purchase_order_created_or_updated: false,
+  notifications_created: false,
+  notifications_sent: false,
+  message_logs_created: false,
+  provider_calls_performed: false,
+  stripe_calls_performed: false,
+  shopify_api_calls_performed: false,
+  sync_repair_replay_performed: false,
+  gates_opened: false,
+  hub_records_updated: false,
+  hub_bridge_modified: false,
+});
+
+const G35B_STATUS_SCHEMA_COMPATIBILITY = Object.freeze({
+  customer_order_status_refund_value_supported: false,
+  customer_order_cancelled_value_supported: false,
+  native_shopify_order_payment_status_refunded_supported: true,
+  native_shopify_order_production_status_cancelled_supported: true,
+  native_shopify_order_production_status_cancelled_value: 'canceled',
+  native_fulfillment_task_cancelled_status_supported: true,
+  native_fulfillment_task_cancelled_status_value: 'cancelled',
+});
+
+function isG35BPreviewRequest(body) {
+  const previewMode = normalizeText(body?.preview_mode).toUpperCase();
+  return previewMode === G35B_PREVIEW_MODE;
+}
+
+function g35bUnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G35B_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g35bLookup(body) {
+  const refundType = normalizeLower(body?.refund_type);
+  const eventSource = normalizeLower(body?.event_source || 'admin_preview');
+  return {
+    orderNumber: normalizeOrderNumber(body?.order_number || body?.shopify_order_number),
+    customerAppOrderId: normalizeText(body?.customer_app_order_id || body?.base44_order_id || body?.order_id),
+    nativeOrderId: normalizeText(body?.native_shopify_order_id || body?.native_order_id || body?.shopify_order_id),
+    stripeEventId: normalizeText(body?.stripe_event_id),
+    refundType: G35B_REFUND_TYPES.has(refundType) ? refundType : '',
+    rawRefundType: refundType,
+    refundAmount: body?.refund_amount === undefined || body?.refund_amount === null || body?.refund_amount === '' ? null : safeNumber(body?.refund_amount, null),
+    currency: sanitizeText(body?.currency || 'usd', 20) || 'usd',
+    eventSource: G35B_EVENT_SOURCES.has(eventSource) ? eventSource : 'admin_preview',
+    requestId: sanitizeText(body?.request_id, 120),
+  };
+}
+
+async function g35bNativeOrders(base44, lookup, customerOrder) {
+  const rows = [];
+  if (lookup.nativeOrderId) rows.push(...await g33cFilter(base44, 'ShopifyOrder', { id: lookup.nativeOrderId }, '-created_date', 5));
+  rows.push(...await g33cNativeOrders(base44, lookup.orderNumber || normalizeOrderNumber(customerOrder?.order_number), lookup.customerAppOrderId || customerOrder?.id));
+  return g33cUnique(rows);
+}
+
+async function g35bLogs(base44, entityName, { orderNumber, customerOrderId, stripeEventId }, limit = 25) {
+  const rows = [];
+  rows.push(...await g33cLogs(base44, entityName, orderNumber, customerOrderId, limit));
+  if (stripeEventId) {
+    rows.push(...await g33cFilter(base44, entityName, { stripe_event_id: stripeEventId }, '-created_date', limit));
+    rows.push(...await g33cFilter(base44, entityName, { related_stripe_event_id: stripeEventId }, '-created_date', limit));
+    rows.push(...await g33cFilter(base44, entityName, { event_id: stripeEventId }, '-created_date', limit));
+  }
+  return g33cUnique(rows);
+}
+
+function g35bSafeRowSummary(row) {
+  return {
+    id: row?.id || null,
+    status: sanitizeText(row?.status || row?.sync_status || row?.review_status || row?.action, 120),
+    action: sanitizeText(row?.action || row?.hub_action || row?.command_type, 120),
+    error_code: sanitizeText(row?.error_code, 120),
+    request_id_present: Boolean(row?.request_id),
+    stripe_event_id_present: Boolean(row?.stripe_event_id || row?.related_stripe_event_id || row?.event_id),
+  };
+}
+
+function g35bOrderSourceMatches(source, orderNumber, customerOrderId, nativeOrderId, taskId) {
+  if (!source) return false;
+  if (customerOrderId && [source.order_id, source.base44_order_id, source.customer_app_order_id, source.source_order_id].includes(customerOrderId)) return true;
+  if (nativeOrderId && [source.native_shopify_order_id, source.shopify_order_id].includes(nativeOrderId)) return true;
+  if (taskId && [source.native_fulfillment_task_id, source.fulfillment_task_id].includes(taskId)) return true;
+  if (orderNumber) {
+    const key = g33cOrderKey(orderNumber);
+    return [source.order_number, source.shopify_order_number, source.source_order_number].some(value => g33cOrderKey(value) === key);
+  }
+  return false;
+}
+
+function g35bBatchSourceImpact(batch, { orderNumber, customerOrderId, nativeOrderId, taskId }) {
+  const sources = Array.isArray(batch?.order_sources) ? batch.order_sources : [];
+  const matchingSources = sources.filter(source => g35bOrderSourceMatches(source, orderNumber, customerOrderId, nativeOrderId, taskId));
+  const unitsToSubtract = matchingSources.reduce((sum, source) => sum + safeNumber(source?.quantity, 0), 0);
+  return {
+    id: batch?.id || null,
+    batch_id: sanitizeText(batch?.batch_id, 120),
+    status: sanitizeText(batch?.status || batch?.lifecycle_status || batch?.production_status, 120),
+    planned_units: safeNumber(batch?.planned_units, 0),
+    order_source_count: sources.length,
+    matching_order_source_count: matchingSources.length,
+    matching_units: unitsToSubtract,
+    proposed_planned_units_after_removal: Math.max(0, safeNumber(batch?.planned_units, 0) - unitsToSubtract),
+  };
+}
+
+function g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs }) {
+  const customerStatus = normalizeLower(customerOrder?.status);
+  const taskStatus = normalizeLower(task?.status);
+  const taskDeliveryStatus = normalizeLower(task?.delivery_status);
+  const nativeProduction = normalizeLower(nativeOrder?.production_status);
+  const batchStatuses = (batches || []).map(batch => normalizeLower(batch?.status || batch?.lifecycle_status || batch?.production_status));
+  const historical = normalizeLower(nativeOrder?.source_type) === 'hub_historical_backfill' || normalizeLower(nativeOrder?.operational_visibility) === 'historical_backfill';
+
+  if (historical) return 'historical_fulfilled';
+  if (['delivered', 'fulfilled', 'completed'].includes(customerStatus) || ['delivered', 'completed'].includes(taskStatus) || ['delivered', 'completed'].includes(taskDeliveryStatus)) return 'delivered';
+  if ((complianceLogs || []).length > 0 || batchStatuses.some(status => status.includes('verified'))) return 'production_verified';
+  if (batchStatuses.some(status => status.includes('complete'))) return 'production_completed';
+  if (batchStatuses.some(status => status.includes('progress') || status.includes('started') || status.includes('active'))) return 'production_started';
+  if ((batches || []).length > 0) return 'production_batches_planned';
+  if (['packed', 'bottled_packed', 'ready_for_delivery', 'ready'].includes(taskStatus) || nativeProduction === 'bottled') return 'task_packed';
+  if (task?.id) return 'task_scheduled_or_packed';
+  if (nativeOrder?.id) return 'native_order_created_only';
+  return 'before_native_ops';
+}
+
+function g35bRiskLevel(lifecycleState) {
+  if (['before_native_ops', 'native_order_created_only'].includes(lifecycleState)) return 'low_risk_preview_only';
+  if (['task_scheduled_or_packed', 'task_packed', 'production_batches_planned'].includes(lifecycleState)) return 'review_required';
+  if (['production_started', 'production_completed', 'production_verified'].includes(lifecycleState)) return 'high_risk_manual_only';
+  if (['delivered', 'historical_fulfilled'].includes(lifecycleState)) return 'do_not_auto_cancel';
+  return 'review_required';
+}
+
+function g35bSchemaCompatibility(refundType) {
+  const schemaGapBlockers = [];
+  if (refundType === 'full' || refundType === 'unknown') {
+    if (!G35B_STATUS_SCHEMA_COMPATIBILITY.customer_order_status_refund_value_supported) schemaGapBlockers.push('customer_order_status_refund_value_unsupported');
+    if (!G35B_STATUS_SCHEMA_COMPATIBILITY.customer_order_cancelled_value_supported) schemaGapBlockers.push('customer_order_cancelled_value_unsupported');
+  }
+  return {
+    ...G35B_STATUS_SCHEMA_COMPATIBILITY,
+    schema_gap_blockers: schemaGapBlockers,
+  };
+}
+
+function g35bNextAction({ refundType, orderFound, duplicateEventDetected, subscriptionOrMulti, lifecycleState, schemaGapBlockers }) {
+  if (duplicateEventDetected) return 'duplicate_refund_event_detected';
+  if (!orderFound) return 'unknown_order_review_required';
+  if (subscriptionOrMulti) return 'unsupported_subscription_refund';
+  if (refundType === 'partial') return 'partial_refund_review_required';
+  if (['delivered', 'historical_fulfilled'].includes(lifecycleState)) return 'delivered_refund_manual_review_required';
+  if (schemaGapBlockers?.length) return 'schema_gap_blocks_native_refund_command';
+  if (['before_native_ops', 'native_order_created_only'].includes(lifecycleState) && refundType === 'full') return 'native_refund_preview_ready_full_refund_pre_production';
+  return 'hold_hub_refund_source_of_truth';
+}
+
+function g35bCustomerOrderImpact({ customerOrder, refundType, statusCompatibility }) {
+  const present = Boolean(customerOrder?.id);
+  if (!present) return { present: false, proposed_action: 'none_unknown_order_review_required' };
+  if (refundType === 'partial') {
+    return {
+      present: true,
+      proposed_action: 'hold_customer_order_mutation_review_only',
+      current_status: sanitizeText(customerOrder?.status, 80),
+      current_payment_status: sanitizeText(customerOrder?.payment_status || customerOrder?.financial_status, 80),
+      would_update_customer_status: false,
+      would_update_payment_status: false,
+      reason: 'partial_refund_review_required',
+    };
+  }
+  return {
+    present: true,
+    proposed_action: statusCompatibility.schema_gap_blockers.length ? 'blocked_by_schema_gap_preview_only' : 'preview_full_refund_customer_payment_status_impact',
+    current_status: sanitizeText(customerOrder?.status, 80),
+    proposed_status: 'refunded',
+    proposed_status_supported: statusCompatibility.customer_order_status_refund_value_supported,
+    current_payment_status: sanitizeText(customerOrder?.payment_status || customerOrder?.financial_status, 80),
+    proposed_payment_status: 'refunded',
+    proposed_financial_status: 'refunded',
+    proposed_payment_captured: false,
+    status_history_append_preview: 'held_requires_live_policy_approval',
+    would_update_now: false,
+  };
+}
+
+function g35bNativeOrderImpact({ nativeOrder, refundType }) {
+  const present = Boolean(nativeOrder?.id);
+  if (!present) return { present: false, proposed_action: 'none_native_order_missing' };
+  if (refundType === 'partial') {
+    return {
+      present: true,
+      proposed_action: 'hold_native_order_mutation_review_only',
+      current_payment_status: sanitizeText(nativeOrder?.payment_status || nativeOrder?.financial_status, 80),
+      current_production_status: sanitizeText(nativeOrder?.production_status, 80),
+      current_fulfillment_status: sanitizeText(nativeOrder?.fulfillment_status || nativeOrder?.shopify_fulfillment_status, 80),
+      would_update_now: false,
+    };
+  }
+  return {
+    present: true,
+    proposed_action: 'preview_full_refund_native_order_status_impact',
+    current_payment_status: sanitizeText(nativeOrder?.payment_status || nativeOrder?.financial_status, 80),
+    proposed_payment_status: 'refunded',
+    current_production_status: sanitizeText(nativeOrder?.production_status, 80),
+    proposed_production_status: 'canceled',
+    current_fulfillment_status: sanitizeText(nativeOrder?.fulfillment_status || nativeOrder?.shopify_fulfillment_status, 80),
+    proposed_fulfillment_status: 'cancelled',
+    refunded_at_required_before_live_command: true,
+    would_update_now: false,
+  };
+}
+
+function g35bTaskImpact({ task, refundType, lifecycleState }) {
+  const present = Boolean(task?.id);
+  if (!present) return { present: false, proposed_action: 'none_task_missing' };
+  const terminalDelivered = ['delivered', 'historical_fulfilled'].includes(lifecycleState) || ['delivered', 'completed'].includes(normalizeLower(task?.status)) || ['delivered', 'completed'].includes(normalizeLower(task?.delivery_status));
+  if (refundType === 'partial') {
+    return {
+      present: true,
+      proposed_action: 'hold_task_mutation_review_only',
+      current_status: sanitizeText(task?.status, 80),
+      current_delivery_status: sanitizeText(task?.delivery_status, 80),
+      would_cancel_task: false,
+    };
+  }
+  return {
+    present: true,
+    proposed_action: terminalDelivered ? 'do_not_auto_cancel_delivered_or_completed_task' : 'preview_task_cancellation_impact',
+    current_status: sanitizeText(task?.status, 80),
+    proposed_status: terminalDelivered ? null : 'cancelled',
+    current_delivery_status: sanitizeText(task?.delivery_status, 80),
+    proposed_delivery_status: terminalDelivered ? null : 'cancelled',
+    cancellation_held: true,
+    would_cancel_task: false,
+  };
+}
+
+function g35bProductionBatchImpact({ batches, complianceLogs, refundType, lifecycleState, orderNumber, customerOrderId, nativeOrderId, taskId }) {
+  const batchRows = (batches || []).map(batch => g35bBatchSourceImpact(batch, { orderNumber, customerOrderId, nativeOrderId, taskId }));
+  const compliancePresent = (complianceLogs || []).length > 0;
+  const highRisk = ['production_started', 'production_completed', 'production_verified', 'delivered', 'historical_fulfilled'].includes(lifecycleState) || compliancePresent;
+  const reviewOnly = refundType === 'partial' || highRisk;
+  return {
+    production_batch_count: batchRows.length,
+    batch_compliance_log_count: (complianceLogs || []).length,
+    compliance_history_preserved: true,
+    proposed_action: batchRows.length === 0
+      ? 'none_no_batches_found'
+      : reviewOnly
+        ? 'hold_batch_mutation_manual_review_only'
+        : 'preview_order_source_removal_and_planned_units_recalculation',
+    order_source_removal_preview_rows: batchRows,
+    would_remove_order_sources_now: false,
+    would_recalculate_planned_units_now: false,
+    would_archive_batches_now: false,
+    deletion_proposed: false,
+  };
+}
+
+function g35bReviewQueueImpact({ refundType, orderNumber, customerOrderId, orderFound, lifecycleState }) {
+  if (!orderFound) {
+    return {
+      proposed_action: 'review_queue_preview_for_unknown_order',
+      would_create_now: false,
+      incident_type: 'refund_received_unknown_order',
+      order_number: orderNumber || null,
+    };
+  }
+  if (refundType === 'partial') {
+    return {
+      proposed_action: 'partial_refund_review_queue_preview',
+      would_create_now: false,
+      incident_type: 'partial_refund_received',
+      order_number: orderNumber || null,
+      customer_app_order_id: customerOrderId || null,
+      recommended_action: 'manual_review',
+    };
+  }
+  if (['production_started', 'production_completed', 'production_verified', 'delivered', 'historical_fulfilled'].includes(lifecycleState)) {
+    return {
+      proposed_action: 'manual_review_recommended_for_late_lifecycle_refund',
+      would_create_now: false,
+      incident_type: 'full_refund_late_lifecycle_review',
+      order_number: orderNumber || null,
+      customer_app_order_id: customerOrderId || null,
+    };
+  }
+  return { proposed_action: 'no_review_queue_entry_proposed_for_low_risk_full_refund_preview', would_create_now: false };
+}
+
+function g35bIdempotencyStatus({ stripeEventId, orderSyncRows, commandRows }) {
+  const syncMatches = (orderSyncRows || []).filter(row => stripeEventId && [row?.stripe_event_id, row?.related_stripe_event_id, row?.event_id].includes(stripeEventId));
+  const commandMatches = (commandRows || []).filter(row => stripeEventId && [row?.stripe_event_id, row?.related_stripe_event_id, row?.event_id].includes(stripeEventId));
+  const duplicateEventDetected = syncMatches.length > 0 || commandMatches.length > 0;
+  const successLike = [...syncMatches, ...commandMatches].some(row => ['success', 'refund_processed', 'skipped', 'deduped'].includes(normalizeLower(row?.status || row?.action || row?.result_status)) || row?.success === true);
+  return {
+    stripe_event_id_present: Boolean(stripeEventId),
+    stripe_event_id: stripeEventId ? sanitizeText(stripeEventId, 120) : null,
+    duplicate_event_detected: duplicateEventDetected,
+    order_sync_log_match_count: syncMatches.length,
+    command_log_match_count: commandMatches.length,
+    future_command_should: duplicateEventDetected ? (successLike ? 'skip_idempotent' : 'review_duplicate_event') : 'continue_preview_only',
+    matching_order_sync_log_rows: syncMatches.slice(0, 5).map(g35bSafeRowSummary),
+    matching_command_log_rows: commandMatches.slice(0, 5).map(g35bSafeRowSummary),
+  };
+}
+
+async function buildG35BPreview(base44, body) {
+  const lookup = g35bLookup(body);
+  const requestBlockers = [];
+  const warnings = [];
+  if (!lookup.refundType) requestBlockers.push('refund_type_required_full_partial_or_unknown');
+  if (!lookup.orderNumber && !lookup.customerAppOrderId && !lookup.nativeOrderId && !lookup.stripeEventId) requestBlockers.push('order_or_stripe_event_identifier_required');
+
+  const initialCustomerOrders = await g33cCustomerOrders(base44, { orderNumber: lookup.orderNumber, customerAppOrderId: lookup.customerAppOrderId });
+  let customerOrder = initialCustomerOrders[0] || null;
+  let nativeOrders = await g35bNativeOrders(base44, lookup, customerOrder);
+  let nativeOrder = nativeOrders[0] || null;
+  if (!customerOrder && nativeOrder?.base44_order_id) {
+    const byNativeCustomer = await g33cCustomerOrders(base44, { orderNumber: normalizeOrderNumber(nativeOrder?.shopify_order_number || lookup.orderNumber), customerAppOrderId: nativeOrder.base44_order_id });
+    customerOrder = byNativeCustomer[0] || null;
+  }
+
+  const orderNumber = normalizeOrderNumber(customerOrder?.order_number || nativeOrder?.shopify_order_number || lookup.orderNumber);
+  const customerOrderId = normalizeText(customerOrder?.id || lookup.customerAppOrderId || nativeOrder?.base44_order_id);
+  if (!nativeOrder && (orderNumber || customerOrderId)) {
+    nativeOrders = await g35bNativeOrders(base44, { ...lookup, orderNumber, customerAppOrderId: customerOrderId }, customerOrder);
+    nativeOrder = nativeOrders[0] || null;
+  }
+  const tasks = await g33cTasks(base44, orderNumber, customerOrderId, nativeOrder?.id);
+  const task = tasks[0] || null;
+  const [orderSyncRows, reviewRows, commandRows, parityRows] = await Promise.all([
+    g35bLogs(base44, 'OrderSyncLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
+    g35bLogs(base44, 'OrderReviewQueue', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
+    g35bLogs(base44, 'CommandLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
+    g35bLogs(base44, 'SafeSyncParityLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
+  ]);
+  const batches = await g33cBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id);
+  const complianceLogs = await g33cComplianceLogs(base44, batches);
+  const orderFound = Boolean(customerOrder?.id || nativeOrder?.id || task?.id);
+  const subscriptionOrMulti = g33cSubscriptionOrMulti(nativeOrder, task);
+  const lifecycleState = g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs });
+  const lifecycleRiskLevel = g35bRiskLevel(lifecycleState);
+  const statusSchemaCompatibility = g35bSchemaCompatibility(lookup.refundType || 'unknown');
+  const idempotencyStatus = g35bIdempotencyStatus({ stripeEventId: lookup.stripeEventId, orderSyncRows, commandRows });
+  const liveBlockers = [];
+  if (subscriptionOrMulti) liveBlockers.push('subscription_or_multi_delivery_refund_not_supported_by_one_time_preview');
+  liveBlockers.push(...statusSchemaCompatibility.schema_gap_blockers);
+  if (['production_started', 'production_completed', 'production_verified', 'delivered', 'historical_fulfilled'].includes(lifecycleState)) liveBlockers.push(`${lifecycleState}_manual_review_required`);
+  if (idempotencyStatus.duplicate_event_detected) liveBlockers.push('duplicate_refund_event_detected');
+  if (!orderFound) warnings.push('unknown_order_review_required');
+  if (lookup.refundType === 'partial') warnings.push('partial_refund_review_only_no_automatic_mutation');
+  warnings.push('notifications_held', 'provider_calls_disabled', 'inventory_reversal_not_proposed', 'purchase_order_reversal_not_proposed', 'hub_fallback_required');
+
+  const nextAction = requestBlockers.length
+    ? 'fix_preview_request_and_rerun'
+    : g35bNextAction({
+      refundType: lookup.refundType,
+      orderFound,
+      duplicateEventDetected: idempotencyStatus.duplicate_event_detected,
+      subscriptionOrMulti,
+      lifecycleState,
+      schemaGapBlockers: statusSchemaCompatibility.schema_gap_blockers,
+    });
+
+  return {
+    success: requestBlockers.length === 0,
+    dry_run: true,
+    writes_performed: false,
+    generated_at: new Date().toISOString(),
+    function_name: 'previewNativeOrderCutoverReadiness',
+    requested_function_alias: 'previewNativeRefundImpact',
+    preview_mode: G35B_PREVIEW_MODE,
+    order_number: orderNumber || lookup.orderNumber || null,
+    refund_type: lookup.refundType || lookup.rawRefundType || null,
+    refund_amount: lookup.refundAmount,
+    currency: lookup.currency,
+    event_source: lookup.eventSource,
+    stripe_event_id: lookup.stripeEventId ? sanitizeText(lookup.stripeEventId, 120) : null,
+    request_id: lookup.requestId || null,
+    order_found: orderFound,
+    customer_app_order_present: Boolean(customerOrder?.id),
+    native_shopify_order_present: Boolean(nativeOrder?.id),
+    native_fulfillment_task_present: Boolean(task?.id),
+    hub_order_present: null,
+    hub_context_status: 'hub_fallback_not_queried_safe_local_context_only',
+    lifecycle_state: lifecycleState,
+    lifecycle_risk_level: lifecycleRiskLevel,
+    idempotency_status: idempotencyStatus,
+    status_schema_compatibility: statusSchemaCompatibility,
+    proposed_customer_app_order_impact: g35bCustomerOrderImpact({ customerOrder, refundType: lookup.refundType || 'unknown', statusCompatibility: statusSchemaCompatibility }),
+    proposed_native_shopify_order_impact: g35bNativeOrderImpact({ nativeOrder, refundType: lookup.refundType || 'unknown' }),
+    proposed_fulfillment_task_impact: g35bTaskImpact({ task, refundType: lookup.refundType || 'unknown', lifecycleState }),
+    proposed_production_batch_impact: g35bProductionBatchImpact({ batches, complianceLogs, refundType: lookup.refundType || 'unknown', lifecycleState, orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id, taskId: task?.id }),
+    proposed_order_review_queue_impact: g35bReviewQueueImpact({ refundType: lookup.refundType || 'unknown', orderNumber, customerOrderId, orderFound, lifecycleState }),
+    proposed_order_sync_log_impact: {
+      proposed_action: 'preview_only_future_refund_audit_log',
+      would_create_now: false,
+      existing_rows: g33cStatuses(orderSyncRows),
+    },
+    proposed_command_log_impact: {
+      proposed_action: 'preview_only_future_command_log_if_live_command_is_approved',
+      would_create_now: false,
+      existing_rows: g33cStatuses(commandRows),
+    },
+    notification_impact: {
+      notification_would_send: false,
+      notification_held: true,
+      notification_rows_created: false,
+      message_logs_created: false,
+    },
+    provider_call_impact: false,
+    hub_fallback_required: true,
+    hub_fallback_impact: {
+      hub_fallback_required: true,
+      hub_bridge_modified: false,
+      hub_records_updated: false,
+      order_sync_log_status: g33cStatuses(orderSyncRows),
+      safe_sync_parity_log_status: g33cStatuses(parityRows),
+      review_queue_status: g33cStatuses(reviewRows),
+    },
+    blockers: [...new Set([...requestBlockers, ...liveBlockers])],
+    warnings: [...new Set(warnings)],
+    next_action: nextAction,
+    safety: G35B_READ_ONLY_SAFETY,
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -1080,13 +1554,20 @@ Deno.serve(async (req) => {
 
     const body = parsed.body || {};
     const g33cPreviewRequest = isG33CPreviewRequest(body);
+    const g35bPreviewRequest = isG35BPreviewRequest(body);
     if (g33cPreviewRequest) {
       const unsupported = g33cUnsupportedBodyKey(body);
       if (unsupported) {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
-    if (!g33cPreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (g35bPreviewRequest) {
+      const unsupported = g35bUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
+    if (!g33cPreviewRequest && !g35bPreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
@@ -1095,6 +1576,16 @@ Deno.serve(async (req) => {
 
     if (g33cPreviewRequest) {
       const preview = await buildG33CPreview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
+
+    if (g35bPreviewRequest) {
+      const preview = await buildG35BPreview(base44, body);
       return Response.json({
         ...preview,
         actor_type: auth.actor_type,
