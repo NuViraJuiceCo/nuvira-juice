@@ -1069,7 +1069,7 @@ async function buildG33CPreview(base44, body) {
 
 const G35B_PREVIEW_MODE = 'NATIVE_REFUND_IMPACT';
 const G35B_REFUND_TYPES = new Set(['full', 'partial', 'unknown']);
-const G35B_EVENT_SOURCES = new Set(['stripe_webhook', 'admin_preview', 'test_fixture']);
+const G35B_EVENT_SOURCES = new Set(['stripe_webhook', 'stripe_webhook_shadow', 'admin_preview', 'test_fixture']);
 
 const G35B_ALLOWED_BODY_KEYS = new Set([
   'mode',
@@ -1083,9 +1083,12 @@ const G35B_ALLOWED_BODY_KEYS = new Set([
   'native_order_id',
   'shopify_order_id',
   'stripe_event_id',
+  'stripe_refund_id',
   'refund_type',
   'refund_amount',
+  'refund_currency',
   'currency',
+  'refund_reason',
   'event_source',
   'request_id',
   '_internal_secret',
@@ -1151,10 +1154,12 @@ function g35bLookup(body) {
     customerAppOrderId: normalizeText(body?.customer_app_order_id || body?.base44_order_id || body?.order_id),
     nativeOrderId: normalizeText(body?.native_shopify_order_id || body?.native_order_id || body?.shopify_order_id),
     stripeEventId: normalizeText(body?.stripe_event_id),
+    stripeRefundId: normalizeText(body?.stripe_refund_id),
     refundType: G35B_REFUND_TYPES.has(refundType) ? refundType : '',
     rawRefundType: refundType,
     refundAmount: body?.refund_amount === undefined || body?.refund_amount === null || body?.refund_amount === '' ? null : safeNumber(body?.refund_amount, null),
-    currency: sanitizeText(body?.currency || 'usd', 20) || 'usd',
+    currency: sanitizeText(body?.refund_currency || body?.currency || 'usd', 20) || 'usd',
+    refundReason: sanitizeText(body?.refund_reason, 180),
     eventSource: G35B_EVENT_SOURCES.has(eventSource) ? eventSource : 'admin_preview',
     requestId: sanitizeText(body?.request_id, 120),
   };
@@ -1626,6 +1631,323 @@ function g35bIdempotencyStatus({ stripeEventId, orderSyncRows, commandRows }) {
   };
 }
 
+const G35H_PREVIEW_MODE = 'NATIVE_PARTIAL_REFUND_REVIEW_IMPACT';
+
+function isG35HPreviewRequest(body) {
+  const previewMode = normalizeText(body?.preview_mode).toUpperCase();
+  return previewMode === G35H_PREVIEW_MODE;
+}
+
+function g35hUnsupportedBodyKey(body) {
+  return g35bUnsupportedBodyKey(body);
+}
+
+function g35hReviewMatches(row, { orderNumber, customerOrderId, nativeOrderId, stripeEventId, stripeRefundId }) {
+  if (!row) return false;
+  const orderKey = g33cOrderKey(orderNumber);
+  if (customerOrderId && [row?.base44_order_id, row?.order_id, row?.customer_app_order_id, row?.existing_order_id].some(value => normalizeText(value) === customerOrderId)) return true;
+  if (nativeOrderId && [row?.native_shopify_order_id, row?.shopify_order_id, row?.native_order_id].some(value => normalizeText(value) === nativeOrderId)) return true;
+  if (stripeEventId && [row?.stripe_event_id, row?.related_stripe_event_id, row?.event_id, row?.refund_event_id, row?.idempotency_key].some(value => normalizeText(value) === stripeEventId)) return true;
+  if (stripeRefundId && [row?.stripe_refund_id, row?.refund_id, row?.idempotency_key].some(value => normalizeText(value) === stripeRefundId)) return true;
+  if (orderKey && [row?.order_number, row?.shopify_order_number, row?.source_order_number, row?.customer_order_number, row?.hub_order_number, row?.existing_order_number].some(value => g33cOrderKey(value) === orderKey)) return true;
+  const payload = row?.incoming_payload && typeof row.incoming_payload === 'object' ? row.incoming_payload : {};
+  if (customerOrderId && [payload.customer_app_order_id, payload.order_id, payload.existing_order_id].some(value => normalizeText(value) === customerOrderId)) return true;
+  if (nativeOrderId && [payload.native_shopify_order_id, payload.shopify_order_id].some(value => normalizeText(value) === nativeOrderId)) return true;
+  if (stripeEventId && [payload.stripe_event_id, payload.refund_event_id, payload.event_id].some(value => normalizeText(value) === stripeEventId)) return true;
+  if (stripeRefundId && [payload.stripe_refund_id, payload.refund_id].some(value => normalizeText(value) === stripeRefundId)) return true;
+  if (orderKey && [payload.order_number, payload.shopify_order_number, payload.existing_order_number].some(value => g33cOrderKey(value) === orderKey)) return true;
+  return false;
+}
+
+function g35hPartialReviewLike(row) {
+  const text = normalizeLower(`${row?.incident_type || ''} ${row?.recommended_action || ''} ${row?.issue_description || ''} ${row?.resolved_action || ''}`);
+  return text.includes('partial_refund') || text.includes('partial refund');
+}
+
+async function g35hReviewRows(base44, { orderNumber, customerOrderId, nativeOrderId, stripeEventId, stripeRefundId }) {
+  const rows = [];
+  rows.push(...await g35bLogs(base44, 'OrderReviewQueue', { orderNumber, customerOrderId, stripeEventId }, 25));
+  if (customerOrderId) rows.push(...await g33cFilter(base44, 'OrderReviewQueue', { existing_order_id: customerOrderId }, '-created_date', 25));
+  if (orderNumber) rows.push(...await g33cFilter(base44, 'OrderReviewQueue', { existing_order_number: orderNumber }, '-created_date', 25));
+  if (nativeOrderId) rows.push(...await g33cFilter(base44, 'OrderReviewQueue', { native_shopify_order_id: nativeOrderId }, '-created_date', 25));
+  if (stripeEventId) rows.push(...await g33cFilter(base44, 'OrderReviewQueue', { idempotency_key: stripeEventId }, '-created_date', 25));
+  if (stripeRefundId) rows.push(...await g33cFilter(base44, 'OrderReviewQueue', { idempotency_key: stripeRefundId }, '-created_date', 25));
+  const listed = await g33cList(base44, 'OrderReviewQueue', '-created_date', 100);
+  rows.push(...listed.filter(row => g35hReviewMatches(row, { orderNumber, customerOrderId, nativeOrderId, stripeEventId, stripeRefundId })));
+  return g33cUnique(rows).filter(row => g35hReviewMatches(row, { orderNumber, customerOrderId, nativeOrderId, stripeEventId, stripeRefundId }));
+}
+
+function g35hReviewRowSummary(row) {
+  return {
+    id: row?.id || null,
+    incident_type: sanitizeText(row?.incident_type, 120),
+    status: sanitizeText(row?.status, 80),
+    existing_order_number: sanitizeText(row?.existing_order_number || row?.order_number, 80),
+    existing_order_id_present: Boolean(row?.existing_order_id || row?.customer_app_order_id || row?.order_id),
+    idempotency_key_present: Boolean(row?.idempotency_key),
+  };
+}
+
+function g35hStatusPolicyNotes() {
+  return [
+    'customer_order_status_refund_value_unsupported_policy_note',
+    'customer_order_cancelled_value_unsupported_policy_note',
+    'customer_order_status_lifecycle_facing',
+    'refund_state_uses_payment_refund_fields',
+  ];
+}
+
+function g35hRefundFieldPreview({ refundAmount, currency, lookup }) {
+  return {
+    refund_status: 'pending_review',
+    refund_type: 'partial',
+    refund_amount: refundAmount,
+    refund_currency: currency,
+    refunded_at: null,
+    refund_source: lookup.eventSource === 'stripe_webhook_shadow' ? 'stripe_webhook' : lookup.eventSource === 'admin_preview' ? 'admin' : lookup.eventSource,
+    refund_event_id: lookup.stripeEventId || lookup.requestId || null,
+    stripe_refund_id: lookup.stripeRefundId || null,
+    refund_reason: lookup.refundReason || 'partial_refund_requires_manual_review',
+    refund_review_required: true,
+    refund_review_status: 'pending',
+  };
+}
+
+function g35hCustomerOrderImpact({ customerOrder, refundAmount, currency, lookup }) {
+  if (!customerOrder?.id) return { present: false, proposed_action: 'none_unknown_order_review_required' };
+  return {
+    present: true,
+    proposed_action: 'preview_refund_field_review_markers_only',
+    current_status: sanitizeText(customerOrder?.status, 80),
+    status_mutation_proposed: false,
+    proposed_status: null,
+    current_payment_status: sanitizeText(customerOrder?.payment_status || customerOrder?.financial_status, 80),
+    payment_status_mutation_proposed: false,
+    proposed_refund_fields: g35hRefundFieldPreview({ refundAmount, currency, lookup }),
+    would_update_now: false,
+  };
+}
+
+function g35hNativeOrderImpact({ nativeOrder, refundAmount, currency, lookup }) {
+  if (!nativeOrder?.id) return { present: false, proposed_action: 'none_native_order_missing' };
+  return {
+    present: true,
+    proposed_action: 'preview_native_refund_field_review_markers_only',
+    current_payment_status: sanitizeText(nativeOrder?.payment_status || nativeOrder?.financial_status, 80),
+    current_production_status: sanitizeText(nativeOrder?.production_status, 80),
+    current_fulfillment_status: sanitizeText(nativeOrder?.fulfillment_status || nativeOrder?.shopify_fulfillment_status, 80),
+    production_status_mutation_proposed: false,
+    fulfillment_status_mutation_proposed: false,
+    proposed_refund_fields: g35hRefundFieldPreview({ refundAmount, currency, lookup }),
+    would_update_now: false,
+  };
+}
+
+function g35hReviewPriority(lifecycleState, productionBatchImpact) {
+  if (['delivered', 'historical_fulfilled'].includes(lifecycleState)) return 'high';
+  if (productionBatchImpact?.verified_logged_batch_count > 0 || productionBatchImpact?.locked_compliance_log_count > 0) return 'high';
+  if (['production_started', 'production_completed', 'production_verified', 'task_packed'].includes(lifecycleState)) return 'high';
+  return 'normal';
+}
+
+function g35hReviewReason({ lookup, lifecycleState }) {
+  return lookup.refundReason || (lifecycleState === 'delivered'
+    ? 'partial_refund_for_delivered_order_requires_manual_review'
+    : 'partial_refund_requires_manual_review');
+}
+
+function g35hReviewQueueImpact({ orderNumber, customerOrderId, nativeOrderId, orderFound, lookup, duplicateReviewDetected, duplicateEventDetected, refundAmount, currency, lifecycleState, productionBatchImpact, existingReviewRows }) {
+  if (duplicateEventDetected) {
+    return {
+      proposed_action: 'dedupe_existing_refund_event_no_new_review_queue_draft',
+      would_create_now: false,
+      draft_recommended_for_future_command: false,
+      incident_type: 'partial_refund_review_required',
+      duplicate_review_detected: false,
+      duplicate_refund_event_detected: true,
+      existing_review_queue_rows: existingReviewRows.slice(0, 5).map(g35hReviewRowSummary),
+    };
+  }
+  if (duplicateReviewDetected) {
+    return {
+      proposed_action: 'dedupe_existing_partial_refund_review_no_new_queue_draft',
+      would_create_now: false,
+      draft_recommended_for_future_command: false,
+      incident_type: 'partial_refund_review_required',
+      duplicate_review_detected: true,
+      existing_review_queue_rows: existingReviewRows.slice(0, 5).map(g35hReviewRowSummary),
+    };
+  }
+  const priority = g35hReviewPriority(lifecycleState, productionBatchImpact);
+  const reviewReason = g35hReviewReason({ lookup, lifecycleState });
+  const safeDraft = {
+    incident_type: orderFound ? 'partial_refund_review_required' : 'partial_refund_unknown_order_review_required',
+    order_number: orderNumber || lookup.orderNumber || null,
+    customer_app_order_id: customerOrderId || null,
+    native_shopify_order_id: nativeOrderId || null,
+    refund_amount: refundAmount,
+    refund_currency: currency,
+    refund_type: 'partial',
+    stripe_event_id: lookup.stripeEventId || null,
+    stripe_refund_id: lookup.stripeRefundId || null,
+    review_reason: reviewReason,
+    priority,
+    status: 'pending',
+    source: 'native_refund_impact_preview',
+    raw_payload_included: false,
+    customer_pii_included: false,
+  };
+  return {
+    proposed_action: orderFound ? 'partial_refund_review_queue_draft' : 'unknown_order_partial_refund_review_queue_draft',
+    would_create_now: false,
+    draft_recommended_for_future_command: true,
+    incident_type: safeDraft.incident_type,
+    status: 'pending',
+    source: 'native_refund_impact_preview',
+    recommended_action: 'manual_review',
+    duplicate_review_detected: false,
+    existing_review_queue_rows: existingReviewRows.slice(0, 5).map(g35hReviewRowSummary),
+    safe_queue_draft: safeDraft,
+  };
+}
+
+async function buildG35HPreview(base44, body) {
+  const lookup = g35bLookup(body);
+  const requestBlockers = [];
+  const warnings = [];
+  if (lookup.rawRefundType !== 'partial') requestBlockers.push('refund_type_must_be_partial_for_partial_refund_review_preview');
+  if (lookup.refundAmount === null || lookup.refundAmount <= 0) requestBlockers.push('refund_amount_required_for_partial_refund_review');
+  if (!lookup.orderNumber && !lookup.customerAppOrderId && !lookup.nativeOrderId && !lookup.stripeEventId && !lookup.stripeRefundId) requestBlockers.push('order_or_refund_event_identifier_required');
+
+  const initialCustomerOrders = await g33cCustomerOrders(base44, { orderNumber: lookup.orderNumber, customerAppOrderId: lookup.customerAppOrderId });
+  let customerOrder = initialCustomerOrders[0] || null;
+  let nativeOrders = await g35bNativeOrders(base44, lookup, customerOrder);
+  let nativeOrder = nativeOrders[0] || null;
+  if (!customerOrder && nativeOrder?.base44_order_id) {
+    const byNativeCustomer = await g33cCustomerOrders(base44, { orderNumber: normalizeOrderNumber(nativeOrder?.shopify_order_number || lookup.orderNumber), customerAppOrderId: nativeOrder.base44_order_id });
+    customerOrder = byNativeCustomer[0] || null;
+  }
+  const orderNumber = normalizeOrderNumber(customerOrder?.order_number || nativeOrder?.shopify_order_number || lookup.orderNumber);
+  const customerOrderId = normalizeText(customerOrder?.id || lookup.customerAppOrderId || nativeOrder?.base44_order_id);
+  if (!nativeOrder && (orderNumber || customerOrderId)) {
+    nativeOrders = await g35bNativeOrders(base44, { ...lookup, orderNumber, customerAppOrderId: customerOrderId }, customerOrder);
+    nativeOrder = nativeOrders[0] || null;
+  }
+  const tasks = await g33cTasks(base44, orderNumber, customerOrderId, nativeOrder?.id || lookup.nativeOrderId);
+  const task = tasks[0] || null;
+  const [orderSyncRows, commandRows, parityRows, reviewRows] = await Promise.all([
+    g35bLogs(base44, 'OrderSyncLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
+    g35bLogs(base44, 'CommandLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
+    g35bLogs(base44, 'SafeSyncParityLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
+    g35hReviewRows(base44, { orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id || lookup.nativeOrderId, stripeEventId: lookup.stripeEventId, stripeRefundId: lookup.stripeRefundId }),
+  ]);
+  const batches = await g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id);
+  const complianceLogs = await g35dRefundComplianceLogs(base44, batches);
+  const orderFound = Boolean(customerOrder?.id || nativeOrder?.id || task?.id);
+  const lifecycleState = g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs });
+  const productionBatchImpact = g35bProductionBatchImpact({ batches, complianceLogs, refundType: 'partial', lifecycleState, orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id, taskId: task?.id });
+  const idempotencyStatus = g35bIdempotencyStatus({ stripeEventId: lookup.stripeEventId, orderSyncRows, commandRows });
+  const partialReviewRows = reviewRows.filter(g35hPartialReviewLike);
+  const duplicateReviewDetected = partialReviewRows.length > 0;
+  const duplicateEventDetected = idempotencyStatus.duplicate_event_detected;
+
+  if (!orderFound && !requestBlockers.includes('order_or_refund_event_identifier_required')) warnings.push('unknown_order_review_required');
+  if (lifecycleState === 'delivered') warnings.push('delivered_partial_refund_manual_review_required');
+  if (productionBatchImpact.verified_logged_batch_count > 0) warnings.push('verified_production_history_preserved');
+  if (productionBatchImpact.locked_compliance_log_count > 0) warnings.push('locked_compliance_logs_preserved');
+  warnings.push('partial_refund_review_only_no_automatic_mutation', 'notifications_held', 'provider_calls_disabled', 'inventory_reversal_not_proposed', 'purchase_order_reversal_not_proposed', 'hub_fallback_required');
+
+  const blockers = [...requestBlockers];
+  let nextAction = 'partial_refund_review_required';
+  if (requestBlockers.includes('refund_amount_required_for_partial_refund_review')) nextAction = 'provide_refund_amount_for_review_preview';
+  else if (requestBlockers.includes('refund_type_must_be_partial_for_partial_refund_review_preview')) nextAction = 'use_native_refund_impact_preview_for_non_partial_refund';
+  else if (requestBlockers.length) nextAction = 'fix_preview_request_and_rerun';
+  else if (duplicateEventDetected) nextAction = 'duplicate_refund_event_detected';
+  else if (duplicateReviewDetected) nextAction = 'duplicate_partial_refund_review_already_exists';
+  else if (!orderFound) nextAction = 'unknown_order_review_required';
+  else if (lifecycleState === 'delivered') nextAction = 'partial_refund_manual_review_required';
+
+  const reviewQueueImpact = g35hReviewQueueImpact({
+    orderNumber,
+    customerOrderId,
+    nativeOrderId: nativeOrder?.id || lookup.nativeOrderId,
+    orderFound,
+    lookup,
+    duplicateReviewDetected,
+    duplicateEventDetected,
+    refundAmount: lookup.refundAmount,
+    currency: lookup.currency,
+    lifecycleState,
+    productionBatchImpact,
+    existingReviewRows: partialReviewRows,
+  });
+
+  return {
+    success: blockers.length === 0,
+    dry_run: true,
+    writes_performed: false,
+    generated_at: new Date().toISOString(),
+    function_name: 'previewNativeOrderCutoverReadiness',
+    requested_function_alias: 'previewNativePartialRefundReviewImpact',
+    preview_mode: G35H_PREVIEW_MODE,
+    order_number: orderNumber || lookup.orderNumber || null,
+    refund_type: lookup.rawRefundType || lookup.refundType || null,
+    refund_amount: lookup.refundAmount,
+    refund_currency: lookup.currency,
+    stripe_event_id: lookup.stripeEventId ? sanitizeText(lookup.stripeEventId, 120) : null,
+    stripe_refund_id: lookup.stripeRefundId ? sanitizeText(lookup.stripeRefundId, 120) : null,
+    event_source: lookup.eventSource,
+    request_id: lookup.requestId || null,
+    order_found: orderFound,
+    customer_app_order_present: Boolean(customerOrder?.id),
+    native_shopify_order_present: Boolean(nativeOrder?.id),
+    native_fulfillment_task_present: Boolean(task?.id),
+    production_batch_count: productionBatchImpact.production_batch_count,
+    verified_logged_batch_count: productionBatchImpact.verified_logged_batch_count,
+    batch_compliance_log_count: productionBatchImpact.batch_compliance_log_count,
+    locked_compliance_log_count: productionBatchImpact.locked_compliance_log_count,
+    existing_review_queue_count: partialReviewRows.length,
+    duplicate_review_detected: duplicateReviewDetected,
+    duplicate_refund_event_detected: duplicateEventDetected,
+    idempotency_status: idempotencyStatus,
+    lifecycle_state: lifecycleState,
+    lifecycle_risk_level: ['delivered', 'historical_fulfilled'].includes(lifecycleState) ? 'manual_review_required' : g35bRiskLevel(lifecycleState),
+    proposed_order_review_queue_impact: reviewQueueImpact,
+    proposed_customer_app_order_impact: g35hCustomerOrderImpact({ customerOrder, refundAmount: lookup.refundAmount, currency: lookup.currency, lookup }),
+    proposed_native_shopify_order_impact: g35hNativeOrderImpact({ nativeOrder, refundAmount: lookup.refundAmount, currency: lookup.currency, lookup }),
+    proposed_fulfillment_task_impact: g35bTaskImpact({ task, refundType: 'partial', lifecycleState }),
+    proposed_production_batch_impact: productionBatchImpact,
+    proposed_compliance_impact: {
+      batch_compliance_log_count: productionBatchImpact.batch_compliance_log_count,
+      locked_compliance_log_count: productionBatchImpact.locked_compliance_log_count,
+      compliance_history_preserved: true,
+      compliance_history_mutation_proposed: false,
+      proposed_action: 'preserve_compliance_history_no_mutation',
+    },
+    notification_impact: {
+      notification_would_send: false,
+      notification_held: true,
+      notification_rows_created: false,
+      message_logs_created: false,
+    },
+    provider_call_impact: false,
+    status_schema_policy_notes: g35hStatusPolicyNotes(),
+    blockers: [...new Set(blockers)],
+    warnings: [...new Set(warnings)],
+    next_action: nextAction,
+    hub_fallback_required: true,
+    hub_fallback_impact: {
+      hub_fallback_required: true,
+      hub_bridge_modified: false,
+      hub_records_updated: false,
+      order_sync_log_status: g33cStatuses(orderSyncRows),
+      safe_sync_parity_log_status: g33cStatuses(parityRows),
+      review_queue_status: g33cStatuses(reviewRows),
+    },
+    safety: G35B_READ_ONLY_SAFETY,
+  };
+}
+
 async function buildG35BPreview(base44, body) {
   const lookup = g35bLookup(body);
   const requestBlockers = [];
@@ -1772,6 +2094,7 @@ Deno.serve(async (req) => {
     const body = parsed.body || {};
     const g33cPreviewRequest = isG33CPreviewRequest(body);
     const g35bPreviewRequest = isG35BPreviewRequest(body);
+    const g35hPreviewRequest = isG35HPreviewRequest(body);
     if (g33cPreviewRequest) {
       const unsupported = g33cUnsupportedBodyKey(body);
       if (unsupported) {
@@ -1784,7 +2107,13 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
-    if (!g33cPreviewRequest && !g35bPreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (g35hPreviewRequest) {
+      const unsupported = g35hUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
+    if (!g33cPreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
@@ -1803,6 +2132,16 @@ Deno.serve(async (req) => {
 
     if (g35bPreviewRequest) {
       const preview = await buildG35BPreview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
+
+    if (g35hPreviewRequest) {
+      const preview = await buildG35HPreview(base44, body);
       return Response.json({
         ...preview,
         actor_type: auth.actor_type,
