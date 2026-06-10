@@ -39,6 +39,7 @@ function makeOrder(overrides = {}) {
     financial_status: 'paid',
     payment_captured: true,
     fulfillment_type: 'delivery',
+    production_date: '2026-06-17',
     items: [{ name: 'Synthetic Juice Bundle', quantity: 1 }],
     ...overrides,
   };
@@ -57,6 +58,7 @@ function makeNativeOrder(overrides = {}) {
     fulfillment_status: 'pending',
     payment_status: 'paid',
     financial_status: 'paid',
+    production_date: '2026-06-17',
     line_items: [{ title: 'Synthetic Juice Bundle', quantity: 1 }],
     ...overrides,
   };
@@ -73,6 +75,7 @@ function makeTask(overrides = {}) {
     shopify_order_number: ORDER.orderNumber,
     order_type: 'one_time',
     fulfillment_type: 'delivery',
+    production_date: '2026-06-17',
     status: 'scheduled',
     delivery_status: 'pending',
     ...overrides,
@@ -122,8 +125,9 @@ function makeStore({
   commandLogs = [],
   parityLogs = [],
   emptyProductionBatchReadsBeforeReal = 0,
+  emptyProductionBatchListReadsBeforeReal = 0,
 } = {}) {
-  const store = { orders, nativeOrders, tasks, batches, complianceLogs, orderSyncLogs, reviewRows, commandLogs, parityLogs, writes: [], emptyProductionBatchReadsBeforeReal };
+  const store = { orders, nativeOrders, tasks, batches, complianceLogs, orderSyncLogs, reviewRows, commandLogs, parityLogs, writes: [], emptyProductionBatchReadsBeforeReal, emptyProductionBatchListReadsBeforeReal };
   const rowsFor = name => ({ Order: store.orders, ShopifyOrder: store.nativeOrders, FulfillmentTask: store.tasks, ProductionBatch: store.batches, BatchComplianceLog: store.complianceLogs, OrderSyncLog: store.orderSyncLogs, OrderReviewQueue: store.reviewRows, CommandLog: store.commandLogs, SafeSyncParityLog: store.parityLogs }[name] || []);
   const maybeRowsFor = name => {
     if (name === 'ProductionBatch' && store.emptyProductionBatchReadsBeforeReal > 0) {
@@ -134,7 +138,13 @@ function makeStore({
   };
   const match = (row, filter) => Object.entries(filter || {}).every(([key, value]) => row?.[key] === value);
   const api = name => ({
-    list: async () => maybeRowsFor(name),
+    list: async () => {
+      if (name === 'ProductionBatch' && store.emptyProductionBatchListReadsBeforeReal > 0) {
+        store.emptyProductionBatchListReadsBeforeReal -= 1;
+        return [];
+      }
+      return maybeRowsFor(name);
+    },
     filter: async filter => maybeRowsFor(name).filter(row => match(row, filter)),
     get: async id => rowsFor(name).find(row => row?.id === id) || null,
     create: async payload => { store.writes.push({ op: 'create', name, payload }); throw new Error(`unexpected create ${name}`); },
@@ -244,6 +254,41 @@ assert.equal(fullImpactPreview.production_batch_count, 6);
 assert.equal(fullImpactPreview.batch_compliance_log_count, 6);
 assert.equal(fullImpactPreview.writes_performed, false);
 
+const indirectDateWindowBatches = sixBatches.map(batch => ({
+  ...batch,
+  base44_order_id: null,
+  order_id: null,
+  customer_app_order_id: null,
+  source_order_id: null,
+  native_shopify_order_id: null,
+  shopify_order_id: null,
+  native_fulfillment_task_id: null,
+  fulfillment_task_id: null,
+  order_number: null,
+  shopify_order_number: null,
+  source_order_number: null,
+}));
+scenario = makeStore({
+  orders: [makeOrder({ status: 'delivered', production_date: '2026-06-17' })],
+  nativeOrders: [makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled', production_date: '2026-06-17' })],
+  tasks: [makeTask({ status: 'delivered', delivery_status: 'delivered', production_date: '2026-06-17' })],
+  batches: indirectDateWindowBatches,
+  complianceLogs: sixComplianceLogs,
+  emptyProductionBatchListReadsBeforeReal: 1,
+});
+fullImpactPreview = await fns.buildG35BPreview(scenario.base44, {
+  preview_mode: 'NATIVE_REFUND_IMPACT',
+  order_number: ORDER.orderNumber,
+  refund_type: 'full',
+  event_source: 'test_fixture',
+  request_id: 'g35h_patch2_full_date_window_regression',
+});
+assert.equal(fullImpactPreview.production_batch_count, 6);
+assert.equal(fullImpactPreview.batch_compliance_log_count, 6);
+assert.ok(fullImpactPreview.proposed_production_batch_impact.batch_linkage_method.includes('deterministic_native_batch_id'));
+assert.ok(fullImpactPreview.proposed_production_batch_impact.batch_linkage_method.includes('order_sources'));
+assert.equal(fullImpactPreview.writes_performed, false);
+
 scenario = makeStore({
   orders: [makeOrder({ status: 'delivered' })],
   nativeOrders: [makeNativeOrder({ production_status: 'bottled', fulfillment_status: 'fulfilled' })],
@@ -257,12 +302,10 @@ assert.equal(preview.production_batch_count, 6);
 assert.equal(preview.verified_logged_batch_count, 6);
 assert.equal(preview.batch_compliance_log_count, 6);
 assert.equal(preview.locked_compliance_log_count, 6);
-assert.equal(preview.g35h_patch1_batch_linkage.fallback_used, true);
-assert.equal(preview.g35h_patch1_batch_linkage.fallback_status, 'native_refund_impact_linkage_reused');
-assert.equal(preview.g35h_patch1_batch_linkage.direct_production_batch_count, 0);
-assert.equal(preview.g35h_patch1_batch_linkage.fallback_production_batch_count, 6);
-assert.ok(preview.proposed_production_batch_impact.batch_linkage_warnings.includes(fns.G35H_PATCH1_BATCH_LINKAGE_MARKER));
-assert.ok(preview.warnings.includes(fns.G35H_PATCH1_BATCH_LINKAGE_MARKER));
+assert.equal(preview.g35h_patch1_batch_linkage.fallback_used, false);
+assert.equal(preview.g35h_patch1_batch_linkage.fallback_status, 'direct_linkage_satisfied');
+assert.equal(preview.g35h_patch1_batch_linkage.direct_production_batch_count, 6);
+assert.equal(preview.g35h_patch1_batch_linkage.fallback_production_batch_count, null);
 assert.equal(preview.proposed_order_review_queue_impact.safe_queue_draft.incident_type, 'partial_refund_review_required');
 assert.equal(preview.production_batch_mutation_proposed, false);
 assert.equal(preview.compliance_log_mutation_proposed, false);
