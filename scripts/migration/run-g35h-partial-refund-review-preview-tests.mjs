@@ -129,6 +129,7 @@ function makeStore({
   emptyTaskReadsBeforeReal = 0,
   emptyProductionBatchReadsBeforeReal = 0,
   emptyProductionBatchListReadsBeforeReal = 0,
+  emptyComplianceLogReadsBeforeReal = 0,
 } = {}) {
   const store = {
     orders,
@@ -146,6 +147,7 @@ function makeStore({
     emptyTaskReadsBeforeReal,
     emptyProductionBatchReadsBeforeReal,
     emptyProductionBatchListReadsBeforeReal,
+    emptyComplianceLogReadsBeforeReal,
   };
   const rowsFor = name => ({ Order: store.orders, ShopifyOrder: store.nativeOrders, FulfillmentTask: store.tasks, ProductionBatch: store.batches, BatchComplianceLog: store.complianceLogs, OrderSyncLog: store.orderSyncLogs, OrderReviewQueue: store.reviewRows, CommandLog: store.commandLogs, SafeSyncParityLog: store.parityLogs }[name] || []);
   const maybeRowsFor = name => {
@@ -163,6 +165,10 @@ function makeStore({
     }
     if (name === 'ProductionBatch' && store.emptyProductionBatchReadsBeforeReal > 0) {
       store.emptyProductionBatchReadsBeforeReal -= 1;
+      return [];
+    }
+    if (name === 'BatchComplianceLog' && store.emptyComplianceLogReadsBeforeReal > 0) {
+      store.emptyComplianceLogReadsBeforeReal -= 1;
       return [];
     }
     return rowsFor(name);
@@ -330,6 +336,7 @@ scenario = makeStore({
   emptyNativeOrderReadsBeforeReal: 1,
   emptyTaskReadsBeforeReal: 1,
   emptyProductionBatchReadsBeforeReal: 1,
+  emptyComplianceLogReadsBeforeReal: 1,
 });
 fullImpactPreview = await fns.buildG35BPreview(scenario.base44, {
   preview_mode: 'NATIVE_REFUND_IMPACT',
