@@ -1191,14 +1191,171 @@ function g35bSafeRowSummary(row) {
 
 function g35bOrderSourceMatches(source, orderNumber, customerOrderId, nativeOrderId, taskId) {
   if (!source) return false;
-  if (customerOrderId && [source.order_id, source.base44_order_id, source.customer_app_order_id, source.source_order_id].includes(customerOrderId)) return true;
-  if (nativeOrderId && [source.native_shopify_order_id, source.shopify_order_id].includes(nativeOrderId)) return true;
-  if (taskId && [source.native_fulfillment_task_id, source.fulfillment_task_id].includes(taskId)) return true;
+  if (customerOrderId && [source.order_id, source.base44_order_id, source.customer_app_order_id, source.source_order_id, source.source_customer_app_order_id].includes(customerOrderId)) return true;
+  if (nativeOrderId && [source.native_shopify_order_id, source.shopify_order_id, source.native_order_id, source.source_native_shopify_order_id, source.source_shopify_order_id].includes(nativeOrderId)) return true;
+  if (taskId && [source.native_fulfillment_task_id, source.fulfillment_task_id, source.source_fulfillment_task_id].includes(taskId)) return true;
   if (orderNumber) {
     const key = g33cOrderKey(orderNumber);
-    return [source.order_number, source.shopify_order_number, source.source_order_number].some(value => g33cOrderKey(value) === key);
+    return [source.order_number, source.shopify_order_number, source.source_order_number, source.customer_order_number, source.hub_order_number].some(value => g33cOrderKey(value) === key);
   }
   return false;
+}
+
+function g35dArrayValues(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null || value === '') return [];
+  return [value];
+}
+
+function g35dValueEqualsId(value, id) {
+  if (!id) return false;
+  return g35dArrayValues(value).some(candidate => normalizeText(candidate) === id);
+}
+
+function g35dValueEqualsOrderNumber(value, orderKey) {
+  if (!orderKey) return false;
+  return g35dArrayValues(value).some(candidate => g33cOrderKey(candidate) === orderKey);
+}
+
+function g35dBatchMatchInfo(batch, { orderNumber, customerOrderId, nativeOrderId, taskId }) {
+  const methods = new Set();
+  const orderKey = g33cOrderKey(orderNumber);
+  if (customerOrderId && [
+    batch?.base44_order_id,
+    batch?.order_id,
+    batch?.customer_app_order_id,
+    batch?.source_order_id,
+    batch?.source_customer_app_order_id,
+  ].some(value => g35dValueEqualsId(value, customerOrderId))) methods.add('customer_app_order_id');
+  if (nativeOrderId && [
+    batch?.native_shopify_order_id,
+    batch?.shopify_order_id,
+    batch?.source_native_shopify_order_id,
+  ].some(value => g35dValueEqualsId(value, nativeOrderId))) methods.add('native_shopify_order_id');
+  if (taskId && [
+    batch?.native_fulfillment_task_id,
+    batch?.fulfillment_task_id,
+    batch?.source_fulfillment_task_id,
+  ].some(value => g35dValueEqualsId(value, taskId))) methods.add('native_fulfillment_task_id');
+  if (orderKey && [
+    batch?.order_number,
+    batch?.shopify_order_number,
+    batch?.source_order_number,
+    batch?.customer_order_number,
+    batch?.hub_order_number,
+    batch?.source_order_numbers,
+  ].some(value => g35dValueEqualsOrderNumber(value, orderKey))) methods.add('order_number');
+
+  const sources = Array.isArray(batch?.order_sources) ? batch.order_sources : [];
+  if (sources.some(source => g35bOrderSourceMatches(source, orderNumber, customerOrderId, nativeOrderId, taskId))) {
+    methods.add('order_sources');
+  }
+
+  const normalizedOrder = normalizeOrderNumber(orderNumber).toUpperCase();
+  const batchId = normalizeText(batch?.batch_id).toUpperCase();
+  if (normalizedOrder && batchId.includes(`NATIVE-${normalizedOrder}`)) {
+    methods.add('deterministic_native_batch_id');
+  }
+
+  return {
+    matched: methods.size > 0,
+    methods: [...methods],
+  };
+}
+
+function g35dUniqueAnnotated(rows) {
+  const byKey = new Map();
+  for (const row of rows || []) {
+    if (!row) continue;
+    const key = row?.id || row?.batch_id || JSON.stringify(row).slice(0, 160);
+    const methods = Array.isArray(row.__g35d_linkage_methods) ? row.__g35d_linkage_methods : [];
+    if (!byKey.has(key)) {
+      byKey.set(key, { ...row, __g35d_linkage_methods: [...methods] });
+      continue;
+    }
+    const existing = byKey.get(key);
+    existing.__g35d_linkage_methods = [...new Set([...(existing.__g35d_linkage_methods || []), ...methods])];
+  }
+  return [...byKey.values()];
+}
+
+async function g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrderId, taskId) {
+  const rows = [];
+  if (customerOrderId) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { base44_order_id: customerOrderId }, '-production_date', 50));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { order_id: customerOrderId }, '-production_date', 50));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { customer_app_order_id: customerOrderId }, '-production_date', 50));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { source_order_id: customerOrderId }, '-production_date', 50));
+  }
+  if (nativeOrderId) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { native_shopify_order_id: nativeOrderId }, '-production_date', 50));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { shopify_order_id: nativeOrderId }, '-production_date', 50));
+  }
+  if (taskId) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { native_fulfillment_task_id: taskId }, '-production_date', 50));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { fulfillment_task_id: taskId }, '-production_date', 50));
+  }
+  if (orderNumber) {
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { order_number: orderNumber }, '-production_date', 50));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { shopify_order_number: orderNumber }, '-production_date', 50));
+    rows.push(...await g33cFilter(base44, 'ProductionBatch', { source_order_number: orderNumber }, '-production_date', 50));
+  }
+
+  const listed = await g33cList(base44, 'ProductionBatch', '-production_date', 1000);
+  rows.push(...listed);
+
+  return g35dUniqueAnnotated(rows.flatMap(batch => {
+    const match = g35dBatchMatchInfo(batch, { orderNumber, customerOrderId, nativeOrderId, taskId });
+    return match.matched ? [{ ...batch, __g35d_linkage_methods: match.methods }] : [];
+  }));
+}
+
+function g35dComplianceMatchInfo(log, batches, allowProductDateFallback = true) {
+  const methods = new Set();
+  for (const batch of batches || []) {
+    if (batch?.compliance_log_id && normalizeText(log?.id) === normalizeText(batch.compliance_log_id)) methods.add('production_batch_compliance_log_id');
+    if (batch?.id && normalizeText(log?.source_production_batch_id) === normalizeText(batch.id)) methods.add('source_production_batch_id');
+    if (batch?.batch_id && normalizeText(log?.batch_id) === normalizeText(batch.batch_id)) methods.add('batch_id');
+    if (allowProductDateFallback && methods.size === 0) {
+      const logDate = normalizeText(log?.date || log?.production_date);
+      const batchDate = normalizeText(batch?.production_date);
+      const logProduct = normalizeLower(log?.juice_flavor || log?.product_name);
+      const batchProduct = normalizeLower(batch?.product_name);
+      if (logDate && batchDate && logDate === batchDate && logProduct && batchProduct && logProduct === batchProduct) {
+        methods.add('product_name_production_date_supporting_context');
+      }
+    }
+  }
+  return {
+    matched: methods.size > 0,
+    methods: [...methods],
+  };
+}
+
+async function g35dRefundComplianceLogs(base44, batches) {
+  const rows = [];
+  for (const batch of batches || []) {
+    if (batch?.compliance_log_id) rows.push(...await g33cFilter(base44, 'BatchComplianceLog', { id: batch.compliance_log_id }, '-created_date', 5));
+    if (batch?.batch_id) rows.push(...await g33cFilter(base44, 'BatchComplianceLog', { batch_id: batch.batch_id }, '-created_date', 10));
+    if (batch?.id) rows.push(...await g33cFilter(base44, 'BatchComplianceLog', { source_production_batch_id: batch.id }, '-created_date', 10));
+  }
+
+  const listed = await g33cList(base44, 'BatchComplianceLog', '-created_date', 1000);
+  rows.push(...listed);
+
+  return g35dUniqueAnnotated(rows.flatMap(log => {
+    const match = g35dComplianceMatchInfo(log, batches);
+    return match.matched ? [{ ...log, __g35d_linkage_methods: match.methods }] : [];
+  }));
+}
+
+function g35dStatusSummary(rows) {
+  const counts = {};
+  for (const row of rows || []) {
+    const status = sanitizeText(row?.status || row?.lifecycle_status || row?.production_status || row?.overall_status || row?.result || 'unknown', 80) || 'unknown';
+    counts[status] = (counts[status] || 0) + 1;
+  }
+  return counts;
 }
 
 function g35bBatchSourceImpact(batch, { orderNumber, customerOrderId, nativeOrderId, taskId }) {
@@ -1210,10 +1367,25 @@ function g35bBatchSourceImpact(batch, { orderNumber, customerOrderId, nativeOrde
     batch_id: sanitizeText(batch?.batch_id, 120),
     status: sanitizeText(batch?.status || batch?.lifecycle_status || batch?.production_status, 120),
     planned_units: safeNumber(batch?.planned_units, 0),
+    production_date: sanitizeText(batch?.production_date, 40),
+    product_name: sanitizeText(batch?.product_name, 120),
+    linkage_methods: Array.isArray(batch?.__g35d_linkage_methods) ? batch.__g35d_linkage_methods.slice(0, 8) : [],
     order_source_count: sources.length,
     matching_order_source_count: matchingSources.length,
     matching_units: unitsToSubtract,
-    proposed_planned_units_after_removal: Math.max(0, safeNumber(batch?.planned_units, 0) - unitsToSubtract),
+  };
+}
+
+function g35dComplianceLogSummary(row) {
+  return {
+    id: row?.id || null,
+    batch_id: sanitizeText(row?.batch_id, 120),
+    source_production_batch_id_present: Boolean(row?.source_production_batch_id),
+    locked: row?.locked === true,
+    status: sanitizeText(row?.status || row?.overall_status || row?.result, 80),
+    date: sanitizeText(row?.date || row?.production_date, 40),
+    product_name: sanitizeText(row?.juice_flavor || row?.product_name, 120),
+    linkage_methods: Array.isArray(row?.__g35d_linkage_methods) ? row.__g35d_linkage_methods.slice(0, 8) : [],
   };
 }
 
@@ -1354,10 +1526,41 @@ function g35bProductionBatchImpact({ batches, complianceLogs, refundType, lifecy
   const compliancePresent = (complianceLogs || []).length > 0;
   const highRisk = ['production_started', 'production_completed', 'production_verified', 'delivered', 'historical_fulfilled'].includes(lifecycleState) || compliancePresent;
   const reviewOnly = refundType === 'partial' || highRisk;
+  const verifiedLoggedBatchCount = batchRows.filter(row => normalizeLower(row.status) === 'verified_logged').length;
+  const lockedComplianceLogCount = (complianceLogs || []).filter(log => log?.locked === true).length;
+  const batchLinkageMethods = [...new Set(batchRows.flatMap(row => row.linkage_methods || []))];
+  const complianceLinkageMethods = [...new Set((complianceLogs || []).flatMap(row => Array.isArray(row?.__g35d_linkage_methods) ? row.__g35d_linkage_methods : []))];
+  const batchLinkageWarnings = [];
+  if (batchRows.length === 0) batchLinkageWarnings.push('no_related_production_batches_found');
+  if (batchLinkageMethods.includes('deterministic_native_batch_id')) batchLinkageWarnings.push('deterministic_native_batch_id_linkage_used');
+  const complianceWarnings = [];
+  if (batchRows.length > 0 && (complianceLogs || []).length === 0) complianceWarnings.push('no_related_batch_compliance_logs_found');
+  if (complianceLinkageMethods.includes('product_name_production_date_supporting_context')) complianceWarnings.push('compliance_linked_by_product_date_supporting_context');
+  const impactClassification = batchRows.length === 0
+    ? 'not_applicable_no_production_batches'
+    : ['delivered', 'historical_fulfilled'].includes(lifecycleState) && (verifiedLoggedBatchCount > 0 || lockedComplianceLogCount > 0)
+      ? 'delivered_refund_manual_review_required_with_verified_batches'
+      : (verifiedLoggedBatchCount > 0 || compliancePresent)
+        ? 'compliance_history_preserved_no_auto_mutation'
+        : reviewOnly
+          ? 'manual_review_required_no_auto_mutation'
+          : 'pre_production_batch_impact_preview_only';
   return {
     production_batch_count: batchRows.length,
+    verified_logged_batch_count: verifiedLoggedBatchCount,
     batch_compliance_log_count: (complianceLogs || []).length,
+    locked_compliance_log_count: lockedComplianceLogCount,
+    production_batch_rows: batchRows,
+    batch_status_summary: g35dStatusSummary(batches),
+    batch_linkage_method: batchLinkageMethods,
+    batch_linkage_warnings: batchLinkageWarnings,
+    production_batch_impact_classification: impactClassification,
     compliance_history_preserved: true,
+    compliance_history_mutation_proposed: false,
+    compliance_history_preserved_no_auto_mutation: true,
+    compliance_log_rows: (complianceLogs || []).map(g35dComplianceLogSummary),
+    compliance_linkage_method: complianceLinkageMethods,
+    compliance_warnings: complianceWarnings,
     proposed_action: batchRows.length === 0
       ? 'none_no_batches_found'
       : reviewOnly
@@ -1367,6 +1570,10 @@ function g35bProductionBatchImpact({ batches, complianceLogs, refundType, lifecy
     would_remove_order_sources_now: false,
     would_recalculate_planned_units_now: false,
     would_archive_batches_now: false,
+    would_remove_order_sources: false,
+    would_recalculate_planned_units: false,
+    would_archive_batches: false,
+    mutation_proposed: false,
     deletion_proposed: false,
   };
 }
@@ -1449,14 +1656,15 @@ async function buildG35BPreview(base44, body) {
     g35bLogs(base44, 'CommandLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
     g35bLogs(base44, 'SafeSyncParityLog', { orderNumber, customerOrderId, stripeEventId: lookup.stripeEventId }, 25),
   ]);
-  const batches = await g33cBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id);
-  const complianceLogs = await g33cComplianceLogs(base44, batches);
+  const batches = await g35dRefundBatches(base44, orderNumber, customerOrderId, nativeOrder?.id, task?.id);
+  const complianceLogs = await g35dRefundComplianceLogs(base44, batches);
   const orderFound = Boolean(customerOrder?.id || nativeOrder?.id || task?.id);
   const subscriptionOrMulti = g33cSubscriptionOrMulti(nativeOrder, task);
   const lifecycleState = g35bLifecycleState({ customerOrder, nativeOrder, task, batches, complianceLogs });
   const lifecycleRiskLevel = g35bRiskLevel(lifecycleState);
   const statusSchemaCompatibility = g35bSchemaCompatibility(lookup.refundType || 'unknown');
   const idempotencyStatus = g35bIdempotencyStatus({ stripeEventId: lookup.stripeEventId, orderSyncRows, commandRows });
+  const productionBatchImpact = g35bProductionBatchImpact({ batches, complianceLogs, refundType: lookup.refundType || 'unknown', lifecycleState, orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id, taskId: task?.id });
   const liveBlockers = [];
   if (subscriptionOrMulti) liveBlockers.push('subscription_or_multi_delivery_refund_not_supported_by_one_time_preview');
   liveBlockers.push(...statusSchemaCompatibility.schema_gap_blockers);
@@ -1464,6 +1672,9 @@ async function buildG35BPreview(base44, body) {
   if (idempotencyStatus.duplicate_event_detected) liveBlockers.push('duplicate_refund_event_detected');
   if (!orderFound) warnings.push('unknown_order_review_required');
   if (lookup.refundType === 'partial') warnings.push('partial_refund_review_only_no_automatic_mutation');
+  if (productionBatchImpact.verified_logged_batch_count > 0) warnings.push('verified_production_history_preserved');
+  if (productionBatchImpact.locked_compliance_log_count > 0) warnings.push('locked_compliance_logs_preserved');
+  if (lifecycleState === 'delivered') warnings.push('delivered_refund_manual_review_required');
   warnings.push('notifications_held', 'provider_calls_disabled', 'inventory_reversal_not_proposed', 'purchase_order_reversal_not_proposed', 'hub_fallback_required');
 
   const nextAction = requestBlockers.length
@@ -1500,12 +1711,18 @@ async function buildG35BPreview(base44, body) {
     hub_context_status: 'hub_fallback_not_queried_safe_local_context_only',
     lifecycle_state: lifecycleState,
     lifecycle_risk_level: lifecycleRiskLevel,
+    production_batch_count: productionBatchImpact.production_batch_count,
+    verified_logged_batch_count: productionBatchImpact.verified_logged_batch_count,
+    batch_compliance_log_count: productionBatchImpact.batch_compliance_log_count,
+    locked_compliance_log_count: productionBatchImpact.locked_compliance_log_count,
+    production_batch_mutation_proposed: false,
+    compliance_log_mutation_proposed: false,
     idempotency_status: idempotencyStatus,
     status_schema_compatibility: statusSchemaCompatibility,
     proposed_customer_app_order_impact: g35bCustomerOrderImpact({ customerOrder, refundType: lookup.refundType || 'unknown', statusCompatibility: statusSchemaCompatibility }),
     proposed_native_shopify_order_impact: g35bNativeOrderImpact({ nativeOrder, refundType: lookup.refundType || 'unknown' }),
     proposed_fulfillment_task_impact: g35bTaskImpact({ task, refundType: lookup.refundType || 'unknown', lifecycleState }),
-    proposed_production_batch_impact: g35bProductionBatchImpact({ batches, complianceLogs, refundType: lookup.refundType || 'unknown', lifecycleState, orderNumber, customerOrderId, nativeOrderId: nativeOrder?.id, taskId: task?.id }),
+    proposed_production_batch_impact: productionBatchImpact,
     proposed_order_review_queue_impact: g35bReviewQueueImpact({ refundType: lookup.refundType || 'unknown', orderNumber, customerOrderId, orderFound, lifecycleState }),
     proposed_order_sync_log_impact: {
       proposed_action: 'preview_only_future_refund_audit_log',
