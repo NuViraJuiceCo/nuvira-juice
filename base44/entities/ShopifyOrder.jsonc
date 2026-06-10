@@ -454,8 +454,79 @@
     "origin_address": {
       "type": "string"
     },
+    "refund_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "pending_review",
+        "partially_refunded",
+        "fully_refunded",
+        "review_required",
+        "ignored_duplicate"
+      ],
+      "description": "Optional refund/payment reversal state for native ShopifyOrder mirrors. Does not replace lifecycle fulfillment or production status."
+    },
+    "refund_type": {
+      "type": "string",
+      "enum": [
+        "full",
+        "partial",
+        "unknown"
+      ],
+      "description": "Optional refund type for native refund review/audit flows."
+    },
+    "refund_amount": {
+      "type": "number",
+      "description": "Optional refund amount captured for review/audit. No native refund write behavior is implied."
+    },
+    "refund_currency": {
+      "type": "string",
+      "description": "Optional ISO currency code for refund_amount."
+    },
     "refunded_at": {
-      "type": "string"
+      "type": "string",
+      "description": "Optional ISO timestamp when a refund was confirmed by the current source of truth."
+    },
+    "refund_source": {
+      "type": "string",
+      "enum": [
+        "stripe_webhook",
+        "admin",
+        "hub_mirror",
+        "manual_review"
+      ],
+      "description": "Optional source label for refund state."
+    },
+    "refund_event_id": {
+      "type": "string",
+      "description": "Optional provider or internal refund event id used for idempotency/audit."
+    },
+    "stripe_refund_id": {
+      "type": "string",
+      "description": "Optional Stripe refund id when safely available from an approved refund source."
+    },
+    "refund_reason": {
+      "type": "string",
+      "description": "Optional safe refund reason or admin summary. Do not store raw provider payloads."
+    },
+    "refund_review_required": {
+      "type": "boolean",
+      "description": "Optional marker that refund handling requires manual review before any native write."
+    },
+    "refund_review_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "pending",
+        "reviewed",
+        "resolved",
+        "rejected"
+      ],
+      "description": "Optional manual review lifecycle for refund/payment reversal handling."
+    },
+    "do_not_recover": {
+      "type": "boolean",
+      "description": "Optional terminal suppression marker for refund/reversal review. Does not enable native refund writes."
     },
     "cancel_type": {
       "type": "string"
