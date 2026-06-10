@@ -87,3 +87,8 @@ Live PREV1 validation showed the first exact-fast patch returned 6/6 counts but 
 - BatchComplianceLog linkage uses the bounded list first and only falls back to direct filters if the list cannot cover the linked batches.
 - Empty direct filter retries are avoided for the known exact-id path.
 - The fail-closed read-consistency behavior remains unchanged.
+
+
+## PREV1 follow-up: three-attempt exact-read consensus
+
+A repeated live stress check after the list-first patch returned two stable 6/6 previews and one fail-closed preview caused by transient exact Order/native ShopifyOrder read instability. The next hardening keeps the exact-fast path but restores three read-consistency attempts so two agreeing non-empty exact-id reads can stabilize transient misses. Fail-closed behavior remains in place if the three attempts do not produce a stable consensus.

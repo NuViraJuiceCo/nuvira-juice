@@ -204,6 +204,16 @@ assert.equal(scenario.store.listCalls.some(call => call.name === 'BatchComplianc
 scenario = makeStore({ emptyBatchListReadsBeforeReal: 1, emptyComplianceListReadsBeforeReal: 1 });
 preview = await fns.buildG35HPreview(scenario.base44, exactPartialBody);
 assert.equal(preview.writes_performed, false);
+assert.equal(preview.preview_data_stable, true);
+assert.equal(preview.read_consistency.stable, true);
+assert.equal(preview.production_batch_count, 6);
+assert.equal(preview.batch_compliance_log_count, 6);
+assert.equal(preview.proposed_order_review_queue_impact.safe_queue_draft.incident_type, 'partial_refund_review_required');
+assert.equal(scenario.store.writes.length, 0);
+
+scenario = makeStore({ emptyBatchListReadsBeforeReal: 2, emptyComplianceListReadsBeforeReal: 2 });
+preview = await fns.buildG35HPreview(scenario.base44, exactPartialBody);
+assert.equal(preview.writes_performed, false);
 assert.equal(preview.preview_data_stable, false);
 assert.equal(preview.read_consistency.stable, false);
 assert.ok(preview.blockers.includes('read_consistency_unstable'));
@@ -215,9 +225,10 @@ assert.equal(scenario.store.writes.length, 0);
 console.log(JSON.stringify({
   success: true,
   harness: 'G35I-PREV1 refund preview dependency hardening',
-  cases: 3,
+  cases: 4,
   exact_partial_preview_stable: true,
   exact_full_refund_preview_stable: true,
+  single_empty_read_recovers: true,
   inconsistent_reads_fail_closed: true,
   writes_performed: false,
 }, null, 2));
