@@ -2831,6 +2831,7 @@ const G36B_ALLOWED_BODY_KEYS = new Set([
   'hub_subscription_id',
   'customer_app_subscription_id',
   'stripe_subscription_id',
+  'parent_order_number',
   'order_number',
   'shopify_order_number',
   'hub_order_id',
@@ -2840,6 +2841,8 @@ const G36B_ALLOWED_BODY_KEYS = new Set([
   'fulfillment_task_id',
   'native_fulfillment_task_id',
   'hub_fulfillment_task_id',
+  'selected_hub_fulfillment_task_id',
+  'ignored_duplicate_hub_fulfillment_task_id',
   'delivery_date',
   'production_date',
   'customer_app_order_id',
@@ -2848,6 +2851,14 @@ const G36B_ALLOWED_BODY_KEYS = new Set([
   'native_shopify_order_id',
   'native_order_id',
   'shopify_order_id',
+  'payment_status',
+  'fulfillment_status',
+  'line_item_count',
+  'line_item_interpretation',
+  'decomposed_production_item_count',
+  'known_cancellation_refund_issue',
+  'known_repair_replay_issue',
+  'customer_app_cancelled_mirror_treatment',
   'limit',
   'request_id',
   '_internal_secret',
@@ -2942,16 +2953,26 @@ function g36bLookup(body) {
     hubSubscriptionId: normalizeText(body?.hub_subscription_id),
     stripeSubscriptionId: normalizeText(body?.stripe_subscription_id || body?.hub_subscription_id),
     customerAppSubscriptionId: normalizeText(body?.customer_app_subscription_id || body?.subscription_id),
-    orderNumber: normalizeOrderNumber(body?.order_number || body?.shopify_order_number),
+    orderNumber: normalizeOrderNumber(body?.order_number || body?.parent_order_number || body?.shopify_order_number),
     hubOrderId: normalizeText(body?.hub_order_id || body?.source_order_id),
     occurrenceId: normalizeText(body?.occurrence_id),
     fulfillmentNumber: g36bNumberOrNull(body?.fulfillment_number),
     fulfillmentTaskId: normalizeText(body?.fulfillment_task_id || body?.native_fulfillment_task_id),
-    hubFulfillmentTaskId: normalizeText(body?.hub_fulfillment_task_id),
+    hubFulfillmentTaskId: normalizeText(body?.hub_fulfillment_task_id || body?.selected_hub_fulfillment_task_id),
+    selectedHubFulfillmentTaskId: normalizeText(body?.selected_hub_fulfillment_task_id || body?.hub_fulfillment_task_id),
+    ignoredDuplicateHubFulfillmentTaskId: normalizeText(body?.ignored_duplicate_hub_fulfillment_task_id),
     deliveryDate: g36bDate(body?.delivery_date),
     productionDate: g36bDate(body?.production_date),
     customerAppOrderId: normalizeText(body?.customer_app_order_id || body?.base44_order_id || body?.order_id),
     nativeOrderId: normalizeText(body?.native_shopify_order_id || body?.native_order_id || body?.shopify_order_id),
+    ownerPaymentStatus: sanitizeText(body?.payment_status, 80),
+    ownerFulfillmentStatus: sanitizeText(body?.fulfillment_status, 80),
+    ownerLineItemCount: g36bNumberOrNull(body?.line_item_count),
+    ownerLineItemInterpretation: sanitizeText(body?.line_item_interpretation, 160),
+    ownerDecomposedProductionItemCount: sanitizeText(body?.decomposed_production_item_count, 80),
+    knownCancellationRefundIssue: sanitizeText(body?.known_cancellation_refund_issue, 40),
+    knownRepairReplayIssue: sanitizeText(body?.known_repair_replay_issue, 40),
+    customerAppCancelledMirrorTreatment: sanitizeText(body?.customer_app_cancelled_mirror_treatment, 120),
     requestId: sanitizeText(body?.request_id, 120),
     limit: safeLimit(body?.limit),
   };
@@ -3303,8 +3324,13 @@ function g36bOccurrenceIdentityStatus({ lookup, context }) {
   };
 }
 
-function g36bHasRefundCancellationAmbiguity(context) {
-  const rows = [context.subscription, context.customerOrder, context.nativeOrder, ...(context.nativeTasks || []), ...(context.hubTaskContext?.tasks || [])];
+function g36bCustomerAppCancelledMirrorTreatAsStale(lookup) {
+  return normalizeText(lookup?.customerAppCancelledMirrorTreatment) === 'stale_artifact_for_this_preview_only';
+}
+
+function g36bHasRefundCancellationAmbiguity(context, lookup = {}) {
+  const rows = [context.subscription, context.nativeOrder, ...(context.nativeTasks || []), ...(context.hubTaskContext?.tasks || [])];
+  if (!g36bCustomerAppCancelledMirrorTreatAsStale(lookup)) rows.push(context.customerOrder);
   return rows.some(row => {
     const statusText = [row?.status, row?.payment_status, row?.financial_status, row?.production_status, row?.fulfillment_status, row?.delivery_status, row?.refund_status].map(normalizeLower).join(' ');
     const tags = Array.isArray(row?.tags) ? row.tags.map(normalizeLower).join(' ') : '';
@@ -3364,14 +3390,65 @@ function g36bDeliveryTaskImpact(context) {
   };
 }
 
-function g36bCancellationRefundRisk(context) {
-  const ambiguous = g36bHasRefundCancellationAmbiguity(context);
+function g36bCancellationRefundRisk(context, lookup = {}) {
+  const ambiguous = g36bHasRefundCancellationAmbiguity(context, lookup);
+  const customerAppParentStatusText = [context?.customerOrder?.status, context?.customerOrder?.payment_status, context?.customerOrder?.fulfillment_status, context?.customerOrder?.delivery_status].map(normalizeLower).join(' ');
+  const customerAppParentHasCancelMarker = /cancel|canceled|cancelled|refund/.test(customerAppParentStatusText);
+  const customerAppCancelledMirrorTreatment = g36bCustomerAppCancelledMirrorTreatAsStale(lookup)
+    ? 'stale_artifact_for_this_preview_only'
+    : null;
   return {
     refund_or_cancellation_ambiguity_detected: ambiguous,
+    customer_app_parent_cancelled_mirror_present: customerAppParentHasCancelMarker,
+    customer_app_cancelled_mirror_treatment: customerAppCancelledMirrorTreatment,
     partial_refund_handling_supported_now: false,
     parent_cancellation_supported_now: false,
     current_cycle_mutation_proposed: false,
     recommended_policy: ambiguous ? 'manual_review_hub_source_of_truth' : 'no_refund_cancellation_context_detected',
+  };
+}
+
+function g36bOwnerApprovedNo(value) {
+  return ['no', 'false', 'none'].includes(normalizeLower(value));
+}
+
+function g36bOwnerDecisionContext(lookup, context) {
+  const selectedTask = (context?.hubTaskContext?.tasks || []).find(task => normalizeText(task?.id) === lookup.selectedHubFulfillmentTaskId) || (context?.hubTaskContext?.tasks || [])[0] || null;
+  const selectedTaskPaymentStatus = sanitizeText(selectedTask?.payment_status, 80);
+  const selectedPaymentStatus = lookup.selectedHubFulfillmentTaskId
+    ? selectedTaskPaymentStatus
+    : sanitizeText(selectedTask?.payment_status || lookup.ownerPaymentStatus, 80);
+  const selectedFulfillmentStatus = sanitizeText(selectedTask?.delivery_status || selectedTask?.fulfillment_status || selectedTask?.status || lookup.ownerFulfillmentStatus, 80);
+  return {
+    selected_hub_fulfillment_task_id: lookup.selectedHubFulfillmentTaskId || selectedTask?.id || null,
+    ignored_duplicate_hub_fulfillment_task_id: lookup.ignoredDuplicateHubFulfillmentTaskId || null,
+    duplicate_resolution_status: lookup.selectedHubFulfillmentTaskId && lookup.ignoredDuplicateHubFulfillmentTaskId
+      ? 'owner_selected_duplicate_same_occurrence_task_for_read_only_preview'
+      : 'no_owner_duplicate_resolution_supplied',
+    payment_status: selectedPaymentStatus || null,
+    payment_status_authority: selectedPaymentStatus
+      ? {
+          status: selectedPaymentStatus,
+          authority: selectedPaymentStatus === 'paid' ? 'hub_task_paid_context_owner_approved' : 'owner_supplied_status_read_only',
+          selected_hub_task_payment_status: selectedTaskPaymentStatus || null,
+          owner_supplied_payment_status: lookup.ownerPaymentStatus || null,
+          mutation_proposed: false,
+        }
+      : null,
+    fulfillment_status: lookup.ownerFulfillmentStatus || selectedFulfillmentStatus || null,
+    line_item_count: lookup.ownerLineItemCount,
+    line_item_interpretation: lookup.ownerLineItemInterpretation || null,
+    decomposed_production_item_count: lookup.ownerDecomposedProductionItemCount || null,
+    known_cancellation_refund_issue: lookup.knownCancellationRefundIssue || null,
+    known_repair_replay_issue: lookup.knownRepairReplayIssue || null,
+    customer_app_cancelled_mirror_treatment: lookup.customerAppCancelledMirrorTreatment || null,
+    owner_decision_applied: Boolean(
+      lookup.selectedHubFulfillmentTaskId ||
+      lookup.ignoredDuplicateHubFulfillmentTaskId ||
+      lookup.ownerPaymentStatus ||
+      lookup.ownerLineItemCount !== null ||
+      lookup.customerAppCancelledMirrorTreatment
+    ),
   };
 }
 
@@ -3388,7 +3465,8 @@ async function buildG36BExactPreview(base44, body) {
   const hubTaskCount = context.hubTaskContext?.tasks?.length || 0;
   const nativeTaskCount = context.exactNativeTasks?.length || context.nativeTasks?.length || 0;
   const productionDemandImpact = g36bProductionDemandImpact(context.productionBatches);
-  const cancellationRefundRisk = g36bCancellationRefundRisk(context);
+  const cancellationRefundRisk = g36bCancellationRefundRisk(context, context.lookup);
+  const ownerDecisionContext = g36bOwnerDecisionContext(context.lookup, context);
   const blockers = [...requestBlockers];
 
   if (identityStatus.ambiguous) blockers.push('subscription_occurrence_identity_ambiguous');
@@ -3396,12 +3474,24 @@ async function buildG36BExactPreview(base44, body) {
   if (nativeTaskCount > 1 || hubTaskCount > 1) blockers.push('duplicate_task_risk', 'duplicate_occurrence_risk');
   if (cancellationRefundRisk.refund_or_cancellation_ambiguity_detected) blockers.push('refund_cancellation_ambiguity');
   if (!g36bHasLineItems(context) && (hubTaskCount > 0 || nativeTaskCount > 0 || context.nativeFulfillmentMatches.length > 0)) blockers.push('missing_line_items');
+  if (ownerDecisionContext.owner_decision_applied) {
+    if (context.lookup.selectedHubFulfillmentTaskId && hubTaskCount !== 1) blockers.push('selected_hub_fulfillment_task_not_resolved');
+    if (context.lookup.selectedHubFulfillmentTaskId && ownerDecisionContext.payment_status !== 'paid') blockers.push('selected_hub_task_payment_status_not_paid');
+    if (context.lookup.ownerLineItemCount === null) blockers.push('owner_line_item_count_required_for_g36d');
+    if (!context.lookup.ownerLineItemInterpretation) blockers.push('owner_line_item_interpretation_required_for_g36d');
+    if (!g36bOwnerApprovedNo(context.lookup.knownCancellationRefundIssue)) blockers.push('known_cancellation_refund_issue_required_no_for_g36d');
+    if (!g36bOwnerApprovedNo(context.lookup.knownRepairReplayIssue)) blockers.push('known_repair_replay_issue_required_no_for_g36d');
+  }
   if (identityStatus.exact_occurrence_identity_supplied && context.hubTaskContext.configured && context.hubTaskContext.hub_read_succeeded && hubTaskCount === 0) blockers.push('missing_hub_occurrence_when_hub_source_of_truth');
   if (productionDemandImpact.production_demand_duplication_risk) blockers.push('production_demand_duplication_risk');
 
   if (!context.hubTaskContext.configured) warnings.push('hub_read_not_configured_local_preview_only');
   if (context.hubTaskContext.hub_read_attempted && !context.hubTaskContext.hub_read_succeeded) warnings.push('hub_read_failed_or_unavailable');
   warnings.push('hub_remains_source_of_truth', 'customer_app_native_writes_held', 'notifications_held', 'refund_cancellation_held', 'production_delivery_native_automation_held', 'occurrence_preview_only', 'no_live_command_available');
+  if (ownerDecisionContext.ignored_duplicate_hub_fulfillment_task_id) warnings.push('duplicate_hub_task_ignored_by_owner_decision');
+  if (g36bCustomerAppCancelledMirrorTreatAsStale(context.lookup)) warnings.push('customer_app_cancelled_mirror_treated_as_stale_artifact_for_preview_only');
+  if (context.lookup.ownerDecomposedProductionItemCount === 'held_for_later') warnings.push('production_decomposition_held');
+  if (ownerDecisionContext.owner_decision_applied) warnings.push('owner_decision_context_applied_read_only');
 
   const orderSyncRows = await g35bLogs(base44, 'OrderSyncLog', { orderNumber: context.lookup.orderNumber, customerOrderId: context.lookup.customerAppOrderId, stripeEventId: '' }, 25);
   const reviewRows = await g35bLogs(base44, 'OrderReviewQueue', { orderNumber: context.lookup.orderNumber, customerOrderId: context.lookup.customerAppOrderId, stripeEventId: '' }, 25);
@@ -3443,7 +3533,24 @@ async function buildG36BExactPreview(base44, body) {
     customer_app_subscription_present: Boolean(context.subscription?.id),
     hub_subscription_present: hubTaskCount > 0 ? true : (context.hubTaskContext.hub_read_succeeded ? false : null),
     customer_app_parent_order_present: Boolean(context.customerOrder?.id),
+    customer_app_parent_status: context.customerOrder ? {
+      status: sanitizeText(context.customerOrder.status, 80),
+      payment_status: sanitizeText(context.customerOrder.payment_status, 80),
+      fulfillment_status: sanitizeText(context.customerOrder.fulfillment_status, 80),
+      delivery_status: sanitizeText(context.customerOrder.delivery_status, 80),
+    } : null,
+    customer_app_cancelled_mirror_treatment: ownerDecisionContext.customer_app_cancelled_mirror_treatment || null,
     hub_occurrence_present: hubTaskCount > 0,
+    selected_hub_fulfillment_task_id: ownerDecisionContext.selected_hub_fulfillment_task_id,
+    ignored_duplicate_hub_fulfillment_task_id: ownerDecisionContext.ignored_duplicate_hub_fulfillment_task_id,
+    duplicate_resolution_status: ownerDecisionContext.duplicate_resolution_status,
+    hub_task_status: sanitizeText(context.hubTaskContext?.tasks?.[0]?.status, 80) || null,
+    hub_fulfillment_status: sanitizeText(context.hubTaskContext?.tasks?.[0]?.delivery_status || context.hubTaskContext?.tasks?.[0]?.fulfillment_status || context.hubTaskContext?.tasks?.[0]?.status, 80) || null,
+    payment_status: ownerDecisionContext.payment_status,
+    payment_status_authority: ownerDecisionContext.payment_status_authority,
+    line_item_count: ownerDecisionContext.line_item_count,
+    line_item_interpretation: ownerDecisionContext.line_item_interpretation,
+    decomposed_production_item_count: ownerDecisionContext.decomposed_production_item_count,
     native_shopify_order_present: Boolean(context.nativeOrder?.id),
     native_fulfillment_task_present: nativeTaskCount > 0,
     hub_fulfillment_task_present: hubTaskCount > 0,
