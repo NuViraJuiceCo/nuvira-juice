@@ -2880,6 +2880,8 @@ const G36B_READ_ONLY_SAFETY = Object.freeze({
 
 const G36C_HELPER_PREVIEW_MODE = 'SUBSCRIPTION_PARENT_TO_OCCURRENCE_DISCOVERY';
 const G36C_RESOLVE_PREVIEW_MODE = 'SUBSCRIPTION_OCCURRENCE_AMBIGUITY_RESOLUTION';
+const G36F_PREVIEW_MODE = 'SUBSCRIPTION_OCCURRENCE_MIRROR_PACKET';
+const G36F_MODE = 'EXACT_OCCURRENCE_MIRROR_PACKET';
 const G36C_HELPER_ALLOWED_BODY_KEYS = new Set([
   'preview_mode',
   'customer_label',
@@ -2906,6 +2908,37 @@ const G36C_HELPER_ALLOWED_BODY_KEYS = new Set([
   '_internal_secret',
   'internal_secret',
 ]);
+const G36F_ALLOWED_BODY_KEYS = new Set([
+  'preview_mode',
+  'mode',
+  'hub_subscription_id',
+  'parent_order_number',
+  'order_number',
+  'shopify_order_number',
+  'hub_order_id',
+  'source_order_id',
+  'delivery_date',
+  'selected_hub_fulfillment_task_id',
+  'ignored_duplicate_hub_fulfillment_task_id',
+  'hub_fulfillment_task_id',
+  'payment_status',
+  'fulfillment_status',
+  'line_item_count',
+  'line_item_interpretation',
+  'decomposed_production_item_count',
+  'known_cancellation_refund_issue',
+  'known_repair_replay_issue',
+  'customer_app_cancelled_mirror_treatment',
+  'customer_app_order_id',
+  'base44_order_id',
+  'order_id',
+  'native_shopify_order_id',
+  'native_order_id',
+  'shopify_order_id',
+  'request_id',
+  '_internal_secret',
+  'internal_secret',
+]);
 
 function isG36BPreviewRequest(body) {
   return normalizeText(body?.preview_mode).toUpperCase() === G36B_PREVIEW_MODE;
@@ -2926,9 +2959,20 @@ function isG36CResolvePreviewRequest(body) {
   return normalizeText(body?.preview_mode).toUpperCase() === G36C_RESOLVE_PREVIEW_MODE;
 }
 
+function isG36FPreviewRequest(body) {
+  return normalizeText(body?.preview_mode).toUpperCase() === G36F_PREVIEW_MODE;
+}
+
 function g36cHelperUnsupportedBodyKey(body) {
   for (const key of Object.keys(body || {})) {
     if (!G36C_HELPER_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g36fUnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G36F_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
   }
   return null;
 }
@@ -3595,6 +3639,332 @@ async function buildG36BExactPreview(base44, body) {
     blockers: [...new Set(blockers)],
     warnings: [...new Set(warnings)],
     next_action: nextAction,
+    safety: G36B_READ_ONLY_SAFETY,
+  };
+}
+
+function g36fAllowedMode(body) {
+  return normalizeText(body?.mode || G36F_MODE).toUpperCase() === G36F_MODE;
+}
+
+function g36fSchemaFieldAudit() {
+  return {
+    schema: 'ShopifyOrder',
+    schema_source: 'base44/entities/ShopifyOrder.jsonc',
+    supported_top_level_fields: [
+      'shopify_order_number',
+      'description',
+      'source_channel',
+      'source_type',
+      'order_type',
+      'fulfillment_mode',
+      'fulfillment_method',
+      'requested_delivery_date',
+      'assigned_delivery_date',
+      'selected_delivery_date',
+      'fulfillment_instance_date',
+      'payment_status',
+      'financial_status',
+      'fulfillment_status',
+      'shopify_fulfillment_status',
+      'production_status',
+      'operational_visibility',
+      'sync_status',
+      'data_quality_status',
+      'is_subscription',
+      'subscription_parent_id',
+      'line_items',
+      'tags',
+      'internal_notes',
+      'audit_trail',
+    ],
+    enum_mappings: [
+      {
+        requested: 'source_channel=hub_subscription_occurrence',
+        packet_value: 'source_channel=subscription',
+        reason: 'ShopifyOrder.source_channel enum supports subscription but not hub_subscription_occurrence.',
+      },
+      {
+        requested: 'order_type=subscription_occurrence',
+        packet_value: 'order_type=subscription',
+        reason: 'ShopifyOrder.order_type enum supports subscription but not subscription_occurrence.',
+      },
+      {
+        requested: 'production_status=historical_fulfilled',
+        packet_value: 'production_status=fulfilled',
+        reason: 'ShopifyOrder.production_status enum supports fulfilled but not historical_fulfilled.',
+      },
+    ],
+  };
+}
+
+function g36fOmittedFields() {
+  return [
+    { field: 'shopify_order_id', reason: 'No Shopify order exists for this Hub subscription occurrence and no provider lookup is allowed.' },
+    { field: 'hub_subscription_id', reason: 'No top-level ShopifyOrder field; preserved in audit_trail only.' },
+    { field: 'hub_order_id', reason: 'No top-level ShopifyOrder field; preserved in audit_trail only.' },
+    { field: 'selected_hub_fulfillment_task_id', reason: 'No top-level ShopifyOrder field; preserved in audit_trail only.' },
+    { field: 'ignored_duplicate_hub_fulfillment_task_id', reason: 'No top-level ShopifyOrder field; preserved in audit_trail only.' },
+    { field: 'line_item_interpretation', reason: 'No top-level ShopifyOrder field; preserved in audit_trail/internal_notes only.' },
+    { field: 'decomposed_production_item_count', reason: 'Production decomposition is held and not materialized into line_items.' },
+    { field: 'duplicate_resolution_status', reason: 'No top-level ShopifyOrder field; preserved in audit_trail only.' },
+    { field: 'customer_app_cancelled_mirror_treatment', reason: 'No top-level ShopifyOrder field; preserved in audit_trail only.' },
+    { field: 'customer PII fields', reason: 'customer identity, contact, address, proof, drop, and route fields are intentionally omitted.' },
+    { field: 'provider/payment payloads', reason: 'Raw Hub/Stripe/Shopify/provider payloads are intentionally omitted.' },
+  ];
+}
+
+function g36fSelectedHubTask(context) {
+  const lookup = context?.lookup || {};
+  const tasks = context?.hubTaskContext?.tasks || [];
+  return tasks.find(task => normalizeText(task?.id) === lookup.selectedHubFulfillmentTaskId) || tasks[0] || null;
+}
+
+function g36fOwnerContext(lookup, context) {
+  const selectedTask = g36fSelectedHubTask(context);
+  const selectedTaskStatus = normalizeLower(selectedTask?.payment_status);
+  const ownerPaymentStatus = normalizeLower(lookup.ownerPaymentStatus);
+  const paymentStatus = selectedTaskStatus || ownerPaymentStatus || '';
+  const selectedFulfillmentStatus = normalizeLower(selectedTask?.delivery_status || selectedTask?.fulfillment_status || selectedTask?.status);
+  const ownerFulfillmentStatus = normalizeLower(lookup.ownerFulfillmentStatus);
+  return {
+    selected_task: selectedTask,
+    payment_status: paymentStatus,
+    payment_status_authority: paymentStatus === 'paid' ? 'hub_task_paid_context_owner_approved' : 'not_authoritative_for_g36f',
+    fulfillment_status: ownerFulfillmentStatus || selectedFulfillmentStatus || '',
+    line_item_count: lookup.ownerLineItemCount,
+    line_item_interpretation: lookup.ownerLineItemInterpretation || null,
+    decomposed_production_item_count: lookup.ownerDecomposedProductionItemCount || null,
+    customer_app_cancelled_mirror_treatment: lookup.customerAppCancelledMirrorTreatment || null,
+  };
+}
+
+function g36fExistingRecordChecks(context) {
+  const nativeOrders = context.nativeOrders || [];
+  const nativeTasks = context.exactNativeTasks?.length ? context.exactNativeTasks : (context.nativeTasks || []);
+  const productionBatches = context.productionBatches || [];
+  return {
+    native_shopify_order_present: nativeOrders.length > 0,
+    native_shopify_order_count: nativeOrders.length,
+    native_shopify_order_ids: nativeOrders.slice(0, 5).map(row => row.id || null).filter(Boolean),
+    native_fulfillment_task_present: nativeTasks.length > 0,
+    native_fulfillment_task_count: nativeTasks.length,
+    native_fulfillment_task_ids: nativeTasks.slice(0, 5).map(row => row.id || null).filter(Boolean),
+    customer_app_order_present: Boolean(context.customerOrder?.id),
+    customer_app_order_id: context.customerOrder?.id || null,
+    production_batch_present: productionBatches.length > 0,
+    production_batch_count: productionBatches.length,
+    hub_selected_task_present: Boolean(g36fSelectedHubTask(context)?.id),
+    hub_selected_task_id: g36fSelectedHubTask(context)?.id || null,
+    ignored_duplicate_hub_fulfillment_task_id: context.lookup.ignoredDuplicateHubFulfillmentTaskId || null,
+    hub_mutation_performed: false,
+  };
+}
+
+function g36fHeldRecords() {
+  return {
+    customer_app_order: { held: true, would_create: false, would_update: false },
+    native_fulfillment_task: { held: true, would_create: false, would_update: false },
+    production_batch: { held: true, would_create: false, would_update: false },
+    batch_compliance_log: { held: true, would_create: false, would_update: false },
+    notification: { held: true, would_create: false, would_send: false },
+    customer_message_delivery_log: { held: true, would_create: false },
+    order_sync_log: { held: true, would_create: false },
+    command_log: { held: true, would_create: false },
+    order_review_queue: { held: true, would_create: false },
+    hub_records: { held: true, would_update: false, hub_source_of_truth: true },
+    proof_drop_route: { held: true, included_in_packet: false },
+    inventory_purchase_order: { held: true, inventory_reversal: false, purchase_order_reversal: false },
+  };
+}
+
+function g36fDuplicateRisk({ context, existingRecordChecks }) {
+  const reasons = [];
+  if (existingRecordChecks.native_shopify_order_present) reasons.push('existing_native_shopify_order_for_occurrence_context');
+  if (existingRecordChecks.native_fulfillment_task_present) reasons.push('existing_native_fulfillment_task_for_occurrence_context');
+  if (existingRecordChecks.production_batch_present) reasons.push('existing_native_production_batch_for_occurrence_context');
+  if (context.lookup.ignoredDuplicateHubFulfillmentTaskId) reasons.push('ignored_duplicate_hub_task_context_recorded_by_owner_decision');
+  return {
+    duplicate_risk: reasons.some(reason => reason !== 'ignored_duplicate_hub_task_context_recorded_by_owner_decision'),
+    duplicate_risk_reasons: reasons,
+    duplicate_resolution_status: context.lookup.selectedHubFulfillmentTaskId && context.lookup.ignoredDuplicateHubFulfillmentTaskId
+      ? 'owner_selected_duplicate_same_occurrence_task'
+      : 'no_owner_duplicate_resolution_supplied',
+    ignored_duplicate_is_context_only: Boolean(context.lookup.ignoredDuplicateHubFulfillmentTaskId),
+  };
+}
+
+function g36fValidatePacketInputs({ body, context, ownerContext, existingRecordChecks }) {
+  const blockers = [];
+  const schemaBlockers = [];
+  if (!g36fAllowedMode(body)) blockers.push('unsupported_g36f_mode');
+  if (!context.lookup.hubOrderId || !context.lookup.orderNumber || !context.lookup.deliveryDate) blockers.push('exact_subscription_occurrence_context_required');
+  if (!context.lookup.selectedHubFulfillmentTaskId) blockers.push('selected_hub_fulfillment_task_id_required');
+  if (!existingRecordChecks.hub_selected_task_present) blockers.push('selected_hub_fulfillment_task_not_resolved');
+  if (ownerContext.payment_status !== 'paid') blockers.push('selected_hub_task_payment_status_not_paid');
+  if (!['delivered', 'fulfilled', 'completed'].includes(ownerContext.fulfillment_status)) {
+    blockers.push('schema_packet_blocker');
+    schemaBlockers.push('fulfillment_status_value_not_supported_for_g36f_packet');
+  }
+  if (ownerContext.line_item_count === null || ownerContext.line_item_count < 1) blockers.push('owner_line_item_count_required_for_g36f');
+  if (ownerContext.line_item_interpretation !== 'subscription bundle/package count') {
+    blockers.push('schema_packet_blocker');
+    schemaBlockers.push('line_item_interpretation_not_approved_for_g36f_packet');
+  }
+  if (ownerContext.decomposed_production_item_count !== 'held_for_later') blockers.push('production_decomposition_must_be_held_for_g36f');
+  if (!g36bOwnerApprovedNo(context.lookup.knownCancellationRefundIssue)) blockers.push('known_cancellation_refund_issue_required_no_for_g36f');
+  if (!g36bOwnerApprovedNo(context.lookup.knownRepairReplayIssue)) blockers.push('known_repair_replay_issue_required_no_for_g36f');
+  if (!g36bCustomerAppCancelledMirrorTreatAsStale(context.lookup)) blockers.push('customer_app_cancelled_mirror_treatment_required_for_g36f');
+  if (existingRecordChecks.native_shopify_order_present) blockers.push('existing_native_shopify_order_found');
+  if (existingRecordChecks.native_fulfillment_task_present) blockers.push('existing_native_fulfillment_task_found');
+  if (existingRecordChecks.production_batch_present) blockers.push('native_production_demand_already_present');
+  return {
+    blockers: [...new Set(blockers)],
+    schema_blockers: [...new Set(schemaBlockers)],
+  };
+}
+
+function g36fBuildNativeShopifyOrderPacket({ lookup, ownerContext, requestId }) {
+  const orderNumber = lookup.orderNumber ? `#${normalizeOrderNumber(lookup.orderNumber)}` : null;
+  const auditEntry = compactObject({
+    action: 'g36f_subscription_occurrence_mirror_packet_preview',
+    request_id: requestId || null,
+    source_type: 'subscription_occurrence_hub_preview',
+    source_channel_requested: 'hub_subscription_occurrence',
+    source_channel_packet_value: 'subscription',
+    hub_subscription_id: lookup.hubSubscriptionId || lookup.stripeSubscriptionId || null,
+    hub_order_id: lookup.hubOrderId || null,
+    selected_hub_fulfillment_task_id: lookup.selectedHubFulfillmentTaskId || null,
+    ignored_duplicate_hub_fulfillment_task_id: lookup.ignoredDuplicateHubFulfillmentTaskId || null,
+    parent_order_number: orderNumber,
+    delivery_date: lookup.deliveryDate || null,
+    payment_status: ownerContext.payment_status || null,
+    fulfillment_status: 'fulfilled',
+    line_item_count: ownerContext.line_item_count,
+    line_item_interpretation: ownerContext.line_item_interpretation,
+    decomposed_production_item_count: ownerContext.decomposed_production_item_count,
+    duplicate_resolution_status: 'owner_selected_duplicate_same_occurrence_task',
+    customer_app_cancelled_mirror_treatment: ownerContext.customer_app_cancelled_mirror_treatment,
+    known_cancellation_refund_issue: lookup.knownCancellationRefundIssue || null,
+    known_repair_replay_issue: lookup.knownRepairReplayIssue || null,
+    hub_source_of_truth: true,
+    writes_performed: false,
+  });
+  return compactObject({
+    shopify_order_number: orderNumber,
+    description: 'G36F read-only preview packet for a Hub subscription occurrence native ShopifyOrder mirror. No write approved.',
+    source_channel: 'subscription',
+    source_type: 'subscription_occurrence_hub_preview',
+    order_type: 'subscription',
+    fulfillment_mode: 'single_delivery',
+    fulfillment_method: 'delivery',
+    requested_delivery_date: lookup.deliveryDate || null,
+    assigned_delivery_date: lookup.deliveryDate || null,
+    selected_delivery_date: lookup.deliveryDate || null,
+    fulfillment_instance_date: lookup.deliveryDate || null,
+    payment_status: ownerContext.payment_status || null,
+    financial_status: ownerContext.payment_status || null,
+    fulfillment_status: 'fulfilled',
+    shopify_fulfillment_status: 'fulfilled',
+    production_status: 'fulfilled',
+    operational_visibility: 'historical_preview',
+    sync_status: 'native_subscription_occurrence_preview_g36f',
+    data_quality_status: 'preview_only_hub_source_of_truth_owner_approved_occurrence',
+    is_subscription: true,
+    subscription_parent_id: lookup.hubSubscriptionId || lookup.stripeSubscriptionId || null,
+    line_items: ownerContext.line_item_count ? [{
+      title: 'Subscription bundle/package (production decomposition held)',
+      quantity: ownerContext.line_item_count,
+    }] : [],
+    tags: [
+      'g36f_preview',
+      'subscription_occurrence',
+      'hub_source_of_truth',
+      'native_shopify_order_mirror_preview_only',
+    ],
+    internal_notes: 'Read-only G36F mirror packet preview. Customer App Order, FulfillmentTask, production, notifications, providers, Hub mutation, inventory, and PO are held.',
+    audit_trail: [auditEntry],
+  });
+}
+
+async function buildG36FPreview(base44, body) {
+  const lookup = g36bLookup({ ...body, mode: 'EXACT_OCCURRENCE_PREVIEW' });
+  const context = await g36bResolveExactContext(base44, lookup);
+  const ownerContext = g36fOwnerContext(context.lookup, context);
+  const existingRecordChecks = g36fExistingRecordChecks(context);
+  const duplicateRisk = g36fDuplicateRisk({ context, existingRecordChecks });
+  const validation = g36fValidatePacketInputs({ body, context, ownerContext, existingRecordChecks });
+  const blockers = [...validation.blockers];
+  const warnings = [
+    'hub_source_of_truth',
+    'native_shopify_order_mirror_preview_only',
+    'native_fulfillment_task_held',
+    'customer_app_order_held',
+    'production_decomposition_held',
+    'duplicate_hub_task_ignored_by_owner_decision',
+    'customer_app_cancelled_mirror_treated_as_stale_artifact_for_preview_only',
+    'notifications_held',
+    'provider_calls_disabled',
+    'no_live_command_available',
+  ];
+  if (!context.hubTaskContext.configured) warnings.push('hub_read_not_configured_local_preview_only');
+  if (context.hubTaskContext.hub_read_attempted && !context.hubTaskContext.hub_read_succeeded) warnings.push('hub_read_failed_or_unavailable');
+  if (existingRecordChecks.customer_app_order_present) warnings.push('customer_app_parent_context_present_read_only');
+
+  const proposedPacket = g36fBuildNativeShopifyOrderPacket({
+    lookup: context.lookup,
+    ownerContext,
+    requestId: context.lookup.requestId,
+  });
+  const schemaAudit = g36fSchemaFieldAudit();
+  const mirrorPacketReady = blockers.length === 0;
+  const nextAction = mirrorPacketReady
+    ? 'plan_gated_subscription_occurrence_native_shopify_order_mirror_command'
+    : (blockers.includes('schema_packet_blocker') ? 'resolve_schema_packet_blockers' : 'hold_subscription_migration');
+
+  return {
+    success: blockers.length === 0,
+    dry_run: true,
+    writes_performed: false,
+    generated_at: new Date().toISOString(),
+    function_name: 'previewNativeOrderCutoverReadiness',
+    preview_mode: G36F_PREVIEW_MODE,
+    mode: G36F_MODE,
+    request_id: context.lookup.requestId || null,
+    hub_source_of_truth: true,
+    mirror_packet_ready: mirrorPacketReady,
+    selected_hub_fulfillment_task_id: context.lookup.selectedHubFulfillmentTaskId || null,
+    ignored_duplicate_hub_fulfillment_task_id: context.lookup.ignoredDuplicateHubFulfillmentTaskId || null,
+    duplicate_resolution_status: duplicateRisk.duplicate_resolution_status,
+    payment_status: ownerContext.payment_status || null,
+    payment_status_authority: ownerContext.payment_status_authority,
+    fulfillment_status: ownerContext.fulfillment_status || null,
+    line_item_count: ownerContext.line_item_count,
+    line_item_interpretation: ownerContext.line_item_interpretation,
+    decomposed_production_item_count: ownerContext.decomposed_production_item_count,
+    customer_app_cancelled_mirror_treatment: ownerContext.customer_app_cancelled_mirror_treatment,
+    proposed_native_shopify_order_packet: proposedPacket,
+    schema_supported_fields: {
+      ...schemaAudit,
+      packet_top_level_fields: Object.keys(proposedPacket),
+    },
+    omitted_fields: g36fOmittedFields(),
+    held_records: g36fHeldRecords(),
+    existing_record_checks: existingRecordChecks,
+    duplicate_risk: duplicateRisk,
+    blockers: [...new Set(blockers)],
+    schema_packet_blockers: validation.schema_blockers,
+    warnings: [...new Set(warnings)],
+    next_action: nextAction,
+    provider_call_impact: false,
+    notification_impact: {
+      notification_would_send: false,
+      notification_held: true,
+      notification_rows_created: false,
+      message_logs_created: false,
+    },
+    hub_mutation_performed: false,
+    hub_records_updated: false,
     safety: G36B_READ_ONLY_SAFETY,
   };
 }
@@ -4691,6 +5061,7 @@ Deno.serve(async (req) => {
     const g36bPreviewRequest = isG36BPreviewRequest(body);
     const g36cHelperPreviewRequest = isG36CHelperPreviewRequest(body);
     const g36cResolvePreviewRequest = isG36CResolvePreviewRequest(body);
+    const g36fPreviewRequest = isG36FPreviewRequest(body);
     if (g33cPreviewRequest) {
       const unsupported = g33cUnsupportedBodyKey(body);
       if (unsupported) {
@@ -4727,7 +5098,13 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
-    if (!g33cPreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (g36fPreviewRequest) {
+      const unsupported = g36fUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
+    if (!g33cPreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
@@ -4796,6 +5173,16 @@ Deno.serve(async (req) => {
 
     if (g36cResolvePreviewRequest) {
       const preview = await buildG36CResolvePreview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
+
+    if (g36fPreviewRequest) {
+      const preview = await buildG36FPreview(base44, body);
       return Response.json({
         ...preview,
         actor_type: auth.actor_type,
