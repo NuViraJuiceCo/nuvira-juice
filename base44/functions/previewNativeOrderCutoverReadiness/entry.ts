@@ -686,7 +686,7 @@ const G33C_READ_ONLY_SAFETY = Object.freeze({
 function isG33CPreviewRequest(body) {
   const mode = normalizeText(body?.mode).toUpperCase();
   const previewMode = normalizeText(body?.preview_mode || body?.preview_bundle).toUpperCase();
-  return previewMode === G33C_PREVIEW_MODE || ['EXACT_ORDER_PREVIEW', 'RECENT_CANDIDATE_SCAN'].includes(mode);
+  return previewMode === G33C_PREVIEW_MODE || (!previewMode && ['EXACT_ORDER_PREVIEW', 'RECENT_CANDIDATE_SCAN'].includes(mode));
 }
 
 function g33cUnsupportedBodyKey(body) {

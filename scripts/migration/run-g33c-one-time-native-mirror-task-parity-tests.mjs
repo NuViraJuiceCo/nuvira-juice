@@ -12,7 +12,7 @@ const functionPath = path.join(repoRoot, 'base44/functions/previewNativeOrderCut
 function loadHarness() {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
-  source += `\nglobalThis.__exports = { buildG33CMirror1Preview, isG33CMirror1PreviewRequest, g33cMirror1UnsupportedBodyKey, G33C_MIRROR1_PREVIEW_MODE, G33C_READ_ONLY_SAFETY };\n`;
+  source += `\nglobalThis.__exports = { buildG33CPreview, isG33CPreviewRequest, buildG33CMirror1Preview, isG33CMirror1PreviewRequest, g33cMirror1UnsupportedBodyKey, G33C_MIRROR1_PREVIEW_MODE, G33C_READ_ONLY_SAFETY };\n`;
   const context = vm.createContext({
     console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, Promise,
     createClientFromRequest: req => req.__base44,
@@ -102,6 +102,8 @@ const results = [];
 
 assert.equal(fns.G33C_MIRROR1_PREVIEW_MODE, 'ONE_TIME_NATIVE_MIRROR_TASK_PARITY');
 assert.equal(fns.isG33CMirror1PreviewRequest({ preview_mode: 'ONE_TIME_NATIVE_MIRROR_TASK_PARITY' }), true);
+assert.equal(fns.isG33CPreviewRequest({ preview_mode: 'ONE_TIME_NATIVE_MIRROR_TASK_PARITY', mode: 'EXACT_ORDER_PREVIEW' }), false);
+assert.equal(fns.isG33CPreviewRequest({ mode: 'EXACT_ORDER_PREVIEW' }), true);
 assert.equal(fns.g33cMirror1UnsupportedBodyKey({ preview_mode: 'ONE_TIME_NATIVE_MIRROR_TASK_PARITY', send_notification: true }), 'send_notification');
 assert.equal(fns.G33C_READ_ONLY_SAFETY.writes_performed, false);
 
