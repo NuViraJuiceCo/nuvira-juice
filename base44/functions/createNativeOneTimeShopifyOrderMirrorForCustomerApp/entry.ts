@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const FUNCTION_NAME = 'createNativeOneTimeShopifyOrderMirrorForCustomerApp';
 const G33C_MIRROR2_COMMAND_MARKER = 'g33c_mirror2_default_off_one_time_shopify_order_mirror_command';
+const G33C_MIRROR3_PATCH1_MARKER = 'g33c_mirror3_patch1_preview_command_contract_alignment';
 const COMMAND_TYPE = 'native_one_time_shopify_order_mirror_create';
 const ENABLE_FLAG = 'ENABLE_NATIVE_ONE_TIME_SHOPIFY_ORDER_MIRROR';
 const KILL_SWITCH_FLAG = 'NATIVE_ONE_TIME_SHOPIFY_ORDER_MIRROR_KILL_SWITCH';
@@ -439,22 +440,133 @@ async function previewMirrorPacket(base44, lookup) {
   return { success: false, error_code: 'preview_invocation_unavailable', writes_performed: false };
 }
 
+function definedEvidence(value) {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function firstEvidence(candidates) {
+  for (const candidate of candidates) {
+    if (definedEvidence(candidate?.value)) return { value: candidate.value, path: candidate.path };
+  }
+  return { value: undefined, path: candidates.map(candidate => candidate.path).join('|') };
+}
+
+function lineItemCountEvidence(preview) {
+  const packetLineItems = preview?.native_shopify_order_mirror_preview?.schema_safe_field_packet?.line_items;
+  return firstEvidence([
+    { value: preview?.line_item_count, path: 'line_item_count' },
+    { value: preview?.customer_app_order_summary?.line_item_count, path: 'customer_app_order_summary.line_item_count' },
+    { value: preview?.native_shopify_order_mirror_preview?.line_item_count, path: 'native_shopify_order_mirror_preview.line_item_count' },
+    { value: Array.isArray(packetLineItems) ? packetLineItems.length : undefined, path: 'native_shopify_order_mirror_preview.schema_safe_field_packet.line_items.length' },
+    { value: preview?.native_fulfillment_task_preview?.line_item_count, path: 'native_fulfillment_task_preview.line_item_count' },
+  ]);
+}
+
+function resolveOneTimeMirrorPreviewEvidence(preview) {
+  const mirrorPacket = preview?.native_shopify_order_mirror_preview?.schema_safe_field_packet || {};
+  return {
+    patch_marker: G33C_MIRROR3_PATCH1_MARKER,
+    order_number: firstEvidence([
+      { value: preview?.order_number, path: 'order_number' },
+      { value: preview?.native_shopify_order_mirror_preview?.shopify_order_number, path: 'native_shopify_order_mirror_preview.shopify_order_number' },
+      { value: mirrorPacket.shopify_order_number, path: 'native_shopify_order_mirror_preview.schema_safe_field_packet.shopify_order_number' },
+    ]),
+    customer_app_order_id: firstEvidence([
+      { value: preview?.customer_app_order_id, path: 'customer_app_order_id' },
+      { value: preview?.customer_app_order_summary?.id, path: 'customer_app_order_summary.id' },
+      { value: preview?.native_shopify_order_mirror_preview?.base44_order_id, path: 'native_shopify_order_mirror_preview.base44_order_id' },
+      { value: mirrorPacket.base44_order_id, path: 'native_shopify_order_mirror_preview.schema_safe_field_packet.base44_order_id' },
+    ]),
+    payment_status: firstEvidence([
+      { value: preview?.payment_status, path: 'payment_status' },
+      { value: preview?.customer_app_order_summary?.payment_status, path: 'customer_app_order_summary.payment_status' },
+      { value: preview?.native_shopify_order_mirror_preview?.proposed_payment_status, path: 'native_shopify_order_mirror_preview.proposed_payment_status' },
+      { value: mirrorPacket.payment_status, path: 'native_shopify_order_mirror_preview.schema_safe_field_packet.payment_status' },
+    ]),
+    payment_captured: firstEvidence([
+      { value: preview?.payment_captured, path: 'payment_captured' },
+      { value: preview?.customer_app_order_summary?.payment_captured, path: 'customer_app_order_summary.payment_captured' },
+    ]),
+    order_type: firstEvidence([
+      { value: preview?.order_type, path: 'order_type' },
+      { value: preview?.customer_app_order_summary?.order_type, path: 'customer_app_order_summary.order_type' },
+      { value: preview?.native_shopify_order_mirror_preview?.proposed_order_type, path: 'native_shopify_order_mirror_preview.proposed_order_type' },
+      { value: mirrorPacket.order_type, path: 'native_shopify_order_mirror_preview.schema_safe_field_packet.order_type' },
+    ]),
+    fulfillment_type: firstEvidence([
+      { value: preview?.fulfillment_type, path: 'fulfillment_type' },
+      { value: preview?.customer_app_order_summary?.fulfillment_type, path: 'customer_app_order_summary.fulfillment_type' },
+      { value: preview?.native_shopify_order_mirror_preview?.proposed_fulfillment_method, path: 'native_shopify_order_mirror_preview.proposed_fulfillment_method' },
+      { value: mirrorPacket.fulfillment_method, path: 'native_shopify_order_mirror_preview.schema_safe_field_packet.fulfillment_method' },
+      { value: preview?.native_fulfillment_task_preview?.fulfillment_type, path: 'native_fulfillment_task_preview.fulfillment_type' },
+    ]),
+    line_item_count: lineItemCountEvidence(preview),
+    would_create_native_shopify_order: firstEvidence([
+      { value: preview?.would_create_native_shopify_order, path: 'would_create_native_shopify_order' },
+      { value: preview?.native_shopify_order_mirror_preview?.would_create_native_shopify_order, path: 'native_shopify_order_mirror_preview.would_create_native_shopify_order' },
+    ]),
+    would_create_native_fulfillment_task: firstEvidence([
+      { value: preview?.would_create_native_fulfillment_task, path: 'would_create_native_fulfillment_task' },
+      { value: preview?.native_fulfillment_task_preview?.would_create_native_fulfillment_task, path: 'native_fulfillment_task_preview.would_create_native_fulfillment_task' },
+    ]),
+    task_create_depends_on_native_shopify_order: firstEvidence([
+      { value: preview?.task_create_depends_on_native_shopify_order, path: 'task_create_depends_on_native_shopify_order' },
+      { value: preview?.native_fulfillment_task_preview?.task_create_depends_on_native_shopify_order, path: 'native_fulfillment_task_preview.task_create_depends_on_native_shopify_order' },
+    ]),
+    provider_call_impact: firstEvidence([
+      { value: preview?.provider_call_impact, path: 'provider_call_impact' },
+      { value: preview?.native_shopify_order_mirror_preview?.provider_call_impact, path: 'native_shopify_order_mirror_preview.provider_call_impact' },
+      { value: preview?.native_fulfillment_task_preview?.provider_call_impact, path: 'native_fulfillment_task_preview.provider_call_impact' },
+    ]),
+    notification_held: firstEvidence([
+      { value: preview?.notification_impact?.notification_held, path: 'notification_impact.notification_held' },
+      { value: preview?.native_shopify_order_mirror_preview?.notification_impact?.notification_held, path: 'native_shopify_order_mirror_preview.notification_impact.notification_held' },
+      { value: preview?.native_fulfillment_task_preview?.notification_impact?.notification_held, path: 'native_fulfillment_task_preview.notification_impact.notification_held' },
+    ]),
+    notification_would_send: firstEvidence([
+      { value: preview?.notification_impact?.notification_would_send, path: 'notification_impact.notification_would_send' },
+      { value: preview?.native_shopify_order_mirror_preview?.notification_impact?.notification_would_send, path: 'native_shopify_order_mirror_preview.notification_impact.notification_would_send' },
+      { value: preview?.native_fulfillment_task_preview?.notification_impact?.notification_would_send, path: 'native_fulfillment_task_preview.notification_impact.notification_would_send' },
+    ]),
+  };
+}
+
+function missingPreviewEvidenceBlocker(evidence, label) {
+  return definedEvidence(evidence?.value) ? null : `missing_preview_evidence:${label}:${safeText(evidence?.path, 220)}`;
+}
+
 function validatePreview(preview, lookup) {
   const blockers = [];
-  const orderNumber = normalizeOrderNumber(preview?.order_number || preview?.native_shopify_order_mirror_preview?.shopify_order_number);
+  const evidence = resolveOneTimeMirrorPreviewEvidence(preview);
+  const orderNumber = normalizeOrderNumber(evidence.order_number.value);
   if (!preview?.success) blockers.push(preview?.error_code || 'g33c_mirror1_preview_failed');
   if (preview?.dry_run !== true) blockers.push('g33c_mirror1_preview_not_dry_run');
   if (preview?.writes_performed !== false) blockers.push('g33c_mirror1_preview_writes_flag_not_false');
   if (preview?.preview_mode !== PREVIEW_MODE) blockers.push('g33c_mirror1_preview_mode_mismatch');
   if (preview?.mode !== PREVIEW_EXACT_MODE) blockers.push('g33c_mirror1_preview_exact_mode_mismatch');
   if (orderNumber !== lookup.orderNumber) blockers.push('g33c_mirror1_order_number_mismatch');
-  if (normalizeText(preview?.customer_app_order_id) !== lookup.customerAppOrderId) blockers.push('g33c_mirror1_customer_app_order_id_mismatch');
+  if (normalizeText(evidence.customer_app_order_id.value) !== lookup.customerAppOrderId) blockers.push('g33c_mirror1_customer_app_order_id_mismatch');
   if (preview?.customer_app_order_present !== true) blockers.push('customer_app_order_missing');
-  if (normalizeLower(preview?.payment_status) !== TARGET_PAYMENT_STATUS) blockers.push('payment_status_not_paid');
-  if (preview?.payment_captured !== true) blockers.push('payment_not_captured');
-  if (normalizeLower(preview?.order_type) !== TARGET_ORDER_TYPE) blockers.push('order_type_not_one_time');
-  if (normalizeLower(preview?.fulfillment_type) !== TARGET_FULFILLMENT_TYPE) blockers.push('fulfillment_type_not_delivery');
-  if (safeNumber(preview?.line_item_count, null) !== 3) blockers.push('line_item_count_must_be_3');
+  for (const [label, item] of Object.entries({
+    payment_status: evidence.payment_status,
+    payment_captured: evidence.payment_captured,
+    order_type: evidence.order_type,
+    fulfillment_type: evidence.fulfillment_type,
+    line_item_count: evidence.line_item_count,
+    would_create_native_shopify_order: evidence.would_create_native_shopify_order,
+    would_create_native_fulfillment_task: evidence.would_create_native_fulfillment_task,
+    task_create_depends_on_native_shopify_order: evidence.task_create_depends_on_native_shopify_order,
+    provider_call_impact: evidence.provider_call_impact,
+    notification_held: evidence.notification_held,
+  })) {
+    const missing = missingPreviewEvidenceBlocker(item, label);
+    if (missing) blockers.push(missing);
+  }
+  if (normalizeLower(evidence.payment_status.value) !== TARGET_PAYMENT_STATUS) blockers.push('payment_status_not_paid');
+  if (evidence.payment_captured.value !== true) blockers.push('payment_not_captured');
+  if (normalizeLower(evidence.order_type.value) !== TARGET_ORDER_TYPE) blockers.push('order_type_not_one_time');
+  if (normalizeLower(evidence.fulfillment_type.value) !== TARGET_FULFILLMENT_TYPE) blockers.push('fulfillment_type_not_delivery');
+  if (safeNumber(evidence.line_item_count.value, null) !== 3) blockers.push('line_item_count_must_be_3');
   if (preview?.native_shopify_order_present !== false) blockers.push('native_shopify_order_already_present_in_preview');
   if (preview?.native_fulfillment_task_present !== false) blockers.push('native_fulfillment_task_already_present_in_preview');
   if (normalizeText(preview?.missing_native_reason_classification) !== TARGET_MISSING_NATIVE_REASON) blockers.push('missing_native_reason_mismatch');
@@ -463,14 +575,14 @@ function validatePreview(preview, lookup) {
   if (Array.isArray(preview?.blockers) && preview.blockers.length > 0) blockers.push('g33c_mirror1_preview_blockers_present');
   if (Array.isArray(preview?.schema_packet_blockers) && preview.schema_packet_blockers.length > 0) blockers.push('g33c_mirror1_schema_packet_blockers_present');
   if (Array.isArray(preview?.native_shopify_order_mirror_preview?.blockers) && preview.native_shopify_order_mirror_preview.blockers.length > 0) blockers.push('g33c_mirror1_native_shopify_order_packet_blockers_present');
-  if (preview?.native_shopify_order_mirror_preview?.would_create_native_shopify_order !== true) blockers.push('g33c_mirror1_native_shopify_order_packet_not_ready');
+  if (evidence.would_create_native_shopify_order.value !== true) blockers.push('g33c_mirror1_native_shopify_order_packet_not_ready');
   if (!preview?.native_shopify_order_mirror_preview?.schema_safe_field_packet) blockers.push('g33c_mirror1_native_shopify_order_packet_missing');
-  if (preview?.native_fulfillment_task_preview?.would_create_native_fulfillment_task !== false) blockers.push('g33c_mirror1_task_preview_must_remain_held');
-  if (preview?.native_fulfillment_task_preview?.task_create_depends_on_native_shopify_order !== true) blockers.push('task_dependency_not_confirmed');
+  if (evidence.would_create_native_fulfillment_task.value !== false) blockers.push('g33c_mirror1_task_preview_must_remain_held');
+  if (evidence.task_create_depends_on_native_shopify_order.value !== true) blockers.push('task_dependency_not_confirmed');
   if (!(preview?.native_fulfillment_task_preview?.blockers || []).includes('task_create_depends_on_native_shopify_order')) blockers.push('task_dependency_blocker_missing');
-  if (preview?.provider_call_impact !== false) blockers.push('provider_call_impact_not_false');
-  if (preview?.notification_impact?.notification_held !== true) blockers.push('notifications_not_held');
-  if (preview?.notification_impact?.notification_would_send === true) blockers.push('notification_would_send');
+  if (evidence.provider_call_impact.value !== false) blockers.push('provider_call_impact_not_false');
+  if (evidence.notification_held.value !== true) blockers.push('notifications_not_held');
+  if (evidence.notification_would_send.value === true) blockers.push('notification_would_send');
   if (preview?.safety?.hub_records_updated === true || preview?.safety?.hub_bridge_modified === true) blockers.push('hub_mutation_projected');
   return uniqueStrings(blockers);
 }
