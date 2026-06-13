@@ -18,7 +18,7 @@ const IDS = {
 function loadHarness({ env = {} } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
-  source += `\nglobalThis.__exports = { unsupportedBodyKey, getLookup, exactInputBlockers, validatePreview, buildNativeShopifyOrderRecord, validateNativeShopifyOrderRecord, schemaAudit } ;\n`;
+  source += `\nglobalThis.__exports = { unsupportedBodyKey, getLookup, exactInputBlockers, resolveOneTimeMirrorPreviewEvidence, validatePreview, buildNativeShopifyOrderRecord, validateNativeShopifyOrderRecord, schemaAudit } ;\n`;
   const context = vm.createContext({
     console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, Promise,
     createClientFromRequest: req => req.__base44,
@@ -117,6 +117,10 @@ function makePreview(overrides = {}) {
     schema_packet_blockers: [],
     native_shopify_order_mirror_preview: {
       would_create_native_shopify_order: true,
+      line_item_count: 3,
+      proposed_payment_status: 'paid',
+      proposed_order_type: 'one_time',
+      proposed_fulfillment_method: 'delivery',
       schema_safe_field_packet: previewPacket(),
       blockers: [],
       provider_call_impact: false,
@@ -125,6 +129,10 @@ function makePreview(overrides = {}) {
     native_fulfillment_task_preview: {
       would_create_native_fulfillment_task: false,
       task_create_depends_on_native_shopify_order: true,
+      line_item_count: 3,
+      fulfillment_type: 'delivery',
+      provider_call_impact: false,
+      notification_impact: { notification_held: true, notification_would_send: false },
       blockers: ['task_create_depends_on_native_shopify_order'],
     },
     provider_call_impact: false,
@@ -132,6 +140,46 @@ function makePreview(overrides = {}) {
     safety: { hub_records_updated: false, hub_bridge_modified: false },
     ...overrides,
   };
+}
+
+function deletePath(target, pathParts) {
+  const last = pathParts[pathParts.length - 1];
+  const parent = pathParts.slice(0, -1).reduce((node, key) => node?.[key], target);
+  if (parent && Object.prototype.hasOwnProperty.call(parent, last)) delete parent[last];
+}
+
+function makeNestedPreview({ summaryOverrides = {}, mirrorOverrides = {}, taskOverrides = {}, removePaths = [], previewOverrides = {} } = {}) {
+  const preview = makePreview({
+    customer_app_order_summary: {
+      id: IDS.customerAppOrderId,
+      payment_status: 'paid',
+      payment_captured: true,
+      order_type: 'one_time',
+      fulfillment_type: 'delivery',
+      line_item_count: 3,
+      ...summaryOverrides,
+    },
+    ...previewOverrides,
+  });
+  Object.assign(preview.native_shopify_order_mirror_preview, mirrorOverrides);
+  Object.assign(preview.native_fulfillment_task_preview, taskOverrides);
+  for (const key of ['payment_status', 'payment_captured', 'order_type', 'fulfillment_type', 'line_item_count', 'would_create_native_shopify_order', 'would_create_native_fulfillment_task', 'task_create_depends_on_native_shopify_order', 'provider_call_impact', 'notification_impact']) {
+    delete preview[key];
+  }
+  for (const path of removePaths) deletePath(preview, path.split('.'));
+  return preview;
+}
+
+function makeLegacyTopLevelPreview() {
+  const preview = makePreview();
+  delete preview.customer_app_order_summary;
+  delete preview.native_shopify_order_mirror_preview.proposed_payment_status;
+  delete preview.native_shopify_order_mirror_preview.proposed_order_type;
+  delete preview.native_shopify_order_mirror_preview.proposed_fulfillment_method;
+  delete preview.native_shopify_order_mirror_preview.line_item_count;
+  delete preview.native_fulfillment_task_preview.line_item_count;
+  delete preview.native_fulfillment_task_preview.fulfillment_type;
+  return preview;
 }
 
 function makeStore({ user = { role: 'admin', email: 'admin@example.test' }, preview = makePreview(), nativeOrders = [], tasks = [], commandLogs = [] } = {}) {
@@ -251,6 +299,117 @@ const results = [];
   assert.ok(json.blockers.includes('customer_app_order_id_required'));
   assert.equal(scenario.store.writes.length, 0);
   results.push('missing_exact_customer_app_order_id_blocks');
+}
+
+{
+  const { exports } = loadHarness({ env: openEnv() });
+  const evidence = exports.resolveOneTimeMirrorPreviewEvidence(makeNestedPreview());
+  assert.equal(evidence.payment_status.value, 'paid');
+  assert.equal(evidence.payment_status.path, 'customer_app_order_summary.payment_status');
+  assert.equal(evidence.payment_captured.value, true);
+  assert.equal(evidence.order_type.value, 'one_time');
+  assert.equal(evidence.fulfillment_type.value, 'delivery');
+  assert.equal(evidence.line_item_count.value, 3);
+  assert.equal(evidence.would_create_native_shopify_order.value, true);
+  assert.equal(evidence.task_create_depends_on_native_shopify_order.value, true);
+  results.push('nested_canonical_preview_evidence_resolves');
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview: makeNestedPreview() } });
+  assert.equal(status, 200);
+  assert.equal(json.success, true);
+  assert.equal(json.writes_performed, true);
+  assert.equal(scenario.store.nativeOrders.length, 1);
+  assert.equal(scenario.store.commandLogs.length, 1);
+  assert.equal(scenario.store.nativeOrders[0].line_items.length, 3);
+  assertNoBusinessWrites(scenario.store, 'valid nested command');
+  results.push('nested_canonical_preview_fields_validate_successfully');
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview: makeLegacyTopLevelPreview() } });
+  assert.equal(status, 200);
+  assert.equal(json.success, true);
+  assert.equal(json.writes_performed, true);
+  assert.equal(scenario.store.nativeOrders.length, 1);
+  assert.equal(scenario.store.commandLogs.length, 1);
+  assertNoBusinessWrites(scenario.store, 'valid legacy command');
+  results.push('top_level_legacy_preview_fields_validate_successfully');
+}
+
+{
+  const preview = makeNestedPreview({
+    removePaths: [
+      'customer_app_order_summary.payment_status',
+      'native_shopify_order_mirror_preview.proposed_payment_status',
+      'native_shopify_order_mirror_preview.schema_safe_field_packet.payment_status',
+    ],
+  });
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.some(blocker => blocker.startsWith('missing_preview_evidence:payment_status:')));
+  assert.equal(json.writes_performed, false);
+  assert.equal(scenario.store.writes.length, 0);
+  results.push('missing_nested_payment_status_fails_closed');
+}
+
+{
+  const preview = makeNestedPreview({ removePaths: ['customer_app_order_summary.payment_captured'] });
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.some(blocker => blocker.startsWith('missing_preview_evidence:payment_captured:')));
+  assert.equal(json.writes_performed, false);
+  assert.equal(scenario.store.writes.length, 0);
+  results.push('missing_nested_payment_captured_fails_closed');
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview: makeNestedPreview({ summaryOverrides: { order_type: 'subscription' } }) } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.includes('order_type_not_one_time'));
+  assert.equal(scenario.store.writes.length, 0);
+  results.push('wrong_order_type_fails_closed');
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview: makeNestedPreview({ summaryOverrides: { fulfillment_type: 'pickup' } }) } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.includes('fulfillment_type_not_delivery'));
+  assert.equal(scenario.store.writes.length, 0);
+  results.push('wrong_fulfillment_type_fails_closed');
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview: makeNestedPreview({ summaryOverrides: { line_item_count: 2 } }) } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.includes('line_item_count_must_be_3'));
+  assert.equal(scenario.store.writes.length, 0);
+  results.push('wrong_line_item_count_fails_closed');
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview: makeNestedPreview({ mirrorOverrides: { would_create_native_shopify_order: false } }) } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.includes('g33c_mirror1_native_shopify_order_packet_not_ready'));
+  assert.equal(scenario.store.writes.length, 0);
+  results.push('would_create_native_shopify_order_false_blocks');
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview: makeNestedPreview({ taskOverrides: { would_create_native_fulfillment_task: true } }) } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.includes('g33c_mirror1_task_preview_must_remain_held'));
+  assert.equal(scenario.store.writes.length, 0);
+  results.push('would_create_native_fulfillment_task_true_blocks');
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { preview: makeNestedPreview({ mirrorOverrides: { provider_call_impact: true } }) } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.includes('provider_call_impact_not_false'));
+  assert.equal(scenario.store.writes.length, 0);
+  results.push('provider_call_impact_true_blocks');
 }
 
 {
