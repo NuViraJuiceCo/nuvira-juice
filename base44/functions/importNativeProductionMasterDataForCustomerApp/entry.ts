@@ -6,6 +6,7 @@ const ENABLE_FLAG = 'ENABLE_NATIVE_PRODUCTION_MASTER_DATA_IMPORT';
 const KILL_SWITCH_FLAG = 'NATIVE_PRODUCTION_MASTER_DATA_IMPORT_KILL_SWITCH';
 const ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_MASTER_DATA_IMPORT_ALLOWED_EMAILS';
 const ORDER_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_MASTER_DATA_IMPORT_ORDER_ALLOWLIST';
+const ENTITY_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_MASTER_DATA_IMPORT_ENTITY_ALLOWLIST';
 const POLICY_FLAG = 'NATIVE_PRODUCTION_MASTER_DATA_IMPORT_POLICY';
 const REQUIRED_POLICY = 'NON_STOCK_MASTER_DATA_ONLY';
 const REQUIRED_YIELD_POLICY = 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES';
@@ -16,8 +17,65 @@ const TARGET_CUSTOMER_APP_ORDER_ID = '6a219a3f4adcda5856c3d579';
 const TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a22ffda400eb806eb3ca945';
 const TARGET_NATIVE_FULFILLMENT_TASK_ID = '6a22ffdaf675ea79e30575aa';
 const TARGET_TRIO_HUB_BUNDLE_ID = '69e8f55b06e17fbd88dbbc0c';
+const WATERMELON_IMPORT_SCOPE = 'EXACT_RECIPE_ONLY';
+const WATERMELON_RECIPE_NAME = 'Watermelon Juice';
+const WATERMELON_HUB_RECIPE_ID = '69ed8a1fab9a16f8772096ec';
+const WATERMELON_POLICY = 'EXACT_WATERMELON_JUICE_RECIPE_ONLY_NON_STOCK_NO_INVENTORY_NO_PO';
+const WATERMELON_CONFIRMATION_PHRASE = 'import_watermelon_juice_recipe_non_stock_no_inventory_no_po';
+const WATERMELON_TARGET_ORDER_NUMBER = 'NV-MP5SOQLJ';
+const WATERMELON_TARGET_CUSTOMER_APP_ORDER_ID = '6a060df457fc07751f3c7ded';
+const WATERMELON_TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a2df0026e266e19c68046eb';
+const WATERMELON_TARGET_NATIVE_FULFILLMENT_TASK_ID = '6a2eb72aa7ff194aafac49d3';
+const WATERMELON_PREVIEW_MARKER = 'g33c_wm2_exact_watermelon_recipe_import';
 const MAX_TEXT = 180;
 const MAX_ROWS = 120;
+
+const LEGACY_IMPORT_CONTRACT = Object.freeze({
+  key: 'g31i_component_non_stock_master_data_import',
+  commandType: COMMAND_TYPE,
+  targetEntity: 'ProductionMasterData',
+  targetId: TARGET_ORDER_NUMBER,
+  targetDisplayId: TARGET_ORDER_NUMBER,
+  targetOrderNumber: TARGET_ORDER_NUMBER,
+  targetCustomerAppOrderId: TARGET_CUSTOMER_APP_ORDER_ID,
+  targetNativeShopifyOrderId: TARGET_NATIVE_SHOPIFY_ORDER_ID,
+  targetNativeFulfillmentTaskId: TARGET_NATIVE_FULFILLMENT_TASK_ID,
+  requiredGatePolicy: REQUIRED_POLICY,
+  requiredPreviewInventoryPolicy: REQUIRED_POLICY,
+  requiredYieldPolicy: REQUIRED_YIELD_POLICY,
+  confirmationPhrase: CONFIRMATION_PHRASE,
+  ownerApprovalPhrase: OWNER_APPROVAL_PHRASE,
+  expectedCreateCounts: null,
+  expectedNames: null,
+  requireDeferredYieldNames: true,
+  previewLineItems: null,
+  notes: 'G31I exact Customer App non-stock component production master-data import. Creates only approved Re-Nu/Aura/Oasis Recipe rows plus approved component InventoryItem and exact IngredientYield rows. No Black Salt/Beetroot yield, inventory deduction, PO, ProductionBatch, provider, notification, sync, repair, order, or task writes.',
+});
+
+const WATERMELON_IMPORT_CONTRACT = Object.freeze({
+  key: 'g33c_wm2_watermelon_juice_recipe_import',
+  commandType: 'watermelon_juice_recipe_import',
+  targetEntity: 'Recipe',
+  targetId: WATERMELON_RECIPE_NAME,
+  targetDisplayId: WATERMELON_RECIPE_NAME,
+  targetOrderNumber: WATERMELON_TARGET_ORDER_NUMBER,
+  targetCustomerAppOrderId: WATERMELON_TARGET_CUSTOMER_APP_ORDER_ID,
+  targetNativeShopifyOrderId: WATERMELON_TARGET_NATIVE_SHOPIFY_ORDER_ID,
+  targetNativeFulfillmentTaskId: WATERMELON_TARGET_NATIVE_FULFILLMENT_TASK_ID,
+  requiredGatePolicy: WATERMELON_POLICY,
+  requiredPreviewInventoryPolicy: REQUIRED_POLICY,
+  requiredYieldPolicy: REQUIRED_YIELD_POLICY,
+  confirmationPhrase: WATERMELON_CONFIRMATION_PHRASE,
+  ownerApprovalPhrase: '',
+  importScope: WATERMELON_IMPORT_SCOPE,
+  recipeName: WATERMELON_RECIPE_NAME,
+  hubRecipeId: WATERMELON_HUB_RECIPE_ID,
+  expectedCreateCounts: { Recipe: 1 },
+  expectedNames: { Recipe: [WATERMELON_RECIPE_NAME] },
+  requireDeferredYieldNames: false,
+  previewLineItems: [{ title: WATERMELON_RECIPE_NAME, quantity: 1 }],
+  notes: 'G33C-WM2 exact Watermelon Juice Recipe-only non-stock master-data import. Creates one Recipe row only. No InventoryItem, IngredientYield, Bundle, inventory deduction, PO, ProductionBatch, provider, notification, sync, repair, Hub, order, or task writes.',
+});
 
 const EXPECTED_CREATE_COUNTS = Object.freeze({
   Recipe: 3,
@@ -130,6 +188,9 @@ function getLookup(body) {
     nativeShopifyOrderId: safeId(body?.native_shopify_order_id || body?.native_order_id || body?.shopify_order_id, 120),
     nativeFulfillmentTaskId: safeId(body?.native_fulfillment_task_id || body?.fulfillment_task_id || body?.task_id, 120),
     requestId: safeId(body?.request_id, 160),
+    recipeName: safeText(body?.recipe_name || body?.product_or_recipe_name || body?.product_name, 120),
+    hubRecipeId: safeId(body?.hub_recipe_id, 120),
+    importScope: normalizeText(body?.import_scope),
   };
 }
 
@@ -139,19 +200,42 @@ function expectedPreviewSecret() {
     normalizeText(Deno.env.get('HUB_SYNC_SECRET'));
 }
 
-function exactTargetBlockers(lookup) {
+function isWatermelonImportRequest(body = {}) {
+  return normalizeText(body?.import_scope) === WATERMELON_IMPORT_SCOPE ||
+    normalizeKey(body?.recipe_name || body?.product_or_recipe_name || body?.product_name) === normalizeKey(WATERMELON_RECIPE_NAME) ||
+    normalizeText(body?.confirmation) === WATERMELON_CONFIRMATION_PHRASE ||
+    normalizeText(body?.hub_recipe_id) === WATERMELON_HUB_RECIPE_ID ||
+    normalizeText(body?.inventory_policy) === WATERMELON_POLICY ||
+    normalizeText(body?.policy) === WATERMELON_POLICY;
+}
+
+function resolveImportContract(body = {}) {
+  return isWatermelonImportRequest(body) ? WATERMELON_IMPORT_CONTRACT : LEGACY_IMPORT_CONTRACT;
+}
+
+function exactTargetBlockers(lookup, contract = LEGACY_IMPORT_CONTRACT) {
   const blockers = [];
-  if (lookup.orderNumber !== TARGET_ORDER_NUMBER) blockers.push('target_order_number_mismatch');
-  if (lookup.customerAppOrderId && lookup.customerAppOrderId !== TARGET_CUSTOMER_APP_ORDER_ID) blockers.push('target_customer_app_order_id_mismatch');
-  if (lookup.nativeShopifyOrderId && lookup.nativeShopifyOrderId !== TARGET_NATIVE_SHOPIFY_ORDER_ID) blockers.push('target_native_shopify_order_id_mismatch');
-  if (lookup.nativeFulfillmentTaskId && lookup.nativeFulfillmentTaskId !== TARGET_NATIVE_FULFILLMENT_TASK_ID) blockers.push('target_native_fulfillment_task_id_mismatch');
+  if (lookup.orderNumber !== contract.targetOrderNumber) blockers.push('target_order_number_mismatch');
+  const requireExactIds = contract.key === WATERMELON_IMPORT_CONTRACT.key;
+  if ((requireExactIds || lookup.customerAppOrderId) && lookup.customerAppOrderId !== contract.targetCustomerAppOrderId) blockers.push('target_customer_app_order_id_mismatch');
+  if ((requireExactIds || lookup.nativeShopifyOrderId) && lookup.nativeShopifyOrderId !== contract.targetNativeShopifyOrderId) blockers.push('target_native_shopify_order_id_mismatch');
+  if ((requireExactIds || lookup.nativeFulfillmentTaskId) && lookup.nativeFulfillmentTaskId !== contract.targetNativeFulfillmentTaskId) blockers.push('target_native_fulfillment_task_id_mismatch');
+  if (contract.key === WATERMELON_IMPORT_CONTRACT.key) {
+    if (lookup.importScope !== contract.importScope) blockers.push('import_scope_mismatch');
+    if (normalizeKey(lookup.recipeName) !== normalizeKey(contract.recipeName)) blockers.push('recipe_name_mismatch');
+    if (lookup.hubRecipeId !== contract.hubRecipeId) blockers.push('hub_recipe_id_mismatch');
+  }
   return blockers;
 }
 
-function gateFailure({ actorEmail, lookup }) {
+function gateFailure({ actorEmail, lookup, contract = LEGACY_IMPORT_CONTRACT }) {
   if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') return 'kill_switch_active';
   if (Deno.env.get(ENABLE_FLAG) !== 'true') return 'native_production_master_data_import_disabled';
-  if (normalizeText(Deno.env.get(POLICY_FLAG)) !== REQUIRED_POLICY) return 'non_stock_master_data_policy_required';
+  if (normalizeText(Deno.env.get(POLICY_FLAG)) !== contract.requiredGatePolicy) {
+    return contract.key === WATERMELON_IMPORT_CONTRACT.key
+      ? 'watermelon_recipe_import_policy_required'
+      : 'non_stock_master_data_policy_required';
+  }
 
   const allowedEmails = parseCsvSet(Deno.env.get(ALLOWED_EMAILS_FLAG) || '');
   if (allowedEmails.size === 0) return 'allowed_email_gate_required';
@@ -164,30 +248,46 @@ function gateFailure({ actorEmail, lookup }) {
     lookup.customerAppOrderId,
     lookup.nativeShopifyOrderId,
     lookup.nativeFulfillmentTaskId,
-    TARGET_CUSTOMER_APP_ORDER_ID,
-    TARGET_NATIVE_SHOPIFY_ORDER_ID,
-    TARGET_NATIVE_FULFILLMENT_TASK_ID,
+    contract.targetCustomerAppOrderId,
+    contract.targetNativeShopifyOrderId,
+    contract.targetNativeFulfillmentTaskId,
   ].map(normalizeLower).filter(Boolean);
   if (!candidates.some(candidate => allowlist.has(candidate))) return 'order_not_allowlisted';
+
+  if (contract.key === WATERMELON_IMPORT_CONTRACT.key) {
+    const entityAllowlist = parseCsvSet(Deno.env.get(ENTITY_ALLOWLIST_FLAG) || '');
+    if (entityAllowlist.size === 0) return 'entity_allowlist_required';
+    const entityCandidates = [
+      contract.recipeName,
+      contract.hubRecipeId,
+      `recipe:${contract.recipeName}`,
+      `hub_recipe:${contract.hubRecipeId}`,
+      WATERMELON_PREVIEW_MARKER,
+    ].map(normalizeLower).filter(Boolean);
+    if (!entityCandidates.some(candidate => entityAllowlist.has(candidate))) return 'entity_not_allowlisted';
+  }
   return null;
 }
 
-async function fetchFreshPreview(base44, lookup) {
+async function fetchFreshPreview(base44, lookup, contract = LEGACY_IMPORT_CONTRACT) {
   const secret = expectedPreviewSecret();
   if (!secret) {
     return { ok: false, status: 409, error_code: 'preview_secret_not_configured', data: null };
   }
 
+  const payload = {
+    mode: 'dry_run',
+    order_number: contract.targetOrderNumber,
+    customer_app_order_id: lookup.customerAppOrderId || contract.targetCustomerAppOrderId,
+    native_shopify_order_id: lookup.nativeShopifyOrderId || contract.targetNativeShopifyOrderId,
+    native_fulfillment_task_id: lookup.nativeFulfillmentTaskId || contract.targetNativeFulfillmentTaskId,
+    request_id: `${lookup.requestId || contract.key}:fresh_preview`,
+    _internal_secret: secret,
+  };
+  if (Array.isArray(contract.previewLineItems)) payload.line_items = contract.previewLineItems;
+
   try {
-    const response = await base44.asServiceRole.functions.invoke('previewNativeProductionMasterDataParity', {
-      mode: 'dry_run',
-      order_number: TARGET_ORDER_NUMBER,
-      customer_app_order_id: lookup.customerAppOrderId || TARGET_CUSTOMER_APP_ORDER_ID,
-      native_shopify_order_id: lookup.nativeShopifyOrderId || TARGET_NATIVE_SHOPIFY_ORDER_ID,
-      native_fulfillment_task_id: lookup.nativeFulfillmentTaskId || TARGET_NATIVE_FULFILLMENT_TASK_ID,
-      request_id: `${lookup.requestId || 'g31g'}:fresh_preview`,
-      _internal_secret: secret,
-    });
+    const response = await base44.asServiceRole.functions.invoke('previewNativeProductionMasterDataParity', payload);
     const data = response?.data || response;
     if (!data?.success) {
       return {
@@ -232,6 +332,21 @@ function entityCounts(rows) {
     acc[row.target_entity] = (acc[row.target_entity] || 0) + 1;
     return acc;
   }, {});
+}
+
+function rowsByEntity(rows, entityName) {
+  return (rows || []).filter(row => row.target_entity === entityName);
+}
+
+function createRowNames(rows, entityName) {
+  return rowsByEntity(rows, entityName).map(fieldValueForRow);
+}
+
+function hubRecipeMatch(preview, recipeName) {
+  return (preview?.hub_recipe_matches || []).find(row =>
+    normalizeKey(row?.requested_name) === normalizeKey(recipeName) ||
+    normalizeKey(row?.matches?.[0]?.name) === normalizeKey(recipeName)
+  ) || null;
 }
 
 function validatePayloadShape(entityName, payload) {
@@ -280,7 +395,78 @@ function validatePayloadShape(entityName, payload) {
   return blockers;
 }
 
-function validateImportPreview(preview) {
+function validateWatermelonImportPreview(preview) {
+  const blockers = [];
+  const warnings = [];
+  const importPreview = preview?.customer_app_non_stock_master_data_import_preview || {};
+  const createRows = Array.isArray(importPreview.create_rows) ? importPreview.create_rows : [];
+  const deferredRows = Array.isArray(importPreview.deferred_rows) ? importPreview.deferred_rows : [];
+  const blockedRows = Array.isArray(importPreview.blocked_rows) ? importPreview.blocked_rows : [];
+  const recipeRows = rowsByEntity(createRows, 'Recipe');
+  const nonRecipeRows = createRows.filter(row => row.target_entity !== 'Recipe');
+  const recipeRow = recipeRows[0] || null;
+  const recipePayload = recipeRow?.payload || {};
+  const hubRecipe = hubRecipeMatch(preview, WATERMELON_RECIPE_NAME);
+
+  if (!preview?.success) blockers.push('fresh_preview_failed');
+  if (preview?.order_number !== WATERMELON_TARGET_ORDER_NUMBER) blockers.push('fresh_preview_target_order_mismatch');
+  if (preview?.customer_app_order_id !== WATERMELON_TARGET_CUSTOMER_APP_ORDER_ID) blockers.push('fresh_preview_customer_app_order_id_mismatch');
+  if (preview?.native_shopify_order_id !== WATERMELON_TARGET_NATIVE_SHOPIFY_ORDER_ID) blockers.push('fresh_preview_native_shopify_order_id_mismatch');
+  if (preview?.native_fulfillment_task_id !== WATERMELON_TARGET_NATIVE_FULFILLMENT_TASK_ID) blockers.push('fresh_preview_native_task_id_mismatch');
+  if (!Array.isArray(preview?.line_item_names) || preview.line_item_names.length !== 1 || normalizeKey(preview.line_item_names[0]) !== normalizeKey(WATERMELON_RECIPE_NAME)) {
+    blockers.push('fresh_preview_not_watermelon_only');
+  }
+  if (!(preview?.missing_native_recipes || []).some(name => normalizeKey(name) === normalizeKey(WATERMELON_RECIPE_NAME))) blockers.push('watermelon_native_recipe_not_missing');
+  if (!hubRecipe || hubRecipe.status !== 'matched') blockers.push('hub_watermelon_recipe_missing');
+  if (hubRecipe?.matches?.[0]?.id !== WATERMELON_HUB_RECIPE_ID) blockers.push('hub_watermelon_recipe_id_mismatch');
+  if (preview?.non_stock_import_preview_ready !== true && importPreview.import_ready !== true) blockers.push('non_stock_import_preview_not_ready');
+  if (preview?.seed_packet_ready !== true && preview?.non_stock_master_data_seed_ready !== true) blockers.push('seed_packet_not_ready');
+  if (preview?.inventory_seed_policy !== REQUIRED_POLICY || importPreview.inventory_seed_policy !== REQUIRED_POLICY) blockers.push('inventory_seed_policy_mismatch');
+  if (preview?.yield_policy !== REQUIRED_YIELD_POLICY || importPreview.yield_policy !== REQUIRED_YIELD_POLICY) blockers.push('yield_policy_mismatch');
+  if (preview?.procurement_conversion_ready !== true || importPreview.procurement_conversion_ready !== true) blockers.push('procurement_conversion_not_ready');
+  if (preview?.yield_details_pending === true || importPreview.yield_details_pending === true) blockers.push('yield_details_should_not_be_pending');
+  if (preview?.inventory_deduction_ready !== false || importPreview.inventory_deduction_ready !== false) blockers.push('inventory_deduction_should_remain_held');
+  if (preview?.production_master_data_ready !== true) blockers.push('production_master_data_not_ready');
+
+  if (Number(importPreview.create_row_count) !== 1 || createRows.length !== 1) blockers.push('unexpected_create_row_count');
+  if (recipeRows.length !== 1) blockers.push('unexpected_Recipe_create_count');
+  if (nonRecipeRows.length > 0) blockers.push('unexpected_non_recipe_create_rows');
+  if (rowsByEntity(createRows, 'InventoryItem').length > 0) blockers.push('inventory_item_create_not_allowed');
+  if (rowsByEntity(createRows, 'IngredientYield').length > 0) blockers.push('ingredient_yield_create_not_allowed');
+  if (rowsByEntity(createRows, 'Bundle').length > 0) blockers.push('bundle_create_not_allowed');
+  if (deferredRows.length > 0) blockers.push('deferred_rows_not_allowed');
+  if (blockedRows.length > 0 || (importPreview.blockers || []).length > 0 || (preview?.blockers || []).length > 0) blockers.push('fresh_preview_contains_blockers');
+  if (!sameNameSet(createRowNames(createRows, 'Recipe'), [WATERMELON_RECIPE_NAME])) blockers.push('unexpected_Recipe_names');
+  if (recipeRow?.operation !== 'create_if_missing') blockers.push(`unsupported_operation:${recipeRow?.operation || 'missing'}`);
+  if (recipeRow?.import_ready !== true) blockers.push('watermelon_recipe_create_row_not_import_ready');
+  if (!recipeRow?.match_field || !recipeRow?.match_value) blockers.push('missing_match_contract:Recipe');
+  if (recipeRow?.source_hub_id !== WATERMELON_HUB_RECIPE_ID) blockers.push('watermelon_recipe_source_hub_id_mismatch');
+  blockers.push(...validatePayloadShape('Recipe', recipePayload).map(item => `Recipe:${WATERMELON_RECIPE_NAME}:${item}`));
+  if (normalizeKey(recipePayload.product_name) !== normalizeKey(WATERMELON_RECIPE_NAME)) blockers.push('watermelon_recipe_payload_name_mismatch');
+  if (numberOrNull(recipePayload.bottle_size_oz) !== 32) blockers.push('watermelon_recipe_bottle_size_mismatch');
+  if (numberOrNull(recipePayload.yield_factor) !== 1.05) blockers.push('watermelon_recipe_yield_factor_mismatch');
+  if (!Array.isArray(recipePayload.ingredients) || recipePayload.ingredients.length !== 1) blockers.push('watermelon_recipe_ingredient_count_mismatch');
+  const ingredient = recipePayload.ingredients?.[0] || {};
+  if (normalizeKey(ingredient.ingredient_name) !== normalizeKey('Watermelon')) blockers.push('watermelon_recipe_ingredient_name_mismatch');
+  if (numberOrNull(ingredient.quantity_oz) !== 32) blockers.push('watermelon_recipe_ingredient_quantity_mismatch');
+  if (normalizeLower(ingredient.unit) !== 'oz') blockers.push('watermelon_recipe_ingredient_unit_mismatch');
+  if (recipePayload.is_active !== true) blockers.push('watermelon_recipe_must_be_active');
+
+  if ((importPreview.warnings || []).includes('preview_only_no_master_data_import_performed')) {
+    warnings.push('fresh_preview_confirmed_read_only');
+  }
+
+  return {
+    ready: blockers.length === 0,
+    blockers: [...new Set(blockers)].slice(0, 80),
+    warnings: [...new Set(warnings.concat(importPreview.warnings || []))].slice(0, 80),
+    createRows,
+    deferredRows,
+    importPreview,
+  };
+}
+
+function validateLegacyImportPreview(preview) {
   const blockers = [];
   const warnings = [];
   const importPreview = preview?.customer_app_non_stock_master_data_import_preview || {};
@@ -346,6 +532,12 @@ function validateImportPreview(preview) {
   };
 }
 
+function validateImportPreview(preview, contract = LEGACY_IMPORT_CONTRACT) {
+  return contract.key === WATERMELON_IMPORT_CONTRACT.key
+    ? validateWatermelonImportPreview(preview)
+    : validateLegacyImportPreview(preview);
+}
+
 function matchFilterForRow(row) {
   const value = fieldValueForRow(row);
   if (row.target_entity === 'Recipe') return { product_name: value };
@@ -353,6 +545,46 @@ function matchFilterForRow(row) {
   if (row.target_entity === 'InventoryItem') return { ingredient: value };
   if (row.target_entity === 'IngredientYield') return { ingredient_name: value };
   return {};
+}
+
+function exactPolicyInputBlockers(body, contract = LEGACY_IMPORT_CONTRACT) {
+  const blockers = [];
+  if (contract.key !== WATERMELON_IMPORT_CONTRACT.key) return blockers;
+
+  if (normalizeText(body?.import_scope) !== WATERMELON_IMPORT_SCOPE) blockers.push('import_scope_required');
+  if (normalizeKey(body?.recipe_name || body?.product_or_recipe_name || body?.product_name) !== normalizeKey(WATERMELON_RECIPE_NAME)) blockers.push('recipe_name_required');
+  if (safeId(body?.hub_recipe_id, 120) !== WATERMELON_HUB_RECIPE_ID) blockers.push('hub_recipe_id_required');
+  if (normalizeText(body?.inventory_policy) !== REQUIRED_POLICY) blockers.push('inventory_policy_required');
+  if (normalizeText(body?.inventory_deduction_policy) !== 'HELD') blockers.push('inventory_deduction_policy_held_required');
+  if (normalizeText(body?.purchase_order_policy) !== 'HELD') blockers.push('purchase_order_policy_held_required');
+  if (normalizeText(body?.notification_policy) !== 'NO_NOTIFICATION') blockers.push('notification_policy_required');
+  if (normalizeText(body?.provider_call_policy) !== 'NO_PROVIDER_CALLS') blockers.push('provider_call_policy_required');
+  if (normalizeText(body?.hub_mutation_policy) !== 'NO_HUB_MUTATION') blockers.push('hub_mutation_policy_required');
+
+  const forbiddenTruthyFields = [
+    'create_inventory_item',
+    'update_inventory_item',
+    'create_ingredient_yield',
+    'update_ingredient_yield',
+    'create_bundle',
+    'update_bundle',
+    'create_production_batch',
+    'create_batch_compliance_log',
+    'deduct_inventory',
+    'create_purchase_order',
+    'send_notification',
+    'call_provider',
+    'call_shopify',
+    'call_stripe',
+    'sync_repair_replay',
+    'bulk_recipe_import',
+    'broad_master_data_import',
+  ];
+  for (const field of forbiddenTruthyFields) {
+    if (body?.[field] === true || normalizeText(body?.[field]) === 'true') blockers.push(`forbidden_input:${field}`);
+  }
+  if (body?.raw_hub_payload || body?.raw_shopify_payload || body?.raw_stripe_payload || body?.provider_payload) blockers.push('raw_payload_input_forbidden');
+  return blockers;
 }
 
 async function findExistingRow(base44, row) {
@@ -365,25 +597,38 @@ async function findExistingCommandLog(base44, idempotencyKey) {
   return base44.asServiceRole.entities.CommandLog.filter({ idempotency_key: idempotencyKey }, '-created_date', 1).catch(() => []);
 }
 
-async function createCommandLog({ base44, status, idempotencyKey, requestId, user, result, errorCode, errorMessage }) {
+async function createCommandLog({ base44, status, idempotencyKey, requestId, user, result, errorCode, errorMessage, contract = LEGACY_IMPORT_CONTRACT }) {
   const now = new Date().toISOString();
   return base44.asServiceRole.entities.CommandLog.create({
-    command_type: COMMAND_TYPE,
+    command_type: contract.commandType,
     command_source: 'customer_app_native_admin',
     status,
-    target_entity: 'ProductionMasterData',
-    target_id: TARGET_ORDER_NUMBER,
-    target_display_id: TARGET_ORDER_NUMBER,
+    target_entity: contract.targetEntity,
+    target_id: contract.targetId,
+    target_display_id: contract.targetDisplayId,
     actor_email: safeText(user?.email, 180) || null,
     actor_role: safeText(user?.role, 80) || null,
     actor_type: 'admin',
     payload: {
       exact_order_allowlist: true,
-      order_number: TARGET_ORDER_NUMBER,
+      order_number: contract.targetOrderNumber,
+      customer_app_order_id: contract.targetCustomerAppOrderId,
+      native_shopify_order_id: contract.targetNativeShopifyOrderId,
+      native_fulfillment_task_id: contract.targetNativeFulfillmentTaskId,
+      import_contract: contract.key,
+      import_scope: contract.importScope || 'G31I_COMPONENT_MASTER_DATA',
+      recipe_name: contract.recipeName || null,
+      hub_recipe_id: contract.hubRecipeId || null,
       inventory_seed_policy: REQUIRED_POLICY,
       yield_policy: REQUIRED_YIELD_POLICY,
-      approved_alias: 'The NuVira Trio -> NuVira Trio',
-      import_phase: 'G31I_component_master_data',
+      gate_policy: contract.requiredGatePolicy,
+      approved_alias: contract.key === LEGACY_IMPORT_CONTRACT.key ? 'The NuVira Trio -> NuVira Trio' : null,
+      import_phase: contract.key,
+      no_inventory_deduction: true,
+      no_purchase_order: true,
+      no_notification: true,
+      no_provider_calls: true,
+      no_hub_mutation: true,
     },
     result,
     error_code: errorCode || null,
@@ -394,9 +639,9 @@ async function createCommandLog({ base44, status, idempotencyKey, requestId, use
     submitted_at: now,
     completed_at: status === 'running' ? null : now,
     function_name: FUNCTION_NAME,
-    related_order_number: TARGET_ORDER_NUMBER,
-    related_order_id: TARGET_CUSTOMER_APP_ORDER_ID,
-    notes: 'G31I exact Customer App non-stock component production master-data import. Creates only approved Re-Nu/Aura/Oasis Recipe rows plus approved component InventoryItem and exact IngredientYield rows. No Black Salt/Beetroot yield, inventory deduction, PO, ProductionBatch, provider, notification, sync, repair, order, or task writes.',
+    related_order_number: contract.targetOrderNumber,
+    related_order_id: contract.targetCustomerAppOrderId,
+    notes: contract.notes,
   });
 }
 
@@ -467,13 +712,29 @@ Deno.serve(async (req) => {
     if (!parsed.ok) return jsonResponse({ success: false, error_code: 'malformed_json', writes_performed: false }, 400);
     const body = parsed.body || {};
     const lookup = getLookup(body);
+    const contract = resolveImportContract(body);
 
-    if (normalizeText(body.confirmation) !== CONFIRMATION_PHRASE || normalizeText(body.approval_phrase) !== OWNER_APPROVAL_PHRASE || normalizeLower(body.mode) !== 'live') {
+    if (
+      normalizeText(body.confirmation) !== contract.confirmationPhrase ||
+      (contract.ownerApprovalPhrase && normalizeText(body.approval_phrase) !== contract.ownerApprovalPhrase) ||
+      normalizeLower(body.mode) !== 'live'
+    ) {
       return jsonResponse({ success: false, error_code: 'confirmation_required', writes_performed: false }, 400);
     }
     if (!lookup.requestId) return jsonResponse({ success: false, error_code: 'request_id_required', writes_performed: false }, 400);
 
-    const targetBlockers = exactTargetBlockers(lookup);
+    const inputBlockers = exactPolicyInputBlockers(body, contract);
+    if (inputBlockers.length > 0) {
+      return jsonResponse({
+        success: false,
+        skipped: true,
+        error_code: 'exact_policy_inputs_required',
+        blockers: inputBlockers,
+        writes_performed: false,
+      }, 400);
+    }
+
+    const targetBlockers = exactTargetBlockers(lookup, contract);
     if (targetBlockers.length > 0) {
       return jsonResponse({ success: false, skipped: true, error_code: 'exact_target_required', blockers: targetBlockers, writes_performed: false }, 409);
     }
@@ -487,10 +748,10 @@ Deno.serve(async (req) => {
     }
     if (user?.role !== 'admin') return jsonResponse({ success: false, error_code: 'forbidden', writes_performed: false }, 403);
 
-    const gate = gateFailure({ actorEmail: user.email, lookup });
+    const gate = gateFailure({ actorEmail: user.email, lookup, contract });
     if (gate) return jsonResponse({ success: false, skipped: true, error_code: gate, writes_performed: false }, 409);
 
-    const idempotencyKey = `${COMMAND_TYPE}:${lookup.requestId}`;
+    const idempotencyKey = `${contract.commandType}:${lookup.requestId}`;
     const existingLogs = await findExistingCommandLog(base44, idempotencyKey);
     const existingLog = Array.isArray(existingLogs) && existingLogs.length > 0 ? existingLogs[0] : null;
     if (existingLog && existingLog.status !== 'failed') {
@@ -507,7 +768,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const freshPreview = await fetchFreshPreview(base44, lookup);
+    const freshPreview = await fetchFreshPreview(base44, lookup, contract);
     if (!freshPreview.ok) {
       return jsonResponse({
         success: false,
@@ -518,7 +779,7 @@ Deno.serve(async (req) => {
       }, freshPreview.status || 409);
     }
 
-    const validation = validateImportPreview(freshPreview.data);
+    const validation = validateImportPreview(freshPreview.data, contract);
     if (!validation.ready) {
       return jsonResponse({
         success: false,
@@ -547,15 +808,23 @@ Deno.serve(async (req) => {
       idempotencyKey,
       requestId: lookup.requestId,
       user,
-      result: {
-        writes_performed: false,
-        projected_create_row_count: validation.createRows.length,
-        projected_create_rows_by_entity: EXPECTED_CREATE_COUNTS,
-        deferred_rows: validation.deferredRows.map(row => ({ target_entity: row.target_entity, match_value: safeText(row.match_value, 120), reason: row.reason })),
-        inventory_seed_policy: REQUIRED_POLICY,
-        yield_policy: REQUIRED_YIELD_POLICY,
-      },
-    });
+        result: {
+          writes_performed: false,
+          projected_create_row_count: validation.createRows.length,
+          projected_create_rows_by_entity: entityCounts(validation.createRows),
+          deferred_rows: validation.deferredRows.map(row => ({ target_entity: row.target_entity, match_value: safeText(row.match_value, 120), reason: row.reason })),
+          inventory_seed_policy: REQUIRED_POLICY,
+          yield_policy: REQUIRED_YIELD_POLICY,
+          import_contract: contract.key,
+          recipe_name: contract.recipeName || null,
+          inventory_deducted: false,
+          purchase_orders_created: false,
+          provider_calls_performed: false,
+          notifications_sent: false,
+          hub_records_updated: false,
+        },
+        contract,
+      });
 
     let created = [];
     try {
@@ -599,9 +868,15 @@ Deno.serve(async (req) => {
         created_rows_by_entity: entityCounts(validation.createRows),
         created_rows: created,
         deferred_rows: validation.deferredRows.map(row => ({ target_entity: row.target_entity, match_value: safeText(row.match_value, 120), reason: row.reason })),
+        import_contract: contract.key,
+        recipe_name: contract.recipeName || null,
         inventory_seed_policy: REQUIRED_POLICY,
         yield_policy: REQUIRED_YIELD_POLICY,
-        stock_seeded_zero: true,
+        recipe_records_created: Number(entityCounts(validation.createRows).Recipe || 0),
+        inventory_item_records_created: Number(entityCounts(validation.createRows).InventoryItem || 0),
+        ingredient_yield_records_created: Number(entityCounts(validation.createRows).IngredientYield || 0),
+        bundle_records_created: Number(entityCounts(validation.createRows).Bundle || 0),
+        stock_seeded_zero: validation.createRows.some(row => row.target_entity === 'InventoryItem'),
         black_salt_yield_created: false,
         beetroot_yield_created: false,
         inventory_deducted: false,
@@ -626,16 +901,22 @@ Deno.serve(async (req) => {
       request_id: lookup.requestId,
       idempotency_key: idempotencyKey,
       command_log_id: safeId(commandLog?.id, 120) || null,
-      order_number: TARGET_ORDER_NUMBER,
+      order_number: contract.targetOrderNumber,
+      import_contract: contract.key,
+      recipe_name: contract.recipeName || null,
       writes_performed: true,
       created_row_count: created.length,
       created_rows_by_entity: entityCounts(validation.createRows),
       created_rows: created,
       deferred_row_count: validation.deferredRows.length,
       deferred_rows: validation.deferredRows.map(row => ({ target_entity: row.target_entity, match_value: safeText(row.match_value, 120), reason: row.reason })),
+      recipe_records_created: Number(entityCounts(validation.createRows).Recipe || 0),
+      inventory_item_records_created: Number(entityCounts(validation.createRows).InventoryItem || 0),
+      ingredient_yield_records_created: Number(entityCounts(validation.createRows).IngredientYield || 0),
+      bundle_records_created: Number(entityCounts(validation.createRows).Bundle || 0),
       inventory_seed_policy: REQUIRED_POLICY,
       yield_policy: REQUIRED_YIELD_POLICY,
-      stock_seeded_zero: true,
+      stock_seeded_zero: validation.createRows.some(row => row.target_entity === 'InventoryItem'),
       black_salt_yield_created: false,
       beetroot_yield_created: false,
       inventory_deducted: false,
