@@ -83,6 +83,10 @@ G33C-WM2-PATCH1 aligns the command preflight with the clean full-order G33C-WM1 
 
 For this command, the full-order preview is the canonical preflight evidence. The command filters that packet down to the exact Watermelon Juice `Recipe` create row and rejects any extra create, deferred, blocked, or unsafe rows. The exact Watermelon-only preview path remains non-authoritative for WM2 unless it is separately patched and verified.
 
+G33C-WM3-PATCH2 keeps the Recipe-only path aligned with that canonical evidence for procurement conversion. The broader nested import preview can report `procurement_conversion_ready:false` because inventory deduction and PurchaseOrder automation are intentionally held. That nested value must not block this exact Recipe-only import when the canonical packet proves Watermelon dependencies are already native: Watermelon `InventoryItem` present, Watermelon `IngredientYield` present, zero dependency create rows, zero deferred rows, zero blocked rows, inventory deduction held, and PurchaseOrder automation held.
+
+PATCH2 does not change broad G31G/G31I master-data import behavior and does not approve live import. It only changes the exact Watermelon Juice Recipe validation path so stale nested procurement conversion state cannot override clean exact dependency evidence.
+
 The fresh preview must satisfy all of the following:
 
 - `success:true`
@@ -98,6 +102,8 @@ The fresh preview must satisfy all of the following:
 - create rows zero `InventoryItem`
 - create rows zero `IngredientYield`
 - create rows zero `Bundle`
+- Watermelon `InventoryItem` already native / present
+- Watermelon `IngredientYield` already native / present
 - deferred rows zero
 - blocked rows zero
 - schema packet blockers zero
