@@ -312,6 +312,13 @@ assert.ok(fns.validateImportPreview(preview({ inventory_deduction_ready: true, c
 }
 
 {
+  const { status, json, scenario } = await invoke({ env: {}, storeArgs: { user: null } });
+  assert.equal(status, 401);
+  assert.equal(json.writes_performed, false);
+  assert.equal(scenario.store.writes.length, 0);
+}
+
+{
   const { status, json, scenario } = await invoke({ env: openEnv(), payload: body({ confirmation: 'wrong' }) });
   assert.equal(status, 400);
   assert.equal(json.error_code, 'confirmation_required');

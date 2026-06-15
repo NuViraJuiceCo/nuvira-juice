@@ -701,16 +701,19 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error_code: 'method_not_allowed', message: 'POST required', writes_performed: false }, 405);
     }
 
-    if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') {
-      return jsonResponse({ success: false, skipped: true, error_code: 'kill_switch_active', writes_performed: false }, 409);
-    }
-    if (Deno.env.get(ENABLE_FLAG) !== 'true') {
-      return jsonResponse({ success: false, skipped: true, error_code: 'native_production_master_data_import_disabled', writes_performed: false }, 409);
-    }
-
     const parsed = await readJsonBody(req);
     if (!parsed.ok) return jsonResponse({ success: false, error_code: 'malformed_json', writes_performed: false }, 400);
     const body = parsed.body || {};
+
+    const base44 = createClientFromRequest(req);
+    let user;
+    try {
+      user = await base44.auth.me();
+    } catch {
+      return jsonResponse({ success: false, error_code: 'unauthorized', writes_performed: false }, 401);
+    }
+    if (user?.role !== 'admin') return jsonResponse({ success: false, error_code: 'forbidden', writes_performed: false }, 403);
+
     const lookup = getLookup(body);
     const contract = resolveImportContract(body);
 
@@ -738,15 +741,6 @@ Deno.serve(async (req) => {
     if (targetBlockers.length > 0) {
       return jsonResponse({ success: false, skipped: true, error_code: 'exact_target_required', blockers: targetBlockers, writes_performed: false }, 409);
     }
-
-    const base44 = createClientFromRequest(req);
-    let user;
-    try {
-      user = await base44.auth.me();
-    } catch {
-      return jsonResponse({ success: false, error_code: 'unauthorized', writes_performed: false }, 401);
-    }
-    if (user?.role !== 'admin') return jsonResponse({ success: false, error_code: 'forbidden', writes_performed: false }, 403);
 
     const gate = gateFailure({ actorEmail: user.email, lookup, contract });
     if (gate) return jsonResponse({ success: false, skipped: true, error_code: gate, writes_performed: false }, 409);
