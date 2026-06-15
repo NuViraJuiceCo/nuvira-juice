@@ -100,6 +100,16 @@ function preview(overrides = {}) {
     native_fulfillment_task_id: IDS.nativeFulfillmentTaskId,
     line_item_names: ['Pineapple Juice', 'Watermelon Juice', 'RE-NU'],
     missing_native_recipes: ['Watermelon Juice'],
+    missing_native_inventory_items: [],
+    missing_native_ingredient_yields: [],
+    required_master_data_rows: [
+      { required_type: 'inventory', required_name: 'Watermelon', native_present: true, native_match_status: 'matched', mirror_readiness: 'already_native' },
+      { required_type: 'yield', required_name: 'Watermelon', native_present: true, native_match_status: 'matched', mirror_readiness: 'already_native' },
+    ],
+    seed_packet_rows: [
+      { entity_type: 'inventory', customer_app_target_name: 'Watermelon', status: 'already_native' },
+      { entity_type: 'yield', customer_app_target_name: 'Watermelon', status: 'already_native' },
+    ],
     production_master_data_ready: true,
     non_stock_master_data_seed_ready: true,
     seed_packet_ready: true,
@@ -319,22 +329,42 @@ assert.equal(fns.exactPolicyInputBlockers(body(), wmContract).length, 0);
 assert.ok(fns.exactPolicyInputBlockers(body({ purchase_order_policy: 'CREATE' }), wmContract).includes('purchase_order_policy_held_required'));
 assert.ok(fns.exactPolicyInputBlockers(body({ create_inventory_item: true }), wmContract).includes('forbidden_input:create_inventory_item'));
 assert.equal(fns.validateImportPreview(preview(), wmContract).ready, true);
+assert.equal(fns.validateImportPreview(preview({ customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, procurement_conversion_ready: false } }), wmContract).ready, true);
+assert.equal(fns.validateImportPreview(preview({
+  procurement_conversion_ready: false,
+  customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, procurement_conversion_ready: false },
+}), wmContract).ready, true);
 assert.equal(JSON.stringify(fns.resolveExactWatermelonRecipePreviewPacket(preview(), 'Watermelon Juice', IDS.hubRecipeId).createRows.map(row => row.match_value)), JSON.stringify(['Watermelon Juice']));
 assert.ok(fns.resolveExactWatermelonRecipePreviewPacket(exactOnlyHub404Preview(), 'Watermelon Juice', IDS.hubRecipeId).blockers.includes('hub_watermelon_recipe_missing'));
 assert.equal(fns.validateImportPreview(preview({ missing_native_recipes: [] }), wmContract).ready, false);
 assert.ok(fns.validateImportPreview(preview({ hub_recipe_matches: [] }), wmContract).blockers.includes('hub_watermelon_recipe_missing'));
+assert.ok(fns.validateImportPreview(preview({
+  procurement_conversion_ready: false,
+  missing_native_inventory_items: ['Watermelon'],
+  required_master_data_rows: [{ required_type: 'inventory', required_name: 'Watermelon', native_present: false }],
+  customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, procurement_conversion_ready: false },
+}), wmContract).blockers.includes('watermelon_inventory_item_missing'));
+assert.ok(fns.validateImportPreview(preview({
+  procurement_conversion_ready: false,
+  missing_native_ingredient_yields: ['Watermelon'],
+  required_master_data_rows: [{ required_type: 'yield', required_name: 'Watermelon', native_present: false }],
+  customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, procurement_conversion_ready: false },
+}), wmContract).blockers.includes('watermelon_ingredient_yield_missing'));
 assert.ok(fns.validateImportPreview(preview({ hub_recipe_matches: [{ requested_name: 'Watermelon Juice', status: 'matched', matches: [{ id: 'wrong_hub_recipe', name: 'Watermelon Juice' }] }] }), wmContract).blockers.includes('hub_watermelon_recipe_id_mismatch'));
 assert.ok(fns.validateImportPreview(preview({ createRows: [] }), wmContract).blockers.includes('unexpected_create_row_count'));
 assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), recipeRow({ match_value: 'Watermelon Juice 2', payload: { ...recipeRow().payload, product_name: 'Watermelon Juice 2' } })] }), wmContract).blockers.includes('unexpected_Recipe_create_count'));
-assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), inventoryRow()] }), wmContract).blockers.includes('inventory_item_create_not_allowed'));
-assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), yieldRow()] }), wmContract).blockers.includes('ingredient_yield_create_not_allowed'));
-assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), bundleRow()] }), wmContract).blockers.includes('bundle_create_not_allowed'));
+assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), inventoryRow()] }), wmContract).blockers.includes('unexpected_inventory_item_create_row'));
+assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), yieldRow()] }), wmContract).blockers.includes('unexpected_ingredient_yield_create_row'));
+assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), bundleRow()] }), wmContract).blockers.includes('unexpected_bundle_create_row'));
 assert.ok(fns.validateImportPreview(preview({ deferredRows: [{ target_entity: 'IngredientYield', match_value: 'Watermelon' }] }), wmContract).blockers.includes('deferred_rows_not_allowed'));
+assert.ok(fns.validateImportPreview(preview({ blockedRows: [{ target_entity: 'Recipe', match_value: 'Watermelon Juice', blockers: ['blocked_for_test'] }] }), wmContract).blockers.includes('blocked_rows_not_allowed'));
+assert.ok(fns.validateImportPreview(preview({ schema_packet_blockers: ['schema_for_test'] }), wmContract).blockers.includes('schema_packet_blockers_present'));
 assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow({ payload: { ...recipeRow().payload, raw_payload: { unsafe: true } } })] }), wmContract).blockers.some(item => item.includes('unapproved_Recipe_field:raw_payload')));
-assert.ok(fns.validateImportPreview(preview({ inventory_deduction_ready: true, customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, inventory_deduction_ready: true } }), wmContract).blockers.includes('inventory_deduction_should_remain_held'));
-assert.ok(fns.validateImportPreview(preview({ customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, purchase_order_automation_ready: true } }), wmContract).blockers.includes('purchase_order_should_remain_held'));
-assert.ok(fns.validateImportPreview(preview({ provider_call_impact: true }), wmContract).blockers.includes('provider_calls_should_remain_disabled'));
-assert.ok(fns.validateImportPreview(preview({ warnings: [], safety: { notifications_sent: true }, customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, warnings: [], safety: { notifications_sent: true } } }), wmContract).blockers.includes('notifications_held_evidence_missing'));
+assert.ok(fns.validateImportPreview(preview({ inventory_deduction_ready: true, customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, inventory_deduction_ready: true } }), wmContract).blockers.includes('inventory_deduction_not_held'));
+assert.ok(fns.validateImportPreview(preview({ customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, purchase_order_automation_ready: true } }), wmContract).blockers.includes('purchase_order_not_held'));
+assert.ok(fns.validateImportPreview(preview({ provider_call_impact: true }), wmContract).blockers.includes('provider_calls_not_allowed'));
+assert.ok(fns.validateImportPreview(preview({ hub_mutation_performed: true }), wmContract).blockers.includes('hub_mutation_not_allowed'));
+assert.ok(fns.validateImportPreview(preview({ warnings: [], safety: { notifications_sent: true }, customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, warnings: [], safety: { notifications_sent: true } } }), wmContract).blockers.includes('notifications_not_held'));
 
 {
   const { status, json, scenario } = await invoke({ env: {} });
@@ -411,21 +441,21 @@ assert.ok(fns.validateImportPreview(preview({ warnings: [], safety: { notificati
 {
   const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { freshPreview: preview({ createRows: [recipeRow(), inventoryRow()] }) } });
   assert.equal(status, 409);
-  assert.ok(json.blockers.includes('inventory_item_create_not_allowed'));
+  assert.ok(json.blockers.includes('unexpected_inventory_item_create_row'));
   assert.equal(scenario.store.writes.length, 0);
 }
 
 {
   const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { freshPreview: preview({ createRows: [recipeRow(), yieldRow()] }) } });
   assert.equal(status, 409);
-  assert.ok(json.blockers.includes('ingredient_yield_create_not_allowed'));
+  assert.ok(json.blockers.includes('unexpected_ingredient_yield_create_row'));
   assert.equal(scenario.store.writes.length, 0);
 }
 
 {
   const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { freshPreview: preview({ createRows: [recipeRow(), bundleRow()] }) } });
   assert.equal(status, 409);
-  assert.ok(json.blockers.includes('bundle_create_not_allowed'));
+  assert.ok(json.blockers.includes('unexpected_bundle_create_row'));
   assert.equal(scenario.store.writes.length, 0);
 }
 

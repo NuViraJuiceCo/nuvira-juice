@@ -339,6 +339,97 @@ function rowsByEntity(rows, entityName) {
   return (rows || []).filter(row => row.target_entity === entityName);
 }
 
+function rowEntityKey(row) {
+  return normalizeKey(row?.target_entity || row?.entity_type || row?.required_type || '');
+}
+
+function rowsByEntityKey(rows, ...entityNames) {
+  const wanted = new Set(entityNames.map(normalizeKey));
+  return (rows || []).filter(row => wanted.has(rowEntityKey(row)));
+}
+
+function rowNameValue(row) {
+  return row?.match_value || row?.customer_app_target_name || row?.required_name || row?.hub_name || row?.name;
+}
+
+function namesInclude(values, targetName) {
+  return (Array.isArray(values) ? values : []).some(value => normalizeKey(value) === normalizeKey(targetName));
+}
+
+function dependencyEvidenceRows(preview, dependencyType, dependencyName) {
+  const importPreview = preview?.customer_app_non_stock_master_data_import_preview || {};
+  const gapClosure = preview?.master_data_gap_closure_preview || {};
+  const rows = [
+    ...(Array.isArray(preview?.required_master_data_rows) ? preview.required_master_data_rows : []),
+    ...(Array.isArray(preview?.mirror_ready_rows) ? preview.mirror_ready_rows : []),
+    ...(Array.isArray(preview?.seed_packet_rows) ? preview.seed_packet_rows : []),
+    ...(Array.isArray(importPreview?.skipped_rows) ? importPreview.skipped_rows : []),
+    ...(Array.isArray(gapClosure?.policy_adjusted_required_rows) ? gapClosure.policy_adjusted_required_rows : []),
+    ...(Array.isArray(gapClosure?.seed_packet_rows) ? gapClosure.seed_packet_rows : []),
+  ];
+  const typeKeys = dependencyType === 'inventory'
+    ? new Set(['inventory', 'inventoryitem'])
+    : new Set(['yield', 'ingredientyield']);
+  return rows.filter(row => typeKeys.has(rowEntityKey(row)) && normalizeKey(rowNameValue(row)) === normalizeKey(dependencyName));
+}
+
+function dependencyAlreadyNative(preview, dependencyType, dependencyName) {
+  const rows = dependencyEvidenceRows(preview, dependencyType, dependencyName);
+  return rows.some(row =>
+    row?.native_present === true ||
+    row?.native_match_status === 'matched' ||
+    row?.mirror_readiness === 'already_native' ||
+    row?.status === 'already_native' ||
+    row?.reason === 'already_native_no_seed'
+  );
+}
+
+function exactRecipeOnlyProcurementEvidence(preview, createRows, deferredRows, blockedRows) {
+  const importPreview = preview?.customer_app_non_stock_master_data_import_preview || {};
+  const blockers = [];
+  const dependencyName = 'Watermelon';
+  const inventoryCreateRows = rowsByEntityKey(createRows, 'InventoryItem', 'inventory');
+  const ingredientYieldCreateRows = rowsByEntityKey(createRows, 'IngredientYield', 'yield');
+  const bundleCreateRows = rowsByEntityKey(createRows, 'Bundle', 'bundle');
+  const explicitInventoryMissing = namesInclude(preview?.missing_native_inventory_items, dependencyName) || dependencyEvidenceRows(preview, 'inventory', dependencyName).some(row => row?.native_present === false && row?.status !== 'already_native');
+  const explicitYieldMissing = namesInclude(preview?.missing_native_ingredient_yields, dependencyName) || dependencyEvidenceRows(preview, 'yield', dependencyName).some(row => row?.native_present === false && row?.status !== 'already_native');
+  const inventoryPresent = dependencyAlreadyNative(preview, 'inventory', dependencyName) || (Array.isArray(preview?.missing_native_inventory_items) && !namesInclude(preview.missing_native_inventory_items, dependencyName));
+  const yieldPresent = dependencyAlreadyNative(preview, 'yield', dependencyName) || (Array.isArray(preview?.missing_native_ingredient_yields) && !namesInclude(preview.missing_native_ingredient_yields, dependencyName));
+  const rootProcurementReady = preview?.procurement_conversion_ready === true;
+  const inventoryDeductionHeld = preview?.inventory_deduction_ready === false && importPreview.inventory_deduction_ready === false;
+  const purchaseOrderHeld = preview?.purchase_order_ready !== true &&
+    importPreview?.purchase_order_ready !== true &&
+    importPreview?.purchase_order_automation_ready !== true &&
+    safetyFlag(preview, 'purchase_orders_created', false) !== true;
+
+  if (explicitInventoryMissing) blockers.push('watermelon_inventory_item_missing');
+  if (explicitYieldMissing) blockers.push('watermelon_ingredient_yield_missing');
+  if (inventoryCreateRows.length > 0) blockers.push('unexpected_inventory_item_create_row');
+  if (ingredientYieldCreateRows.length > 0) blockers.push('unexpected_ingredient_yield_create_row');
+  if (bundleCreateRows.length > 0) blockers.push('unexpected_bundle_create_row');
+  if ((deferredRows || []).length > 0) blockers.push('deferred_rows_not_allowed');
+  if ((blockedRows || []).length > 0) blockers.push('blocked_rows_not_allowed');
+  if (!inventoryDeductionHeld) blockers.push('inventory_deduction_not_held');
+  if (!purchaseOrderHeld) blockers.push('purchase_order_not_held');
+
+  const dependencyEvidenceSatisfied = rootProcurementReady || (inventoryPresent && yieldPresent);
+  if (!dependencyEvidenceSatisfied) {
+    if (!inventoryPresent) blockers.push('watermelon_inventory_item_missing');
+    if (!yieldPresent) blockers.push('watermelon_ingredient_yield_missing');
+  }
+
+  return {
+    ready: blockers.length === 0,
+    blockers: [...new Set(blockers)],
+    rootProcurementReady,
+    inventoryPresent,
+    yieldPresent,
+    inventoryCreateCount: inventoryCreateRows.length,
+    ingredientYieldCreateCount: ingredientYieldCreateRows.length,
+    bundleCreateCount: bundleCreateRows.length,
+  };
+}
+
 function createRowNames(rows, entityName) {
   return rowsByEntity(rows, entityName).map(fieldValueForRow);
 }
@@ -450,30 +541,25 @@ function resolveExactWatermelonRecipePreviewPacket(preview, recipeName = WATERME
   if (preview?.seed_packet_ready !== true && preview?.non_stock_master_data_seed_ready !== true) blockers.push('seed_packet_not_ready');
   if (preview?.inventory_seed_policy !== REQUIRED_POLICY || importPreview.inventory_seed_policy !== REQUIRED_POLICY) blockers.push('inventory_seed_policy_mismatch');
   if (preview?.yield_policy !== REQUIRED_YIELD_POLICY || importPreview.yield_policy !== REQUIRED_YIELD_POLICY) blockers.push('yield_policy_mismatch');
-  if (preview?.procurement_conversion_ready !== true || importPreview.procurement_conversion_ready !== true) blockers.push('procurement_conversion_not_ready');
+  const exactProcurementEvidence = exactRecipeOnlyProcurementEvidence(preview, createRows, deferredRows, blockedRows);
+  blockers.push(...exactProcurementEvidence.blockers);
   if (preview?.yield_details_pending === true || importPreview.yield_details_pending === true) blockers.push('yield_details_should_not_be_pending');
-  if (preview?.inventory_deduction_ready !== false || importPreview.inventory_deduction_ready !== false) blockers.push('inventory_deduction_should_remain_held');
-  if (
-    preview?.purchase_order_ready === true ||
-    importPreview?.purchase_order_ready === true ||
-    importPreview?.purchase_order_automation_ready === true ||
-    safetyFlag(preview, 'purchase_orders_created', false) === true
-  ) blockers.push('purchase_order_should_remain_held');
   if (preview?.production_master_data_ready !== true) blockers.push('production_master_data_not_ready');
   if (schemaPacketBlockers.length > 0) blockers.push('schema_packet_blockers_present');
-  if (safetyFlag(preview, 'provider_call_impact', false) === true || safetyFlag(preview, 'provider_calls_performed', false) === true) blockers.push('provider_calls_should_remain_disabled');
-  if (safetyFlag(preview, 'hub_mutation_performed', false) === true || safetyFlag(preview, 'hub_records_updated', false) === true || safetyFlag(preview, 'hub_bridge_modified', false) === true) blockers.push('hub_mutation_should_remain_disabled');
-  if (!notificationHeld(preview)) blockers.push('notifications_held_evidence_missing');
+  if (safetyFlag(preview, 'provider_call_impact', false) === true || safetyFlag(preview, 'provider_calls_performed', false) === true) blockers.push('provider_calls_not_allowed');
+  if (safetyFlag(preview, 'hub_mutation_performed', false) === true || safetyFlag(preview, 'hub_records_updated', false) === true || safetyFlag(preview, 'hub_bridge_modified', false) === true) blockers.push('hub_mutation_not_allowed');
+  if (!notificationHeld(preview)) blockers.push('notifications_not_held');
 
   if (Number(importPreview.create_row_count) !== 1 || createRows.length !== 1) blockers.push('unexpected_create_row_count');
   if (recipeRows.length !== 1) blockers.push('unexpected_Recipe_create_count');
   if (exactRecipeRows.length !== 1) blockers.push('unexpected_watermelon_Recipe_create_count');
   if (nonRecipeRows.length > 0) blockers.push('unexpected_non_recipe_create_rows');
-  if (rowsByEntity(createRows, 'InventoryItem').length > 0) blockers.push('inventory_item_create_not_allowed');
-  if (rowsByEntity(createRows, 'IngredientYield').length > 0) blockers.push('ingredient_yield_create_not_allowed');
-  if (rowsByEntity(createRows, 'Bundle').length > 0) blockers.push('bundle_create_not_allowed');
+  if (rowsByEntity(createRows, 'InventoryItem').length > 0) blockers.push('unexpected_inventory_item_create_row');
+  if (rowsByEntity(createRows, 'IngredientYield').length > 0) blockers.push('unexpected_ingredient_yield_create_row');
+  if (rowsByEntity(createRows, 'Bundle').length > 0) blockers.push('unexpected_bundle_create_row');
   if (deferredRows.length > 0) blockers.push('deferred_rows_not_allowed');
-  if (blockedRows.length > 0 || (importPreview.blockers || []).length > 0 || (preview?.blockers || []).length > 0) blockers.push('fresh_preview_contains_blockers');
+  if (blockedRows.length > 0) blockers.push('blocked_rows_not_allowed');
+  if ((importPreview.blockers || []).length > 0 || (preview?.blockers || []).length > 0) blockers.push('fresh_preview_contains_blockers');
   if (!sameNameSet(createRowNames(createRows, 'Recipe'), [recipeName])) blockers.push('unexpected_Recipe_names');
   if (recipeRow?.operation !== 'create_if_missing') blockers.push(`unsupported_operation:${recipeRow?.operation || 'missing'}`);
   if (recipeRow?.import_ready !== true) blockers.push('watermelon_recipe_create_row_not_import_ready');
