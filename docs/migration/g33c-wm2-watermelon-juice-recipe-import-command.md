@@ -79,10 +79,14 @@ Do not broaden these gates.
 
 Before any future write, the command invokes `previewNativeProductionMasterDataParity` through the Base44 service-role function invocation path. It does not self-fetch over public HTTP.
 
+G33C-WM2-PATCH1 aligns the command preflight with the clean full-order G33C-WM1 preview path. The earlier exact Watermelon-only `line_items` preview shape could return `hub_master_data_http_404` for the single-name Hub lookup even though the full-order WM1 preview found the exact Hub Recipe `69ed8a1fab9a16f8772096ec`.
+
+For this command, the full-order preview is the canonical preflight evidence. The command filters that packet down to the exact Watermelon Juice `Recipe` create row and rejects any extra create, deferred, blocked, or unsafe rows. The exact Watermelon-only preview path remains non-authoritative for WM2 unless it is separately patched and verified.
+
 The fresh preview must satisfy all of the following:
 
 - `success:true`
-- Watermelon-only line item packet
+- full-order `NV-MP5SOQLJ` packet includes `Watermelon Juice`
 - order and native ids match the approved target
 - native Watermelon Juice Recipe missing
 - Hub Watermelon Juice Recipe present
@@ -90,14 +94,19 @@ The fresh preview must satisfy all of the following:
 - `non_stock_import_preview_ready:true`
 - `seed_packet_ready:true`
 - create rows exactly one `Recipe`
+- the single `Recipe` create row is exactly `Watermelon Juice`
 - create rows zero `InventoryItem`
 - create rows zero `IngredientYield`
 - create rows zero `Bundle`
 - deferred rows zero
 - blocked rows zero
+- schema packet blockers zero
 - `inventory_policy=NON_STOCK_MASTER_DATA_ONLY`
 - `inventory_deduction_ready:false`
 - `purchase_order_ready:false`
+- provider calls disabled
+- notifications held
+- Hub mutation disabled
 
 If any condition fails, the command fails closed with `writes_performed:false`.
 
