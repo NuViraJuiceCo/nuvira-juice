@@ -21,7 +21,7 @@ const IDS = {
 function loadHarness({ env = {} } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
-  source += `\nglobalThis.__exports = { resolveImportContract, exactPolicyInputBlockers, exactTargetBlockers, gateFailure, fetchFreshPreview, validateImportPreview, validateWatermelonImportPreview, entityCounts } ;\n`;
+  source += `\nglobalThis.__exports = { resolveImportContract, exactPolicyInputBlockers, exactTargetBlockers, gateFailure, fetchFreshPreview, validateImportPreview, validateWatermelonImportPreview, resolveExactWatermelonRecipePreviewPacket, entityCounts } ;\n`;
   const context = vm.createContext({
     console, URL, URLSearchParams, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON, Error, Response, Promise,
     structuredClone,
@@ -98,7 +98,7 @@ function preview(overrides = {}) {
     customer_app_order_id: IDS.customerAppOrderId,
     native_shopify_order_id: IDS.nativeShopifyOrderId,
     native_fulfillment_task_id: IDS.nativeFulfillmentTaskId,
-    line_item_names: ['Watermelon Juice'],
+    line_item_names: ['Pineapple Juice', 'Watermelon Juice', 'RE-NU'],
     missing_native_recipes: ['Watermelon Juice'],
     production_master_data_ready: true,
     non_stock_master_data_seed_ready: true,
@@ -137,6 +137,39 @@ function preview(overrides = {}) {
     },
     ...overrides,
   };
+}
+
+function exactOnlyHub404Preview() {
+  return preview({
+    line_item_count: 1,
+    line_item_names: ['Watermelon Juice'],
+    production_master_data_ready: false,
+    non_stock_master_data_seed_ready: false,
+    seed_packet_ready: false,
+    non_stock_import_preview_ready: false,
+    hub_recipe_matches: [],
+    mirror_blockers: ['hub_missing:recipe:Watermelon Juice', 'hub_master_data_http_404'],
+    blockers: ['hub_master_data_http_404', 'missing_hub_recipe:Watermelon Juice'],
+    hub_lookup: { available: false, error_code: 'hub_master_data_http_404' },
+    createRows: [],
+    blockedRows: [{ target_entity: 'recipe', match_value: 'Watermelon Juice', blockers: ['missing_hub_recipe:Watermelon Juice'] }],
+    customer_app_non_stock_master_data_import_preview: {
+      import_ready: false,
+      inventory_seed_policy: 'NON_STOCK_MASTER_DATA_ONLY',
+      yield_policy: 'DEFER_DETAILED_PURCHASE_CONVERSION_VALUES',
+      procurement_conversion_ready: false,
+      yield_details_pending: false,
+      inventory_deduction_ready: false,
+      purchase_order_automation_ready: false,
+      create_row_count: 0,
+      create_rows: [],
+      deferred_row_count: 0,
+      deferred_rows: [],
+      blocked_rows: [{ target_entity: 'recipe', match_value: 'Watermelon Juice', blockers: ['missing_hub_recipe:Watermelon Juice'] }],
+      blockers: ['missing_hub_recipe:Watermelon Juice'],
+      warnings: ['preview_only_no_master_data_import_performed'],
+    },
+  });
 }
 
 function body(overrides = {}) {
@@ -244,7 +277,7 @@ function makeStore({ user = { role: 'admin', email: 'admin@example.test' }, fres
           store.previewCalls.push({ name, payload });
           assert.equal(name, 'previewNativeProductionMasterDataParity');
           assert.equal(payload.order_number, IDS.orderNumber);
-          assert.equal(JSON.stringify(payload.line_items), JSON.stringify([{ title: 'Watermelon Juice', quantity: 1 }]));
+          assert.equal(Object.hasOwn(payload, 'line_items'), false, 'WM2 command preflight must use full-order canonical preview');
           assert.equal(payload._internal_secret, 'preview-secret');
           return { data: freshPreview };
         } },
@@ -286,15 +319,22 @@ assert.equal(fns.exactPolicyInputBlockers(body(), wmContract).length, 0);
 assert.ok(fns.exactPolicyInputBlockers(body({ purchase_order_policy: 'CREATE' }), wmContract).includes('purchase_order_policy_held_required'));
 assert.ok(fns.exactPolicyInputBlockers(body({ create_inventory_item: true }), wmContract).includes('forbidden_input:create_inventory_item'));
 assert.equal(fns.validateImportPreview(preview(), wmContract).ready, true);
+assert.equal(JSON.stringify(fns.resolveExactWatermelonRecipePreviewPacket(preview(), 'Watermelon Juice', IDS.hubRecipeId).createRows.map(row => row.match_value)), JSON.stringify(['Watermelon Juice']));
+assert.ok(fns.resolveExactWatermelonRecipePreviewPacket(exactOnlyHub404Preview(), 'Watermelon Juice', IDS.hubRecipeId).blockers.includes('hub_watermelon_recipe_missing'));
 assert.equal(fns.validateImportPreview(preview({ missing_native_recipes: [] }), wmContract).ready, false);
 assert.ok(fns.validateImportPreview(preview({ hub_recipe_matches: [] }), wmContract).blockers.includes('hub_watermelon_recipe_missing'));
+assert.ok(fns.validateImportPreview(preview({ hub_recipe_matches: [{ requested_name: 'Watermelon Juice', status: 'matched', matches: [{ id: 'wrong_hub_recipe', name: 'Watermelon Juice' }] }] }), wmContract).blockers.includes('hub_watermelon_recipe_id_mismatch'));
 assert.ok(fns.validateImportPreview(preview({ createRows: [] }), wmContract).blockers.includes('unexpected_create_row_count'));
+assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), recipeRow({ match_value: 'Watermelon Juice 2', payload: { ...recipeRow().payload, product_name: 'Watermelon Juice 2' } })] }), wmContract).blockers.includes('unexpected_Recipe_create_count'));
 assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), inventoryRow()] }), wmContract).blockers.includes('inventory_item_create_not_allowed'));
 assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), yieldRow()] }), wmContract).blockers.includes('ingredient_yield_create_not_allowed'));
 assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow(), bundleRow()] }), wmContract).blockers.includes('bundle_create_not_allowed'));
 assert.ok(fns.validateImportPreview(preview({ deferredRows: [{ target_entity: 'IngredientYield', match_value: 'Watermelon' }] }), wmContract).blockers.includes('deferred_rows_not_allowed'));
 assert.ok(fns.validateImportPreview(preview({ createRows: [recipeRow({ payload: { ...recipeRow().payload, raw_payload: { unsafe: true } } })] }), wmContract).blockers.some(item => item.includes('unapproved_Recipe_field:raw_payload')));
 assert.ok(fns.validateImportPreview(preview({ inventory_deduction_ready: true, customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, inventory_deduction_ready: true } }), wmContract).blockers.includes('inventory_deduction_should_remain_held'));
+assert.ok(fns.validateImportPreview(preview({ customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, purchase_order_automation_ready: true } }), wmContract).blockers.includes('purchase_order_should_remain_held'));
+assert.ok(fns.validateImportPreview(preview({ provider_call_impact: true }), wmContract).blockers.includes('provider_calls_should_remain_disabled'));
+assert.ok(fns.validateImportPreview(preview({ warnings: [], safety: { notifications_sent: true }, customer_app_non_stock_master_data_import_preview: { ...preview().customer_app_non_stock_master_data_import_preview, warnings: [], safety: { notifications_sent: true } } }), wmContract).blockers.includes('notifications_held_evidence_missing'));
 
 {
   const { status, json, scenario } = await invoke({ env: {} });
@@ -356,6 +396,13 @@ assert.ok(fns.validateImportPreview(preview({ inventory_deduction_ready: true, c
 
 {
   const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { freshPreview: preview({ hub_recipe_matches: [] }) } });
+  assert.equal(status, 409);
+  assert.ok(json.blockers.includes('hub_watermelon_recipe_missing'));
+  assert.equal(scenario.store.writes.length, 0);
+}
+
+{
+  const { status, json, scenario } = await invoke({ env: openEnv(), storeArgs: { freshPreview: exactOnlyHub404Preview() } });
   assert.equal(status, 409);
   assert.ok(json.blockers.includes('hub_watermelon_recipe_missing'));
   assert.equal(scenario.store.writes.length, 0);
