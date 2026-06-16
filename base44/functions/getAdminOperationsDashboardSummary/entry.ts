@@ -6,6 +6,7 @@ const MAX_RANGE_DAYS = 31;
 const VALID_PRESETS = new Set(['today', 'last_7_days', 'last_30_days']);
 const CHICAGO_TZ = 'America/Chicago';
 const G39N_DIAGNOSTICS_MARKER = 'g39n_operations_dashboard_aggregate_diagnostics';
+const G39Q_DELIVERY_COMPLETED_MARKER = 'g39q_delivery_completed_in_range_route_date_guard';
 
 const G39N_AGGREGATE_SPECS = Object.freeze([
   {
@@ -392,6 +393,7 @@ function aggregateDiagnosticForSpec({
   currentDisplaySource,
   requestedRange,
   hubRange,
+  deliveryCompletedGuard,
 }) {
   const displayedValue = summaryAggregateValue(displayedSummary, spec);
   const nativeValue = summaryAggregateValue(nativeSummary, spec);
@@ -416,7 +418,7 @@ function aggregateDiagnosticForSpec({
     ? (blocker || mismatchCategory || `${spec.domain || 'aggregate'}_current_display_preserved`)
     : null;
 
-  return {
+  const diagnostic = {
     aggregate_name: spec.name,
     displayed_value: displayedValue,
     current_display_source: currentDisplaySource,
@@ -432,6 +434,30 @@ function aggregateDiagnosticForSpec({
     blocker,
     recommendation: spec.recommendation || 'keep_current_display_until_aggregate_parity_is_proven',
   };
+
+  if (spec.name === 'delivery.completed_in_range' && deliveryCompletedGuard) {
+    const guardMismatch = Boolean(deliveryCompletedGuard.mismatch_guard);
+    return {
+      ...diagnostic,
+      displayed_value: deliveryCompletedGuard.final_value,
+      current_display_source: deliveryCompletedGuard.display_source,
+      native_value: deliveryCompletedGuard.native_value,
+      hub_value: deliveryCompletedGuard.hub_value,
+      comparison_available: deliveryCompletedGuard.comparison_available,
+      mismatch_detected: guardMismatch,
+      mismatch_category: guardMismatch ? 'delivered_completed_semantic_mismatch' : null,
+      source_of_truth: deliveryCompletedGuard.guard_passed ? 'native_route_date' : diagnostic.source_of_truth,
+      native_first_ready: deliveryCompletedGuard.guard_passed,
+      fallback_required: !deliveryCompletedGuard.guard_passed,
+      review_required: deliveryCompletedGuard.guard_passed ? false : diagnostic.review_required,
+      blocker: deliveryCompletedGuard.guard_passed ? null : diagnostic.blocker || deliveryCompletedGuard.guard_reason,
+      recommendation: deliveryCompletedGuard.guard_passed
+        ? 'native_route_date_semantic_applied'
+        : diagnostic.recommendation,
+    };
+  }
+
+  return diagnostic;
 }
 
 function buildOperationsDashboardDiagnostics({
@@ -441,6 +467,7 @@ function buildOperationsDashboardDiagnostics({
   currentDisplaySource,
   requestedRange,
   hubRange,
+  deliveryCompletedGuard,
 }) {
   const aggregateDiagnostics = G39N_AGGREGATE_SPECS.map(spec => aggregateDiagnosticForSpec({
     spec,
@@ -450,6 +477,7 @@ function buildOperationsDashboardDiagnostics({
     currentDisplaySource,
     requestedRange,
     hubRange,
+    deliveryCompletedGuard,
   }));
 
   const aggregateMismatchCategories = {};
@@ -500,10 +528,23 @@ function buildOperationsDashboardDiagnostics({
   return {
     operations_dashboard_diagnostics_enabled: true,
     operations_dashboard_diagnostics_marker: G39N_DIAGNOSTICS_MARKER,
+    operations_dashboard_delivery_completed_marker: deliveryCompletedGuard?.marker || G39Q_DELIVERY_COMPLETED_MARKER,
     native_first_enabled: false,
     hub_primary_enabled: true,
     hub_fallback_active: true,
     dashboard_source_mode: 'current_behavior_with_diagnostics',
+    delivery_completed_in_range_native_primary_enabled: deliveryCompletedGuard?.enabled === true,
+    delivery_completed_in_range_guard_passed: deliveryCompletedGuard?.guard_passed === true,
+    delivery_completed_in_range_guard_reason: deliveryCompletedGuard?.guard_reason || 'native_route_date_guard_not_evaluated',
+    delivery_completed_in_range_display_source: deliveryCompletedGuard?.display_source || currentDisplaySource,
+    delivery_completed_in_range_semantic: 'route_delivery_date_completed_status',
+    completed_delivery_date_bucket: 'delivery_date_then_scheduled_date_then_assigned_delivery_date',
+    completed_delivery_native_source: 'native_fulfillment_task_route_date',
+    completed_delivery_hub_source: 'current_hub_or_dashboard_summary',
+    delivery_completed_in_range_native_value: deliveryCompletedGuard?.native_value ?? null,
+    delivery_completed_in_range_previous_display_value: deliveryCompletedGuard?.previous_display_value ?? null,
+    delivery_completed_in_range_hub_value: deliveryCompletedGuard?.hub_value ?? null,
+    delivery_completed_in_range_mismatch_guard: deliveryCompletedGuard?.mismatch_guard === true,
     writes_performed: false,
     provider_call_impact: false,
     notifications_sent: false,
@@ -619,8 +660,192 @@ function taskDate(task) {
   return task?.delivery_date || task?.scheduled_date || task?.assigned_delivery_date || null;
 }
 
+function taskRouteDate(task) {
+  return task?.delivery_date || task?.scheduled_date || task?.assigned_delivery_date || null;
+}
+
 function isCompletedTask(task) {
   return ['delivered', 'picked_up', 'fulfilled', 'completed'].includes(normalizeStatus(task?.status || task?.delivery_status));
+}
+
+function buildOrderContextIndex(customerOrders, shopifyOrders) {
+  const index = new Map();
+  const add = (key, order) => {
+    const normalized = normalizeLower(key);
+    if (normalized && order && !index.has(normalized)) index.set(normalized, order);
+  };
+
+  for (const order of [...(customerOrders || []), ...(shopifyOrders || [])]) {
+    add(order?.id, order);
+    add(order?.base44_order_id, order);
+    add(order?.order_number, order);
+    add(order?.shopify_order_number, order);
+  }
+
+  return index;
+}
+
+function orderContextForTask(task, orderIndex) {
+  return (
+    orderIndex.get(normalizeLower(task?.order_id)) ||
+    orderIndex.get(normalizeLower(task?.base44_order_id)) ||
+    orderIndex.get(normalizeLower(task?.order_number)) ||
+    {}
+  );
+}
+
+function deliveryCompletedTaskBlockers(task, order = {}) {
+  const blockers = [];
+  const signals = [
+    task?.source_type,
+    task?.source_channel,
+    task?.order_type,
+    task?.fulfillment_type,
+    task?.fulfillment_method,
+    order?.source_type,
+    order?.source_channel,
+    order?.order_type,
+    order?.fulfillment_type,
+    order?.fulfillment_method,
+  ].map(normalizeStatus);
+
+  if (
+    task?.is_subscription === true ||
+    order?.is_subscription === true ||
+    task?.subscription_id ||
+    order?.stripe_subscription_id ||
+    signals.some(signal => ['subscription', 'multi_delivery', 'multidelivery', 'recurring'].includes(signal))
+  ) {
+    blockers.push('subscription_multi_delivery_ambiguity');
+  }
+
+  if (
+    task?.repair_context === true ||
+    task?.replay_context === true ||
+    task?.safe_sync_context === true ||
+    order?.repair_context === true ||
+    order?.replay_context === true ||
+    order?.safe_sync_context === true ||
+    signals.some(signal => ['repair', 'replay', 'safe_sync', 'safesync'].includes(signal))
+  ) {
+    blockers.push('repair_replay_safesync_ambiguity');
+  }
+
+  if (task?.provider_call_required === true || order?.provider_call_required === true) {
+    blockers.push('provider_call_required');
+  }
+
+  if (task?.notification_required === true || order?.notification_required === true) {
+    blockers.push('notification_required');
+  }
+
+  if (
+    task?.hub_mutation_required === true ||
+    order?.hub_mutation_required === true ||
+    task?.write_required === true ||
+    order?.write_required === true
+  ) {
+    blockers.push('write_or_hub_mutation_required');
+  }
+
+  return blockers;
+}
+
+function computeNativeCompletedDeliveriesInRangeByRouteDate({
+  deliveryTasks,
+  customerOrders,
+  shopifyOrders,
+  dateFrom,
+  dateTo,
+}) {
+  const orderIndex = buildOrderContextIndex(customerOrders, shopifyOrders);
+  const blockers = [];
+  let value = 0;
+  let includedRowCount = 0;
+
+  for (const task of Array.isArray(deliveryTasks) ? deliveryTasks : []) {
+    if (!isCompletedTask(task)) continue;
+    const routeDate = taskRouteDate(task);
+    if (!inRange(routeDate, dateFrom, dateTo)) continue;
+
+    includedRowCount += 1;
+    value += 1;
+
+    const order = orderContextForTask(task, orderIndex);
+    blockers.push(...deliveryCompletedTaskBlockers(task, order));
+  }
+
+  return {
+    computation_available: true,
+    value,
+    included_row_count: includedRowCount,
+    blocker_reasons: [...new Set(blockers)],
+    date_bucket: 'delivery_date_then_scheduled_date_then_assigned_delivery_date',
+    semantic: 'route_delivery_date_completed_status',
+    native_source: 'native_fulfillment_task_route_date',
+  };
+}
+
+function buildDeliveryCompletedInRangeGuard({ currentSummary, nativeRouteDateResult, hubSummary, currentDisplaySource }) {
+  const previousDisplayValue = summaryAggregateValue(currentSummary, {
+    group: 'delivery',
+    key: 'completed_in_range',
+  });
+  const hubValue = summaryAggregateValue(hubSummary, {
+    group: 'delivery',
+    key: 'completed_in_range',
+  });
+  const nativeValue = numberOrNull(nativeRouteDateResult?.value);
+  const comparisonValue = hubValue ?? previousDisplayValue;
+  const comparisonAvailable = nativeRouteDateResult?.computation_available === true
+    && nativeValue !== null
+    && comparisonValue !== null;
+  const blockerReasons = [...new Set(nativeRouteDateResult?.blocker_reasons || [])];
+  const guardPassed = comparisonAvailable && blockerReasons.length === 0;
+  const mismatchDetected = comparisonAvailable && nativeValue !== comparisonValue;
+  const guardReason = guardPassed
+    ? 'native_route_date_semantic_applied'
+    : blockerReasons[0] || (comparisonAvailable ? 'native_route_date_guard_failed' : 'native_route_date_comparison_unavailable');
+
+  return {
+    marker: G39Q_DELIVERY_COMPLETED_MARKER,
+    enabled: guardPassed,
+    guard_passed: guardPassed,
+    guard_reason: guardReason,
+    display_source: guardPassed ? 'native_route_date' : 'current_display_fallback',
+    semantic: 'route_delivery_date_completed_status',
+    date_bucket: nativeRouteDateResult?.date_bucket || 'delivery_date_then_scheduled_date_then_assigned_delivery_date',
+    native_source: nativeRouteDateResult?.native_source || 'native_fulfillment_task_route_date',
+    hub_source: 'current_hub_or_dashboard_summary',
+    native_value: nativeValue,
+    previous_display_value: previousDisplayValue,
+    hub_value: hubValue,
+    final_value: guardPassed ? nativeValue : previousDisplayValue,
+    comparison_available: comparisonAvailable,
+    mismatch_guard: mismatchDetected,
+    mismatch_category: mismatchDetected ? 'delivered_completed_semantic_mismatch' : null,
+    blocker_reasons: blockerReasons,
+    current_display_source: currentDisplaySource,
+  };
+}
+
+function applyDeliveryCompletedInRangeGuard(summary, guard) {
+  return {
+    ...summary,
+    delivery: {
+      ...(summary?.delivery || {}),
+      completed_in_range: numberOrZero(guard?.final_value),
+    },
+  };
+}
+
+function deliveryCompletedWarnings(guard) {
+  if (!guard?.guard_passed) return [];
+  return [
+    'delivery_completed_in_range_uses_g39d_route_date_semantic',
+    'delivered_at_is_audit_only_not_bucket',
+    guard.mismatch_guard ? 'hub_current_display_may_differ_for_single_day_windows' : null,
+  ].filter(Boolean);
 }
 
 function alertDate(row) {
@@ -654,7 +879,7 @@ async function listEntity(base44, entityName, sort, limit = 500) {
   });
 }
 
-async function loadNativeOperationsDashboardSummary(base44, { dateFrom, dateTo, sourceType, sourceChannel }) {
+async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, sourceType, sourceChannel }) {
   const [
     customerOrders,
     shopifyOrders,
@@ -695,6 +920,13 @@ async function loadNativeOperationsDashboardSummary(base44, { dateFrom, dateTo, 
     const source = normalizeLower(task.source_type || task.source_channel);
     return source !== 'pos' && normalizeLower(task.fulfillment_type) !== 'event_pos';
   });
+  const deliveryCompletedRouteDate = computeNativeCompletedDeliveriesInRangeByRouteDate({
+    deliveryTasks,
+    customerOrders,
+    shopifyOrders,
+    dateFrom,
+    dateTo,
+  });
   const alerts = [
     ...reviewQueueItems.map(item => ({ ...item, severity: item.incident_type || 'warning' })),
     ...operationalAlerts,
@@ -715,7 +947,7 @@ async function loadNativeOperationsDashboardSummary(base44, { dateFrom, dateTo, 
     sourceMix[source] = (sourceMix[source] || 0) + 1;
   }
 
-  return sanitizeSummary({
+  const summary = sanitizeSummary({
     orders: {
       total: orders.length,
       paid: orders.filter(isPaidOrder).length,
@@ -730,7 +962,7 @@ async function loadNativeOperationsDashboardSummary(base44, { dateFrom, dateTo, 
     delivery: {
       today_stops: deliveryTasks.filter(task => dateKey(taskDate(task)) === today).length,
       tomorrow_stops: deliveryTasks.filter(task => dateKey(taskDate(task)) === tomorrow).length,
-      completed_in_range: deliveryTasks.filter(task => inRange(task.delivered_at || taskDate(task), dateFrom, dateTo) && isCompletedTask(task)).length,
+      completed_in_range: deliveryCompletedRouteDate.value,
     },
     inventory: inventoryCounts,
     alerts: {
@@ -741,9 +973,14 @@ async function loadNativeOperationsDashboardSummary(base44, { dateFrom, dateTo, 
     },
     source_mix: sourceMix,
   });
+
+  return {
+    summary,
+    delivery_completed_route_date: deliveryCompletedRouteDate,
+  };
 }
 
-function nativeFallbackResponse({ dateFrom, dateTo, summary, reason, hubStatus = null }) {
+function nativeFallbackResponse({ dateFrom, dateTo, summary, deliveryCompletedGuard, reason, hubStatus = null }) {
   const diagnostics = buildOperationsDashboardDiagnostics({
     displayedSummary: summary,
     nativeSummary: summary,
@@ -751,6 +988,7 @@ function nativeFallbackResponse({ dateFrom, dateTo, summary, reason, hubStatus =
     currentDisplaySource: 'native_fallback',
     requestedRange: { date_from: dateFrom, date_to: dateTo },
     hubRange: null,
+    deliveryCompletedGuard,
   });
 
   return Response.json({
@@ -766,6 +1004,7 @@ function nativeFallbackResponse({ dateFrom, dateTo, summary, reason, hubStatus =
         ? `hub_operations_dashboard_unavailable:${hubStatus}`
         : `hub_operations_dashboard_unavailable:${reason}`,
       'native_read_only_fallback',
+      ...deliveryCompletedWarnings(deliveryCompletedGuard),
     ],
     data_sources: {
       hub_available: false,
@@ -835,7 +1074,7 @@ Deno.serve(async (req) => {
     const sourceType = normalizeText(body.source_type);
     const sourceChannel = normalizeText(body.source_channel);
     const resolvedRange = resolveDateRange({ preset, dateFrom, dateTo });
-    const loadNativeSummary = () => loadNativeOperationsDashboardSummary(base44, {
+    const loadNativeContext = () => loadNativeOperationsDashboardContext(base44, {
       dateFrom: resolvedRange.date_from,
       dateTo: resolvedRange.date_to,
       sourceType,
@@ -843,11 +1082,19 @@ Deno.serve(async (req) => {
     });
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      const nativeSummary = await loadNativeSummary();
+      const nativeContext = await loadNativeContext();
+      const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
+        currentSummary: nativeContext.summary,
+        nativeRouteDateResult: nativeContext.delivery_completed_route_date,
+        hubSummary: null,
+        currentDisplaySource: 'native_fallback',
+      });
+      const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
       return nativeFallbackResponse({
         dateFrom: resolvedRange.date_from,
         dateTo: resolvedRange.date_to,
-        summary: nativeSummary,
+        summary: guardedSummary,
+        deliveryCompletedGuard,
         reason: 'missing_config',
       });
     }
@@ -873,21 +1120,37 @@ Deno.serve(async (req) => {
       });
     } catch (error) {
       console.warn('[getAdminOperationsDashboardSummary] Hub fetch failed; returning native fallback:', error.message);
-      const nativeSummary = await loadNativeSummary();
+      const nativeContext = await loadNativeContext();
+      const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
+        currentSummary: nativeContext.summary,
+        nativeRouteDateResult: nativeContext.delivery_completed_route_date,
+        hubSummary: null,
+        currentDisplaySource: 'native_fallback',
+      });
+      const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
       return nativeFallbackResponse({
         dateFrom: resolvedRange.date_from,
         dateTo: resolvedRange.date_to,
-        summary: nativeSummary,
+        summary: guardedSummary,
+        deliveryCompletedGuard,
         reason: 'fetch_failed',
       });
     }
 
     if (!hubResponse.ok) {
-      const nativeSummary = await loadNativeSummary();
+      const nativeContext = await loadNativeContext();
+      const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
+        currentSummary: nativeContext.summary,
+        nativeRouteDateResult: nativeContext.delivery_completed_route_date,
+        hubSummary: null,
+        currentDisplaySource: 'native_fallback',
+      });
+      const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
       return nativeFallbackResponse({
         dateFrom: resolvedRange.date_from,
         dateTo: resolvedRange.date_to,
-        summary: nativeSummary,
+        summary: guardedSummary,
+        deliveryCompletedGuard,
         reason: 'non_ok',
         hubStatus: hubResponse.status,
       });
@@ -895,19 +1158,35 @@ Deno.serve(async (req) => {
 
     const hubData = await hubResponse.json().catch(() => null);
     if (!hubData || hubData.success !== true || !hubData.summary) {
-      const nativeSummary = await loadNativeSummary();
+      const nativeContext = await loadNativeContext();
+      const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
+        currentSummary: nativeContext.summary,
+        nativeRouteDateResult: nativeContext.delivery_completed_route_date,
+        hubSummary: null,
+        currentDisplaySource: 'native_fallback',
+      });
+      const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
       return nativeFallbackResponse({
         dateFrom: resolvedRange.date_from,
         dateTo: resolvedRange.date_to,
-        summary: nativeSummary,
+        summary: guardedSummary,
+        deliveryCompletedGuard,
         reason: 'malformed_response',
       });
     }
 
     const hubSummary = sanitizeSummary(hubData.summary);
-    const nativeSummary = await loadNativeSummary();
+    const nativeContext = await loadNativeContext();
+    const nativeSummary = nativeContext.summary;
+    const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
+      currentSummary: hubSummary,
+      nativeRouteDateResult: nativeContext.delivery_completed_route_date,
+      hubSummary,
+      currentDisplaySource: 'hub_primary',
+    });
+    const displayedSummary = applyDeliveryCompletedInRangeGuard(hubSummary, deliveryCompletedGuard);
     const diagnostics = buildOperationsDashboardDiagnostics({
-      displayedSummary: hubSummary,
+      displayedSummary,
       nativeSummary,
       hubSummary,
       currentDisplaySource: 'hub_primary',
@@ -916,7 +1195,9 @@ Deno.serve(async (req) => {
         date_from: hubData.date_from || (preset === 'custom' ? dateFrom : resolvedRange.date_from),
         date_to: hubData.date_to || (preset === 'custom' ? dateTo : resolvedRange.date_to),
       },
+      deliveryCompletedGuard,
     });
+    const warnings = deliveryCompletedWarnings(deliveryCompletedGuard);
 
     return Response.json({
       success: true,
@@ -924,8 +1205,9 @@ Deno.serve(async (req) => {
       generated_at: hubData.generated_at || null,
       date_from: hubData.date_from || dateFrom || null,
       date_to: hubData.date_to || dateTo || null,
-      summary: hubSummary,
+      summary: displayedSummary,
       truncated: hubData.truncated === true,
+      ...(warnings.length > 0 ? { warnings } : {}),
       ...diagnostics,
     });
   } catch (error) {
