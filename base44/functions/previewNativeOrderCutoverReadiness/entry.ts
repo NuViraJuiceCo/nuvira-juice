@@ -764,6 +764,919 @@ async function g33cList(base44, entityName, sort = '-created_date', limit = 100)
   return Array.isArray(rows) ? rows : [];
 }
 
+
+const G39B_PREVIEW_MODE = 'ADMIN_NATIVE_FIRST_HUB_READ_PARITY';
+const G39B_DEFAULT_MAX_ROWS = 10;
+const G39B_MAX_ROWS = 25;
+const G39B_SURFACES = [
+  'admin_orders',
+  'operations_dashboard',
+  'delivery_route_summary',
+  'production_planning',
+  'ops_alerts',
+  'resources',
+  'calendar_events',
+];
+const G39B_SUPPORTED_SURFACES = new Set(['all', ...G39B_SURFACES]);
+const G39B_ALLOWED_BODY_KEYS = new Set([
+  'preview_mode',
+  'surface',
+  'date_from',
+  'date_to',
+  'order_number',
+  'shopify_order_number',
+  'customer_app_order_id',
+  'base44_order_id',
+  'native_shopify_order_id',
+  'native_fulfillment_task_id',
+  'max_rows',
+  'limit',
+  'request_id',
+  '_internal_secret',
+  'internal_secret',
+]);
+const G39B_ADMIN_SURFACE_AUDIT = Object.freeze({
+  admin_orders: {
+    function_name: 'getAdminOrdersWithHub',
+    admin_page_dependency: 'admin order list / operations order surfaces',
+    reads_native_data: true,
+    reads_hub_data: true,
+    hub_role: 'primary_merged_with_native_context',
+    admin_only: true,
+    read_only: true,
+    creates_logs_or_queues: false,
+    provider_calls_expected: false,
+    pii_policy: 'preview_returns_ids_and_statuses_only_no_customer_email_phone_full_address',
+    native_replacement_status: 'native_replacement_partial',
+  },
+  operations_dashboard: {
+    function_name: 'getAdminOperationsDashboardSummary',
+    admin_page_dependency: 'operations dashboard summary',
+    reads_native_data: true,
+    reads_hub_data: true,
+    hub_role: 'hub_primary_with_native_fallback',
+    admin_only: true,
+    read_only: true,
+    creates_logs_or_queues: false,
+    provider_calls_expected: false,
+    pii_policy: 'aggregate_counts_only',
+    native_replacement_status: 'native_replacement_partial',
+  },
+  delivery_route_summary: {
+    function_name: 'getAdminDeliveryRouteSummary',
+    admin_page_dependency: 'delivery route summary',
+    reads_native_data: true,
+    reads_hub_data: true,
+    hub_role: 'hub_route_queue_with_native_schedule_reconciliation',
+    admin_only: true,
+    read_only: true,
+    creates_logs_or_queues: false,
+    provider_calls_expected: false,
+    pii_policy: 'route_drop_proof_presence_only_no_raw_payload',
+    native_replacement_status: 'native_replacement_partial',
+  },
+  production_planning: {
+    function_name: 'getAdminProductionPlanningSummary',
+    admin_page_dependency: 'production planning summary',
+    reads_native_data: true,
+    reads_hub_data: true,
+    hub_role: 'hub_summary_merged_with_native_batches_and_master_data',
+    admin_only: true,
+    read_only: true,
+    creates_logs_or_queues: false,
+    provider_calls_expected: false,
+    pii_policy: 'product_demand_and_batch_counts_only',
+    native_replacement_status: 'native_replacement_partial',
+  },
+  ops_alerts: {
+    function_name: 'getAdminOpsAlertsSummary',
+    admin_page_dependency: 'operations alerts summary',
+    reads_native_data: true,
+    reads_hub_data: true,
+    hub_role: 'hub_alerts_with_native_fallback',
+    admin_only: true,
+    read_only: true,
+    creates_logs_or_queues: false,
+    provider_calls_expected: false,
+    pii_policy: 'alert_counts_and_safe_alert_labels_only',
+    native_replacement_status: 'native_replacement_partial',
+  },
+  resources: {
+    function_name: 'getAdminResourcesSummary',
+    admin_page_dependency: 'resources summary',
+    reads_native_data: true,
+    reads_hub_data: true,
+    hub_role: 'hub_resources_with_native_fallback',
+    admin_only: true,
+    read_only: true,
+    creates_logs_or_queues: false,
+    provider_calls_expected: false,
+    pii_policy: 'team_and_equipment_summary_only',
+    native_replacement_status: 'native_preview_exists_only',
+  },
+  calendar_events: {
+    function_name: 'getAdminCalendarEventsSummary',
+    admin_page_dependency: 'admin calendar/events summary',
+    reads_native_data: true,
+    reads_hub_data: true,
+    hub_role: 'hub_calendar_with_native_fallback',
+    admin_only: true,
+    read_only: true,
+    creates_logs_or_queues: false,
+    provider_calls_expected: false,
+    pii_policy: 'date_event_counts_only',
+    native_replacement_status: 'native_replacement_partial',
+  },
+});
+
+function isG39BPreviewRequest(body) {
+  return normalizeText(body?.preview_mode).toUpperCase() === G39B_PREVIEW_MODE;
+}
+
+function g39bUnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G39B_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g39bLookup(body) {
+  const surface = normalizeLower(body?.surface || 'all') || 'all';
+  const maxRowsRaw = Number(body?.max_rows || body?.limit || G39B_DEFAULT_MAX_ROWS);
+  const maxRows = Number.isFinite(maxRowsRaw)
+    ? Math.max(1, Math.min(G39B_MAX_ROWS, Math.floor(maxRowsRaw)))
+    : G39B_DEFAULT_MAX_ROWS;
+  return {
+    surface: G39B_SUPPORTED_SURFACES.has(surface) ? surface : 'unsupported',
+    rawSurface: surface,
+    maxRows,
+    orderNumber: normalizeOrderNumber(body?.order_number || body?.shopify_order_number),
+    customerAppOrderId: normalizeText(body?.customer_app_order_id || body?.base44_order_id),
+    nativeShopifyOrderId: normalizeText(body?.native_shopify_order_id),
+    nativeFulfillmentTaskId: normalizeText(body?.native_fulfillment_task_id),
+    dateFrom: g39bDateOnly(body?.date_from),
+    dateTo: g39bDateOnly(body?.date_to),
+    requestId: sanitizeText(body?.request_id, 120),
+  };
+}
+
+function g39bDateOnly(value) {
+  const text = normalizeText(value);
+  if (!text) return null;
+  const match = text.match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : null;
+}
+
+function g39bEntityId(row) {
+  return sanitizeText(row?.id || row?._id || row?.record_id, 100);
+}
+
+function g39bOrderKey(value) {
+  return normalizeOrderNumber(value).toLowerCase();
+}
+
+function g39bFirstValue(row, keys) {
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value !== undefined && value !== null && normalizeText(value) !== '') return value;
+  }
+  return null;
+}
+
+function g39bSafeDate(row, keys) {
+  return g39bDateOnly(g39bFirstValue(row, keys));
+}
+
+function g39bSafeStatus(row, keys) {
+  return sanitizeText(g39bFirstValue(row, keys), 80);
+}
+
+function g39bSafeBool(value) {
+  if (value === true || value === false) return value;
+  const text = normalizeLower(value);
+  if (['true', 'yes', '1'].includes(text)) return true;
+  if (['false', 'no', '0'].includes(text)) return false;
+  return null;
+}
+
+function g39bNumberOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function g39bLineItemCount(row) {
+  const direct = g39bNumberOrNull(g39bFirstValue(row, ['line_item_count', 'item_count', 'items_count']));
+  if (direct !== null) return direct;
+  const lineItems = row?.line_items || row?.items || row?.products;
+  return Array.isArray(lineItems) ? lineItems.length : null;
+}
+
+function g39bProductDemandCount(row) {
+  const direct = g39bNumberOrNull(g39bFirstValue(row, ['product_demand_count', 'line_item_count', 'item_count']));
+  if (direct !== null) return direct;
+  const items = row?.line_items || row?.items || row?.products || row?.product_demands;
+  return Array.isArray(items) ? items.length : null;
+}
+
+function g39bHasHubContext(row) {
+  if (!row || typeof row !== 'object') return false;
+  const source = normalizeLower(g39bFirstValue(row, ['source', 'source_type', 'source_channel', 'origin', 'record_source']));
+  if (source.includes('hub')) return true;
+  return Boolean(
+    row?.hub_order_id ||
+    row?.hub_task_id ||
+    row?.hub_subscription_id ||
+    row?.hub_fallback_context ||
+    row?.hub_delivery_date ||
+    row?.hub_status ||
+    row?.hub_payload_present ||
+    row?.is_hub_order === true ||
+    row?.from_hub === true
+  );
+}
+
+function g39bMatchesLookup(row, lookup) {
+  if (!row || typeof row !== 'object') return false;
+  if (lookup.customerAppOrderId && [row?.id, row?.base44_order_id, row?.customer_app_order_id, row?.order_id]
+    .some(value => normalizeText(value) === lookup.customerAppOrderId)) return true;
+  if (lookup.nativeShopifyOrderId && [row?.id, row?.native_shopify_order_id, row?.shopify_order_id]
+    .some(value => normalizeText(value) === lookup.nativeShopifyOrderId)) return true;
+  if (lookup.nativeFulfillmentTaskId && [row?.id, row?.native_fulfillment_task_id, row?.fulfillment_task_id]
+    .some(value => normalizeText(value) === lookup.nativeFulfillmentTaskId)) return true;
+  if (!lookup.orderNumber) return true;
+  const orderKey = g39bOrderKey(lookup.orderNumber);
+  return [
+    row?.order_number,
+    row?.shopify_order_number,
+    row?.source_order_number,
+    row?.customer_order_number,
+    row?.hub_order_number,
+  ].some(value => g39bOrderKey(value) === orderKey);
+}
+
+function g39bWithinDateRange(row, lookup, keys = ['delivery_date', 'production_date', 'scheduled_date', 'assigned_delivery_date', 'created_date', 'updated_date']) {
+  if (!lookup.dateFrom && !lookup.dateTo) return true;
+  const date = g39bSafeDate(row, keys);
+  if (!date) return false;
+  if (lookup.dateFrom && date < lookup.dateFrom) return false;
+  if (lookup.dateTo && date > lookup.dateTo) return false;
+  return true;
+}
+
+async function g39bReadRows(base44, entityName, limit = 100) {
+  return g33cList(base44, entityName, '-created_date', limit);
+}
+
+function g39bTakeRows(rows, lookup, dateKeys) {
+  return (rows || [])
+    .filter(row => g39bMatchesLookup(row, lookup))
+    .filter(row => g39bWithinDateRange(row, lookup, dateKeys))
+    .slice(0, lookup.maxRows);
+}
+
+function g39bBuildNativeOrderRows({ orders, nativeOrders, tasks, lookup }) {
+  const nativeByOrder = new Map();
+  for (const row of nativeOrders || []) {
+    const key = g39bOrderKey(g39bFirstValue(row, ['shopify_order_number', 'order_number', 'source_order_number']));
+    if (key && !nativeByOrder.has(key)) nativeByOrder.set(key, row);
+  }
+  const taskByOrder = new Map();
+  for (const row of tasks || []) {
+    const key = g39bOrderKey(g39bFirstValue(row, ['order_number', 'shopify_order_number', 'source_order_number']));
+    if (key && !taskByOrder.has(key)) taskByOrder.set(key, row);
+  }
+  const rows = [];
+  for (const order of orders || []) {
+    const orderNumber = normalizeOrderNumber(g39bFirstValue(order, ['order_number', 'shopify_order_number', 'source_order_number']));
+    if (!orderNumber) continue;
+    const key = g39bOrderKey(orderNumber);
+    const nativeOrder = nativeByOrder.get(key) || null;
+    const task = taskByOrder.get(key) || null;
+    rows.push({
+      parity_key: key,
+      order_number: sanitizeText(orderNumber, 80),
+      customer_app_order_id: g39bEntityId(order),
+      native_shopify_order_id: g39bEntityId(nativeOrder),
+      native_fulfillment_task_id: g39bEntityId(task),
+      order_status: g39bSafeStatus(order, ['status', 'order_status']),
+      payment_status: g39bSafeStatus(order, ['payment_status']),
+      payment_captured: g39bSafeBool(order?.payment_captured),
+      fulfillment_type: g39bSafeStatus(order, ['fulfillment_type', 'fulfillment_method']),
+      fulfillment_status: g39bSafeStatus(nativeOrder, ['fulfillment_status', 'status']),
+      production_status: g39bSafeStatus(nativeOrder, ['production_status']) || g39bSafeStatus(task, ['production_status']),
+      delivery_status: g39bSafeStatus(task, ['delivery_status']),
+      delivery_date: g39bSafeDate(order, ['delivery_date', 'scheduled_date', 'assigned_delivery_date']),
+      line_item_count: g39bLineItemCount(order),
+      total_price: g39bNumberOrNull(g39bFirstValue(order, ['total_price', 'total', 'order_total'])),
+      source_classification: nativeOrder || task ? 'native_context_available' : 'customer_app_order_only',
+      fallback_source: g39bHasHubContext(order) ? 'local_hub_context_on_order' : 'native_customer_app',
+    });
+  }
+  for (const nativeOrder of nativeOrders || []) {
+    const orderNumber = normalizeOrderNumber(g39bFirstValue(nativeOrder, ['shopify_order_number', 'order_number', 'source_order_number']));
+    const key = g39bOrderKey(orderNumber);
+    if (!key || rows.some(row => row.parity_key === key)) continue;
+    const task = taskByOrder.get(key) || null;
+    rows.push({
+      parity_key: key,
+      order_number: sanitizeText(orderNumber, 80),
+      customer_app_order_id: sanitizeText(nativeOrder?.base44_order_id, 100),
+      native_shopify_order_id: g39bEntityId(nativeOrder),
+      native_fulfillment_task_id: g39bEntityId(task),
+      order_status: null,
+      payment_status: g39bSafeStatus(nativeOrder, ['payment_status']),
+      payment_captured: null,
+      fulfillment_type: g39bSafeStatus(nativeOrder, ['fulfillment_method', 'fulfillment_type']),
+      fulfillment_status: g39bSafeStatus(nativeOrder, ['fulfillment_status', 'status']),
+      production_status: g39bSafeStatus(nativeOrder, ['production_status']),
+      delivery_status: g39bSafeStatus(task, ['delivery_status']),
+      delivery_date: g39bSafeDate(nativeOrder, ['delivery_date', 'scheduled_date', 'assigned_delivery_date']),
+      line_item_count: g39bLineItemCount(nativeOrder),
+      total_price: g39bNumberOrNull(g39bFirstValue(nativeOrder, ['total_price', 'total'])),
+      source_classification: 'native_only_shopify_order',
+      fallback_source: 'native_shopify_order',
+    });
+  }
+  return g39bTakeRows(rows, lookup, ['delivery_date']).map(row => ({ ...row, data_source: 'native' }));
+}
+
+function g39bBuildHubOrderRows({ orders, orderSyncLogs, parityLogs, lookup }) {
+  const rows = [];
+  for (const order of orders || []) {
+    if (!g39bHasHubContext(order)) continue;
+    const orderNumber = normalizeOrderNumber(g39bFirstValue(order, ['hub_order_number', 'order_number', 'shopify_order_number', 'source_order_number']));
+    if (!orderNumber) continue;
+    rows.push({
+      parity_key: g39bOrderKey(orderNumber),
+      order_number: sanitizeText(orderNumber, 80),
+      customer_app_order_id: g39bEntityId(order),
+      hub_order_id: sanitizeText(g39bFirstValue(order, ['hub_order_id', 'hub_id', 'source_order_id']), 100),
+      order_status: g39bSafeStatus(order, ['hub_status', 'status', 'order_status']),
+      payment_status: g39bSafeStatus(order, ['payment_status', 'hub_payment_status']),
+      payment_captured: g39bSafeBool(order?.payment_captured),
+      fulfillment_type: g39bSafeStatus(order, ['fulfillment_type', 'hub_fulfillment_type']),
+      fulfillment_status: g39bSafeStatus(order, ['fulfillment_status', 'hub_fulfillment_status']),
+      production_status: g39bSafeStatus(order, ['production_status', 'hub_production_status']),
+      delivery_status: g39bSafeStatus(order, ['delivery_status', 'hub_delivery_status']),
+      delivery_date: g39bSafeDate(order, ['hub_delivery_date', 'delivery_date', 'scheduled_date', 'assigned_delivery_date']),
+      line_item_count: g39bLineItemCount(order),
+      total_price: g39bNumberOrNull(g39bFirstValue(order, ['total_price', 'total', 'order_total'])),
+      source_classification: 'hub_fallback_local_context',
+      fallback_source: 'hub_context_on_customer_order',
+      data_source: 'hub_fallback',
+    });
+  }
+  for (const log of [...(orderSyncLogs || []), ...(parityLogs || [])]) {
+    if (!g39bHasHubContext(log)) continue;
+    const orderNumber = normalizeOrderNumber(g39bFirstValue(log, ['order_number', 'shopify_order_number', 'hub_order_number', 'source_order_number']));
+    if (!orderNumber) continue;
+    const key = g39bOrderKey(orderNumber);
+    if (rows.some(row => row.parity_key === key)) continue;
+    rows.push({
+      parity_key: key,
+      order_number: sanitizeText(orderNumber, 80),
+      customer_app_order_id: sanitizeText(g39bFirstValue(log, ['base44_order_id', 'customer_app_order_id', 'order_id']), 100),
+      hub_order_id: sanitizeText(g39bFirstValue(log, ['hub_order_id', 'hub_id']), 100),
+      order_status: g39bSafeStatus(log, ['status', 'hub_status', 'sync_status']),
+      payment_status: g39bSafeStatus(log, ['payment_status']),
+      payment_captured: null,
+      fulfillment_type: g39bSafeStatus(log, ['fulfillment_type']),
+      fulfillment_status: g39bSafeStatus(log, ['fulfillment_status']),
+      production_status: g39bSafeStatus(log, ['production_status']),
+      delivery_status: g39bSafeStatus(log, ['delivery_status']),
+      delivery_date: g39bSafeDate(log, ['delivery_date', 'hub_delivery_date', 'scheduled_date']),
+      line_item_count: null,
+      total_price: null,
+      source_classification: 'hub_fallback_sync_log_context',
+      fallback_source: 'order_sync_or_parity_log',
+      data_source: 'hub_fallback',
+    });
+  }
+  return g39bTakeRows(rows, lookup, ['delivery_date']);
+}
+
+function g39bComparableFieldsForSurface(surface) {
+  if (surface === 'delivery_route_summary') {
+    return ['delivery_date', 'task_status', 'delivery_status', 'production_status'];
+  }
+  if (surface === 'production_planning') {
+    return ['production_date', 'production_status', 'product_demand_count', 'native_production_batch_count'];
+  }
+  return ['order_status', 'payment_status', 'payment_captured', 'fulfillment_type', 'fulfillment_status', 'production_status', 'delivery_status', 'delivery_date', 'line_item_count', 'total_price'];
+}
+
+function g39bCompareRows(nativeRow, hubRow, surface) {
+  if (nativeRow && hubRow) {
+    const mismatches = [];
+    for (const field of g39bComparableFieldsForSurface(surface)) {
+      const nativeValue = nativeRow?.[field];
+      const hubValue = hubRow?.[field];
+      if (nativeValue === null || nativeValue === undefined || nativeValue === '') continue;
+      if (hubValue === null || hubValue === undefined || hubValue === '') continue;
+      if (String(nativeValue) !== String(hubValue)) mismatches.push({ field, native_value: nativeValue, hub_value: hubValue });
+    }
+    if (surface === 'delivery_route_summary' && hubRow?.stale_hub_fallback === true) {
+      return { classification: 'stale_hub_fallback_detected', mismatches };
+    }
+    return { classification: mismatches.length ? 'native_hub_mismatch' : 'native_hub_match', mismatches };
+  }
+  if (nativeRow && !hubRow) return { classification: 'native_present_hub_missing', mismatches: [] };
+  if (!nativeRow && hubRow) return { classification: 'native_missing_hub_available', mismatches: [] };
+  return { classification: 'unknown_needs_manual_review', mismatches: [] };
+}
+
+function g39bBuildParityRows({ surface, nativeRows, hubRows, maxRows }) {
+  const keys = new Set();
+  for (const row of nativeRows || []) if (row?.parity_key) keys.add(row.parity_key);
+  for (const row of hubRows || []) if (row?.parity_key) keys.add(row.parity_key);
+  const rows = [];
+  for (const key of keys) {
+    const nativeRow = (nativeRows || []).find(row => row.parity_key === key) || null;
+    const hubRow = (hubRows || []).find(row => row.parity_key === key) || null;
+    const comparison = g39bCompareRows(nativeRow, hubRow, surface);
+    rows.push({
+      parity_key: sanitizeText(key, 100),
+      order_number: sanitizeText(nativeRow?.order_number || hubRow?.order_number, 80),
+      classification: comparison.classification,
+      native_ids: compactObject({
+        customer_app_order_id: nativeRow?.customer_app_order_id || null,
+        native_shopify_order_id: nativeRow?.native_shopify_order_id || null,
+        native_fulfillment_task_id: nativeRow?.native_fulfillment_task_id || null,
+        production_batch_id: nativeRow?.production_batch_id || null,
+      }),
+      hub_ids: compactObject({
+        hub_order_id: hubRow?.hub_order_id || null,
+        hub_task_id: hubRow?.hub_task_id || null,
+      }),
+      comparable_fields: compactObject({
+        native: nativeRow ? g39bProjectComparable(nativeRow, surface) : null,
+        hub: hubRow ? g39bProjectComparable(hubRow, surface) : null,
+      }),
+      mismatches: comparison.mismatches,
+      data_source: nativeRow && hubRow ? 'native_and_hub_fallback' : nativeRow ? 'native_only' : 'hub_fallback_only',
+      fallback_source: nativeRow?.fallback_source || hubRow?.fallback_source || null,
+    });
+  }
+  return rows.slice(0, maxRows);
+}
+
+function g39bProjectComparable(row, surface) {
+  const out = {};
+  for (const field of g39bComparableFieldsForSurface(surface)) {
+    if (row?.[field] !== undefined && row?.[field] !== null) out[field] = row[field];
+  }
+  if (row?.route_drop_presence !== undefined) out.route_drop_presence = row.route_drop_presence;
+  if (row?.proof_presence !== undefined) out.proof_presence = row.proof_presence;
+  if (row?.data_source) out.data_source = row.data_source;
+  return out;
+}
+
+function g39bCountClassifications(rows) {
+  const counts = {};
+  for (const row of rows || []) counts[row.classification] = (counts[row.classification] || 0) + 1;
+  return counts;
+}
+
+function g39bSurfaceReadiness({ surface, parityRows, nativeRecordCount, hubRecordCount, requiredNativeFields = [] }) {
+  const counts = g39bCountClassifications(parityRows);
+  const mismatchCount = counts.native_hub_mismatch || 0;
+  const nativeMissingCount = counts.native_missing_hub_available || 0;
+  const staleCount = counts.stale_hub_fallback_detected || 0;
+  const hubOnly = hubRecordCount > 0 && nativeRecordCount === 0;
+  if (surface === 'resources') {
+    return {
+      cutover_readiness: hubOnly ? 'hub_source_of_truth_for_now' : 'preview_only_more_fields_needed',
+      risk_level: 'medium',
+      recommended_patch_scope: 'keep_hub_fallback_reporting_until_team_and_equipment_native_fields_are_proven',
+      required_native_fields: requiredNativeFields,
+      required_ui_copy: 'Show native resource summary with explicit Hub fallback status before replacing Hub-primary resources.',
+    };
+  }
+  if (nativeMissingCount > 0 || hubOnly) {
+    return {
+      cutover_readiness: 'ready_with_fallback_reporting',
+      risk_level: 'medium',
+      recommended_patch_scope: 'native_first_read_with_visible_hub_fallback_counts_not_customer_facing',
+      required_native_fields: requiredNativeFields,
+      required_ui_copy: 'Surface Hub fallback counts and mismatch warnings in admin-only context.',
+    };
+  }
+  if (mismatchCount > 0 || staleCount > 0) {
+    return {
+      cutover_readiness: 'preview_only_more_fields_needed',
+      risk_level: 'medium',
+      recommended_patch_scope: 'resolve_mismatches_or_add_fallback_reporting_before_native_first_patch',
+      required_native_fields: requiredNativeFields,
+      required_ui_copy: 'Do not hide Hub mismatch/stale fallback rows.',
+    };
+  }
+  return {
+    cutover_readiness: nativeRecordCount > 0 ? 'ready_for_native_first_patch' : 'preview_only_more_fields_needed',
+    risk_level: nativeRecordCount > 0 ? 'low' : 'medium',
+    recommended_patch_scope: nativeRecordCount > 0 ? 'lowest_risk_admin_native_first_read_patch' : 'collect_more_native_rows_before_patch',
+    required_native_fields: requiredNativeFields,
+    required_ui_copy: 'Admin-only native-first read with Hub fallback reporting.',
+  };
+}
+
+function g39bBuildSurfaceResult({ surface, nativeRows, hubRows, requiredNativeFields = [], extraWarnings = [] }) {
+  const parityRows = g39bBuildParityRows({ surface, nativeRows, hubRows, maxRows: G39B_MAX_ROWS });
+  const counts = g39bCountClassifications(parityRows);
+  const readiness = g39bSurfaceReadiness({ surface, parityRows, nativeRecordCount: nativeRows.length, hubRecordCount: hubRows.length, requiredNativeFields });
+  const audit = G39B_ADMIN_SURFACE_AUDIT[surface] || {};
+  return {
+    surface,
+    function_name: audit.function_name || null,
+    admin_page_dependency: audit.admin_page_dependency || null,
+    admin_only: audit.admin_only !== false,
+    customer_facing: false,
+    read_only: true,
+    currently_reads_native_data: audit.reads_native_data === true,
+    currently_reads_hub_data: audit.reads_hub_data === true,
+    current_hub_role: audit.hub_role || 'unknown_needs_manual_review',
+    native_replacement_status: audit.native_replacement_status || 'unknown_needs_manual_review',
+    native_record_count: nativeRows.length,
+    hub_record_count: hubRows.length,
+    exact_match_count: counts.native_hub_match || 0,
+    native_missing_count: counts.native_missing_hub_available || 0,
+    hub_only_count: counts.native_missing_hub_available || 0,
+    native_only_count: counts.native_present_hub_missing || 0,
+    mismatch_count: counts.native_hub_mismatch || 0,
+    fallback_required_count: (counts.native_missing_hub_available || 0) + (counts.stale_hub_fallback_detected || 0),
+    stale_hub_fallback_count: counts.stale_hub_fallback_detected || 0,
+    classifications: Object.keys(counts).sort(),
+    rows: parityRows,
+    blockers: [],
+    warnings: [...new Set(extraWarnings)],
+    ...readiness,
+  };
+}
+
+function g39bBuildDeliveryRows({ tasks, orders, lookup }) {
+  const nativeRows = [];
+  const hubRows = [];
+  const orderByNumber = new Map();
+  for (const order of orders || []) {
+    const key = g39bOrderKey(g39bFirstValue(order, ['order_number', 'shopify_order_number', 'source_order_number']));
+    if (key && !orderByNumber.has(key)) orderByNumber.set(key, order);
+  }
+  for (const task of tasks || []) {
+    const orderNumber = normalizeOrderNumber(g39bFirstValue(task, ['order_number', 'shopify_order_number', 'source_order_number']));
+    const key = g39bOrderKey(orderNumber);
+    if (!key) continue;
+    const order = orderByNumber.get(key) || null;
+    const nativeDeliveryDate = g39bSafeDate(task, ['assigned_delivery_date', 'scheduled_date', 'delivery_date']) || g39bSafeDate(order, ['delivery_date', 'scheduled_date']);
+    const hubDeliveryDate = g39bSafeDate(task, ['hub_delivery_date']) || g39bSafeDate(order, ['hub_delivery_date']);
+    nativeRows.push({
+      parity_key: key,
+      order_number: sanitizeText(orderNumber, 80),
+      customer_app_order_id: sanitizeText(task?.base44_order_id || task?.order_id || order?.id, 100),
+      native_fulfillment_task_id: g39bEntityId(task),
+      delivery_date: nativeDeliveryDate,
+      scheduled_date: g39bSafeDate(task, ['scheduled_date']),
+      assigned_delivery_date: g39bSafeDate(task, ['assigned_delivery_date']),
+      task_status: g39bSafeStatus(task, ['status']),
+      delivery_status: g39bSafeStatus(task, ['delivery_status']),
+      production_status: g39bSafeStatus(task, ['production_status']),
+      route_drop_presence: Boolean(task?.drop_id || task?.route_id || task?.delivery_route_id),
+      proof_presence: Boolean(task?.proof_id || task?.proof_status || task?.delivery_proof_present),
+      fallback_source: 'native_fulfillment_task',
+      data_source: 'native',
+    });
+    if (g39bHasHubContext(task) || hubDeliveryDate) {
+      hubRows.push({
+        parity_key: key,
+        order_number: sanitizeText(orderNumber, 80),
+        customer_app_order_id: sanitizeText(task?.base44_order_id || task?.order_id || order?.id, 100),
+        hub_task_id: sanitizeText(g39bFirstValue(task, ['hub_task_id', 'hub_fulfillment_task_id']), 100),
+        delivery_date: hubDeliveryDate || nativeDeliveryDate,
+        task_status: g39bSafeStatus(task, ['hub_task_status', 'status']),
+        delivery_status: g39bSafeStatus(task, ['hub_delivery_status', 'delivery_status']),
+        production_status: g39bSafeStatus(task, ['hub_production_status', 'production_status']),
+        route_drop_presence: Boolean(task?.hub_drop_id || task?.hub_route_id || task?.drop_id || task?.route_id),
+        proof_presence: Boolean(task?.hub_proof_present || task?.delivery_proof_present),
+        stale_hub_fallback: Boolean(nativeDeliveryDate && hubDeliveryDate && nativeDeliveryDate !== hubDeliveryDate),
+        fallback_source: 'hub_delivery_task_context',
+        data_source: 'hub_fallback',
+      });
+    }
+  }
+  for (const order of orders || []) {
+    if (!g39bHasHubContext(order) || !(order?.hub_task_id || order?.hub_delivery_date)) continue;
+    const orderNumber = normalizeOrderNumber(g39bFirstValue(order, ['order_number', 'shopify_order_number', 'source_order_number']));
+    const key = g39bOrderKey(orderNumber);
+    if (!key || hubRows.some(row => row.parity_key === key)) continue;
+    hubRows.push({
+      parity_key: key,
+      order_number: sanitizeText(orderNumber, 80),
+      customer_app_order_id: g39bEntityId(order),
+      hub_task_id: sanitizeText(g39bFirstValue(order, ['hub_task_id']), 100),
+      delivery_date: g39bSafeDate(order, ['hub_delivery_date', 'delivery_date']),
+      task_status: g39bSafeStatus(order, ['hub_task_status', 'status']),
+      delivery_status: g39bSafeStatus(order, ['hub_delivery_status', 'delivery_status']),
+      production_status: g39bSafeStatus(order, ['hub_production_status', 'production_status']),
+      route_drop_presence: Boolean(order?.hub_drop_id || order?.hub_route_id),
+      proof_presence: Boolean(order?.hub_proof_present),
+      stale_hub_fallback: false,
+      fallback_source: 'hub_delivery_order_context',
+      data_source: 'hub_fallback',
+    });
+  }
+  return {
+    nativeRows: g39bTakeRows(nativeRows, lookup, ['delivery_date', 'scheduled_date', 'assigned_delivery_date']),
+    hubRows: g39bTakeRows(hubRows, lookup, ['delivery_date']),
+  };
+}
+
+function g39bBuildProductionRows({ orders, nativeOrders, batches, lookup }) {
+  const batchCountByOrder = new Map();
+  for (const batch of batches || []) {
+    const key = g39bOrderKey(g39bFirstValue(batch, ['order_number', 'shopify_order_number', 'source_order_number']));
+    if (!key) continue;
+    batchCountByOrder.set(key, (batchCountByOrder.get(key) || 0) + 1);
+  }
+  const nativeRows = [];
+  const hubRows = [];
+  for (const order of orders || []) {
+    const orderNumber = normalizeOrderNumber(g39bFirstValue(order, ['order_number', 'shopify_order_number', 'source_order_number']));
+    const key = g39bOrderKey(orderNumber);
+    if (!key) continue;
+    const batchCount = batchCountByOrder.get(key) || 0;
+    nativeRows.push({
+      parity_key: key,
+      order_number: sanitizeText(orderNumber, 80),
+      customer_app_order_id: g39bEntityId(order),
+      production_date: g39bSafeDate(order, ['production_date', 'delivery_date']),
+      production_status: g39bSafeStatus(order, ['production_status', 'status']),
+      product_demand_count: g39bProductDemandCount(order),
+      native_production_batch_count: batchCount,
+      production_batch_id: batchCount === 1 ? g39bEntityId((batches || []).find(batch => g39bOrderKey(g39bFirstValue(batch, ['order_number', 'shopify_order_number', 'source_order_number'])) === key)) : null,
+      fallback_source: batchCount ? 'native_production_batch' : 'native_order_demand_without_batch',
+      data_source: 'native',
+    });
+    if (g39bHasHubContext(order)) {
+      hubRows.push({
+        parity_key: key,
+        order_number: sanitizeText(orderNumber, 80),
+        customer_app_order_id: g39bEntityId(order),
+        hub_order_id: sanitizeText(g39bFirstValue(order, ['hub_order_id']), 100),
+        production_date: g39bSafeDate(order, ['hub_production_date', 'production_date', 'delivery_date']),
+        production_status: g39bSafeStatus(order, ['hub_production_status', 'production_status', 'status']),
+        product_demand_count: g39bProductDemandCount(order),
+        native_production_batch_count: batchCount,
+        fallback_source: 'hub_order_production_context',
+        data_source: 'hub_fallback',
+      });
+    }
+  }
+  for (const nativeOrder of nativeOrders || []) {
+    const orderNumber = normalizeOrderNumber(g39bFirstValue(nativeOrder, ['shopify_order_number', 'order_number', 'source_order_number']));
+    const key = g39bOrderKey(orderNumber);
+    if (!key || nativeRows.some(row => row.parity_key === key)) continue;
+    const batchCount = batchCountByOrder.get(key) || 0;
+    nativeRows.push({
+      parity_key: key,
+      order_number: sanitizeText(orderNumber, 80),
+      customer_app_order_id: sanitizeText(nativeOrder?.base44_order_id, 100),
+      production_date: g39bSafeDate(nativeOrder, ['production_date', 'delivery_date']),
+      production_status: g39bSafeStatus(nativeOrder, ['production_status']),
+      product_demand_count: g39bProductDemandCount(nativeOrder),
+      native_production_batch_count: batchCount,
+      production_batch_id: null,
+      fallback_source: 'native_shopify_order_production_context',
+      data_source: 'native',
+    });
+  }
+  return {
+    nativeRows: g39bTakeRows(nativeRows, lookup, ['production_date']),
+    hubRows: g39bTakeRows(hubRows, lookup, ['production_date']),
+  };
+}
+
+function g39bBuildAggregateRows({ surface, records, lookup }) {
+  const safeRecords = records || {};
+  const nativeCount = Object.values(safeRecords).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
+  const hubCount = Object.values(safeRecords).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.filter(g39bHasHubContext).length : 0), 0);
+  const nativeRows = nativeCount ? [{
+    parity_key: surface,
+    order_number: null,
+    order_status: 'aggregate_native_context_present',
+    line_item_count: nativeCount,
+    fallback_source: 'native_aggregate_counts',
+    data_source: 'native',
+  }] : [];
+  const hubRows = hubCount ? [{
+    parity_key: surface,
+    order_number: null,
+    order_status: 'aggregate_hub_context_present',
+    line_item_count: hubCount,
+    fallback_source: 'local_hub_fallback_aggregate_counts',
+    data_source: 'hub_fallback',
+  }] : [];
+  return {
+    nativeRows: g39bTakeRows(nativeRows, lookup, []),
+    hubRows: g39bTakeRows(hubRows, lookup, []),
+  };
+}
+
+async function buildG39BPreview(base44, body) {
+  const lookup = g39bLookup(body);
+  if (lookup.surface === 'unsupported') {
+    const customerFacingHold = normalizeLower(lookup.rawSurface).startsWith('customer');
+    return {
+      success: false,
+      dry_run: true,
+      writes_performed: false,
+      preview_mode: G39B_PREVIEW_MODE,
+      surface: sanitizeText(lookup.rawSurface, 80),
+      error_code: customerFacingHold ? 'customer_facing_surface_not_in_scope' : 'unsupported_surface',
+      supported_surfaces: ['all', ...G39B_SURFACES],
+      classifications: customerFacingHold ? ['customer_facing_hold'] : ['unknown_needs_manual_review'],
+      cutover_readiness: customerFacingHold ? 'unsafe_customer_facing' : 'preview_only_more_fields_needed',
+      provider_call_impact: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
+      pii_returned: false,
+      blockers: [customerFacingHold ? 'customer_facing_surface_not_in_scope' : 'unsupported_surface'],
+      warnings: customerFacingHold ? ['customer_facing_reads_require_separate_parity_proof'] : [],
+      safety: G33C_READ_ONLY_SAFETY,
+    };
+  }
+
+  const readLimit = Math.max(lookup.maxRows * 5, 50);
+  const [orders, nativeOrders, tasks, batches, reviewRows, syncRows, parityRows, alerts, complianceAlerts, recipes, inventoryItems, yields, events, sanitationLogs, temperatureLogs, dailyChecklists, correctiveActions, complianceLogs] = await Promise.all([
+    g39bReadRows(base44, 'Order', readLimit),
+    g39bReadRows(base44, 'ShopifyOrder', readLimit),
+    g39bReadRows(base44, 'FulfillmentTask', readLimit),
+    g39bReadRows(base44, 'ProductionBatch', readLimit),
+    g39bReadRows(base44, 'OrderReviewQueue', readLimit),
+    g39bReadRows(base44, 'OrderSyncLog', readLimit),
+    g39bReadRows(base44, 'SafeSyncParityLog', readLimit),
+    g39bReadRows(base44, 'OperationalAlert', readLimit),
+    g39bReadRows(base44, 'ComplianceAlert', readLimit),
+    g39bReadRows(base44, 'Recipe', readLimit),
+    g39bReadRows(base44, 'InventoryItem', readLimit),
+    g39bReadRows(base44, 'IngredientYield', readLimit),
+    g39bReadRows(base44, 'Event', readLimit),
+    g39bReadRows(base44, 'SanitationLog', readLimit),
+    g39bReadRows(base44, 'TemperatureLog', readLimit),
+    g39bReadRows(base44, 'DailyChecklist', readLimit),
+    g39bReadRows(base44, 'CorrectiveActionLog', readLimit),
+    g39bReadRows(base44, 'BatchComplianceLog', readLimit),
+  ]);
+
+  const surfaces = lookup.surface === 'all' ? G39B_SURFACES : [lookup.surface];
+  const surfaceResults = [];
+  const warnings = ['external_hub_not_called_local_native_and_hub_fallback_context_only'];
+  for (const surface of surfaces) {
+    if (surface === 'admin_orders') {
+      const nativeRows = g39bBuildNativeOrderRows({ orders, nativeOrders, tasks, lookup });
+      const hubRows = g39bBuildHubOrderRows({ orders, orderSyncLogs: syncRows, parityLogs: parityRows, lookup });
+      surfaceResults.push(g39bBuildSurfaceResult({
+        surface,
+        nativeRows,
+        hubRows,
+        requiredNativeFields: ['order_number', 'payment_status', 'payment_captured', 'fulfillment_type', 'production_status', 'delivery_status'],
+      }));
+      continue;
+    }
+    if (surface === 'delivery_route_summary') {
+      const rows = g39bBuildDeliveryRows({ tasks, orders, lookup });
+      surfaceResults.push(g39bBuildSurfaceResult({
+        surface,
+        nativeRows: rows.nativeRows,
+        hubRows: rows.hubRows,
+        requiredNativeFields: ['native_fulfillment_task_id', 'delivery_date', 'scheduled_date', 'assigned_delivery_date', 'delivery_status', 'route_or_drop_presence'],
+      }));
+      continue;
+    }
+    if (surface === 'production_planning') {
+      const rows = g39bBuildProductionRows({ orders, nativeOrders, batches, lookup });
+      surfaceResults.push(g39bBuildSurfaceResult({
+        surface,
+        nativeRows: rows.nativeRows,
+        hubRows: rows.hubRows,
+        requiredNativeFields: ['production_date', 'product_demand_count', 'production_status', 'native_production_batch_count', 'master_data_readiness'],
+      }));
+      continue;
+    }
+    if (surface === 'ops_alerts') {
+      const rows = g39bBuildAggregateRows({ surface, records: { reviewRows, syncRows, parityRows, alerts, complianceAlerts }, lookup });
+      surfaceResults.push(g39bBuildSurfaceResult({
+        surface,
+        nativeRows: rows.nativeRows,
+        hubRows: rows.hubRows,
+        requiredNativeFields: ['OrderReviewQueue', 'OperationalAlert', 'ComplianceAlert', 'SafeSyncParityLog'],
+      }));
+      continue;
+    }
+    if (surface === 'operations_dashboard') {
+      const rows = g39bBuildAggregateRows({ surface, records: { orders, nativeOrders, tasks, batches, reviewRows, alerts, complianceAlerts }, lookup });
+      surfaceResults.push(g39bBuildSurfaceResult({
+        surface,
+        nativeRows: rows.nativeRows,
+        hubRows: rows.hubRows,
+        requiredNativeFields: ['orders', 'native_shopify_orders', 'fulfillment_tasks', 'production_batches', 'alerts'],
+      }));
+      continue;
+    }
+    if (surface === 'resources') {
+      const rows = g39bBuildAggregateRows({ surface, records: { recipes, inventoryItems, yields, batches }, lookup });
+      surfaceResults.push(g39bBuildSurfaceResult({
+        surface,
+        nativeRows: rows.nativeRows,
+        hubRows: rows.hubRows,
+        requiredNativeFields: ['team_members', 'equipment', 'recipes', 'inventory_items', 'ingredient_yields'],
+        extraWarnings: ['resources_surface_still_needs_team_and_equipment_native_field_parity'],
+      }));
+      continue;
+    }
+    if (surface === 'calendar_events') {
+      const rows = g39bBuildAggregateRows({ surface, records: { events, tasks, batches, sanitationLogs, temperatureLogs, dailyChecklists, correctiveActions, complianceLogs }, lookup });
+      surfaceResults.push(g39bBuildSurfaceResult({
+        surface,
+        nativeRows: rows.nativeRows,
+        hubRows: rows.hubRows,
+        requiredNativeFields: ['event_date', 'delivery_date', 'production_date', 'compliance_log_dates'],
+      }));
+    }
+  }
+
+  const summary = g39bSummarizeSurfaces(surfaceResults);
+  const nativeFirstCandidates = surfaceResults
+    .filter(result => ['ready_for_native_first_patch', 'ready_with_fallback_reporting'].includes(result.cutover_readiness))
+    .map(result => ({ surface: result.surface, cutover_readiness: result.cutover_readiness, risk_level: result.risk_level }));
+  const blockedSurfaces = surfaceResults
+    .filter(result => !['ready_for_native_first_patch', 'ready_with_fallback_reporting'].includes(result.cutover_readiness))
+    .map(result => ({ surface: result.surface, cutover_readiness: result.cutover_readiness, risk_level: result.risk_level }));
+
+  return {
+    success: true,
+    dry_run: true,
+    writes_performed: false,
+    preview_mode: G39B_PREVIEW_MODE,
+    request_id: lookup.requestId,
+    surfaces_checked: surfaces,
+    surface_audit: surfaces.map(surface => ({ surface, ...G39B_ADMIN_SURFACE_AUDIT[surface] })),
+    parity_summary: summary,
+    surface_results: surfaceResults,
+    native_record_counts: summary.native_record_counts,
+    hub_record_counts: summary.hub_record_counts,
+    exact_match_count: summary.exact_match_count,
+    native_missing_count: summary.native_missing_count,
+    hub_only_count: summary.hub_only_count,
+    native_only_count: summary.native_only_count,
+    mismatch_count: summary.mismatch_count,
+    fallback_required_count: summary.fallback_required_count,
+    stale_hub_fallback_count: summary.stale_hub_fallback_count,
+    pii_returned: false,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    blockers: [],
+    warnings: [...new Set(warnings)],
+    native_first_candidate_surfaces: nativeFirstCandidates,
+    blocked_surfaces: blockedSurfaces,
+    next_action: nativeFirstCandidates.length
+      ? 'plan_g39c_native_first_admin_patch_for_lowest_risk_surface'
+      : 'hold_missing_native_parity_fields',
+    safety: G33C_READ_ONLY_SAFETY,
+  };
+}
+
+function g39bSummarizeSurfaces(surfaceResults) {
+  const summary = {
+    native_record_counts: {},
+    hub_record_counts: {},
+    exact_match_count: 0,
+    native_missing_count: 0,
+    hub_only_count: 0,
+    native_only_count: 0,
+    mismatch_count: 0,
+    fallback_required_count: 0,
+    stale_hub_fallback_count: 0,
+    ready_for_native_first_patch_count: 0,
+    ready_with_fallback_reporting_count: 0,
+    blocked_or_preview_only_count: 0,
+  };
+  for (const result of surfaceResults || []) {
+    summary.native_record_counts[result.surface] = result.native_record_count;
+    summary.hub_record_counts[result.surface] = result.hub_record_count;
+    summary.exact_match_count += result.exact_match_count || 0;
+    summary.native_missing_count += result.native_missing_count || 0;
+    summary.hub_only_count += result.hub_only_count || 0;
+    summary.native_only_count += result.native_only_count || 0;
+    summary.mismatch_count += result.mismatch_count || 0;
+    summary.fallback_required_count += result.fallback_required_count || 0;
+    summary.stale_hub_fallback_count += result.stale_hub_fallback_count || 0;
+    if (result.cutover_readiness === 'ready_for_native_first_patch') summary.ready_for_native_first_patch_count += 1;
+    else if (result.cutover_readiness === 'ready_with_fallback_reporting') summary.ready_with_fallback_reporting_count += 1;
+    else summary.blocked_or_preview_only_count += 1;
+  }
+  return summary;
+}
+
 async function g33cCustomerOrders(base44, lookup) {
   const rows = [];
   if (lookup.customerAppOrderId) {
@@ -5879,6 +6792,7 @@ Deno.serve(async (req) => {
     }
 
     const body = parsed.body || {};
+    const g39bPreviewRequest = isG39BPreviewRequest(body);
     const g33cPreviewRequest = isG33CPreviewRequest(body);
     const g33cMirror1PreviewRequest = isG33CMirror1PreviewRequest(body);
     const g33cTask1PreviewRequest = isG33CTask1PreviewRequest(body);
@@ -5889,6 +6803,12 @@ Deno.serve(async (req) => {
     const g36cHelperPreviewRequest = isG36CHelperPreviewRequest(body);
     const g36cResolvePreviewRequest = isG36CResolvePreviewRequest(body);
     const g36fPreviewRequest = isG36FPreviewRequest(body);
+    if (g39bPreviewRequest) {
+      const unsupported = g39bUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
     if (g33cPreviewRequest) {
       const unsupported = g33cUnsupportedBodyKey(body);
       if (unsupported) {
@@ -5943,12 +6863,22 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
-    if (!g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
     const auth = await requirePreviewAccess({ base44, req, body });
     if (!auth.ok) return auth.response;
+
+    if (g39bPreviewRequest) {
+      const preview = await buildG39BPreview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
 
     if (g33cPreviewRequest) {
       const preview = await buildG33CPreview(base44, body);
