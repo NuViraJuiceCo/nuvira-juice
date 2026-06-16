@@ -1,0 +1,86 @@
+{
+  "fixture_name": "g38b-production-lifecycle-e2e",
+  "fixture_scope": "synthetic_fixture_only_no_live_ids_no_pii_no_provider_payloads",
+  "order": {
+    "order_number": "SYN-G38B-ACTIVE-ONE-TIME",
+    "customer_app_order_id": "synthetic_order_g38b_001",
+    "native_shopify_order_id": "synthetic_shopify_order_g38b_001",
+    "native_fulfillment_task_id": "synthetic_task_g38b_001",
+    "order_type": "one_time",
+    "fulfillment_type": "delivery",
+    "payment_status": "paid",
+    "payment_captured": true,
+    "customer_status": "scheduled_for_juicing",
+    "native_shopify_order_production_status": "awaiting_production",
+    "native_fulfillment_task_status": "pending",
+    "native_fulfillment_task_production_status": "awaiting_production",
+    "native_fulfillment_task_delivery_status": "pending",
+    "production_date": "2026-07-01",
+    "delivery_date": "2026-07-02",
+    "line_items": [
+      {
+        "product_name": "Pineapple Juice",
+        "quantity": 1
+      },
+      {
+        "product_name": "RE-NU",
+        "quantity": 1
+      },
+      {
+        "product_name": "Watermelon Juice",
+        "quantity": 1
+      }
+    ]
+  },
+  "production_actuals": {
+    "actual_start_time": "2026-07-01T13:00:00.000Z",
+    "actual_end_time": "2026-07-01T14:15:00.000Z",
+    "started_by": "synthetic_admin_actor",
+    "completed_by": "synthetic_admin_actor",
+    "actual_units_by_product": {
+      "Pineapple Juice": 1,
+      "RE-NU": 1,
+      "Watermelon Juice": 1
+    }
+  },
+  "verification": {
+    "verified_by": "synthetic_admin_actor",
+    "verified_at": "2026-07-01T14:30:00.000Z",
+    "qc_by_product": {
+      "Pineapple Juice": {
+        "pH_result": 3.9,
+        "pH_passed": true,
+        "batch_passed": true
+      },
+      "RE-NU": {
+        "pH_result": 4.0,
+        "pH_passed": true,
+        "batch_passed": true
+      },
+      "Watermelon Juice": {
+        "pH_result": 4.1,
+        "pH_passed": true,
+        "batch_passed": true
+      }
+    }
+  },
+  "policies": {
+    "notification_policy": "NO_NOTIFICATION",
+    "provider_call_policy": "NO_PROVIDER_CALLS",
+    "hub_mutation_policy": "NO_HUB_MUTATION",
+    "inventory_deduction_policy": "HELD",
+    "purchase_order_policy": "HELD"
+  },
+  "expected": {
+    "proposed_batch_count": 3,
+    "final_batch_count": 3,
+    "final_compliance_log_count": 3,
+    "provider_calls": false,
+    "stripe_calls": false,
+    "shopify_calls": false,
+    "notifications_sent": false,
+    "hub_records_updated": false,
+    "inventory_deduction": false,
+    "purchase_orders_created": false
+  }
+}
