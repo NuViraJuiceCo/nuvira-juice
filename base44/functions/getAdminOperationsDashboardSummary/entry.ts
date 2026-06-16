@@ -5,6 +5,226 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_RANGE_DAYS = 31;
 const VALID_PRESETS = new Set(['today', 'last_7_days', 'last_30_days']);
 const CHICAGO_TZ = 'America/Chicago';
+const G39N_DIAGNOSTICS_MARKER = 'g39n_operations_dashboard_aggregate_diagnostics';
+
+const G39N_AGGREGATE_SPECS = Object.freeze([
+  {
+    name: 'orders.total',
+    group: 'orders',
+    key: 'total',
+    domain: 'admin_orders',
+    source_of_truth: 'hub',
+    blocker: 'admin_orders_not_broad_native_first_g39l_zero_eligible_rows',
+    recommendation: 'preserve_current_display_until_admin_order_aggregate_parity_is_proven',
+  },
+  {
+    name: 'orders.paid',
+    group: 'orders',
+    key: 'paid',
+    domain: 'payment_refund',
+    source_of_truth: 'payment_provider_hub',
+    mismatch_category: 'payment_refund_semantic_mismatch',
+    blocker: 'payment_refund_source_of_truth_hold',
+    recommendation: 'keep_hub_payment_refund_source_of_truth_until_payment_parity_is_proven',
+  },
+  {
+    name: 'orders.fulfilled',
+    group: 'orders',
+    key: 'fulfilled',
+    domain: 'admin_orders',
+    source_of_truth: 'hub',
+    blocker: 'fulfillment_status_semantics_not_row_proven_for_broad_orders',
+    recommendation: 'use_admin_orders_diagnostics_before_switching_order_fulfillment_counts',
+  },
+  {
+    name: 'orders.delivered',
+    group: 'orders',
+    key: 'delivered',
+    domain: 'admin_orders',
+    source_of_truth: 'hub',
+    mismatch_category: 'delivered_completed_semantic_mismatch',
+    blocker: 'order_delivered_count_not_equivalent_to_route_task_count',
+    recommendation: 'reference_g39d_route_summary_but_keep_order_delivered_count_current_source_for_now',
+  },
+  {
+    name: 'production.batch_count',
+    group: 'production',
+    key: 'batch_count',
+    domain: 'production_planning',
+    source_of_truth: 'mixed',
+    mismatch_category: 'production_status_semantic_mismatch',
+    native_first_candidate_if_match: true,
+    recommendation: 'reference_g39f_production_planning_before_switching_displayed_count',
+  },
+  {
+    name: 'production.planned_units',
+    group: 'production',
+    key: 'planned_units',
+    domain: 'production_planning',
+    source_of_truth: 'mixed',
+    mismatch_category: 'schema_meaning_mismatch',
+    native_first_candidate_if_match: true,
+    recommendation: 'compare_unit_semantics_with_g39f_planning_before_switching_displayed_units',
+  },
+  {
+    name: 'production.produced_units',
+    group: 'production',
+    key: 'produced_units',
+    domain: 'production_planning',
+    source_of_truth: 'mixed',
+    mismatch_category: 'schema_meaning_mismatch',
+    native_first_candidate_if_match: true,
+    recommendation: 'compare_actual_units_final_usable_quantity_and_hub_produced_units_before_switching',
+  },
+  {
+    name: 'delivery.today_stops',
+    group: 'delivery',
+    key: 'today_stops',
+    domain: 'delivery_route',
+    source_of_truth: 'mixed',
+    native_first_candidate_if_match: true,
+    recommendation: 'reference_g39d_native_first_route_summary_for_date_bucket_semantics',
+  },
+  {
+    name: 'delivery.tomorrow_stops',
+    group: 'delivery',
+    key: 'tomorrow_stops',
+    domain: 'delivery_route',
+    source_of_truth: 'mixed',
+    native_first_candidate_if_match: true,
+    recommendation: 'reference_g39d_native_first_route_summary_for_date_bucket_semantics',
+  },
+  {
+    name: 'delivery.completed_in_range',
+    group: 'delivery',
+    key: 'completed_in_range',
+    domain: 'delivery_route',
+    source_of_truth: 'mixed',
+    mismatch_category: 'delivered_completed_semantic_mismatch',
+    native_first_candidate_if_match: true,
+    recommendation: 'reference_g39d_completed_task_semantics_before_switching_displayed_count',
+  },
+  {
+    name: 'calendar.events',
+    group: 'calendar',
+    key: 'events',
+    domain: 'calendar_events',
+    source_of_truth: 'mixed',
+    mismatch_category: 'not_comparable',
+    blocker: 'calendar_events_not_returned_by_current_operations_dashboard_summary_contract',
+    recommendation: 'reference_g39h_native_first_calendar_summary_if_calendar_aggregate_is_added_later',
+  },
+  {
+    name: 'inventory.low',
+    group: 'inventory',
+    key: 'low',
+    domain: 'inventory_po',
+    source_of_truth: 'manual_review',
+    mismatch_category: 'schema_meaning_mismatch',
+    blocker: 'inventory_stock_not_authoritative_po_automation_held',
+    recommendation: 'keep_inventory_counts_as_diagnostics_only_until_stock_policy_is_owner_approved',
+  },
+  {
+    name: 'inventory.critical',
+    group: 'inventory',
+    key: 'critical',
+    domain: 'inventory_po',
+    source_of_truth: 'manual_review',
+    mismatch_category: 'schema_meaning_mismatch',
+    blocker: 'inventory_stock_not_authoritative_po_automation_held',
+    recommendation: 'keep_inventory_counts_as_diagnostics_only_until_stock_policy_is_owner_approved',
+  },
+  {
+    name: 'inventory.out_of_stock',
+    group: 'inventory',
+    key: 'out_of_stock',
+    domain: 'inventory_po',
+    source_of_truth: 'manual_review',
+    mismatch_category: 'schema_meaning_mismatch',
+    blocker: 'inventory_stock_not_authoritative_po_automation_held',
+    recommendation: 'do_not_trigger_inventory_deduction_or_purchase_orders_from_dashboard_counts',
+  },
+  {
+    name: 'alerts.active',
+    group: 'alerts',
+    key: 'active',
+    domain: 'alerts_review',
+    source_of_truth: 'manual_review',
+    mismatch_category: 'repair_replay_safesync_mismatch',
+    blocker: 'alert_sources_include_review_log_manual_review_context',
+    recommendation: 'label_alert_source_counts_before_switching_displayed_alert_totals',
+  },
+  {
+    name: 'alerts.critical',
+    group: 'alerts',
+    key: 'critical',
+    domain: 'alerts_review',
+    source_of_truth: 'manual_review',
+    mismatch_category: 'repair_replay_safesync_mismatch',
+    blocker: 'alert_severity_semantics_differ_by_source',
+    recommendation: 'label_alert_source_counts_before_switching_displayed_alert_totals',
+  },
+  {
+    name: 'alerts.warning',
+    group: 'alerts',
+    key: 'warning',
+    domain: 'alerts_review',
+    source_of_truth: 'manual_review',
+    mismatch_category: 'repair_replay_safesync_mismatch',
+    blocker: 'alert_severity_semantics_differ_by_source',
+    recommendation: 'label_alert_source_counts_before_switching_displayed_alert_totals',
+  },
+  {
+    name: 'alerts.info',
+    group: 'alerts',
+    key: 'info',
+    domain: 'alerts_review',
+    source_of_truth: 'manual_review',
+    mismatch_category: 'repair_replay_safesync_mismatch',
+    blocker: 'alert_severity_semantics_differ_by_source',
+    recommendation: 'label_alert_source_counts_before_switching_displayed_alert_totals',
+  },
+  {
+    name: 'source_mix.one_time',
+    group: 'source_mix',
+    key: 'one_time',
+    domain: 'admin_orders',
+    source_of_truth: 'hub',
+    mismatch_category: 'aggregate_includes_different_row_classes',
+    blocker: 'one_time_source_mix_not_equivalent_to_g39l_native_primary_eligibility',
+    recommendation: 'keep_source_mix_current_display_until_one_time_classification_parity_is_proven',
+  },
+  {
+    name: 'source_mix.subscription',
+    group: 'source_mix',
+    key: 'subscription',
+    domain: 'subscription',
+    source_of_truth: 'subscription_hub',
+    mismatch_category: 'subscription_multi_delivery_mismatch',
+    blocker: 'subscription_multi_delivery_hub_source_of_truth',
+    recommendation: 'keep_subscription_counts_hub_source_of_truth',
+  },
+  {
+    name: 'source_mix.pos',
+    group: 'source_mix',
+    key: 'pos',
+    domain: 'pos_event',
+    source_of_truth: 'hub',
+    mismatch_category: 'aggregate_includes_different_row_classes',
+    blocker: 'pos_event_order_classification_not_in_native_first_scope',
+    recommendation: 'keep_pos_event_source_mix_current_display_until_pos_parity_is_proven',
+  },
+  {
+    name: 'source_mix.other',
+    group: 'source_mix',
+    key: 'other',
+    domain: 'unknown',
+    source_of_truth: 'unknown',
+    mismatch_category: 'unknown_manual_review_needed',
+    blocker: 'ambiguous_source_mix_bucket',
+    recommendation: 'manual_review_before_native_primary_source_mix',
+  },
+]);
 
 async function readJsonBody(req) {
   try {
@@ -101,6 +321,209 @@ function sanitizeSummary(summary) {
     inventory: sanitizeCountGroup(summary?.inventory, ['low', 'critical', 'out_of_stock']),
     alerts: sanitizeCountGroup(summary?.alerts, ['active', 'critical', 'warning', 'info']),
     source_mix: sanitizeCountGroup(summary?.source_mix, ['one_time', 'subscription', 'pos', 'other']),
+  };
+}
+
+function numberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function incrementCount(counts, key) {
+  if (!key) return;
+  counts[key] = (counts[key] || 0) + 1;
+}
+
+function summaryAggregateValue(summary, spec) {
+  if (!summary || !spec?.group || !spec?.key) return null;
+  return numberOrNull(summary?.[spec.group]?.[spec.key]);
+}
+
+function hasDateWindowMismatch({ requestedRange, hubRange }) {
+  if (!hubRange?.date_from && !hubRange?.date_to) return false;
+  if (requestedRange?.date_from && hubRange?.date_from && requestedRange.date_from !== hubRange.date_from) return true;
+  if (requestedRange?.date_to && hubRange?.date_to && requestedRange.date_to !== hubRange.date_to) return true;
+  return false;
+}
+
+function sourceOfTruthIsHold(sourceOfTruth) {
+  return ['payment_provider_hub', 'subscription_hub', 'manual_review', 'not_comparable', 'unknown'].includes(sourceOfTruth);
+}
+
+function compareAggregateValues(nativeValue, hubValue) {
+  if (nativeValue === null || nativeValue === undefined || hubValue === null || hubValue === undefined) {
+    return {
+      comparison_available: false,
+      mismatch_detected: false,
+      direction: null,
+    };
+  }
+
+  if (nativeValue === hubValue) {
+    return {
+      comparison_available: true,
+      mismatch_detected: false,
+      direction: 'match',
+    };
+  }
+
+  return {
+    comparison_available: true,
+    mismatch_detected: true,
+    direction: nativeValue < hubValue ? 'native_count_lower_than_hub' : 'hub_count_lower_than_native',
+  };
+}
+
+function aggregateMismatchCategory(spec, comparison, { dateWindowMismatch }) {
+  if (dateWindowMismatch && spec?.domain !== 'inventory_po') return 'date_window_mismatch';
+  if (!comparison.comparison_available) {
+    if (comparison.direction) return comparison.direction;
+    return 'not_comparable';
+  }
+  if (!comparison.mismatch_detected) return null;
+  return spec?.mismatch_category || comparison.direction || 'unknown_manual_review_needed';
+}
+
+function aggregateDiagnosticForSpec({
+  spec,
+  displayedSummary,
+  nativeSummary,
+  hubSummary,
+  currentDisplaySource,
+  requestedRange,
+  hubRange,
+}) {
+  const displayedValue = summaryAggregateValue(displayedSummary, spec);
+  const nativeValue = summaryAggregateValue(nativeSummary, spec);
+  const hubValue = summaryAggregateValue(hubSummary, spec);
+  const comparison = compareAggregateValues(nativeValue, hubValue);
+  const dateWindowMismatch = hasDateWindowMismatch({ requestedRange, hubRange });
+  const comparisonAvailable = comparison.comparison_available && !dateWindowMismatch;
+  const mismatchCategory = aggregateMismatchCategory(spec, comparison, { dateWindowMismatch });
+  const mismatchDetected = Boolean(mismatchCategory) && mismatchCategory !== 'not_comparable';
+  const sourceOfTruth = comparisonAvailable ? spec.source_of_truth : (spec.source_of_truth || 'not_comparable');
+  const sourceHold = sourceOfTruthIsHold(sourceOfTruth) || Boolean(spec.blocker);
+  const nativeFirstReady = Boolean(spec.native_first_candidate_if_match)
+    && comparisonAvailable
+    && !mismatchDetected
+    && !sourceHold;
+  const fallbackRequired = !nativeFirstReady || currentDisplaySource !== 'native_primary';
+  const reviewRequired = mismatchDetected || sourceOfTruth === 'manual_review' || sourceOfTruth === 'unknown' || sourceOfTruth === 'not_comparable';
+  const blocker = nativeFirstReady
+    ? null
+    : spec.blocker || (comparisonAvailable ? null : 'aggregate_comparison_not_available');
+  const fallbackReason = fallbackRequired
+    ? (blocker || mismatchCategory || `${spec.domain || 'aggregate'}_current_display_preserved`)
+    : null;
+
+  return {
+    aggregate_name: spec.name,
+    displayed_value: displayedValue,
+    current_display_source: currentDisplaySource,
+    native_value: comparisonAvailable || nativeValue !== null ? nativeValue : null,
+    hub_value: comparisonAvailable || hubValue !== null ? hubValue : null,
+    comparison_available: comparisonAvailable,
+    mismatch_detected: mismatchDetected,
+    mismatch_category: mismatchCategory,
+    source_of_truth: sourceOfTruth,
+    native_first_ready: nativeFirstReady,
+    fallback_required: fallbackRequired,
+    review_required: reviewRequired,
+    blocker,
+    recommendation: spec.recommendation || 'keep_current_display_until_aggregate_parity_is_proven',
+  };
+}
+
+function buildOperationsDashboardDiagnostics({
+  displayedSummary,
+  nativeSummary,
+  hubSummary,
+  currentDisplaySource,
+  requestedRange,
+  hubRange,
+}) {
+  const aggregateDiagnostics = G39N_AGGREGATE_SPECS.map(spec => aggregateDiagnosticForSpec({
+    spec,
+    displayedSummary,
+    nativeSummary,
+    hubSummary,
+    currentDisplaySource,
+    requestedRange,
+    hubRange,
+  }));
+
+  const aggregateMismatchCategories = {};
+  const sourceOfTruthHolds = {};
+  const fallbackReasons = {};
+  let nativeAggregateCount = 0;
+  let hubAggregateCount = 0;
+  let mixedAggregateCount = 0;
+  let aggregateMismatchCount = 0;
+  let sourceOfTruthHoldCount = 0;
+  let fallbackRequiredCount = 0;
+  let reviewRequiredCount = 0;
+  let nativeFirstReadyAggregateCount = 0;
+  let hubSourceOfTruthAggregateCount = 0;
+  let blockedAggregateCount = 0;
+
+  for (const diagnostic of aggregateDiagnostics) {
+    if (diagnostic.native_value !== null && diagnostic.native_value !== undefined) nativeAggregateCount += 1;
+    if (diagnostic.hub_value !== null && diagnostic.hub_value !== undefined) hubAggregateCount += 1;
+    if (
+      diagnostic.native_value !== null
+      && diagnostic.native_value !== undefined
+      && diagnostic.hub_value !== null
+      && diagnostic.hub_value !== undefined
+    ) {
+      mixedAggregateCount += 1;
+    }
+    if (diagnostic.mismatch_detected) {
+      aggregateMismatchCount += 1;
+      incrementCount(aggregateMismatchCategories, diagnostic.mismatch_category);
+    }
+    if (sourceOfTruthIsHold(diagnostic.source_of_truth) || diagnostic.blocker) {
+      sourceOfTruthHoldCount += 1;
+      incrementCount(sourceOfTruthHolds, diagnostic.source_of_truth);
+    }
+    if (diagnostic.fallback_required) {
+      fallbackRequiredCount += 1;
+      incrementCount(fallbackReasons, diagnostic.blocker || diagnostic.mismatch_category || 'current_display_preserved');
+    }
+    if (diagnostic.review_required) reviewRequiredCount += 1;
+    if (diagnostic.native_first_ready) nativeFirstReadyAggregateCount += 1;
+    if (['hub', 'payment_provider_hub', 'subscription_hub'].includes(diagnostic.source_of_truth)) {
+      hubSourceOfTruthAggregateCount += 1;
+    }
+    if (diagnostic.blocker) blockedAggregateCount += 1;
+  }
+
+  return {
+    operations_dashboard_diagnostics_enabled: true,
+    operations_dashboard_diagnostics_marker: G39N_DIAGNOSTICS_MARKER,
+    native_first_enabled: false,
+    hub_primary_enabled: true,
+    hub_fallback_active: true,
+    dashboard_source_mode: 'current_behavior_with_diagnostics',
+    writes_performed: false,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    customer_facing_behavior_changed: false,
+    aggregate_count: aggregateDiagnostics.length,
+    aggregate_mismatch_count: aggregateMismatchCount,
+    native_aggregate_count: nativeAggregateCount,
+    hub_aggregate_count: hubAggregateCount,
+    mixed_aggregate_count: mixedAggregateCount,
+    source_of_truth_hold_count: sourceOfTruthHoldCount,
+    fallback_required_count: fallbackRequiredCount,
+    review_required_count: reviewRequiredCount,
+    native_first_ready_aggregate_count: nativeFirstReadyAggregateCount,
+    hub_source_of_truth_aggregate_count: hubSourceOfTruthAggregateCount,
+    blocked_aggregate_count: blockedAggregateCount,
+    aggregate_mismatch_categories: aggregateMismatchCategories,
+    source_of_truth_holds: sourceOfTruthHolds,
+    fallback_reasons: fallbackReasons,
+    aggregate_diagnostics: aggregateDiagnostics,
   };
 }
 
@@ -321,6 +744,15 @@ async function loadNativeOperationsDashboardSummary(base44, { dateFrom, dateTo, 
 }
 
 function nativeFallbackResponse({ dateFrom, dateTo, summary, reason, hubStatus = null }) {
+  const diagnostics = buildOperationsDashboardDiagnostics({
+    displayedSummary: summary,
+    nativeSummary: summary,
+    hubSummary: null,
+    currentDisplaySource: 'native_fallback',
+    requestedRange: { date_from: dateFrom, date_to: dateTo },
+    hubRange: null,
+  });
+
   return Response.json({
     success: true,
     source: 'customer_app_native_operations_dashboard_fallback',
@@ -340,6 +772,7 @@ function nativeFallbackResponse({ dateFrom, dateTo, summary, reason, hubStatus =
       native_available: true,
       native_read_only: true,
     },
+    ...diagnostics,
   });
 }
 
@@ -471,14 +904,29 @@ Deno.serve(async (req) => {
       });
     }
 
+    const hubSummary = sanitizeSummary(hubData.summary);
+    const nativeSummary = await loadNativeSummary();
+    const diagnostics = buildOperationsDashboardDiagnostics({
+      displayedSummary: hubSummary,
+      nativeSummary,
+      hubSummary,
+      currentDisplaySource: 'hub_primary',
+      requestedRange: resolvedRange,
+      hubRange: {
+        date_from: hubData.date_from || (preset === 'custom' ? dateFrom : resolvedRange.date_from),
+        date_to: hubData.date_to || (preset === 'custom' ? dateTo : resolvedRange.date_to),
+      },
+    });
+
     return Response.json({
       success: true,
       source: hubData.source || 'hub_operations_dashboard_summary',
       generated_at: hubData.generated_at || null,
       date_from: hubData.date_from || dateFrom || null,
       date_to: hubData.date_to || dateTo || null,
-      summary: sanitizeSummary(hubData.summary),
+      summary: hubSummary,
       truncated: hubData.truncated === true,
+      ...diagnostics,
     });
   } catch (error) {
     console.error('[getAdminOperationsDashboardSummary] Error:', error.message);
