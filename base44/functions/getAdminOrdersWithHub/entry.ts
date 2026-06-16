@@ -283,18 +283,25 @@ function buildAdminOrderDiagnostics({ mergedOrders, filteredHubOrders, nativeAdm
   const hubOnlyRows = mergedOrders.filter(order => order.is_hub_order && !order.has_native_order && !order.has_customer_app_order);
   const fallbackRows = mergedOrders.filter(order => Boolean(order.fallback_reason));
   const reviewRows = mergedOrders.filter(order => order.review_required === true);
+  const nativePrimaryRows = mergedOrders.filter(order => order.native_primary_eligible === true && order.admin_primary_source === 'native');
+  const hubPrimaryRows = mergedOrders.filter(order => order.admin_primary_source === 'hub');
+  const nativePrimaryEligibleRows = mergedOrders.filter(order => order.native_primary_eligible === true);
+  const nativePrimaryIneligibleRows = mergedOrders.filter(order => order.native_primary_eligible !== true);
   const mismatchCategoryCounts = {};
   const fallbackReasonCounts = {};
   const sourceOfTruthCounts = {};
+  const nativePrimaryIneligibleReasonCounts = {};
 
   for (const order of mergedOrders) {
     for (const category of Array.isArray(order.mismatch_categories) ? order.mismatch_categories : []) addCount(mismatchCategoryCounts, category);
     addCount(fallbackReasonCounts, order.fallback_reason);
     addCount(sourceOfTruthCounts, order.source_of_truth);
+    for (const blocker of Array.isArray(order.native_primary_blockers) ? order.native_primary_blockers : []) addCount(nativePrimaryIneligibleReasonCounts, blocker);
   }
 
   return {
     admin_orders_diagnostics_enabled: true,
+    limited_native_primary_enabled: true,
     native_first_enabled: false,
     hub_first_enabled: true,
     hub_fallback_active: true,
@@ -315,11 +322,129 @@ function buildAdminOrderDiagnostics({ mergedOrders, filteredHubOrders, nativeAdm
     hub_missing_native_available_count: nativeOnlyRows.length,
     hub_only_count: hubOnlyRows.length,
     native_only_count: nativeOnlyRows.length,
+    native_primary_row_count: nativePrimaryRows.length,
+    hub_primary_row_count: hubPrimaryRows.length,
+    native_primary_eligible_count: nativePrimaryEligibleRows.length,
+    native_primary_ineligible_count: nativePrimaryIneligibleRows.length,
+    native_primary_ineligible_reasons: nativePrimaryIneligibleReasonCounts,
     fallback_required_count: fallbackRows.length,
     review_required_count: reviewRows.length,
     mismatch_categories: mismatchCategoryCounts,
     fallback_reasons: fallbackReasonCounts,
     source_of_truth_holds: sourceOfTruthCounts,
+  };
+}
+
+function nativeCandidateForAdminRow(order, nativeOrderIndexes) {
+  if (!order || !nativeOrderIndexes) return null;
+  return nativeOrderIndexes.byNativeOrderId.get(order.native_shopify_order_id) ||
+    nativeOrderIndexes.byCustomerAppOrderId.get(order.customer_app_order_id || order.native_base44_order_id) ||
+    nativeOrderIndexes.byOrderNumber.get(normalizeOrderNum(order.native_order_number || order.order_number)) ||
+    null;
+}
+
+function hasOneTimeOrderSignal(order) {
+  const values = [
+    order?.order_type,
+    order?.native_order_type,
+    order?.source_type,
+    order?.native_source_type,
+    order?.source_channel,
+    order?.native_source_channel,
+  ].map(normalizeLower);
+
+  if (values.some(value => ['one_time', 'one-time', 'one time'].includes(value))) return true;
+  if (['one_time_active_paid', 'one_time_complete', 'historical_late_mirror', 'native_mirror_only'].includes(order?.order_classification)) {
+    return !isSubscriptionOrMultiDelivery(order) && !isPosLikeOrder(order);
+  }
+  return false;
+}
+
+function evaluateAdminOrderLimitedNativePrimaryEligibility(order, nativeCandidate = null) {
+  const blockers = [];
+  const addBlocker = (blocker) => {
+    if (blocker && !blockers.includes(blocker)) blockers.push(blocker);
+  };
+
+  const classification = order?.order_classification || orderClassification(order);
+  const sourceOfTruth = order?.source_of_truth || sourceOfTruthForOrder(order, classification);
+  const mismatchFields = Array.isArray(order?.mismatch_fields) ? order.mismatch_fields : [];
+  const taskSummary = order?.native_fulfillment_task_summary || {};
+
+  if (!hasOneTimeOrderSignal({ ...order, order_classification: classification })) addBlocker('one_time_not_proven');
+  if (isPosLikeOrder(order)) addBlocker('pos_or_event_not_in_limited_subset');
+  if (isSubscriptionOrMultiDelivery(order) || classification === 'subscription_or_multi_delivery') addBlocker('subscription_or_multi_delivery_hub_source_of_truth');
+  if (classification === 'refunded_or_cancelled' || statusLooksTerminalOrRefunded(order)) addBlocker('refund_cancel_payment_source_of_truth');
+  if (classification === 'payment_not_ready' || isPendingPaymentOrder(order) || !isPaidOrder(order)) addBlocker('payment_not_ready');
+  if (order?.payment_captured !== true && order?.customer_app_payment_captured !== true) addBlocker('payment_not_captured');
+  if (classification === 'repair_replay_context' || isRepairReplayContext(order)) addBlocker('repair_replay_manual_review');
+  if (sourceOfTruth === 'payment_provider_hub') addBlocker('payment_provider_hub_source_of_truth');
+  if (sourceOfTruth === 'subscription_hub') addBlocker('subscription_hub_source_of_truth');
+  if (sourceOfTruth === 'manual_review') addBlocker('manual_review_source_of_truth');
+  if (sourceOfTruth === 'unknown') addBlocker('unknown_source_of_truth');
+  if (!order?.has_customer_app_order || !order?.customer_app_order_id) addBlocker('customer_app_order_missing');
+  if (!order?.has_native_order || !(order?.native_shopify_order_id || nativeCandidate?.native_shopify_order_id)) addBlocker('native_shopify_order_missing');
+  if (!nativeCandidate) addBlocker('native_primary_candidate_missing');
+  if (!(order?.has_native_task === true || Number(taskSummary.count) > 0)) addBlocker('native_fulfillment_task_missing');
+  if (order?.native_review_queue_summary) addBlocker('order_review_queue_blocker');
+  if (mismatchFields.length > 0) addBlocker('native_hub_mismatch');
+  if (order?.review_required === true) addBlocker('review_required');
+  if (Array.isArray(order?.native_task_missing_metadata_fields) && order.native_task_missing_metadata_fields.length > 0) addBlocker('native_task_metadata_incomplete');
+
+  const reason = blockers.length === 0
+    ? (classification === 'historical_late_mirror'
+        ? 'safe_historical_late_mirror_admin_context_only'
+        : order?.is_hub_order
+          ? 'safe_one_time_reconciled_native_context'
+          : 'safe_one_time_native_born_or_mirror')
+    : null;
+
+  return {
+    eligible: blockers.length === 0,
+    reason,
+    blockers,
+  };
+}
+
+function retainHubFallbackContextForNativePrimary(nativePrimaryRow, currentRow) {
+  if (!nativePrimaryRow || !currentRow?.is_hub_order) return nativePrimaryRow;
+
+  const withHubFallback = {
+    ...nativePrimaryRow,
+    is_hub_order: true,
+    hub_order_id: currentRow.hub_order_id || nativePrimaryRow.hub_order_id || null,
+    hub_customer_email: currentRow.hub_customer_email || nativePrimaryRow.hub_customer_email || null,
+    hub_operational_status: currentRow.hub_operational_status || nativePrimaryRow.hub_operational_status || null,
+    hub_fulfillment_status: currentRow.hub_fulfillment_status || nativePrimaryRow.hub_fulfillment_status || null,
+    hub_fulfillment_number: currentRow.hub_fulfillment_number || nativePrimaryRow.hub_fulfillment_number || null,
+    hub_sync_summary: currentRow.hub_sync_summary || nativePrimaryRow.hub_sync_summary || null,
+    delivery_window_label: nativePrimaryRow.delivery_window_label || currentRow.delivery_window_label || null,
+    created_date: currentRow.created_date || nativePrimaryRow.created_date || null,
+  };
+
+  withHubFallback.admin_context_guidance = buildOperationalContextGuidance(withHubFallback);
+  withHubFallback.admin_context_badges = buildAdminContextBadges(withHubFallback);
+  return withHubFallback;
+}
+
+function adminPrimarySourceForOrder(order, evaluation) {
+  if (evaluation?.eligible === true) return 'native';
+  if (order?.is_hub_order) return 'hub';
+  if (order?.is_native_order || order?.has_native_order) return 'native';
+  return 'local_customer_app';
+}
+
+function applyLimitedNativePrimaryMetadata(order, evaluation) {
+  const adminPrimarySource = adminPrimarySourceForOrder(order, evaluation);
+  return {
+    ...order,
+    admin_primary_source: adminPrimarySource,
+    native_primary_eligible: evaluation?.eligible === true,
+    native_primary_reason: evaluation?.reason || null,
+    native_primary_blockers: Array.isArray(evaluation?.blockers) ? evaluation.blockers : [],
+    customer_facing_safe: evaluation?.eligible === true,
+    source_of_truth: evaluation?.eligible === true ? 'native' : order?.source_of_truth,
+    write_path_not_in_scope: true,
   };
 }
 
@@ -745,7 +870,21 @@ Deno.serve(async (req) => {
     }
 
     const merged = Array.from(mergedMap.values())
-      .map(decorateAdminOrderDiagnostics)
+      .map((order) => {
+        const decoratedOrder = decorateAdminOrderDiagnostics(order);
+        const nativeCandidate = nativeCandidateForAdminRow(decoratedOrder, nativeOrderIndexes);
+        const eligibility = evaluateAdminOrderLimitedNativePrimaryEligibility(decoratedOrder, nativeCandidate);
+
+        if (!eligibility.eligible || !nativeCandidate) {
+          return applyLimitedNativePrimaryMetadata(decoratedOrder, eligibility);
+        }
+
+        const nativePrimaryBase = withMergedContext(nativeCandidate);
+        const nativePrimaryWithFallback = retainHubFallbackContextForNativePrimary(nativePrimaryBase, decoratedOrder);
+        const decoratedNativePrimary = decorateAdminOrderDiagnostics(nativePrimaryWithFallback);
+
+        return applyLimitedNativePrimaryMetadata(decoratedNativePrimary, eligibility);
+      })
       .sort((a, b) => {
       const aDate = new Date(a.created_date || 0);
       const bDate = new Date(b.created_date || 0);
