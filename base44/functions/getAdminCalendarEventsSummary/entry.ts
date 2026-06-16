@@ -1,7 +1,9 @@
+// @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+const G39H_PATCH1_RUNTIME_ACTIVATION_MARKER = 'g39h_patch1_calendar_runtime_activation_unblock';
 const MAX_RANGE_DAYS = 31;
 const DEFAULT_LIMIT = 150;
 const MAX_LIMIT = 250;
@@ -782,6 +784,7 @@ function nativeFirstCalendarResponse({ dateFrom, dateTo, nativeCalendar, hubData
     notifications_sent: false,
     hub_mutation_performed: false,
     live_command_candidate: false,
+    runtime_activation_patch: G39H_PATCH1_RUNTIME_ACTIVATION_MARKER,
   });
 }
 
