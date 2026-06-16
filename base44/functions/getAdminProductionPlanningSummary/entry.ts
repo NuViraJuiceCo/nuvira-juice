@@ -213,6 +213,10 @@ function sanitizeSummary(summary) {
   };
 }
 
+function sanitizeBoolean(value, fallback = false) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
 function sanitizeProductGroup(group) {
   return {
     product_name: sanitizeText(group?.product_name),
@@ -222,6 +226,12 @@ function sanitizeProductGroup(group) {
     batch_count: numberOrZero(group?.batch_count),
     source_order_count: numberOrZero(group?.source_order_count),
     source: sanitizeText(group?.source, 80),
+    data_source: sanitizeText(group?.data_source, 80),
+    fallback_source: sanitizeText(group?.fallback_source, 80),
+    fallback_reason: sanitizeText(group?.fallback_reason, 100),
+    native_primary: sanitizeBoolean(group?.native_primary, false),
+    hub_fallback_used: sanitizeBoolean(group?.hub_fallback_used, false),
+    warnings: sanitizeStringList(group?.warnings, 8, 100),
   };
 }
 
@@ -240,6 +250,12 @@ function sanitizeDateGroup(group) {
     shortage_count: numberOrZero(group?.shortage_count),
     native_order_count: numberOrZero(group?.native_order_count),
     source: sanitizeText(group?.source, 80),
+    data_source: sanitizeText(group?.data_source, 80),
+    fallback_source: sanitizeText(group?.fallback_source, 80),
+    fallback_reason: sanitizeText(group?.fallback_reason, 100),
+    native_primary: sanitizeBoolean(group?.native_primary, false),
+    hub_fallback_used: sanitizeBoolean(group?.hub_fallback_used, false),
+    warnings: sanitizeStringList(group?.warnings, 8, 100),
   };
 }
 
@@ -267,6 +283,306 @@ function mergeDateGroups(hubDates, nativeDates) {
     if (dateCompare !== 0) return dateCompare;
     return (a.source || 'hub').localeCompare(b.source || 'hub');
   });
+}
+
+function planningProductKey(group) {
+  return normalizeMatchKey(group?.product_name);
+}
+
+function planningIngredientKey(row) {
+  return `${normalizeMatchKey(row?.ingredient)}::${normalizeMatchKey(row?.unit || 'oz')}`;
+}
+
+function productGroupsByKey(groups) {
+  const map = new Map();
+  for (const group of Array.isArray(groups) ? groups : []) {
+    const sanitized = sanitizeProductGroup(group);
+    const key = planningProductKey(sanitized);
+    if (!key) continue;
+    map.set(key, sanitized);
+  }
+  return map;
+}
+
+function decoratePlanningProductGroup(group, metadata) {
+  return sanitizeProductGroup({
+    ...group,
+    data_source: metadata.data_source,
+    fallback_source: metadata.fallback_source || null,
+    fallback_reason: metadata.fallback_reason || null,
+    native_primary: metadata.native_primary === true,
+    hub_fallback_used: metadata.hub_fallback_used === true,
+    warnings: metadata.warnings || [],
+  });
+}
+
+function decorateDateGroup(group, metadata) {
+  const productGroups = Array.isArray(group?.product_groups)
+    ? group.product_groups.map(product => decoratePlanningProductGroup(product, metadata))
+    : [];
+  return sanitizeDateGroup({
+    ...group,
+    product_groups: productGroups,
+    data_source: metadata.data_source,
+    fallback_source: metadata.fallback_source || null,
+    fallback_reason: metadata.fallback_reason || null,
+    native_primary: metadata.native_primary === true,
+    hub_fallback_used: metadata.hub_fallback_used === true,
+    warnings: metadata.warnings || [],
+  });
+}
+
+function decorateIngredient(row, metadata) {
+  return sanitizeIngredient({
+    ...row,
+    data_source: metadata.data_source,
+    fallback_source: metadata.fallback_source || null,
+    fallback_reason: metadata.fallback_reason || null,
+    native_primary: metadata.native_primary === true,
+    hub_fallback_used: metadata.hub_fallback_used === true,
+    warnings: metadata.warnings || [],
+  });
+}
+
+function groupSourcePriority(group) {
+  if (group?.native_primary === true) return 0;
+  if (group?.hub_fallback_used === true) return 1;
+  return 2;
+}
+
+function mergeDateGroupsNativeFirst(nativeDates, hubDates) {
+  const nativeGroups = (Array.isArray(nativeDates) ? nativeDates : [])
+    .map(group => decorateDateGroup(group, {
+      data_source: 'customer_app_native',
+      native_primary: true,
+      hub_fallback_used: false,
+    }))
+    .filter(group => group.production_date || group.product_groups.length > 0 || group.planned_units > 0);
+  const hubGroups = (Array.isArray(hubDates) ? hubDates : [])
+    .map(group => sanitizeDateGroup(group))
+    .filter(group => group.production_date || group.product_groups.length > 0 || group.planned_units > 0);
+
+  const nativeByDate = new Map();
+  for (const group of nativeGroups) {
+    const key = group.production_date || DATE_PENDING;
+    if (!nativeByDate.has(key)) nativeByDate.set(key, []);
+    nativeByDate.get(key).push(group);
+  }
+
+  const merged = [...nativeGroups];
+  const fallbackReasons = new Set();
+  let hubFallbackRowCount = 0;
+  let suppressedHubRowCount = 0;
+  let hubOnlyCount = 0;
+  let nativeOnlyCount = 0;
+  let mismatchCount = 0;
+
+  for (const group of hubGroups) {
+    const dateKey = group.production_date || DATE_PENDING;
+    const matchingNative = nativeByDate.get(dateKey) || [];
+    if (matchingNative.length === 0) {
+      fallbackReasons.add('native_planning_row_missing');
+      hubFallbackRowCount += 1;
+      hubOnlyCount += 1;
+      merged.push(decorateDateGroup(group, {
+        data_source: 'hub_fallback',
+        fallback_source: 'hub',
+        fallback_reason: 'native_planning_row_missing',
+        native_primary: false,
+        hub_fallback_used: true,
+      }));
+      continue;
+    }
+
+    const nativeProductKeys = new Set();
+    let nativePlannedUnits = 0;
+    for (const nativeGroup of matchingNative) {
+      nativePlannedUnits += numberOrZero(nativeGroup.planned_units);
+      for (const key of productGroupsByKey(nativeGroup.product_groups).keys()) nativeProductKeys.add(key);
+    }
+
+    const hubProducts = Array.from(productGroupsByKey(group.product_groups).values());
+    const missingHubProducts = hubProducts.filter(product => !nativeProductKeys.has(planningProductKey(product)));
+    const duplicateProductCount = hubProducts.length - missingHubProducts.length;
+
+    if (missingHubProducts.length > 0) {
+      fallbackReasons.add('native_data_incomplete_for_production_planning');
+      hubFallbackRowCount += 1;
+      const plannedUnits = missingHubProducts.reduce((sum, product) => sum + numberOrZero(product.planned_units), 0);
+      merged.push(decorateDateGroup({
+        ...group,
+        product_groups: missingHubProducts,
+        planned_units: plannedUnits || group.planned_units,
+        source: group.source || 'hub_fallback',
+      }, {
+        data_source: 'native_with_hub_fallback_context',
+        fallback_source: 'hub',
+        fallback_reason: 'native_data_incomplete_for_production_planning',
+        native_primary: false,
+        hub_fallback_used: true,
+        warnings: ['hub_fallback_context_used'],
+      }));
+    }
+
+    if (duplicateProductCount > 0) {
+      suppressedHubRowCount += 1;
+      const hubPlannedUnits = numberOrZero(group.planned_units);
+      if (hubPlannedUnits > 0 && nativePlannedUnits > 0 && hubPlannedUnits !== nativePlannedUnits) mismatchCount += 1;
+    }
+  }
+
+  for (const group of nativeGroups) {
+    const sameDateHub = hubGroups.some(hubGroup => (hubGroup.production_date || DATE_PENDING) === (group.production_date || DATE_PENDING));
+    if (!sameDateHub) nativeOnlyCount += 1;
+  }
+
+  merged.sort((a, b) => {
+    const dateCompare = (a.production_date || '').localeCompare(b.production_date || '');
+    if (dateCompare !== 0) return dateCompare;
+    const priorityCompare = groupSourcePriority(a) - groupSourcePriority(b);
+    if (priorityCompare !== 0) return priorityCompare;
+    return (a.source || '').localeCompare(b.source || '');
+  });
+
+  return { rows: merged, hubFallbackRowCount, suppressedHubRowCount, fallbackReasons, hubOnlyCount, nativeOnlyCount, mismatchCount };
+}
+
+function mergeIngredientsNativeFirst(nativeIngredients, hubIngredients) {
+  const nativeRows = (Array.isArray(nativeIngredients) ? nativeIngredients : [])
+    .map(row => decorateIngredient(row, {
+      data_source: 'customer_app_native',
+      native_primary: true,
+      hub_fallback_used: false,
+    }))
+    .filter(row => row.ingredient);
+  const hubRows = (Array.isArray(hubIngredients) ? hubIngredients : [])
+    .map(sanitizeIngredient)
+    .filter(row => row.ingredient);
+
+  const nativeByIngredient = new Map(nativeRows.map(row => [planningIngredientKey(row), row]));
+  const merged = [...nativeRows];
+  const fallbackReasons = new Set();
+  let hubFallbackRowCount = 0;
+  let suppressedHubRowCount = 0;
+  let hubOnlyCount = 0;
+  let nativeOnlyCount = 0;
+  let mismatchCount = 0;
+
+  for (const hubRow of hubRows) {
+    const key = planningIngredientKey(hubRow);
+    const nativeRow = nativeByIngredient.get(key);
+    if (!nativeRow) {
+      fallbackReasons.add('native_planning_row_missing');
+      hubFallbackRowCount += 1;
+      hubOnlyCount += 1;
+      merged.push(decorateIngredient(hubRow, {
+        data_source: 'hub_fallback',
+        fallback_source: 'hub',
+        fallback_reason: 'native_planning_row_missing',
+        native_primary: false,
+        hub_fallback_used: true,
+      }));
+      continue;
+    }
+
+    const nativeIncomplete = nativeRow.yield_match_found !== true || nativeRow.status === 'no_data';
+    const quantityMismatch = numberOrZero(nativeRow.required_quantity) !== numberOrZero(hubRow.required_quantity);
+    if (quantityMismatch) mismatchCount += 1;
+
+    if (nativeIncomplete) {
+      fallbackReasons.add('native_data_incomplete_for_production_planning');
+      hubFallbackRowCount += 1;
+      merged.push(decorateIngredient(hubRow, {
+        data_source: 'native_with_hub_fallback_context',
+        fallback_source: 'hub',
+        fallback_reason: 'native_data_incomplete_for_production_planning',
+        native_primary: false,
+        hub_fallback_used: true,
+        warnings: ['hub_fallback_context_used'],
+      }));
+    } else {
+      suppressedHubRowCount += 1;
+    }
+  }
+
+  for (const row of nativeRows) {
+    if (!hubRows.some(hubRow => planningIngredientKey(hubRow) === planningIngredientKey(row))) nativeOnlyCount += 1;
+  }
+
+  merged.sort((a, b) => {
+    const priorityCompare = groupSourcePriority(a) - groupSourcePriority(b);
+    if (priorityCompare !== 0) return priorityCompare;
+    return (a.ingredient || '').localeCompare(b.ingredient || '');
+  });
+
+  return { rows: merged, hubFallbackRowCount, suppressedHubRowCount, fallbackReasons, hubOnlyCount, nativeOnlyCount, mismatchCount };
+}
+
+function summaryFromNativeFirstRows(dateRows, ingredientRows, nativePlanning, hubData, hubFallbackUsed) {
+  const uniqueDates = new Set((dateRows || []).map(row => row.production_date).filter(Boolean));
+  return sanitizeSummary({
+    production_date_count: uniqueDates.size,
+    batch_count: dateRows.reduce((sum, row) => sum + numberOrZero(row.batch_count), 0),
+    planned_units: dateRows.reduce((sum, row) => sum + numberOrZero(row.planned_units), 0),
+    produced_units: dateRows.reduce((sum, row) => sum + numberOrZero(row.produced_units), 0),
+    ingredient_count: ingredientRows.length,
+    shortage_count: ingredientRows.filter(row => row.status === 'short').length,
+    missing_recipe_count: numberOrZero(nativePlanning?.summary?.missing_recipe_count) + (hubFallbackUsed ? numberOrZero(hubData?.summary?.missing_recipe_count) : 0),
+    missing_yield_count: numberOrZero(nativePlanning?.summary?.missing_yield_count) + (hubFallbackUsed ? numberOrZero(hubData?.summary?.missing_yield_count) : 0),
+    native_order_count: numberOrZero(nativePlanning?.summary?.native_order_count),
+    skipped_missing_date_count: numberOrZero(nativePlanning?.summary?.skipped_missing_date_count),
+  });
+}
+
+function buildNativeFirstPlanningParts(nativePlanning, hubData) {
+  const nativeDates = Array.isArray(nativePlanning?.dates) ? nativePlanning.dates : [];
+  const hubDates = Array.isArray(hubData?.dates) ? hubData.dates : [];
+  const nativeIngredients = Array.isArray(nativePlanning?.ingredients) ? nativePlanning.ingredients : [];
+  const hubIngredients = Array.isArray(hubData?.ingredients) ? hubData.ingredients : [];
+
+  const dateMerge = mergeDateGroupsNativeFirst(nativeDates, hubDates);
+  const ingredientMerge = mergeIngredientsNativeFirst(nativeIngredients, hubIngredients);
+  const fallbackReasons = new Set([...dateMerge.fallbackReasons, ...ingredientMerge.fallbackReasons]);
+  const hubFallbackRowCount = dateMerge.hubFallbackRowCount + ingredientMerge.hubFallbackRowCount;
+  const suppressedHubRowCount = dateMerge.suppressedHubRowCount + ingredientMerge.suppressedHubRowCount;
+  const hubOnlyCount = dateMerge.hubOnlyCount + ingredientMerge.hubOnlyCount;
+  const nativeOnlyCount = dateMerge.nativeOnlyCount + ingredientMerge.nativeOnlyCount;
+  const mismatchCount = dateMerge.mismatchCount + ingredientMerge.mismatchCount;
+  const nativeOverlayRowCount = nativeDates.length + nativeIngredients.length;
+  const hubSummaryRowCount = hubDates.length + hubIngredients.length;
+  const hubFallbackUsed = hubFallbackRowCount > 0;
+  const nativeDataPresent = nativeOverlayRowCount > 0;
+
+  return {
+    summary: summaryFromNativeFirstRows(dateMerge.rows, ingredientMerge.rows, nativePlanning, hubData, hubFallbackUsed),
+    dates: dateMerge.rows,
+    ingredients: ingredientMerge.rows,
+    metadata: {
+      native_first_enabled: true,
+      native_row_count: nativeDates.length,
+      hub_fallback_row_count: hubFallbackRowCount,
+      native_overlay_row_count: nativeOverlayRowCount,
+      hub_summary_row_count: hubSummaryRowCount,
+      suppressed_hub_row_count: suppressedHubRowCount,
+      fallback_required: hubFallbackUsed,
+      fallback_reasons: Array.from(fallbackReasons).sort(),
+      hub_fallback_used: hubFallbackUsed,
+      native_missing_count: nativeDataPresent ? 0 : hubSummaryRowCount,
+      hub_only_count: hubOnlyCount,
+      native_only_count: nativeOnlyCount,
+      mismatch_count: mismatchCount,
+      production_planning_source: nativeDataPresent ? 'customer_app_native_first' : (hubFallbackUsed ? 'hub_fallback' : 'empty'),
+      writes_performed: false,
+      provider_call_impact: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
+      inventory_deduction_ready: false,
+      purchase_order_ready: false,
+      live_production_command_candidate: false,
+      production_batch_command_ready: false,
+      production_lifecycle_command_recommendation: 'preview_only_fresh_active_order_required',
+    },
+  };
 }
 
 async function fetchHubJson(url, headers) {
@@ -921,6 +1237,12 @@ function sanitizeIngredient(row) {
     source_products: sanitizeStringList(row?.source_products, 20, 100),
     production_dates: sanitizeStringList(row?.production_dates, 31, 20),
     source: sanitizeText(row?.source, 80),
+    data_source: sanitizeText(row?.data_source, 80),
+    fallback_source: sanitizeText(row?.fallback_source, 80),
+    fallback_reason: sanitizeText(row?.fallback_reason, 100),
+    native_primary: sanitizeBoolean(row?.native_primary, false),
+    hub_fallback_used: sanitizeBoolean(row?.hub_fallback_used, false),
+    warnings: sanitizeStringList(row?.warnings, 8, 100),
   };
 }
 
@@ -982,6 +1304,14 @@ Deno.serve(async (req) => {
 
     const resolvedRange = resolveRange({ preset, dateFrom, dateTo });
     const warnings = [];
+    let nativePlanning = emptyNativePlanning();
+    try {
+      nativePlanning = await loadNativeMay30Planning(base44, resolvedRange.dateFrom, resolvedRange.dateTo);
+    } catch (error) {
+      console.error('[getAdminProductionPlanningSummary] Native overlay error:', error.message);
+      warnings.push('native_production_planning_overlay_unavailable');
+    }
+
     let hubData = {
       success: true,
       date_from: resolvedRange.dateFrom,
@@ -1028,26 +1358,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    let nativePlanning = emptyNativePlanning();
-    try {
-      nativePlanning = await loadNativeMay30Planning(base44, resolvedRange.dateFrom, resolvedRange.dateTo);
-    } catch (error) {
-      console.error('[getAdminProductionPlanningSummary] Native overlay error:', error.message);
-      warnings.push('native_production_planning_overlay_unavailable');
-    }
-
-    const hubIngredients = Array.isArray(hubData.ingredients) ? hubData.ingredients.map(sanitizeIngredient) : [];
-    const nativeIngredients = Array.isArray(nativePlanning.ingredients) ? nativePlanning.ingredients.map(sanitizeIngredient) : [];
+    const nativeFirstPlanning = buildNativeFirstPlanningParts(nativePlanning, hubData);
 
     return Response.json({
       success: true,
-      date_from: hubData.date_from || resolvedRange.dateFrom,
-      date_to: hubData.date_to || resolvedRange.dateTo,
+      date_from: resolvedRange.dateFrom,
+      date_to: resolvedRange.dateTo,
       generated_at: hubData.generated_at || new Date().toISOString(),
-      summary: mergeSummaries(hubData.summary, nativePlanning.summary),
-      dates: mergeDateGroups(hubData.dates, nativePlanning.dates).slice(0, 62),
-      ingredients: [...hubIngredients, ...nativeIngredients].slice(0, 200),
+      summary: nativeFirstPlanning.summary,
+      dates: nativeFirstPlanning.dates.slice(0, 62),
+      ingredients: nativeFirstPlanning.ingredients.slice(0, 200),
       truncated: hubData.truncated === true,
+      ...nativeFirstPlanning.metadata,
       native_overlay: {
         source: 'customer_app_shopify_order_mirror',
         read_only: true,
