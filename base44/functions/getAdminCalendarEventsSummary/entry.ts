@@ -153,6 +153,35 @@ function sanitizeSummary(summary) {
   };
 }
 
+function sanitizeMetadataWarnings(value) {
+  if (!Array.isArray(value)) return undefined;
+  const warnings = value.map(item => sanitizeText(item, 100)).filter(Boolean).slice(0, 6);
+  return warnings.length > 0 ? warnings : undefined;
+}
+
+function sanitizeItemMetadata(item) {
+  const metadata = {};
+  const dataSource = normalizeLower(item?.data_source);
+  if (['customer_app_native', 'hub_fallback', 'native_with_hub_fallback_context'].includes(dataSource)) {
+    metadata.data_source = dataSource;
+  }
+
+  const fallbackSource = sanitizeText(item?.fallback_source, 80);
+  if (fallbackSource) metadata.fallback_source = fallbackSource;
+
+  const fallbackReason = sanitizeText(item?.fallback_reason, 100);
+  if (fallbackReason) metadata.fallback_reason = fallbackReason;
+
+  if (typeof item?.native_primary === 'boolean') metadata.native_primary = item.native_primary;
+  if (typeof item?.hub_fallback_used === 'boolean') metadata.hub_fallback_used = item.hub_fallback_used;
+  if (typeof item?.stale_hub_event_suppressed === 'boolean') metadata.stale_hub_event_suppressed = item.stale_hub_event_suppressed;
+
+  const warnings = sanitizeMetadataWarnings(item?.warnings);
+  if (warnings) metadata.warnings = warnings;
+
+  return metadata;
+}
+
 function sanitizeEventItem(item) {
   return {
     id: sanitizeText(item?.id, 80),
@@ -164,6 +193,7 @@ function sanitizeEventItem(item) {
     end_datetime: sanitizeDate(item?.end_datetime),
     location: sanitizeText(item?.location, 120),
     summary: sanitizeText(item?.summary, 160),
+    ...sanitizeItemMetadata(item),
   };
 }
 
@@ -175,6 +205,7 @@ function sanitizeProductionItem(item) {
     product_count: numberOrZero(item?.product_count),
     planned_units: numberOrZero(item?.planned_units),
     status_counts: sanitizeCounts(item?.status_counts),
+    ...sanitizeItemMetadata(item),
   };
 }
 
@@ -185,6 +216,7 @@ function sanitizeComplianceItem(item) {
     log_count: numberOrZero(item?.log_count),
     open_corrective_action_count: numberOrZero(item?.open_corrective_action_count),
     status_counts: sanitizeCounts(item?.status_counts),
+    ...sanitizeItemMetadata(item),
   };
 }
 
@@ -196,6 +228,7 @@ function sanitizeDeliveryItem(item) {
     completed_count: numberOrZero(item?.completed_count),
     pending_count: numberOrZero(item?.pending_count),
     source_type_counts: sanitizeCounts(item?.source_type_counts),
+    ...sanitizeItemMetadata(item),
   };
 }
 
@@ -484,25 +517,281 @@ async function loadNativeCalendarSummary(base44, { dateFrom, dateTo, type, statu
   return { summary, dates };
 }
 
-function nativeFallbackResponse({ dateFrom, dateTo, nativeCalendar, reason, hubStatus = null }) {
+
+function cloneDateGroupWithSource(group, sourceMetadata) {
+  const safeGroup = sanitizeDateGroup(group);
+  return {
+    ...safeGroup,
+    items: safeGroup.items.map(item => sanitizeCalendarItem({ ...item, ...sourceMetadata })).filter(Boolean),
+  };
+}
+
+function calendarItemDate(item, groupDate = '') {
+  return dateKey(
+    item?.calendar_date ||
+    item?.production_date ||
+    item?.delivery_date ||
+    item?.scheduled_date ||
+    item?.assigned_delivery_date ||
+    item?.compliance_date ||
+    item?.start_datetime ||
+    item?.date ||
+    groupDate,
+  );
+}
+
+function calendarExactKey(item, groupDate = '') {
+  const type = normalizeLower(item?.type) || 'event';
+  const date = calendarItemDate(item, groupDate) || groupDate || 'date_pending';
+  if (type === 'event') {
+    const id = normalizeLower(item?.id);
+    if (id) return `${type}:${date}:id:${id}`;
+    return `${type}:${date}:${normalizeLower(item?.event_type)}:${normalizeLower(item?.title)}:${normalizeLower(item?.start_datetime)}`;
+  }
+  if (type === 'production') return `${type}:${date}`;
+  if (type === 'delivery') return `${type}:${date}`;
+  if (type === 'compliance') return `${type}:${date}`;
+  return `${type}:${date}:${normalizeLower(item?.title || item?.summary || item?.status)}`;
+}
+
+function calendarStableKey(item) {
+  const type = normalizeLower(item?.type) || 'event';
+  const id = normalizeLower(item?.id || item?.production_batch_id || item?.native_fulfillment_task_id || item?.hub_task_id || item?.order_number);
+  if (!id) return '';
+  return `${type}:${id}`;
+}
+
+function isCalendarItemComplete(item) {
+  const type = normalizeLower(item?.type);
+  if (type === 'event') return Boolean(item?.title && item?.event_type && normalizeLower(item.event_type) !== 'event' && (item?.start_datetime || item?.id));
+  if (type === 'production') return Boolean(item?.production_date && Object.prototype.hasOwnProperty.call(item, 'batch_count'));
+  if (type === 'delivery') return Boolean(item?.delivery_date && Object.prototype.hasOwnProperty.call(item, 'stop_count'));
+  if (type === 'compliance') return Boolean(item?.compliance_date && Object.prototype.hasOwnProperty.call(item, 'log_count'));
+  return true;
+}
+
+function recalculateDateGroup(group) {
+  const items = Array.isArray(group?.items) ? group.items.map(sanitizeCalendarItem).filter(Boolean).slice(0, MAX_LIMIT) : [];
+  const counts = { events: 0, production: 0, delivery: 0, compliance: 0 };
+  for (const item of items) {
+    if (item.type === 'event') counts.events += 1;
+    if (item.type === 'production') counts.production += 1;
+    if (item.type === 'delivery') counts.delivery += 1;
+    if (item.type === 'compliance') counts.compliance += 1;
+  }
+  return { date: sanitizeDate(group?.date), counts, items };
+}
+
+function summarizeCalendarDates(dates) {
+  return sanitizeSummary({
+    total_items: dates.reduce((sum, group) => sum + numberOrZero(group.items?.length), 0),
+    events: dates.reduce((sum, group) => sum + numberOrZero(group.counts?.events), 0),
+    production_days: dates.filter(group => numberOrZero(group.counts?.production) > 0).length,
+    delivery_days: dates.filter(group => numberOrZero(group.counts?.delivery) > 0).length,
+    compliance_items: dates.reduce((sum, group) => sum + numberOrZero(group.counts?.compliance), 0),
+  });
+}
+
+function addFallbackReason(reasons, reason) {
+  const safeReason = sanitizeText(reason, 100);
+  if (safeReason && !reasons.includes(safeReason)) reasons.push(safeReason);
+}
+
+
+function hubCalendarFallbackReason(item) {
+  const text = normalizeLower([
+    item?.event_type,
+    item?.title,
+    item?.summary,
+    item?.status,
+    item?.fallback_reason,
+  ].filter(Boolean).join(' '));
+  if (text.includes('subscription') || text.includes('multi_delivery') || text.includes('multi-delivery')) {
+    return 'subscription_calendar_event_hub_source_of_truth';
+  }
+  if (text.includes('historical') || text.includes('late_mirror') || text.includes('late-mirror')) {
+    return 'historical_hub_event_retained';
+  }
+  return 'native_calendar_event_missing';
+}
+
+function mergeNativeAndHubCalendar({ nativeCalendar, hubCalendar }) {
+  const groups = new Map();
+  const nativeExact = new Map();
+  const nativeStable = new Map();
+  const fallbackReasons = [];
+  let nativeEventCount = 0;
+  let nativeOnlyCount = 0;
+  let hubFallbackEventCount = 0;
+  let suppressedHubEventCount = 0;
+  let mismatchCount = 0;
+
+  const nativeGroups = Array.isArray(nativeCalendar?.dates)
+    ? nativeCalendar.dates.map(group => cloneDateGroupWithSource(group, {
+      data_source: 'customer_app_native',
+      native_primary: true,
+      hub_fallback_used: false,
+    }))
+    : [];
+
+  for (const group of nativeGroups) {
+    const outputGroup = groups.get(group.date) || { date: group.date, items: [] };
+    for (const item of group.items) {
+      const safeItem = sanitizeCalendarItem(item);
+      if (!safeItem) continue;
+      const key = calendarExactKey(safeItem, group.date);
+      const stableKey = calendarStableKey(safeItem);
+      outputGroup.items.push(safeItem);
+      nativeExact.set(key, { item: safeItem, date: group.date });
+      if (stableKey) nativeStable.set(stableKey, { item: safeItem, date: group.date });
+      nativeEventCount += 1;
+      nativeOnlyCount += 1;
+    }
+    groups.set(group.date, outputGroup);
+  }
+
+  const hubGroups = Array.isArray(hubCalendar?.dates)
+    ? hubCalendar.dates.map(group => cloneDateGroupWithSource(group, {
+      data_source: 'hub_fallback',
+      fallback_source: 'hub_calendar',
+      native_primary: false,
+      hub_fallback_used: true,
+    }))
+    : [];
+
+  for (const group of hubGroups) {
+    for (const item of group.items) {
+      const safeHubItem = sanitizeCalendarItem(item);
+      if (!safeHubItem) continue;
+      const exactKey = calendarExactKey(safeHubItem, group.date);
+      const stableKey = calendarStableKey(safeHubItem);
+      const nativeStableMatch = stableKey ? nativeStable.get(stableKey) : null;
+      const nativeMatch = nativeExact.get(exactKey) || (nativeStableMatch?.date === group.date ? nativeStableMatch : null);
+
+      if (nativeMatch) {
+        nativeOnlyCount = Math.max(0, nativeOnlyCount - 1);
+        if (!isCalendarItemComplete(nativeMatch.item) && isCalendarItemComplete(safeHubItem)) {
+          Object.assign(nativeMatch.item, sanitizeItemMetadata({
+            data_source: 'native_with_hub_fallback_context',
+            fallback_source: 'hub_calendar',
+            fallback_reason: 'native_data_incomplete_for_calendar_event',
+            native_primary: true,
+            hub_fallback_used: true,
+            warnings: ['native_data_incomplete_for_calendar_event'],
+          }));
+          hubFallbackEventCount += 1;
+          addFallbackReason(fallbackReasons, 'native_data_incomplete_for_calendar_event');
+        } else {
+          suppressedHubEventCount += 1;
+          addFallbackReason(fallbackReasons, 'duplicate_native_hub_event_deduped');
+        }
+        continue;
+      }
+
+      if (nativeStableMatch && nativeStableMatch.date !== group.date) {
+        suppressedHubEventCount += 1;
+        mismatchCount += 1;
+        addFallbackReason(fallbackReasons, 'stale_hub_event_suppressed');
+        continue;
+      }
+
+      const outputGroup = groups.get(group.date) || { date: group.date, items: [] };
+      const fallbackReason = hubCalendarFallbackReason(safeHubItem);
+      outputGroup.items.push(sanitizeCalendarItem({
+        ...safeHubItem,
+        fallback_reason: fallbackReason,
+        warnings: [`${fallbackReason}_hub_fallback_used`],
+      }));
+      groups.set(group.date, outputGroup);
+      hubFallbackEventCount += 1;
+      addFallbackReason(fallbackReasons, fallbackReason);
+    }
+  }
+
+  const dates = [...groups.values()]
+    .map(recalculateDateGroup)
+    .filter(group => group.items.length > 0)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .slice(0, MAX_RANGE_DAYS);
+
+  if (dates.length === 0) addFallbackReason(fallbackReasons, 'no_calendar_events_found');
+
+  return {
+    summary: summarizeCalendarDates(dates),
+    dates,
+    native_event_count: nativeEventCount,
+    hub_fallback_event_count: hubFallbackEventCount,
+    suppressed_hub_event_count: suppressedHubEventCount,
+    fallback_required: hubFallbackEventCount > 0,
+    fallback_reasons: fallbackReasons,
+    hub_fallback_used: hubFallbackEventCount > 0,
+    native_missing_count: hubFallbackEventCount,
+    hub_only_count: hubFallbackEventCount,
+    native_only_count: nativeOnlyCount,
+    mismatch_count: mismatchCount,
+  };
+}
+
+function nativeFirstCalendarResponse({ dateFrom, dateTo, nativeCalendar, hubData = null, hubWarning = null, hubAvailable = false }) {
+  const hubCalendar = hubData && Array.isArray(hubData.dates)
+    ? {
+      summary: sanitizeSummary(hubData.summary),
+      dates: hubData.dates.map(sanitizeDateGroup).slice(0, MAX_RANGE_DAYS),
+    }
+    : { summary: {}, dates: [] };
+
+  const merged = mergeNativeAndHubCalendar({ nativeCalendar, hubCalendar });
+  const warnings = [];
+  if (hubWarning) warnings.push(hubWarning, 'native_read_only_fallback');
+  if (merged.suppressed_hub_event_count > 0) warnings.push('hub_calendar_rows_suppressed_or_deduped');
+  for (const reason of merged.fallback_reasons) {
+    if (['stale_hub_event_suppressed', 'subscription_calendar_event_hub_source_of_truth', 'historical_hub_event_retained'].includes(reason)) warnings.push(reason);
+  }
+
   return Response.json({
     success: true,
-    source: 'customer_app_native_calendar_fallback',
-    date_from: dateFrom,
-    date_to: dateTo,
-    generated_at: new Date().toISOString(),
-    summary: sanitizeSummary(nativeCalendar.summary),
-    dates: nativeCalendar.dates.map(sanitizeDateGroup).slice(0, MAX_RANGE_DAYS),
-    truncated: false,
-    warnings: [
-      hubStatus ? `hub_calendar_unavailable:${hubStatus}` : `hub_calendar_unavailable:${reason}`,
-      'native_read_only_fallback',
-    ],
+    source: hubAvailable ? 'customer_app_native_calendar_first' : 'customer_app_native_calendar_fallback',
+    date_from: hubData?.date_from || dateFrom,
+    date_to: hubData?.date_to || dateTo,
+    generated_at: hubData?.generated_at || new Date().toISOString(),
+    summary: merged.summary,
+    dates: merged.dates,
+    truncated: hubData?.truncated === true,
+    warnings: [...new Set(warnings)].filter(Boolean),
     data_sources: {
-      hub_available: false,
+      hub_available: hubAvailable,
       native_available: true,
       native_read_only: true,
+      native_first: true,
+      hub_fallback_active: true,
     },
+    native_first_enabled: true,
+    native_event_count: merged.native_event_count,
+    hub_fallback_event_count: merged.hub_fallback_event_count,
+    suppressed_hub_event_count: merged.suppressed_hub_event_count,
+    fallback_required: merged.fallback_required,
+    fallback_reasons: merged.fallback_reasons,
+    hub_fallback_used: merged.hub_fallback_used,
+    native_missing_count: merged.native_missing_count,
+    hub_only_count: merged.hub_only_count,
+    native_only_count: merged.native_only_count,
+    mismatch_count: merged.mismatch_count,
+    calendar_events_source: hubAvailable ? 'customer_app_native_first_with_hub_fallback' : 'customer_app_native_first_hub_unavailable',
+    writes_performed: false,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    live_command_candidate: false,
+  });
+}
+
+function nativeFallbackResponse({ dateFrom, dateTo, nativeCalendar, reason, hubStatus = null }) {
+  return nativeFirstCalendarResponse({
+    dateFrom,
+    dateTo,
+    nativeCalendar,
+    hubWarning: hubStatus ? `hub_calendar_unavailable:${hubStatus}` : `hub_calendar_unavailable:${reason}`,
+    hubAvailable: false,
   });
 }
 
@@ -570,7 +859,7 @@ Deno.serve(async (req) => {
     const status = sanitizeText(body.status, 60) || '';
     const search = sanitizeText(body.search, 80) || '';
     const resolvedRange = resolveDateRange({ preset, dateFrom, dateTo });
-    const loadNativeCalendar = () => loadNativeCalendarSummary(base44, {
+    const nativeCalendar = await loadNativeCalendarSummary(base44, {
       dateFrom: resolvedRange.date_from,
       dateTo: resolvedRange.date_to,
       type,
@@ -580,7 +869,6 @@ Deno.serve(async (req) => {
     });
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      const nativeCalendar = await loadNativeCalendar();
       return nativeFallbackResponse({
         dateFrom: resolvedRange.date_from,
         dateTo: resolvedRange.date_to,
@@ -613,7 +901,6 @@ Deno.serve(async (req) => {
       });
     } catch (error) {
       console.warn('[getAdminCalendarEventsSummary] Hub fetch failed; returning native fallback:', error.message);
-      const nativeCalendar = await loadNativeCalendar();
       return nativeFallbackResponse({
         dateFrom: resolvedRange.date_from,
         dateTo: resolvedRange.date_to,
@@ -623,7 +910,6 @@ Deno.serve(async (req) => {
     }
 
     if (!hubResponse.ok) {
-      const nativeCalendar = await loadNativeCalendar();
       return nativeFallbackResponse({
         dateFrom: resolvedRange.date_from,
         dateTo: resolvedRange.date_to,
@@ -640,7 +926,6 @@ Deno.serve(async (req) => {
       !hubData.summary ||
       !Array.isArray(hubData.dates)
     ) {
-      const nativeCalendar = await loadNativeCalendar();
       return nativeFallbackResponse({
         dateFrom: resolvedRange.date_from,
         dateTo: resolvedRange.date_to,
@@ -649,14 +934,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    return Response.json({
-      success: true,
-      date_from: hubData.date_from || dateFrom || null,
-      date_to: hubData.date_to || dateTo || null,
-      generated_at: hubData.generated_at || null,
-      summary: sanitizeSummary(hubData.summary),
-      dates: hubData.dates.map(sanitizeDateGroup).slice(0, MAX_RANGE_DAYS),
-      truncated: hubData.truncated === true,
+    return nativeFirstCalendarResponse({
+      dateFrom: resolvedRange.date_from,
+      dateTo: resolvedRange.date_to,
+      nativeCalendar,
+      hubData,
+      hubAvailable: true,
     });
   } catch (error) {
     console.error('[getAdminCalendarEventsSummary] Error:', error.message);
