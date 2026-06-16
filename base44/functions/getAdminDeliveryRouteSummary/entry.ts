@@ -113,18 +113,34 @@ function normalizeLimit(value) {
   return Math.min(parsed, MAX_LIMIT);
 }
 
+function sanitizeStringArray(values, maxItems = 8) {
+  if (!Array.isArray(values)) return [];
+  return values.map(value => sanitizeAssignedDriver(value)).filter(Boolean).slice(0, maxItems);
+}
+
 function sanitizeStop(stop) {
   return {
     task_id: stop.task_id || null,
     order_number: stop.order_number || null,
+    customer_app_order_id: stop.customer_app_order_id || null,
+    native_shopify_order_id: stop.native_shopify_order_id || null,
+    native_fulfillment_task_id: stop.native_fulfillment_task_id || null,
+    hub_task_id: stop.hub_task_id || null,
     customer_name: sanitizeCustomerName(stop.customer_name),
     fulfillment_number: stop.fulfillment_number ?? null,
     source_type: stop.source_type || null,
     assigned_driver: sanitizeAssignedDriver(stop.assigned_driver),
     task_status: stop.task_status || null,
     delivery_status: stop.delivery_status || null,
+    production_status: stop.production_status || null,
     fulfillment_status: stop.fulfillment_status || null,
+    fulfillment_type: stop.fulfillment_type || null,
+    fulfillment_method: stop.fulfillment_method || null,
+    payment_status: stop.payment_status || null,
+    line_item_count: stop.line_item_count ?? null,
     delivery_date: stop.delivery_date || null,
+    scheduled_date: stop.scheduled_date || null,
+    assigned_delivery_date: stop.assigned_delivery_date || null,
     delivery_window_label: stop.delivery_window_label || null,
     delivery_address: sanitizeAddress(stop.delivery_address),
     items_summary: stop.items_summary || null,
@@ -136,6 +152,12 @@ function sanitizeStop(stop) {
     bag_return_required: stop.bag_return_required ?? null,
     bag_return_count: stop.bag_return_count ?? null,
     data_source: stop.data_source || null,
+    fallback_source: stop.fallback_source || null,
+    fallback_reason: stop.fallback_reason || null,
+    stale_hub_fallback_suppressed: stop.stale_hub_fallback_suppressed === true,
+    native_primary: stop.native_primary === true,
+    hub_fallback_used: stop.hub_fallback_used === true,
+    warnings: sanitizeStringArray(stop.warnings),
     hub_fallback_context: stop.hub_fallback_context || null,
   };
 }
@@ -251,14 +273,24 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
       return sanitizeStop({
         task_id: task.id,
         order_number: order.shopify_order_number || order.order_number || task.order_number,
+        customer_app_order_id: order.base44_order_id || task.base44_order_id || null,
+        native_shopify_order_id: order.id || null,
+        native_fulfillment_task_id: task.id,
         customer_name: order.customer_name || task.customer_name,
         fulfillment_number: task.fulfillment_number,
         source_type: task.source_type || order.source_type || order.source_channel || 'customer_app_native',
         assigned_driver: task.assigned_driver || order.assigned_driver,
         task_status: task.status || 'pending',
         delivery_status: task.delivery_status || order.fulfillment_status,
+        production_status: task.production_status || order.production_status,
         fulfillment_status: order.fulfillment_status,
+        fulfillment_type: order.fulfillment_type || order.fulfillment_method,
+        fulfillment_method: order.fulfillment_method,
+        payment_status: order.payment_status || order.financial_status,
+        line_item_count: safeLineItems(order).length || (Array.isArray(task.items) ? task.items.length : null),
         delivery_date: normalizeDate(task.delivery_date || task.scheduled_date),
+        scheduled_date: normalizeDate(task.scheduled_date),
+        assigned_delivery_date: normalizeDate(task.assigned_delivery_date),
         delivery_window_label: task.delivery_window_label || order.delivery_window_label || order.requested_time_window,
         delivery_address: task.delivery_address || order.delivery_address,
         items_summary: task.items_summary || lineItemsSummary(task.items || order.line_items),
@@ -276,11 +308,21 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
       return sanitizeStop({
         task_id: task.id,
         order_number: order.shopify_order_number || order.order_number || task.order_number,
+        customer_app_order_id: order.base44_order_id || task.base44_order_id || null,
+        native_shopify_order_id: order.id || null,
+        native_fulfillment_task_id: task.id,
         source_type: task.source_type || order.source_type || order.source_channel || 'customer_app_native',
         task_status: task.status || 'pending',
         delivery_status: task.delivery_status || order.fulfillment_status,
+        production_status: task.production_status || order.production_status,
         fulfillment_status: order.fulfillment_status,
+        fulfillment_type: order.fulfillment_type || order.fulfillment_method,
+        fulfillment_method: order.fulfillment_method,
+        payment_status: order.payment_status || order.financial_status,
+        line_item_count: safeLineItems(order).length || (Array.isArray(task.items) ? task.items.length : null),
         delivery_date: normalizeDate(task.delivery_date || task.scheduled_date || task.assigned_delivery_date),
+        scheduled_date: normalizeDate(task.scheduled_date),
+        assigned_delivery_date: normalizeDate(task.assigned_delivery_date),
         delivery_window_label: task.delivery_window_label || order.delivery_window_label || order.requested_time_window,
         data_source: 'customer_app_native_task',
       });
@@ -295,14 +337,23 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
     .map(order => sanitizeStop({
       task_id: null,
       order_number: order.shopify_order_number || order.order_number,
+      customer_app_order_id: order.base44_order_id || null,
+      native_shopify_order_id: order.id || null,
       customer_name: order.customer_name,
       fulfillment_number: 1,
       source_type: order.source_type || order.source_channel || 'customer_app_native',
       assigned_driver: order.assigned_driver,
       task_status: order.fulfillment_status || 'pending',
       delivery_status: order.fulfillment_status,
+      production_status: order.production_status,
       fulfillment_status: order.fulfillment_status,
+      fulfillment_type: order.fulfillment_type || order.fulfillment_method,
+      fulfillment_method: order.fulfillment_method,
+      payment_status: order.payment_status || order.financial_status,
+      line_item_count: safeLineItems(order).length,
       delivery_date: normalizeDate(order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date),
+      scheduled_date: normalizeDate(order.selected_delivery_date || order.requested_delivery_date),
+      assigned_delivery_date: normalizeDate(order.assigned_delivery_date),
       delivery_window_label: order.delivery_window_label || order.requested_time_window,
       delivery_address: order.delivery_address,
       items_summary: lineItemsSummary(order.line_items),
@@ -321,13 +372,20 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
     .map(order => sanitizeStop({
       task_id: null,
       order_number: order.shopify_order_number || order.order_number,
+      customer_app_order_id: order.base44_order_id || null,
+      native_shopify_order_id: order.id || null,
       customer_name: order.customer_name,
       fulfillment_number: 1,
       source_type: order.source_type || order.source_channel || 'customer_app_native',
       assigned_driver: order.assigned_driver,
       task_status: 'date_pending',
       delivery_status: order.fulfillment_status || 'date_pending',
+      production_status: order.production_status,
       fulfillment_status: order.fulfillment_status,
+      fulfillment_type: order.fulfillment_type || order.fulfillment_method,
+      fulfillment_method: order.fulfillment_method,
+      payment_status: order.payment_status || order.financial_status,
+      line_item_count: safeLineItems(order).length,
       delivery_date: null,
       delivery_window_label: order.delivery_window_label || order.requested_time_window,
       delivery_address: order.delivery_address,
@@ -357,53 +415,225 @@ function orderKey(value) {
   return normalizeLower(value).replace(/^#/, '');
 }
 
-function reconcileHubRowsWithNativeSchedule({ hubRows, nativeScheduleIndex, deliveryDate, section }) {
-  const rows = [];
+function routeDisplayMissingFields(stop) {
+  const missing = [];
+  if (!normalizeText(stop?.delivery_address) || stop?.missing_address === true) missing.push('delivery_address');
+  if (!normalizeText(stop?.items_summary)) missing.push('items_summary');
+  if (!normalizeText(stop?.delivery_window_label)) missing.push('delivery_window_label');
+  return missing;
+}
+
+function fillNativeRouteDisplayFields(nativeRow, hubRow) {
+  const merged = { ...nativeRow };
+  for (const field of [
+    'customer_name',
+    'assigned_driver',
+    'delivery_window_label',
+    'delivery_address',
+    'items_summary',
+    'bag_return_required',
+    'bag_return_count',
+    'delivered_at',
+    'delivery_photo_url',
+    'delivery_drop_location',
+  ]) {
+    if ((merged[field] === null || merged[field] === undefined || merged[field] === '') && hubRow?.[field] !== undefined && hubRow?.[field] !== null && hubRow?.[field] !== '') {
+      merged[field] = hubRow[field];
+    }
+  }
+  if (normalizeText(merged.delivery_address)) merged.missing_address = false;
+  if (hubRow?.proof_available === true && merged.proof_available !== true) merged.proof_available = true;
+  return merged;
+}
+
+function nativeFallbackContext({ nativeRow, hubRow, section, mergeStatus, fallbackReason, missingFields = [] }) {
+  const hubDate = normalizeDate(hubRow?.delivery_date);
+  const nativeDate = normalizeDate(nativeRow?.delivery_date);
+  return {
+    order_number: nativeRow?.order_number || hubRow?.order_number || null,
+    section,
+    hub_delivery_date: hubDate || null,
+    native_delivery_date: nativeDate || null,
+    native_task_id: nativeRow?.task_id || null,
+    hub_task_id: hubRow?.task_id || null,
+    merge_status: mergeStatus,
+    fallback_reason: fallbackReason,
+    missing_native_fields: missingFields,
+  };
+}
+
+function decorateNativeRouteRow(row, metadata = {}) {
+  return sanitizeStop({
+    ...row,
+    data_source: metadata.data_source || row?.data_source || 'customer_app_native_task',
+    fallback_source: metadata.fallback_source || null,
+    fallback_reason: metadata.fallback_reason || null,
+    stale_hub_fallback_suppressed: metadata.stale_hub_fallback_suppressed === true,
+    native_primary: metadata.native_primary !== false,
+    hub_fallback_used: metadata.hub_fallback_used === true,
+    hub_fallback_context: metadata.hub_fallback_context || row?.hub_fallback_context || null,
+    warnings: Array.isArray(metadata.warnings) ? metadata.warnings : [],
+  });
+}
+
+function decorateHubFallbackRow(row, metadata = {}) {
+  return sanitizeStop({
+    ...row,
+    hub_task_id: row?.hub_task_id || row?.task_id || null,
+    data_source: 'hub_fallback',
+    fallback_source: 'hub_delivery_route_summary',
+    fallback_reason: metadata.fallback_reason || 'native_route_row_missing',
+    native_primary: false,
+    hub_fallback_used: true,
+    hub_fallback_context: metadata.hub_fallback_context || row?.hub_fallback_context || null,
+    warnings: Array.isArray(metadata.warnings) ? metadata.warnings : [],
+  });
+}
+
+function nativeFirstMergeSection({ nativeRows, hubRows, nativeScheduleIndex, section, limit }) {
+  const visibleRows = [];
   const suppressed = [];
+  const fallbackReasons = [];
+  const matchedHubKeys = new Set();
   const nativeByOrder = new Map(
+    (nativeRows || [])
+      .filter(row => row.order_number)
+      .map(row => [orderKey(row.order_number), row]),
+  );
+  const nativeScheduleByOrder = new Map(
     (nativeScheduleIndex || [])
       .filter(row => row.order_number)
       .map(row => [orderKey(row.order_number), row]),
   );
+  const hubByOrder = new Map();
+  for (const hubRow of hubRows || []) {
+    const key = orderKey(hubRow.order_number);
+    if (key && !hubByOrder.has(key)) hubByOrder.set(key, hubRow);
+  }
+
+  for (const nativeRow of nativeRows || []) {
+    const key = orderKey(nativeRow.order_number);
+    const hubRow = hubByOrder.get(key);
+    const nativeDate = normalizeDate(nativeRow.delivery_date);
+    const hubDate = normalizeDate(hubRow?.delivery_date);
+    const missingFields = routeDisplayMissingFields(nativeRow);
+    if (hubRow) matchedHubKeys.add(key);
+
+    if (hubRow && nativeDate && hubDate && nativeDate !== hubDate) {
+      const context = nativeFallbackContext({
+        nativeRow,
+        hubRow,
+        section,
+        mergeStatus: 'native_schedule_active_hub_fallback_stale_date',
+        fallbackReason: 'native_corrected_date_suppresses_stale_hub_row',
+      });
+      suppressed.push({ ...context, suppressed_from_active_summary: true });
+      visibleRows.push(decorateNativeRouteRow(nativeRow, {
+        stale_hub_fallback_suppressed: true,
+        hub_fallback_context: context,
+        warnings: ['hub_fallback_stale_date_detected'],
+      }));
+      continue;
+    }
+
+    if (hubRow && missingFields.length > 0) {
+      const fallbackReason = 'native_row_incomplete_for_route_display';
+      fallbackReasons.push(fallbackReason);
+      const context = nativeFallbackContext({
+        nativeRow,
+        hubRow,
+        section,
+        mergeStatus: 'native_primary_with_hub_fallback_context',
+        fallbackReason,
+        missingFields,
+      });
+      suppressed.push({ ...context, suppressed_from_active_summary: true });
+      visibleRows.push(decorateNativeRouteRow(fillNativeRouteDisplayFields(nativeRow, hubRow), {
+        data_source: 'native_with_hub_fallback_context',
+        fallback_source: 'hub_delivery_route_summary',
+        fallback_reason: fallbackReason,
+        hub_fallback_used: true,
+        hub_fallback_context: context,
+        warnings: ['native_row_incomplete_hub_fallback_context_used'],
+      }));
+      continue;
+    }
+
+    if (hubRow) {
+      const fallbackReason = 'duplicate_native_hub_row_deduped';
+      const context = nativeFallbackContext({
+        nativeRow,
+        hubRow,
+        section,
+        mergeStatus: 'native_schedule_preferred_hub_duplicate',
+        fallbackReason,
+      });
+      suppressed.push({ ...context, suppressed_from_active_summary: true });
+      visibleRows.push(decorateNativeRouteRow(nativeRow, {
+        hub_fallback_context: context,
+      }));
+      continue;
+    }
+
+    visibleRows.push(decorateNativeRouteRow(nativeRow));
+  }
 
   for (const hubRow of hubRows || []) {
     const key = orderKey(hubRow.order_number);
-    const nativeRow = nativeByOrder.get(key);
-    if (!nativeRow) {
-      rows.push(hubRow);
+    if (!key || matchedHubKeys.has(key) || nativeByOrder.has(key)) continue;
+    const nativeScheduleRow = nativeScheduleByOrder.get(key);
+    const hubDate = normalizeDate(hubRow.delivery_date);
+    const nativeDate = normalizeDate(nativeScheduleRow?.delivery_date);
+    if (nativeScheduleRow && nativeDate && hubDate && nativeDate !== hubDate) {
+      suppressed.push({
+        ...nativeFallbackContext({
+          nativeRow: nativeScheduleRow,
+          hubRow,
+          section,
+          mergeStatus: 'native_schedule_active_hub_fallback_stale_date',
+          fallbackReason: 'native_corrected_date_suppresses_stale_hub_row',
+        }),
+        suppressed_from_active_summary: true,
+      });
       continue;
     }
 
-    const hubDate = normalizeDate(hubRow.delivery_date);
-    const nativeDate = normalizeDate(nativeRow.delivery_date);
-    const isStale = Boolean(nativeDate && hubDate && nativeDate !== hubDate);
-    const isDuplicate = Boolean(nativeDate && (!hubDate || nativeDate === hubDate));
-    const context = {
-      order_number: hubRow.order_number || null,
+    const fallbackReason = nativeScheduleRow
+      ? 'duplicate_native_hub_row_deduped'
+      : 'native_route_row_missing';
+    if (fallbackReason === 'native_route_row_missing') fallbackReasons.push(fallbackReason);
+    const context = nativeFallbackContext({
+      nativeRow: nativeScheduleRow,
+      hubRow,
       section,
-      hub_delivery_date: hubDate || null,
-      native_delivery_date: nativeDate || null,
-      native_task_id: nativeRow.task_id || null,
-      merge_status: isStale
-        ? 'native_schedule_active_hub_fallback_stale_date'
-        : 'native_schedule_preferred_hub_duplicate',
-    };
-
-    if (isStale || isDuplicate) {
+      mergeStatus: nativeScheduleRow ? 'native_schedule_preferred_hub_duplicate' : 'hub_only_fallback_visible',
+      fallbackReason,
+    });
+    if (nativeScheduleRow) {
       suppressed.push({ ...context, suppressed_from_active_summary: true });
       continue;
     }
-
-    rows.push({
-      ...hubRow,
-      hub_fallback_context: {
-        ...context,
-        merge_status: 'hub_fallback_visible_no_native_date_conflict',
-      },
-    });
+    visibleRows.push(decorateHubFallbackRow(hubRow, {
+      fallback_reason: fallbackReason,
+      hub_fallback_context: context,
+    }));
   }
 
-  return { rows, suppressed };
+  return {
+    rows: visibleRows.slice(0, limit),
+    suppressed,
+    fallback_reasons: [...new Set(fallbackReasons)],
+  };
+}
+
+function reconcileHubRowsWithNativeSchedule({ hubRows, nativeScheduleIndex, section, limit = MAX_LIMIT }) {
+  return nativeFirstMergeSection({
+    nativeRows: [],
+    hubRows,
+    nativeScheduleIndex,
+    section,
+    limit,
+  });
 }
 
 Deno.serve(async (req) => {
@@ -477,29 +707,40 @@ Deno.serve(async (req) => {
 
     const hubActiveRaw = hubData ? hubData.sections.delivery_stops.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
     const hubCompletedRaw = hubData ? hubData.sections.completed.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
-    const activeReconciliation = reconcileHubRowsWithNativeSchedule({
+    const activeReconciliation = nativeFirstMergeSection({
+      nativeRows: nativeData.sections.delivery_stops,
       hubRows: hubActiveRaw,
       nativeScheduleIndex: nativeData.native_schedule_index,
-      deliveryDate,
       section: 'delivery_stops',
+      limit,
     });
-    const completedReconciliation = reconcileHubRowsWithNativeSchedule({
+    const completedReconciliation = nativeFirstMergeSection({
+      nativeRows: nativeData.sections.completed,
       hubRows: hubCompletedRaw,
       nativeScheduleIndex: nativeData.native_schedule_index,
-      deliveryDate,
       section: 'completed',
+      limit,
     });
-    const hubActive = activeReconciliation.rows;
-    const hubCompleted = completedReconciliation.rows;
     const suppressedHubRows = [...activeReconciliation.suppressed, ...completedReconciliation.suppressed];
-    const hubOrderNumbers = new Set([...hubActive, ...hubCompleted].map(stop => normalizeLower(stop.order_number)).filter(Boolean));
-    const nativeActive = nativeData.sections.delivery_stops.filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
-    const nativeCompleted = nativeData.sections.completed.filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
-    const nativeUnscheduled = (nativeData.sections.unscheduled_delivery_orders || [])
-      .filter(stop => !hubOrderNumbers.has(normalizeLower(stop.order_number)));
-    const deliveryStops = [...hubActive, ...nativeActive].slice(0, limit);
-    const completedStops = [...hubCompleted, ...nativeCompleted].slice(0, limit);
-    const unscheduledStops = nativeUnscheduled.slice(0, limit);
+    const visibleOrderNumbers = new Set([
+      ...activeReconciliation.rows,
+      ...completedReconciliation.rows,
+    ].map(stop => normalizeLower(stop.order_number)).filter(Boolean));
+    const unscheduledStops = (nativeData.sections.unscheduled_delivery_orders || [])
+      .filter(stop => !visibleOrderNumbers.has(normalizeLower(stop.order_number)))
+      .map(stop => decorateNativeRouteRow(stop))
+      .slice(0, limit);
+    const deliveryStops = activeReconciliation.rows.slice(0, limit);
+    const completedStops = completedReconciliation.rows.slice(0, limit);
+    const fallbackReasons = [...new Set([
+      ...activeReconciliation.fallback_reasons,
+      ...completedReconciliation.fallback_reasons,
+      hubWarning ? 'hub_delivery_summary_unavailable_or_unconfigured' : null,
+    ].filter(Boolean))];
+    const allVisibleRows = [...deliveryStops, ...completedStops, ...unscheduledStops];
+    const hubFallbackRowCount = allVisibleRows.filter(stop => stop?.hub_fallback_used === true || stop?.data_source === 'hub_fallback').length;
+    const nativeRowCount = allVisibleRows.filter(stop => stop?.native_primary === true || (stop?.data_source || '').startsWith('customer_app_native') || stop?.data_source === 'native_with_hub_fallback_context').length;
+    const staleHubFallbackDetected = suppressedHubRows.some(row => row.merge_status === 'native_schedule_active_hub_fallback_stale_date');
 
     if (!hubData && !nativeData.source_available) {
       return Response.json({
@@ -517,24 +758,41 @@ Deno.serve(async (req) => {
         completed: completedStops,
         unscheduled_delivery_orders: unscheduledStops,
       },
+      native_row_count: nativeRowCount,
+      hub_fallback_row_count: hubFallbackRowCount,
+      suppressed_hub_row_count: suppressedHubRows.length,
+      fallback_required: hubFallbackRowCount > 0 || fallbackReasons.length > 0,
+      fallback_reasons: fallbackReasons,
+      stale_hub_fallback_detected: staleHubFallbackDetected,
+      native_first_enabled: true,
+      writes_performed: false,
+      provider_call_impact: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
       data_sources: {
         hub_available: Boolean(hubData),
         native_available: nativeData.source_available,
         native_read_only: true,
+        native_first_enabled: true,
+        hub_fallback_available: Boolean(hubData),
+        hub_fallback_row_count: hubFallbackRowCount,
       },
       hub_fallback_reconciliation: {
         merge_status: suppressedHubRows.length > 0
-          ? 'native_schedule_preferred_hub_fallback_rows_suppressed'
-          : 'no_stale_hub_fallback_rows_suppressed',
-        stale_hub_fallback_detected: suppressedHubRows.some(row => row.merge_status === 'native_schedule_active_hub_fallback_stale_date'),
+          ? 'native_first_hub_fallback_rows_suppressed_or_contextualized'
+          : 'native_first_no_hub_fallback_rows_suppressed',
+        stale_hub_fallback_detected: staleHubFallbackDetected,
         suppressed_hub_row_count: suppressedHubRows.length,
         suppressed_hub_rows: suppressedHubRows.slice(0, 20),
         native_schedule_preferred: suppressedHubRows.length > 0,
+        native_first_enabled: true,
+        hub_fallback_row_count: hubFallbackRowCount,
+        fallback_reasons: fallbackReasons,
       },
       warnings: [
         hubWarning,
-        suppressedHubRows.some(row => row.merge_status === 'native_schedule_active_hub_fallback_stale_date') ? 'hub_fallback_stale_date_detected' : null,
-        suppressedHubRows.length > 0 ? 'native_schedule_preferred_hub_fallback_rows_suppressed' : null,
+        staleHubFallbackDetected ? 'hub_fallback_stale_date_detected' : null,
+        suppressedHubRows.length > 0 ? 'native_first_hub_fallback_rows_suppressed_or_contextualized' : null,
       ].filter(Boolean),
     });
   } catch (error) {
