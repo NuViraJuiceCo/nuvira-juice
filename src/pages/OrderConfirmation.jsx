@@ -150,7 +150,7 @@ export default function OrderConfirmation() {
   if (loading) {
     const elapsed = Math.floor((Date.now() - startTime.current) / 1000);
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <SEO title="Order Processing" noindex={true} />
         <motion.div
           animate={{ rotate: 360 }}

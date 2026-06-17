@@ -5,6 +5,7 @@ import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle } from 'lucide-react';
+import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -174,8 +175,8 @@ export default function OrderTracker() {
   if (isLoading || (!detail && user?.email && hasLookupKey)) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="bg-nuvira-gradient px-4 pt-10 pb-6">
-          <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4">
+        <div className="bg-nuvira-gradient px-4 pb-6" style={{ paddingTop: SAFE_TOP_PADDING }}>
+          <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4 mt-3">
             <ArrowLeft className="w-4 h-4 text-white" />
           </button>
           <div className="h-4 w-32 bg-white/20 rounded animate-pulse mb-2" />
@@ -259,8 +260,8 @@ export default function OrderTracker() {
 
     return (
       <div className="min-h-screen bg-background pb-8">
-        <div className="bg-muted px-4 pt-10 pb-6">
-          <button onClick={() => navigate(-1)} className="w-9 h-9 bg-background/50 rounded-full flex items-center justify-center mb-4">
+        <div className="bg-muted px-4 pb-6" style={{ paddingTop: SAFE_TOP_PADDING }}>
+          <button onClick={() => navigate(-1)} className="w-9 h-9 bg-background/50 rounded-full flex items-center justify-center mb-4 mt-3">
             <ArrowLeft className="w-4 h-4" />
           </button>
           <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Order #{displayNum} • {resolveCustomerName()}</p>
@@ -344,9 +345,9 @@ export default function OrderTracker() {
   return (
     <div className="pb-8 min-h-screen bg-background">
       <BrowserAppPrompt pageRoute={`/order-tracker/${displayNum || ''}`} />
-      {/* Header */}
-      <div className="bg-nuvira-gradient px-4 pt-10 pb-6">
-        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4">
+      {/* Header — G40D: safe-area-inset-top so back button never sits under iOS status bar */}
+      <div className="bg-nuvira-gradient px-4 pb-6" style={{ paddingTop: SAFE_TOP_PADDING }}>
+        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4 mt-3">
           <ArrowLeft className="w-4 h-4 text-white" />
         </button>
         <p className="text-white/70 text-xs font-medium uppercase tracking-wider">Order #{displayNum} • {resolveCustomerName()}</p>

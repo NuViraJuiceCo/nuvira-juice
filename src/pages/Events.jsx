@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MapPin, Calendar, Users, ExternalLink, Gift } from 'lucide-react';
+import { MapPin, Calendar, Users, ExternalLink, Gift } from 'lucide-react';
+import MobilePageHeader from '@/components/layout/MobilePageHeader';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import SEO from '@/components/SEO';
@@ -79,15 +80,8 @@ export default function Events() {
         description="Join NuVira Juice Co. at pop-ups, community events, and wellness gatherings across the St. Louis area."
         structuredData={eventSchema?.length === 1 ? eventSchema[0] : eventSchema?.length > 1 ? { "@context": "https://schema.org", "@graph": eventSchema } : undefined}
       />
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
-        <Link to="/account">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-        </Link>
-        <span className="font-heading text-base font-semibold">Events & Community</span>
-      </div>
+      {/* Header — safe-area-aware via MobilePageHeader (G40D) */}
+      <MobilePageHeader title="Events & Community" backTo="/account" />
 
       <div className="px-4 py-6 space-y-6">
         {/* Intro */}
