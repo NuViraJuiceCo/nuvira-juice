@@ -8,6 +8,17 @@ const MAX_TEXT = 160;
 const OZ_TO_G = 28.3495;
 const SUPPORTED_STOCK_UNITS = new Set(['oz', 'fl oz', 'floz', 'g', 'gram', 'grams', 'kg', 'lb', 'lbs', 'l', 'liter', 'liters', 'ml']);
 const TRACE_INGREDIENT_UNITS = new Set(['pinch', 'dash', 'trace', 'to taste']);
+const HYDRATION_MINT_TRACE_GARNISH_OWNER_DECISION = Object.freeze({
+  recipe_name: 'Hydration Shot',
+  ingredient_name: 'Mint',
+  unit: 'leaves',
+  quantity_oz: 0,
+  quantity_type: 'trace_garnish',
+  production_visibility_use: true,
+  inventory_deduction_use: false,
+  purchase_order_use: false,
+});
+const MINT_TRACE_GARNISH_WARNING = 'mint_trace_garnish_inventory_po_held';
 
 function normalizeText(value) {
   return (value ?? '').toString().trim();
@@ -73,6 +84,17 @@ function isTraceIngredientQuantity(ingredient) {
   const quantity = numberOrNull(ingredient?.quantity_oz);
   const unit = normalizeLower(ingredient?.unit);
   return (quantity === 0 || quantity === null) && TRACE_INGREDIENT_UNITS.has(unit);
+}
+
+function isOwnerApprovedHydrationMintTraceGarnish(recipeName, ingredient) {
+  const quantity = numberOrNull(ingredient?.quantity_oz);
+  return HYDRATION_MINT_TRACE_GARNISH_OWNER_DECISION.production_visibility_use === true &&
+    HYDRATION_MINT_TRACE_GARNISH_OWNER_DECISION.inventory_deduction_use === false &&
+    HYDRATION_MINT_TRACE_GARNISH_OWNER_DECISION.purchase_order_use === false &&
+    normalizeMatchKey(recipeName) === normalizeMatchKey(HYDRATION_MINT_TRACE_GARNISH_OWNER_DECISION.recipe_name) &&
+    normalizeMatchKey(ingredient?.ingredient_name) === normalizeMatchKey(HYDRATION_MINT_TRACE_GARNISH_OWNER_DECISION.ingredient_name) &&
+    normalizeLower(ingredient?.unit) === normalizeLower(HYDRATION_MINT_TRACE_GARNISH_OWNER_DECISION.unit) &&
+    quantity === HYDRATION_MINT_TRACE_GARNISH_OWNER_DECISION.quantity_oz;
 }
 
 function roundQuantity(value, decimals = 3) {
@@ -688,9 +710,11 @@ function computeIngredientNeeds(demandRows, indexes) {
       if (!ingredientName) continue;
       const recipeQuantityOz = safeNumber(ingredient?.quantity_oz, 0);
       if (recipeQuantityOz <= 0) {
-        if (isTraceIngredientQuantity(ingredient)) {
+        const ownerApprovedHydrationMintTrace = isOwnerApprovedHydrationMintTraceGarnish(recipe.product_name, ingredient);
+        if (isTraceIngredientQuantity(ingredient) || ownerApprovedHydrationMintTrace) {
           warnings.push(`trace_recipe_ingredient_quantity_pending:${row.product_name}:${ingredientName}`);
           warnings.push(`procurement_conversion_pending:${ingredientName}`);
+          if (ownerApprovedHydrationMintTrace) warnings.push(MINT_TRACE_GARNISH_WARNING);
           traceRows.push({
             ingredient_name: ingredientName,
             recipe_source: sanitizeText(recipe.product_name, 120),
@@ -698,6 +722,7 @@ function computeIngredientNeeds(demandRows, indexes) {
             source_line_item: sanitizeText(row.source_line_item, 120),
             source_batch_id: sanitizeId(row.source_batch_id, 120),
             unit: sanitizeText(ingredient?.unit, 40) || 'trace',
+            trace_reason: ownerApprovedHydrationMintTrace ? 'owner_approved_hydration_mint_trace_garnish' : 'trace_quantity_pending',
           });
           continue;
         }
@@ -866,6 +891,9 @@ function computeIngredientNeeds(demandRows, indexes) {
       yield_details_pending: yieldMatch.status !== 'matched',
       procurement_conversion_ready: false,
       trace_quantity_pending: true,
+      trace_reason: sanitizeText(trace.trace_reason, 120),
+      inventory_deduction_ready: false,
+      purchase_order_ready: false,
       status: 'trace_quantity_pending',
     });
   }
@@ -1044,6 +1072,7 @@ function buildProductionReadiness({ customerOrder, nativeOrder, task, lookup, li
     inventory_deduction_ready: productionBlockers.length === 0 &&
       inventoryBlockers.length === 0 &&
       procurementConversionReady &&
+      traceIngredientItems.length === 0 &&
       !ingredients.ingredientRows.some(row => row.procurement_needed),
     purchase_order_ready: false,
     hub_fallback_required: true,
