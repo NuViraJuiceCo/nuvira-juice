@@ -27,6 +27,18 @@ const WATERMELON_TARGET_CUSTOMER_APP_ORDER_ID = '6a060df457fc07751f3c7ded';
 const WATERMELON_TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a2df0026e266e19c68046eb';
 const WATERMELON_TARGET_NATIVE_FULFILLMENT_TASK_ID = '6a2eb72aa7ff194aafac49d3';
 const WATERMELON_PREVIEW_MARKER = 'g33c_wm2_exact_watermelon_recipe_import';
+const HYDRATION_IMPORT_SCOPE = 'EXACT_HYDRATION_SHOT_NON_STOCK_VISIBILITY_PACKET';
+const HYDRATION_RECIPE_NAME = 'Hydration Shot';
+const HYDRATION_HUB_RECIPE_ID = '69ed63d35c89c5d5ffa37e0e';
+const HYDRATION_POLICY = 'EXACT_HYDRATION_SHOT_NON_STOCK_MASTER_DATA_ONLY_NO_INVENTORY_NO_PO';
+const HYDRATION_CONFIRMATION_PHRASE = 'import_hydration_shot_non_stock_master_data_no_inventory_no_po';
+const HYDRATION_TARGET_ORDER_NUMBER = 'NV-MQHJR3V2';
+const HYDRATION_TARGET_CUSTOMER_APP_ORDER_ID = '6a321cbfd8d78863f15de956';
+const HYDRATION_TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a321d38a3819cdd5cf89031';
+const HYDRATION_TARGET_NATIVE_FULFILLMENT_TASK_ID = '6a321d38071327f8218b958b';
+const HYDRATION_PREVIEW_MARKER = 'g37d_block2_exact_hydration_shot_non_stock_master_data_import';
+const HYDRATION_INVENTORY_NAMES = Object.freeze(['Lime Juice', 'Honey', 'Mint', 'Pink Salt']);
+const HYDRATION_DEFERRED_YIELD_NAMES = Object.freeze(['Beetroot', 'Lime Juice', 'Honey', 'Mint', 'Pink Salt']);
 const MAX_TEXT = 180;
 const MAX_ROWS = 120;
 
@@ -63,6 +75,7 @@ const WATERMELON_IMPORT_CONTRACT = Object.freeze({
   targetNativeShopifyOrderId: WATERMELON_TARGET_NATIVE_SHOPIFY_ORDER_ID,
   targetNativeFulfillmentTaskId: WATERMELON_TARGET_NATIVE_FULFILLMENT_TASK_ID,
   requiredGatePolicy: WATERMELON_POLICY,
+  policyErrorCode: 'watermelon_recipe_import_policy_required',
   requiredPreviewInventoryPolicy: REQUIRED_POLICY,
   requiredYieldPolicy: REQUIRED_YIELD_POLICY,
   confirmationPhrase: WATERMELON_CONFIRMATION_PHRASE,
@@ -77,6 +90,46 @@ const WATERMELON_IMPORT_CONTRACT = Object.freeze({
   useFullOrderCanonicalPreview: true,
   notes: 'G33C-WM2 exact Watermelon Juice Recipe-only non-stock master-data import. Creates one Recipe row only. No InventoryItem, IngredientYield, Bundle, inventory deduction, PO, ProductionBatch, provider, notification, sync, repair, Hub, order, or task writes.',
 });
+
+const HYDRATION_IMPORT_CONTRACT = Object.freeze({
+  key: 'g37d_block2_hydration_shot_non_stock_master_data_import',
+  commandType: 'hydration_shot_non_stock_master_data_import',
+  targetEntity: 'ProductionMasterData',
+  targetId: HYDRATION_RECIPE_NAME,
+  targetDisplayId: HYDRATION_RECIPE_NAME,
+  targetOrderNumber: HYDRATION_TARGET_ORDER_NUMBER,
+  targetCustomerAppOrderId: HYDRATION_TARGET_CUSTOMER_APP_ORDER_ID,
+  targetNativeShopifyOrderId: HYDRATION_TARGET_NATIVE_SHOPIFY_ORDER_ID,
+  targetNativeFulfillmentTaskId: HYDRATION_TARGET_NATIVE_FULFILLMENT_TASK_ID,
+  requiredGatePolicy: HYDRATION_POLICY,
+  policyErrorCode: 'hydration_shot_import_policy_required',
+  requiredPreviewInventoryPolicy: REQUIRED_POLICY,
+  requiredYieldPolicy: REQUIRED_YIELD_POLICY,
+  confirmationPhrase: HYDRATION_CONFIRMATION_PHRASE,
+  ownerApprovalPhrase: '',
+  importScope: HYDRATION_IMPORT_SCOPE,
+  recipeName: HYDRATION_RECIPE_NAME,
+  hubRecipeId: HYDRATION_HUB_RECIPE_ID,
+  expectedCreateCounts: { Recipe: 1, InventoryItem: 4 },
+  expectedNames: { Recipe: [HYDRATION_RECIPE_NAME], InventoryItem: HYDRATION_INVENTORY_NAMES },
+  expectedDeferredYieldNames: HYDRATION_DEFERRED_YIELD_NAMES,
+  requireDeferredYieldNames: true,
+  dedupeExistingRows: true,
+  strictEntityAllowlist: true,
+  requiredEntityAllowlistEntries: [
+    `recipe:${HYDRATION_RECIPE_NAME}`,
+    `hub_recipe:${HYDRATION_HUB_RECIPE_ID}`,
+    ...HYDRATION_INVENTORY_NAMES.map(name => `inventoryitem:${name}`),
+  ],
+  previewLineItems: null,
+  useFullOrderCanonicalPreview: true,
+  notes: 'G37D-BLOCK2 exact Hydration Shot non-stock master-data import. Creates only Hydration Shot Recipe plus approved Lime Juice, Honey, Mint, and Pink Salt non-stock InventoryItem rows. No IngredientYield, Bundle, Product, inventory deduction, PO, ProductionBatch, provider, notification, sync, repair, Hub, order, or task writes.',
+});
+
+const EXACT_POLICY_IMPORT_CONTRACTS = new Set([
+  WATERMELON_IMPORT_CONTRACT.key,
+  HYDRATION_IMPORT_CONTRACT.key,
+]);
 
 const EXPECTED_CREATE_COUNTS = Object.freeze({
   Recipe: 3,
@@ -210,18 +263,28 @@ function isWatermelonImportRequest(body = {}) {
     normalizeText(body?.policy) === WATERMELON_POLICY;
 }
 
+function isHydrationImportRequest(body = {}) {
+  return normalizeText(body?.import_scope) === HYDRATION_IMPORT_SCOPE ||
+    normalizeKey(body?.recipe_name || body?.product_or_recipe_name || body?.product_name) === normalizeKey(HYDRATION_RECIPE_NAME) ||
+    normalizeText(body?.confirmation) === HYDRATION_CONFIRMATION_PHRASE ||
+    normalizeText(body?.hub_recipe_id) === HYDRATION_HUB_RECIPE_ID ||
+    normalizeText(body?.inventory_policy) === HYDRATION_POLICY ||
+    normalizeText(body?.policy) === HYDRATION_POLICY;
+}
+
 function resolveImportContract(body = {}) {
+  if (isHydrationImportRequest(body)) return HYDRATION_IMPORT_CONTRACT;
   return isWatermelonImportRequest(body) ? WATERMELON_IMPORT_CONTRACT : LEGACY_IMPORT_CONTRACT;
 }
 
 function exactTargetBlockers(lookup, contract = LEGACY_IMPORT_CONTRACT) {
   const blockers = [];
   if (lookup.orderNumber !== contract.targetOrderNumber) blockers.push('target_order_number_mismatch');
-  const requireExactIds = contract.key === WATERMELON_IMPORT_CONTRACT.key;
+  const requireExactIds = contract.key !== LEGACY_IMPORT_CONTRACT.key;
   if ((requireExactIds || lookup.customerAppOrderId) && lookup.customerAppOrderId !== contract.targetCustomerAppOrderId) blockers.push('target_customer_app_order_id_mismatch');
   if ((requireExactIds || lookup.nativeShopifyOrderId) && lookup.nativeShopifyOrderId !== contract.targetNativeShopifyOrderId) blockers.push('target_native_shopify_order_id_mismatch');
   if ((requireExactIds || lookup.nativeFulfillmentTaskId) && lookup.nativeFulfillmentTaskId !== contract.targetNativeFulfillmentTaskId) blockers.push('target_native_fulfillment_task_id_mismatch');
-  if (contract.key === WATERMELON_IMPORT_CONTRACT.key) {
+  if (contract.importScope) {
     if (lookup.importScope !== contract.importScope) blockers.push('import_scope_mismatch');
     if (normalizeKey(lookup.recipeName) !== normalizeKey(contract.recipeName)) blockers.push('recipe_name_mismatch');
     if (lookup.hubRecipeId !== contract.hubRecipeId) blockers.push('hub_recipe_id_mismatch');
@@ -233,9 +296,7 @@ function gateFailure({ actorEmail, lookup, contract = LEGACY_IMPORT_CONTRACT }) 
   if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') return 'kill_switch_active';
   if (Deno.env.get(ENABLE_FLAG) !== 'true') return 'native_production_master_data_import_disabled';
   if (normalizeText(Deno.env.get(POLICY_FLAG)) !== contract.requiredGatePolicy) {
-    return contract.key === WATERMELON_IMPORT_CONTRACT.key
-      ? 'watermelon_recipe_import_policy_required'
-      : 'non_stock_master_data_policy_required';
+    return contract.policyErrorCode || 'non_stock_master_data_policy_required';
   }
 
   const allowedEmails = parseCsvSet(Deno.env.get(ALLOWED_EMAILS_FLAG) || '');
@@ -267,6 +328,15 @@ function gateFailure({ actorEmail, lookup, contract = LEGACY_IMPORT_CONTRACT }) 
     ].map(normalizeLower).filter(Boolean);
     if (!entityCandidates.some(candidate => entityAllowlist.has(candidate))) return 'entity_not_allowlisted';
   }
+  if (contract.strictEntityAllowlist) {
+    const entityAllowlist = parseCsvSet(Deno.env.get(ENTITY_ALLOWLIST_FLAG) || '');
+    if (entityAllowlist.size === 0) return 'entity_allowlist_required';
+    const missing = (contract.requiredEntityAllowlistEntries || [])
+      .map(normalizeLower)
+      .filter(Boolean)
+      .filter(entry => !entityAllowlist.has(entry));
+    if (missing.length > 0) return `entity_allowlist_missing:${missing[0]}`;
+  }
   return null;
 }
 
@@ -285,6 +355,12 @@ async function fetchFreshPreview(base44, lookup, contract = LEGACY_IMPORT_CONTRA
     request_id: `${lookup.requestId || contract.key}:fresh_preview`,
     _internal_secret: secret,
   };
+  if (contract.importScope) {
+    payload.import_scope = contract.importScope;
+    payload.recipe_name = contract.recipeName;
+    payload.hub_recipe_id = contract.hubRecipeId;
+    payload.inventory_policy = REQUIRED_POLICY;
+  }
   if (Array.isArray(contract.previewLineItems)) payload.line_items = contract.previewLineItems;
 
   try {
@@ -472,7 +548,7 @@ function validatePayloadShape(entityName, payload) {
 
   if (entityName === 'Recipe') {
     if (!payload.product_name) blockers.push('recipe_product_name_required');
-    if (payload.product_sku !== undefined && typeof payload.product_sku !== 'string') blockers.push('recipe_product_sku_must_be_string');
+    if (payload.product_sku !== undefined && payload.product_sku !== null && typeof payload.product_sku !== 'string') blockers.push('recipe_product_sku_must_be_string');
     if (payload.bottle_size_oz !== undefined && numberOrNull(payload.bottle_size_oz) === null) blockers.push('recipe_bottle_size_must_be_number');
     if (payload.yield_factor !== undefined && numberOrNull(payload.yield_factor) === null) blockers.push('recipe_yield_factor_must_be_number');
     if (!Array.isArray(payload.ingredients)) blockers.push('recipe_ingredients_array_required');
@@ -594,6 +670,142 @@ function validateWatermelonImportPreview(preview) {
   return resolveExactWatermelonRecipePreviewPacket(preview, WATERMELON_RECIPE_NAME, WATERMELON_HUB_RECIPE_ID);
 }
 
+function createRowsByName(rows, entityName) {
+  return rowsByEntity(rows, entityName).reduce((acc, row) => {
+    acc[normalizeKey(fieldValueForRow(row))] = row;
+    return acc;
+  }, {});
+}
+
+function validateHydrationRecipePayload(payload) {
+  const blockers = validatePayloadShape('Recipe', payload).map(item => `Recipe:${HYDRATION_RECIPE_NAME}:${item}`);
+  if (normalizeKey(payload?.product_name) !== normalizeKey(HYDRATION_RECIPE_NAME)) blockers.push('hydration_recipe_payload_name_mismatch');
+  if (numberOrNull(payload?.bottle_size_oz) !== 2.32) blockers.push('hydration_recipe_bottle_size_mismatch');
+  if (numberOrNull(payload?.yield_factor) !== 1.05) blockers.push('hydration_recipe_yield_factor_mismatch');
+  const expectedIngredients = [
+    ['Coconut Water', 1.69, 'oz'],
+    ['Lime Juice', 0.34, 'oz'],
+    ['Honey', 0.15, 'oz'],
+    ['Mint', 0, 'leaves'],
+    ['Pink Salt', 0, 'pinch'],
+  ];
+  if (!Array.isArray(payload?.ingredients) || payload.ingredients.length !== expectedIngredients.length) blockers.push('hydration_recipe_ingredient_count_mismatch');
+  const byName = (payload?.ingredients || []).reduce((acc, ingredient) => {
+    acc[normalizeKey(ingredient?.ingredient_name)] = ingredient;
+    return acc;
+  }, {});
+  for (const [name, quantity, unit] of expectedIngredients) {
+    const ingredient = byName[normalizeKey(name)];
+    if (!ingredient) {
+      blockers.push(`hydration_recipe_ingredient_missing:${name}`);
+      continue;
+    }
+    if (numberOrNull(ingredient.quantity_oz) !== quantity) blockers.push(`hydration_recipe_ingredient_quantity_mismatch:${name}`);
+    if (normalizeLower(ingredient.unit) !== normalizeLower(unit)) blockers.push(`hydration_recipe_ingredient_unit_mismatch:${name}`);
+  }
+  if (payload?.is_active !== true) blockers.push('hydration_recipe_must_be_active');
+  return blockers;
+}
+
+function validateHydrationImportPreview(preview) {
+  const blockers = [];
+  const warnings = [];
+  const importPreview = preview?.customer_app_non_stock_master_data_import_preview || {};
+  const createRows = Array.isArray(importPreview.create_rows) ? importPreview.create_rows : [];
+  const deferredRows = Array.isArray(importPreview.deferred_rows) ? importPreview.deferred_rows : [];
+  const blockedRows = Array.isArray(importPreview.blocked_rows) ? importPreview.blocked_rows : [];
+  const schemaPacketBlockers = [
+    ...(Array.isArray(preview?.schema_packet_blockers) ? preview.schema_packet_blockers : []),
+    ...(Array.isArray(importPreview?.schema_packet_blockers) ? importPreview.schema_packet_blockers : []),
+  ];
+  const recipeRows = rowsByEntity(createRows, 'Recipe');
+  const exactRecipeRows = recipeRows.filter(row => normalizeKey(fieldValueForRow(row)) === normalizeKey(HYDRATION_RECIPE_NAME));
+  const inventoryRows = rowsByEntity(createRows, 'InventoryItem');
+  const ingredientYieldRows = rowsByEntity(createRows, 'IngredientYield');
+  const bundleRows = rowsByEntity(createRows, 'Bundle');
+  const productRows = rowsByEntity(createRows, 'Product');
+  const recipeRow = exactRecipeRows[0] || null;
+  const hubRecipe = hubRecipeMatch(preview, HYDRATION_RECIPE_NAME);
+  const lineItemNames = Array.isArray(preview?.line_item_names) ? preview.line_item_names : [];
+
+  if (!preview?.success) blockers.push('fresh_preview_failed');
+  if (preview?.order_number !== HYDRATION_TARGET_ORDER_NUMBER) blockers.push('fresh_preview_target_order_mismatch');
+  if (preview?.customer_app_order_id !== HYDRATION_TARGET_CUSTOMER_APP_ORDER_ID) blockers.push('fresh_preview_customer_app_order_id_mismatch');
+  if (preview?.native_shopify_order_id !== HYDRATION_TARGET_NATIVE_SHOPIFY_ORDER_ID) blockers.push('fresh_preview_native_shopify_order_id_mismatch');
+  if (preview?.native_fulfillment_task_id !== HYDRATION_TARGET_NATIVE_FULFILLMENT_TASK_ID) blockers.push('fresh_preview_native_task_id_mismatch');
+  if (!lineItemNames.some(name => normalizeKey(name) === normalizeKey(HYDRATION_RECIPE_NAME))) blockers.push('fresh_preview_missing_hydration_line_item');
+  if (!(preview?.missing_native_recipes || []).some(name => normalizeKey(name) === normalizeKey(HYDRATION_RECIPE_NAME))) blockers.push('hydration_native_recipe_not_missing');
+  if (!hubRecipe || hubRecipe.status !== 'matched') blockers.push('hub_hydration_recipe_missing');
+  if (hubRecipe?.matches?.[0]?.id !== HYDRATION_HUB_RECIPE_ID) blockers.push('hub_hydration_recipe_id_mismatch');
+  if (preview?.non_stock_import_preview_ready !== true && importPreview.import_ready !== true) blockers.push('non_stock_import_preview_not_ready');
+  if (preview?.seed_packet_ready !== true && preview?.non_stock_master_data_seed_ready !== true) blockers.push('seed_packet_not_ready');
+  if (preview?.inventory_seed_policy !== REQUIRED_POLICY || importPreview.inventory_seed_policy !== REQUIRED_POLICY) blockers.push('inventory_seed_policy_mismatch');
+  if (preview?.yield_policy !== REQUIRED_YIELD_POLICY || importPreview.yield_policy !== REQUIRED_YIELD_POLICY) blockers.push('yield_policy_mismatch');
+  if (preview?.procurement_conversion_ready !== false || importPreview.procurement_conversion_ready !== false) blockers.push('procurement_conversion_should_remain_pending');
+  if (preview?.inventory_deduction_ready !== false || importPreview.inventory_deduction_ready !== false) blockers.push('inventory_deduction_should_remain_held');
+  if (preview?.purchase_order_ready === true || importPreview.purchase_order_ready === true || importPreview.purchase_order_automation_ready === true) blockers.push('purchase_order_should_remain_held');
+  if (preview?.production_master_data_ready !== true) blockers.push('production_master_data_not_ready');
+  if (schemaPacketBlockers.length > 0) blockers.push('schema_packet_blockers_present');
+  if ((importPreview.blockers || []).length > 0 || (preview?.blockers || []).length > 0) blockers.push('fresh_preview_contains_blockers');
+  if (blockedRows.length > 0) blockers.push('blocked_rows_not_allowed');
+  if (safetyFlag(preview, 'provider_call_impact', false) === true || safetyFlag(preview, 'provider_calls_performed', false) === true) blockers.push('provider_calls_not_allowed');
+  if (safetyFlag(preview, 'hub_mutation_performed', false) === true || safetyFlag(preview, 'hub_records_updated', false) === true || safetyFlag(preview, 'hub_bridge_modified', false) === true) blockers.push('hub_mutation_not_allowed');
+  if (!notificationHeld(preview)) blockers.push('notifications_not_held');
+
+  if (recipeRows.length !== 1) blockers.push('unexpected_Recipe_create_count');
+  if (exactRecipeRows.length !== 1) blockers.push('unexpected_hydration_Recipe_create_count');
+  if (!sameNameSet(createRowNames(createRows, 'Recipe'), [HYDRATION_RECIPE_NAME])) blockers.push('unexpected_Recipe_names');
+  if (inventoryRows.length !== HYDRATION_INVENTORY_NAMES.length) blockers.push('unexpected_InventoryItem_create_count');
+  if (!sameNameSet(createRowNames(createRows, 'InventoryItem'), HYDRATION_INVENTORY_NAMES)) blockers.push('unexpected_InventoryItem_names');
+  if (ingredientYieldRows.length > 0) blockers.push('unexpected_ingredient_yield_create_row');
+  if (bundleRows.length > 0) blockers.push('unexpected_bundle_create_row');
+  if (productRows.length > 0) blockers.push('unexpected_product_create_row');
+  if (createRows.some(row => !['Recipe', 'InventoryItem'].includes(row.target_entity))) blockers.push('unexpected_create_entity');
+  if (Number(importPreview.create_row_count) !== createRows.length) blockers.push('create_row_count_mismatch');
+
+  const deferredNames = deferredRows.map(row => fieldValueForRow(row) || row.match_value || row.customer_app_target_name);
+  if (!sameNameSet(deferredNames, HYDRATION_DEFERRED_YIELD_NAMES)) blockers.push('unexpected_deferred_yield_names');
+  if (!Array.isArray(deferredRows) || deferredRows.length !== HYDRATION_DEFERRED_YIELD_NAMES.length) blockers.push('unexpected_deferred_yield_count');
+  for (const row of deferredRows) {
+    if (!['IngredientYield', 'yield'].includes(row.target_entity || row.entity_type || row.required_type || 'IngredientYield')) continue;
+    const statusText = normalizeKey(row.reason || row.status || row.proposed_action || 'yield details deferred');
+    if (!statusText.includes('defer') && !statusText.includes('yield') && !statusText.includes('pending')) blockers.push(`deferred_yield_reason_missing:${fieldValueForRow(row) || row.match_value || 'unknown'}`);
+  }
+
+  if (recipeRow) {
+    if (recipeRow.operation !== 'create_if_missing') blockers.push(`unsupported_operation:${recipeRow.operation || 'missing'}`);
+    if (recipeRow.import_ready !== true) blockers.push('hydration_recipe_create_row_not_import_ready');
+    if (!recipeRow.match_field || !recipeRow.match_value) blockers.push('missing_match_contract:Recipe');
+    if (recipeRow.source_hub_id !== HYDRATION_HUB_RECIPE_ID) blockers.push('hydration_recipe_source_hub_id_mismatch');
+    blockers.push(...validateHydrationRecipePayload(recipeRow.payload || {}));
+  }
+
+  const inventoryByName = createRowsByName(inventoryRows, 'InventoryItem');
+  for (const name of HYDRATION_INVENTORY_NAMES) {
+    const row = inventoryByName[normalizeKey(name)];
+    if (!row) continue;
+    if (row.operation !== 'create_if_missing') blockers.push(`unsupported_operation:${row.operation || 'missing'}:${name}`);
+    if (row.import_ready !== true) blockers.push(`inventory_create_row_not_import_ready:${name}`);
+    if (!row.match_field || !row.match_value) blockers.push(`missing_match_contract:InventoryItem:${name}`);
+    blockers.push(...validatePayloadShape('InventoryItem', row.payload || {}).map(item => `InventoryItem:${name}:${item}`));
+    if (numberOrNull(row.payload?.stock) !== 0) blockers.push(`inventory_stock_must_seed_zero:${name}`);
+  }
+
+  if ((importPreview.warnings || []).includes('preview_only_no_master_data_import_performed')) {
+    warnings.push('fresh_preview_confirmed_read_only');
+  }
+
+  return {
+    ready: blockers.length === 0,
+    blockers: [...new Set(blockers)].slice(0, 120),
+    warnings: [...new Set(warnings.concat(importPreview.warnings || []))].slice(0, 120),
+    createRows,
+    deferredRows,
+    importPreview,
+    deferredIngredientYieldNames: HYDRATION_DEFERRED_YIELD_NAMES,
+  };
+}
+
 function validateLegacyImportPreview(preview) {
   const blockers = [];
   const warnings = [];
@@ -661,9 +873,9 @@ function validateLegacyImportPreview(preview) {
 }
 
 function validateImportPreview(preview, contract = LEGACY_IMPORT_CONTRACT) {
-  return contract.key === WATERMELON_IMPORT_CONTRACT.key
-    ? validateWatermelonImportPreview(preview)
-    : validateLegacyImportPreview(preview);
+  if (contract.key === WATERMELON_IMPORT_CONTRACT.key) return validateWatermelonImportPreview(preview);
+  if (contract.key === HYDRATION_IMPORT_CONTRACT.key) return validateHydrationImportPreview(preview);
+  return validateLegacyImportPreview(preview);
 }
 
 function matchFilterForRow(row) {
@@ -677,11 +889,11 @@ function matchFilterForRow(row) {
 
 function exactPolicyInputBlockers(body, contract = LEGACY_IMPORT_CONTRACT) {
   const blockers = [];
-  if (contract.key !== WATERMELON_IMPORT_CONTRACT.key) return blockers;
+  if (!EXACT_POLICY_IMPORT_CONTRACTS.has(contract.key)) return blockers;
 
-  if (normalizeText(body?.import_scope) !== WATERMELON_IMPORT_SCOPE) blockers.push('import_scope_required');
-  if (normalizeKey(body?.recipe_name || body?.product_or_recipe_name || body?.product_name) !== normalizeKey(WATERMELON_RECIPE_NAME)) blockers.push('recipe_name_required');
-  if (safeId(body?.hub_recipe_id, 120) !== WATERMELON_HUB_RECIPE_ID) blockers.push('hub_recipe_id_required');
+  if (normalizeText(body?.import_scope) !== contract.importScope) blockers.push('import_scope_required');
+  if (normalizeKey(body?.recipe_name || body?.product_or_recipe_name || body?.product_name) !== normalizeKey(contract.recipeName)) blockers.push('recipe_name_required');
+  if (safeId(body?.hub_recipe_id, 120) !== contract.hubRecipeId) blockers.push('hub_recipe_id_required');
   if (normalizeText(body?.inventory_policy) !== REQUIRED_POLICY) blockers.push('inventory_policy_required');
   if (normalizeText(body?.inventory_deduction_policy) !== 'HELD') blockers.push('inventory_deduction_policy_held_required');
   if (normalizeText(body?.purchase_order_policy) !== 'HELD') blockers.push('purchase_order_policy_held_required');
@@ -690,6 +902,8 @@ function exactPolicyInputBlockers(body, contract = LEGACY_IMPORT_CONTRACT) {
   if (normalizeText(body?.hub_mutation_policy) !== 'NO_HUB_MUTATION') blockers.push('hub_mutation_policy_required');
 
   const forbiddenTruthyFields = [
+    'create_recipe',
+    'update_recipe',
     'create_inventory_item',
     'update_inventory_item',
     'create_ingredient_yield',
@@ -812,6 +1026,14 @@ async function preflightExistingRows(base44, createRows) {
   return existingRows;
 }
 
+function rowMatchesExistingSummary(row, existing) {
+  return existing?.target_entity === row.target_entity && normalizeKey(existing?.match_value) === normalizeKey(fieldValueForRow(row));
+}
+
+function rowsAfterExactDedupe(createRows, existingRows) {
+  return (createRows || []).filter(row => !(existingRows || []).some(existing => rowMatchesExistingSummary(row, existing)));
+}
+
 async function createRows(base44, rows) {
   const createdRows = [];
   for (const row of rows) {
@@ -887,6 +1109,27 @@ Deno.serve(async (req) => {
         command_log_id: safeId(existingLog.id, 120) || null,
         writes_performed: false,
         duplicate_master_data_created: false,
+        recipe_created: false,
+        recipe_records_created: 0,
+        inventory_item_records_created: 0,
+        ingredient_yield_created: false,
+        ingredient_yield_records_created: 0,
+        bundle_records_created: 0,
+        production_batch_created: false,
+        batch_compliance_log_created: false,
+        customer_app_order_updated: false,
+        native_shopify_order_updated: false,
+        native_fulfillment_task_updated: false,
+        notifications_sent: false,
+        provider_calls: false,
+        provider_call_impact: false,
+        stripe_calls: false,
+        shopify_calls: false,
+        hub_records_updated: false,
+        hub_mutation_performed: false,
+        inventory_deducted: false,
+        purchase_orders_created: false,
+        command_log_created: false,
       });
     }
 
@@ -914,14 +1157,55 @@ Deno.serve(async (req) => {
     }
 
     const existingMasterData = await preflightExistingRows(base44, validation.createRows);
+    let rowsToCreate = validation.createRows;
     if (existingMasterData.length > 0) {
-      return jsonResponse({
-        success: false,
-        skipped: true,
-        error_code: 'target_master_data_already_exists',
-        existing_rows: existingMasterData,
-        writes_performed: false,
-      }, 409);
+      if (!contract.dedupeExistingRows) {
+        return jsonResponse({
+          success: false,
+          skipped: true,
+          error_code: 'target_master_data_already_exists',
+          existing_rows: existingMasterData,
+          writes_performed: false,
+        }, 409);
+      }
+      rowsToCreate = rowsAfterExactDedupe(validation.createRows, existingMasterData);
+      if (rowsToCreate.length === 0) {
+        return jsonResponse({
+          success: true,
+          skipped: true,
+          idempotent: false,
+          reason: 'all_exact_master_data_rows_already_exist',
+          request_id: lookup.requestId,
+          import_contract: contract.key,
+          order_number: contract.targetOrderNumber,
+          recipe_name: contract.recipeName || null,
+          writes_performed: false,
+          recipe_created: false,
+          recipe_records_created: 0,
+          inventory_item_records_created: 0,
+          ingredient_yield_created: false,
+          ingredient_yield_records_created: 0,
+          bundle_records_created: 0,
+          deferred_ingredient_yield_count: validation.deferredRows.length,
+          deferred_ingredient_yield_names: validation.deferredIngredientYieldNames || [],
+          production_batch_created: false,
+          batch_compliance_log_created: false,
+          customer_app_order_updated: false,
+          native_shopify_order_updated: false,
+          native_fulfillment_task_updated: false,
+          notifications_sent: false,
+          provider_calls: false,
+          provider_call_impact: false,
+          stripe_calls: false,
+          shopify_calls: false,
+          hub_records_updated: false,
+          hub_mutation_performed: false,
+          inventory_deducted: false,
+          purchase_orders_created: false,
+          command_log_created: false,
+          existing_rows: existingMasterData,
+        });
+      }
     }
 
     const commandLog = await createCommandLog({
@@ -932,8 +1216,8 @@ Deno.serve(async (req) => {
       user,
         result: {
           writes_performed: false,
-          projected_create_row_count: validation.createRows.length,
-          projected_create_rows_by_entity: entityCounts(validation.createRows),
+          projected_create_row_count: rowsToCreate.length,
+          projected_create_rows_by_entity: entityCounts(rowsToCreate),
           deferred_rows: validation.deferredRows.map(row => ({ target_entity: row.target_entity, match_value: safeText(row.match_value, 120), reason: row.reason })),
           inventory_seed_policy: REQUIRED_POLICY,
           yield_policy: REQUIRED_YIELD_POLICY,
@@ -950,7 +1234,7 @@ Deno.serve(async (req) => {
 
     let created = [];
     try {
-      created = await createRows(base44, validation.createRows);
+      created = await createRows(base44, rowsToCreate);
     } catch (error) {
       await updateCommandLog({
         base44,
@@ -987,24 +1271,32 @@ Deno.serve(async (req) => {
       result: {
         writes_performed: true,
         created_row_count: created.length,
-        created_rows_by_entity: entityCounts(validation.createRows),
+        created_rows_by_entity: entityCounts(rowsToCreate),
         created_rows: created,
+        deduped_existing_rows: existingMasterData,
         deferred_rows: validation.deferredRows.map(row => ({ target_entity: row.target_entity, match_value: safeText(row.match_value, 120), reason: row.reason })),
         import_contract: contract.key,
         recipe_name: contract.recipeName || null,
         inventory_seed_policy: REQUIRED_POLICY,
         yield_policy: REQUIRED_YIELD_POLICY,
-        recipe_records_created: Number(entityCounts(validation.createRows).Recipe || 0),
-        inventory_item_records_created: Number(entityCounts(validation.createRows).InventoryItem || 0),
-        ingredient_yield_records_created: Number(entityCounts(validation.createRows).IngredientYield || 0),
-        bundle_records_created: Number(entityCounts(validation.createRows).Bundle || 0),
-        stock_seeded_zero: validation.createRows.some(row => row.target_entity === 'InventoryItem'),
+        recipe_created: Number(entityCounts(rowsToCreate).Recipe || 0) > 0,
+        recipe_records_created: Number(entityCounts(rowsToCreate).Recipe || 0),
+        inventory_item_records_created: Number(entityCounts(rowsToCreate).InventoryItem || 0),
+        ingredient_yield_created: false,
+        ingredient_yield_records_created: Number(entityCounts(rowsToCreate).IngredientYield || 0),
+        bundle_records_created: Number(entityCounts(rowsToCreate).Bundle || 0),
+        deferred_ingredient_yield_count: validation.deferredRows.length,
+        deferred_ingredient_yield_names: validation.deferredIngredientYieldNames || [],
+        production_batch_created: false,
+        batch_compliance_log_created: false,
+        stock_seeded_zero: rowsToCreate.some(row => row.target_entity === 'InventoryItem'),
         black_salt_yield_created: false,
         beetroot_yield_created: false,
         inventory_deducted: false,
         purchase_orders_created: false,
         production_batches_created: false,
         provider_calls_performed: false,
+        provider_call_impact: false,
         stripe_calls_performed: false,
         shopify_api_calls_performed: false,
         notifications_sent: false,
@@ -1013,6 +1305,7 @@ Deno.serve(async (req) => {
         native_shopify_order_updated: false,
         native_fulfillment_task_updated: false,
         hub_records_updated: false,
+        hub_mutation_performed: false,
       },
     });
 
@@ -1028,23 +1321,32 @@ Deno.serve(async (req) => {
       recipe_name: contract.recipeName || null,
       writes_performed: true,
       created_row_count: created.length,
-      created_rows_by_entity: entityCounts(validation.createRows),
+      created_rows_by_entity: entityCounts(rowsToCreate),
       created_rows: created,
+      deduped_existing_rows: existingMasterData,
       deferred_row_count: validation.deferredRows.length,
       deferred_rows: validation.deferredRows.map(row => ({ target_entity: row.target_entity, match_value: safeText(row.match_value, 120), reason: row.reason })),
-      recipe_records_created: Number(entityCounts(validation.createRows).Recipe || 0),
-      inventory_item_records_created: Number(entityCounts(validation.createRows).InventoryItem || 0),
-      ingredient_yield_records_created: Number(entityCounts(validation.createRows).IngredientYield || 0),
-      bundle_records_created: Number(entityCounts(validation.createRows).Bundle || 0),
+      recipe_created: Number(entityCounts(rowsToCreate).Recipe || 0) > 0,
+      recipe_records_created: Number(entityCounts(rowsToCreate).Recipe || 0),
+      inventory_item_records_created: Number(entityCounts(rowsToCreate).InventoryItem || 0),
+      ingredient_yield_created: false,
+      ingredient_yield_records_created: Number(entityCounts(rowsToCreate).IngredientYield || 0),
+      bundle_records_created: Number(entityCounts(rowsToCreate).Bundle || 0),
+      deferred_ingredient_yield_count: validation.deferredRows.length,
+      deferred_ingredient_yield_names: validation.deferredIngredientYieldNames || [],
+      production_batch_created: false,
+      batch_compliance_log_created: false,
+      command_log_created: true,
       inventory_seed_policy: REQUIRED_POLICY,
       yield_policy: REQUIRED_YIELD_POLICY,
-      stock_seeded_zero: validation.createRows.some(row => row.target_entity === 'InventoryItem'),
+      stock_seeded_zero: rowsToCreate.some(row => row.target_entity === 'InventoryItem'),
       black_salt_yield_created: false,
       beetroot_yield_created: false,
       inventory_deducted: false,
       purchase_orders_created: false,
       production_batches_created: false,
       provider_calls: false,
+      provider_call_impact: false,
       stripe_calls: false,
       shopify_calls: false,
       notifications_sent: false,
@@ -1053,6 +1355,7 @@ Deno.serve(async (req) => {
       native_shopify_order_updated: false,
       native_fulfillment_task_updated: false,
       hub_records_updated: false,
+      hub_mutation_performed: false,
     });
   } catch (error) {
     console.error(`[${FUNCTION_NAME}] failed safely: ${error?.message || 'unknown error'}`);
