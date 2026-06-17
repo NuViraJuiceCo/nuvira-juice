@@ -6,13 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import SEO from '@/components/SEO';
 import { isEventCheckInVisible } from '@/lib/eventCheckIn';
-
-// Convert a "YYYY-MM-DD" date + optional "HH:MM" time string to ISO 8601
-function toISO(date, time) {
-  if (!date) return undefined;
-  const base = date.includes('T') ? date : `${date}T${time || '00:00'}:00`;
-  try { return new Date(base).toISOString(); } catch { return undefined; }
-}
+import { eventStructuredDateTimes, resolveEventTimeSemantics } from '@/lib/eventTimeSemantics';
 
 function buildEventSchema(events) {
   if (!events.length) return null;
@@ -22,8 +16,8 @@ function buildEventSchema(events) {
     "name": e.title,
     "description": e.description || undefined,
     "image": e.image_url || undefined,
-    "startDate": toISO(e.date, e.time),
-    "endDate": toISO(e.end_date || e.date, e.end_time || e.time),
+    "startDate": eventStructuredDateTimes(e).startDate,
+    "endDate": eventStructuredDateTimes(e).endDate,
     "eventStatus": "https://schema.org/EventScheduled",
     "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
     "location": {
@@ -174,7 +168,7 @@ export default function Events() {
                 <div className="space-y-1 mb-3">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Calendar className="w-3 h-3" />
-                    <span>{event.date} · {event.time}</span>
+                    <span>{event.date} · {resolveEventTimeSemantics(event).displayTime}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <MapPin className="w-3 h-3" />
