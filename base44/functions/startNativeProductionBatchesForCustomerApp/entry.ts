@@ -9,7 +9,12 @@ const ORDER_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_START_ORDER_ALLOWLIST';
 const BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_START_BATCH_ALLOWLIST';
 const POLICY_FLAG = 'NATIVE_PRODUCTION_BATCH_START_POLICY';
 const REQUIRED_POLICY = 'EXACT_PREVIEW_PACKET_ONLY';
+const REPAIR_SCOPE = 'REVERT_PREMATURE_START_TO_PLANNED';
+const REPAIR_POLICY = 'EXACT_REVERT_PREMATURE_START_TO_PLANNED_NO_NOTIFICATION';
 const CONFIRMATION_PHRASE = 'start_native_production_batches_for_customer_app';
+const REPAIR_CONFIRMATION_PHRASE = 'revert_premature_production_start_to_planned_no_notification';
+const REPAIR_COMMAND_TYPE = 'native_production_batch_start_revert';
+const PREMATURE_ACTUAL_START_TIME = '2026-06-17T16:59:27.000Z';
 const TARGET_ORDER_NUMBER = 'NV-MQHJR3V2';
 const TARGET_CUSTOMER_APP_ORDER_ID = '6a321cbfd8d78863f15de956';
 const TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a321d38a3819cdd5cf89031';
@@ -49,6 +54,13 @@ const ALLOWED_BODY_KEYS = new Set([
   'production_batch_ids',
   'selected_production_batch_ids',
   'actual_start_time',
+  'repair_scope',
+  'current_status',
+  'target_status',
+  'reason',
+  'clear_actual_start_time',
+  'clear_started_by',
+  'clear_started_at',
   'notification_policy',
   'provider_call_policy',
   'hub_mutation_policy',
@@ -229,6 +241,13 @@ function getLookup(body) {
     expectedDeliveryDate: normalizeText(body?.expected_delivery_date || body?.delivery_date),
     expectedStatus: normalizeLower(body?.expected_status || 'planned'),
     actualStartTime: safeText(body?.actual_start_time, 80),
+    repairScope: safeText(body?.repair_scope, 120),
+    currentStatus: normalizeLower(body?.current_status),
+    targetStatus: normalizeLower(body?.target_status),
+    reason: safeText(body?.reason, 180),
+    clearActualStartTime: body?.clear_actual_start_time === true || normalizeLower(body?.clear_actual_start_time) === 'true',
+    clearStartedBy: body?.clear_started_by === true || normalizeLower(body?.clear_started_by) === 'true',
+    clearStartedAt: body?.clear_started_at === true || normalizeLower(body?.clear_started_at) === 'true',
     expectedPreviewHash: safeId(body?.expected_preview_hash, 180),
     requestId: safeId(body?.request_id, 160),
     batchIds: parseStringList(body?.selected_production_batch_ids || body?.batch_ids || body?.production_batch_ids),
@@ -249,10 +268,26 @@ function isExpectedBatchSelection(values) {
   return sameStringArray(values, EXPECTED_BATCH_IDS) || sameStringArray(values, EXPECTED_BATCH_RECORD_ID_VALUES);
 }
 
-function validateExplicitPolicies(body) {
+function isRepairRequest(lookup) {
+  return normalizeText(lookup?.repairScope) === REPAIR_SCOPE;
+}
+
+function requiredPolicyFor(lookup) {
+  return isRepairRequest(lookup) ? REPAIR_POLICY : REQUIRED_POLICY;
+}
+
+function requiredConfirmationFor(lookup) {
+  return isRepairRequest(lookup) ? REPAIR_CONFIRMATION_PHRASE : CONFIRMATION_PHRASE;
+}
+
+function commandTypeFor(lookup) {
+  return isRepairRequest(lookup) ? REPAIR_COMMAND_TYPE : COMMAND_TYPE;
+}
+
+function validateExplicitPolicies(body, lookup = {}) {
   const blockers = [];
   const expectedPolicies = [
-    ['policy', REQUIRED_POLICY, 'policy_mismatch'],
+    ['policy', requiredPolicyFor(lookup), 'policy_mismatch'],
     ['inventory_deduction_policy', 'HELD', 'inventory_deduction_requested'],
     ['purchase_order_policy', 'HELD', 'purchase_order_requested'],
     ['notification_policy', 'NO_NOTIFICATION', 'notification_requested'],
@@ -281,10 +316,31 @@ function exactTargetBlockers(lookup) {
   return blockers;
 }
 
+function exactRepairTargetBlockers(lookup) {
+  const blockers = [];
+  if (!isRepairRequest(lookup)) blockers.push('repair_scope_required');
+  if (lookup.orderNumber !== TARGET_ORDER_NUMBER) blockers.push('target_order_number_mismatch');
+  if (lookup.productionDate !== TARGET_PRODUCTION_DATE) blockers.push('target_production_date_mismatch');
+  if (lookup.expectedDeliveryDate && lookup.expectedDeliveryDate !== TARGET_DELIVERY_DATE) blockers.push('expected_delivery_date_mismatch');
+  if (lookup.currentStatus && lookup.currentStatus !== 'in_production') blockers.push('current_status_must_be_in_production');
+  if (lookup.targetStatus && lookup.targetStatus !== 'planned') blockers.push('target_status_must_be_planned');
+  if (lookup.customerAppOrderId && lookup.customerAppOrderId !== TARGET_CUSTOMER_APP_ORDER_ID) blockers.push('target_customer_app_order_id_mismatch');
+  if (lookup.nativeShopifyOrderId && lookup.nativeShopifyOrderId !== TARGET_NATIVE_SHOPIFY_ORDER_ID) blockers.push('target_native_shopify_order_id_mismatch');
+  if (lookup.nativeFulfillmentTaskId && lookup.nativeFulfillmentTaskId !== TARGET_NATIVE_FULFILLMENT_TASK_ID) blockers.push('target_native_fulfillment_task_id_mismatch');
+  if (lookup.batchIds.length !== EXPECTED_BATCH_IDS.length || !isExpectedBatchSelection(lookup.batchIds)) {
+    blockers.push('target_batch_ids_mismatch');
+  }
+  if (!lookup.clearActualStartTime) blockers.push('clear_actual_start_time_required');
+  if (!lookup.clearStartedBy) blockers.push('clear_started_by_required');
+  return uniqueStrings(blockers, 80);
+}
+
 function gateFailure({ actorEmail, lookup }) {
   if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') return 'kill_switch_active';
   if (Deno.env.get(ENABLE_FLAG) !== 'true') return 'native_production_batch_start_disabled';
-  if (normalizeText(Deno.env.get(POLICY_FLAG)) !== REQUIRED_POLICY) return 'exact_preview_packet_policy_required';
+  if (normalizeText(Deno.env.get(POLICY_FLAG)) !== requiredPolicyFor(lookup)) {
+    return isRepairRequest(lookup) ? 'exact_revert_premature_start_policy_required' : 'exact_preview_packet_policy_required';
+  }
 
   const allowedEmails = parseCsvSet(Deno.env.get(ALLOWED_EMAILS_FLAG) || '');
   if (allowedEmails.size === 0) return 'allowed_email_gate_required';
@@ -578,10 +634,10 @@ async function updateProductionBatches({ base44, batches, commandLogId, actorEma
   return updatedRows;
 }
 
-async function createCommandLog({ base44, status, idempotencyKey, requestId, user, result, errorCode, errorMessage }) {
+async function createCommandLog({ base44, status, idempotencyKey, requestId, user, result, errorCode, errorMessage, lookup = {} }) {
   const now = new Date().toISOString();
   return base44.asServiceRole.entities.CommandLog.create({
-    command_type: COMMAND_TYPE,
+    command_type: commandTypeFor(lookup),
     command_source: 'customer_app_native_admin',
     status,
     target_entity: 'ProductionBatch',
@@ -598,7 +654,8 @@ async function createCommandLog({ base44, status, idempotencyKey, requestId, use
       native_shopify_order_id: TARGET_NATIVE_SHOPIFY_ORDER_ID,
       native_fulfillment_task_id: TARGET_NATIVE_FULFILLMENT_TASK_ID,
       production_date: TARGET_PRODUCTION_DATE,
-      policy: REQUIRED_POLICY,
+      policy: requiredPolicyFor(lookup),
+      repair_scope: isRepairRequest(lookup) ? REPAIR_SCOPE : null,
       expected_batch_ids: EXPECTED_BATCH_IDS,
       expected_products: EXPECTED_PRODUCTS,
       preview_function: 'previewNativeProductionBatchLifecycle',
@@ -614,7 +671,9 @@ async function createCommandLog({ base44, status, idempotencyKey, requestId, use
     function_name: FUNCTION_NAME,
     related_order_number: TARGET_ORDER_NUMBER,
     related_order_id: TARGET_CUSTOMER_APP_ORDER_ID,
-    notes: 'G37F exact gated native Start Production command. Updates only two exact planned ProductionBatch records to in_production. No complete/verify/compliance, inventory deduction, PurchaseOrder, Customer App Order, ShopifyOrder, FulfillmentTask, provider, notification, sync, repair, replay, or Hub mutation.',
+    notes: isRepairRequest(lookup)
+      ? 'G37F-REPAIR1 exact gated native premature Start Production revert command. Updates only two exact in_production ProductionBatch records back to planned and clears premature start metadata. No complete/verify/compliance, inventory deduction, PurchaseOrder, Customer App Order, ShopifyOrder, FulfillmentTask, provider, notification, broad sync/repair/replay, or Hub mutation.'
+      : 'G37F exact gated native Start Production command. Updates only two exact planned ProductionBatch records to in_production. No complete/verify/compliance, inventory deduction, PurchaseOrder, Customer App Order, ShopifyOrder, FulfillmentTask, provider, notification, sync, repair, replay, or Hub mutation.',
   });
 }
 
@@ -658,6 +717,146 @@ function safetyResult(extra = {}) {
   };
 }
 
+async function hasBatchComplianceLog(base44, batch) {
+  const batchId = safeId(batch?.batch_id, 180);
+  const recordId = safeId(batch?.id, 120);
+  const byBatchId = batchId ? await filterEntity(base44, 'BatchComplianceLog', { batch_id: batchId }, '-created_date', 5) : [];
+  const bySourceId = recordId ? await filterEntity(base44, 'BatchComplianceLog', { source_production_batch_id: recordId }, '-created_date', 5) : [];
+  return byBatchId.length + bySourceId.length > 0;
+}
+
+async function preflightRepairTargetBatches(base44) {
+  const blockers = [];
+  const batches = [];
+  const conflicts = [];
+
+  for (const batchId of EXPECTED_BATCH_IDS) {
+    const matches = await findBatchByBatchId(base44, batchId);
+    if (matches.length === 0) {
+      blockers.push(`production_batch_not_found:${batchId}`);
+      continue;
+    }
+    if (matches.length > 1) {
+      blockers.push(`multiple_production_batch_matches:${batchId}`);
+      conflicts.push({ batch_id: batchId, reason: 'multiple_production_batch_matches', match_count: matches.length });
+      continue;
+    }
+    const batch = matches[0];
+    const productName = EXPECTED_BATCH_PRODUCTS[batchId];
+    const status = normalizeLower(batch?.status);
+    const batchBlockers = [];
+    if (safeText(batch?.product_name, 120) !== productName) batchBlockers.push('product_name_mismatch');
+    if (normalizeText(batch?.production_date) !== TARGET_PRODUCTION_DATE) batchBlockers.push('production_date_mismatch');
+    if (safeId(batch?.id, 120) !== EXPECTED_BATCH_RECORD_IDS[batchId]) batchBlockers.push('production_batch_record_id_mismatch');
+    if (roundQuantity(batch?.planned_units, 3) !== EXPECTED_BATCH_UNITS[batchId]) batchBlockers.push('planned_units_mismatch');
+    if (!batchHasTargetSource(batch)) batchBlockers.push('target_order_source_missing');
+    if (batch?.is_locked === true) batchBlockers.push('batch_locked');
+    if (await hasBatchComplianceLog(base44, batch)) batchBlockers.push('batch_compliance_log_present');
+    if (roundQuantity(batch?.actual_units, 3) !== null) batchBlockers.push('actual_units_present');
+    if (batch?.actual_end_time || batch?.completed_by) batchBlockers.push('completion_metadata_present');
+    if (batch?.verified_at || batch?.verified_by || batch?.compliance_log_id) batchBlockers.push('verification_metadata_present');
+
+    if (status === 'in_production') {
+      if (safeText(batch?.actual_start_time, 80) !== PREMATURE_ACTUAL_START_TIME) batchBlockers.push('premature_actual_start_time_mismatch');
+      if (!safeText(batch?.started_by, 120)) batchBlockers.push('started_by_missing');
+    } else if (status === 'planned') {
+      if (batch?.actual_start_time || batch?.started_at || batch?.started_by) batchBlockers.push('planned_state_still_has_start_metadata');
+    } else if (['completed_pending_verification', 'verified_logged', 'archived'].includes(status)) {
+      batchBlockers.push('terminal_or_later_lifecycle_state');
+    } else {
+      batchBlockers.push('status_not_in_production_or_planned');
+    }
+
+    if (batchBlockers.length > 0) {
+      blockers.push(`repair_conflict:${batchId}`);
+      conflicts.push({ batch_id: batchId, product_name: productName, status: safeText(batch?.status, 80) || null, blockers: batchBlockers });
+    }
+    batches.push(batch);
+  }
+
+  if (blockers.length > 0) return { ready: false, mode: 'blocked', blockers, conflicts, batches, rowsToUpdate: [], alreadyPlannedRows: [] };
+
+  const inProduction = batches.filter(batch => normalizeLower(batch?.status) === 'in_production');
+  const planned = batches.filter(batch => normalizeLower(batch?.status) === 'planned');
+  if (inProduction.length === EXPECTED_BATCH_IDS.length) {
+    return { ready: true, mode: 'repair', blockers: [], conflicts: [], batches, rowsToUpdate: inProduction, alreadyPlannedRows: [] };
+  }
+  if (planned.length === EXPECTED_BATCH_IDS.length) {
+    return { ready: false, mode: 'already_reverted_without_matching_idempotency_log', blockers: ['already_reverted_without_matching_idempotency_log'], conflicts: [], batches, rowsToUpdate: [], alreadyPlannedRows: planned };
+  }
+
+  return {
+    ready: false,
+    mode: 'partial_repair_state_detected',
+    blockers: ['partial_repair_state_detected'],
+    conflicts: batches.map(batch => ({ batch_id: safeId(batch?.batch_id, 180), status: safeText(batch?.status, 80), reason: 'mixed_planned_and_in_production_state' })),
+    batches,
+    rowsToUpdate: [],
+    alreadyPlannedRows: planned,
+  };
+}
+
+function buildRepairPatch({ batch, commandLogId, actorEmail, requestId, reason, now }) {
+  const existingTrail = Array.isArray(batch.audit_trail) ? batch.audit_trail.slice(-100) : [];
+  const existingCommandIds = Array.isArray(batch.command_log_ids) ? batch.command_log_ids.map(id => safeId(id, 120)).filter(Boolean).slice(-40) : [];
+  const commandIds = commandLogId ? [...new Set([...existingCommandIds, safeId(commandLogId, 120)])] : existingCommandIds;
+  return {
+    status: 'planned',
+    actual_start_time: null,
+    started_at: null,
+    started_by: null,
+    audit_trail: [
+      ...existingTrail,
+      {
+        timestamp: now,
+        action: 'production_batch_revert_premature_start',
+        performed_by: safeActorEmail(actorEmail) || 'native_admin_actor',
+        before: { status: safeText(batch?.status, 80) || null, actual_start_time: safeText(batch?.actual_start_time, 80) || null, started_by_present: Boolean(batch?.started_by) },
+        after: { status: 'planned', actual_start_time: null, started_by_present: false },
+        reason: safeText(reason, 180) || 'Physical production has not started; reverting premature native production start.',
+        request_id: safeId(requestId, 160) || null,
+        command_log_id: safeId(commandLogId, 120) || null,
+      },
+    ],
+    ...(commandIds.length > 0 ? { command_log_ids: commandIds } : {}),
+  };
+}
+
+function validateRepairPatch(patch) {
+  const blockers = [];
+  const allowed = new Set(['status', 'actual_start_time', 'started_at', 'started_by', 'audit_trail', 'command_log_ids']);
+  for (const key of Object.keys(patch || {})) {
+    if (!allowed.has(key)) blockers.push(`unapproved_premature_start_repair_field:${key}`);
+  }
+  if (patch.status !== 'planned') blockers.push('status_must_be_planned');
+  if (patch.actual_start_time !== null) blockers.push('actual_start_time_must_clear');
+  if (patch.started_at !== null) blockers.push('started_at_must_clear');
+  if (patch.started_by !== null) blockers.push('started_by_must_clear');
+  if (!Array.isArray(patch.audit_trail) || patch.audit_trail.length === 0) blockers.push('audit_trail_required');
+  if ('actual_units' in patch || 'ingredients_used' in patch || 'pH_result' in patch || 'compliance_log_id' in patch || 'inventory_deduction_log_id' in patch || 'actual_end_time' in patch || 'completed_by' in patch || 'verified_at' in patch || 'verified_by' in patch) {
+    blockers.push('forbidden_completion_verify_inventory_or_compliance_field_present');
+  }
+  return blockers;
+}
+
+async function repairProductionBatches({ base44, batches, commandLogId, actorEmail, requestId, reason }) {
+  const updatedRows = [];
+  const now = new Date().toISOString();
+  for (const batch of batches) {
+    const previousStatus = safeText(batch?.status, 80) || null;
+    const patch = buildRepairPatch({ batch, commandLogId, actorEmail, requestId, reason, now });
+    const patchBlockers = validateRepairPatch(patch);
+    if (patchBlockers.length > 0) {
+      const error = new Error(`ProductionBatch premature start repair patch validation failed: ${patchBlockers.join(',')}`);
+      error.code = 'production_batch_premature_start_repair_patch_invalid';
+      throw error;
+    }
+    const updated = await base44.asServiceRole.entities.ProductionBatch.update(batch.id, patch);
+    updatedRows.push(summarizeBatch(updated, previousStatus));
+  }
+  return updatedRows;
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -676,25 +875,26 @@ Deno.serve(async (req) => {
     if (badKey) return jsonResponse({ success: false, error_code: 'unsupported_request_field', field: safeText(badKey, 80), writes_performed: false }, 400);
 
     const lookup = getLookup(body);
-    if (normalizeLower(body.mode) !== 'live' || normalizeText(body.confirmation) !== CONFIRMATION_PHRASE) {
+    const repairMode = isRepairRequest(lookup);
+    if (normalizeLower(body.mode) !== 'live' || normalizeText(body.confirmation) !== requiredConfirmationFor(lookup)) {
       return jsonResponse({ success: false, error_code: 'confirmation_required', writes_performed: false }, 400);
     }
     if (!lookup.requestId) return jsonResponse({ success: false, error_code: 'request_id_required', writes_performed: false }, 400);
 
-    const targetBlockers = exactTargetBlockers(lookup);
+    const targetBlockers = repairMode ? exactRepairTargetBlockers(lookup) : exactTargetBlockers(lookup);
     if (targetBlockers.length > 0) {
-      return jsonResponse({ success: false, skipped: true, error_code: 'exact_start_target_required', blockers: targetBlockers, writes_performed: false }, 409);
+      return jsonResponse({ success: false, skipped: true, error_code: repairMode ? 'exact_premature_start_repair_target_required' : 'exact_start_target_required', blockers: targetBlockers, writes_performed: false }, 409);
     }
 
     const gate = gateFailure({ actorEmail: auth.user?.email, lookup });
     if (gate) return jsonResponse({ success: false, skipped: true, error_code: gate, writes_performed: false }, 409);
 
-    const policyBlockers = validateExplicitPolicies(body);
+    const policyBlockers = validateExplicitPolicies(body, lookup);
     if (policyBlockers.length > 0) {
       return jsonResponse({
         success: false,
         skipped: true,
-        error_code: 'exact_start_approval_contract_required',
+        error_code: repairMode ? 'exact_premature_start_repair_approval_contract_required' : 'exact_start_approval_contract_required',
         blockers: policyBlockers,
         writes_performed: false,
         production_batch_updated: false,
@@ -702,7 +902,7 @@ Deno.serve(async (req) => {
       }, 409);
     }
 
-    const idempotencyKey = `${COMMAND_TYPE}:${lookup.requestId}`;
+    const idempotencyKey = `${commandTypeFor(lookup)}:${lookup.requestId}`;
     const existingLogs = await findExistingCommandLog(base44, idempotencyKey);
     const existingLog = Array.isArray(existingLogs) && existingLogs.length > 0 ? existingLogs[0] : null;
     if (existingLog && ['success', 'skipped'].includes(existingLog.status)) {
@@ -732,6 +932,148 @@ Deno.serve(async (req) => {
         idempotency_key: idempotencyKey,
         writes_performed: false,
       }, 409);
+    }
+
+    if (repairMode) {
+      const preflight = await preflightRepairTargetBatches(base44);
+      if (!preflight.ready) {
+        return jsonResponse({
+          success: false,
+          skipped: true,
+          error_code: preflight.mode === 'partial_repair_state_detected' ? 'partial_repair_state_detected' : preflight.mode === 'already_reverted_without_matching_idempotency_log' ? 'already_reverted_without_matching_idempotency_log' : 'premature_start_repair_conflict',
+          blockers: preflight.blockers,
+          conflicts: preflight.conflicts,
+          writes_performed: false,
+          production_batch_updated: false,
+          command_log_created: false,
+        }, 409);
+      }
+
+      const commandLog = await createCommandLog({
+        base44,
+        status: 'running',
+        idempotencyKey,
+        requestId: lookup.requestId,
+        user: auth.user,
+        lookup,
+        result: {
+          repair_scope: REPAIR_SCOPE,
+          writes_performed: false,
+          projected_update_count: preflight.rowsToUpdate.length,
+          projected_batch_ids: preflight.rowsToUpdate.map(batch => safeId(batch.batch_id, 180)),
+          production_date: TARGET_PRODUCTION_DATE,
+          inventory_deducted: false,
+          purchase_orders_created: false,
+          compliance_logs_created: false,
+        },
+      });
+
+      let updatedRows = [];
+      try {
+        updatedRows = await repairProductionBatches({
+          base44,
+          batches: preflight.rowsToUpdate,
+          commandLogId: commandLog?.id,
+          actorEmail: auth.user?.email,
+          requestId: lookup.requestId,
+          reason: lookup.reason,
+        });
+      } catch (error) {
+        await updateCommandLog({
+          base44,
+          commandLogId: commandLog?.id,
+          status: 'failed',
+          result: {
+            repair_scope: REPAIR_SCOPE,
+            writes_performed: updatedRows.length > 0,
+            partial_update_count: updatedRows.length,
+            updated_batches: updatedRows,
+            duplicate_audit_entries_created: false,
+            ...safetyResult({ production_batches_updated: updatedRows.length > 0 }),
+          },
+          errorCode: error?.code || 'premature_start_repair_write_failed',
+          errorMessage: error?.message || 'ProductionBatch premature start repair failed',
+        }).catch(() => null);
+        return jsonResponse({
+          success: false,
+          skipped: false,
+          error_code: error?.code || 'premature_start_repair_write_failed',
+          message: 'Native ProductionBatch premature start repair failed safely.',
+          writes_performed: updatedRows.length > 0,
+          partial_update_count: updatedRows.length,
+        }, 500);
+      }
+
+      await updateCommandLog({
+        base44,
+        commandLogId: commandLog?.id,
+        status: 'success',
+        result: {
+          repair_scope: REPAIR_SCOPE,
+          writes_performed: true,
+          production_batches_updated: true,
+          production_batch_updated: true,
+          production_batch_records_updated: updatedRows.length,
+          updated_batch_count: updatedRows.length,
+          updated_batches: updatedRows,
+          production_date: TARGET_PRODUCTION_DATE,
+          batch_ids: updatedRows.map(row => row.batch_id),
+          updated_production_batch_ids: updatedRows.map(row => row.production_batch_id).filter(Boolean),
+          status_from: 'in_production',
+          status_to: 'planned',
+          reverted_to_status: 'planned',
+          cleared_actual_start_time: true,
+          cleared_started_by: true,
+          cleared_started_at: true,
+          exact_repair_command_performed: true,
+          ...safetyResult({ production_batches_updated: true }),
+        },
+      });
+
+      return jsonResponse({
+        success: true,
+        skipped: false,
+        idempotent: false,
+        request_id: lookup.requestId,
+        idempotency_key: idempotencyKey,
+        command_log_id: safeId(commandLog?.id, 120) || null,
+        order_number: TARGET_ORDER_NUMBER,
+        production_date: TARGET_PRODUCTION_DATE,
+        repair_scope: REPAIR_SCOPE,
+        writes_performed: true,
+        production_batches_updated: true,
+        production_batch_updated: true,
+        production_batch_records_updated: updatedRows.length,
+        updated_batch_count: updatedRows.length,
+        updated_batches: updatedRows,
+        updated_production_batch_ids: updatedRows.map(row => row.production_batch_id).filter(Boolean),
+        status_from: 'in_production',
+        status_to: 'planned',
+        reverted_to_status: 'planned',
+        cleared_actual_start_time: true,
+        cleared_started_by: true,
+        cleared_started_at: true,
+        duplicate_audit_entries_created: false,
+        inventory_deducted: false,
+        purchase_orders_created: false,
+        compliance_logs_created: false,
+        batch_compliance_log_created: false,
+        batch_compliance_logs_created: false,
+        notifications_created: false,
+        command_log_created: true,
+        provider_calls: false,
+        stripe_calls: false,
+        shopify_calls: false,
+        notifications_sent: false,
+        sync_retry_repair_run: false,
+        sync_repair_replay_performed: false,
+        exact_repair_command_performed: true,
+        customer_app_order_updated: false,
+        native_shopify_order_updated: false,
+        native_fulfillment_task_updated: false,
+        hub_records_updated: false,
+        safety: safetyResult({ production_batches_updated: true }),
+      });
     }
 
     const freshPreview = await fetchFreshPreview(base44, lookup);
@@ -776,6 +1118,7 @@ Deno.serve(async (req) => {
         idempotencyKey,
         requestId: lookup.requestId,
         user: auth.user,
+        lookup,
         result: {
           writes_performed: false,
           production_batches_updated: false,
@@ -814,6 +1157,7 @@ Deno.serve(async (req) => {
       idempotencyKey,
       requestId: lookup.requestId,
       user: auth.user,
+      lookup,
       result: {
         writes_performed: false,
         projected_update_count: preflight.rowsToUpdate.length,
