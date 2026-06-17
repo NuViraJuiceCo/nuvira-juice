@@ -10,24 +10,29 @@ const BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_COMPLETE_BATCH_ALLOWLIST';
 const POLICY_FLAG = 'NATIVE_PRODUCTION_BATCH_COMPLETE_POLICY';
 const REQUIRED_POLICY = 'EXACT_BATCH_ACTUAL_UNITS_ONLY';
 const CONFIRMATION_PHRASE = 'complete_native_production_batches_for_customer_app';
-const TARGET_ORDER_NUMBER = 'NV-MPZNKGNT';
-const TARGET_CUSTOMER_APP_ORDER_ID = '6a219a3f4adcda5856c3d579';
-const TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a22ffda400eb806eb3ca945';
-const TARGET_NATIVE_FULFILLMENT_TASK_ID = '6a22ffdaf675ea79e30575aa';
-const TARGET_PRODUCTION_DATE = '2026-06-05';
-const TARGET_DELIVERY_DATE = '2026-06-06';
+const TARGET_ORDER_NUMBER = 'NV-MQHJR3V2';
+const TARGET_CUSTOMER_APP_ORDER_ID = '6a321cbfd8d78863f15de956';
+const TARGET_NATIVE_SHOPIFY_ORDER_ID = '6a321d38a3819cdd5cf89031';
+const TARGET_NATIVE_FULFILLMENT_TASK_ID = '6a321d38071327f8218b958b';
+const TARGET_PRODUCTION_DATE = '2026-06-19';
+const TARGET_DELIVERY_DATE = '2026-06-20';
 const MAX_TEXT = 180;
 const MAX_ROWS = 20;
 
 const EXPECTED_BATCH_PRODUCTS = Object.freeze({
-  'NATIVE-NV-MPZNKGNT-2026-06-05-AURA': 'Aura',
-  'NATIVE-NV-MPZNKGNT-2026-06-05-OASIS': 'Oasis',
-  'NATIVE-NV-MPZNKGNT-2026-06-05-PINEAPPLE-JUICE': 'Pineapple Juice',
-  'NATIVE-NV-MPZNKGNT-2026-06-05-RADIANCE-SHOT': 'Radiance Shot',
-  'NATIVE-NV-MPZNKGNT-2026-06-05-RE-NU': 'Re-Nu',
-  'NATIVE-NV-MPZNKGNT-2026-06-05-RESET-SHOT': 'Reset Shot',
+  'NATIVE-NV-MQHJR3V2-2026-06-19-HYDRATION-SHOT': 'Hydration Shot',
+  'NATIVE-NV-MQHJR3V2-2026-06-19-RADIANCE-SHOT': 'Radiance Shot',
+});
+const EXPECTED_BATCH_RECORD_IDS = Object.freeze({
+  'NATIVE-NV-MQHJR3V2-2026-06-19-HYDRATION-SHOT': '6a32c1de2fd3943a9cf171a8',
+  'NATIVE-NV-MQHJR3V2-2026-06-19-RADIANCE-SHOT': '6a32c1de87810fd871f131c5',
+});
+const EXPECTED_BATCH_UNITS = Object.freeze({
+  'NATIVE-NV-MQHJR3V2-2026-06-19-HYDRATION-SHOT': 3,
+  'NATIVE-NV-MQHJR3V2-2026-06-19-RADIANCE-SHOT': 3,
 });
 const EXPECTED_BATCH_IDS = Object.freeze(Object.keys(EXPECTED_BATCH_PRODUCTS).sort());
+const EXPECTED_BATCH_RECORD_ID_VALUES = Object.freeze(Object.values(EXPECTED_BATCH_RECORD_IDS).sort());
 const EXPECTED_PRODUCTS = Object.freeze(Object.values(EXPECTED_BATCH_PRODUCTS).sort());
 
 const ALLOWED_BODY_KEYS = new Set([
@@ -38,11 +43,23 @@ const ALLOWED_BODY_KEYS = new Set([
   'production_date',
   'expected_production_date',
   'expected_delivery_date',
+  'delivery_date',
   'expected_status',
   'batch_ids',
   'production_batch_ids',
+  'selected_production_batch_ids',
   'batch_actual_units',
+  'actual_units',
   'actual_units_by_batch_id',
+  'actual_units_by_product_name',
+  'actual_end_time',
+  'completed_by',
+  'inventory_deduction_policy',
+  'purchase_order_policy',
+  'notification_policy',
+  'provider_call_policy',
+  'hub_mutation_policy',
+  'policy',
   'customer_app_order_id',
   'base44_order_id',
   'native_shopify_order_id',
@@ -231,26 +248,66 @@ function unsupportedBodyKey(body) {
   return null;
 }
 
+function batchIdForSelection(value) {
+  const text = safeId(value, 180);
+  if (!text) return '';
+  if (EXPECTED_BATCH_IDS.includes(text)) return text;
+  const byRecordId = Object.entries(EXPECTED_BATCH_RECORD_IDS).find(([, recordId]) => recordId === text);
+  return byRecordId?.[0] || '';
+}
+
+function batchIdForProductName(value) {
+  const normalized = normalizeLower(value);
+  if (!normalized) return '';
+  const entry = Object.entries(EXPECTED_BATCH_PRODUCTS).find(([, productName]) => normalizeLower(productName) === normalized);
+  return entry?.[0] || '';
+}
+
+function parseActualUnitsString(value) {
+  const text = normalizeText(value);
+  if (!text) return null;
+  const result = {};
+  for (const part of text.split(',')) {
+    const [rawName, ...rawValueParts] = part.split(':');
+    const productName = normalizeSingleLine(rawName);
+    const rawValue = rawValueParts.join(':').trim();
+    if (!productName || !rawValue) return null;
+    result[productName] = rawValue;
+  }
+  return result;
+}
+
 function parseActualUnitsMap(body) {
-  const source = body?.batch_actual_units ?? body?.actual_units_by_batch_id;
   const blockers = [];
   const actualUnitsByBatchId = {};
-  if (!source || typeof source !== 'object' || Array.isArray(source)) {
-    return { actualUnitsByBatchId, blockers: ['batch_actual_units_required'] };
-  }
-
-  for (const [rawBatchId, rawUnits] of Object.entries(source)) {
-    const batchId = safeId(rawBatchId, 180);
-    if (!batchId) {
-      blockers.push('invalid_actual_units_batch_id');
-      continue;
-    }
+  const assignUnits = (batchId, rawUnits, sourceLabel) => {
     const units = safeNumber(rawUnits);
+    if (!batchId) {
+      blockers.push(`unexpected_actual_units_${sourceLabel}`);
+      return;
+    }
     if (units === null || units < 0) {
       blockers.push(`invalid_actual_units:${batchId}`);
-      continue;
+      return;
     }
     actualUnitsByBatchId[batchId] = roundQuantity(units, 3);
+  };
+
+  const batchSources = [body?.batch_actual_units, body?.actual_units_by_batch_id];
+  for (const source of batchSources) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
+    for (const [rawBatchId, rawUnits] of Object.entries(source)) {
+      assignUnits(batchIdForSelection(rawBatchId), rawUnits, 'batch');
+    }
+  }
+
+  const productSources = [body?.actual_units_by_product_name, parseActualUnitsString(body?.actual_units)];
+  if (body?.actual_units && !productSources[1]) blockers.push('invalid_actual_units_format');
+  for (const source of productSources) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
+    for (const [rawProductName, rawUnits] of Object.entries(source)) {
+      assignUnits(batchIdForProductName(rawProductName), rawUnits, 'product');
+    }
   }
 
   const providedIds = Object.keys(actualUnitsByBatchId).sort();
@@ -273,11 +330,13 @@ function getLookup(body) {
     nativeShopifyOrderId: safeId(body?.native_shopify_order_id || body?.native_order_id || body?.shopify_order_id, 120),
     nativeFulfillmentTaskId: safeId(body?.native_fulfillment_task_id || body?.fulfillment_task_id || body?.task_id, 120),
     productionDate: normalizeText(body?.production_date || body?.expected_production_date),
-    expectedDeliveryDate: normalizeText(body?.expected_delivery_date),
+    expectedDeliveryDate: normalizeText(body?.expected_delivery_date || body?.delivery_date),
     expectedStatus: normalizeLower(body?.expected_status || 'in_production'),
+    actualEndTime: safeText(body?.actual_end_time, 80),
+    completedBy: safeActorEmail(body?.completed_by) || safeText(body?.completed_by, 120),
     expectedPreviewHash: safeId(body?.expected_preview_hash, 180),
     requestId: safeId(body?.request_id, 160),
-    batchIds: parseStringList(body?.batch_ids || body?.production_batch_ids),
+    batchIds: parseStringList(body?.selected_production_batch_ids || body?.batch_ids || body?.production_batch_ids),
     ...parseActualUnitsMap(body),
   };
 }
@@ -292,6 +351,27 @@ function sameStringArray(left, right) {
   return JSON.stringify([...(left || [])].sort()) === JSON.stringify([...(right || [])].sort());
 }
 
+function isExpectedBatchSelection(values) {
+  return sameStringArray(values, EXPECTED_BATCH_IDS) || sameStringArray(values, EXPECTED_BATCH_RECORD_ID_VALUES);
+}
+
+function validateExplicitPolicies(body) {
+  const blockers = [];
+  const expectedPolicies = [
+    ['policy', REQUIRED_POLICY, 'policy_mismatch'],
+    ['inventory_deduction_policy', 'HELD', 'inventory_deduction_requested'],
+    ['purchase_order_policy', 'HELD', 'purchase_order_requested'],
+    ['notification_policy', 'NO_NOTIFICATION', 'notification_requested'],
+    ['provider_call_policy', 'NO_PROVIDER_CALLS', 'provider_call_requested'],
+    ['hub_mutation_policy', 'NO_HUB_MUTATION', 'hub_mutation_requested'],
+  ];
+  for (const [field, expected, blocker] of expectedPolicies) {
+    const value = normalizeText(body?.[field]);
+    if (value && value !== expected) blockers.push(blocker);
+  }
+  return blockers;
+}
+
 function exactTargetBlockers(lookup) {
   const blockers = [];
   if (lookup.orderNumber !== TARGET_ORDER_NUMBER) blockers.push('target_order_number_mismatch');
@@ -301,9 +381,11 @@ function exactTargetBlockers(lookup) {
   if (lookup.customerAppOrderId && lookup.customerAppOrderId !== TARGET_CUSTOMER_APP_ORDER_ID) blockers.push('target_customer_app_order_id_mismatch');
   if (lookup.nativeShopifyOrderId && lookup.nativeShopifyOrderId !== TARGET_NATIVE_SHOPIFY_ORDER_ID) blockers.push('target_native_shopify_order_id_mismatch');
   if (lookup.nativeFulfillmentTaskId && lookup.nativeFulfillmentTaskId !== TARGET_NATIVE_FULFILLMENT_TASK_ID) blockers.push('target_native_fulfillment_task_id_mismatch');
-  if (lookup.batchIds.length !== EXPECTED_BATCH_IDS.length || !sameStringArray(lookup.batchIds, EXPECTED_BATCH_IDS)) {
+  if (lookup.batchIds.length !== EXPECTED_BATCH_IDS.length || !isExpectedBatchSelection(lookup.batchIds)) {
     blockers.push('target_batch_ids_mismatch');
   }
+  if (!lookup.actualEndTime) blockers.push('actual_end_time_required');
+  if (!lookup.completedBy) blockers.push('completed_by_required');
   if (lookup.blockers?.length > 0) blockers.push(...lookup.blockers);
   return uniqueStrings(blockers, 80);
 }
@@ -332,7 +414,9 @@ function gateFailure({ actorEmail, lookup }) {
 
   const batchAllowlist = parseCsvSet(Deno.env.get(BATCH_ALLOWLIST_FLAG) || '');
   if (batchAllowlist.size === 0) return 'batch_allowlist_required';
-  if (!EXPECTED_BATCH_IDS.every(batchId => batchAllowlist.has(normalizeLower(batchId)))) return 'target_batches_not_allowlisted';
+  const expectedBatchIdsAllowlisted = EXPECTED_BATCH_IDS.every(batchId => batchAllowlist.has(normalizeLower(batchId)));
+  const expectedRecordIdsAllowlisted = EXPECTED_BATCH_RECORD_ID_VALUES.every(batchId => batchAllowlist.has(normalizeLower(batchId)));
+  if (!expectedBatchIdsAllowlisted && !expectedRecordIdsAllowlisted) return 'target_batches_not_allowlisted';
   if (!lookup.batchIds.every(batchId => batchAllowlist.has(normalizeLower(batchId)))) return 'request_batch_not_allowlisted';
 
   return null;
@@ -363,7 +447,7 @@ async function fetchFreshPreview(base44, lookup) {
       customer_app_order_id: lookup.customerAppOrderId || TARGET_CUSTOMER_APP_ORDER_ID,
       native_shopify_order_id: lookup.nativeShopifyOrderId || TARGET_NATIVE_SHOPIFY_ORDER_ID,
       native_fulfillment_task_id: lookup.nativeFulfillmentTaskId || TARGET_NATIVE_FULFILLMENT_TASK_ID,
-      request_id: `${lookup.requestId || 'g31r'}:fresh_lifecycle_preview`,
+      request_id: `${lookup.requestId || 'g37g'}:fresh_lifecycle_preview`,
       _internal_secret: secret,
     });
     const data = response?.data || response;
@@ -415,7 +499,8 @@ function validateFreshPreview(preview, lookup) {
     if (!expectedProduct) blockers.push(`unexpected_lifecycle_batch:${batchId || 'missing'}`);
     if (safeText(row?.product_name, 120) !== expectedProduct) blockers.push(`lifecycle_product_mismatch:${batchId || 'missing'}`);
     if (row?.production_date !== TARGET_PRODUCTION_DATE) blockers.push(`lifecycle_production_date_mismatch:${batchId || 'missing'}`);
-    if (roundQuantity(row?.planned_units, 3) !== 1) blockers.push(`lifecycle_planned_units_mismatch:${batchId || 'missing'}`);
+    if (roundQuantity(row?.planned_units, 3) !== EXPECTED_BATCH_UNITS[batchId]) blockers.push(`lifecycle_planned_units_mismatch:${batchId || 'missing'}`);
+    if (row?.production_batch_id && safeId(row?.production_batch_id, 120) !== EXPECTED_BATCH_RECORD_IDS[batchId]) blockers.push(`lifecycle_production_batch_id_mismatch:${batchId || 'missing'}`);
     if (normalizeLower(row?.current_status || row?.status) !== 'in_production') blockers.push(`lifecycle_status_not_in_production:${batchId || 'missing'}`);
     if (!row?.actual_start_time) blockers.push(`lifecycle_missing_actual_start_time:${batchId || 'missing'}`);
     if (row?.is_locked === true) blockers.push(`lifecycle_batch_locked:${batchId || 'missing'}`);
@@ -502,7 +587,8 @@ async function preflightTargetBatches(base44, lookup) {
     const batchBlockers = [];
     if (safeText(batch?.product_name, 120) !== productName) batchBlockers.push('product_name_mismatch');
     if (normalizeText(batch?.production_date) !== TARGET_PRODUCTION_DATE) batchBlockers.push('production_date_mismatch');
-    if (roundQuantity(batch?.planned_units, 3) !== 1) batchBlockers.push('planned_units_mismatch');
+    if (safeId(batch?.id, 120) !== EXPECTED_BATCH_RECORD_IDS[batchId]) batchBlockers.push('production_batch_record_id_mismatch');
+    if (roundQuantity(batch?.planned_units, 3) !== EXPECTED_BATCH_UNITS[batchId]) batchBlockers.push('planned_units_mismatch');
     if (!batchHasTargetSource(batch)) batchBlockers.push('target_order_source_missing');
     if (batch?.is_locked === true) batchBlockers.push('batch_locked');
     if (!batch?.actual_start_time) batchBlockers.push('missing_actual_start_time');
@@ -547,24 +633,24 @@ async function preflightTargetBatches(base44, lookup) {
   };
 }
 
-function buildCompletePatch({ batch, actualUnits, commandLogId, actorEmail, requestId, now }) {
+function buildCompletePatch({ batch, actualUnits, commandLogId, actorEmail, requestId, actualEndTime, completedBy }) {
   const existingTrail = Array.isArray(batch.audit_trail) ? batch.audit_trail.slice(-100) : [];
   const existingCommandIds = Array.isArray(batch.command_log_ids) ? batch.command_log_ids.map(id => safeId(id, 120)).filter(Boolean).slice(-40) : [];
   const commandIds = commandLogId ? [...new Set([...existingCommandIds, safeId(commandLogId, 120)])] : existingCommandIds;
   return {
     status: 'completed_pending_verification',
     actual_units: roundQuantity(actualUnits, 3),
-    actual_end_time: now,
-    completed_by: safeActorEmail(actorEmail) || 'native_admin_actor',
+    actual_end_time: safeText(actualEndTime, 80),
+    completed_by: safeActorEmail(completedBy) || safeText(completedBy, 120) || safeActorEmail(actorEmail) || 'native_admin_actor',
     audit_trail: [
       ...existingTrail,
       {
-        timestamp: now,
+        timestamp: safeText(actualEndTime, 80),
         action: 'production_batch_complete',
-        performed_by: safeActorEmail(actorEmail) || 'native_admin_actor',
+        performed_by: safeActorEmail(completedBy) || safeText(completedBy, 120) || safeActorEmail(actorEmail) || 'native_admin_actor',
         before: { status: safeText(batch?.status, 80) || null, actual_units: roundQuantity(batch?.actual_units, 3) },
         after: { status: 'completed_pending_verification', actual_units: roundQuantity(actualUnits, 3) },
-        reason: 'G31R gated exact-order native Complete Production command',
+        reason: 'G37G gated exact-order native Complete Production command',
         request_id: safeId(requestId, 160) || null,
         command_log_id: safeId(commandLogId, 120) || null,
       },
@@ -590,13 +676,12 @@ function validateCompletePatch(patch) {
   return blockers;
 }
 
-async function updateProductionBatches({ base44, batches, actualUnitsByBatchId, commandLogId, actorEmail, requestId }) {
+async function updateProductionBatches({ base44, batches, actualUnitsByBatchId, commandLogId, actorEmail, requestId, actualEndTime, completedBy }) {
   const updatedRows = [];
-  const now = new Date().toISOString();
   for (const batch of batches) {
     const previousStatus = safeText(batch?.status, 80) || null;
     const batchId = safeId(batch?.batch_id, 180);
-    const patch = buildCompletePatch({ batch, actualUnits: actualUnitsByBatchId[batchId], commandLogId, actorEmail, requestId, now });
+    const patch = buildCompletePatch({ batch, actualUnits: actualUnitsByBatchId[batchId], commandLogId, actorEmail, requestId, actualEndTime, completedBy });
     const patchBlockers = validateCompletePatch(patch);
     if (patchBlockers.length > 0) {
       const error = new Error(`ProductionBatch complete patch validation failed: ${patchBlockers.join(',')}`);
@@ -646,7 +731,7 @@ async function createCommandLog({ base44, status, idempotencyKey, requestId, use
     function_name: FUNCTION_NAME,
     related_order_number: TARGET_ORDER_NUMBER,
     related_order_id: TARGET_CUSTOMER_APP_ORDER_ID,
-    notes: 'G31R exact gated native Complete Production command. Updates only six exact in_production ProductionBatch records with actual_units, actual_end_time, completed_by, status completed_pending_verification, and audit metadata. No verify/compliance logs, ingredients_used, inventory deduction, PurchaseOrder, Customer App Order, ShopifyOrder, FulfillmentTask, provider, notification, sync, repair, replay, or Hub mutation.',
+    notes: 'G37G exact gated native Complete Production command. Updates only two exact in_production ProductionBatch records with actual_units, actual_end_time, completed_by, status completed_pending_verification, and audit metadata. No verify/compliance logs, ingredients_used, inventory deduction, PurchaseOrder, Customer App Order, ShopifyOrder, FulfillmentTask, provider, notification, sync, repair, replay, or Hub mutation.',
   });
 }
 
@@ -715,8 +800,9 @@ Deno.serve(async (req) => {
     if (!lookup.requestId) return jsonResponse({ success: false, error_code: 'request_id_required', writes_performed: false }, 400);
 
     const targetBlockers = exactTargetBlockers(lookup);
-    if (targetBlockers.length > 0) {
-      return jsonResponse({ success: false, skipped: true, error_code: 'exact_complete_target_required', blockers: targetBlockers, writes_performed: false }, 409);
+    const policyBlockers = validateExplicitPolicies(body);
+    if (targetBlockers.length > 0 || policyBlockers.length > 0) {
+      return jsonResponse({ success: false, skipped: true, error_code: 'exact_complete_target_required', blockers: uniqueStrings([...targetBlockers, ...policyBlockers], 100), writes_performed: false }, 409);
     }
 
     const gate = gateFailure({ actorEmail: auth.user?.email, lookup });
@@ -850,6 +936,8 @@ Deno.serve(async (req) => {
         commandLogId: commandLog?.id,
         actorEmail: auth.user?.email,
         requestId: lookup.requestId,
+        actualEndTime: lookup.actualEndTime,
+        completedBy: lookup.completedBy,
       });
     } catch (error) {
       await updateCommandLog({
@@ -885,6 +973,7 @@ Deno.serve(async (req) => {
         production_batches_updated: true,
         production_completed: true,
         updated_batch_count: updatedRows.length,
+        production_batch_records_updated: updatedRows.length,
         updated_batches: updatedRows,
         production_date: TARGET_PRODUCTION_DATE,
         batch_ids: updatedRows.map(row => row.batch_id),
@@ -908,6 +997,7 @@ Deno.serve(async (req) => {
       production_batches_updated: true,
       production_completed: true,
       updated_batch_count: updatedRows.length,
+      production_batch_records_updated: updatedRows.length,
       updated_batches: updatedRows,
       status_from: 'in_production',
       status_to: 'completed_pending_verification',
