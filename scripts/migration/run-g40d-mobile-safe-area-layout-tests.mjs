@@ -103,8 +103,14 @@ assert(
 // 4. OrderConfirmation loading state has paddingTop safe-area
 const confirmSrc = read('pages/OrderConfirmation.jsx') || read('pages/OrderConfirmation.js');
 assert(
-  '4. OrderConfirmation loading container has safe-area top padding',
-  confirmSrc !== null && confirmSrc.includes("paddingTop: 'env(safe-area-inset-top)'"),
+  '4. OrderConfirmation loading container has shared safe-area top padding',
+  confirmSrc !== null &&
+    confirmSrc.includes("import { SAFE_TOP_PADDING }") &&
+    confirmSrc.includes('paddingTop: SAFE_TOP_PADDING'),
+);
+assert(
+  '4b. OrderConfirmation final/empty/timeout states also use shared safe-area top padding',
+  confirmSrc !== null && (confirmSrc.match(/paddingTop: SAFE_TOP_PADDING/g) || []).length >= 4,
 );
 
 // 5. Home page header safe-area is unchanged (regression guard)
