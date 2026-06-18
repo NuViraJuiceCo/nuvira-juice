@@ -6622,6 +6622,588 @@ async function buildG36CResolvePreview(base44, body) {
   };
 }
 
+
+const G43D_SCAN1_PREVIEW_MODE = 'CUSTOMER_ORDER_SURFACE_GENERALIZED_READINESS';
+const G43D_SCAN1_MODE_RECENT = 'RECENT_ORDER_SURFACE_SCAN';
+const G43D_SCAN1_MODE_EXACT = 'EXACT_ORDER_SURFACE_PREVIEW';
+const G43D_SCAN1_SUPPORTED_MODES = new Set([G43D_SCAN1_MODE_RECENT, G43D_SCAN1_MODE_EXACT]);
+const G43D_SCAN1_MAX_RECENT_LIMIT = 25;
+const G43D_SCAN1_MAX_RELATED_LIMIT = 100;
+const G43D_SCAN1_DEFAULT_RELATED_LIMIT = 100;
+const G43D_SCAN1_CURRENT_HISTORY_ALLOWLIST_FLAG = 'CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST_ORDER_ALLOWLIST';
+const G43D_SCAN1_CURRENT_TRACKER_ALLOWLIST_FLAG = 'CUSTOMER_ORDER_TRACKER_LIMITED_NATIVE_FIRST_ORDER_ALLOWLIST';
+
+const G43D_SCAN1_ALLOWED_BODY_KEYS = new Set([
+  'preview_mode',
+  'mode',
+  'recent_created_limit',
+  'recent_updated_limit',
+  'related_entity_limit',
+  'request_id',
+  '_internal_secret',
+  'internal_secret',
+]);
+
+const G43D_SCAN1_READ_ONLY_SAFETY = Object.freeze({
+  ...G33C_READ_ONLY_SAFETY,
+  customer_app_order_updated: false,
+  native_shopify_order_updated: false,
+  native_fulfillment_task_updated: false,
+  order_review_queue_created: false,
+  order_sync_log_created: false,
+  command_log_created: false,
+  provider_call_impact: false,
+  notifications_sent: false,
+  hub_mutation_performed: false,
+  pii_returned: false,
+  raw_payloads_returned: false,
+});
+
+function isG43DScan1PreviewRequest(body) {
+  return normalizeText(body?.preview_mode).toUpperCase() === G43D_SCAN1_PREVIEW_MODE;
+}
+
+function g43dScan1UnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G43D_SCAN1_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g43dScan1Limit(value, fallback, max) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+}
+
+function g43dScan1Lookup(body) {
+  const mode = normalizeText(body?.mode || G43D_SCAN1_MODE_RECENT).toUpperCase();
+  return {
+    previewMode: G43D_SCAN1_PREVIEW_MODE,
+    mode: G43D_SCAN1_SUPPORTED_MODES.has(mode) ? mode : mode || G43D_SCAN1_MODE_RECENT,
+    recentCreatedLimit: g43dScan1Limit(body?.recent_created_limit, 25, G43D_SCAN1_MAX_RECENT_LIMIT),
+    recentUpdatedLimit: g43dScan1Limit(body?.recent_updated_limit, 25, G43D_SCAN1_MAX_RECENT_LIMIT),
+    relatedEntityLimit: g43dScan1Limit(body?.related_entity_limit, G43D_SCAN1_DEFAULT_RELATED_LIMIT, G43D_SCAN1_MAX_RELATED_LIMIT),
+    requestId: sanitizeText(body?.request_id, 140),
+  };
+}
+
+function g43dScan1Allowlist(flagName) {
+  return new Set(parseCsv(Deno.env.get(flagName)).map(value => normalizeOrderNumber(value).toUpperCase()).filter(Boolean));
+}
+
+function g43dScan1OrderKey(value) {
+  return normalizeOrderNumber(value).toUpperCase();
+}
+
+function g43dScan1OrderNumber(row) {
+  return g43dScan1OrderKey(row?.order_number || row?.shopify_order_number || row?.source_order_number || row?.customer_order_number || row?.hub_order_number);
+}
+
+function g43dScan1DedupeById(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows || []) {
+    const key = normalizeText(row?.id) || `${g43dScan1OrderNumber(row)}:${normalizeText(row?.created_date)}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+function g43dScan1DetectRateLimit(error) {
+  const text = normalizeLower(`${error?.status || ''} ${error?.code || ''} ${error?.message || ''} ${error?.name || ''}`);
+  return text.includes('429') || text.includes('rate limit') || text.includes('too many requests');
+}
+
+async function g43dScan1ListSource(base44, entityName, sort, limit) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  if (!entity?.list) {
+    return {
+      entity: entityName,
+      ok: false,
+      rate_limit_detected: false,
+      error_code: 'entity_list_unavailable',
+      rows: [],
+      row_count: 0,
+      limit,
+      truncated: false,
+    };
+  }
+  try {
+    const rows = await entity.list(sort, limit);
+    const safeRows = Array.isArray(rows) ? rows : [];
+    return {
+      entity: entityName,
+      ok: true,
+      rate_limit_detected: false,
+      error_code: null,
+      rows: safeRows,
+      row_count: safeRows.length,
+      limit,
+      truncated: safeRows.length >= limit,
+    };
+  } catch (error) {
+    return {
+      entity: entityName,
+      ok: false,
+      rate_limit_detected: g43dScan1DetectRateLimit(error),
+      error_code: g43dScan1DetectRateLimit(error) ? 'rate_limit_detected' : 'source_read_failed',
+      rows: [],
+      row_count: 0,
+      limit,
+      truncated: false,
+    };
+  }
+}
+
+function g43dScan1CustomerEmailCompatible(order, row) {
+  const left = normalizeLower(order?.customer_email || order?.email || order?.contact_email);
+  const right = normalizeLower(row?.customer_email || row?.email || row?.contact_email);
+  return !left || !right || left === right;
+}
+
+function g43dScan1NativeCompatible(order, nativeOrder) {
+  const customerOrderId = normalizeText(order?.id);
+  const orderNumber = g43dScan1OrderNumber(order);
+  const nativeNumber = g43dScan1OrderNumber(nativeOrder);
+  const explicitLinks = [nativeOrder?.base44_order_id, nativeOrder?.customer_app_order_id]
+    .map(normalizeText)
+    .filter(Boolean);
+  if (explicitLinks.length > 0 && customerOrderId && !explicitLinks.includes(customerOrderId)) return false;
+  if (!g43dScan1CustomerEmailCompatible(order, nativeOrder)) return false;
+  const idMatch = Boolean(customerOrderId && explicitLinks.includes(customerOrderId));
+  const numberMatch = Boolean(orderNumber && nativeNumber && orderNumber === nativeNumber);
+  return idMatch || numberMatch;
+}
+
+function g43dScan1TaskCompatible(order, nativeOrder, task) {
+  const customerOrderId = normalizeText(order?.id);
+  const nativeOrderId = normalizeText(nativeOrder?.id);
+  const orderNumber = g43dScan1OrderNumber(order);
+  const taskNumber = g43dScan1OrderNumber(task);
+  let positive = false;
+
+  const customerLinks = [task?.order_id, task?.base44_order_id, task?.customer_app_order_id].map(normalizeText).filter(Boolean);
+  if (customerLinks.length > 0) {
+    if (!customerOrderId || !customerLinks.includes(customerOrderId)) return false;
+    positive = true;
+  }
+
+  const nativeLinks = [task?.native_shopify_order_id, task?.shopify_order_id].map(normalizeText).filter(Boolean);
+  if (nativeLinks.length > 0) {
+    if (!nativeOrderId || !nativeLinks.includes(nativeOrderId)) return false;
+    positive = true;
+  }
+
+  if (taskNumber) {
+    if (!orderNumber || taskNumber !== orderNumber) return false;
+    positive = true;
+  }
+
+  if (!g43dScan1CustomerEmailCompatible(order, task)) return false;
+  return positive;
+}
+
+function g43dScan1RowsMatchingOrder(rows, order) {
+  const orderNumber = g43dScan1OrderNumber(order);
+  const customerOrderId = normalizeText(order?.id);
+  return (rows || []).filter(row => g33cMatchesOrder(row, orderNumber, customerOrderId));
+}
+
+function g43dScan1RepairReplayHold(rows) {
+  return (rows || []).some(row => {
+    const text = [row?.status, row?.sync_status, row?.native_parity_status, row?.result_status, row?.error_code, row?.reason, row?.description, row?.action, row?.source, row?.sync_source, row?.triggered_by]
+      .map(value => Array.isArray(value) ? value.join(' ') : value)
+      .map(normalizeLower)
+      .join(' ');
+    return /(repair|replay|retry|recovery|backfill)/.test(text) && !/(resolved|closed|success|succeeded|skipped|safe|test_only|not_applicable)/.test(text);
+  });
+}
+
+function g43dScan1RefundHold(order, nativeOrder) {
+  return Boolean(order?.refunded_at || nativeOrder?.refunded_at || order?.refund_status || nativeOrder?.refund_status) ||
+    [order?.status, order?.payment_status, order?.financial_status, nativeOrder?.payment_status, nativeOrder?.financial_status, nativeOrder?.production_status, nativeOrder?.fulfillment_status]
+      .map(normalizeLower)
+      .some(value => value.includes('refund') || value === 'voided');
+}
+
+function g43dScan1CancelHold(order, nativeOrder, task) {
+  return Boolean(order?.canceled_at || order?.cancelled_at || order?.deleted_at || order?.do_not_recover) ||
+    [order?.status, order?.payment_status, order?.financial_status, nativeOrder?.production_status, nativeOrder?.order_status, nativeOrder?.payment_status, task?.status, task?.delivery_status]
+      .map(normalizeLower)
+      .some(value => ['cancelled', 'canceled', 'failed', 'voided'].includes(value));
+}
+
+function g43dScan1SubscriptionOrMulti(order, nativeOrder, task) {
+  const values = [
+    order?.order_type,
+    order?.source_type,
+    order?.source_channel,
+    order?.fulfillment_mode,
+    order?.fulfillment_type,
+    nativeOrder?.order_type,
+    nativeOrder?.source_type,
+    nativeOrder?.source_channel,
+    nativeOrder?.fulfillment_mode,
+    task?.order_type,
+    task?.source_type,
+    task?.fulfillment_type,
+  ].map(normalizeLower);
+  return Boolean(order?.is_subscription || order?.subscription_id || order?.stripe_subscription_id || nativeOrder?.is_subscription || nativeOrder?.stripe_subscription_id || task?.stripe_subscription_id || task?.customer_app_subscription_id) ||
+    values.some(value => value.includes('subscription') || value.includes('multi_delivery') || value.includes('multi-delivery'));
+}
+
+function g43dScan1PaidCapturedReady(order) {
+  const status = paymentStatus(order);
+  const financial = normalizeLower(order?.financial_status || status);
+  return order?.payment_captured === true && status === 'paid' && (!financial || financial === 'paid');
+}
+
+function g43dScan1NativePaymentReady(nativeOrder, task) {
+  const statuses = [nativeOrder?.payment_status, nativeOrder?.financial_status, task?.payment_status].map(normalizeLower).filter(Boolean);
+  return statuses.length === 0 || statuses.every(status => status === 'paid');
+}
+
+function g43dScan1MapFulfillment(value) {
+  const status = normalizeLower(value);
+  return ({
+    pending_production: 'pending',
+    scheduled: 'pending',
+    assigned: 'pending',
+    awaiting_production: 'pending',
+    fulfilled: 'delivered',
+    complete: 'delivered',
+    completed: 'delivered',
+  })[status] || status;
+}
+
+function g43dScan1DeliveryDate(row) {
+  return normalizeText(row?.assigned_delivery_date || row?.estimated_delivery_date || row?.delivery_date || row?.scheduled_date || row?.requested_delivery_date || row?.selected_delivery_date || row?.preorder_fulfillment_date);
+}
+
+function g43dScan1DatesMismatch(order, nativeOrder, task) {
+  const orderDate = g43dScan1DeliveryDate(order);
+  const nativeDate = g43dScan1DeliveryDate(task) || g43dScan1DeliveryDate(nativeOrder);
+  return Boolean(orderDate && nativeDate && orderDate !== nativeDate);
+}
+
+function g43dScan1HistoricalLateMirror(order, nativeOrder) {
+  const orderCreated = Date.parse(order?.created_date || order?.created_at || '');
+  const nativeCreated = Date.parse(nativeOrder?.created_date || nativeOrder?.created_at || '');
+  return Number.isFinite(orderCreated) && Number.isFinite(nativeCreated) && nativeCreated - orderCreated > 7 * 24 * 60 * 60 * 1000;
+}
+
+function g43dScan1OrderType(order, nativeOrder, task) {
+  return g43dScan1SubscriptionOrMulti(order, nativeOrder, task) ? 'subscription_or_multi_delivery' : 'one_time';
+}
+
+function g43dScan1Classification(blockers, historyReady, trackerReady, compatibleTaskCount) {
+  if (historyReady && trackerReady) return 'history_and_tracker_native_ready';
+  if (historyReady && compatibleTaskCount === 0) return 'history_native_ready_tracker_task_missing';
+  if (historyReady && compatibleTaskCount > 1) return 'history_native_ready_tracker_identity_ambiguous';
+  const priority = [
+    'bounded_scan_context_not_found',
+    'native_duplicate_identity_risk',
+    'native_shopify_order_missing',
+    'refund_payment_hub_source_of_truth',
+    'cancelled_payment_risk',
+    'subscription_multi_delivery_hub_source_of_truth',
+    'payment_mismatch',
+    'fulfillment_mismatch',
+    'delivery_schedule_mismatch',
+    'review_queue_hold',
+    'repair_replay_hold',
+    'historical_late_mirror_hold',
+    'native_fulfillment_task_missing',
+  ];
+  return priority.find(item => blockers.includes(item)) || 'unknown_manual_review_required';
+}
+
+function g43dScan1CandidateSummary({ order, nativeOrders, tasks, reviewRows, syncRows, parityRows, relatedTruncated, historyAllowlist, trackerAllowlist }) {
+  const nativeOrder = nativeOrders.length === 1 ? nativeOrders[0] : null;
+  const compatibleTasks = nativeOrder ? g43dScan1DedupeById(tasks.filter(task => g43dScan1TaskCompatible(order, nativeOrder, task))) : [];
+  const task = compatibleTasks.length === 1 ? compatibleTasks[0] : null;
+  const matchedReviewRows = g43dScan1RowsMatchingOrder(reviewRows, order);
+  const matchedSyncRows = g43dScan1RowsMatchingOrder(syncRows, order);
+  const matchedParityRows = g43dScan1RowsMatchingOrder(parityRows, order);
+  const blockers = [];
+  const mismatchCategories = [];
+  const orderNumber = g43dScan1OrderNumber(order);
+
+  if (nativeOrders.length === 0) blockers.push(relatedTruncated.ShopifyOrder ? 'bounded_scan_context_not_found' : 'native_shopify_order_missing');
+  if (nativeOrders.length > 1) blockers.push('native_duplicate_identity_risk');
+  if (nativeOrders.length === 1) {
+    if (compatibleTasks.length === 0) blockers.push(relatedTruncated.FulfillmentTask ? 'bounded_scan_context_not_found' : 'native_fulfillment_task_missing');
+    if (compatibleTasks.length > 1) blockers.push('native_fulfillment_task_identity_ambiguous');
+  }
+  if (relatedTruncated.OrderReviewQueue && matchedReviewRows.length === 0) blockers.push('bounded_scan_context_not_found');
+  if ((relatedTruncated.OrderSyncLog && matchedSyncRows.length === 0) || (relatedTruncated.SafeSyncParityLog && matchedParityRows.length === 0)) blockers.push('bounded_scan_context_not_found');
+
+  const subscriptionOrMulti = g43dScan1SubscriptionOrMulti(order, nativeOrder, task);
+  const refundHold = g43dScan1RefundHold(order, nativeOrder);
+  const cancelHold = g43dScan1CancelHold(order, nativeOrder, task);
+  const paidCapturedReady = g43dScan1PaidCapturedReady(order);
+  if (subscriptionOrMulti) blockers.push('subscription_multi_delivery_hub_source_of_truth');
+  if (refundHold) blockers.push('refund_payment_hub_source_of_truth');
+  if (cancelHold) blockers.push('cancelled_payment_risk');
+  if (!paidCapturedReady || !g43dScan1NativePaymentReady(nativeOrder, task)) {
+    blockers.push('payment_mismatch');
+    mismatchCategories.push('payment_mismatch');
+  }
+  if (g33cReviewBlocker(matchedReviewRows)) blockers.push('review_queue_hold');
+  if (g43dScan1RepairReplayHold([...matchedSyncRows, ...matchedParityRows])) blockers.push('repair_replay_hold');
+
+  const orderFulfillment = normalizeLower(order?.fulfillment_status);
+  const nativeFulfillment = normalizeLower(nativeOrder?.fulfillment_status || task?.status || task?.delivery_status);
+  if (orderFulfillment && nativeFulfillment && g43dScan1MapFulfillment(orderFulfillment) !== g43dScan1MapFulfillment(nativeFulfillment)) {
+    blockers.push('fulfillment_mismatch');
+    mismatchCategories.push('fulfillment_mismatch');
+  }
+  if (g43dScan1DatesMismatch(order, nativeOrder, task)) {
+    blockers.push('delivery_schedule_mismatch');
+    mismatchCategories.push('delivery_schedule_mismatch');
+  }
+  if (nativeOrder && g43dScan1HistoricalLateMirror(order, nativeOrder)) blockers.push('historical_late_mirror_hold');
+
+  const uniqueBlockers = [...new Set(blockers)];
+  const historyBlocking = uniqueBlockers.filter(blocker => !['native_fulfillment_task_missing', 'native_fulfillment_task_identity_ambiguous'].includes(blocker));
+  const historyNativeReady = historyBlocking.length === 0 && nativeOrders.length === 1;
+  const trackerNativeReady = uniqueBlockers.length === 0 && nativeOrders.length === 1 && compatibleTasks.length === 1;
+  const classification = g43dScan1Classification(uniqueBlockers, historyNativeReady, trackerNativeReady, compatibleTasks.length);
+
+  return {
+    order_number: orderNumber || null,
+    order_type: g43dScan1OrderType(order, nativeOrder, task),
+    customer_app_order_present: true,
+    native_shopify_order_present: nativeOrders.length > 0,
+    native_shopify_order_match_count: nativeOrders.length,
+    compatible_fulfillment_task_count: compatibleTasks.length,
+    paid_captured_ready: paidCapturedReady,
+    refund_cancel_hold: refundHold || cancelHold,
+    subscription_multi_delivery_hold: subscriptionOrMulti,
+    mismatch_categories: [...new Set(mismatchCategories)],
+    history_native_ready: historyNativeReady,
+    tracker_native_ready: trackerNativeReady,
+    currently_history_allowlisted: historyAllowlist.has(orderNumber),
+    currently_tracker_allowlisted: trackerAllowlist.has(orderNumber),
+    fallback_required: !historyNativeReady || !trackerNativeReady,
+    review_required: uniqueBlockers.length > 0,
+    classification,
+    blockers: uniqueBlockers,
+  };
+}
+
+function g43dScan1EmptyCounts() {
+  return {
+    unique_order_count: null,
+    one_time_count: null,
+    subscription_multi_delivery_count: null,
+    native_shopify_order_match_count: null,
+    unique_native_fulfillment_task_match_count: null,
+    history_native_ready_count: null,
+    tracker_native_ready_count: null,
+    history_ready_excluding_current_allowlist_count: null,
+    tracker_ready_excluding_current_allowlist_count: null,
+    fallback_required_count: null,
+    review_required_count: null,
+    mismatch_count: null,
+    identity_ambiguity_count: null,
+  };
+}
+
+function g43dScan1ClassificationCounts(summaries) {
+  return (summaries || []).reduce((acc, row) => {
+    const key = row?.classification || 'unknown_manual_review_required';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+async function buildG43DScan1Preview(base44, body) {
+  const lookup = g43dScan1Lookup(body);
+  const startedAt = new Date().toISOString();
+  const baseResponse = {
+    dry_run: true,
+    writes_performed: false,
+    generated_at: startedAt,
+    function_name: 'previewNativeOrderCutoverReadiness',
+    preview_mode: G43D_SCAN1_PREVIEW_MODE,
+    mode: lookup.mode,
+    request_id: lookup.requestId || null,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    ownership_verification: 'source_and_harness_verified_not_live_multi_account',
+    safety: G43D_SCAN1_READ_ONLY_SAFETY,
+  };
+
+  if (lookup.mode !== G43D_SCAN1_MODE_RECENT) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: ['exact_order_surface_preview_not_implemented_in_g43d_scan1'],
+      rate_limit_detected: false,
+      source_read_count: 0,
+      source_row_counts: {},
+      source_truncated: {},
+      ...g43dScan1EmptyCounts(),
+      safe_candidate_summaries: [],
+      classification_counts: {},
+      blockers: ['unsupported_mode_for_g43d_scan1'],
+      warnings: ['use_recent_order_surface_scan'],
+      next_action: 'rerun_with_recent_order_surface_scan',
+    };
+  }
+
+  const reads = await Promise.all([
+    g43dScan1ListSource(base44, 'Order', '-created_date', lookup.recentCreatedLimit),
+    g43dScan1ListSource(base44, 'Order', '-updated_date', lookup.recentUpdatedLimit),
+    g43dScan1ListSource(base44, 'ShopifyOrder', '-created_date', lookup.relatedEntityLimit),
+    g43dScan1ListSource(base44, 'FulfillmentTask', '-created_date', lookup.relatedEntityLimit),
+    g43dScan1ListSource(base44, 'OrderReviewQueue', '-created_date', lookup.relatedEntityLimit),
+    g43dScan1ListSource(base44, 'OrderSyncLog', '-created_date', lookup.relatedEntityLimit),
+    g43dScan1ListSource(base44, 'SafeSyncParityLog', '-created_date', lookup.relatedEntityLimit),
+  ]);
+
+  const [createdOrders, updatedOrders, nativeOrdersRead, tasksRead, reviewRowsRead, syncRowsRead, parityRowsRead] = reads;
+  const failedReads = reads.filter(read => !read.ok);
+  const sourceRowCounts = {
+    recent_created_orders: createdOrders.row_count,
+    recent_updated_orders: updatedOrders.row_count,
+    ShopifyOrder: nativeOrdersRead.row_count,
+    FulfillmentTask: tasksRead.row_count,
+    OrderReviewQueue: reviewRowsRead.row_count,
+    OrderSyncLog: syncRowsRead.row_count,
+    SafeSyncParityLog: parityRowsRead.row_count,
+  };
+  const sourceTruncated = {
+    recent_created_orders: createdOrders.truncated,
+    recent_updated_orders: updatedOrders.truncated,
+    ShopifyOrder: nativeOrdersRead.truncated,
+    FulfillmentTask: tasksRead.truncated,
+    OrderReviewQueue: reviewRowsRead.truncated,
+    OrderSyncLog: syncRowsRead.truncated,
+    SafeSyncParityLog: parityRowsRead.truncated,
+  };
+
+  if (failedReads.length > 0) {
+    const rateLimitDetected = failedReads.some(read => read.rate_limit_detected);
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: failedReads.map(read => `${read.entity}:${read.error_code}`),
+      rate_limit_detected: rateLimitDetected,
+      source_read_count: reads.length,
+      source_row_counts: sourceRowCounts,
+      source_truncated: sourceTruncated,
+      source_read_errors: failedReads.map(read => ({ entity: read.entity, error_code: read.error_code, rate_limit_detected: read.rate_limit_detected })),
+      candidate_horizon: { recent_created_limit: lookup.recentCreatedLimit, recent_updated_limit: lookup.recentUpdatedLimit },
+      related_context_horizon: { related_entity_limit: lookup.relatedEntityLimit },
+      coverage_warning: 'scan_incomplete_required_source_read_failed',
+      ...g43dScan1EmptyCounts(),
+      safe_candidate_summaries: [],
+      classification_counts: {},
+      blockers: ['required_source_read_failed'],
+      warnings: rateLimitDetected ? ['rate_limit_detected', 'generalized_counts_not_authoritative'] : ['source_read_failed', 'generalized_counts_not_authoritative'],
+      next_action: rateLimitDetected ? 'retry_after_rate_limit_window' : 'fix_source_read_failure_and_rerun',
+    };
+  }
+
+  const candidateOrders = g43dScan1DedupeById([...(createdOrders.rows || []), ...(updatedOrders.rows || [])]);
+  const historyAllowlist = g43dScan1Allowlist(G43D_SCAN1_CURRENT_HISTORY_ALLOWLIST_FLAG);
+  const trackerAllowlist = g43dScan1Allowlist(G43D_SCAN1_CURRENT_TRACKER_ALLOWLIST_FLAG);
+  const relatedTruncated = {
+    ShopifyOrder: sourceTruncated.ShopifyOrder,
+    FulfillmentTask: sourceTruncated.FulfillmentTask,
+    OrderReviewQueue: sourceTruncated.OrderReviewQueue,
+    OrderSyncLog: sourceTruncated.OrderSyncLog,
+    SafeSyncParityLog: sourceTruncated.SafeSyncParityLog,
+  };
+
+  const safeCandidateSummaries = candidateOrders.map(order => {
+    const nativeMatches = g43dScan1DedupeById((nativeOrdersRead.rows || []).filter(nativeOrder => g43dScan1NativeCompatible(order, nativeOrder)));
+    return g43dScan1CandidateSummary({
+      order,
+      nativeOrders: nativeMatches,
+      tasks: tasksRead.rows || [],
+      reviewRows: reviewRowsRead.rows || [],
+      syncRows: syncRowsRead.rows || [],
+      parityRows: parityRowsRead.rows || [],
+      relatedTruncated,
+      historyAllowlist,
+      trackerAllowlist,
+    });
+  });
+
+  const classificationCounts = g43dScan1ClassificationCounts(safeCandidateSummaries);
+  const oneTimeRows = safeCandidateSummaries.filter(row => row.order_type === 'one_time');
+  const uniqueTaskNumbers = new Set();
+  for (const row of safeCandidateSummaries) {
+    if (row.compatible_fulfillment_task_count === 1 && row.order_number) uniqueTaskNumbers.add(row.order_number);
+  }
+  const coverageWarnings = [];
+  if (sourceTruncated.recent_created_orders || sourceTruncated.recent_updated_orders) coverageWarnings.push('candidate_order_horizon_truncated');
+  if (Object.entries(relatedTruncated).some(([, value]) => value)) coverageWarnings.push('related_context_horizon_truncated_missing_context_classified_as_bounded_scan_context_not_found');
+
+  const responseCounts = {
+    unique_order_count: safeCandidateSummaries.length,
+    one_time_count: oneTimeRows.length,
+    subscription_multi_delivery_count: safeCandidateSummaries.filter(row => row.subscription_multi_delivery_hold).length,
+    native_shopify_order_match_count: safeCandidateSummaries.filter(row => row.native_shopify_order_match_count > 0).length,
+    unique_native_fulfillment_task_match_count: uniqueTaskNumbers.size,
+    history_native_ready_count: safeCandidateSummaries.filter(row => row.history_native_ready).length,
+    tracker_native_ready_count: safeCandidateSummaries.filter(row => row.tracker_native_ready).length,
+    history_ready_excluding_current_allowlist_count: safeCandidateSummaries.filter(row => row.history_native_ready && !row.currently_history_allowlisted).length,
+    tracker_ready_excluding_current_allowlist_count: safeCandidateSummaries.filter(row => row.tracker_native_ready && !row.currently_tracker_allowlisted).length,
+    fallback_required_count: safeCandidateSummaries.filter(row => row.fallback_required).length,
+    review_required_count: safeCandidateSummaries.filter(row => row.review_required).length,
+    mismatch_count: safeCandidateSummaries.filter(row => row.mismatch_categories.length > 0).length,
+    identity_ambiguity_count: safeCandidateSummaries.filter(row => ['native_duplicate_identity_risk', 'history_native_ready_tracker_identity_ambiguous'].includes(row.classification) || row.blockers.includes('native_fulfillment_task_identity_ambiguous')).length,
+  };
+
+  return {
+    ...baseResponse,
+    success: true,
+    scan_complete: true,
+    scan_incomplete_reasons: [],
+    rate_limit_detected: false,
+    source_read_count: reads.length,
+    source_row_counts: sourceRowCounts,
+    source_truncated: sourceTruncated,
+    candidate_horizon: {
+      recent_created_limit: lookup.recentCreatedLimit,
+      recent_updated_limit: lookup.recentUpdatedLimit,
+      dedupe_key: 'Customer App Order id',
+    },
+    related_context_horizon: {
+      related_entity_limit: lookup.relatedEntityLimit,
+      hub_external_fetch_performed: false,
+      production_batch_direct_source: false,
+    },
+    coverage_warning: coverageWarnings.length ? coverageWarnings.join(';') : null,
+    ...responseCounts,
+    safe_candidate_summaries: safeCandidateSummaries,
+    classification_counts: classificationCounts,
+    blockers: [],
+    warnings: [
+      'admin_preview_only_not_customer_visible',
+      'customer_app_order_remains_canonical',
+      'hub_fallback_remains_active',
+      'refund_payment_and_subscription_source_of_truth_held',
+      ...coverageWarnings,
+    ],
+    next_action: responseCounts.history_ready_excluding_current_allowlist_count > 0 || responseCounts.tracker_ready_excluding_current_allowlist_count > 0
+      ? 'review_complete_live_scan_then_plan_g43e_g43f_strict_automatic_eligibility'
+      : 'retain_exact_allowlists_and_address_identified_blockers',
+  };
+}
+
 async function buildG35BPreview(base44, body) {
   const lookup = g35bLookup(body);
   const requestBlockers = [];
@@ -6803,6 +7385,7 @@ Deno.serve(async (req) => {
     const g36cHelperPreviewRequest = isG36CHelperPreviewRequest(body);
     const g36cResolvePreviewRequest = isG36CResolvePreviewRequest(body);
     const g36fPreviewRequest = isG36FPreviewRequest(body);
+    const g43dScan1PreviewRequest = isG43DScan1PreviewRequest(body);
     if (g39bPreviewRequest) {
       const unsupported = g39bUnsupportedBodyKey(body);
       if (unsupported) {
@@ -6863,7 +7446,13 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
-    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (g43dScan1PreviewRequest) {
+      const unsupported = g43dScan1UnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
+    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
@@ -6972,6 +7561,16 @@ Deno.serve(async (req) => {
 
     if (g36fPreviewRequest) {
       const preview = await buildG36FPreview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
+
+    if (g43dScan1PreviewRequest) {
+      const preview = await buildG43DScan1Preview(base44, body);
       return Response.json({
         ...preview,
         actor_type: auth.actor_type,
