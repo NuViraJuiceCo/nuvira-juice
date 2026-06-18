@@ -6649,6 +6649,9 @@ const G43D_SCAN1_ALLOWED_BODY_KEYS = new Set([
   'related_context_to',
   'cursor',
   'page_token',
+  'control_order_number',
+  'control_customer_app_order_id',
+  'control_order_id',
   'request_id',
   '_internal_secret',
   'internal_secret',
@@ -6702,6 +6705,8 @@ function g43dScan1Lookup(body) {
     relatedContextFrom: g43dScan2IsoOrNull(body?.related_context_from),
     relatedContextTo: g43dScan2IsoOrNull(body?.related_context_to),
     cursor: sanitizeText(body?.cursor || body?.page_token, 160),
+    controlOrderNumber: g43dScan1OrderKey(body?.control_order_number || body?.control_shopify_order_number),
+    controlCustomerAppOrderId: normalizeText(body?.control_customer_app_order_id || body?.control_order_id),
     requestId: sanitizeText(body?.request_id, 140),
   };
 }
@@ -6739,8 +6744,21 @@ function g43dScan1DetectRateLimit(error) {
 function g43dScan2IsoOrNull(value) {
   const text = normalizeText(value);
   if (!text) return null;
-  const parsed = Date.parse(text);
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : `${text}Z`;
+  const parsed = Date.parse(normalized);
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+function g43dScan3TimestampField(row, candidates) {
+  for (const field of candidates) {
+    if (g43dScan2IsoOrNull(row?.[field])) return field;
+  }
+  return null;
+}
+
+function g43dScan3CanonicalTimestamp(row, candidates) {
+  const field = g43dScan3TimestampField(row, candidates);
+  return { field, value: field ? normalizeText(row?.[field]) : null, iso: field ? g43dScan2IsoOrNull(row?.[field]) : null };
 }
 
 function g43dScan2DateInRange(row, field, from, to) {
@@ -6749,6 +6767,10 @@ function g43dScan2DateInRange(row, field, from, to) {
   if (from && timestamp < from) return false;
   if (to && timestamp >= to) return false;
   return true;
+}
+
+function g43dScan2AnyDateInRange(row, fields, from, to) {
+  return fields.some(field => g43dScan2DateInRange(row, field, from, to));
 }
 
 function g43dScan2DateFilter(field, from, to) {
@@ -6800,10 +6822,12 @@ async function g43dScan1ListSource(base44, entityName, sort, limit) {
 }
 
 
-async function g43dScan2ListWindowSource(base44, entityName, { field = 'created_date', from = null, to = null, sort = '-created_date', limit = 25 } = {}) {
+
+async function g43dScan2ListWindowSource(base44, entityName, { field = 'created_date', fields = null, from = null, to = null, sort = '-created_date', limit = 25, useServerRange = false } = {}) {
   const entity = base44.asServiceRole?.entities?.[entityName];
-  const filter = g43dScan2DateFilter(field, from, to);
+  const filter = useServerRange ? g43dScan2DateFilter(field, from, to) : {};
   const windowRequested = Boolean(from || to);
+  const windowFields = fields || [field];
   if (!entity?.filter && !entity?.list) {
     return {
       entity: entityName,
@@ -6812,36 +6836,47 @@ async function g43dScan2ListWindowSource(base44, entityName, { field = 'created_
       error_code: 'entity_read_unavailable',
       rows: [],
       row_count: 0,
+      source_rows_before_window_filter: 0,
+      source_rows_after_window_filter: 0,
       limit,
       truncated: false,
       window_filter_used: false,
+      server_range_filter_used: false,
+      date_filter_operator_used: 'bounded_list_in_memory',
+      timestamp_timezone_policy: 'stored_timestamp_without_timezone_treated_as_utc',
       cursor_supported: false,
     };
   }
   try {
     let rows;
-    let windowFilterUsed = false;
-    if (windowRequested && entity?.filter) {
+    let filterApiUsed = false;
+    if (entity?.filter) {
       rows = await entity.filter(filter, sort, limit);
-      windowFilterUsed = true;
-    } else if (entity?.list) {
-      rows = await entity.list(sort, limit);
+      filterApiUsed = true;
     } else {
-      rows = await entity.filter({}, sort, limit);
-      windowFilterUsed = false;
+      rows = await entity.list(sort, limit);
     }
-    let safeRows = Array.isArray(rows) ? rows : [];
-    if (windowRequested && !windowFilterUsed) safeRows = safeRows.filter(row => g43dScan2DateInRange(row, field, from, to));
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const safeRows = windowRequested
+      ? sourceRows.filter(row => g43dScan2AnyDateInRange(row, windowFields, from, to))
+      : sourceRows;
     return {
       entity: entityName,
       ok: true,
       rate_limit_detected: false,
       error_code: null,
       rows: safeRows,
+      rows_unfiltered: sourceRows,
       row_count: safeRows.length,
+      source_rows_before_window_filter: sourceRows.length,
+      source_rows_after_window_filter: safeRows.length,
       limit,
-      truncated: safeRows.length >= limit,
-      window_filter_used: windowFilterUsed,
+      truncated: sourceRows.length >= limit,
+      window_filter_used: windowRequested,
+      filter_api_used: filterApiUsed,
+      server_range_filter_used: Boolean(useServerRange && windowRequested),
+      date_filter_field_used: windowFields.join(','),
+      date_filter_operator_used: 'bounded_list_in_memory',
       cursor_supported: false,
     };
   } catch (error) {
@@ -6853,12 +6888,108 @@ async function g43dScan2ListWindowSource(base44, entityName, { field = 'created_
       error_code: rateLimitDetected ? 'rate_limit_detected' : 'date_window_source_read_failed',
       rows: [],
       row_count: 0,
+      source_rows_before_window_filter: 0,
+      source_rows_after_window_filter: 0,
       limit,
       truncated: false,
       window_filter_used: windowRequested,
+      server_range_filter_used: Boolean(useServerRange && windowRequested),
+      date_filter_operator_used: 'bounded_list_in_memory',
       cursor_supported: false,
     };
   }
+}
+
+async function g43dScan3FindControlOrder(base44, lookup) {
+  const entity = base44.asServiceRole?.entities?.Order;
+  const result = {
+    control_order_requested: Boolean(lookup.controlCustomerAppOrderId || lookup.controlOrderNumber),
+    control_order_found_exact: false,
+    control_order_found_by_id: false,
+    control_order_found_by_order_number: false,
+    control_source_read_count: 0,
+    control_order: null,
+    control_read_errors: [],
+  };
+  if (!result.control_order_requested || !entity?.filter) return result;
+  if (lookup.controlCustomerAppOrderId) {
+    try {
+      const rows = await entity.filter({ id: lookup.controlCustomerAppOrderId }, '-created_date', 2);
+      result.control_source_read_count += 1;
+      if (Array.isArray(rows) && rows.length > 0) {
+        result.control_order = rows[0];
+        result.control_order_found_by_id = true;
+      }
+    } catch (error) {
+      result.control_read_errors.push({ lookup: 'id', error_code: g43dScan1DetectRateLimit(error) ? 'rate_limit_detected' : 'control_lookup_failed' });
+    }
+  }
+  if (!result.control_order && lookup.controlOrderNumber) {
+    try {
+      const rows = await entity.filter({ order_number: lookup.controlOrderNumber }, '-created_date', 2);
+      result.control_source_read_count += 1;
+      if (Array.isArray(rows) && rows.length > 0) {
+        result.control_order = rows[0];
+        result.control_order_found_by_order_number = true;
+      }
+    } catch (error) {
+      result.control_read_errors.push({ lookup: 'order_number', error_code: g43dScan1DetectRateLimit(error) ? 'rate_limit_detected' : 'control_lookup_failed' });
+    }
+  }
+  result.control_order_found_exact = Boolean(result.control_order);
+  return result;
+}
+
+function g43dScan3BuildControlValidation({ lookup, controlOrderResult, candidateOrders, createdOrders, updatedOrders }) {
+  const controlOrder = controlOrderResult?.control_order || null;
+  const created = g43dScan3CanonicalTimestamp(controlOrder, ['created_date', 'created_at', 'createdAt']);
+  const updated = g43dScan3CanonicalTimestamp(controlOrder, ['updated_date', 'updated_at', 'updatedAt']);
+  const controlId = normalizeText(controlOrder?.id || lookup.controlCustomerAppOrderId);
+  const controlNumber = g43dScan1OrderKey(controlOrder?.order_number || controlOrder?.shopify_order_number || lookup.controlOrderNumber);
+  const expectedInCreatedWindow = Boolean(controlOrder && created.iso && (!lookup.orderCreatedFrom || created.iso >= lookup.orderCreatedFrom) && (!lookup.orderCreatedTo || created.iso < lookup.orderCreatedTo));
+  const expectedInUpdatedWindow = Boolean(controlOrder && updated.iso && (!lookup.orderUpdatedFrom || updated.iso >= lookup.orderUpdatedFrom) && (!lookup.orderUpdatedTo || updated.iso < lookup.orderUpdatedTo));
+  const expectedInWindow = expectedInCreatedWindow || expectedInUpdatedWindow;
+  const foundUnfiltered = [...(createdOrders?.rows_unfiltered || []), ...(updatedOrders?.rows_unfiltered || [])]
+    .some(row => normalizeText(row?.id) === controlId || g43dScan1OrderNumber(row) === controlNumber);
+  const foundInWindow = (candidateOrders || [])
+    .some(row => normalizeText(row?.id) === controlId || g43dScan1OrderNumber(row) === controlNumber);
+  const filterDiscrepancyDetected = Boolean(expectedInWindow && !foundInWindow);
+  return {
+    control_order_requested: Boolean(controlOrderResult?.control_order_requested),
+    control_order_found_exact: Boolean(controlOrderResult?.control_order_found_exact),
+    control_order_found_by_id: Boolean(controlOrderResult?.control_order_found_by_id),
+    control_order_found_by_order_number: Boolean(controlOrderResult?.control_order_found_by_order_number),
+    control_order_found_unfiltered: foundUnfiltered,
+    control_order_found_in_window: foundInWindow,
+    control_order_expected_in_window: expectedInWindow,
+    control_order_validation_passed: Boolean(controlOrderResult?.control_order_requested && controlOrderResult?.control_order_found_exact && (!expectedInWindow || foundInWindow)),
+    window_filter_contract_validated: Boolean(controlOrderResult?.control_order_requested && controlOrderResult?.control_order_found_exact && expectedInWindow && foundInWindow),
+    filter_discrepancy_detected: filterDiscrepancyDetected,
+    canonical_created_field: created.field,
+    canonical_updated_field: updated.field,
+    canonical_created_value: created.value,
+    canonical_updated_value: updated.value,
+    canonical_created_iso: created.iso,
+    canonical_updated_iso: updated.iso,
+    date_filter_field_used: 'created_date,created_at,createdAt / updated_date,updated_at,updatedAt',
+    date_filter_operator_used: 'window_start <= canonical_timestamp < window_end; bounded_list_in_memory',
+    date_filter_values_used: {
+      order_created_from: lookup.orderCreatedFrom,
+      order_created_to: lookup.orderCreatedTo,
+      order_updated_from: lookup.orderUpdatedFrom,
+      order_updated_to: lookup.orderUpdatedTo,
+    },
+    date_filter_contract_validated: Boolean(controlOrderResult?.control_order_requested && controlOrderResult?.control_order_found_exact && expectedInWindow && foundInWindow),
+    source_rows_before_window_filter: {
+      window_created_orders: createdOrders?.source_rows_before_window_filter ?? null,
+      window_updated_orders: updatedOrders?.source_rows_before_window_filter ?? null,
+    },
+    source_rows_after_window_filter: {
+      window_created_orders: createdOrders?.source_rows_after_window_filter ?? null,
+      window_updated_orders: updatedOrders?.source_rows_after_window_filter ?? null,
+    },
+    timestamp_timezone_policy: 'stored_timestamp_without_timezone_treated_as_utc',
+  };
 }
 
 function g43dScan1CustomerEmailCompatible(order, row) {
@@ -7192,8 +7323,8 @@ async function buildG43DScan1Preview(base44, body) {
   }
   const reads = windowedMode
     ? await Promise.all([
-      g43dScan2ListWindowSource(base44, 'Order', { field: 'created_date', from: lookup.orderCreatedFrom, to: lookup.orderCreatedTo, sort: '-created_date', limit: lookup.orderLimit }),
-      g43dScan2ListWindowSource(base44, 'Order', { field: 'updated_date', from: lookup.orderUpdatedFrom, to: lookup.orderUpdatedTo, sort: '-updated_date', limit: lookup.orderLimit }),
+      g43dScan2ListWindowSource(base44, 'Order', { field: 'created_date', fields: ['created_date', 'created_at', 'createdAt'], from: lookup.orderCreatedFrom, to: lookup.orderCreatedTo, sort: '-created_date', limit: lookup.orderLimit }),
+      g43dScan2ListWindowSource(base44, 'Order', { field: 'updated_date', fields: ['updated_date', 'updated_at', 'updatedAt'], from: lookup.orderUpdatedFrom, to: lookup.orderUpdatedTo, sort: '-updated_date', limit: lookup.orderLimit }),
       g43dScan2ListWindowSource(base44, 'ShopifyOrder', { field: 'created_date', from: lookup.relatedContextFrom, to: lookup.relatedContextTo, sort: '-created_date', limit: lookup.relatedEntityLimit }),
       g43dScan2ListWindowSource(base44, 'FulfillmentTask', { field: 'created_date', from: lookup.relatedContextFrom, to: lookup.relatedContextTo, sort: '-created_date', limit: lookup.relatedEntityLimit }),
       g43dScan2ListWindowSource(base44, 'OrderReviewQueue', { field: 'created_date', from: lookup.relatedContextFrom, to: lookup.relatedContextTo, sort: '-created_date', limit: lookup.relatedEntityLimit }),
@@ -7244,6 +7375,17 @@ async function buildG43DScan1Preview(base44, body) {
       OrderSyncLog: Boolean(syncRowsRead.window_filter_used),
       SafeSyncParityLog: Boolean(parityRowsRead.window_filter_used),
     },
+    server_range_filter_used_by_source: {
+      [createdOrderSourceKey]: Boolean(createdOrders.server_range_filter_used),
+      [updatedOrderSourceKey]: Boolean(updatedOrders.server_range_filter_used),
+      ShopifyOrder: Boolean(nativeOrdersRead.server_range_filter_used),
+      FulfillmentTask: Boolean(tasksRead.server_range_filter_used),
+      OrderReviewQueue: Boolean(reviewRowsRead.server_range_filter_used),
+      OrderSyncLog: Boolean(syncRowsRead.server_range_filter_used),
+      SafeSyncParityLog: Boolean(parityRowsRead.server_range_filter_used),
+    },
+    date_filter_operator_used: 'bounded_list_in_memory',
+    timestamp_timezone_policy: 'stored_timestamp_without_timezone_treated_as_utc',
     cursor_supported: false,
   } : {
     bounded_recent_entity_reads: true,
@@ -7262,6 +7404,8 @@ async function buildG43DScan1Preview(base44, body) {
       source_read_strategy: sourceReadStrategy,
       source_row_counts: sourceRowCounts,
       source_truncated: sourceTruncated,
+      source_rows_before_window_filter: windowedMode ? { [createdOrderSourceKey]: createdOrders.source_rows_before_window_filter, [updatedOrderSourceKey]: updatedOrders.source_rows_before_window_filter, ShopifyOrder: nativeOrdersRead.source_rows_before_window_filter, FulfillmentTask: tasksRead.source_rows_before_window_filter, OrderReviewQueue: reviewRowsRead.source_rows_before_window_filter, OrderSyncLog: syncRowsRead.source_rows_before_window_filter, SafeSyncParityLog: parityRowsRead.source_rows_before_window_filter } : null,
+      source_rows_after_window_filter: windowedMode ? { [createdOrderSourceKey]: createdOrders.source_rows_after_window_filter, [updatedOrderSourceKey]: updatedOrders.source_rows_after_window_filter, ShopifyOrder: nativeOrdersRead.source_rows_after_window_filter, FulfillmentTask: tasksRead.source_rows_after_window_filter, OrderReviewQueue: reviewRowsRead.source_rows_after_window_filter, OrderSyncLog: syncRowsRead.source_rows_after_window_filter, SafeSyncParityLog: parityRowsRead.source_rows_after_window_filter } : null,
       source_read_errors: failedReads.map(read => ({ entity: read.entity, error_code: read.error_code, rate_limit_detected: read.rate_limit_detected })),
       candidate_horizon: windowedMode ? { order_limit: lookup.orderLimit, order_created_from: lookup.orderCreatedFrom, order_created_to: lookup.orderCreatedTo, order_updated_from: lookup.orderUpdatedFrom, order_updated_to: lookup.orderUpdatedTo, dedupe_key: 'Customer App Order id' } : { recent_created_limit: lookup.recentCreatedLimit, recent_updated_limit: lookup.recentUpdatedLimit },
       related_context_horizon: windowedMode ? { related_entity_limit: lookup.relatedEntityLimit, related_context_from: lookup.relatedContextFrom, related_context_to: lookup.relatedContextTo, cursor_supported: false } : { related_entity_limit: lookup.relatedEntityLimit },
@@ -7278,6 +7422,52 @@ async function buildG43DScan1Preview(base44, body) {
   }
 
   const candidateOrders = g43dScan1DedupeById([...(createdOrders.rows || []), ...(updatedOrders.rows || [])]);
+  const controlOrderResult = windowedMode ? await g43dScan3FindControlOrder(base44, lookup) : null;
+  const controlValidation = windowedMode ? g43dScan3BuildControlValidation({ lookup, controlOrderResult, candidateOrders, createdOrders, updatedOrders }) : null;
+  if (controlValidation?.control_order_requested && !controlValidation.control_order_found_exact) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: ['known_control_order_lookup_failed'],
+      rate_limit_detected: Boolean(controlOrderResult?.control_read_errors?.some(error => error.error_code === 'rate_limit_detected')),
+      source_read_count: reads.length + (controlOrderResult?.control_source_read_count || 0),
+      source_read_strategy: sourceReadStrategy,
+      source_row_counts: sourceRowCounts,
+      source_truncated: sourceTruncated,
+      source_rows_before_window_filter: { [createdOrderSourceKey]: createdOrders.source_rows_before_window_filter, [updatedOrderSourceKey]: updatedOrders.source_rows_before_window_filter, ShopifyOrder: nativeOrdersRead.source_rows_before_window_filter, FulfillmentTask: tasksRead.source_rows_before_window_filter, OrderReviewQueue: reviewRowsRead.source_rows_before_window_filter, OrderSyncLog: syncRowsRead.source_rows_before_window_filter, SafeSyncParityLog: parityRowsRead.source_rows_before_window_filter },
+      source_rows_after_window_filter: { [createdOrderSourceKey]: createdOrders.source_rows_after_window_filter, [updatedOrderSourceKey]: updatedOrders.source_rows_after_window_filter, ShopifyOrder: nativeOrdersRead.source_rows_after_window_filter, FulfillmentTask: tasksRead.source_rows_after_window_filter, OrderReviewQueue: reviewRowsRead.source_rows_after_window_filter, OrderSyncLog: syncRowsRead.source_rows_after_window_filter, SafeSyncParityLog: parityRowsRead.source_rows_after_window_filter },
+      control_validation: controlValidation,
+      ...g43dScan1EmptyCounts(),
+      safe_candidate_summaries: [],
+      classification_counts: {},
+      blockers: ['known_control_order_lookup_failed'],
+      warnings: ['window_filter_contract_not_validated', 'generalized_counts_not_authoritative'],
+      next_action: 'inspect_window_filter_contract',
+    };
+  }
+  if (controlValidation?.filter_discrepancy_detected) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: ['known_control_order_missing_from_expected_window'],
+      rate_limit_detected: false,
+      source_read_count: reads.length + (controlOrderResult?.control_source_read_count || 0),
+      source_read_strategy: sourceReadStrategy,
+      source_row_counts: sourceRowCounts,
+      source_truncated: sourceTruncated,
+      source_rows_before_window_filter: { [createdOrderSourceKey]: createdOrders.source_rows_before_window_filter, [updatedOrderSourceKey]: updatedOrders.source_rows_before_window_filter, ShopifyOrder: nativeOrdersRead.source_rows_before_window_filter, FulfillmentTask: tasksRead.source_rows_before_window_filter, OrderReviewQueue: reviewRowsRead.source_rows_before_window_filter, OrderSyncLog: syncRowsRead.source_rows_before_window_filter, SafeSyncParityLog: parityRowsRead.source_rows_before_window_filter },
+      source_rows_after_window_filter: { [createdOrderSourceKey]: createdOrders.source_rows_after_window_filter, [updatedOrderSourceKey]: updatedOrders.source_rows_after_window_filter, ShopifyOrder: nativeOrdersRead.source_rows_after_window_filter, FulfillmentTask: tasksRead.source_rows_after_window_filter, OrderReviewQueue: reviewRowsRead.source_rows_after_window_filter, OrderSyncLog: syncRowsRead.source_rows_after_window_filter, SafeSyncParityLog: parityRowsRead.source_rows_after_window_filter },
+      control_validation: controlValidation,
+      ...g43dScan1EmptyCounts(),
+      safe_candidate_summaries: [],
+      classification_counts: {},
+      blockers: ['known_control_order_missing_from_expected_window'],
+      warnings: ['window_filter_contract_not_validated', 'generalized_counts_not_authoritative'],
+      next_action: 'inspect_window_filter_contract',
+    };
+  }
   const historyAllowlist = g43dScan1Allowlist(G43D_SCAN1_CURRENT_HISTORY_ALLOWLIST_FLAG);
   const trackerAllowlist = g43dScan1Allowlist(G43D_SCAN1_CURRENT_TRACKER_ALLOWLIST_FLAG);
   const relatedTruncated = {
@@ -7335,10 +7525,12 @@ async function buildG43DScan1Preview(base44, body) {
     scan_complete: true,
     scan_incomplete_reasons: [],
     rate_limit_detected: false,
-    source_read_count: reads.length,
+    source_read_count: reads.length + (controlOrderResult?.control_source_read_count || 0),
     source_read_strategy: sourceReadStrategy,
     source_row_counts: sourceRowCounts,
     source_truncated: sourceTruncated,
+    source_rows_before_window_filter: windowedMode ? { [createdOrderSourceKey]: createdOrders.source_rows_before_window_filter, [updatedOrderSourceKey]: updatedOrders.source_rows_before_window_filter, ShopifyOrder: nativeOrdersRead.source_rows_before_window_filter, FulfillmentTask: tasksRead.source_rows_before_window_filter, OrderReviewQueue: reviewRowsRead.source_rows_before_window_filter, OrderSyncLog: syncRowsRead.source_rows_before_window_filter, SafeSyncParityLog: parityRowsRead.source_rows_before_window_filter } : null,
+    source_rows_after_window_filter: windowedMode ? { [createdOrderSourceKey]: createdOrders.source_rows_after_window_filter, [updatedOrderSourceKey]: updatedOrders.source_rows_after_window_filter, ShopifyOrder: nativeOrdersRead.source_rows_after_window_filter, FulfillmentTask: tasksRead.source_rows_after_window_filter, OrderReviewQueue: reviewRowsRead.source_rows_after_window_filter, OrderSyncLog: syncRowsRead.source_rows_after_window_filter, SafeSyncParityLog: parityRowsRead.source_rows_after_window_filter } : null,
     candidate_horizon: windowedMode ? {
       order_limit: lookup.orderLimit,
       order_created_from: lookup.orderCreatedFrom,
@@ -7364,6 +7556,9 @@ async function buildG43DScan1Preview(base44, body) {
       production_batch_direct_source: false,
     },
     window_start: windowedMode ? (lookup.orderCreatedFrom || lookup.orderUpdatedFrom || lookup.relatedContextFrom) : null,
+    control_validation: controlValidation,
+    window_filter_contract_validated: controlValidation ? controlValidation.window_filter_contract_validated : null,
+    zero_rows_decision_grade: windowedMode ? Boolean(controlValidation?.control_order_requested && controlValidation?.control_order_validation_passed) : null,
     window_end: windowedMode ? (lookup.orderCreatedTo || lookup.orderUpdatedTo || lookup.relatedContextTo) : null,
     continuation_available: windowedMode ? Object.values(sourceTruncated).some(Boolean) : false,
     continuation_token: null,
@@ -7378,6 +7573,7 @@ async function buildG43DScan1Preview(base44, body) {
       'customer_app_order_remains_canonical',
       'hub_fallback_remains_active',
       'refund_payment_and_subscription_source_of_truth_held',
+      ...(windowedMode && !controlValidation?.control_order_requested ? ['window_filter_contract_not_validated_without_control_order'] : []),
       ...coverageWarnings,
     ],
     next_action: responseCounts.history_ready_excluding_current_allowlist_count > 0 || responseCounts.tracker_ready_excluding_current_allowlist_count > 0
