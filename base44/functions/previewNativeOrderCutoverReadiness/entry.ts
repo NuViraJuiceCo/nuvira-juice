@@ -6627,8 +6627,9 @@ const G43D_SCAN1_PREVIEW_MODE = 'CUSTOMER_ORDER_SURFACE_GENERALIZED_READINESS';
 const G43D_SCAN1_MODE_RECENT = 'RECENT_ORDER_SURFACE_SCAN';
 const G43D_SCAN2_MODE_WINDOWED = 'WINDOWED_ORDER_SURFACE_SCAN';
 const G43D_SCAN4_MODE_COVERAGE = 'ORDER_SOURCE_COVERAGE_AUDIT';
+const G43D_SCAN5_MODE_FULL = 'FULL_BOUNDED_ORDER_SURFACE_SCAN';
 const G43D_SCAN1_MODE_EXACT = 'EXACT_ORDER_SURFACE_PREVIEW';
-const G43D_SCAN1_SUPPORTED_MODES = new Set([G43D_SCAN1_MODE_RECENT, G43D_SCAN2_MODE_WINDOWED, G43D_SCAN4_MODE_COVERAGE, G43D_SCAN1_MODE_EXACT]);
+const G43D_SCAN1_SUPPORTED_MODES = new Set([G43D_SCAN1_MODE_RECENT, G43D_SCAN2_MODE_WINDOWED, G43D_SCAN4_MODE_COVERAGE, G43D_SCAN5_MODE_FULL, G43D_SCAN1_MODE_EXACT]);
 const G43D_SCAN1_MAX_RECENT_LIMIT = 25;
 const G43D_SCAN1_MAX_RELATED_LIMIT = 100;
 const G43D_SCAN1_DEFAULT_RELATED_LIMIT = 100;
@@ -6662,6 +6663,10 @@ const G43D_SCAN1_ALLOWED_BODY_KEYS = new Set([
   'control_customer_app_order_id',
   'control_customer_app_order_ids',
   'control_order_id',
+  'order_number',
+  'shopify_order_number',
+  'customer_app_order_id',
+  'order_id',
   'request_id',
   '_internal_secret',
   'internal_secret',
@@ -6730,7 +6735,7 @@ function g43dScan1Lookup(body) {
     createdOrderLimit: g43dScan1Limit(body?.created_order_limit ?? body?.order_limit, G43D_SCAN4_DEFAULT_ORDER_SOURCE_LIMIT, G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT),
     updatedOrderLimit: g43dScan1Limit(body?.updated_order_limit ?? body?.order_limit, G43D_SCAN4_DEFAULT_ORDER_SOURCE_LIMIT, G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT),
     pageSize: g43dScan1Limit(body?.page_size, 50, G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT),
-    orderLimit: g43dScan1Limit(body?.order_limit ?? body?.recent_created_limit, 25, G43D_SCAN1_MAX_RECENT_LIMIT),
+    orderLimit: g43dScan1Limit(body?.order_limit ?? body?.recent_created_limit, mode === G43D_SCAN5_MODE_FULL ? G43D_SCAN4_DEFAULT_ORDER_SOURCE_LIMIT : 25, mode === G43D_SCAN5_MODE_FULL ? G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT : G43D_SCAN1_MAX_RECENT_LIMIT),
     relatedEntityLimit: g43dScan1Limit(body?.related_entity_limit, G43D_SCAN1_DEFAULT_RELATED_LIMIT, G43D_SCAN1_MAX_RELATED_LIMIT),
     orderCreatedFrom: g43dScan2IsoOrNull(body?.order_created_from),
     orderCreatedTo: g43dScan2IsoOrNull(body?.order_created_to),
@@ -6743,6 +6748,8 @@ function g43dScan1Lookup(body) {
     controlOrderNumbers: g43dScan4ControlNumbers(body),
     controlCustomerAppOrderId: normalizeText(body?.control_customer_app_order_id || body?.control_order_id),
     controlCustomerAppOrderIds: g43dScan4ControlIds(body),
+    exactOrderNumber: g43dScan1OrderKey(body?.order_number || body?.shopify_order_number),
+    exactCustomerAppOrderId: normalizeText(body?.customer_app_order_id || body?.order_id),
     requestId: sanitizeText(body?.request_id, 140),
   };
 }
@@ -7251,6 +7258,213 @@ function g43dScan4SourceFailureResponse(baseResponse, lookup, createdRead, updat
   };
 }
 
+
+async function g43dScan5ListSource(base44, entityName, { sort = '-created_date', field = 'created_date', requestedLimit = 100 } = {}) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  const effectiveLimit = g43dScan1Limit(requestedLimit, G43D_SCAN1_DEFAULT_RELATED_LIMIT, G43D_SCAN1_MAX_RELATED_LIMIT);
+  if (!entity?.list) {
+    return {
+      entity: entityName,
+      ok: false,
+      rate_limit_detected: false,
+      error_code: `${entityName}_list_unavailable`,
+      sort,
+      field,
+      requested_limit: Number(requestedLimit || effectiveLimit),
+      effective_limit: effectiveLimit,
+      rows: [],
+      row_count: 0,
+      returned_count: 0,
+      limit_reached: false,
+      source_truncated: false,
+      possible_server_cap_detected: false,
+      pagination_supported: false,
+      continuation_available: false,
+      next_continuation_token: null,
+      ordering_stable: false,
+      timestamp_stats: g43dScan4TimestampStats([], field),
+    };
+  }
+  try {
+    const response = await entity.list(sort, effectiveLimit);
+    const parsed = g43dScan4ExtractRowsAndPagination(response);
+    const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
+    const returnedCount = rows.length;
+    const limitReached = returnedCount >= effectiveLimit;
+    const possibleServerCapDetected = effectiveLimit > G43D_SCAN1_MAX_RECENT_LIMIT && returnedCount === G43D_SCAN1_MAX_RECENT_LIMIT;
+    return {
+      entity: entityName,
+      ok: true,
+      rate_limit_detected: false,
+      error_code: null,
+      sort,
+      field,
+      requested_limit: Number(requestedLimit || effectiveLimit),
+      effective_limit: effectiveLimit,
+      rows,
+      row_count: returnedCount,
+      returned_count: returnedCount,
+      limit_reached: limitReached,
+      source_truncated: limitReached || possibleServerCapDetected || Boolean(parsed.next_continuation_token),
+      possible_server_cap_detected: possibleServerCapDetected,
+      pagination_supported: Boolean(parsed.pagination_supported),
+      continuation_available: Boolean(parsed.next_continuation_token),
+      next_continuation_token: parsed.next_continuation_token || null,
+      ordering_stable: g43dScan4OrderingStable(rows, field, sort),
+      timestamp_stats: g43dScan4TimestampStats(rows, field),
+    };
+  } catch (error) {
+    const rateLimitDetected = g43dScan1DetectRateLimit(error);
+    return {
+      entity: entityName,
+      ok: false,
+      rate_limit_detected: rateLimitDetected,
+      error_code: rateLimitDetected ? 'rate_limit_detected' : `${entityName}_source_read_failed`,
+      sort,
+      field,
+      requested_limit: Number(requestedLimit || effectiveLimit),
+      effective_limit: effectiveLimit,
+      rows: [],
+      row_count: 0,
+      returned_count: 0,
+      limit_reached: false,
+      source_truncated: false,
+      possible_server_cap_detected: false,
+      pagination_supported: false,
+      continuation_available: false,
+      next_continuation_token: null,
+      ordering_stable: false,
+      timestamp_stats: g43dScan4TimestampStats([], field),
+    };
+  }
+}
+
+function g43dScan5SourceCoverage(read) {
+  return {
+    requested_limit: read?.requested_limit ?? null,
+    effective_limit: read?.effective_limit ?? null,
+    returned_count: read?.returned_count ?? read?.row_count ?? 0,
+    source_truncated: Boolean(read?.source_truncated),
+    deterministic_ordering: Boolean(read?.ordering_stable),
+    oldest_timestamp: read?.timestamp_stats?.oldest || null,
+    newest_timestamp: read?.timestamp_stats?.newest || null,
+    coverage_complete: Boolean(read?.ok && read?.ordering_stable && !read?.source_truncated && !read?.possible_server_cap_detected && !read?.pagination_supported && !read?.continuation_available),
+  };
+}
+
+function g43dScan5SourceRowCounts(readsByEntity) {
+  return Object.fromEntries(Object.entries(readsByEntity).map(([entityName, read]) => [entityName, read?.returned_count ?? read?.row_count ?? 0]));
+}
+
+function g43dScan5SourceTruncated(readsByEntity) {
+  return Object.fromEntries(Object.entries(readsByEntity).map(([entityName, read]) => [entityName, Boolean(read?.source_truncated)]));
+}
+
+function g43dScan5SourceCoverageMap(readsByEntity) {
+  return Object.fromEntries(Object.entries(readsByEntity).map(([entityName, read]) => [entityName, g43dScan5SourceCoverage(read)]));
+}
+
+function g43dScan5CoverageIncompleteReasons(readsByEntity, requiredEntities = Object.keys(readsByEntity)) {
+  const reasons = [];
+  for (const entityName of Object.keys(readsByEntity)) {
+    const read = readsByEntity[entityName];
+    if (!read?.ok) reasons.push(`${entityName}:${read?.error_code || 'source_read_failed'}`);
+    if (read?.possible_server_cap_detected) reasons.push(`${entityName}:possible_silent_server_cap_detected`);
+    if (read?.source_truncated) reasons.push(`${entityName}:source_truncated`);
+    if (read?.pagination_supported || read?.continuation_available) reasons.push(`${entityName}:pagination_available_not_processed`);
+    if (read?.ok && !read?.ordering_stable) reasons.push(`${entityName}:source_ordering_unstable`);
+  }
+  for (const entityName of requiredEntities) {
+    const read = readsByEntity[entityName];
+    if (!g43dScan5SourceCoverage(read).coverage_complete) reasons.push(`${entityName}:coverage_incomplete`);
+  }
+  return [...new Set(reasons)];
+}
+
+function g43dScan5RelatedTruncated(readsByEntity) {
+  return {
+    ShopifyOrder: Boolean(readsByEntity.ShopifyOrder?.source_truncated),
+    FulfillmentTask: Boolean(readsByEntity.FulfillmentTask?.source_truncated),
+    OrderReviewQueue: Boolean(readsByEntity.OrderReviewQueue?.source_truncated),
+    OrderSyncLog: Boolean(readsByEntity.OrderSyncLog?.source_truncated),
+    SafeSyncParityLog: Boolean(readsByEntity.SafeSyncParityLog?.source_truncated),
+  };
+}
+
+function g43dScan5BuildCandidateSummaries({ orders, nativeOrders, tasks, reviewRows, syncRows, parityRows, relatedTruncated, historyAllowlist, trackerAllowlist, provisionalLogFollowup = false }) {
+  return (orders || []).map(order => {
+    const nativeMatches = g43dScan1DedupeById((nativeOrders || []).filter(nativeOrder => g43dScan1NativeCompatible(order, nativeOrder)));
+    return g43dScan1CandidateSummary({
+      order,
+      nativeOrders: nativeMatches,
+      tasks: tasks || [],
+      reviewRows: reviewRows || [],
+      syncRows: syncRows || [],
+      parityRows: parityRows || [],
+      relatedTruncated,
+      historyAllowlist,
+      trackerAllowlist,
+      provisionalLogFollowup,
+    });
+  });
+}
+
+function g43dScan5ReadinessCounts(summaries) {
+  const rows = summaries || [];
+  const oneTimeRows = rows.filter(row => row.order_type === 'one_time');
+  return {
+    unique_order_count: rows.length,
+    one_time_count: oneTimeRows.length,
+    subscription_multi_delivery_count: rows.filter(row => row.subscription_multi_delivery_hold).length,
+    native_shopify_order_match_count: rows.filter(row => row.native_shopify_order_match_count > 0).length,
+    unique_native_fulfillment_task_match_count: rows.filter(row => row.compatible_fulfillment_task_count === 1).length,
+    history_native_ready_count: rows.filter(row => row.history_native_ready).length,
+    tracker_native_ready_count: rows.filter(row => row.tracker_native_ready).length,
+    provisional_history_candidate_count: rows.filter(row => row.provisional_history_ready).length,
+    provisional_tracker_candidate_count: rows.filter(row => row.provisional_tracker_ready).length,
+    history_ready_excluding_current_allowlist_count: rows.filter(row => row.history_native_ready && !row.currently_history_allowlisted).length,
+    tracker_ready_excluding_current_allowlist_count: rows.filter(row => row.tracker_native_ready && !row.currently_tracker_allowlisted).length,
+    exact_followup_required_count: rows.filter(row => row.exact_log_followup_required).length,
+    fallback_required_count: rows.filter(row => row.fallback_required).length,
+    review_required_count: rows.filter(row => row.review_required).length,
+    mismatch_count: rows.filter(row => row.mismatch_categories.length > 0).length,
+    identity_ambiguity_count: rows.filter(row => ['native_duplicate_identity_risk', 'history_native_ready_tracker_identity_ambiguous'].includes(row.classification)).length,
+  };
+}
+
+function g43dScan5CandidateOrderRowsByNumberOrId(rows, lookup) {
+  const exactNumber = lookup.exactOrderNumber;
+  const exactId = lookup.exactCustomerAppOrderId;
+  return g43dScan1DedupeById((rows || []).filter(row => {
+    const rowId = normalizeText(row?.id);
+    const rowNumber = g43dScan1OrderNumber(row);
+    return Boolean((exactId && rowId === exactId) || (exactNumber && rowNumber === exactNumber));
+  }));
+}
+
+async function g43dScan5FilterRows(base44, entityName, filters, sort = '-created_date', limit = 20) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  const rows = [];
+  let read_count = 0;
+  let rate_limit_detected = false;
+  const errors = [];
+  if (!entity?.filter) return { entity: entityName, ok: false, rows: [], read_count: 0, rate_limit_detected: false, error_code: `${entityName}_filter_unavailable`, errors: [] };
+  for (const filter of filters || []) {
+    const cleanFilter = Object.fromEntries(Object.entries(filter || {}).filter(([, value]) => normalizeText(value)));
+    if (!Object.keys(cleanFilter).length) continue;
+    try {
+      const result = await entity.filter(cleanFilter, sort, limit);
+      read_count += 1;
+      if (Array.isArray(result)) rows.push(...result);
+    } catch (error) {
+      const rate = g43dScan1DetectRateLimit(error);
+      if (rate) rate_limit_detected = true;
+      errors.push({ filter_keys: Object.keys(cleanFilter), error_code: rate ? 'rate_limit_detected' : 'exact_source_read_failed' });
+    }
+  }
+  return { entity: entityName, ok: errors.length === 0, rows: g43dScan1DedupeById(rows), read_count, rate_limit_detected, error_code: rate_limit_detected ? 'rate_limit_detected' : (errors.length ? 'exact_source_read_failed' : null), errors };
+}
+
 async function buildG43DScan4CoverageAudit(base44, lookup, baseResponse) {
   if (lookup.cursor) {
     return {
@@ -7505,7 +7719,9 @@ function g43dScan1OrderType(order, nativeOrder, task) {
   return g43dScan1SubscriptionOrMulti(order, nativeOrder, task) ? 'subscription_or_multi_delivery' : 'one_time';
 }
 
-function g43dScan1Classification(blockers, historyReady, trackerReady, compatibleTaskCount) {
+function g43dScan1Classification(blockers, historyReady, trackerReady, compatibleTaskCount, exactLogFollowupRequired = false) {
+  if (historyReady && trackerReady && exactLogFollowupRequired) return 'provisional_tracker_ready_exact_log_followup_required';
+  if (historyReady && exactLogFollowupRequired) return 'provisional_history_ready_exact_log_followup_required';
   if (historyReady && trackerReady) return 'history_and_tracker_native_ready';
   if (historyReady && compatibleTaskCount === 0) return 'history_native_ready_tracker_task_missing';
   if (historyReady && compatibleTaskCount > 1) return 'history_native_ready_tracker_identity_ambiguous';
@@ -7527,7 +7743,7 @@ function g43dScan1Classification(blockers, historyReady, trackerReady, compatibl
   return priority.find(item => blockers.includes(item)) || 'unknown_manual_review_required';
 }
 
-function g43dScan1CandidateSummary({ order, nativeOrders, tasks, reviewRows, syncRows, parityRows, relatedTruncated, historyAllowlist, trackerAllowlist }) {
+function g43dScan1CandidateSummary({ order, nativeOrders, tasks, reviewRows, syncRows, parityRows, relatedTruncated, historyAllowlist, trackerAllowlist, provisionalLogFollowup = false }) {
   const nativeOrder = nativeOrders.length === 1 ? nativeOrders[0] : null;
   const compatibleTasks = nativeOrder ? g43dScan1DedupeById(tasks.filter(task => g43dScan1TaskCompatible(order, nativeOrder, task))) : [];
   const task = compatibleTasks.length === 1 ? compatibleTasks[0] : null;
@@ -7545,7 +7761,8 @@ function g43dScan1CandidateSummary({ order, nativeOrders, tasks, reviewRows, syn
     if (compatibleTasks.length > 1) blockers.push('native_fulfillment_task_identity_ambiguous');
   }
   if (relatedTruncated.OrderReviewQueue && matchedReviewRows.length === 0) blockers.push('bounded_scan_context_not_found');
-  if ((relatedTruncated.OrderSyncLog && matchedSyncRows.length === 0) || (relatedTruncated.SafeSyncParityLog && matchedParityRows.length === 0)) blockers.push('bounded_scan_context_not_found');
+  const exactLogFollowupRequired = Boolean(provisionalLogFollowup && ((relatedTruncated.OrderSyncLog && matchedSyncRows.length === 0) || (relatedTruncated.SafeSyncParityLog && matchedParityRows.length === 0)));
+  if (!provisionalLogFollowup && ((relatedTruncated.OrderSyncLog && matchedSyncRows.length === 0) || (relatedTruncated.SafeSyncParityLog && matchedParityRows.length === 0))) blockers.push('bounded_scan_context_not_found');
 
   const subscriptionOrMulti = g43dScan1SubscriptionOrMulti(order, nativeOrder, task);
   const refundHold = g43dScan1RefundHold(order, nativeOrder);
@@ -7575,9 +7792,11 @@ function g43dScan1CandidateSummary({ order, nativeOrders, tasks, reviewRows, syn
 
   const uniqueBlockers = [...new Set(blockers)];
   const historyBlocking = uniqueBlockers.filter(blocker => !['native_fulfillment_task_missing', 'native_fulfillment_task_identity_ambiguous'].includes(blocker));
-  const historyNativeReady = historyBlocking.length === 0 && nativeOrders.length === 1;
-  const trackerNativeReady = uniqueBlockers.length === 0 && nativeOrders.length === 1 && compatibleTasks.length === 1;
-  const classification = g43dScan1Classification(uniqueBlockers, historyNativeReady, trackerNativeReady, compatibleTasks.length);
+  const provisionalHistoryReady = historyBlocking.length === 0 && nativeOrders.length === 1;
+  const provisionalTrackerReady = uniqueBlockers.length === 0 && nativeOrders.length === 1 && compatibleTasks.length === 1;
+  const historyNativeReady = provisionalHistoryReady && !exactLogFollowupRequired;
+  const trackerNativeReady = provisionalTrackerReady && !exactLogFollowupRequired;
+  const classification = g43dScan1Classification(uniqueBlockers, provisionalHistoryReady, provisionalTrackerReady, compatibleTasks.length, exactLogFollowupRequired);
 
   return {
     order_number: orderNumber || null,
@@ -7592,6 +7811,9 @@ function g43dScan1CandidateSummary({ order, nativeOrders, tasks, reviewRows, syn
     mismatch_categories: [...new Set(mismatchCategories)],
     history_native_ready: historyNativeReady,
     tracker_native_ready: trackerNativeReady,
+    provisional_history_ready: provisionalHistoryReady,
+    provisional_tracker_ready: provisionalTrackerReady,
+    exact_log_followup_required: exactLogFollowupRequired,
     currently_history_allowlisted: historyAllowlist.has(orderNumber),
     currently_tracker_allowlisted: trackerAllowlist.has(orderNumber),
     fallback_required: !historyNativeReady || !trackerNativeReady,
@@ -7610,8 +7832,11 @@ function g43dScan1EmptyCounts() {
     unique_native_fulfillment_task_match_count: null,
     history_native_ready_count: null,
     tracker_native_ready_count: null,
+    provisional_history_candidate_count: null,
+    provisional_tracker_candidate_count: null,
     history_ready_excluding_current_allowlist_count: null,
     tracker_ready_excluding_current_allowlist_count: null,
+    exact_followup_required_count: null,
     fallback_required_count: null,
     review_required_count: null,
     mismatch_count: null,
@@ -7625,6 +7850,327 @@ function g43dScan1ClassificationCounts(summaries) {
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
+}
+
+
+function g43dScan5SafeCandidateFields(row) {
+  return {
+    order_number: row?.order_number || null,
+    order_type: row?.order_type || null,
+    paid_captured_ready: Boolean(row?.paid_captured_ready),
+    native_shopify_order_match_count: row?.native_shopify_order_match_count ?? 0,
+    compatible_fulfillment_task_count: row?.compatible_fulfillment_task_count ?? 0,
+    refund_cancel_hold: Boolean(row?.refund_cancel_hold),
+    subscription_multi_delivery_hold: Boolean(row?.subscription_multi_delivery_hold),
+    mismatch_categories: row?.mismatch_categories || [],
+    currently_history_allowlisted: Boolean(row?.currently_history_allowlisted),
+    currently_tracker_allowlisted: Boolean(row?.currently_tracker_allowlisted),
+    provisional_history_ready: Boolean(row?.provisional_history_ready),
+    provisional_tracker_ready: Boolean(row?.provisional_tracker_ready),
+    exact_log_followup_required: Boolean(row?.exact_log_followup_required),
+    fallback_required: Boolean(row?.fallback_required),
+    review_required: Boolean(row?.review_required),
+    classification: row?.classification || 'unknown_manual_review_required',
+  };
+}
+
+async function buildG43DScan5FullBoundedScan(base44, lookup, baseResponse) {
+  const readsByEntity = {
+    Order: await g43dScan5ListSource(base44, 'Order', { sort: '-created_date', field: 'created_date', requestedLimit: lookup.orderLimit }),
+    ShopifyOrder: await g43dScan5ListSource(base44, 'ShopifyOrder', { sort: '-created_date', field: 'created_date', requestedLimit: lookup.relatedEntityLimit }),
+    FulfillmentTask: await g43dScan5ListSource(base44, 'FulfillmentTask', { sort: '-created_date', field: 'created_date', requestedLimit: lookup.relatedEntityLimit }),
+    OrderReviewQueue: await g43dScan5ListSource(base44, 'OrderReviewQueue', { sort: '-created_date', field: 'created_date', requestedLimit: lookup.relatedEntityLimit }),
+    OrderSyncLog: await g43dScan5ListSource(base44, 'OrderSyncLog', { sort: '-created_date', field: 'created_date', requestedLimit: lookup.relatedEntityLimit }),
+    SafeSyncParityLog: await g43dScan5ListSource(base44, 'SafeSyncParityLog', { sort: '-created_date', field: 'created_date', requestedLimit: lookup.relatedEntityLimit }),
+  };
+  const failedReads = Object.values(readsByEntity).filter(read => !read.ok);
+  const rateLimitDetected = failedReads.some(read => read.rate_limit_detected);
+  const requiredCoverageEntities = ['Order', 'ShopifyOrder', 'FulfillmentTask', 'OrderReviewQueue'];
+  const primaryCoverageComplete = requiredCoverageEntities.every(entityName => g43dScan5SourceCoverage(readsByEntity[entityName]).coverage_complete);
+  const logCoverageTruncated = Boolean(readsByEntity.OrderSyncLog.source_truncated || readsByEntity.SafeSyncParityLog.source_truncated);
+  const coverageComplete = Boolean(primaryCoverageComplete && failedReads.length === 0);
+  const incompleteReasons = g43dScan5CoverageIncompleteReasons(readsByEntity, requiredCoverageEntities);
+  const historyAllowlist = g43dScan1Allowlist(G43D_SCAN1_CURRENT_HISTORY_ALLOWLIST_FLAG);
+  const trackerAllowlist = g43dScan1Allowlist(G43D_SCAN1_CURRENT_TRACKER_ALLOWLIST_FLAG);
+  const sourceCoverage = g43dScan5SourceCoverageMap(readsByEntity);
+  const sourceRowCounts = g43dScan5SourceRowCounts(readsByEntity);
+  const sourceTruncated = g43dScan5SourceTruncated(readsByEntity);
+
+  if (failedReads.length > 0 || !primaryCoverageComplete) {
+    return {
+      ...baseResponse,
+      success: failedReads.length === 0,
+      scan_complete: failedReads.length === 0,
+      coverage_complete: false,
+      scan_incomplete_reasons: incompleteReasons,
+      rate_limit_detected: rateLimitDetected,
+      source_read_count: Object.keys(readsByEntity).length,
+      source_read_strategy: {
+        full_bounded_entity_reads: true,
+        one_read_per_broad_source: true,
+        per_order_query_loop: false,
+        hub_external_fetch_performed: false,
+        production_batch_direct_source: false,
+      },
+      source_row_counts: sourceRowCounts,
+      source_truncated: sourceTruncated,
+      source_coverage: sourceCoverage,
+      ...g43dScan1EmptyCounts(),
+      safe_candidate_summaries: [],
+      classification_counts: {},
+      readiness_counts_authoritative: false,
+      generalized_readiness_counts_claimed: false,
+      blockers: incompleteReasons,
+      warnings: ['source_coverage_incomplete', 'generalized_counts_not_authoritative', 'hub_fallback_remains_active'],
+      next_action: rateLimitDetected ? 'retry_after_rate_limit_window' : 'fix_source_coverage_before_readiness_scan',
+    };
+  }
+
+  const relatedTruncated = g43dScan5RelatedTruncated(readsByEntity);
+  const candidateOrders = g43dScan1DedupeById(readsByEntity.Order.rows || []);
+  const rawCandidateSummaries = g43dScan5BuildCandidateSummaries({
+    orders: candidateOrders,
+    nativeOrders: readsByEntity.ShopifyOrder.rows || [],
+    tasks: readsByEntity.FulfillmentTask.rows || [],
+    reviewRows: readsByEntity.OrderReviewQueue.rows || [],
+    syncRows: readsByEntity.OrderSyncLog.rows || [],
+    parityRows: readsByEntity.SafeSyncParityLog.rows || [],
+    relatedTruncated,
+    historyAllowlist,
+    trackerAllowlist,
+    provisionalLogFollowup: logCoverageTruncated,
+  });
+  const safeCandidateSummaries = rawCandidateSummaries.map(g43dScan5SafeCandidateFields);
+  const readinessCounts = g43dScan5ReadinessCounts(rawCandidateSummaries);
+  const classificationCounts = g43dScan1ClassificationCounts(safeCandidateSummaries);
+  const knownControlSummaries = safeCandidateSummaries.filter(row => G43D_SCAN4_DEFAULT_CONTROL_ORDER_NUMBERS.includes(row.order_number));
+  const outsideAllowlistCandidates = rawCandidateSummaries.filter(row =>
+    (row.history_native_ready && !row.currently_history_allowlisted) ||
+    (row.tracker_native_ready && !row.currently_tracker_allowlisted) ||
+    (row.exact_log_followup_required && (row.provisional_history_ready || row.provisional_tracker_ready))
+  ).map(g43dScan5SafeCandidateFields);
+
+  return {
+    ...baseResponse,
+    success: true,
+    scan_complete: true,
+    coverage_complete: coverageComplete,
+    scan_incomplete_reasons: logCoverageTruncated ? ['exact_log_followup_required_for_provisional_candidates'] : [],
+    rate_limit_detected: false,
+    source_read_count: Object.keys(readsByEntity).length,
+    source_read_strategy: {
+      full_bounded_entity_reads: true,
+      one_read_per_broad_source: true,
+      per_order_query_loop: false,
+      hub_external_fetch_performed: false,
+      production_batch_direct_source: false,
+      exact_identifier_joins_only: true,
+    },
+    source_row_counts: sourceRowCounts,
+    source_truncated: sourceTruncated,
+    source_coverage: sourceCoverage,
+    order_source_limit: lookup.orderLimit,
+    related_entity_limit: lookup.relatedEntityLimit,
+    readiness_counts_authoritative: Boolean(coverageComplete && !logCoverageTruncated),
+    generalized_readiness_counts_claimed: Boolean(coverageComplete && !logCoverageTruncated),
+    ...readinessCounts,
+    safe_candidate_summaries: safeCandidateSummaries,
+    candidate_orders_outside_current_allowlists: outsideAllowlistCandidates,
+    known_control_summaries: knownControlSummaries,
+    classification_counts: classificationCounts,
+    blockers: [],
+    warnings: [
+      'admin_preview_only_not_customer_visible',
+      'customer_app_order_remains_canonical',
+      'hub_fallback_remains_active',
+      'refund_payment_and_subscription_source_of_truth_held',
+      'ownership_filtering_required_before_future_customer_eligibility',
+      ...(logCoverageTruncated ? ['log_source_truncated_exact_candidate_preview_required'] : []),
+    ],
+    next_action: readinessCounts.history_ready_excluding_current_allowlist_count > 0
+      ? 'run_exact_order_surface_preview_for_history_candidates_outside_allowlist_before_g43e_planning'
+      : readinessCounts.tracker_ready_excluding_current_allowlist_count > 0
+        ? 'tracker_candidates_require_g43e_history_first_and_owning_customer_smoke'
+        : 'retain_exact_allowlists_and_move_to_another_domain',
+  };
+}
+
+function g43dScan5ExactFiltersForOrder(order, lookup) {
+  const orderNumber = g43dScan1OrderNumber(order) || lookup.exactOrderNumber;
+  const orderId = normalizeText(order?.id || lookup.exactCustomerAppOrderId);
+  return {
+    orderNumber,
+    orderId,
+    nativeFilters: [
+      { base44_order_id: orderId },
+      { customer_app_order_id: orderId },
+      { order_number: orderNumber },
+      { shopify_order_number: orderNumber },
+      { shopify_order_number: orderNumber ? `#${orderNumber}` : '' },
+    ],
+    taskFilters: [
+      { order_id: orderId },
+      { base44_order_id: orderId },
+      { customer_app_order_id: orderId },
+      { order_number: orderNumber },
+      { shopify_order_number: orderNumber },
+      { shopify_order_number: orderNumber ? `#${orderNumber}` : '' },
+    ],
+    logFilters: [
+      { base44_order_id: orderId },
+      { order_id: orderId },
+      { customer_app_order_id: orderId },
+      { order_number: orderNumber },
+      { shopify_order_number: orderNumber },
+      { source_order_number: orderNumber },
+    ],
+  };
+}
+
+async function buildG43DScan5ExactOrderPreview(base44, lookup, baseResponse) {
+  const requestBlockers = [];
+  if (!lookup.exactOrderNumber && !lookup.exactCustomerAppOrderId) requestBlockers.push('exact_order_number_or_customer_app_order_id_required');
+  if (requestBlockers.length) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      source_context_complete: false,
+      exact_log_followup_complete: false,
+      order_number: lookup.exactOrderNumber || null,
+      history_native_ready: false,
+      tracker_native_ready: false,
+      fallback_required: true,
+      review_required: true,
+      classification: 'unknown_manual_review_required',
+      blockers: requestBlockers,
+      warnings: ['provide_exact_order_number_and_prefer_customer_app_order_id'],
+      writes_performed: false,
+      pii_returned: false,
+      raw_payloads_returned: false,
+      provider_call_impact: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
+      next_action: 'rerun_with_exact_candidate_identifiers',
+    };
+  }
+
+  const orderRead = await g43dScan5FilterRows(base44, 'Order', [
+    { id: lookup.exactCustomerAppOrderId },
+    { order_number: lookup.exactOrderNumber },
+  ], '-created_date', 5);
+  const orderRows = g43dScan5CandidateOrderRowsByNumberOrId(orderRead.rows, lookup);
+  if (!orderRead.ok || orderRows.length !== 1) {
+    const rateLimitDetected = Boolean(orderRead.rate_limit_detected);
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: !rateLimitDetected,
+      rate_limit_detected: rateLimitDetected,
+      source_context_complete: false,
+      exact_log_followup_complete: false,
+      order_number: lookup.exactOrderNumber || null,
+      history_native_ready: false,
+      tracker_native_ready: false,
+      fallback_required: true,
+      review_required: true,
+      classification: orderRows.length > 1 ? 'native_duplicate_identity_risk' : 'unknown_manual_review_required',
+      source_read_count: orderRead.read_count,
+      blockers: orderRows.length > 1 ? ['customer_app_order_identity_ambiguous'] : ['customer_app_order_not_found'],
+      warnings: ['exact_preview_requires_owned_customer_app_order_context_before_future_customer_use'],
+      writes_performed: false,
+      pii_returned: false,
+      raw_payloads_returned: false,
+      provider_call_impact: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
+      next_action: rateLimitDetected ? 'retry_after_rate_limit_window' : 'keep_fallback_current_behavior',
+    };
+  }
+
+  const order = orderRows[0];
+  const exact = g43dScan5ExactFiltersForOrder(order, lookup);
+  const [nativeReadInitial, reviewRead, syncRead, parityRead] = await Promise.all([
+    g43dScan5FilterRows(base44, 'ShopifyOrder', exact.nativeFilters, '-created_date', 10),
+    g43dScan5FilterRows(base44, 'OrderReviewQueue', exact.logFilters, '-created_date', 20),
+    g43dScan5FilterRows(base44, 'OrderSyncLog', exact.logFilters, '-created_date', 20),
+    g43dScan5FilterRows(base44, 'SafeSyncParityLog', exact.logFilters, '-created_date', 20),
+  ]);
+  const nativeMatches = g43dScan1DedupeById((nativeReadInitial.rows || []).filter(nativeOrder => g43dScan1NativeCompatible(order, nativeOrder)));
+  const nativeTaskFilters = [...exact.taskFilters];
+  for (const nativeOrder of nativeMatches) {
+    const nativeId = normalizeText(nativeOrder?.id);
+    if (nativeId) {
+      nativeTaskFilters.push({ native_shopify_order_id: nativeId });
+      nativeTaskFilters.push({ shopify_order_id: nativeId });
+    }
+  }
+  const taskRead = await g43dScan5FilterRows(base44, 'FulfillmentTask', nativeTaskFilters, '-created_date', 20);
+  const exactReads = [orderRead, nativeReadInitial, taskRead, reviewRead, syncRead, parityRead];
+  const exactReadFailed = exactReads.some(read => !read.ok);
+  const rateLimitDetected = exactReads.some(read => read.rate_limit_detected);
+  const historyAllowlist = g43dScan1Allowlist(G43D_SCAN1_CURRENT_HISTORY_ALLOWLIST_FLAG);
+  const trackerAllowlist = g43dScan1Allowlist(G43D_SCAN1_CURRENT_TRACKER_ALLOWLIST_FLAG);
+  const candidate = g43dScan1CandidateSummary({
+    order,
+    nativeOrders: nativeMatches,
+    tasks: taskRead.rows || [],
+    reviewRows: reviewRead.rows || [],
+    syncRows: syncRead.rows || [],
+    parityRows: parityRead.rows || [],
+    relatedTruncated: { ShopifyOrder: false, FulfillmentTask: false, OrderReviewQueue: false, OrderSyncLog: false, SafeSyncParityLog: false },
+    historyAllowlist,
+    trackerAllowlist,
+    provisionalLogFollowup: false,
+  });
+  const safeCandidate = g43dScan5SafeCandidateFields(candidate);
+  const exactSourceBlockers = exactReadFailed ? exactReads.filter(read => !read.ok).map(read => `${read.entity}:${read.error_code || 'exact_read_failed'}`) : [];
+  const blockers = [...new Set([...(candidate.blockers || []), ...exactSourceBlockers])];
+  const sourceContextComplete = Boolean(!exactReadFailed && nativeMatches.length === 1);
+  const exactLogFollowupComplete = Boolean(reviewRead.ok && syncRead.ok && parityRead.ok);
+
+  return {
+    ...baseResponse,
+    success: !exactReadFailed,
+    scan_complete: !rateLimitDetected,
+    rate_limit_detected: rateLimitDetected,
+    order_number: safeCandidate.order_number,
+    history_native_ready: Boolean(candidate.history_native_ready && sourceContextComplete && exactLogFollowupComplete),
+    tracker_native_ready: Boolean(candidate.tracker_native_ready && sourceContextComplete && exactLogFollowupComplete),
+    source_context_complete: sourceContextComplete,
+    exact_log_followup_complete: exactLogFollowupComplete,
+    currently_history_allowlisted: safeCandidate.currently_history_allowlisted,
+    currently_tracker_allowlisted: safeCandidate.currently_tracker_allowlisted,
+    fallback_required: Boolean(blockers.length > 0 || !candidate.history_native_ready || !sourceContextComplete || !exactLogFollowupComplete),
+    review_required: Boolean(blockers.length > 0),
+    native_shopify_order_match_count: nativeMatches.length,
+    compatible_fulfillment_task_count: candidate.compatible_fulfillment_task_count,
+    no_production_batch_direct_source: true,
+    customer_app_chronology_canonical: true,
+    customer_app_totals_line_items_canonical: true,
+    source_read_count: exactReads.reduce((sum, read) => sum + (read.read_count || 0), 0),
+    blockers,
+    warnings: [
+      'admin_preview_only_not_customer_visible',
+      'customer_app_order_remains_canonical',
+      'hub_fallback_remains_active',
+      'refund_payment_and_subscription_source_of_truth_held',
+      'future_customer_use_must_apply_authenticated_ownership_filter_first',
+    ],
+    classification: blockers.length > 0 ? (candidate.classification || 'unknown_manual_review_required') : candidate.classification,
+    safe_candidate_summary: safeCandidate,
+    writes_performed: false,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    next_action: (candidate.history_native_ready && !candidate.currently_history_allowlisted && sourceContextComplete && exactLogFollowupComplete)
+      ? 'candidate_can_feed_g43e_history_planning_only_no_activation'
+      : (candidate.tracker_native_ready && !candidate.currently_tracker_allowlisted && sourceContextComplete && exactLogFollowupComplete)
+        ? 'tracker_candidate_requires_g43e_history_first_and_owning_customer_smoke'
+        : 'keep_current_fallback_or_exact_allowlist_only',
+  };
 }
 
 async function buildG43DScan1Preview(base44, body) {
@@ -7651,12 +8197,20 @@ async function buildG43DScan1Preview(base44, body) {
     return buildG43DScan4CoverageAudit(base44, lookup, baseResponse);
   }
 
+  if (lookup.mode === G43D_SCAN5_MODE_FULL) {
+    return buildG43DScan5FullBoundedScan(base44, lookup, baseResponse);
+  }
+
+  if (lookup.mode === G43D_SCAN1_MODE_EXACT) {
+    return buildG43DScan5ExactOrderPreview(base44, lookup, baseResponse);
+  }
+
   if (![G43D_SCAN1_MODE_RECENT, G43D_SCAN2_MODE_WINDOWED].includes(lookup.mode)) {
     return {
       ...baseResponse,
       success: false,
       scan_complete: false,
-      scan_incomplete_reasons: ['exact_order_surface_preview_not_implemented'],
+      scan_incomplete_reasons: ['unsupported_customer_order_surface_scan_mode'],
       rate_limit_detected: false,
       source_read_count: 0,
       source_row_counts: {},
@@ -7667,7 +8221,7 @@ async function buildG43DScan1Preview(base44, body) {
       safe_candidate_summaries: [],
       classification_counts: {},
       blockers: ['unsupported_mode_for_customer_order_surface_readiness'],
-      warnings: ['use_recent_or_windowed_order_surface_scan'],
+      warnings: ['use_recent_windowed_full_bounded_or_exact_order_surface_scan_mode'],
       next_action: 'rerun_with_supported_customer_order_surface_scan_mode',
     };
   }
