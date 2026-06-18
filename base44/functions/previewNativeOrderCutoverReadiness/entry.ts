@@ -6626,11 +6626,15 @@ async function buildG36CResolvePreview(base44, body) {
 const G43D_SCAN1_PREVIEW_MODE = 'CUSTOMER_ORDER_SURFACE_GENERALIZED_READINESS';
 const G43D_SCAN1_MODE_RECENT = 'RECENT_ORDER_SURFACE_SCAN';
 const G43D_SCAN2_MODE_WINDOWED = 'WINDOWED_ORDER_SURFACE_SCAN';
+const G43D_SCAN4_MODE_COVERAGE = 'ORDER_SOURCE_COVERAGE_AUDIT';
 const G43D_SCAN1_MODE_EXACT = 'EXACT_ORDER_SURFACE_PREVIEW';
-const G43D_SCAN1_SUPPORTED_MODES = new Set([G43D_SCAN1_MODE_RECENT, G43D_SCAN2_MODE_WINDOWED, G43D_SCAN1_MODE_EXACT]);
+const G43D_SCAN1_SUPPORTED_MODES = new Set([G43D_SCAN1_MODE_RECENT, G43D_SCAN2_MODE_WINDOWED, G43D_SCAN4_MODE_COVERAGE, G43D_SCAN1_MODE_EXACT]);
 const G43D_SCAN1_MAX_RECENT_LIMIT = 25;
 const G43D_SCAN1_MAX_RELATED_LIMIT = 100;
 const G43D_SCAN1_DEFAULT_RELATED_LIMIT = 100;
+const G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT = 100;
+const G43D_SCAN4_DEFAULT_ORDER_SOURCE_LIMIT = 100;
+const G43D_SCAN4_DEFAULT_CONTROL_ORDER_NUMBERS = Object.freeze(['NV-MQHJR3V2', 'NV-MPZNKGNT', 'NV-MP5SOQLJ']);
 const G43D_SCAN1_CURRENT_HISTORY_ALLOWLIST_FLAG = 'CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST_ORDER_ALLOWLIST';
 const G43D_SCAN1_CURRENT_TRACKER_ALLOWLIST_FLAG = 'CUSTOMER_ORDER_TRACKER_LIMITED_NATIVE_FIRST_ORDER_ALLOWLIST';
 
@@ -6639,6 +6643,8 @@ const G43D_SCAN1_ALLOWED_BODY_KEYS = new Set([
   'mode',
   'recent_created_limit',
   'recent_updated_limit',
+  'created_order_limit',
+  'updated_order_limit',
   'related_entity_limit',
   'order_limit',
   'order_created_from',
@@ -6649,8 +6655,12 @@ const G43D_SCAN1_ALLOWED_BODY_KEYS = new Set([
   'related_context_to',
   'cursor',
   'page_token',
+  'continuation_token',
+  'page_size',
   'control_order_number',
+  'control_order_numbers',
   'control_customer_app_order_id',
+  'control_customer_app_order_ids',
   'control_order_id',
   'request_id',
   '_internal_secret',
@@ -6689,6 +6699,27 @@ function g43dScan1Limit(value, fallback, max) {
   return Math.min(parsed, max);
 }
 
+function g43dScan4CsvValues(value) {
+  if (Array.isArray(value)) return value.map(item => normalizeText(item)).filter(Boolean);
+  return parseCsv(value).map(item => normalizeText(item)).filter(Boolean);
+}
+
+function g43dScan4ControlNumbers(body) {
+  const values = [
+    ...G43D_SCAN4_DEFAULT_CONTROL_ORDER_NUMBERS,
+    ...g43dScan4CsvValues(body?.control_order_numbers),
+    normalizeText(body?.control_order_number || body?.control_shopify_order_number),
+  ];
+  return [...new Set(values.map(value => g43dScan1OrderKey(value)).filter(Boolean))];
+}
+
+function g43dScan4ControlIds(body) {
+  return [...new Set([
+    ...g43dScan4CsvValues(body?.control_customer_app_order_ids),
+    normalizeText(body?.control_customer_app_order_id || body?.control_order_id),
+  ].filter(Boolean))];
+}
+
 function g43dScan1Lookup(body) {
   const mode = normalizeText(body?.mode || G43D_SCAN1_MODE_RECENT).toUpperCase();
   return {
@@ -6696,6 +6727,9 @@ function g43dScan1Lookup(body) {
     mode: G43D_SCAN1_SUPPORTED_MODES.has(mode) ? mode : mode || G43D_SCAN1_MODE_RECENT,
     recentCreatedLimit: g43dScan1Limit(body?.recent_created_limit, 25, G43D_SCAN1_MAX_RECENT_LIMIT),
     recentUpdatedLimit: g43dScan1Limit(body?.recent_updated_limit, 25, G43D_SCAN1_MAX_RECENT_LIMIT),
+    createdOrderLimit: g43dScan1Limit(body?.created_order_limit ?? body?.order_limit, G43D_SCAN4_DEFAULT_ORDER_SOURCE_LIMIT, G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT),
+    updatedOrderLimit: g43dScan1Limit(body?.updated_order_limit ?? body?.order_limit, G43D_SCAN4_DEFAULT_ORDER_SOURCE_LIMIT, G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT),
+    pageSize: g43dScan1Limit(body?.page_size, 50, G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT),
     orderLimit: g43dScan1Limit(body?.order_limit ?? body?.recent_created_limit, 25, G43D_SCAN1_MAX_RECENT_LIMIT),
     relatedEntityLimit: g43dScan1Limit(body?.related_entity_limit, G43D_SCAN1_DEFAULT_RELATED_LIMIT, G43D_SCAN1_MAX_RELATED_LIMIT),
     orderCreatedFrom: g43dScan2IsoOrNull(body?.order_created_from),
@@ -6704,9 +6738,11 @@ function g43dScan1Lookup(body) {
     orderUpdatedTo: g43dScan2IsoOrNull(body?.order_updated_to),
     relatedContextFrom: g43dScan2IsoOrNull(body?.related_context_from),
     relatedContextTo: g43dScan2IsoOrNull(body?.related_context_to),
-    cursor: sanitizeText(body?.cursor || body?.page_token, 160),
+    cursor: sanitizeText(body?.cursor || body?.page_token || body?.continuation_token, 160),
     controlOrderNumber: g43dScan1OrderKey(body?.control_order_number || body?.control_shopify_order_number),
+    controlOrderNumbers: g43dScan4ControlNumbers(body),
     controlCustomerAppOrderId: normalizeText(body?.control_customer_app_order_id || body?.control_order_id),
+    controlCustomerAppOrderIds: g43dScan4ControlIds(body),
     requestId: sanitizeText(body?.request_id, 140),
   };
 }
@@ -6992,6 +7028,342 @@ function g43dScan3BuildControlValidation({ lookup, controlOrderResult, candidate
   };
 }
 
+
+
+function g43dScan4ExtractRowsAndPagination(response) {
+  if (Array.isArray(response)) return { rows: response, pagination_supported: false, next_continuation_token: null, raw_metadata_present: false };
+  if (!response || typeof response !== 'object') return { rows: [], pagination_supported: false, next_continuation_token: null, raw_metadata_present: false };
+  const rows = Array.isArray(response.data)
+    ? response.data
+    : Array.isArray(response.items)
+      ? response.items
+      : Array.isArray(response.rows)
+        ? response.rows
+        : [];
+  const next = sanitizeText(response.next_cursor || response.nextCursor || response.next_page_token || response.nextPageToken || response.continuation_token || response.continuationToken, 200);
+  return {
+    rows,
+    pagination_supported: Boolean(next),
+    next_continuation_token: next || null,
+    raw_metadata_present: true,
+  };
+}
+
+async function g43dScan4ListOrderSource(base44, { sort = '-created_date', field = 'created_date', requestedLimit = 100 } = {}) {
+  const entity = base44.asServiceRole?.entities?.Order;
+  const effectiveLimit = g43dScan1Limit(requestedLimit, G43D_SCAN4_DEFAULT_ORDER_SOURCE_LIMIT, G43D_SCAN4_MAX_ORDER_SOURCE_LIMIT);
+  if (!entity?.list) {
+    return {
+      ok: false,
+      rate_limit_detected: false,
+      error_code: 'order_list_unavailable',
+      sort,
+      field,
+      requested_limit: Number(requestedLimit || effectiveLimit),
+      effective_limit: effectiveLimit,
+      rows: [],
+      returned_count: 0,
+      limit_reached: false,
+      source_truncated: false,
+      possible_server_cap_detected: false,
+      pagination_supported: false,
+      continuation_available: false,
+      next_continuation_token: null,
+      ordering_stable: false,
+      timestamp_stats: g43dScan4TimestampStats([], field),
+    };
+  }
+  try {
+    const response = await entity.list(sort, effectiveLimit);
+    const parsed = g43dScan4ExtractRowsAndPagination(response);
+    const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
+    const returnedCount = rows.length;
+    const limitReached = returnedCount >= effectiveLimit;
+    const possibleServerCapDetected = effectiveLimit > G43D_SCAN1_MAX_RECENT_LIMIT && returnedCount === G43D_SCAN1_MAX_RECENT_LIMIT;
+    return {
+      ok: true,
+      rate_limit_detected: false,
+      error_code: null,
+      sort,
+      field,
+      requested_limit: Number(requestedLimit || effectiveLimit),
+      effective_limit: effectiveLimit,
+      rows,
+      returned_count: returnedCount,
+      limit_reached: limitReached,
+      source_truncated: limitReached || possibleServerCapDetected || Boolean(parsed.next_continuation_token),
+      possible_server_cap_detected: possibleServerCapDetected,
+      pagination_supported: Boolean(parsed.pagination_supported),
+      continuation_available: Boolean(parsed.next_continuation_token),
+      next_continuation_token: parsed.next_continuation_token || null,
+      ordering_stable: g43dScan4OrderingStable(rows, field, sort),
+      timestamp_stats: g43dScan4TimestampStats(rows, field),
+    };
+  } catch (error) {
+    const rateLimitDetected = g43dScan1DetectRateLimit(error);
+    return {
+      ok: false,
+      rate_limit_detected: rateLimitDetected,
+      error_code: rateLimitDetected ? 'rate_limit_detected' : 'order_source_read_failed',
+      sort,
+      field,
+      requested_limit: Number(requestedLimit || effectiveLimit),
+      effective_limit: effectiveLimit,
+      rows: [],
+      returned_count: 0,
+      limit_reached: false,
+      source_truncated: false,
+      possible_server_cap_detected: false,
+      pagination_supported: false,
+      continuation_available: false,
+      next_continuation_token: null,
+      ordering_stable: false,
+      timestamp_stats: g43dScan4TimestampStats([], field),
+    };
+  }
+}
+
+function g43dScan4TimestampStats(rows, field) {
+  const isoValues = (rows || []).map(row => g43dScan2IsoOrNull(row?.[field])).filter(Boolean).sort();
+  return {
+    newest: isoValues.length ? isoValues[isoValues.length - 1] : null,
+    oldest: isoValues.length ? isoValues[0] : null,
+  };
+}
+
+function g43dScan4OrderingStable(rows, field, sort) {
+  const direction = normalizeText(sort).startsWith('-') ? 'desc' : 'asc';
+  let previous = null;
+  for (const row of rows || []) {
+    const current = g43dScan2IsoOrNull(row?.[field]);
+    if (!current) continue;
+    if (previous && direction === 'desc' && current > previous) return false;
+    if (previous && direction !== 'desc' && current < previous) return false;
+    previous = current;
+  }
+  return true;
+}
+
+function g43dScan4SourceContains(row, rows) {
+  const id = normalizeText(row?.id);
+  const number = g43dScan1OrderNumber(row);
+  return (rows || []).some(candidate => normalizeText(candidate?.id) === id || g43dScan1OrderNumber(candidate) === number);
+}
+
+function g43dScan4TimestampWithinStats(timestamp, stats) {
+  if (!timestamp || !stats?.oldest || !stats?.newest) return false;
+  return timestamp >= stats.oldest && timestamp <= stats.newest;
+}
+
+async function g43dScan4ControlRows(base44, lookup, createdRead, updatedRead) {
+  const entity = base44.asServiceRole?.entities?.Order;
+  const controls = [];
+  let readCount = 0;
+  let rateLimitDetected = false;
+  const exactByNumber = new Map();
+  const exactById = new Map();
+  if (!entity?.filter) {
+    return { controls, control_source_read_count: 0, control_validation_passed: false, rate_limit_detected: false, error_code: 'order_filter_unavailable' };
+  }
+  for (const id of lookup.controlCustomerAppOrderIds || []) {
+    try {
+      const rows = await entity.filter({ id }, '-created_date', 2);
+      readCount += 1;
+      if (Array.isArray(rows) && rows[0]) exactById.set(id, rows[0]);
+    } catch (error) {
+      if (g43dScan1DetectRateLimit(error)) rateLimitDetected = true;
+    }
+  }
+  for (const orderNumber of lookup.controlOrderNumbers || []) {
+    try {
+      const rows = await entity.filter({ order_number: orderNumber }, '-created_date', 2);
+      readCount += 1;
+      if (Array.isArray(rows) && rows[0]) exactByNumber.set(orderNumber, rows[0]);
+    } catch (error) {
+      if (g43dScan1DetectRateLimit(error)) rateLimitDetected = true;
+    }
+  }
+  const sourceRows = g43dScan1DedupeById([...(createdRead.rows || []), ...(updatedRead.rows || [])]);
+  for (const orderNumber of lookup.controlOrderNumbers || []) {
+    const exact = exactByNumber.get(orderNumber) || [...exactById.values()].find(row => g43dScan1OrderNumber(row) === orderNumber) || null;
+    const created = g43dScan3CanonicalTimestamp(exact, ['created_date', 'created_at', 'createdAt']);
+    const updated = g43dScan3CanonicalTimestamp(exact, ['updated_date', 'updated_at', 'updatedAt']);
+    const foundInSource = exact ? g43dScan4SourceContains(exact, sourceRows) : false;
+    const expectedByCreated = g43dScan4TimestampWithinStats(created.iso, createdRead.timestamp_stats);
+    const expectedByUpdated = g43dScan4TimestampWithinStats(updated.iso, updatedRead.timestamp_stats);
+    const expectedInSourceHorizon = Boolean(exact && (expectedByCreated || expectedByUpdated || (!createdRead.source_truncated && !updatedRead.source_truncated)));
+    controls.push({
+      order_number: orderNumber,
+      exact_control_found: Boolean(exact),
+      expected_in_source_horizon: expectedInSourceHorizon,
+      found_in_source_horizon: foundInSource,
+      canonical_timestamp: created.iso || updated.iso || null,
+      canonical_created_field: created.field,
+      canonical_updated_field: updated.field,
+      control_validation_passed: Boolean(exact && (!expectedInSourceHorizon || foundInSource)),
+    });
+  }
+  const validationPassed = controls.length > 0 && controls.every(control => control.control_validation_passed);
+  return {
+    controls,
+    control_source_read_count: readCount,
+    control_order_found: controls.some(control => control.found_in_source_horizon),
+    control_order_validation_passed: validationPassed,
+    rate_limit_detected: rateLimitDetected,
+    error_code: rateLimitDetected ? 'rate_limit_detected' : null,
+  };
+}
+
+function g43dScan4SourceFailureResponse(baseResponse, lookup, createdRead, updatedRead, controlResult) {
+  const failed = [createdRead, updatedRead].filter(read => !read.ok);
+  const rateLimitDetected = failed.some(read => read.rate_limit_detected) || Boolean(controlResult?.rate_limit_detected);
+  return {
+    ...baseResponse,
+    success: false,
+    scan_complete: false,
+    coverage_complete: false,
+    scan_incomplete_reasons: failed.map(read => read.error_code).filter(Boolean),
+    rate_limit_detected: rateLimitDetected,
+    pagination_supported: false,
+    pagination_strategy: 'unsupported_no_repository_or_entity_metadata_contract',
+    requested_created_limit: lookup.createdOrderLimit,
+    effective_created_limit: createdRead.effective_limit,
+    returned_created_count: createdRead.returned_count,
+    created_limit_reached: createdRead.limit_reached,
+    created_source_truncated: createdRead.source_truncated,
+    requested_updated_limit: lookup.updatedOrderLimit,
+    effective_updated_limit: updatedRead.effective_limit,
+    returned_updated_count: updatedRead.returned_count,
+    updated_limit_reached: updatedRead.limit_reached,
+    updated_source_truncated: updatedRead.source_truncated,
+    continuation_available: false,
+    continuation_token: null,
+    source_read_count: 2 + (controlResult?.control_source_read_count || 0),
+    writes_performed: false,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    blockers: ['order_source_read_failed'],
+    warnings: ['generalized_counts_not_authoritative'],
+    next_action: rateLimitDetected ? 'retry_after_rate_limit_window' : 'fix_source_read_failure_and_rerun',
+  };
+}
+
+async function buildG43DScan4CoverageAudit(base44, lookup, baseResponse) {
+  if (lookup.cursor) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      coverage_complete: false,
+      scan_incomplete_reasons: ['continuation_token_not_supported_by_current_entity_list_contract'],
+      rate_limit_detected: false,
+      pagination_supported: false,
+      pagination_strategy: 'unsupported_no_repository_or_entity_metadata_contract',
+      continuation_available: false,
+      continuation_token: null,
+      next_continuation_token: null,
+      writes_performed: false,
+      pii_returned: false,
+      raw_payloads_returned: false,
+      provider_call_impact: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
+      blockers: ['unsupported_pagination_contract'],
+      warnings: ['do_not_invent_cursor_or_offset_pagination'],
+      next_action: 'rerun_without_continuation_or_use_exact_candidate_preview',
+    };
+  }
+  const [createdRead, updatedRead] = await Promise.all([
+    g43dScan4ListOrderSource(base44, { sort: '-created_date', field: 'created_date', requestedLimit: lookup.createdOrderLimit }),
+    g43dScan4ListOrderSource(base44, { sort: '-updated_date', field: 'updated_date', requestedLimit: lookup.updatedOrderLimit }),
+  ]);
+  const controlResult = await g43dScan4ControlRows(base44, lookup, createdRead, updatedRead);
+  if (!createdRead.ok || !updatedRead.ok) return g43dScan4SourceFailureResponse(baseResponse, lookup, createdRead, updatedRead, controlResult);
+
+  const uniqueBeforeDedupe = [...(createdRead.rows || []), ...(updatedRead.rows || [])].length;
+  const uniqueRows = g43dScan1DedupeById([...(createdRead.rows || []), ...(updatedRead.rows || [])]);
+  const paginationSupported = Boolean(createdRead.pagination_supported || updatedRead.pagination_supported);
+  const continuationAvailable = Boolean(createdRead.continuation_available || updatedRead.continuation_available);
+  const sourceOrderingStable = Boolean(createdRead.ordering_stable && updatedRead.ordering_stable);
+  const serverCapDetected = Boolean(createdRead.possible_server_cap_detected || updatedRead.possible_server_cap_detected);
+  const sourceTruncated = Boolean(createdRead.source_truncated || updatedRead.source_truncated);
+  const coverageComplete = Boolean(
+    sourceOrderingStable &&
+    controlResult.control_order_validation_passed &&
+    !serverCapDetected &&
+    !sourceTruncated &&
+    !paginationSupported &&
+    !continuationAvailable
+  );
+  const incompleteReasons = [];
+  if (!sourceOrderingStable) incompleteReasons.push('order_source_ordering_unstable');
+  if (!controlResult.control_order_validation_passed) incompleteReasons.push('known_control_validation_failed');
+  if (serverCapDetected) incompleteReasons.push('possible_silent_server_cap_detected');
+  if (createdRead.source_truncated) incompleteReasons.push('created_order_source_truncated');
+  if (updatedRead.source_truncated) incompleteReasons.push('updated_order_source_truncated');
+  if (paginationSupported || continuationAvailable) incompleteReasons.push('pagination_available_but_not_processed_in_single_request');
+
+  return {
+    ...baseResponse,
+    success: true,
+    scan_complete: true,
+    coverage_complete: coverageComplete,
+    scan_incomplete_reasons: incompleteReasons,
+    rate_limit_detected: false,
+    pagination_supported: paginationSupported,
+    pagination_strategy: paginationSupported ? 'single_page_metadata_detected_no_unbounded_loop' : 'unsupported_no_repository_or_entity_metadata_contract',
+    requested_created_limit: createdRead.requested_limit,
+    effective_created_limit: createdRead.effective_limit,
+    returned_created_count: createdRead.returned_count,
+    created_limit_reached: createdRead.limit_reached,
+    created_source_truncated: createdRead.source_truncated,
+    requested_updated_limit: updatedRead.requested_limit,
+    effective_updated_limit: updatedRead.effective_limit,
+    returned_updated_count: updatedRead.returned_count,
+    updated_limit_reached: updatedRead.limit_reached,
+    updated_source_truncated: updatedRead.source_truncated,
+    possible_server_cap_detected: serverCapDetected,
+    source_ordering_stable: sourceOrderingStable,
+    created_ordering_stable: createdRead.ordering_stable,
+    updated_ordering_stable: updatedRead.ordering_stable,
+    continuation_available: continuationAvailable,
+    continuation_token: null,
+    next_continuation_token: createdRead.next_continuation_token || updatedRead.next_continuation_token || null,
+    unique_order_count_before_dedupe: uniqueBeforeDedupe,
+    unique_order_count_after_dedupe: uniqueRows.length,
+    oldest_created_timestamp_returned: createdRead.timestamp_stats.oldest,
+    newest_created_timestamp_returned: createdRead.timestamp_stats.newest,
+    oldest_updated_timestamp_returned: updatedRead.timestamp_stats.oldest,
+    newest_updated_timestamp_returned: updatedRead.timestamp_stats.newest,
+    controls: controlResult.controls,
+    control_order_found: controlResult.control_order_found,
+    control_order_validation_passed: controlResult.control_order_validation_passed,
+    source_read_count: 2 + (controlResult.control_source_read_count || 0),
+    readiness_counts_authoritative: false,
+    generalized_readiness_counts_claimed: false,
+    writes_performed: false,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    blockers: coverageComplete ? [] : incompleteReasons,
+    warnings: [
+      'admin_preview_only_not_customer_visible',
+      'customer_app_order_remains_canonical',
+      'hub_fallback_remains_active',
+      'refund_payment_and_subscription_source_of_truth_held',
+      ...(coverageComplete ? [] : ['generalized_counts_not_authoritative']),
+    ],
+    next_action: coverageComplete
+      ? 'use_complete_source_coverage_before_planning_g43e_history_only'
+      : 'retain_exact_allowlists_or_use_exact_candidate_previews',
+  };
+}
+
 function g43dScan1CustomerEmailCompatible(order, row) {
   const left = normalizeLower(order?.customer_email || order?.email || order?.contact_email);
   const right = normalizeLower(row?.customer_email || row?.email || row?.contact_email);
@@ -7274,6 +7646,10 @@ async function buildG43DScan1Preview(base44, body) {
     ownership_verification: 'source_and_harness_verified_not_live_multi_account',
     safety: G43D_SCAN1_READ_ONLY_SAFETY,
   };
+
+  if (lookup.mode === G43D_SCAN4_MODE_COVERAGE) {
+    return buildG43DScan4CoverageAudit(base44, lookup, baseResponse);
+  }
 
   if (![G43D_SCAN1_MODE_RECENT, G43D_SCAN2_MODE_WINDOWED].includes(lookup.mode)) {
     return {
