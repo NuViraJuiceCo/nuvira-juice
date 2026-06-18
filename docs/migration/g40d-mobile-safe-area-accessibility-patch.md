@@ -3,7 +3,7 @@
 **Branch:** `codex/g40d-mobile-safe-area-accessibility`
 **Commit:** `G40D: fix mobile safe-area top layout`
 **Date:** 2026-06-17
-**Status:** `mobile_safe_area_patch_merged_publish_pending_builder_sync`
+**Status:** `mobile_safe_area_patch_pr_prep_pending_merge_and_scoped_ui_publish`
 
 ---
 
@@ -77,7 +77,7 @@ The `SAFE_TOP_PADDING` constant (`max(1rem, env(safe-area-inset-top))`) ensures:
 |------|--------|
 | `pages/Events.jsx` | Replaced ad-hoc sticky header with `<MobilePageHeader>` |
 | `pages/OrderTracker.jsx` | Replaced `pt-10` with `paddingTop: SAFE_TOP_PADDING` on all 3 colored/muted header instances + loading skeleton |
-| `pages/OrderConfirmation.jsx` | Added `paddingTop: 'env(safe-area-inset-top)'` to loading/processing container |
+| `pages/OrderConfirmation.jsx` | Added shared `SAFE_TOP_PADDING` safe-area top padding to loading/processing, empty, timeout, and final success containers |
 
 ### Pages NOT patched (already correct)
 
@@ -116,7 +116,8 @@ The `SAFE_TOP_PADDING` constant (`max(1rem, env(safe-area-inset-top))`) ensures:
 | 3 | OrderTracker imports and uses `SAFE_TOP_PADDING` on gradient headers |
 | 3c | OrderTracker no longer has raw `pt-10` on gradient header |
 | 3d | All 3+ SAFE_TOP_PADDING usages present in OrderTracker |
-| 4 | OrderConfirmation loading container has safe-area top padding |
+| 4 | OrderConfirmation loading container imports and uses shared `SAFE_TOP_PADDING` |
+| 4b | OrderConfirmation final/empty/timeout states also use shared `SAFE_TOP_PADDING` |
 | 5 | Home still uses `env(safe-area-inset-top)` (regression guard) |
 | 5b | Home does NOT import MobilePageHeader (no double-padding) |
 | 6 | MobilePageHeader back button has `w-11 h-11` (44px tap target) |
@@ -155,14 +156,15 @@ This PR:
 
 ## 8. Publish Limitation
 
-**Builder source is desynced from GitHub main.**
+This PR is source capture / PR prep only. No Builder publish is part of G40D PR prep.
 
-This patch is present in the Builder's live source code (via Base44 sync) but UI publish remains blocked until:
-1. Builder source is confirmed synced to GitHub main branch containing G40D
-2. Builder preview bundle contains G40D marker classes (e.g., `SAFE_TOP_PADDING`, `MobilePageHeader`)
-3. Pending publish scope is clean (no unrelated Builder changes)
+UI publish remains blocked until:
+1. G40D is merged to GitHub main
+2. Builder source is confirmed synced to the GitHub main branch containing G40D
+3. Builder preview bundle contains G40D marker classes (for example `SAFE_TOP_PADDING`, `MobilePageHeader`, and `env(safe-area-inset-top)`)
+4. Pending publish scope is clean (no unrelated Builder changes)
 
-**Readiness classification:** `mobile_safe_area_patch_merged_publish_pending_builder_sync`
+**Readiness classification before publish:** `mobile_safe_area_patch_merged_publish_pending_builder_sync`
 
 ---
 
@@ -189,4 +191,4 @@ Verify on all:
 - Bottom nav unaffected
 
 **If live smoke passes:** update status to `mobile_safe_area_patch_live`  
-**If Builder source still desynced:** status remains `mobile_safe_area_patch_blocked_by_builder_source_desync
+**If Builder source still desynced:** status remains `mobile_safe_area_patch_blocked_by_builder_source_desync`

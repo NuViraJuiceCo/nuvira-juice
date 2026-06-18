@@ -3,6 +3,7 @@ import SEO from '@/components/SEO';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import GoogleCustomerReviewsOptIn from '@/components/GoogleCustomerReviewsOptIn';
 import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
+import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail } from 'lucide-react';
@@ -121,7 +122,10 @@ export default function OrderConfirmation() {
   // ── Case 1: No params ──────────────────────────────────────────────────────
   if (lookupMode === 'none') {
     return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center">
+      <div
+        className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center"
+        style={{ paddingTop: SAFE_TOP_PADDING }}
+      >
         <SEO title="Order Processing" noindex={true} />
         <div className="nuvira-icon-badge w-20 h-20 rounded-full flex items-center justify-center mb-5">
           <Mail className="w-10 h-10" />
@@ -150,7 +154,7 @@ export default function OrderConfirmation() {
   if (loading) {
     const elapsed = Math.floor((Date.now() - startTime.current) / 1000);
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center" style={{ paddingTop: SAFE_TOP_PADDING }}>
         <SEO title="Order Processing" noindex={true} />
         <motion.div
           animate={{ rotate: 360 }}
@@ -176,7 +180,10 @@ export default function OrderConfirmation() {
   // ── Case 3: Timed out ──────────────────────────────────────────────────────
   if (timedOut && !order) {
     return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center">
+      <div
+        className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center"
+        style={{ paddingTop: SAFE_TOP_PADDING }}
+      >
         <SEO title="Order Received" noindex={true} />
         <div className="nuvira-icon-badge w-20 h-20 rounded-full flex items-center justify-center mb-5">
           <Clock className="w-10 h-10" />
@@ -212,7 +219,10 @@ export default function OrderConfirmation() {
     <>
     <BrowserAppPrompt pageRoute="/account/orders" />
     <GoogleCustomerReviewsOptIn order={order} />
-    <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8">
+    <div
+      className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8"
+      style={{ paddingTop: SAFE_TOP_PADDING }}
+    >
       <SEO title="Order Confirmed" description="Your NuVira Juice order has been confirmed." noindex={true} />
       <motion.div
         initial={{ scale: 0 }}
