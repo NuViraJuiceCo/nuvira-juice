@@ -375,6 +375,14 @@
     "subscription_parent_id": {
       "type": "string"
     },
+    "subscription_occurrence_id": {
+      "type": "string",
+      "description": "Internal immutable occurrence id copied from the Customer App Order for future subscription occurrence chains."
+    },
+    "subscription_cycle_key": {
+      "type": "string",
+      "description": "Internal secondary cycle key copied from the Customer App Order for future subscription occurrence chains."
+    },
     "fulfillment_instance_date": {
       "type": "string",
       "format": "date"
