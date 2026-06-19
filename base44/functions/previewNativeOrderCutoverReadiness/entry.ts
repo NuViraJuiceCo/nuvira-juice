@@ -8868,6 +8868,7 @@ function g46bAnalyzeParent(parent, context, duplicateParentCount = 1, exact = fa
   if (!nativeNextBillingDatePresent) warnings.push('stripe_billing_context_unavailable');
   warnings.push('stripe_billing_source_of_truth');
   warnings.push('hub_recurrence_source_of_truth');
+  warnings.push('occurrence_hub_source_of_truth');
   warnings.push('subscription_write_not_ready');
 
   const nativeParentCandidate = blockers.length === 0 && nativeCadencePresent && nativeProductSelectionPresent && nativeQuantitySelectionPresent;
@@ -8948,11 +8949,13 @@ function g46bClassificationCounts(parentAnalyses) {
       keys.add(occurrence.classification);
       if (occurrence.blockers.includes('occurrence_missing_native_order')) keys.add('occurrence_missing_native_order');
       if (occurrence.blockers.includes('occurrence_missing_fulfillment_task')) keys.add('occurrence_missing_fulfillment_task');
+      if (occurrence.fallback_required) keys.add('occurrence_hub_source_of_truth');
       if (occurrence.blockers.includes('occurrence_duplicate_identity_risk')) keys.add('occurrence_duplicate_identity_risk');
       if (occurrence.blockers.includes('occurrence_schedule_mismatch')) keys.add('occurrence_schedule_mismatch');
     }
     if (!parent?.stripe_linkage_present) keys.add('stripe_billing_context_unavailable');
     if (!parent?.hub_linkage_present) keys.add('hub_recurrence_context_unavailable');
+    keys.add('occurrence_hub_source_of_truth');
     keys.add('subscription_multi_delivery_hub_source_of_truth');
     if (parent?.repair_replay_hold) keys.add('repair_replay_hold');
     if (parent?.native_parent_read_candidate) keys.add('customer_subscription_read_candidate');
@@ -9230,7 +9233,7 @@ async function buildG46BExactPreview(base44, lookup, baseResponse) {
     safe_occurrence_summaries: analysis.occurrence_summaries,
     classification_counts: classificationCounts,
     blockers: analysis.blockers,
-    warnings: [...new Set(['admin_preview_only_not_customer_visible', 'stripe_billing_source_of_truth', 'hub_recurrence_source_of_truth', 'subscription_management_writes_held', ...analysis.warnings])],
+    warnings: [...new Set(['admin_preview_only_not_customer_visible', 'stripe_billing_source_of_truth', 'hub_recurrence_source_of_truth', 'occurrence_hub_source_of_truth', 'subscription_management_writes_held', ...analysis.warnings])],
     classification: analysis.classification,
     next_action: analysis.native_parent_read_candidate ? 'review_exact_parent_occurrence_parity_then_plan_g46c_disabled_read_patch' : 'retain_current_hub_stripe_subscription_behavior_and_fix_identity_gaps',
   };
@@ -9301,7 +9304,7 @@ async function buildG46BBoundedScan(base44, lookup, baseResponse) {
     safe_occurrence_summaries: [...analyses.flatMap(analysis => analysis.occurrence_summaries || []), ...orphanSummaries],
     classification_counts: orphanSummaries.length ? { ...classificationCounts, parent_occurrence_identity_ambiguous: (classificationCounts.parent_occurrence_identity_ambiguous || 0) + orphanSummaries.length } : classificationCounts,
     blockers: anyTruncated ? ['bounded_source_truncated_counts_not_full_fleet'] : [],
-    warnings: [...new Set(['admin_preview_only_not_customer_visible', 'stripe_billing_source_of_truth', 'hub_recurrence_source_of_truth', 'subscription_management_writes_held', 'future_customer_use_must_apply_authenticated_ownership_filter_first', ...(anyTruncated ? ['source_truncated_exact_followup_required'] : [])])],
+    warnings: [...new Set(['admin_preview_only_not_customer_visible', 'stripe_billing_source_of_truth', 'hub_recurrence_source_of_truth', 'occurrence_hub_source_of_truth', 'subscription_management_writes_held', 'future_customer_use_must_apply_authenticated_ownership_filter_first', ...(anyTruncated ? ['source_truncated_exact_followup_required'] : [])])],
     next_action: anyTruncated ? 'rerun_with_narrower_exact_followup_before_decision' : counts.native_parent_read_candidate_count > 0 ? 'review_candidates_then_plan_g46c_disabled_subscription_summary_reads' : 'retain_current_hub_stripe_subscription_behavior_and_fix_identity_gaps',
   };
 }
