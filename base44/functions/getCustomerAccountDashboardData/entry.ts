@@ -22,6 +22,10 @@ const CUSTOMER_ORDER_HISTORY_NATIVE_FIRST_ENABLE = 'ENABLE_CUSTOMER_ORDER_HISTOR
 const CUSTOMER_ORDER_HISTORY_NATIVE_FIRST_KILL_SWITCH = 'CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST_KILL_SWITCH';
 const CUSTOMER_ORDER_HISTORY_NATIVE_FIRST_ALLOWLIST = 'CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST_ORDER_ALLOWLIST';
 
+const CUSTOMER_REWARDS_NATIVE_FIRST_READS_ENABLE = 'ENABLE_CUSTOMER_REWARDS_LIMITED_NATIVE_FIRST_READS';
+const CUSTOMER_REWARDS_NATIVE_FIRST_READS_KILL_SWITCH = 'CUSTOMER_REWARDS_LIMITED_NATIVE_FIRST_KILL_SWITCH';
+const CUSTOMER_REWARDS_NATIVE_FIRST_READS_USER_POINTS_ALLOWLIST = 'CUSTOMER_REWARDS_LIMITED_NATIVE_FIRST_USER_POINTS_ALLOWLIST';
+
 function normalizeText(value) {
   return String(value ?? '').trim();
 }
@@ -40,6 +44,10 @@ function envEnabled(name) {
 
 function parseCsvSet(value) {
   return new Set(normalizeText(value).split(',').map(part => normalizeOrderNumber(part)).filter(Boolean));
+}
+
+function parseIdentifierCsvSet(value) {
+  return new Set(normalizeText(value).split(',').map(part => normalizeText(part)).filter(Boolean));
 }
 
 function uniqueRows(rows) {
@@ -370,6 +378,186 @@ async function applyLimitedNativeFirstOrderHistory(base44, orders) {
   return enriched;
 }
 
+
+const CUSTOMER_REWARDS_DISPLAY_TIERS = [
+  { name: 'Seedling', min: 0, max: 499, next: 500 },
+  { name: 'Silver', min: 500, max: 999, next: 1000 },
+  { name: 'Gold', min: 1000, max: 2499, next: 2500 },
+  { name: 'Platinum', min: 2500, max: 4999, next: 5000 },
+  { name: 'Elite', min: 5000, max: Number.POSITIVE_INFINITY, next: null },
+];
+
+function customerRewardsLimitedNativeFirstConfig() {
+  return {
+    enabled: envEnabled(CUSTOMER_REWARDS_NATIVE_FIRST_READS_ENABLE),
+    killSwitch: envEnabled(CUSTOMER_REWARDS_NATIVE_FIRST_READS_KILL_SWITCH),
+    allowlist: parseIdentifierCsvSet(Deno.env.get(CUSTOMER_REWARDS_NATIVE_FIRST_READS_USER_POINTS_ALLOWLIST)),
+  };
+}
+
+function customerRewardsLimitedNativeReadsActive(config = customerRewardsLimitedNativeFirstConfig()) {
+  return Boolean(config.enabled && !config.killSwitch && config.allowlist?.size > 0);
+}
+
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function deriveCustomerRewardsTier(points) {
+  const total = finiteNumber(points) ?? 0;
+  return CUSTOMER_REWARDS_DISPLAY_TIERS.find(tier => total >= tier.min && total <= tier.max) || CUSTOMER_REWARDS_DISPLAY_TIERS[0];
+}
+
+function analyzeCustomerRewardsHistory(pointsRecord) {
+  const history = Array.isArray(pointsRecord?.points_history) ? pointsRecord.points_history : [];
+  let malformed = 0;
+  let delta = 0;
+  let missingIdempotency = 0;
+  for (const entry of history) {
+    const amount = finiteNumber(entry?.amount);
+    if (amount === null) {
+      malformed += 1;
+      continue;
+    }
+    delta += amount;
+    if (!normalizeText(entry?.idempotency_key)) missingIdempotency += 1;
+  }
+  const total = finiteNumber(pointsRecord?.total_points);
+  return {
+    historyEntryCount: history.length,
+    malformedHistoryEntryCount: malformed,
+    missingIdempotencyKeyCount: missingIdempotency,
+    historyReconstructable: history.length > 0 && malformed === 0,
+    reconstructableHistoryDelta: delta,
+    balanceHistoryConsistent: total !== null && history.length > 0 && malformed === 0 && total === delta,
+  };
+}
+
+function customerRewardsRepairReplayHold(pointsRecord) {
+  const historyText = (Array.isArray(pointsRecord?.points_history) ? pointsRecord.points_history : [])
+    .map(entry => [entry?.description, entry?.event_key, entry?.idempotency_key].map(normalizeLower).join(' '))
+    .join(' ');
+  const text = [
+    pointsRecord?.description,
+    pointsRecord?.sync_status,
+    pointsRecord?.source,
+    historyText,
+  ].map(normalizeLower).join(' ');
+  return ['repair', 'replay', 'retry', 'recovery', 'backfill', 'manual_review'].some(token => text.includes(token));
+}
+
+function customerRewardsTierCompatible(pointsRecord, derivedTier) {
+  const storedTier = normalizeLower(pointsRecord?.current_tier || pointsRecord?.tier || pointsRecord?.tier_name || pointsRecord?.loyalty_tier);
+  if (!storedTier) return true;
+  return storedTier === normalizeLower(derivedTier?.name);
+}
+
+function customerRewardsCatalogReadiness(activeRewardTiers) {
+  const rewards = Array.isArray(activeRewardTiers) ? activeRewardTiers : [];
+  const blockers = [];
+  const seenDefinitions = new Set();
+  let duplicateRewardDefinitionCount = 0;
+  let invalidRewardCostCount = 0;
+
+  if (rewards.length === 0) blockers.push('static_fallback_catalog_active');
+
+  for (const reward of rewards) {
+    const title = normalizeLower(reward?.title);
+    const rewardType = normalizeLower(reward?.reward_type);
+    const cost = finiteNumber(reward?.points_required);
+    const key = `${title}|${rewardType}|${cost ?? 'invalid'}`;
+    if (!title || !rewardType || cost === null || cost < 0) invalidRewardCostCount += 1;
+    if (seenDefinitions.has(key)) duplicateRewardDefinitionCount += 1;
+    seenDefinitions.add(key);
+  }
+
+  if (duplicateRewardDefinitionCount > 0) blockers.push('duplicate_reward_definition_risk');
+  if (invalidRewardCostCount > 0) blockers.push('invalid_reward_cost_risk');
+
+  return {
+    ready: blockers.length === 0,
+    blockers,
+    activeRewardCount: rewards.length,
+    duplicateRewardDefinitionCount,
+    invalidRewardCostCount,
+  };
+}
+
+function customerRewardsNativeReadEligible(pointsRecord, ownedPointsRows, activeRewardTiers = []) {
+  const pointsRows = uniqueRows(ownedPointsRows || []);
+  const blockers = [];
+  const total = finiteNumber(pointsRecord?.total_points);
+  const lifetime = finiteNumber(pointsRecord?.lifetime_points);
+  const redeemed = finiteNumber(pointsRecord?.redeemed_points);
+  const derivedTier = deriveCustomerRewardsTier(total ?? 0);
+  const history = analyzeCustomerRewardsHistory(pointsRecord);
+  const catalog = customerRewardsCatalogReadiness(activeRewardTiers);
+
+  if (!pointsRecord) blockers.push('user_points_missing');
+  if (pointsRows.length !== 1) blockers.push('duplicate_loyalty_identity_risk');
+  if (!normalizeText(pointsRecord?.id)) blockers.push('internal_user_points_id_missing');
+  if (total === null || lifetime === null || redeemed === null) blockers.push('native_balance_missing');
+  if ((total ?? 0) < 0 || (lifetime ?? 0) < 0 || (redeemed ?? 0) < 0) blockers.push('negative_or_impossible_points_state');
+  if ((lifetime ?? 0) < (redeemed ?? 0)) blockers.push('negative_or_impossible_points_state');
+  if (!history.historyReconstructable) blockers.push('points_history_not_reconstructable_for_read_parity');
+  if (history.historyReconstructable && !history.balanceHistoryConsistent) blockers.push('native_balance_history_mismatch');
+  if (!customerRewardsTierCompatible(pointsRecord, derivedTier)) blockers.push('tier_mismatch_manual_review');
+  if (!catalog.ready) blockers.push(...catalog.blockers);
+  if (customerRewardsRepairReplayHold(pointsRecord)) blockers.push('repair_replay_hold');
+
+  return {
+    eligible: blockers.length === 0,
+    blockers: Array.from(new Set(blockers)),
+    derivedTier,
+    history,
+    catalog,
+  };
+}
+
+function sanitizeCustomerRewardsPointsRecord(pointsRecord, eligibility) {
+  if (!pointsRecord) return null;
+  const total = finiteNumber(pointsRecord.total_points) ?? 0;
+  const lifetime = finiteNumber(pointsRecord.lifetime_points) ?? 0;
+  const redeemed = finiteNumber(pointsRecord.redeemed_points) ?? 0;
+  const tier = eligibility?.derivedTier || deriveCustomerRewardsTier(total);
+  const pointsToNextTier = tier.next ? Math.max(0, tier.next - total) : 0;
+  const tierProgressPercent = tier.next ? Math.min(100, Math.max(0, ((total - tier.min) / (tier.next - tier.min)) * 100)) : 100;
+
+  return {
+    total_points: total,
+    lifetime_points: lifetime,
+    redeemed_points: redeemed,
+    current_tier: tier.name,
+    points_to_next_tier: pointsToNextTier,
+    tier_progress_percent: tierProgressPercent,
+  };
+}
+
+function selectLimitedNativeFirstRewardsPointsRecord({ currentPointsRecord, ownedPointsRows, activeRewardTiers, config = customerRewardsLimitedNativeFirstConfig() }) {
+  if (!customerRewardsLimitedNativeReadsActive(config)) {
+    return { pointsRecord: currentPointsRecord, selected: false, reason: 'feature_disabled_or_unconfigured' };
+  }
+
+  const ownedRows = uniqueRows(ownedPointsRows || []);
+  const allowlistedOwnedRows = ownedRows.filter(row => config.allowlist.has(normalizeText(row?.id)));
+  if (allowlistedOwnedRows.length !== 1) {
+    return { pointsRecord: currentPointsRecord, selected: false, reason: 'allowlisted_owned_points_record_not_exactly_one' };
+  }
+
+  const candidate = allowlistedOwnedRows[0];
+  const eligibility = customerRewardsNativeReadEligible(candidate, ownedRows, activeRewardTiers);
+  if (!eligibility.eligible) {
+    return { pointsRecord: currentPointsRecord, selected: false, reason: 'eligibility_failed' };
+  }
+
+  return {
+    pointsRecord: sanitizeCustomerRewardsPointsRecord(candidate, eligibility),
+    selected: true,
+    reason: 'limited_native_rewards_read_selected',
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -514,9 +702,27 @@ Deno.serve(async (req) => {
 
     // ── STEP 6: Load loyalty points across all identities ─────────────────────
     let pointsRecord = null;
+    let ownedPointsRows = [];
+    const rewardsNativeReadConfig = customerRewardsLimitedNativeFirstConfig();
+    const rewardsNativeReadActive = customerRewardsLimitedNativeReadsActive(rewardsNativeReadConfig);
     for (const email of identityList) {
       const pts = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: email });
-      if (pts[0]) { pointsRecord = pts[0]; break; }
+      if (rewardsNativeReadActive) ownedPointsRows = uniqueRows([...ownedPointsRows, ...pts]);
+      if (pts[0] && !pointsRecord) {
+        pointsRecord = pts[0];
+        if (!rewardsNativeReadActive) break;
+      }
+    }
+
+    if (rewardsNativeReadActive) {
+      const activeRewardTiers = await safeFilter(base44.asServiceRole.entities.RewardTier, { is_active: true }, 'sort_order', 20);
+      const selectedRewardsRead = selectLimitedNativeFirstRewardsPointsRecord({
+        currentPointsRecord: pointsRecord,
+        ownedPointsRows,
+        activeRewardTiers,
+        config: rewardsNativeReadConfig,
+      });
+      pointsRecord = selectedRewardsRead.pointsRecord;
     }
 
     // ── STEP 7: Unread notification count ─────────────────────────────────────
