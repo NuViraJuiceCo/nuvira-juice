@@ -8512,6 +8512,648 @@ async function buildG43DScan1Preview(base44, body) {
   };
 }
 
+const G45B_PREVIEW_MODE = 'CUSTOMER_LOYALTY_READ_PARITY';
+const G45B_MODE_EXACT = 'EXACT_CUSTOMER_LOYALTY_PARITY';
+const G45B_MODE_SCAN = 'BOUNDED_LOYALTY_READINESS_SCAN';
+const G45B_SUPPORTED_MODES = new Set([G45B_MODE_EXACT, G45B_MODE_SCAN]);
+const G45B_MAX_USER_POINTS_LIMIT = 50;
+const G45B_DEFAULT_USER_POINTS_LIMIT = 25;
+const G45B_MAX_REWARD_TIER_LIMIT = 50;
+const G45B_DEFAULT_REWARD_TIER_LIMIT = 50;
+const G45B_UI_TIER_THRESHOLDS = Object.freeze([
+  { name: 'Seedling', min: 0, max: 499, next: 500 },
+  { name: 'Silver', min: 500, max: 999, next: 1000 },
+  { name: 'Gold', min: 1000, max: 2499, next: 2500 },
+  { name: 'Platinum', min: 2500, max: 4999, next: 5000 },
+  { name: 'Elite', min: 5000, max: Infinity, next: null },
+]);
+
+const G45B_ALLOWED_BODY_KEYS = new Set([
+  'preview_mode',
+  'mode',
+  'user_points_id',
+  'user_profile_id',
+  'authenticated_user_id',
+  'user_id',
+  'user_points_limit',
+  'reward_tier_limit',
+  'request_id',
+  '_internal_secret',
+  'internal_secret',
+]);
+
+const G45B_READ_ONLY_SAFETY = Object.freeze({
+  ...G43D_SCAN1_READ_ONLY_SAFETY,
+  user_points_updated: false,
+  reward_tier_updated: false,
+  loyalty_member_updated: false,
+  point_mutation_performed: false,
+  reward_redeemed: false,
+  customer_tier_updated: false,
+  referral_created: false,
+  command_log_created: false,
+  order_sync_log_created: false,
+  reward_claim_invoked: false,
+  redemption_write_ready: false,
+  point_mutation_ready: false,
+  refund_reversal_ready: false,
+  subscription_points_ready: false,
+  pos_points_ready: false,
+  notification_expansion_ready: false,
+  hub_write_suppression_ready: false,
+});
+
+function isG45BPreviewRequest(body) {
+  return normalizeText(body?.preview_mode).toUpperCase() === G45B_PREVIEW_MODE;
+}
+
+function g45bUnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G45B_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g45bLookup(body) {
+  const mode = normalizeText(body?.mode || G45B_MODE_EXACT).toUpperCase();
+  return {
+    previewMode: G45B_PREVIEW_MODE,
+    mode: G45B_SUPPORTED_MODES.has(mode) ? mode : mode || G45B_MODE_EXACT,
+    userPointsId: normalizeText(body?.user_points_id),
+    userProfileId: normalizeText(body?.user_profile_id),
+    authenticatedUserId: normalizeText(body?.authenticated_user_id || body?.user_id),
+    userPointsLimit: g43dScan1Limit(body?.user_points_limit, G45B_DEFAULT_USER_POINTS_LIMIT, G45B_MAX_USER_POINTS_LIMIT),
+    rewardTierLimit: g43dScan1Limit(body?.reward_tier_limit, G45B_DEFAULT_REWARD_TIER_LIMIT, G45B_MAX_REWARD_TIER_LIMIT),
+    requestId: sanitizeText(body?.request_id, 140),
+  };
+}
+
+function g45bBaseResponse(lookup) {
+  return {
+    success: false,
+    dry_run: true,
+    writes_performed: false,
+    generated_at: new Date().toISOString(),
+    function_name: 'previewNativeOrderCutoverReadiness',
+    preview_mode: G45B_PREVIEW_MODE,
+    mode: lookup.mode,
+    request_id: lookup.requestId || null,
+    scan_complete: false,
+    scan_incomplete_reasons: [],
+    rate_limit_detected: false,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    point_mutation_performed: false,
+    reward_redeemed: false,
+    customer_tier_updated: false,
+    referral_created: false,
+    command_log_created: false,
+    redemption_write_ready: false,
+    point_mutation_ready: false,
+    refund_reversal_ready: false,
+    subscription_points_ready: false,
+    pos_points_ready: false,
+    notification_expansion_ready: false,
+    hub_write_suppression_ready: false,
+    safety: G45B_READ_ONLY_SAFETY,
+  };
+}
+
+function g45bEmptyCounts() {
+  return {
+    unique_loyalty_account_count: null,
+    duplicate_loyalty_identity_count: null,
+    native_balance_present_count: null,
+    history_present_count: null,
+    history_reconstructable_count: null,
+    balance_history_consistent_count: null,
+    balance_history_mismatch_count: null,
+    tier_match_count: null,
+    tier_mismatch_count: null,
+    reward_catalog_native_count: null,
+    fallback_catalog_active: null,
+    hub_context_available_count: null,
+    hub_context_unavailable_count: null,
+    read_native_primary_candidate_count: null,
+    fallback_required_count: null,
+    review_required_count: null,
+  };
+}
+
+function g45bSafeSubjectRef(index, exact = false) {
+  return exact ? 'exact_loyalty_subject' : `loyalty_subject_${index + 1}`;
+}
+
+function g45bNormalizeIdentity(value) {
+  return normalizeLower(value);
+}
+
+function g45bCustomerKey(row) {
+  return g45bNormalizeIdentity(row?.customer_email || row?.email || row?.user_email || row?.customer_id || row?.user_id || row?.profile_id);
+}
+
+function g45bNumberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function g45bHistoryEntries(row) {
+  return Array.isArray(row?.points_history) ? row.points_history : [];
+}
+
+function g45bAnalyzeHistory(row) {
+  const entries = g45bHistoryEntries(row);
+  let reconstructable = entries.length > 0;
+  let delta = 0;
+  let malformed = 0;
+  let missingIdempotency = 0;
+  let duplicateIdempotencyRisk = false;
+  const ids = new Set();
+  const typeCounts = {};
+  for (const entry of entries) {
+    const amount = g45bNumberOrNull(entry?.amount);
+    const type = normalizeLower(entry?.type || 'unknown') || 'unknown';
+    typeCounts[type] = (typeCounts[type] || 0) + 1;
+    if (amount === null || !normalizeText(entry?.timestamp) || !normalizeText(entry?.type)) {
+      malformed += 1;
+      reconstructable = false;
+    }
+    if (amount !== null) delta += amount;
+    const idem = normalizeText(entry?.idempotency_key || entry?.event_key || entry?.transaction_id || entry?.reference_id);
+    if (!idem) {
+      missingIdempotency += 1;
+    } else if (ids.has(idem)) {
+      duplicateIdempotencyRisk = true;
+    } else {
+      ids.add(idem);
+    }
+  }
+  if (entries.length === 0) reconstructable = false;
+  return {
+    history_entry_count: entries.length,
+    history_present: entries.length > 0,
+    reconstructable_history_delta: delta,
+    history_reconstructable: reconstructable,
+    history_coverage_complete: false,
+    malformed_history_entry_count: malformed,
+    duplicate_history_entry_risk: duplicateIdempotencyRisk,
+    missing_idempotency_key_count: missingIdempotency,
+    history_type_counts: typeCounts,
+  };
+}
+
+function g45bDisplayTier(points) {
+  const safePoints = Math.max(0, g45bNumberOrNull(points) || 0);
+  return G45B_UI_TIER_THRESHOLDS.find(tier => safePoints >= tier.min && safePoints <= tier.max) || G45B_UI_TIER_THRESHOLDS[0];
+}
+
+function g45bStoredTier(row) {
+  return normalizeText(row?.current_tier || row?.tier || row?.loyalty_tier || row?.member_tier || row?.status_tier);
+}
+
+function g45bTierAnalysis(row) {
+  const direct = g45bNumberOrNull(row?.total_points);
+  const lifetime = g45bNumberOrNull(row?.lifetime_points);
+  const basis = lifetime !== null ? lifetime : direct;
+  const derived = g45bDisplayTier(basis || 0);
+  const stored = g45bStoredTier(row);
+  const storedMatches = stored ? normalizeLower(stored).includes(normalizeLower(derived.name)) : true;
+  return {
+    stored_tier_present: Boolean(stored),
+    stored_tier_matches_derived: storedMatches,
+    derived_tier_name: derived.name,
+    tier_definition_source: 'rewards_page_static_tiers',
+    tier_thresholds_complete: true,
+    next_tier_progress_safe: true,
+  };
+}
+
+function g45bCatalogSummary(rewardRows) {
+  const rows = Array.isArray(rewardRows) ? rewardRows : [];
+  const activeRows = rows.filter(row => row?.is_active !== false);
+  const duplicateKeys = new Set();
+  const seen = new Set();
+  let invalidCostCount = 0;
+  for (const row of activeRows) {
+    const key = normalizeLower(`${row?.title || ''}:${row?.reward_type || ''}:${row?.points_required ?? ''}`);
+    if (key && seen.has(key)) duplicateKeys.add(key);
+    if (key) seen.add(key);
+    const points = g45bNumberOrNull(row?.points_required);
+    if (points === null || points < 0) invalidCostCount += 1;
+  }
+  return {
+    native_catalog_present: rows.length > 0,
+    reward_catalog_native_count: activeRows.length,
+    inactive_reward_count: rows.length - activeRows.length,
+    expired_reward_count: 0,
+    duplicate_reward_definition_count: duplicateKeys.size,
+    invalid_reward_cost_count: invalidCostCount,
+    fallback_catalog_active: rows.length === 0,
+    catalog_source: rows.length > 0 ? 'RewardTier' : 'DEFAULT_REWARDS',
+    catalog_deterministic: rows.length > 0 ? duplicateKeys.size === 0 && invalidCostCount === 0 : true,
+    inactive_expired_rewards_excluded: true,
+  };
+}
+
+function g45bRepairReplayHold(row) {
+  const text = [row?.description, row?.source, row?.sync_source, row?.status, row?.last_sync_status, ...g45bHistoryEntries(row).map(entry => `${entry?.description || ''} ${entry?.source || ''} ${entry?.type || ''}`)]
+    .map(normalizeLower)
+    .join(' ');
+  return /(repair|replay|backfill|retry|import|sync)/.test(text) && !/(safe|resolved|closed|manual_reviewed|not_applicable|test_only)/.test(text);
+}
+
+function g45bRefundSubscriptionPosFlags(row) {
+  const historyText = g45bHistoryEntries(row).map(entry => `${entry?.description || ''} ${entry?.type || ''} ${entry?.source || ''}`).map(normalizeLower).join(' ');
+  return {
+    refund_points_source_of_truth_held: /refund|cancel|reversal/.test(historyText),
+    subscription_points_source_of_truth_held: /subscription|invoice|recurring/.test(historyText),
+    pos_points_source_of_truth_held: /\bpos\b|point of sale|square|terminal/.test(historyText),
+  };
+}
+
+function g45bEvaluateLoyaltyRow({ row, index = 0, duplicateIdentityCount = 1, catalog, exact = false }) {
+  const directBalance = g45bNumberOrNull(row?.total_points);
+  const lifetimePoints = g45bNumberOrNull(row?.lifetime_points);
+  const redeemedPoints = g45bNumberOrNull(row?.redeemed_points);
+  const history = g45bAnalyzeHistory(row);
+  const tier = g45bTierAnalysis(row);
+  const duplicateIdentityRisk = duplicateIdentityCount > 1;
+  const impossibleState = directBalance === null || directBalance < 0 || (redeemedPoints !== null && redeemedPoints < 0) || (lifetimePoints !== null && lifetimePoints < 0);
+  const balanceHistoryConsistent = history.history_reconstructable && directBalance !== null && history.reconstructable_history_delta === directBalance;
+  const balanceHistoryMismatch = history.history_reconstructable && directBalance !== null && history.reconstructable_history_delta !== directBalance;
+  const repairReplayHold = g45bRepairReplayHold(row);
+  const contributionHolds = g45bRefundSubscriptionPosFlags(row);
+  const blockers = [];
+  const warnings = [];
+
+  if (duplicateIdentityRisk) blockers.push('duplicate_loyalty_identity_risk');
+  if (impossibleState) blockers.push('native_balance_history_mismatch');
+  if (!history.history_present || !history.history_reconstructable) blockers.push('native_history_incomplete');
+  if (balanceHistoryMismatch) blockers.push('native_balance_history_mismatch');
+  if (history.duplicate_history_entry_risk) blockers.push('manual_adjustment_audit_incomplete');
+  if (!tier.stored_tier_matches_derived) blockers.push('tier_mismatch_manual_review');
+  if (!catalog.catalog_deterministic) blockers.push('customer_rewards_fallback_required');
+  if (repairReplayHold) blockers.push('repair_replay_hold');
+
+  if (catalog.fallback_catalog_active) warnings.push('static_fallback_catalog_active');
+  warnings.push('hub_loyalty_context_unavailable');
+  warnings.push('client_reward_state_not_server_authoritative');
+  warnings.push('refund_points_source_of_truth_held');
+  warnings.push('subscription_points_source_of_truth_held');
+  warnings.push('pos_points_source_of_truth_held');
+  warnings.push('redemption_write_not_ready');
+
+  const nativeReadCandidate = blockers.length === 0 && directBalance !== null && catalog.catalog_deterministic;
+  const classification = nativeReadCandidate
+    ? 'native_rewards_page_read_candidate'
+    : blockers[0] || (catalog.fallback_catalog_active ? 'static_fallback_catalog_active' : 'customer_rewards_fallback_required');
+
+  return {
+    subject_ref: g45bSafeSubjectRef(index, exact),
+    user_points_present: Boolean(row?.id),
+    duplicate_identity_risk: duplicateIdentityRisk,
+    direct_points_balance: directBalance,
+    lifetime_points_present: lifetimePoints !== null,
+    redeemed_points_present: redeemedPoints !== null,
+    native_balance_present: directBalance !== null,
+    history_present: history.history_present,
+    history_entry_count: history.history_entry_count,
+    reconstructable_history_delta: history.reconstructable_history_delta,
+    history_reconstructable: history.history_reconstructable,
+    history_coverage_complete: history.history_coverage_complete,
+    balance_history_consistent: balanceHistoryConsistent,
+    balance_history_mismatch: balanceHistoryMismatch,
+    malformed_history_entry_count: history.malformed_history_entry_count,
+    duplicate_history_entry_risk: history.duplicate_history_entry_risk,
+    missing_idempotency_key_count: history.missing_idempotency_key_count,
+    tier_consistency: tier.stored_tier_matches_derived ? 'derived_display_tier_safe' : 'stored_derived_tier_mismatch',
+    tier_match: tier.stored_tier_matches_derived,
+    tier_mismatch: !tier.stored_tier_matches_derived,
+    derived_tier_name: tier.derived_tier_name,
+    tier_definition_source: tier.tier_definition_source,
+    hub_context_available: false,
+    hub_context_status: 'hub_loyalty_context_unavailable',
+    catalog_source: catalog.catalog_source,
+    reward_catalog_native_count: catalog.reward_catalog_native_count,
+    fallback_catalog_active: catalog.fallback_catalog_active,
+    native_catalog_ready: catalog.native_catalog_present && catalog.catalog_deterministic,
+    static_fallback_catalog_active: catalog.fallback_catalog_active,
+    refund_points_source_of_truth_held: contributionHolds.refund_points_source_of_truth_held || true,
+    subscription_points_source_of_truth_held: contributionHolds.subscription_points_source_of_truth_held || true,
+    pos_points_source_of_truth_held: contributionHolds.pos_points_source_of_truth_held || true,
+    client_reward_state_not_server_authoritative: true,
+    redemption_write_ready: false,
+    point_mutation_ready: false,
+    refund_reversal_ready: false,
+    subscription_points_ready: false,
+    pos_points_ready: false,
+    notification_expansion_ready: false,
+    hub_write_suppression_ready: false,
+    native_read_eligibility: nativeReadCandidate,
+    fallback_required: !nativeReadCandidate,
+    review_required: blockers.length > 0,
+    classification,
+    blockers: [...new Set(blockers)],
+    warnings: [...new Set(warnings)],
+  };
+}
+
+function g45bClassificationCounts(summaries) {
+  return (summaries || []).reduce((acc, row) => {
+    const keys = new Set([row?.classification || 'customer_rewards_fallback_required']);
+    if (row?.native_balance_present) keys.add(row?.balance_history_consistent ? 'native_balance_history_consistent_not_authoritative' : 'native_balance_read_ready');
+    if (row?.balance_history_mismatch) keys.add('native_balance_history_mismatch');
+    if (!row?.history_reconstructable) keys.add('native_history_incomplete');
+    if (row?.duplicate_identity_risk) keys.add('duplicate_loyalty_identity_risk');
+    if (row?.tier_match) keys.add('tier_native_ready');
+    if (row?.tier_mismatch) keys.add('tier_mismatch_manual_review');
+    if (row?.native_catalog_ready) keys.add('native_catalog_ready');
+    if (row?.static_fallback_catalog_active) keys.add('static_fallback_catalog_active');
+    keys.add(row?.hub_context_available ? 'hub_loyalty_context_available' : 'hub_loyalty_context_unavailable');
+    keys.add('client_reward_state_not_server_authoritative');
+    keys.add('refund_points_source_of_truth_held');
+    keys.add('subscription_points_source_of_truth_held');
+    keys.add('pos_points_source_of_truth_held');
+    keys.add('redemption_write_not_ready');
+    for (const blocker of row?.blockers || []) keys.add(blocker);
+    for (const key of keys) acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function g45bAggregateCounts(summaries, catalog) {
+  return {
+    unique_loyalty_account_count: summaries.length,
+    duplicate_loyalty_identity_count: summaries.filter(row => row.duplicate_identity_risk).length,
+    native_balance_present_count: summaries.filter(row => row.native_balance_present).length,
+    history_present_count: summaries.filter(row => row.history_present).length,
+    history_reconstructable_count: summaries.filter(row => row.history_reconstructable).length,
+    balance_history_consistent_count: summaries.filter(row => row.balance_history_consistent).length,
+    balance_history_mismatch_count: summaries.filter(row => row.balance_history_mismatch).length,
+    tier_match_count: summaries.filter(row => row.tier_match).length,
+    tier_mismatch_count: summaries.filter(row => row.tier_mismatch).length,
+    reward_catalog_native_count: catalog.reward_catalog_native_count,
+    fallback_catalog_active: catalog.fallback_catalog_active,
+    hub_context_available_count: summaries.filter(row => row.hub_context_available).length,
+    hub_context_unavailable_count: summaries.filter(row => !row.hub_context_available).length,
+    read_native_primary_candidate_count: summaries.filter(row => row.native_read_eligibility).length,
+    fallback_required_count: summaries.filter(row => row.fallback_required).length,
+    review_required_count: summaries.filter(row => row.review_required).length,
+  };
+}
+
+async function g45bReadEntityList(base44, entityName, sort, limit) {
+  return g43dScan1ListSource(base44, entityName, sort, limit);
+}
+
+async function g45bExactRows(base44, lookup) {
+  const entity = base44.asServiceRole?.entities?.UserPoints;
+  const profileEntity = base44.asServiceRole?.entities?.UserProfile;
+  const rows = [];
+  const reads = [];
+  const errors = [];
+  if (!entity?.filter) return { rows, reads, errors: ['UserPoints:entity_filter_unavailable'] };
+  try {
+    if (lookup.userPointsId) {
+      const result = await entity.filter({ id: lookup.userPointsId }, '-created_date', 2);
+      reads.push('UserPoints:id');
+      rows.push(...(Array.isArray(result) ? result : []));
+    }
+    if (!rows.length && (lookup.userProfileId || lookup.authenticatedUserId) && profileEntity?.filter) {
+      const profileFilters = [];
+      if (lookup.userProfileId) profileFilters.push({ id: lookup.userProfileId });
+      if (lookup.authenticatedUserId) profileFilters.push({ user_id: lookup.authenticatedUserId }, { auth_user_id: lookup.authenticatedUserId });
+      for (const filter of profileFilters) {
+        const profiles = await profileEntity.filter(filter, '-created_date', 2).catch(() => []);
+        reads.push('UserProfile:exact_id');
+        for (const profile of profiles || []) {
+          const email = normalizeText(profile?.customer_email || profile?.contact_email || profile?.email);
+          if (!email) continue;
+          const result = await entity.filter({ customer_email: email }, '-created_date', 5);
+          reads.push('UserPoints:profile_identity');
+          rows.push(...(Array.isArray(result) ? result : []));
+        }
+      }
+    }
+  } catch (error) {
+    errors.push(g43dScan1DetectRateLimit(error) ? 'rate_limit_detected' : 'source_read_failed');
+  }
+  return { rows: g43dScan1DedupeById(rows), reads, errors };
+}
+
+async function g45bDuplicateRowsForExact(base44, row) {
+  const key = normalizeText(row?.customer_email);
+  if (!key) return [];
+  const entity = base44.asServiceRole?.entities?.UserPoints;
+  if (!entity?.filter) return [];
+  return await entity.filter({ customer_email: key }, '-created_date', 10).catch(() => []);
+}
+
+async function buildG45BPreview(base44, body) {
+  const lookup = g45bLookup(body);
+  const baseResponse = g45bBaseResponse(lookup);
+  if (!G45B_SUPPORTED_MODES.has(lookup.mode)) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: ['unsupported_mode'],
+      blockers: ['unsupported_mode'],
+      warnings: ['supported_modes_exact_customer_loyalty_parity_or_bounded_loyalty_readiness_scan'],
+      next_action: 'rerun_with_supported_g45b_mode',
+      ...g45bEmptyCounts(),
+      safe_subject_summaries: [],
+      classification_counts: {},
+    };
+  }
+
+  const catalogRead = await g45bReadEntityList(base44, 'RewardTier', 'sort_order', lookup.rewardTierLimit);
+  const catalog = g45bCatalogSummary(catalogRead.rows || []);
+  if (!catalogRead.ok) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: [`RewardTier:${catalogRead.error_code}`],
+      rate_limit_detected: catalogRead.rate_limit_detected,
+      source_read_count: 1,
+      source_row_counts: { RewardTier: catalogRead.row_count },
+      source_truncated: { RewardTier: catalogRead.truncated },
+      blockers: ['required_source_read_failed'],
+      warnings: ['reward_catalog_source_unavailable', 'generalized_counts_not_authoritative'],
+      next_action: catalogRead.rate_limit_detected ? 'retry_after_rate_limit_window' : 'fix_reward_catalog_source_read_and_rerun',
+      ...g45bEmptyCounts(),
+      safe_subject_summaries: [],
+      classification_counts: {},
+    };
+  }
+
+  if (lookup.mode === G45B_MODE_EXACT) {
+    if (!lookup.userPointsId && !lookup.userProfileId && !lookup.authenticatedUserId) {
+      return {
+        ...baseResponse,
+        success: false,
+        scan_complete: false,
+        scan_incomplete_reasons: ['exact_identifier_required'],
+        source_read_count: 1,
+        source_row_counts: { RewardTier: catalogRead.row_count },
+        source_truncated: { RewardTier: catalogRead.truncated },
+        blockers: ['exact_identifier_required'],
+        warnings: ['provide_user_points_id_or_user_profile_id_or_authenticated_user_id', 'no_email_name_phone_lookup_supported'],
+        next_action: 'rerun_with_exact_non_pii_customer_identifier',
+        ...g45bEmptyCounts(),
+        safe_subject_summaries: [],
+        classification_counts: {},
+      };
+    }
+    const exact = await g45bExactRows(base44, lookup);
+    const rateLimitDetected = exact.errors.includes('rate_limit_detected');
+    if (exact.errors.length) {
+      return {
+        ...baseResponse,
+        success: false,
+        scan_complete: false,
+        scan_incomplete_reasons: exact.errors,
+        rate_limit_detected: rateLimitDetected,
+        source_read_count: 1 + exact.reads.length,
+        source_row_counts: { RewardTier: catalogRead.row_count, UserPoints: 0 },
+        source_truncated: { RewardTier: catalogRead.truncated, UserPoints: false },
+        blockers: ['required_source_read_failed'],
+        warnings: rateLimitDetected ? ['rate_limit_detected'] : ['source_read_failed'],
+        next_action: rateLimitDetected ? 'retry_after_rate_limit_window' : 'fix_exact_loyalty_source_read_and_rerun',
+        ...g45bEmptyCounts(),
+        safe_subject_summaries: [],
+        classification_counts: {},
+      };
+    }
+    const matched = exact.rows || [];
+    const duplicateRows = matched.length === 1 ? await g45bDuplicateRowsForExact(base44, matched[0]) : [];
+    const duplicateIdentityCount = duplicateRows.length || matched.length;
+    const summaries = matched.map((row, index) => g45bEvaluateLoyaltyRow({ row, index, duplicateIdentityCount, catalog, exact: true }));
+    const classificationCounts = g45bClassificationCounts(summaries);
+    const counts = g45bAggregateCounts(summaries, catalog);
+    return {
+      ...baseResponse,
+      success: matched.length === 1 && summaries.length === 1,
+      scan_complete: true,
+      scan_incomplete_reasons: [],
+      source_read_count: 1 + exact.reads.length + (matched.length === 1 ? 1 : 0),
+      source_read_strategy: {
+        exact_identifier_reads: true,
+        exact_customer_identifiers_only: true,
+        email_name_phone_lookup_supported: false,
+        hub_external_fetch_performed: false,
+        per_loyalty_write_loop: false,
+      },
+      source_row_counts: { RewardTier: catalogRead.row_count, UserPoints: matched.length, duplicate_identity_probe: duplicateRows.length },
+      source_truncated: { RewardTier: catalogRead.truncated, UserPoints: false, duplicate_identity_probe: duplicateRows.length >= 10 },
+      exact_match_count: matched.length,
+      user_points_present: matched.length === 1,
+      duplicate_loyalty_identity: duplicateIdentityCount > 1,
+      hub_context_status: 'hub_loyalty_context_unavailable',
+      client_reward_state_status: 'client_state_not_server_authoritative',
+      catalog_summary: catalog,
+      counter_history_analysis: summaries[0] ? {
+        direct_points_balance: summaries[0].direct_points_balance,
+        reconstructable_history_delta: summaries[0].reconstructable_history_delta,
+        history_reconstructable: summaries[0].history_reconstructable,
+        history_coverage_complete: summaries[0].history_coverage_complete,
+        balance_history_consistent: summaries[0].balance_history_consistent,
+        history_entry_count: summaries[0].history_entry_count,
+        malformed_history_entry_count: summaries[0].malformed_history_entry_count,
+        duplicate_history_entry_risk: summaries[0].duplicate_history_entry_risk,
+        missing_idempotency_key_count: summaries[0].missing_idempotency_key_count,
+      } : null,
+      tier_parity: summaries[0] ? {
+        tier_consistency: summaries[0].tier_consistency,
+        derived_tier_name: summaries[0].derived_tier_name,
+        tier_definition_source: summaries[0].tier_definition_source,
+      } : null,
+      ...counts,
+      safe_subject_summaries: summaries,
+      classification_counts: classificationCounts,
+      blockers: matched.length === 0 ? ['user_points_not_found'] : matched.length > 1 ? ['duplicate_loyalty_identity_risk'] : summaries[0]?.blockers || [],
+      warnings: [...new Set(['admin_preview_only_not_customer_visible', 'native_points_not_authoritative', 'hub_fallback_remains_active', 'redemption_and_points_writes_held', ...(summaries[0]?.warnings || [])])],
+      next_action: summaries[0]?.native_read_eligibility ? 'review_exact_loyalty_read_candidate_then_plan_g45c_disabled_read_patch' : 'retain_current_rewards_behavior_and_fix_identified_loyalty_gaps',
+    };
+  }
+
+  const userPointsRead = await g45bReadEntityList(base44, 'UserPoints', '-created_date', lookup.userPointsLimit);
+  const reads = [userPointsRead, catalogRead];
+  const failed = reads.filter(read => !read.ok);
+  if (failed.length) {
+    const rateLimitDetected = failed.some(read => read.rate_limit_detected);
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: failed.map(read => `${read.entity}:${read.error_code}`),
+      rate_limit_detected: rateLimitDetected,
+      source_read_count: reads.length,
+      source_read_strategy: { bounded_entity_reads: true, per_loyalty_account_query_loop: false, hub_external_fetch_performed: false },
+      source_row_counts: Object.fromEntries(reads.map(read => [read.entity, read.row_count])),
+      source_truncated: Object.fromEntries(reads.map(read => [read.entity, read.truncated])),
+      blockers: ['required_source_read_failed'],
+      warnings: rateLimitDetected ? ['rate_limit_detected', 'bounded_counts_not_authoritative'] : ['source_read_failed', 'bounded_counts_not_authoritative'],
+      next_action: rateLimitDetected ? 'retry_after_rate_limit_window' : 'fix_source_read_failure_and_rerun',
+      ...g45bEmptyCounts(),
+      safe_subject_summaries: [],
+      classification_counts: {},
+    };
+  }
+  const rows = Array.isArray(userPointsRead.rows) ? userPointsRead.rows : [];
+  const identityCounts = rows.reduce((acc, row) => {
+    const key = g45bCustomerKey(row) || normalizeText(row?.id) || `row_${acc.__row || 0}`;
+    acc[key] = (acc[key] || 0) + 1;
+    acc.__row = (acc.__row || 0) + 1;
+    return acc;
+  }, {});
+  delete identityCounts.__row;
+  const summaries = rows.map((row, index) => g45bEvaluateLoyaltyRow({ row, index, duplicateIdentityCount: identityCounts[g45bCustomerKey(row)] || 1, catalog, exact: false }));
+  const classificationCounts = g45bClassificationCounts(summaries);
+  const counts = g45bAggregateCounts(summaries, catalog);
+  const truncated = { UserPoints: userPointsRead.truncated, RewardTier: catalogRead.truncated };
+  const warnings = [
+    'admin_preview_only_not_customer_visible',
+    'native_points_not_authoritative',
+    'hub_fallback_remains_active',
+    'redemption_and_points_writes_held',
+    'hub_loyalty_context_unavailable_does_not_imply_parity',
+    'client_reward_state_not_server_authoritative',
+    ...(userPointsRead.truncated ? ['user_points_source_truncated'] : []),
+    ...(catalogRead.truncated ? ['reward_tier_source_truncated'] : []),
+  ];
+  return {
+    ...baseResponse,
+    success: true,
+    scan_complete: true,
+    scan_incomplete_reasons: [],
+    source_read_count: reads.length,
+    source_read_strategy: {
+      bounded_entity_reads: true,
+      per_loyalty_account_query_loop: false,
+      hub_external_fetch_performed: false,
+      mutation_preview: false,
+    },
+    source_row_counts: { UserPoints: userPointsRead.row_count, RewardTier: catalogRead.row_count },
+    source_truncated: truncated,
+    requested_user_points_limit: lookup.userPointsLimit,
+    requested_reward_tier_limit: lookup.rewardTierLimit,
+    catalog_summary: catalog,
+    ...counts,
+    safe_subject_summaries: summaries,
+    classification_counts: classificationCounts,
+    blockers: Object.values(truncated).some(Boolean) ? ['bounded_source_truncated_counts_not_full_fleet'] : [],
+    warnings: [...new Set(warnings)],
+    next_action: counts.read_native_primary_candidate_count > 0
+      ? 'review_g45b_candidates_then_plan_g45c_default_off_native_read_patch'
+      : 'retain_current_mixed_rewards_behavior_and_fix_loyalty_read_gaps',
+  };
+}
+
 async function buildG35BPreview(base44, body) {
   const lookup = g35bLookup(body);
   const requestBlockers = [];
@@ -8694,6 +9336,7 @@ Deno.serve(async (req) => {
     const g36cResolvePreviewRequest = isG36CResolvePreviewRequest(body);
     const g36fPreviewRequest = isG36FPreviewRequest(body);
     const g43dScan1PreviewRequest = isG43DScan1PreviewRequest(body);
+    const g45bPreviewRequest = isG45BPreviewRequest(body);
     if (g39bPreviewRequest) {
       const unsupported = g39bUnsupportedBodyKey(body);
       if (unsupported) {
@@ -8760,7 +9403,13 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
-    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (g45bPreviewRequest) {
+      const unsupported = g45bUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
+    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && !g45bPreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
@@ -8879,6 +9528,16 @@ Deno.serve(async (req) => {
 
     if (g43dScan1PreviewRequest) {
       const preview = await buildG43DScan1Preview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
+
+    if (g45bPreviewRequest) {
+      const preview = await buildG45BPreview(base44, body);
       return Response.json({
         ...preview,
         actor_type: auth.actor_type,
