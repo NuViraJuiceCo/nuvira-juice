@@ -53,6 +53,26 @@
       ],
       "default": "delivery"
     },
+    "customer_app_subscription_id": {
+      "type": "string",
+      "description": "Internal parent Subscription.id link for future subscription occurrence orders. Nullable for one-time and historical rows."
+    },
+    "subscription_occurrence_id": {
+      "type": "string",
+      "description": "Internal immutable occurrence id for future subscription occurrence orders. Nullable for existing rows and not customer-facing."
+    },
+    "subscription_cycle_key": {
+      "type": "string",
+      "description": "Internal secondary cycle key for future subscription occurrence orders. Not sufficient as the sole occurrence identity."
+    },
+    "fulfillment_number": {
+      "type": "number",
+      "description": "Internal subscription occurrence fulfillment sequence/reference. Nullable for one-time and historical rows."
+    },
+    "source_type": {
+      "type": "string",
+      "description": "Internal source classification such as one_time or subscription_occurrence. Not customer-facing in OCC4."
+    },
     "delivery_address": {
       "type": "string",
       "description": "Full address string (legacy / display)"

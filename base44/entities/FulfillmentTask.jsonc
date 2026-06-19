@@ -69,6 +69,14 @@
       "type": "number",
       "description": "Which delivery in the cycle (1, 2, 3, 4 for monthly)"
     },
+    "subscription_occurrence_id": {
+      "type": "string",
+      "description": "Internal immutable occurrence id copied from the Customer App Order/native ShopifyOrder for future subscription occurrence tasks."
+    },
+    "subscription_cycle_key": {
+      "type": "string",
+      "description": "Internal secondary cycle key copied from the Customer App Order/native ShopifyOrder for future subscription occurrence tasks."
+    },
     "delivery_date": {
       "type": "string",
       "format": "date",
