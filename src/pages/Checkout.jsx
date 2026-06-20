@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import SEO from '@/components/SEO';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
+import ApplePayMountDiagnostic from '@/components/checkout/ApplePayMountDiagnostic';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -24,6 +25,23 @@ import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 
 
 export default function Checkout() {
+  const { user, isLoadingAuth } = useAuth();
+  const diagnosticRequested = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('apple_pay_mount_diagnostic') === '1';
+  const diagnosticAuthorized = user?.role === 'admin' || user?.role === 'owner';
+
+  if (diagnosticRequested) {
+    return (
+      <ApplePayMountDiagnostic
+        isAuthLoading={isLoadingAuth}
+        isAuthorized={diagnosticAuthorized}
+      />
+    );
+  }
+
+  return <CheckoutFlow />;
+}
+
+function CheckoutFlow() {
   const navigate = useNavigate();
 
   // DIAGNOSTIC: dump all checkout-related storage keys on mount
