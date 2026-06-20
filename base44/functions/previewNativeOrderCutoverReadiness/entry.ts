@@ -102,12 +102,29 @@ async function readJsonBody(req) {
   }
 }
 
-function unauthorized() {
-  return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized', writes_performed: false }, { status: 401 });
+function unauthorized(headers) {
+  return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized', writes_performed: false }, headers ? { status: 401, headers } : { status: 401 });
 }
 
-function forbidden() {
-  return Response.json({ success: false, error_code: 'forbidden', message: 'Admin access required', writes_performed: false }, { status: 403 });
+function forbidden(headers) {
+  return Response.json({ success: false, error_code: 'forbidden', message: 'Admin access required', writes_performed: false }, headers ? { status: 403, headers } : { status: 403 });
+}
+
+async function requireAdminOwnerAccess(base44, headers) {
+  try {
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) return { ok: false, response: unauthorized(headers) };
+    const role = normalizeLower(user.role);
+    if (role !== 'admin' && role !== 'owner') return { ok: false, response: forbidden(headers) };
+    return {
+      ok: true,
+      actor_type: 'admin',
+      actor_role: role,
+      actor_email: user.email || role,
+    };
+  } catch {
+    return { ok: false, response: unauthorized(headers) };
+  }
 }
 
 async function requirePreviewAccess({ base44, req, body }) {
@@ -9413,6 +9430,94 @@ function g47bUnsupportedBodyKey(body) {
   return null;
 }
 
+const G47F_CONFIG2_PREVIEW_MODE = 'APPLE_PAY_DIAGNOSTIC_PUBLIC_CONFIG';
+const G47F_CONFIG2_STRIPE_PUBLISHABLE_KEY_ENV = 'STRIPE_PUBLISHABLE_KEY';
+
+const G47F_CONFIG2_ALLOWED_BODY_KEYS = new Set([
+  'preview_mode',
+  'request_id',
+]);
+
+const G47F_CONFIG2_NO_STORE_HEADERS = Object.freeze({
+  'Cache-Control': 'no-store, max-age=0',
+  Pragma: 'no-cache',
+});
+
+function isG47FConfig2PreviewRequest(body) {
+  return normalizeText(body?.preview_mode).toUpperCase() === G47F_CONFIG2_PREVIEW_MODE;
+}
+
+function g47fConfig2UnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G47F_CONFIG2_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g47fConfig2RequestId(body) {
+  return sanitizeText(body?.request_id, 140);
+}
+
+function g47fConfig2BaseResponse(body) {
+  return {
+    dry_run: true,
+    writes_performed: false,
+    preview_mode: G47F_CONFIG2_PREVIEW_MODE,
+    request_id: g47fConfig2RequestId(body) || null,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    stripe_calls: false,
+    shopify_calls: false,
+    hub_calls: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    payment_mutation_performed: false,
+    order_mutation_performed: false,
+    command_log_created: false,
+  };
+}
+
+function g47fConfig2ClassifyStripeKey(value) {
+  const key = normalizeText(value);
+  if (!key) return { ok: false, error_code: 'stripe_publishable_key_not_configured', stripe_mode: 'unknown', key_type: 'unknown' };
+  if (key.startsWith('pk_live_')) return { ok: true, stripe_mode: 'live', key_type: 'publishable' };
+  if (key.startsWith('pk_test_')) return { ok: false, error_code: 'stripe_publishable_key_mode_mismatch', stripe_mode: 'test', key_type: 'publishable' };
+  if (key.startsWith('sk_')) return { ok: false, error_code: 'stripe_publishable_key_wrong_type', stripe_mode: key.startsWith('sk_live_') ? 'live' : key.startsWith('sk_test_') ? 'test' : 'unknown', key_type: 'secret' };
+  if (key.startsWith('rk_')) return { ok: false, error_code: 'stripe_publishable_key_wrong_type', stripe_mode: key.startsWith('rk_live_') ? 'live' : key.startsWith('rk_test_') ? 'test' : 'unknown', key_type: 'restricted' };
+  if (key.startsWith('whsec_')) return { ok: false, error_code: 'stripe_publishable_key_wrong_type', stripe_mode: 'unknown', key_type: 'webhook_secret' };
+  if (key.startsWith('cs_')) return { ok: false, error_code: 'stripe_publishable_key_wrong_type', stripe_mode: key.startsWith('cs_live_') ? 'live' : key.startsWith('cs_test_') ? 'test' : 'unknown', key_type: 'client_secret' };
+  if (key.startsWith('pi_')) return { ok: false, error_code: 'stripe_publishable_key_wrong_type', stripe_mode: 'unknown', key_type: 'payment_intent_id' };
+  return { ok: false, error_code: 'stripe_publishable_key_wrong_type', stripe_mode: 'unknown', key_type: 'unknown' };
+}
+
+function g47fConfig2Failure(body, classification, status = 500) {
+  return Response.json({
+    success: false,
+    ...g47fConfig2BaseResponse(body),
+    error_code: classification.error_code,
+    stripe_mode: classification.stripe_mode,
+    key_type: classification.key_type,
+  }, { status, headers: G47F_CONFIG2_NO_STORE_HEADERS });
+}
+
+function buildG47FConfig2PublicConfig(body) {
+  const publishableKey = normalizeText(Deno.env.get(G47F_CONFIG2_STRIPE_PUBLISHABLE_KEY_ENV));
+  const classification = g47fConfig2ClassifyStripeKey(publishableKey);
+  if (!classification.ok) return { ok: false, response: g47fConfig2Failure(body, classification) };
+
+  return {
+    ok: true,
+    response: Response.json({
+      success: true,
+      ...g47fConfig2BaseResponse(body),
+      stripe_publishable_key: publishableKey,
+      stripe_mode: classification.stripe_mode,
+      key_type: classification.key_type,
+    }, { headers: G47F_CONFIG2_NO_STORE_HEADERS }),
+  };
+}
+
 function g47bLookup(body) {
   const requestedMode = normalizeText(body?.mode || G47B_MODE_EXACT).toUpperCase();
   const mode = G47B_SUPPORTED_MODES.has(requestedMode) ? requestedMode : requestedMode || G47B_MODE_EXACT;
@@ -10798,6 +10903,7 @@ Deno.serve(async (req) => {
     const g45bPreviewRequest = isG45BPreviewRequest(body);
     const g46bPreviewRequest = isG46BPreviewRequest(body);
     const g47bPreviewRequest = isG47BPreviewRequest(body);
+    const g47fConfig2PreviewRequest = isG47FConfig2PreviewRequest(body);
     if (g39bPreviewRequest) {
       const unsupported = g39bUnsupportedBodyKey(body);
       if (unsupported) {
@@ -10882,8 +10988,21 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
-    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && !g45bPreviewRequest && !g46bPreviewRequest && !g47bPreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (g47fConfig2PreviewRequest) {
+      const unsupported = g47fConfig2UnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400, headers: G47F_CONFIG2_NO_STORE_HEADERS });
+      }
+    }
+    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && !g45bPreviewRequest && !g46bPreviewRequest && !g47bPreviewRequest && !g47fConfig2PreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
+    }
+
+    if (g47fConfig2PreviewRequest) {
+      const auth = await requireAdminOwnerAccess(base44, G47F_CONFIG2_NO_STORE_HEADERS);
+      if (!auth.ok) return auth.response;
+      const publicConfig = buildG47FConfig2PublicConfig(body);
+      return publicConfig.response;
     }
 
     const auth = await requirePreviewAccess({ base44, req, body });
