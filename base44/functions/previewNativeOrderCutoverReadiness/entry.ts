@@ -10076,6 +10076,831 @@ async function buildG47BPreview(base44, body) {
     : buildG47BBoundedScan(base44, lookup, baseResponse);
 }
 
+const G42B_PREVIEW_MODE = 'ADMIN_DELIVERY_ACTION_READINESS';
+const G42B_MODE_EXACT = 'EXACT_DELIVERY_ACTION_READINESS';
+const G42B_MODE_SCAN = 'BOUNDED_DELIVERY_ACTION_READINESS_SCAN';
+const G42B_SUPPORTED_MODES = new Set([G42B_MODE_EXACT, G42B_MODE_SCAN]);
+const G42B_DEFAULT_LIMIT = 50;
+const G42B_MAX_LIMIT = 100;
+
+const G42B_ALLOWED_BODY_KEYS = new Set([
+  'preview_mode',
+  'mode',
+  'fulfillment_task_id',
+  'task_id',
+  'customer_app_order_id',
+  'order_id',
+  'base44_order_id',
+  'native_shopify_order_id',
+  'native_order_id',
+  'shopify_order_id',
+  'order_number',
+  'shopify_order_number',
+  'fulfillment_task_limit',
+  'related_entity_limit',
+  'request_id',
+  '_internal_secret',
+  'internal_secret',
+]);
+
+const G42B_SUPPORTED_CLASSIFICATIONS = Object.freeze([
+  'delivery_action_native_read_ready',
+  'delivery_action_exact_identity_ambiguous',
+  'delivery_action_task_missing',
+  'delivery_action_native_order_missing',
+  'delivery_action_payment_hold',
+  'delivery_action_refund_cancel_hold',
+  'delivery_action_subscription_multi_delivery_hold',
+  'delivery_action_schedule_mismatch',
+  'delivery_action_status_mismatch',
+  'delivery_action_driver_assignment_missing',
+  'delivery_action_route_context_missing',
+  'delivery_action_already_completed',
+  'delivery_action_review_queue_hold',
+  'delivery_action_repair_replay_hold',
+  'delivery_action_hub_write_required',
+  'delivery_action_provider_call_required',
+  'delivery_action_notification_held',
+  'delivery_action_idempotency_gap',
+  'delivery_action_rollback_gap',
+  'delivery_action_native_command_candidate',
+  'delivery_action_manual_review_required',
+  'bounded_scan_context_not_found',
+]);
+
+const G42B_READ_ONLY_SAFETY = Object.freeze({
+  ...G33C_READ_ONLY_SAFETY,
+  dry_run_only: true,
+  writes_performed: false,
+  provider_call_impact: false,
+  stripe_calls: false,
+  shopify_calls: false,
+  hub_calls: false,
+  route_provider_calls: false,
+  notifications_sent: false,
+  hub_mutation_performed: false,
+  payment_mutation_performed: false,
+  order_mutation_performed: false,
+  native_order_mutation_performed: false,
+  fulfillment_task_mutation_performed: false,
+  driver_assignment_performed: false,
+  route_mutation_performed: false,
+  delivery_status_updated: false,
+  command_log_created: false,
+  pii_returned: false,
+  raw_payloads_returned: false,
+});
+
+const G42B_ACTION_DEFINITIONS = Object.freeze([
+  {
+    key: 'assign_driver',
+    ui_control: 'DriverAssignmentControls assign button',
+    backend_function: 'updateAdminFulfillmentTaskAssignment',
+    native_command_function: 'executeNativeFulfillmentTaskLifecycle',
+    lifecycle_action: 'assign',
+    current_source_of_truth: 'Hub fulfillment assignment command for Hub rows; native exact-gated lifecycle command exists for native task rows.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: false,
+    native_write_path_exists: true,
+    requires_driver: false,
+    requires_no_driver: true,
+    allowed_statuses: ['unassigned', 'scheduled'],
+    rollback_supported: true,
+  },
+  {
+    key: 'change_reassign_driver',
+    ui_control: 'DriverAssignmentControls reassign button',
+    backend_function: 'updateAdminFulfillmentTaskAssignment',
+    native_command_function: 'executeNativeFulfillmentTaskLifecycle',
+    lifecycle_action: 'assign',
+    current_source_of_truth: 'Hub fulfillment assignment command for Hub rows; native exact-gated lifecycle command exists for native task rows.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: false,
+    native_write_path_exists: true,
+    requires_driver: true,
+    allowed_statuses: ['scheduled'],
+    rollback_supported: false,
+  },
+  {
+    key: 'add_to_route',
+    ui_control: 'Static route manifest only; no persisted add-to-route control',
+    backend_function: null,
+    native_command_function: null,
+    current_source_of_truth: 'Manual/static route manifest remains authoritative.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: false,
+    native_write_path_exists: false,
+    requires_route_context: true,
+    rollback_supported: false,
+  },
+  {
+    key: 'remove_from_route',
+    ui_control: 'No persisted remove-from-route control',
+    backend_function: null,
+    native_command_function: null,
+    current_source_of_truth: 'Manual/static route manifest remains authoritative.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: false,
+    native_write_path_exists: false,
+    requires_route_context: true,
+    rollback_supported: false,
+  },
+  {
+    key: 'optimize_route',
+    ui_control: 'RouteOptimizationPanel preview route button',
+    backend_function: 'optimizeDeliveryRoute',
+    native_command_function: null,
+    current_source_of_truth: 'Preview-only route optimization; static/manual route remains authoritative.',
+    hub_dependency: true,
+    provider_dependency: true,
+    notification_dependency: false,
+    native_write_path_exists: false,
+    requires_route_context: true,
+    requires_provider_contract: true,
+    rollback_supported: false,
+  },
+  {
+    key: 'start_route',
+    ui_control: 'Open static route link only; no persisted start-route control',
+    backend_function: null,
+    native_command_function: null,
+    current_source_of_truth: 'Manual driver route start outside native command surface.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: false,
+    native_write_path_exists: false,
+    requires_route_context: true,
+    rollback_supported: false,
+  },
+  {
+    key: 'mark_out_for_delivery',
+    ui_control: 'OperationalStatusControls mark out for delivery button',
+    backend_function: 'markAdminFulfillmentTaskOutForDelivery',
+    native_command_function: 'executeNativeFulfillmentTaskLifecycle',
+    lifecycle_action: 'out_for_delivery',
+    current_source_of_truth: 'Hub out-for-delivery command for Hub rows; native exact-gated lifecycle command exists for native task rows.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: true,
+    native_write_path_exists: true,
+    requires_driver: true,
+    allowed_statuses: ['scheduled', 'packed', 'in transit'],
+    rollback_supported: false,
+  },
+  {
+    key: 'mark_delivered_completed',
+    ui_control: 'OperationalStatusControls mark delivered button',
+    backend_function: 'recordAdminFulfillmentTaskDelivered',
+    native_command_function: 'executeNativeFulfillmentTaskLifecycle',
+    lifecycle_action: 'delivered_operational',
+    current_source_of_truth: 'Hub delivered command for Hub rows; native exact-gated lifecycle command exists for native task rows.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: true,
+    native_write_path_exists: true,
+    requires_driver: true,
+    allowed_statuses: ['out_for_delivery'],
+    rollback_supported: false,
+  },
+  {
+    key: 'mark_failed_missed_delivery',
+    ui_control: 'Not exposed in DeliveryQueue',
+    backend_function: null,
+    native_command_function: null,
+    current_source_of_truth: 'No approved native failed/missed-delivery action.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: true,
+    native_write_path_exists: false,
+    rollback_supported: false,
+  },
+  {
+    key: 'revert_reset_status',
+    ui_control: 'Not exposed in DeliveryQueue',
+    backend_function: null,
+    native_command_function: null,
+    current_source_of_truth: 'No approved native delivery status revert/reset action.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: true,
+    native_write_path_exists: false,
+    rollback_supported: false,
+  },
+  {
+    key: 'customer_tracking_status_update',
+    ui_control: 'OrderTracker customer display only',
+    backend_function: 'getCustomerOrderDetail',
+    native_command_function: null,
+    current_source_of_truth: 'Customer tracker status remains separately governed and must not change from G42B.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: false,
+    native_write_path_exists: false,
+    customer_status_policy_hold: true,
+    rollback_supported: false,
+  },
+  {
+    key: 'notification_message_dispatch',
+    ui_control: 'No DeliveryQueue notification send control',
+    backend_function: 'sendUpcomingDeliveryNotifications / verifyOutForDeliveryNotification',
+    native_command_function: null,
+    current_source_of_truth: 'Notification behavior remains separately gated and held.',
+    hub_dependency: false,
+    provider_dependency: false,
+    notification_dependency: true,
+    native_write_path_exists: false,
+    notification_policy_hold: true,
+    rollback_supported: false,
+  },
+  {
+    key: 'hub_delivery_state_sync',
+    ui_control: 'Admin sync functions outside DeliveryQueue action migration',
+    backend_function: 'pushOrderStatusToHub / syncHubDeliveryStatuses / syncAdminSingleHubDeliveryStatus',
+    native_command_function: null,
+    current_source_of_truth: 'Hub writes and fallback remain active; suppression is not part of G42B.',
+    hub_dependency: true,
+    provider_dependency: false,
+    notification_dependency: false,
+    native_write_path_exists: false,
+    hub_write_policy_hold: true,
+    rollback_supported: false,
+  },
+  {
+    key: 'shopify_fulfillment_state_sync',
+    ui_control: 'No direct DeliveryQueue Shopify provider control',
+    backend_function: 'reconcileNativeDeliveryCompletionForCustomerApp / previewNativeDeliveryCompletionReconciliation',
+    native_command_function: null,
+    current_source_of_truth: 'Native ShopifyOrder entity reconciliation is exact-gated; Shopify provider calls remain out of scope.',
+    hub_dependency: false,
+    provider_dependency: true,
+    notification_dependency: false,
+    native_write_path_exists: false,
+    shopify_policy_hold: true,
+    rollback_supported: false,
+  },
+]);
+
+function isG42BPreviewRequest(body) {
+  return normalizeText(body?.preview_mode).toUpperCase() === G42B_PREVIEW_MODE;
+}
+
+function g42bUnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G42B_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g42bLookup(body) {
+  const requestedMode = normalizeText(body?.mode || G42B_MODE_EXACT).toUpperCase();
+  return {
+    previewMode: G42B_PREVIEW_MODE,
+    mode: G42B_SUPPORTED_MODES.has(requestedMode) ? requestedMode : requestedMode || G42B_MODE_EXACT,
+    fulfillmentTaskId: normalizeText(body?.fulfillment_task_id || body?.task_id),
+    customerAppOrderId: normalizeText(body?.customer_app_order_id || body?.order_id || body?.base44_order_id),
+    nativeShopifyOrderId: normalizeText(body?.native_shopify_order_id || body?.native_order_id || body?.shopify_order_id),
+    orderNumber: g43dScan1OrderKey(body?.order_number || body?.shopify_order_number),
+    fulfillmentTaskLimit: g43dScan1Limit(body?.fulfillment_task_limit, G42B_DEFAULT_LIMIT, G42B_MAX_LIMIT),
+    relatedEntityLimit: g43dScan1Limit(body?.related_entity_limit, G42B_DEFAULT_LIMIT, G42B_MAX_LIMIT),
+    requestId: sanitizeText(body?.request_id, 140),
+  };
+}
+
+function g42bBaseResponse(lookup) {
+  return {
+    success: true,
+    dry_run: true,
+    writes_performed: false,
+    generated_at: new Date().toISOString(),
+    function_name: 'previewNativeOrderCutoverReadiness',
+    preview_mode: G42B_PREVIEW_MODE,
+    mode: lookup.mode,
+    request_id: lookup.requestId || null,
+    apple_pay_deferred_intent_backend_blocked_by_platform_atomicity: true,
+    hub_fallback_remains_active: true,
+    customer_facing_status_unchanged: true,
+    supported_classifications: G42B_SUPPORTED_CLASSIFICATIONS,
+    safety: G42B_READ_ONLY_SAFETY,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    stripe_calls: false,
+    shopify_calls: false,
+    hub_calls: false,
+    route_provider_calls: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    payment_mutation_performed: false,
+    order_mutation_performed: false,
+    native_order_mutation_performed: false,
+    fulfillment_task_mutation_performed: false,
+    driver_assignment_performed: false,
+    route_mutation_performed: false,
+    delivery_status_updated: false,
+    command_log_created: false,
+  };
+}
+
+function g42bStatus(value) {
+  const status = normalizeLower(value);
+  if (status === 'out for delivery' || status === 'in transit') return 'out_for_delivery';
+  if (status === 'complete') return 'completed';
+  return status;
+}
+
+function g42bTaskStatus(task) {
+  return g42bStatus(task?.status || task?.task_status || task?.fulfillment_status || task?.delivery_status);
+}
+
+function g42bDeliveryStatus(task, order, nativeOrder) {
+  return g42bStatus(task?.delivery_status || order?.delivery_status || nativeOrder?.delivery_status || nativeOrder?.fulfillment_status);
+}
+
+function g42bHasAssignedDriver(task) {
+  return Boolean(normalizeText(task?.assigned_driver || task?.assigned_driver_id || task?.assigned_driver_email));
+}
+
+function g42bTaskIsDelivery(task, order, nativeOrder) {
+  const values = [task?.fulfillment_type, order?.fulfillment_type, nativeOrder?.fulfillment_type, nativeOrder?.source_type].map(normalizeLower).filter(Boolean);
+  return values.length === 0 || values.some(value => value === 'delivery' || value.includes('delivery'));
+}
+
+function g42bDeliverySchedulePresent(order, nativeOrder, task) {
+  return Boolean(g43dScan1DeliveryDate(task) || g43dScan1DeliveryDate(order) || g43dScan1DeliveryDate(nativeOrder));
+}
+
+function g42bRowsMatchingDelivery(rows, order, task) {
+  const fromOrder = order ? g43dScan1RowsMatchingOrder(rows, order) : [];
+  const taskOrderNumber = g43dScan1OrderNumber(task);
+  const taskOrderId = normalizeText(task?.order_id || task?.base44_order_id || task?.customer_app_order_id);
+  const fromTask = (rows || []).filter(row => g33cMatchesOrder(row, taskOrderNumber, taskOrderId));
+  return g43dScan1DedupeById([...fromOrder, ...fromTask]);
+}
+
+function g42bNativeMatches(order, nativeRows, lookup = {}) {
+  const rows = g43dScan1DedupeById(nativeRows || []);
+  if (!order && lookup.nativeShopifyOrderId) {
+    return rows.filter(row => [row?.id, row?.shopify_order_id].map(normalizeText).includes(lookup.nativeShopifyOrderId));
+  }
+  return rows.filter(row => g43dScan1NativeCompatible(order || {}, row));
+}
+
+function g42bCompatibleTasks(order, nativeOrder, taskRows, lookup = {}) {
+  const rows = g43dScan1DedupeById(taskRows || []);
+  const exactTaskId = lookup.fulfillmentTaskId;
+  if (!order || !nativeOrder) {
+    return exactTaskId ? rows.filter(row => [row?.id, row?.fulfillment_task_id].map(normalizeText).includes(exactTaskId)) : [];
+  }
+  return rows.filter(row => {
+    if (exactTaskId && ![row?.id, row?.fulfillment_task_id].map(normalizeText).includes(exactTaskId)) return false;
+    return g43dScan1TaskCompatible(order, nativeOrder, row);
+  });
+}
+
+function g42bContext({ order, customerOrderMatchCount = 1, nativeRows = [], taskRows = [], reviewRows = [], syncRows = [], parityRows = [], lookup = {}, sourceTruncated = {} }) {
+  const nativeMatches = g42bNativeMatches(order, nativeRows, lookup);
+  const nativeOrder = nativeMatches.length === 1 ? nativeMatches[0] : null;
+  const compatibleTasks = g42bCompatibleTasks(order, nativeOrder, taskRows, lookup);
+  const task = compatibleTasks.length === 1 ? compatibleTasks[0] : null;
+  const refundHold = g43dScan1RefundHold(order, nativeOrder);
+  const cancelHold = g43dScan1CancelHold(order, nativeOrder, task);
+  const subscriptionHold = g43dScan1SubscriptionOrMulti(order, nativeOrder, task);
+  const paymentReady = Boolean(order && g43dScan1PaidCapturedReady(order) && g43dScan1NativePaymentReady(nativeOrder, task));
+  const reviewHold = g33cReviewBlocker(g42bRowsMatchingDelivery(reviewRows, order, task));
+  const repairHold = g43dScan1RepairReplayHold([...g42bRowsMatchingDelivery(syncRows, order, task), ...g42bRowsMatchingDelivery(parityRows, order, task)]);
+  const scheduleMismatch = Boolean(order && (nativeOrder || task) && g43dScan1DatesMismatch(order, nativeOrder, task));
+  const fulfillmentMismatch = Boolean(order && (nativeOrder || task) && normalizeLower(order?.fulfillment_status) && g42bTaskStatus(task) && g43dScan1MapFulfillment(order?.fulfillment_status) !== g43dScan1MapFulfillment(g42bTaskStatus(task)));
+  const identityBlockers = [];
+  if (customerOrderMatchCount !== 1 || !order) identityBlockers.push(customerOrderMatchCount > 1 ? 'delivery_action_exact_identity_ambiguous' : 'customer_app_order_missing');
+  if (nativeMatches.length === 0) identityBlockers.push(sourceTruncated.ShopifyOrder ? 'bounded_scan_context_not_found' : 'delivery_action_native_order_missing');
+  if (nativeMatches.length > 1) identityBlockers.push('delivery_action_exact_identity_ambiguous');
+  if (compatibleTasks.length === 0) identityBlockers.push(sourceTruncated.FulfillmentTask ? 'bounded_scan_context_not_found' : 'delivery_action_task_missing');
+  if (compatibleTasks.length > 1) identityBlockers.push('delivery_action_exact_identity_ambiguous');
+  const baseBlockers = [...identityBlockers];
+  if (!paymentReady) baseBlockers.push('delivery_action_payment_hold');
+  if (refundHold || cancelHold) baseBlockers.push('delivery_action_refund_cancel_hold');
+  if (subscriptionHold) baseBlockers.push('delivery_action_subscription_multi_delivery_hold');
+  if (scheduleMismatch) baseBlockers.push('delivery_action_schedule_mismatch');
+  if (fulfillmentMismatch) baseBlockers.push('delivery_action_status_mismatch');
+  if (reviewHold) baseBlockers.push('delivery_action_review_queue_hold');
+  if (repairHold) baseBlockers.push('delivery_action_repair_replay_hold');
+  if (!g42bTaskIsDelivery(task, order, nativeOrder)) baseBlockers.push('non_delivery_fulfillment_hold');
+  if (!g42bDeliverySchedulePresent(order, nativeOrder, task)) baseBlockers.push('delivery_action_schedule_mismatch');
+
+  return {
+    order,
+    nativeOrder,
+    task,
+    nativeMatches,
+    compatibleTasks,
+    customerOrderMatchCount,
+    order_number: g43dScan1OrderNumber(order || task || nativeOrder) || lookup.orderNumber || null,
+    exact_order_chain_complete: Boolean(order && nativeMatches.length === 1 && compatibleTasks.length === 1),
+    native_read_context_complete: Boolean(order && nativeMatches.length === 1 && compatibleTasks.length === 1),
+    payment_ready: paymentReady,
+    refund_cancel_hold: refundHold || cancelHold,
+    subscription_multi_delivery_hold: subscriptionHold,
+    schedule_mismatch: scheduleMismatch,
+    status_mismatch: fulfillmentMismatch,
+    review_queue_hold: reviewHold,
+    repair_replay_hold: repairHold,
+    assigned_driver_present: g42bHasAssignedDriver(task),
+    current_status: g42bTaskStatus(task),
+    current_delivery_status: g42bDeliveryStatus(task, order, nativeOrder),
+    already_completed: ['delivered', 'completed', 'fulfilled'].includes(g42bTaskStatus(task)) || ['delivered', 'fulfilled'].includes(g42bDeliveryStatus(task, order, nativeOrder)),
+    route_context_present: Boolean(task?.route_id || task?.route_stop_sequence || task?.assigned_driver || task?.delivery_route_id),
+    delivery_schedule_present: g42bDeliverySchedulePresent(order, nativeOrder, task),
+    base_blockers: [...new Set(baseBlockers)],
+  };
+}
+
+function g42bActionReadiness(action, context) {
+  const blockers = [...(context.base_blockers || [])];
+  const warnings = [];
+  const currentStatus = context.current_status;
+  const statusAllows = !action.allowed_statuses || action.allowed_statuses.includes(currentStatus);
+  const exactReady = Boolean(context.native_read_context_complete);
+  const idempotencyReady = Boolean(action.native_write_path_exists && action.native_command_function === 'executeNativeFulfillmentTaskLifecycle');
+  let nativeCommandCandidate = Boolean(exactReady && action.native_write_path_exists && statusAllows && !context.refund_cancel_hold && !context.subscription_multi_delivery_hold && !context.review_queue_hold && !context.repair_replay_hold);
+
+  if (!action.action_present && action.backend_function) action.action_present = true;
+  if (!action.native_write_path_exists) blockers.push('native_write_command_missing');
+  if (action.hub_dependency) blockers.push('delivery_action_hub_write_required');
+  if (action.provider_dependency || action.requires_provider_contract) blockers.push('delivery_action_provider_call_required');
+  if (action.notification_dependency || action.notification_policy_hold) blockers.push('delivery_action_notification_held');
+  if (!idempotencyReady && action.native_write_path_exists) blockers.push('delivery_action_idempotency_gap');
+  if (!action.rollback_supported) blockers.push('delivery_action_rollback_gap');
+  if (action.requires_driver && !context.assigned_driver_present) blockers.push('delivery_action_driver_assignment_missing');
+  if (action.requires_no_driver && context.assigned_driver_present) blockers.push('conflicting_driver_assignment');
+  if (action.requires_route_context && !context.route_context_present) blockers.push('delivery_action_route_context_missing');
+  if (action.customer_status_policy_hold) blockers.push('blocked_by_customer_status_policy');
+  if (action.hub_write_policy_hold) blockers.push('hub_write_suppression_not_approved');
+  if (action.shopify_policy_hold) blockers.push('shopify_fulfillment_policy_held');
+  if (!statusAllows) blockers.push('delivery_action_status_mismatch');
+  if (context.already_completed) {
+    blockers.push('delivery_action_already_completed');
+    if (action.key !== 'mark_delivered_completed') nativeCommandCandidate = false;
+  }
+
+  const uniqueBlockers = [...new Set(blockers)];
+  const fallbackRequired = uniqueBlockers.length > 0 || action.hub_dependency || action.provider_dependency || action.notification_dependency;
+  const reviewRequired = uniqueBlockers.length > 0;
+  const rollbackReady = Boolean(action.rollback_supported);
+  const actionNativeReady = Boolean(nativeCommandCandidate && idempotencyReady && rollbackReady && uniqueBlockers.length === 0);
+
+  if (action.hub_dependency) warnings.push('current_delivery_action_path_still_depends_on_hub_or_hub_fallback');
+  if (action.provider_dependency) warnings.push('provider_route_or_shopify_dependency_must_remain_held');
+  if (action.notification_dependency) warnings.push('notifications_remain_separately_held');
+  if (nativeCommandCandidate) warnings.push('exact_native_command_candidate_preview_only_do_not_execute_from_g42b');
+
+  return {
+    action_present: Boolean(action.backend_function || action.ui_control),
+    ui_control: action.ui_control,
+    backend_function: action.backend_function,
+    native_command_function: action.native_command_function,
+    native_read_context_complete: exactReady,
+    native_write_path_exists: Boolean(action.native_write_path_exists),
+    exact_target_identity_ready: exactReady,
+    current_status_allows_action: Boolean(statusAllows),
+    current_source_of_truth: action.current_source_of_truth,
+    hub_dependency: Boolean(action.hub_dependency),
+    provider_dependency: Boolean(action.provider_dependency),
+    notification_dependency: Boolean(action.notification_dependency),
+    idempotency_ready: idempotencyReady,
+    rollback_ready: rollbackReady,
+    native_command_candidate: nativeCommandCandidate,
+    action_native_ready: actionNativeReady,
+    fallback_required: fallbackRequired,
+    review_required: reviewRequired,
+    blockers: uniqueBlockers,
+    warnings: [...new Set(warnings)],
+  };
+}
+
+function g42bActionMatrix(context) {
+  return Object.fromEntries(G42B_ACTION_DEFINITIONS.map(action => [action.key, g42bActionReadiness({ ...action }, context)]));
+}
+
+function g42bClassifyContext(context, matrix) {
+  if ((context.base_blockers || []).includes('delivery_action_exact_identity_ambiguous')) return 'delivery_action_exact_identity_ambiguous';
+  const priority = [
+    'delivery_action_task_missing',
+    'delivery_action_native_order_missing',
+    'delivery_action_payment_hold',
+    'delivery_action_refund_cancel_hold',
+    'delivery_action_subscription_multi_delivery_hold',
+    'delivery_action_schedule_mismatch',
+    'delivery_action_status_mismatch',
+    'delivery_action_review_queue_hold',
+    'delivery_action_repair_replay_hold',
+    'bounded_scan_context_not_found',
+  ];
+  const hit = priority.find(item => (context.base_blockers || []).includes(item));
+  if (hit) return hit;
+  if (Object.values(matrix || {}).some(row => row.native_command_candidate)) return 'delivery_action_native_command_candidate';
+  if (context.native_read_context_complete) return 'delivery_action_native_read_ready';
+  return 'delivery_action_manual_review_required';
+}
+
+function g42bReadinessSummary(context, matrix) {
+  const actionValues = Object.values(matrix || {});
+  const blockers = [...new Set([...(context.base_blockers || []), ...actionValues.flatMap(action => action.blockers || [])])];
+  const warnings = [...new Set(actionValues.flatMap(action => action.warnings || []))];
+  const classification = g42bClassifyContext(context, matrix);
+  return {
+    order_number: context.order_number || null,
+    customer_app_order_present: Boolean(context.order),
+    native_shopify_order_match_count: context.nativeMatches.length,
+    compatible_fulfillment_task_count: context.compatibleTasks.length,
+    exact_order_chain_complete: context.exact_order_chain_complete,
+    native_read_context_complete: context.native_read_context_complete,
+    paid_captured_ready: context.payment_ready,
+    refund_cancel_hold: context.refund_cancel_hold,
+    subscription_multi_delivery_hold: context.subscription_multi_delivery_hold,
+    assigned_driver_present: context.assigned_driver_present,
+    route_context_present: context.route_context_present,
+    delivery_schedule_present: context.delivery_schedule_present,
+    current_status: sanitizeText(context.current_status, 60) || null,
+    current_delivery_status: sanitizeText(context.current_delivery_status, 60) || null,
+    already_completed: context.already_completed,
+    assign_driver_candidate: Boolean(matrix.assign_driver?.native_command_candidate),
+    route_candidate: Boolean(matrix.optimize_route?.native_read_context_complete && !matrix.optimize_route?.provider_dependency),
+    out_for_delivery_candidate: Boolean(matrix.mark_out_for_delivery?.native_command_candidate),
+    delivered_candidate: Boolean(matrix.mark_delivered_completed?.native_command_candidate),
+    native_command_candidate: actionValues.some(action => action.native_command_candidate),
+    fallback_required: actionValues.some(action => action.fallback_required) || blockers.length > 0,
+    review_required: actionValues.some(action => action.review_required) || blockers.length > 0,
+    blockers,
+    warnings,
+    classification,
+  };
+}
+
+function g42bCounts(summaries) {
+  const rows = summaries || [];
+  return {
+    unique_delivery_task_count: rows.length,
+    duplicate_task_identity_count: rows.filter(row => row.blockers.includes('delivery_action_exact_identity_ambiguous')).length,
+    exact_order_chain_complete_count: rows.filter(row => row.exact_order_chain_complete).length,
+    assign_driver_candidate_count: rows.filter(row => row.assign_driver_candidate).length,
+    route_candidate_count: rows.filter(row => row.route_candidate).length,
+    out_for_delivery_candidate_count: rows.filter(row => row.out_for_delivery_candidate).length,
+    delivered_candidate_count: rows.filter(row => row.delivered_candidate).length,
+    already_completed_count: rows.filter(row => row.already_completed).length,
+    schedule_mismatch_count: rows.filter(row => row.blockers.includes('delivery_action_schedule_mismatch')).length,
+    status_mismatch_count: rows.filter(row => row.blockers.includes('delivery_action_status_mismatch')).length,
+    payment_hold_count: rows.filter(row => row.blockers.includes('delivery_action_payment_hold')).length,
+    refund_cancel_hold_count: rows.filter(row => row.refund_cancel_hold).length,
+    subscription_multi_delivery_hold_count: rows.filter(row => row.subscription_multi_delivery_hold).length,
+    review_queue_hold_count: rows.filter(row => row.blockers.includes('delivery_action_review_queue_hold')).length,
+    repair_replay_hold_count: rows.filter(row => row.blockers.includes('delivery_action_repair_replay_hold')).length,
+    Hub_write_required_count: rows.filter(row => row.blockers.includes('delivery_action_hub_write_required')).length,
+    provider_call_required_count: rows.filter(row => row.blockers.includes('delivery_action_provider_call_required')).length,
+    notification_held_count: rows.filter(row => row.blockers.includes('delivery_action_notification_held')).length,
+    native_command_candidate_count: rows.filter(row => row.native_command_candidate).length,
+    fallback_required_count: rows.filter(row => row.fallback_required).length,
+    review_required_count: rows.filter(row => row.review_required).length,
+    classification_counts: g43dScan1ClassificationCounts(rows),
+  };
+}
+
+function g42bExactOrderFilters(lookup, taskRows = []) {
+  const task = g43dScan1DedupeById(taskRows)[0] || null;
+  const orderNumber = lookup.orderNumber || g43dScan1OrderNumber(task);
+  const orderId = lookup.customerAppOrderId || normalizeText(task?.order_id || task?.base44_order_id || task?.customer_app_order_id);
+  return [
+    { id: orderId },
+    { order_number: orderNumber },
+    { shopify_order_number: orderNumber },
+    { shopify_order_number: orderNumber ? `#${orderNumber}` : '' },
+  ];
+}
+
+function g42bNativeFilters(lookup, order, taskRows = []) {
+  const task = g43dScan1DedupeById(taskRows)[0] || null;
+  const orderNumber = lookup.orderNumber || g43dScan1OrderNumber(order || task);
+  const orderId = normalizeText(order?.id || lookup.customerAppOrderId || task?.order_id || task?.base44_order_id || task?.customer_app_order_id);
+  const nativeId = lookup.nativeShopifyOrderId || normalizeText(task?.native_shopify_order_id || task?.shopify_order_id);
+  return [
+    { id: nativeId },
+    { shopify_order_id: nativeId },
+    { base44_order_id: orderId },
+    { customer_app_order_id: orderId },
+    { order_number: orderNumber },
+    { shopify_order_number: orderNumber },
+    { shopify_order_number: orderNumber ? `#${orderNumber}` : '' },
+  ];
+}
+
+function g42bTaskFilters(lookup, order, nativeRows = []) {
+  const orderNumber = lookup.orderNumber || g43dScan1OrderNumber(order);
+  const orderId = normalizeText(order?.id || lookup.customerAppOrderId);
+  const nativeIds = g43dScan1DedupeById(nativeRows).map(row => normalizeText(row?.id)).filter(Boolean);
+  return [
+    { id: lookup.fulfillmentTaskId },
+    { fulfillment_task_id: lookup.fulfillmentTaskId },
+    { order_id: orderId },
+    { base44_order_id: orderId },
+    { customer_app_order_id: orderId },
+    { native_shopify_order_id: lookup.nativeShopifyOrderId },
+    { shopify_order_id: lookup.nativeShopifyOrderId },
+    ...nativeIds.flatMap(nativeId => [{ native_shopify_order_id: nativeId }, { shopify_order_id: nativeId }]),
+    { order_number: orderNumber },
+    { shopify_order_number: orderNumber },
+    { shopify_order_number: orderNumber ? `#${orderNumber}` : '' },
+  ];
+}
+
+async function buildG42BExactPreview(base44, lookup, baseResponse) {
+  if (!lookup.fulfillmentTaskId && !lookup.customerAppOrderId && !lookup.nativeShopifyOrderId && !lookup.orderNumber) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: ['exact_delivery_action_identifier_required'],
+      blockers: ['exact_delivery_action_identifier_required'],
+      warnings: ['provide_fulfillment_task_id_customer_app_order_id_native_shopify_order_id_or_exact_order_number'],
+      fallback_required: true,
+      review_required: true,
+      classification: 'delivery_action_manual_review_required',
+      next_action: 'rerun_with_exact_delivery_identifiers',
+    };
+  }
+
+  const taskSeedRead = lookup.fulfillmentTaskId
+    ? await g43dScan5FilterRows(base44, 'FulfillmentTask', [{ id: lookup.fulfillmentTaskId }, { fulfillment_task_id: lookup.fulfillmentTaskId }], '-created_date', 5)
+    : { entity: 'FulfillmentTask', ok: true, rows: [], read_count: 0, rate_limit_detected: false };
+  const orderRead = await g43dScan5FilterRows(base44, 'Order', g42bExactOrderFilters(lookup, taskSeedRead.rows), '-created_date', 5);
+  const orderRows = g43dScan5CandidateOrderRowsByNumberOrId(orderRead.rows, { exactOrderNumber: lookup.orderNumber || g43dScan1OrderNumber(taskSeedRead.rows?.[0]), exactCustomerAppOrderId: lookup.customerAppOrderId || normalizeText(taskSeedRead.rows?.[0]?.order_id || taskSeedRead.rows?.[0]?.base44_order_id || taskSeedRead.rows?.[0]?.customer_app_order_id) });
+  const order = orderRows.length === 1 ? orderRows[0] : null;
+  const nativeRead = await g43dScan5FilterRows(base44, 'ShopifyOrder', g42bNativeFilters(lookup, order, taskSeedRead.rows), '-created_date', 10);
+  const nativeMatches = g42bNativeMatches(order, nativeRead.rows, lookup);
+  const taskRead = await g43dScan5FilterRows(base44, 'FulfillmentTask', g42bTaskFilters(lookup, order, nativeMatches), '-created_date', 20);
+  const taskRows = g43dScan1DedupeById([...(taskSeedRead.rows || []), ...(taskRead.rows || [])]);
+  const exact = order ? g43dScan5ExactFiltersForOrder(order, { exactOrderNumber: lookup.orderNumber, exactCustomerAppOrderId: lookup.customerAppOrderId }) : { logFilters: [], nativeFilters: [], taskFilters: [] };
+  const [reviewRead, syncRead, parityRead] = await Promise.all([
+    g43dScan5FilterRows(base44, 'OrderReviewQueue', exact.logFilters, '-created_date', 20),
+    g43dScan5FilterRows(base44, 'OrderSyncLog', exact.logFilters, '-created_date', 20),
+    g43dScan5FilterRows(base44, 'SafeSyncParityLog', exact.logFilters, '-created_date', 20),
+  ]);
+  const reads = [taskSeedRead, orderRead, nativeRead, taskRead, reviewRead, syncRead, parityRead];
+  const failedReads = reads.filter(read => !read.ok);
+  const rateLimitDetected = failedReads.some(read => read.rate_limit_detected);
+  const context = g42bContext({
+    order,
+    customerOrderMatchCount: orderRows.length,
+    nativeRows: nativeRead.rows || [],
+    taskRows,
+    reviewRows: reviewRead.rows || [],
+    syncRows: syncRead.rows || [],
+    parityRows: parityRead.rows || [],
+    lookup,
+  });
+  const matrix = g42bActionMatrix(context);
+  const summary = g42bReadinessSummary(context, matrix);
+  const sourceBlockers = failedReads.map(read => `${read.entity}:${read.error_code || 'source_read_failed'}`);
+  const blockers = [...new Set([...(summary.blockers || []), ...sourceBlockers])];
+
+  return {
+    ...baseResponse,
+    success: failedReads.length === 0,
+    scan_complete: !rateLimitDetected,
+    scan_incomplete_reasons: rateLimitDetected ? ['rate_limit_detected'] : sourceBlockers,
+    rate_limit_detected: rateLimitDetected,
+    source_context_complete: failedReads.length === 0,
+    order_number: summary.order_number,
+    exact_customer_app_order_match_count: orderRows.length,
+    exact_native_shopify_order_match_count: context.nativeMatches.length,
+    exact_compatible_fulfillment_task_count: context.compatibleTasks.length,
+    action_readiness_matrix: matrix,
+    safe_delivery_action_summary: { ...summary, blockers },
+    classification: sourceBlockers.length ? 'delivery_action_manual_review_required' : summary.classification,
+    fallback_required: Boolean(summary.fallback_required || sourceBlockers.length),
+    review_required: Boolean(summary.review_required || sourceBlockers.length),
+    blockers,
+    warnings: [...new Set([...(summary.warnings || []), 'admin_preview_only_not_customer_visible', 'no_delivery_action_executed'])],
+    source_read_count: reads.reduce((sum, read) => sum + (read.read_count || 0), 0),
+    source_row_counts: Object.fromEntries(reads.map(read => [read.entity, Array.isArray(read.rows) ? read.rows.length : 0])),
+    next_action: summary.native_command_candidate
+      ? 'plan_one_exact_default_off_native_delivery_command_for_selected_action'
+      : 'retain_hub_delivery_actions_and_resolve_identity_status_or_policy_blockers',
+  };
+}
+
+async function buildG42BBoundedScan(base44, lookup, baseResponse) {
+  const readsByEntity = {
+    FulfillmentTask: await g43dScan5ListSource(base44, 'FulfillmentTask', { sort: '-updated_date', field: 'updated_date', requestedLimit: lookup.fulfillmentTaskLimit }),
+    Order: await g43dScan5ListSource(base44, 'Order', { sort: '-updated_date', field: 'updated_date', requestedLimit: lookup.relatedEntityLimit }),
+    ShopifyOrder: await g43dScan5ListSource(base44, 'ShopifyOrder', { sort: '-updated_date', field: 'updated_date', requestedLimit: lookup.relatedEntityLimit }),
+    OrderReviewQueue: await g43dScan5ListSource(base44, 'OrderReviewQueue', { sort: '-updated_date', field: 'updated_date', requestedLimit: lookup.relatedEntityLimit }),
+    OrderSyncLog: await g43dScan5ListSource(base44, 'OrderSyncLog', { sort: '-updated_date', field: 'updated_date', requestedLimit: lookup.relatedEntityLimit }),
+    SafeSyncParityLog: await g43dScan5ListSource(base44, 'SafeSyncParityLog', { sort: '-updated_date', field: 'updated_date', requestedLimit: lookup.relatedEntityLimit }),
+  };
+  const failedReads = Object.values(readsByEntity).filter(read => !read.ok);
+  const rateLimitDetected = failedReads.some(read => read.rate_limit_detected);
+  const sourceTruncated = g43dScan5SourceTruncated(readsByEntity);
+  const requiredSourceTruncated = ['FulfillmentTask', 'Order', 'ShopifyOrder', 'OrderReviewQueue'].some(entity => sourceTruncated[entity]);
+  const scanComplete = failedReads.length === 0 && !rateLimitDetected && !requiredSourceTruncated;
+  const tasks = g43dScan1DedupeById((readsByEntity.FulfillmentTask.rows || []).filter(task => g42bTaskIsDelivery(task, null, null)));
+  const orderRows = readsByEntity.Order.rows || [];
+  const nativeRows = readsByEntity.ShopifyOrder.rows || [];
+  const summaries = tasks.map(task => {
+    const taskOrderNumber = g43dScan1OrderNumber(task);
+    const taskOrderId = normalizeText(task?.order_id || task?.base44_order_id || task?.customer_app_order_id);
+    const matchingOrders = g43dScan1DedupeById(orderRows.filter(order => {
+      const orderId = normalizeText(order?.id);
+      const orderNumber = g43dScan1OrderNumber(order);
+      return Boolean((taskOrderId && orderId === taskOrderId) || (taskOrderNumber && orderNumber === taskOrderNumber));
+    }));
+    const order = matchingOrders.length === 1 ? matchingOrders[0] : null;
+    const context = g42bContext({
+      order,
+      customerOrderMatchCount: matchingOrders.length,
+      nativeRows,
+      taskRows: [task],
+      reviewRows: readsByEntity.OrderReviewQueue.rows || [],
+      syncRows: readsByEntity.OrderSyncLog.rows || [],
+      parityRows: readsByEntity.SafeSyncParityLog.rows || [],
+      lookup: { orderNumber: taskOrderNumber, customerAppOrderId: taskOrderId, fulfillmentTaskId: normalizeText(task?.id || task?.fulfillment_task_id) },
+      sourceTruncated: { ShopifyOrder: sourceTruncated.ShopifyOrder, FulfillmentTask: sourceTruncated.FulfillmentTask },
+    });
+    const matrix = g42bActionMatrix(context);
+    return g42bReadinessSummary(context, matrix);
+  });
+  const counts = g42bCounts(summaries);
+  const incompleteReasons = failedReads.map(read => `${read.entity}:${read.error_code || 'source_read_failed'}`);
+  if (requiredSourceTruncated) incompleteReasons.push('required_source_truncated_exact_followup_required');
+  if (Object.values(sourceTruncated).some(Boolean)) incompleteReasons.push('source_truncated_counts_not_fleet_authoritative');
+
+  return {
+    ...baseResponse,
+    success: failedReads.length === 0,
+    scan_complete: scanComplete,
+    scan_incomplete_reasons: [...new Set(incompleteReasons)],
+    rate_limit_detected: rateLimitDetected,
+    source_read_count: Object.keys(readsByEntity).length,
+    source_row_counts: g43dScan5SourceRowCounts(readsByEntity),
+    source_truncated: sourceTruncated,
+    source_coverage: g43dScan5SourceCoverageMap(readsByEntity),
+    exact_followup_required: Object.values(sourceTruncated).some(Boolean),
+    ...counts,
+    safe_delivery_action_summaries: summaries.map(row => ({
+      order_number: row.order_number,
+      customer_app_order_present: row.customer_app_order_present,
+      native_shopify_order_match_count: row.native_shopify_order_match_count,
+      compatible_fulfillment_task_count: row.compatible_fulfillment_task_count,
+      exact_order_chain_complete: row.exact_order_chain_complete,
+      paid_captured_ready: row.paid_captured_ready,
+      assigned_driver_present: row.assigned_driver_present,
+      route_context_present: row.route_context_present,
+      current_status: row.current_status,
+      current_delivery_status: row.current_delivery_status,
+      assign_driver_candidate: row.assign_driver_candidate,
+      out_for_delivery_candidate: row.out_for_delivery_candidate,
+      delivered_candidate: row.delivered_candidate,
+      native_command_candidate: row.native_command_candidate,
+      fallback_required: row.fallback_required,
+      review_required: row.review_required,
+      classification: row.classification,
+      blockers: row.blockers,
+    })),
+    blockers: failedReads.length ? failedReads.map(read => `${read.entity}:${read.error_code || 'source_read_failed'}`) : [],
+    warnings: [
+      'admin_preview_only_not_customer_visible',
+      'bounded_delivery_action_scan_does_not_execute_actions',
+      'hub_fallback_and_hub_writes_remain_active',
+      ...(Object.values(sourceTruncated).some(Boolean) ? ['source_truncated_counts_not_fleet_authoritative'] : []),
+    ],
+    next_action: counts.native_command_candidate_count > 0
+      ? 'run_exact_delivery_action_readiness_for_candidate_then_plan_one_default_off_command'
+      : 'resolve_identity_status_idempotency_or_policy_gaps_before_native_delivery_action_plan',
+  };
+}
+
+async function buildG42BPreview(base44, body) {
+  const lookup = g42bLookup(body);
+  const baseResponse = g42bBaseResponse(lookup);
+  if (!G42B_SUPPORTED_MODES.has(lookup.mode)) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      scan_incomplete_reasons: ['unsupported_mode'],
+      blockers: ['unsupported_mode'],
+      warnings: ['supported_modes_exact_delivery_action_readiness_or_bounded_delivery_action_readiness_scan'],
+      next_action: 'rerun_with_supported_g42b_mode',
+    };
+  }
+  return lookup.mode === G42B_MODE_EXACT
+    ? buildG42BExactPreview(base44, lookup, baseResponse)
+    : buildG42BBoundedScan(base44, lookup, baseResponse);
+}
+// G42B_DELIVERY_ACTION_READINESS_END
+
 const G45B_PREVIEW_MODE = 'CUSTOMER_LOYALTY_READ_PARITY';
 const G45B_MODE_EXACT = 'EXACT_CUSTOMER_LOYALTY_PARITY';
 const G45B_MODE_SCAN = 'BOUNDED_LOYALTY_READINESS_SCAN';
@@ -10900,6 +11725,7 @@ Deno.serve(async (req) => {
     const g36cResolvePreviewRequest = isG36CResolvePreviewRequest(body);
     const g36fPreviewRequest = isG36FPreviewRequest(body);
     const g43dScan1PreviewRequest = isG43DScan1PreviewRequest(body);
+    const g42bPreviewRequest = isG42BPreviewRequest(body);
     const g45bPreviewRequest = isG45BPreviewRequest(body);
     const g46bPreviewRequest = isG46BPreviewRequest(body);
     const g47bPreviewRequest = isG47BPreviewRequest(body);
@@ -10970,6 +11796,12 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
+    if (g42bPreviewRequest) {
+      const unsupported = g42bUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
     if (g45bPreviewRequest) {
       const unsupported = g45bUnsupportedBodyKey(body);
       if (unsupported) {
@@ -10994,7 +11826,7 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400, headers: G47F_CONFIG2_NO_STORE_HEADERS });
       }
     }
-    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && !g45bPreviewRequest && !g46bPreviewRequest && !g47bPreviewRequest && !g47fConfig2PreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && !g42bPreviewRequest && !g45bPreviewRequest && !g46bPreviewRequest && !g47bPreviewRequest && !g47fConfig2PreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
@@ -11120,6 +11952,16 @@ Deno.serve(async (req) => {
 
     if (g43dScan1PreviewRequest) {
       const preview = await buildG43DScan1Preview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
+
+    if (g42bPreviewRequest) {
+      const preview = await buildG42BPreview(base44, body);
       return Response.json({
         ...preview,
         actor_type: auth.actor_type,
