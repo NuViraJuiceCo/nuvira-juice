@@ -240,6 +240,8 @@ Deno.serve(async (req) => {
       delivery_schedule_source,
       // Zone eligibility (may be pre-validated by frontend; we re-validate server-side)
       zone_key: clientZoneKey,
+      // Client-supplied idempotency key for duplicate-request protection
+      checkout_idempotency_key,
     } = await req.json();
     const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
     if (unauthorized) return unauthorized;
@@ -438,18 +440,27 @@ Deno.serve(async (req) => {
     // Do NOT subtract again here — that would double-count.
     const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 
+    // Build Stripe idempotency key from the client-supplied checkout key (if present).
+    // This ensures duplicate calls from retries or double-taps return the same PI.
+    const stripeIdempotencyKey = checkout_idempotency_key
+      ? `nv-pi-${checkout_idempotency_key}`
+      : undefined;
+
     // Create PaymentIntent with card only.
     // payment_method_types:['card'] enables Apple Pay and Google Pay via ExpressCheckoutElement
     // without opening the door to Bank, Klarna, ACH, or any redirect-based method.
     // automatic_payment_methods is intentionally omitted to prevent Bank from appearing.
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount:   amountCents,
-      currency: 'usd',
-      payment_method_types: ['card'],
-      metadata: intentMetadata,
-      receipt_email: customer_email || undefined,
-      description: `NuVira Order ${orderNumber}`,
-    });
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount:   amountCents,
+        currency: 'usd',
+        payment_method_types: ['card'],
+        metadata: intentMetadata,
+        receipt_email: customer_email || undefined,
+        description: `NuVira Order ${orderNumber}`,
+      },
+      stripeIdempotencyKey ? { idempotencyKey: stripeIdempotencyKey } : {}
+    );
 
     console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: automatic_payment_methods=enabled, allow_redirects=never. amount=${amountCents}¢, customer=${customer_email}`);
 
@@ -457,6 +468,38 @@ Deno.serve(async (req) => {
     const resolvedDeliveryAddress = delivery_address || [address_line1, address_city, address_state, address_postal_code].filter(Boolean).join(', ');
 
     try {
+      // Deduplication guard: if a retry call hit Stripe idempotency and returned the same PI,
+      // check whether a pending Order already exists for this PI before creating another.
+      if (stripeIdempotencyKey) {
+        const existingOrders = await base44.asServiceRole.entities.Order.filter({
+          stripe_payment_intent_id: paymentIntent.id,
+        });
+        if (existingOrders.length > 0) {
+          const existing = existingOrders[0];
+          console.log(`[PI] Idempotent retry — returning existing pending Order ${existing.order_number} for PI ${paymentIntent.id}`);
+          return Response.json({
+            clientSecret:         paymentIntent.client_secret,
+            paymentIntentId:      paymentIntent.id,
+            publishableKey:       Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+            orderNumber:          existing.order_number,
+            effectiveTotal,
+            effectiveDeliveryFee,
+            subFreeDelivery,
+            subDiscountPct,
+            subDiscountAmt,
+            idempotent_replay:    true,
+            confirmedDeliverySchedule: {
+              delivery_date:         deliveryDate,
+              production_date:       resolvedProdDate,
+              delivery_window_label: resolvedWindowLabel,
+              delivery_window_start: resolvedWindowStart,
+              delivery_window_end:   resolvedWindowEnd,
+              final_schedule_source: canonicalSchedule.finalScheduleSource,
+            },
+          });
+        }
+      }
+
       await base44.asServiceRole.entities.Order.create({
         order_number:             orderNumber,
         customer_email:           customer_email || '',
@@ -526,6 +569,7 @@ Deno.serve(async (req) => {
         customer_email:    customer_email || '',
         checkout_data: {
           order_number: orderNumber, customer_email, customer_name,
+          checkout_idempotency_key: checkout_idempotency_key || null,
           address_line1, address_line2, address_city, address_state, address_postal_code,
           address_country: 'US',
           items, subtotal,

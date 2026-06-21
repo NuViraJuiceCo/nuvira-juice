@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import SEO from '@/components/SEO';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import ApplePayMountDiagnostic from '@/components/checkout/ApplePayMountDiagnostic';
@@ -120,6 +120,13 @@ function CheckoutFlow() {
   const [healthAdvisoryAcknowledged, setHealthAdvisoryAcknowledged] = useState(false);
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState(null);
   const [scheduleOptionsOverride, setScheduleOptionsOverride] = useState(null);
+  // Stable idempotency key for this checkout session — generated once on mount,
+  // reused on retries so duplicate calls to createPaymentIntent return the same PI.
+  const checkoutIdempotencyKey = React.useRef(
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `nv-checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
   const REFERRAL_DISCOUNT = 5.00;
   const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
 
@@ -459,6 +466,8 @@ function CheckoutFlow() {
       reward_discount: rewardDiscountAmt,
       // Zone eligibility snapshot
       zone_key: zoneEligibility?.zone_key || null,
+      // Idempotency key — stable for this checkout session, reused on retries
+      checkout_idempotency_key: checkoutIdempotencyKey.current,
       // Health advisory acknowledgment
       health_advisory_acknowledged: true,
       health_advisory_acknowledged_at: new Date().toISOString(),
