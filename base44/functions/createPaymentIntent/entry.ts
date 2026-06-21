@@ -4,6 +4,170 @@ import Stripe from 'npm:stripe@14.21.0';
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
+const DEFERRED_EXPRESS_CHECKOUT_MODE = 'DEFERRED_EXPRESS_CHECKOUT_PAYMENT_ATTEMPT';
+const DEFERRED_EXPRESS_CHECKOUT_ENABLE_ENV = 'ENABLE_DEFERRED_EXPRESS_CHECKOUT_PAYMENT_ATTEMPT';
+const DEFERRED_EXPRESS_CHECKOUT_KILL_SWITCH_ENV = 'DEFERRED_EXPRESS_CHECKOUT_PAYMENT_ATTEMPT_KILL_SWITCH';
+const DEFERRED_EXPRESS_CHECKOUT_ALLOWLIST_ENV = 'DEFERRED_EXPRESS_CHECKOUT_PAYMENT_ATTEMPT_ALLOWED_USER_PROFILE_IDS';
+const DEFERRED_EXPRESS_CHECKOUT_POLICY_ENV = 'DEFERRED_EXPRESS_CHECKOUT_PAYMENT_ATTEMPT_POLICY';
+const DEFERRED_EXPRESS_CHECKOUT_REQUIRED_POLICY = 'DEFERRED_EXPRESS_CHECKOUT_CONFIRMATION_TOKEN_ONE_TIME_ONLY';
+const DEFERRED_EXPRESS_CHECKOUT_BLOCKER_CLASSIFICATION = 'apple_pay_deferred_intent_backend_blocked_by_atomic_idempotency_gap';
+
+function boolEnv(name) {
+  return ['1', 'true', 'yes', 'on'].includes(String(Deno.env.get(name) || '').trim().toLowerCase());
+}
+
+function csvEnv(name) {
+  return String(Deno.env.get(name) || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
+}
+
+function noStoreJson(payload, status = 200) {
+  return Response.json(payload, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+function sanitizeCheckoutRequestId(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.length > 120) return '';
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{15,119}$/.test(raw)) return '';
+  if (/@|\+?\d[\d\s().-]{7,}/.test(raw)) return '';
+  return raw;
+}
+
+function isSupportedConfirmationTokenId(value) {
+  const raw = String(value || '').trim();
+  return /^ctoken_[A-Za-z0-9_:-]{8,}$/.test(raw);
+}
+
+function containsUnsupportedDeferredDiscount(body) {
+  return Boolean(
+    body?.points_discount ||
+    body?.points_used ||
+    body?.active_reward ||
+    body?.reward_discount ||
+    body?.credits_discount ||
+    body?.referral_discount ||
+    body?.referral_code
+  );
+}
+
+async function resolveAuthenticatedUserProfileIds(base44, user) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (!email) return [];
+  const profileRows = [];
+  try {
+    const byCustomerEmail = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: email }, '-created_date', 10);
+    if (Array.isArray(byCustomerEmail)) profileRows.push(...byCustomerEmail);
+  } catch (_) {}
+  try {
+    const byContactEmail = await base44.asServiceRole.entities.UserProfile.filter({ contact_email: email }, '-created_date', 10);
+    if (Array.isArray(byContactEmail)) profileRows.push(...byContactEmail);
+  } catch (_) {}
+  return [...new Set(profileRows.map(row => String(row?.id || '').trim()).filter(Boolean))];
+}
+
+function buildDeferredResponse({ body, blockers = [], warnings = [], status = 409, userAuthenticated = false, featureEnabled = false, killSwitchActive = false }) {
+  const checkoutRequestId = sanitizeCheckoutRequestId(body?.checkout_request_id);
+  return noStoreJson({
+    success: false,
+    dry_run: body?.dry_run === true,
+    mode: DEFERRED_EXPRESS_CHECKOUT_MODE,
+    checkout_request_id: checkoutRequestId || null,
+    idempotent: false,
+    attempt_state: 'checkout_attempt_initialized',
+    writes_performed: false,
+    order_created: false,
+    order_reused: false,
+    payment_intent_created: false,
+    payment_intent_reused: false,
+    payment_confirmation_required: false,
+    payment_status: 'not_started',
+    authoritative_amount: null,
+    currency: String(body?.currency || '').toLowerCase() === 'usd' ? 'usd' : null,
+    cart_fingerprint_present: false,
+    idempotency_contract_ready: false,
+    atomic_reservation_ready: false,
+    atomic_reservation_primitive: 'none_proven',
+    feature_enabled: featureEnabled,
+    kill_switch_active: killSwitchActive,
+    policy: Deno.env.get(DEFERRED_EXPRESS_CHECKOUT_POLICY_ENV) || DEFERRED_EXPRESS_CHECKOUT_REQUIRED_POLICY,
+    blockers,
+    warnings,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    stripe_calls: false,
+    shopify_calls: false,
+    hub_calls: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    order_mutation_performed: false,
+    loyalty_mutation_performed: false,
+    inventory_deducted: false,
+    purchase_orders_created: false,
+    user_authenticated: userAuthenticated,
+    classification: blockers.includes('atomic_application_idempotency_gap')
+      ? DEFERRED_EXPRESS_CHECKOUT_BLOCKER_CLASSIFICATION
+      : 'apple_pay_deferred_intent_backend_disabled',
+  }, status);
+}
+
+async function handleDeferredExpressCheckoutPaymentAttempt({ base44, body }) {
+  const user = await base44.auth.me().catch(() => null);
+  if (!user?.email) {
+    return buildDeferredResponse({
+      body,
+      blockers: ['unauthenticated_customer'],
+      status: 401,
+      userAuthenticated: false,
+    });
+  }
+
+  const featureEnabled = boolEnv(DEFERRED_EXPRESS_CHECKOUT_ENABLE_ENV);
+  const killSwitchActive = boolEnv(DEFERRED_EXPRESS_CHECKOUT_KILL_SWITCH_ENV);
+  const configuredPolicy = Deno.env.get(DEFERRED_EXPRESS_CHECKOUT_POLICY_ENV) || DEFERRED_EXPRESS_CHECKOUT_REQUIRED_POLICY;
+  const allowlist = csvEnv(DEFERRED_EXPRESS_CHECKOUT_ALLOWLIST_ENV);
+  const profileIds = await resolveAuthenticatedUserProfileIds(base44, user);
+  const allowedProfile = profileIds.some(id => allowlist.includes(id));
+
+  const blockers = [];
+  const warnings = [
+    'deferred_express_checkout_live_writes_not_implemented',
+    'no_atomic_application_level_reservation_primitive_proven',
+  ];
+
+  if (!featureEnabled) blockers.push('deferred_express_checkout_disabled');
+  if (killSwitchActive) blockers.push('deferred_express_checkout_kill_switch_active');
+  if (configuredPolicy !== DEFERRED_EXPRESS_CHECKOUT_REQUIRED_POLICY) blockers.push('deferred_express_checkout_policy_mismatch');
+  if (!allowlist.length || !allowedProfile) blockers.push('pilot_user_profile_not_allowlisted');
+  if (!sanitizeCheckoutRequestId(body?.checkout_request_id)) blockers.push('checkout_request_id_invalid_or_required');
+  if (!isSupportedConfirmationTokenId(body?.confirmation_token_id)) blockers.push('confirmation_token_id_invalid_or_required');
+  if (String(body?.currency || '').toLowerCase() !== 'usd') blockers.push('currency_mismatch_or_unsupported');
+  if (body?.order_type && body.order_type !== 'one_time') blockers.push('subscription_or_non_one_time_order_unsupported');
+  if (body?.fulfillment_mode && body.fulfillment_mode !== 'single_delivery') blockers.push('multi_delivery_unsupported');
+  if (containsUnsupportedDeferredDiscount(body)) blockers.push('reward_credit_coupon_unsupported_for_deferred_pilot');
+
+  // Hard stop: the repository currently has no schema-enforced unique reservation
+  // primitive for checkout attempts. Existing CommandLog idempotency patterns are
+  // filter-then-create and therefore cannot guarantee at-most-one Customer App
+  // Order under concurrent deferred checkout requests.
+  blockers.push('atomic_application_idempotency_gap');
+
+  return buildDeferredResponse({
+    body,
+    blockers: [...new Set(blockers)],
+    warnings,
+    status: 409,
+    userAuthenticated: true,
+    featureEnabled,
+    killSwitchActive,
+  });
+}
 
 async function authorizeCheckoutCustomer(base44, customerEmail) {
   const user = await base44.auth.me().catch(() => null);
@@ -225,6 +389,11 @@ function optionConflictsWithSubmittedFields(option, selectedOption) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const requestBody = await req.json();
+
+    if (requestBody?.mode === DEFERRED_EXPRESS_CHECKOUT_MODE) {
+      return handleDeferredExpressCheckoutPaymentAttempt({ base44, body: requestBody });
+    }
 
     const {
       items, subtotal, delivery_fee, total,
@@ -240,7 +409,7 @@ Deno.serve(async (req) => {
       delivery_schedule_source,
       // Zone eligibility (may be pre-validated by frontend; we re-validate server-side)
       zone_key: clientZoneKey,
-    } = await req.json();
+    } = requestBody;
     const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
     if (unauthorized) return unauthorized;
 
