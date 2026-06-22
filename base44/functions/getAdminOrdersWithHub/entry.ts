@@ -1,7 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { buildAdminOrderLifecycleReadModel } from './adminOrderLifecycleReadModel.js';
 
 const HUB_ORDER_FETCH_TIMEOUT_MS = 2500;
 const HUB_ORDER_TOTAL_BUDGET_MS = 8000;
+const ADMIN_ORDER_LIFECYCLE_READ_MODEL_ENABLE = 'ENABLE_ADMIN_ORDER_LIFECYCLE_READ_MODEL';
+const ADMIN_ORDER_LIFECYCLE_READ_MODEL_KILL_SWITCH = 'ADMIN_ORDER_LIFECYCLE_READ_MODEL_KILL_SWITCH';
+const ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION = 'g48e_admin_order_lifecycle_v1';
+const ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE = 'ADMIN_ORDER_LIFECYCLE';
 
 function normalizeOrderNum(num) {
   return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
@@ -9,6 +14,18 @@ function normalizeOrderNum(num) {
 
 function normalizeLower(value) {
   return (value || '').toString().trim().toLowerCase();
+}
+
+function envFlagEnabled(name) {
+  return ['1', 'true', 'yes', 'on', 'enabled'].includes(normalizeLower(Deno.env.get(name)));
+}
+
+function adminOrderLifecycleReadModelEnabled() {
+  return envFlagEnabled(ADMIN_ORDER_LIFECYCLE_READ_MODEL_ENABLE) && !envFlagEnabled(ADMIN_ORDER_LIFECYCLE_READ_MODEL_KILL_SWITCH);
+}
+
+function isAdminOrderLifecycleReadModelRequest(body) {
+  return normalizeLower(body?.read_model_mode || body?.preview_mode || body?.mode).toUpperCase() === ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE;
 }
 
 function isPosLikeOrder(order) {
@@ -490,6 +507,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    let body = {};
+    try {
+      body = await req.json();
+    } catch (_jsonError) {
+      body = {};
+    }
+    const adminOrderLifecycleReadModelRequested = isAdminOrderLifecycleReadModelRequest(body);
+    const adminOrderLifecycleReadModelActive = adminOrderLifecycleReadModelEnabled();
+
     // 1. Fetch all local orders, exclude superseded, cancelled, and ghost pre-orders
     // A "ghost" pre-order is one that was authorized but never completed payment capture
     // (payment_captured=false AND no stripe_payment_intent_id means it's an abandoned/admin-created stub)
@@ -541,6 +567,12 @@ Deno.serve(async (req) => {
       console.warn('[AdminOrders] OrderSyncLog unavailable, skipping native sync context:', error.message);
       return [];
     });
+    const safeSyncParityLogs = adminOrderLifecycleReadModelRequested && adminOrderLifecycleReadModelActive
+      ? await base44.asServiceRole.entities.SafeSyncParityLog.list('-created_date', 500).catch(error => {
+          console.warn('[AdminOrders] SafeSyncParityLog unavailable, skipping parity context:', error.message);
+          return [];
+        })
+      : [];
     const reviewQueueItems = await base44.asServiceRole.entities.OrderReviewQueue.list('-created_date', 500).catch(error => {
       console.warn('[AdminOrders] OrderReviewQueue unavailable, skipping native review context:', error.message);
       return [];
@@ -897,6 +929,19 @@ Deno.serve(async (req) => {
       fulfillmentTasks,
       localOrders,
     });
+    const adminOrderLifecycleReadModel = adminOrderLifecycleReadModelRequested && adminOrderLifecycleReadModelActive
+      ? buildAdminOrderLifecycleReadModel({
+          currentOrders: merged,
+          customerOrders: expandedLocalOrders,
+          nativeOrders: nativeShopifyOrders,
+          fulfillmentTasks,
+          hubOrders: filteredHubOrders,
+          reviewRows: reviewQueueItems,
+          orderSyncLogs,
+          safeSyncParityLogs,
+          filters: body || {},
+        })
+      : null;
 
     console.log(`[AdminOrders] Final: ${merged.length} orders (${expandedLocalOrders.length} local expanded including fulfillments, ${filteredHubOrders.length} hub expanded)`);
 
@@ -908,6 +953,18 @@ Deno.serve(async (req) => {
       native_shopify_order_count: nativeShopifyOrders.length,
       orders: merged,
       ...diagnostics,
+      admin_order_lifecycle_read_model_available: true,
+      admin_order_lifecycle_read_model_enabled: Boolean(adminOrderLifecycleReadModelRequested && adminOrderLifecycleReadModelActive),
+      admin_order_lifecycle_read_model_version: ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION,
+      ...(adminOrderLifecycleReadModel ? { admin_order_lifecycle_read_model: adminOrderLifecycleReadModel } : {}),
+      order_write_ready: false,
+      payment_write_ready: false,
+      refund_write_ready: false,
+      fulfillment_write_ready: false,
+      delivery_write_ready: false,
+      notification_expansion_ready: false,
+      hub_write_suppression_ready: false,
+      repair_replay_ready: false,
     });
   } catch (error) {
     console.error('[AdminOrders] Error:', error.message);
