@@ -314,7 +314,7 @@ test('21. Admin page uses canonical model only when enabled', () => {
 
 test('22. Disabled page behavior remains unchanged', () => {
   assert.match(uiSource, /const primaryOrders = ordersData\.orders \|\| \[\]/);
-  assert.match(uiSource, /queryKey:\s*\['admin-orders'\][\s\S]*?base44\.functions\.invoke\('getAdminOrdersWithHub',\s*\{\s*\}\)/);
+  assert.match(uiSource, /queryKey:\s*\['admin-orders'\][\s\S]*?response_mode:\s*ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE/);
   assert.match(uiSource, /deliveryFallbackOrders\.forEach/);
 });
 

@@ -324,8 +324,8 @@ test('26. No PII/raw payloads in compact response', async () => {
   assert.equal(disabled.payload.raw_payloads_returned, false);
 });
 
-test('27. AdminOrders uses separate legacy and lifecycle queries', () => {
-  assert.match(uiSource, /queryKey:\s*\['admin-orders'\][\s\S]*?base44\.functions\.invoke\('getAdminOrdersWithHub',\s*\{\s*\}\)/);
+test('27. AdminOrders uses separate compact list and lifecycle queries', () => {
+  assert.match(uiSource, /queryKey:\s*\['admin-orders'\][\s\S]*?response_mode:\s*ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE/);
   assert.match(uiSource, /queryKey:\s*\['admin-order-lifecycle-read-model'\][\s\S]*?read_model_mode:\s*ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE/);
   assert.match(uiSource, /hasValidAdminOrderLifecycleReadModel\(orderLifecycleData\)/);
 });

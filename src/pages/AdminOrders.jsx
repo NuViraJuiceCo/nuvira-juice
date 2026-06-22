@@ -35,6 +35,8 @@ const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_producti
 const ORDER_WORKFLOW_CONTROLS_FROZEN = true;
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE = 'ADMIN_ORDER_LIFECYCLE';
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION = 'g48e_admin_order_lifecycle_v1';
+const ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE = 'ADMIN_ORDER_LIST_COMPACT';
+const ADMIN_ORDER_LIST_COMPACT_CONTRACT = 'g48e_admin_order_list_compact_v1';
 
 const orderOpsReadinessItems = [
   {
@@ -96,6 +98,23 @@ function hasValidAdminOrderLifecycleReadModel(data) {
     model?.summary &&
     typeof model.summary === 'object' &&
     Array.isArray(model?.rows);
+}
+
+function unwrapFunctionData(response, fallback = {}) {
+  const data = response?.data ?? response ?? fallback;
+  if (typeof data !== 'string') return data || fallback;
+  try {
+    return JSON.parse(data);
+  } catch {
+    throw new Error('Admin order response was not parseable. Use the compact admin-order list contract before publishing this page.');
+  }
+}
+
+function hasValidAdminOrderListCompactResponse(data) {
+  return data?.success === true &&
+    data?.response_contract === ADMIN_ORDER_LIST_COMPACT_CONTRACT &&
+    Array.isArray(data?.orders) &&
+    data?.writes_performed === false;
 }
 
 function AdminOrderLifecycleReadModelPanel({ model }) {
@@ -1182,8 +1201,14 @@ export default function AdminOrders() {
   } = useQuery({
     queryKey: ['admin-orders'],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getAdminOrdersWithHub', {});
-      return res.data || { orders: [], total: 0 };
+      const res = await base44.functions.invoke('getAdminOrdersWithHub', {
+        response_mode: ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE,
+      });
+      const result = unwrapFunctionData(res, { orders: [], total: 0 });
+      if (!hasValidAdminOrderListCompactResponse(result)) {
+        throw new Error('Compact admin-order list contract is unavailable');
+      }
+      return result;
     },
     enabled: user?.role === 'admin',
     refetchInterval: 30000,
@@ -1197,7 +1222,7 @@ export default function AdminOrders() {
       const res = await base44.functions.invoke('getAdminOrdersWithHub', {
         read_model_mode: ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE,
       });
-      return res.data || {};
+      return unwrapFunctionData(res, {});
     },
     enabled: user?.role === 'admin',
     refetchInterval: 30000,
