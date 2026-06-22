@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { buildProductionComplianceLifecycleReadModel } from './productionComplianceReadModel.js';
+import { buildProductionComplianceLifecycleReadModel, READ_MODEL_VERSION as PRODUCTION_COMPLIANCE_READ_MODEL_VERSION } from './productionComplianceReadModel.js';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
@@ -1387,6 +1387,11 @@ Deno.serve(async (req) => {
     const nativeFirstPlanning = buildNativeFirstPlanningParts(nativePlanning, hubData);
 
     let productionComplianceReadModel = null;
+    const productionComplianceReadModelCapability = productionComplianceReadModelRequested ? {
+      production_compliance_read_model_available: true,
+      production_compliance_read_model_enabled: productionComplianceReadModelEnabled,
+      production_compliance_read_model_version: PRODUCTION_COMPLIANCE_READ_MODEL_VERSION,
+    } : null;
     if (productionComplianceReadModelRequested && productionComplianceReadModelEnabled) {
       const [productionBatchResult, complianceLogResult, manualBatchResult] = await Promise.all([
         safeEntityList(base44, 'ProductionBatch', '-production_date', PRODUCTION_COMPLIANCE_READ_MODEL_LIMIT),
@@ -1441,6 +1446,10 @@ Deno.serve(async (req) => {
       },
       warnings,
     };
+
+    if (productionComplianceReadModelCapability) {
+      Object.assign(responseBody, productionComplianceReadModelCapability);
+    }
 
     if (productionComplianceReadModel) {
       responseBody.production_compliance_lifecycle_read_model = productionComplianceReadModel;

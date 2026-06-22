@@ -93,8 +93,8 @@ assert('Existing G37H exact target contract is represented by locked verified fi
 assert('No live QC proof available flag is not converted into write readiness.', model.production_write_ready === false && model.compliance_write_ready === false, {});
 assert('Valid existing compliance records are never hidden.', entry.includes('productionComplianceReadModel') && !entry.includes('filter(row => row.native_read_ready)'), {});
 
-assert('ComplianceOps uses canonical backend data only when enabled.', complianceOps.includes('ENABLE_COMPLIANCE_CANONICAL_READ_MODEL') && complianceOps.includes("getAdminProductionPlanningSummary"), {});
-assert('ComplianceOps preserves current read path when disabled.', complianceOps.includes("getAdminComplianceOpsSummary") && complianceOps.includes('enabled: user?.role === \'admin\' && ENABLE_COMPLIANCE_CANONICAL_READ_MODEL'), {});
+assert('ComplianceOps uses canonical backend data only when backend reports enabled.', !complianceOps.includes('ENABLE_COMPLIANCE_CANONICAL_READ_MODEL') && complianceOps.includes("getAdminProductionPlanningSummary") && complianceOps.includes('production_compliance_read_model_enabled === true'), {});
+assert('ComplianceOps preserves current read path when backend disabled.', complianceOps.includes("getAdminComplianceOpsSummary") && complianceOps.includes("enabled: user?.role === 'admin'") && complianceOps.includes('productionComplianceReadModelSupported &&'), {});
 assert('ComplianceOps preserves fallback when canonical response fails.', complianceOps.includes('productionComplianceReadModelSupported') && complianceOps.includes('const nativeCompliance = complianceSummary?.native || {};') && !complianceOps.includes('nativeCompliance = productionComplianceReadModel'), {});
 assert('Existing compliance write functions are untouched.', !changedFiles.some(file => /saveAdminComplianceRecord|validateComplianceEntry/.test(file)), { changedFiles });
 assert('Existing production commands are untouched.', !changedFiles.some(file => /startNativeProductionBatches|completeNativeProductionBatches|verifyNativeProductionBatches|executeNativeProductionBatchLifecycle/.test(file)), { changedFiles });

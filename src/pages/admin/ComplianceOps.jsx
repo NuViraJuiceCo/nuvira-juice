@@ -21,7 +21,6 @@ import LabelAllergenTab from '@/components/compliance/LabelAllergenTab';
 import HACCPPlanTab from '@/components/compliance/HACCPPlanTab';
 import BatchComplianceLogForm from '@/components/compliance/BatchComplianceLogForm';
 
-const ENABLE_COMPLIANCE_CANONICAL_READ_MODEL = import.meta.env.VITE_ENABLE_ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL === 'true';
 const PRODUCTION_COMPLIANCE_READ_MODEL_MODE = 'PRODUCTION_COMPLIANCE_LIFECYCLE';
 const SUPPORTED_PRODUCTION_COMPLIANCE_READ_MODEL_VERSION = 'g48c_production_compliance_lifecycle_v1';
 
@@ -76,7 +75,7 @@ export default function ComplianceOps() {
       if (result?.error) throw new Error(result.error);
       return result;
     },
-    enabled: user?.role === 'admin' && ENABLE_COMPLIANCE_CANONICAL_READ_MODEL,
+    enabled: user?.role === 'admin',
     staleTime: 60000,
   });
 
@@ -86,7 +85,10 @@ export default function ComplianceOps() {
 
   const nativeCompliance = complianceSummary?.native || {};
   const productionComplianceReadModel = productionComplianceSummary?.production_compliance_lifecycle_read_model;
-  const productionComplianceReadModelSupported = productionComplianceReadModel?.read_model_enabled === true &&
+  const productionComplianceReadModelSupported = productionComplianceSummary?.production_compliance_read_model_available === true &&
+    productionComplianceSummary?.production_compliance_read_model_enabled === true &&
+    productionComplianceSummary?.production_compliance_read_model_version === SUPPORTED_PRODUCTION_COMPLIANCE_READ_MODEL_VERSION &&
+    productionComplianceReadModel?.read_model_enabled === true &&
     productionComplianceReadModel?.read_model_version === SUPPORTED_PRODUCTION_COMPLIANCE_READ_MODEL_VERSION;
   const criticalAlerts = (nativeCompliance.active_alerts || []).filter(a => a.severity === 'Critical');
   const incompleteChecklistCount = Number(nativeCompliance.issues?.incomplete_checklists || 0);
@@ -158,7 +160,7 @@ export default function ComplianceOps() {
               Native logs: {nativeCompliance.summary?.temperature || 0} temp · {nativeCompliance.summary?.ph || 0} pH · {nativeCompliance.summary?.ccp || 0} CCP · {nativeCompliance.summary?.sanitation || 0} sanitation · {nativeCompliance.summary?.daily_checklists || 0} checklists. Hub fallback remains available.
             </p>
           </div>
-          {ENABLE_COMPLIANCE_CANONICAL_READ_MODEL && productionComplianceReadModelSupported && (
+          {productionComplianceReadModelSupported && (
             <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
               <p className="font-semibold">Production/compliance lifecycle read model ready</p>
               <p className="mt-0.5 text-blue-800">
