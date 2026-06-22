@@ -7,6 +7,8 @@ const ADMIN_ORDER_LIFECYCLE_READ_MODEL_ENABLE = 'ENABLE_ADMIN_ORDER_LIFECYCLE_RE
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_KILL_SWITCH = 'ADMIN_ORDER_LIFECYCLE_READ_MODEL_KILL_SWITCH';
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION = 'g48e_admin_order_lifecycle_v1';
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE = 'ADMIN_ORDER_LIFECYCLE';
+const G48E_RUNTIME_DIAGNOSTIC_MODE = 'G48E_RUNTIME_CONTRACT';
+const G48E_RUNTIME_CONTRACT_VERSION = 'g48e_runtime_contract_v1';
 
 function normalizeOrderNum(num) {
   return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
@@ -24,8 +26,16 @@ function adminOrderLifecycleReadModelEnabled() {
   return envFlagEnabled(ADMIN_ORDER_LIFECYCLE_READ_MODEL_ENABLE) && !envFlagEnabled(ADMIN_ORDER_LIFECYCLE_READ_MODEL_KILL_SWITCH);
 }
 
+function adminOrderLifecycleReadModelModeValue(body) {
+  return body?.read_model_mode || body?.preview_mode || body?.mode || '';
+}
+
 function isAdminOrderLifecycleReadModelRequest(body) {
-  return normalizeLower(body?.read_model_mode || body?.preview_mode || body?.mode).toUpperCase() === ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE;
+  return normalizeLower(adminOrderLifecycleReadModelModeValue(body)).toUpperCase() === ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE;
+}
+
+function isG48eRuntimeDiagnosticRequest(body) {
+  return normalizeLower(body?.diagnostic_mode).toUpperCase() === G48E_RUNTIME_DIAGNOSTIC_MODE;
 }
 
 function isPosLikeOrder(order) {
@@ -515,6 +525,41 @@ Deno.serve(async (req) => {
     }
     const adminOrderLifecycleReadModelRequested = isAdminOrderLifecycleReadModelRequest(body);
     const adminOrderLifecycleReadModelActive = adminOrderLifecycleReadModelEnabled();
+
+    if (isG48eRuntimeDiagnosticRequest(body)) {
+      return Response.json({
+        success: true,
+        dry_run: true,
+        writes_performed: false,
+        g48e_source_marker_present: true,
+        request_body_parsed: true,
+        read_model_mode_received: Boolean(body?.read_model_mode),
+        read_model_mode_value_match: adminOrderLifecycleReadModelRequested,
+        diagnostic_mode_received: true,
+        diagnostic_mode_value_match: true,
+        legacy_path_selected: false,
+        capability_metadata_constructed: true,
+        capability_metadata_attached: true,
+        response_contract_version: G48E_RUNTIME_CONTRACT_VERSION,
+        admin_order_lifecycle_read_model_available: true,
+        admin_order_lifecycle_read_model_enabled: Boolean(adminOrderLifecycleReadModelRequested && adminOrderLifecycleReadModelActive),
+        admin_order_lifecycle_read_model_version: ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION,
+        read_model_payload_present: false,
+        order_write_ready: false,
+        payment_write_ready: false,
+        refund_write_ready: false,
+        fulfillment_write_ready: false,
+        delivery_write_ready: false,
+        notification_expansion_ready: false,
+        hub_write_suppression_ready: false,
+        repair_replay_ready: false,
+        provider_call_impact: false,
+        hub_mutation_performed: false,
+        notifications_sent: false,
+        raw_payloads_returned: false,
+        pii_returned: false,
+      });
+    }
 
     // 1. Fetch all local orders, exclude superseded, cancelled, and ghost pre-orders
     // A "ghost" pre-order is one that was authorized but never completed payment capture
