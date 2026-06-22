@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import SEO from '@/components/SEO';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
+import ApplePayMountDiagnostic from '@/components/checkout/ApplePayMountDiagnostic';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -22,23 +23,60 @@ import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 import Zone3RouteReviewPanel from '@/components/checkout/Zone3RouteReviewPanel';
 import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 
+const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
+
+const CHECKOUT_START_STAGES = {
+  IDLE: 'idle',
+  SAVING_PROFILE: 'saving_profile',
+  SAVING_BAG_RETURN: 'saving_bag_return',
+  CREATING_PAYMENT_ATTEMPT: 'creating_payment_attempt',
+  PAYMENT_ELEMENT_READY: 'payment_element_ready',
+  FAILED_BEFORE_PAYMENT_ATTEMPT: 'failed_before_payment_attempt',
+  PAYMENT_ATTEMPT_STATE_UNKNOWN: 'payment_attempt_state_unknown',
+  SLOW_PROCESSING: 'slow_processing',
+};
+
+const CHECKOUT_COPY = {
+  PRE_ATTEMPT_FAILURE: 'We couldn’t save your checkout details. Please check your connection and try again.',
+  NO_WRITE_FAILURE: 'Checkout did not start. Please review your details and try again.',
+  AMBIGUOUS_STATE: 'We couldn’t confirm whether checkout started. Please don’t retry yet. We’re checking your order.',
+  SLOW_PROCESSING: 'Still checking your checkout. Please don’t close, refresh, or tap again.',
+};
+
 
 export default function Checkout() {
+  const { user, isLoadingAuth } = useAuth();
+  const diagnosticRequested = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('apple_pay_mount_diagnostic') === '1';
+  const diagnosticAuthorized = user?.role === 'admin' || user?.role === 'owner';
+
+  if (diagnosticRequested) {
+    return (
+      <ApplePayMountDiagnostic
+        isAuthLoading={isLoadingAuth}
+        isAuthorized={diagnosticAuthorized}
+      />
+    );
+  }
+
+  return <CheckoutFlow />;
+}
+
+function CheckoutFlow() {
   const navigate = useNavigate();
 
   // DIAGNOSTIC: dump all checkout-related storage keys on mount
   React.useEffect(() => {
     console.group('[NuVira Checkout] Storage Audit on Mount');
     const lsKeys = Object.keys(localStorage).filter(k =>
-      k.includes('nuvira') || k.includes('stripe') || k.includes('checkout') || k.includes('session') || k.includes('client_secret') || k.includes('pending')
+      k.includes('nuvira') || k.includes('stripe') || k.includes('checkout') || k.includes('session') || k.includes('pending')
     );
     const ssKeys = Object.keys(sessionStorage).filter(k =>
-      k.includes('nuvira') || k.includes('stripe') || k.includes('checkout') || k.includes('session') || k.includes('client_secret') || k.includes('pending')
+      k.includes('nuvira') || k.includes('stripe') || k.includes('checkout') || k.includes('session') || k.includes('pending')
     );
     console.log('localStorage matching keys  :', lsKeys.length ? lsKeys : '(none)');
-    lsKeys.forEach(k => console.log(`  localStorage["${k}"] =`, localStorage.getItem(k)));
+    lsKeys.forEach(k => console.log(`  localStorage["${k}"] =`, '[redacted]'));
     console.log('sessionStorage matching keys:', ssKeys.length ? ssKeys : '(none)');
-    ssKeys.forEach(k => console.log(`  sessionStorage["${k}"] =`, sessionStorage.getItem(k)));
+    ssKeys.forEach(k => console.log(`  sessionStorage["${k}"] =`, '[redacted]'));
     console.groupEnd();
 
     // Force-nuke any stale pending session to guarantee a fresh PI
@@ -82,10 +120,14 @@ export default function Checkout() {
   const [phone, setPhone] = useState('');
   const [prefilled, setPrefilled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkoutStartStage, setCheckoutStartStage] = useState(CHECKOUT_START_STAGES.IDLE);
+  const [checkoutStartMessage, setCheckoutStartMessage] = useState('');
+  const [checkoutStartLocked, setCheckoutStartLocked] = useState(false);
   const [clientSecret, setClientSecret] = useState(null);
   const [publishableKey, setPublishableKey] = useState(null);
   const [pendingOrderNumber, setPendingOrderNumber] = useState(null);
   const [paymentTotal, setPaymentTotal] = useState(0);
+  const [confirmedDeliverySchedule, setConfirmedDeliverySchedule] = useState(null);
   const [usePoints, setUsePoints] = useState(false);
   const [smsConsent, setSmsConsent] = useState(false);
   const [showOutOfArea, setShowOutOfArea] = useState(false);
@@ -101,6 +143,16 @@ export default function Checkout() {
   const [healthAdvisoryAcknowledged, setHealthAdvisoryAcknowledged] = useState(false);
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState(null);
   const [scheduleOptionsOverride, setScheduleOptionsOverride] = useState(null);
+  // Stable idempotency key for this checkout session — generated once on mount,
+  // reused on retries so duplicate calls to createPaymentIntent return the same PI.
+  const checkoutIdempotencyKey = React.useRef(
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `nv-checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+  const checkoutAttemptInFlightRef = useRef(false);
+  const checkoutStartLockedRef = useRef(false);
+  const checkoutWatchdogRef = useRef(null);
   const REFERRAL_DISCOUNT = 5.00;
   const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
 
@@ -134,7 +186,7 @@ export default function Checkout() {
   // Validate address in real-time for delivery orders
   const addressDebounceRef = React.useRef(null);
   const [hasShownOutOfAreaModal, setHasShownOutOfAreaModal] = React.useState(false);
-  
+
   React.useEffect(() => {
     if (fulfillmentType !== 'delivery') {
       setAddressValidated(true);
@@ -293,7 +345,91 @@ export default function Checkout() {
     return sum + item.quantity;
   }, 0);
 
+  const setCheckoutStartLockedSafely = (locked) => {
+    checkoutStartLockedRef.current = locked;
+    setCheckoutStartLocked(locked);
+  };
+
+  const clearCheckoutProcessingWatchdog = () => {
+    if (checkoutWatchdogRef.current) {
+      clearTimeout(checkoutWatchdogRef.current);
+      checkoutWatchdogRef.current = null;
+    }
+  };
+
+  const startCheckoutProcessingWatchdog = () => {
+    clearCheckoutProcessingWatchdog();
+    checkoutWatchdogRef.current = setTimeout(() => {
+      if (!clientSecret && checkoutAttemptInFlightRef.current) {
+        setCheckoutStartStage(CHECKOUT_START_STAGES.SLOW_PROCESSING);
+        setCheckoutStartMessage(CHECKOUT_COPY.SLOW_PROCESSING);
+      }
+    }, CHECKOUT_PROCESSING_WATCHDOG_MS);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      clearCheckoutProcessingWatchdog();
+      checkoutAttemptInFlightRef.current = false;
+    };
+  }, []);
+
+  const isValidCheckoutStartSuccess = (data) => (
+    typeof data?.clientSecret === 'string' &&
+    data.clientSecret.includes('_secret_') &&
+    typeof data?.publishableKey === 'string' &&
+    typeof data?.orderNumber === 'string'
+  );
+
+  const isExplicitNoWriteCheckoutStartFailure = (data) => (
+    data?.writes_performed === false &&
+    data?.payment_intent_created === false &&
+    data?.order_created === false
+  );
+
+  const markCheckoutStateUnknown = (error) => {
+    if (error && typeof error === 'object') {
+      error.checkoutStateUnknown = true;
+      return error;
+    }
+    const unknown = new Error('checkout_state_unknown');
+    unknown.checkoutStateUnknown = true;
+    return unknown;
+  };
+
+  const showPreAttemptCheckoutFailure = () => {
+    clearCheckoutProcessingWatchdog();
+    checkoutAttemptInFlightRef.current = false;
+    setCheckoutStartLockedSafely(false);
+    setCheckoutStartStage(CHECKOUT_START_STAGES.FAILED_BEFORE_PAYMENT_ATTEMPT);
+    setCheckoutStartMessage(CHECKOUT_COPY.PRE_ATTEMPT_FAILURE);
+    setIsSubmitting(false);
+    toast.error(CHECKOUT_COPY.PRE_ATTEMPT_FAILURE);
+  };
+
+  const showExplicitNoWriteCheckoutFailure = (message) => {
+    clearCheckoutProcessingWatchdog();
+    checkoutAttemptInFlightRef.current = false;
+    setCheckoutStartLockedSafely(false);
+    setCheckoutStartStage(CHECKOUT_START_STAGES.FAILED_BEFORE_PAYMENT_ATTEMPT);
+    setCheckoutStartMessage(CHECKOUT_COPY.NO_WRITE_FAILURE);
+    setIsSubmitting(false);
+    toast.error(message || CHECKOUT_COPY.NO_WRITE_FAILURE);
+  };
+
+  const showAmbiguousCheckoutStartState = () => {
+    clearCheckoutProcessingWatchdog();
+    checkoutAttemptInFlightRef.current = false;
+    setCheckoutStartLockedSafely(true);
+    setCheckoutStartStage(CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN);
+    setCheckoutStartMessage(CHECKOUT_COPY.AMBIGUOUS_STATE);
+    setIsSubmitting(false);
+    toast.error(CHECKOUT_COPY.AMBIGUOUS_STATE);
+  };
+
   const handlePlaceOrder = async () => {
+    if (checkoutAttemptInFlightRef.current || checkoutStartLockedRef.current) return;
+
     // Block checkout if running inside an iframe (preview mode)
     if (window.self !== window.top) {
       alert('Checkout only works from the published app, not the preview.');
@@ -334,153 +470,188 @@ export default function Checkout() {
       return;
     }
 
+    checkoutAttemptInFlightRef.current = true;
+    setCheckoutStartLockedSafely(false);
+    setCheckoutStartStage(CHECKOUT_START_STAGES.SAVING_PROFILE);
+    setCheckoutStartMessage('');
     setIsSubmitting(true);
+    startCheckoutProcessingWatchdog();
 
-    // Confirm eligibility is valid before submitting (already validated by debounce, but double-check state)
-    if (fulfillmentType === 'delivery') {
-      if (!zoneEligibility?.checkout_allowed) {
-        setIsSubmitting(false);
-        if (zoneEligibility?.zone_type === 'waitlist_only') {
-          setShowOutOfArea(true);
-        } else {
-          toast.error(zoneEligibility?.customer_message || 'Delivery is not available to this address. Please check your address.');
+    let paymentAttemptStarted = false;
+
+    try {
+      // Confirm eligibility is valid before submitting (already validated by debounce, but double-check state)
+      if (fulfillmentType === 'delivery') {
+        if (!zoneEligibility?.checkout_allowed) {
+          clearCheckoutProcessingWatchdog();
+          checkoutAttemptInFlightRef.current = false;
+          setIsSubmitting(false);
+          if (zoneEligibility?.zone_type === 'waitlist_only') {
+            setShowOutOfArea(true);
+          } else {
+            toast.error(zoneEligibility?.customer_message || 'Delivery is not available to this address. Please check your address.');
+          }
+          return;
         }
-        return;
+        // Zone 3 must not flow into normal checkout
+        if (zoneEligibility.zone_type === 'route_review') {
+          clearCheckoutProcessingWatchdog();
+          checkoutAttemptInFlightRef.current = false;
+          setIsSubmitting(false);
+          toast.error('This address requires route review. Please contact us to arrange delivery.');
+          return;
+        }
       }
-      // Zone 3 must not flow into normal checkout
-      if (zoneEligibility.zone_type === 'route_review') {
-        setIsSubmitting(false);
-        toast.error('This address requires route review. Please contact us to arrange delivery.');
-        return;
-      }
-    }
 
-    // Save phone & address to profile so they persist to account settings
-    if (user?.email) {
-      const profileData = {
-        phone: phone.trim(),
-        address: addrString,
-        sms_consent: smsConsent,
-        sms_consent_date: smsConsent ? new Date().toISOString() : null,
-      };
-      const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
-      if (profiles.length > 0) {
-        await base44.entities.UserProfile.update(profiles[0].id, profileData);
-      } else {
-        await base44.entities.UserProfile.create({ customer_email: user.email, ...profileData });
+      // Save phone & address to profile so they persist to account settings
+      if (user?.email) {
+        setCheckoutStartStage(CHECKOUT_START_STAGES.SAVING_PROFILE);
+        const profileData = {
+          phone: phone.trim(),
+          address: addrString,
+          sms_consent: smsConsent,
+          sms_consent_date: smsConsent ? new Date().toISOString() : null,
+        };
+        const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
+        if (profiles.length > 0) {
+          await base44.entities.UserProfile.update(profiles[0].id, profileData);
+        } else {
+          try {
+            await base44.entities.UserProfile.create({ customer_email: user.email, ...profileData });
+          } catch (error) {
+            throw markCheckoutStateUnknown(error);
+          }
+        }
       }
-    }
 
-    // Save bag return request if any
-    if ((bagReturn.smallBags > 0 || bagReturn.toteBags > 0) && user?.email) {
-      try {
-        // Check for existing pending return for this customer to avoid duplicates
+      // Save bag return request if any
+      if ((bagReturn.smallBags > 0 || bagReturn.toteBags > 0) && user?.email) {
+        setCheckoutStartStage(CHECKOUT_START_STAGES.SAVING_BAG_RETURN);
+        // Check for existing pending return for this customer to avoid duplicates.
+        // A read failure is pre-write and retryable; a lost response from create is ambiguous.
         const existingPending = await base44.entities.BagReturn.filter({
           customer_email: user.email,
           order_id: 'pending',
         });
-        
+
         if (existingPending.length === 0) {
-          await base44.entities.BagReturn.create({
-            order_id: 'pending', // will be updated post-checkout
-            customer_email: user.email,
-            small_bags_requested: bagReturn.smallBags,
-            tote_bags_requested: bagReturn.toteBags,
-            verification_status: 'requested',
-            credit_issued: 0,
-          });
+          try {
+            await base44.entities.BagReturn.create({
+              order_id: 'pending', // will be updated post-checkout
+              customer_email: user.email,
+              small_bags_requested: bagReturn.smallBags,
+              tote_bags_requested: bagReturn.toteBags,
+              verification_status: 'requested',
+              credit_issued: 0,
+            });
+          } catch (error) {
+            throw markCheckoutStateUnknown(error);
+          }
         }
         // Sync bag return to hub (non-blocking)
-        base44.functions.invoke('syncCustomerToHub', {
-          event: 'customer.bag_return_requested',
-          customer_email: user.email,
-          data: {
-            small_bags_requested: bagReturn.smallBags,
-            tote_bags_requested: bagReturn.toteBags,
-            estimated_credit: (bagReturn.smallBags * 1) + (bagReturn.toteBags * 2),
-          },
-        }).catch(() => {});
-      } catch (e) {
-        // non-blocking
+        try {
+          const syncPromise = base44.functions.invoke('syncCustomerToHub', {
+            event: 'customer.bag_return_requested',
+            customer_email: user.email,
+            data: {
+              small_bags_requested: bagReturn.smallBags,
+              tote_bags_requested: bagReturn.toteBags,
+              estimated_credit: (bagReturn.smallBags * 1) + (bagReturn.toteBags * 2),
+            },
+          });
+          if (syncPromise?.catch) syncPromise.catch(() => {});
+        } catch {
+          // non-blocking
+        }
       }
-    }
 
-    const res = await base44.functions.invoke('createPaymentIntent', {
-      items,
-      subtotal,
-      delivery_fee: deliveryFee,
-      total,
-      fulfillment_type: fulfillmentType,
-      delivery_address: addrString,
-      // Structured address fields (required by Hub)
-      address_line1: address.street || '',
-      address_line2: address.street2 || '',
-      address_city: address.city || '',
-      address_state: address.state || '',
-      address_postal_code: address.zip || '',
-      contact_phone: phone.trim(),
-      selected_schedule_option_id: selectedDeliveryOption?.option_id || null,
-      selected_schedule_option: selectedDeliveryOption || null,
-      estimated_delivery_date: selectedDeliveryOption?.delivery_date || null,
-      selected_delivery_date: selectedDeliveryOption?.delivery_date || null,
-      assigned_delivery_date: selectedDeliveryOption?.delivery_date || null,
-      production_date: selectedDeliveryOption?.production_date || null,
-      delivery_window_label: selectedDeliveryOption?.delivery_window_label || null,
-      delivery_window_start: selectedDeliveryOption?.delivery_window_start || null,
-      delivery_window_end: selectedDeliveryOption?.delivery_window_end || null,
-      delivery_schedule_source: selectedDeliveryOption ? 'customer_selected' : 'system_default',
-      customer_email: user?.email || null,
-      customer_name: resolvedName,
-      points_discount: pointsDiscount,
-      points_used: pointsUsed,
-      credits_discount: creditsDiscount,
-      referral_discount: referralDiscount,
-      referral_code: referralApplied ? referralCode : null,
-      active_reward: activeReward || null,
-      reward_discount: rewardDiscountAmt,
-      // Zone eligibility snapshot
-      zone_key: zoneEligibility?.zone_key || null,
-      // Health advisory acknowledgment
-      health_advisory_acknowledged: true,
-      health_advisory_acknowledged_at: new Date().toISOString(),
-      health_advisory_version: HEALTH_ADVISORY_CONFIG.version,
-    });
+      setCheckoutStartStage(CHECKOUT_START_STAGES.CREATING_PAYMENT_ATTEMPT);
+      paymentAttemptStarted = true;
 
-    if (res.data?.clientSecret) {
-      // DIAGNOSTIC: log the full PI response to prove this is a fresh card-only PI
-      const freshPiId = res.data.clientSecret.split('_secret_')[0];
-      console.group('[NuVira Checkout] createPaymentIntent Response');
-      console.log('Source              : FRESH call to createPaymentIntent (not localStorage/sessionStorage)');
-      console.log('PaymentIntent ID    :', freshPiId);
-      console.log('orderNumber         :', res.data.orderNumber);
-      console.log('effectiveTotal      :', res.data.effectiveTotal);
-      console.log('publishableKey mode :', res.data.publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : 'TEST ⚠️');
-      console.log('clientSecret prefix :', res.data.clientSecret.substring(0, 40) + '...');
-      console.log('Full response.data  :', JSON.stringify({ ...res.data, clientSecret: '[REDACTED]' }));
-      console.groupEnd();
+      const res = await base44.functions.invoke('createPaymentIntent', {
+        items,
+        subtotal,
+        delivery_fee: deliveryFee,
+        total,
+        fulfillment_type: fulfillmentType,
+        delivery_address: addrString,
+        // Structured address fields (required by Hub)
+        address_line1: address.street || '',
+        address_line2: address.street2 || '',
+        address_city: address.city || '',
+        address_state: address.state || '',
+        address_postal_code: address.zip || '',
+        contact_phone: phone.trim(),
+        selected_schedule_option_id: selectedDeliveryOption?.option_id || null,
+        selected_schedule_option: selectedDeliveryOption || null,
+        estimated_delivery_date: selectedDeliveryOption?.delivery_date || null,
+        selected_delivery_date: selectedDeliveryOption?.delivery_date || null,
+        assigned_delivery_date: selectedDeliveryOption?.delivery_date || null,
+        production_date: selectedDeliveryOption?.production_date || null,
+        delivery_window_label: selectedDeliveryOption?.delivery_window_label || null,
+        delivery_window_start: selectedDeliveryOption?.delivery_window_start || null,
+        delivery_window_end: selectedDeliveryOption?.delivery_window_end || null,
+        delivery_schedule_source: selectedDeliveryOption ? 'customer_selected' : 'system_default',
+        customer_email: user?.email || null,
+        customer_name: resolvedName,
+        points_discount: pointsDiscount,
+        points_used: pointsUsed,
+        credits_discount: creditsDiscount,
+        referral_discount: referralDiscount,
+        referral_code: referralApplied ? referralCode : null,
+        active_reward: activeReward || null,
+        reward_discount: rewardDiscountAmt,
+        // Zone eligibility snapshot
+        zone_key: zoneEligibility?.zone_key || null,
+        // Idempotency key — stable for this checkout session, reused on retries
+        checkout_idempotency_key: checkoutIdempotencyKey.current,
+        // Health advisory acknowledgment
+        health_advisory_acknowledged: true,
+        health_advisory_acknowledged_at: new Date().toISOString(),
+        health_advisory_version: HEALTH_ADVISORY_CONFIG.version,
+      });
 
-      // Embedded flow: surface PaymentElement in-page
-      setClientSecret(res.data.clientSecret);
-      setPublishableKey(res.data.publishableKey);
-      setPendingOrderNumber(res.data.orderNumber);
-      setPaymentTotal(res.data.effectiveTotal ?? total);
-      setIsSubmitting(false);
-    } else {
-      if (res.data?.error_code === 'STALE_DELIVERY_SELECTION') {
-        const latest = Array.isArray(res.data.latest_options) ? res.data.latest_options : [];
-        setScheduleOptionsOverride(latest);
-        setSelectedDeliveryOption(latest.find(option => option.is_default) || latest[0] || null);
-        toast.error(res.data.message || 'That delivery window is no longer available. Please select a new delivery window.');
+      if (isValidCheckoutStartSuccess(res.data)) {
+        console.group('[NuVira Checkout] createPaymentIntent Response');
+        console.log('Source              : FRESH call to createPaymentIntent (not localStorage/sessionStorage)');
+        console.log('orderNumber         :', res.data.orderNumber);
+        console.log('effectiveTotal      :', res.data.effectiveTotal);
+        console.log('Checkout start      : success');
+        console.groupEnd();
+
+        clearCheckoutProcessingWatchdog();
+        checkoutAttemptInFlightRef.current = false;
+        setCheckoutStartLockedSafely(false);
+        setCheckoutStartStage(CHECKOUT_START_STAGES.PAYMENT_ELEMENT_READY);
+        setCheckoutStartMessage('');
+
+        // Embedded flow: surface PaymentElement in-page
+        setClientSecret(res.data.clientSecret);
+        setPublishableKey(res.data.publishableKey);
+        setPendingOrderNumber(res.data.orderNumber);
+        setPaymentTotal(res.data.effectiveTotal ?? total);
+        setConfirmedDeliverySchedule(res.data.confirmedDeliverySchedule || null);
         setIsSubmitting(false);
         return;
       }
-      const errMsg = res.data?.error || 'Failed to start checkout. Please try again.';
-      toast.error(errMsg);
-      if (errMsg.includes('Referral code already used')) {
-        setReferralApplied(false);
-        setReferralCode('');
+
+      if (isExplicitNoWriteCheckoutStartFailure(res.data)) {
+        showExplicitNoWriteCheckoutFailure(res.data?.message || res.data?.error);
+        if (res.data?.error_code === 'STALE_DELIVERY_SELECTION') {
+          const latest = Array.isArray(res.data.latest_options) ? res.data.latest_options : [];
+          setScheduleOptionsOverride(latest);
+          setSelectedDeliveryOption(latest.find(option => option.is_default) || latest[0] || null);
+        }
+        return;
       }
-      setIsSubmitting(false);
+
+      showAmbiguousCheckoutStartState();
+    } catch (error) {
+      if (paymentAttemptStarted || error?.checkoutStateUnknown) {
+        showAmbiguousCheckoutStartState();
+        return;
+      }
+      showPreAttemptCheckoutFailure();
     }
   };
 
@@ -493,7 +664,7 @@ export default function Checkout() {
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+        <div className="nuvira-icon-badge w-16 h-16 rounded-full flex items-center justify-center mb-4">
           <span className="text-3xl">🍃</span>
         </div>
         <h2 className="font-heading text-2xl font-bold mb-2">Sign In to Checkout</h2>
@@ -520,7 +691,7 @@ export default function Checkout() {
   if (user && userProfile !== undefined && !userProfile?.onboarding_complete) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+        <div className="nuvira-icon-badge w-16 h-16 rounded-full flex items-center justify-center mb-4">
           <span className="text-3xl">🌿</span>
         </div>
         <h2 className="font-heading text-2xl font-bold mb-2">One Quick Step First</h2>
@@ -567,7 +738,7 @@ export default function Checkout() {
 
 
       {/* Delivery Estimate */}
-      <div className="mx-4 mb-5 bg-primary/5 rounded-xl p-3.5 flex items-center gap-2.5">
+      <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-3.5 flex items-center gap-2.5">
         <Truck className="w-5 h-5 text-primary shrink-0" />
         <div>
           <p className="text-sm font-semibold text-primary">
@@ -594,7 +765,7 @@ export default function Checkout() {
 
       {/* Subscriber Perks Banner */}
       {activeSubscription?.plan && (
-        <div className="mx-4 mb-5 bg-primary/10 border border-primary/30 rounded-xl p-4">
+        <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center shrink-0">
               <span className="text-sm">⭐</span>
@@ -612,7 +783,7 @@ export default function Checkout() {
 
       {/* NuVira Credits */}
       {user?.email && availableCredits > 0 && (
-        <div className="mx-4 mb-5 bg-primary/5 border border-primary/20 rounded-xl p-4">
+        <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 bg-primary/15 rounded-full flex items-center justify-center">
@@ -633,11 +804,11 @@ export default function Checkout() {
 
       {/* Points Redemption */}
       {user?.email && availablePoints >= 100 && (
-        <div className="mx-4 mb-5 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+        <div className="mx-4 mb-5 bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-amber-500/20 rounded-full flex items-center justify-center">
-                <Gift className="w-4 h-4 text-amber-600" />
+              <div className="w-8 h-8 bg-cyan-500/20 rounded-full flex items-center justify-center">
+                <Gift className="w-4 h-4 text-cyan-600" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">Use Loyalty Points</p>
@@ -647,7 +818,7 @@ export default function Checkout() {
             <Switch checked={usePoints} onCheckedChange={setUsePoints} />
           </div>
           {usePoints && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 font-medium">✓ {pointsUsed.toLocaleString()} points applied · -${pointsDiscount.toFixed(2)} off</p>
+            <p className="text-xs text-cyan-600 dark:text-cyan-400 mt-2 font-medium">✓ {pointsUsed.toLocaleString()} points applied · -${pointsDiscount.toFixed(2)} off</p>
           )}
         </div>
       )}
@@ -735,13 +906,13 @@ export default function Checkout() {
               }
               if (e.zone_type === 'extended' && !e.checkout_allowed && e.reason_code === 'MINIMUM_ORDER_NOT_MET') {
                 return (
-                  <p className="text-xs text-amber-600 font-medium mt-1.5">
+                  <p className="text-xs text-cyan-600 font-medium mt-1.5">
                     {e.customer_message}
                   </p>
                 );
               }
               if (e.zone_type === 'route_review') {
-                return <p className="text-xs text-amber-600 font-medium mt-1.5">⚠️ {e.customer_message}</p>;
+                return <p className="text-xs text-cyan-600 font-medium mt-1.5">⚠️ {e.customer_message}</p>;
               }
               if (e.zone_type === 'waitlist_only' || !e.checkout_allowed) {
                 return <p className="text-xs text-destructive font-medium mt-1.5">{e.customer_message}</p>;
@@ -775,7 +946,7 @@ export default function Checkout() {
             <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
           </div>
           {pointsDiscount > 0 && (
-            <div className="flex justify-between text-xs text-amber-600 mb-1 font-medium">
+            <div className="flex justify-between text-xs text-cyan-600 mb-1 font-medium">
               <span>Points Discount</span><span>-${pointsDiscount.toFixed(2)}</span>
             </div>
           )}
@@ -840,6 +1011,19 @@ export default function Checkout() {
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Payment</h3>
             <p className="text-[11px] text-muted-foreground">Secure checkout — card, Link, and wallet payments accepted where available.</p>
           </div>
+          {confirmedDeliverySchedule?.delivery_date && (
+            <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-1">
+                Confirmed Delivery
+              </p>
+              <p className="text-sm font-semibold text-foreground">
+                {format(new Date(confirmedDeliverySchedule.delivery_date + 'T12:00:00'), 'EEEE, MMMM d')}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {confirmedDeliverySchedule.delivery_window_label || 'Delivery window confirmed'} · Fresh made the day before
+              </p>
+            </div>
+          )}
           <EmbeddedPayment
             clientSecret={clientSecret}
             publishableKey={publishableKey}
@@ -856,7 +1040,7 @@ export default function Checkout() {
             }}
           />
           <button
-            onClick={() => { setClientSecret(null); setPendingOrderNumber(null); }}
+            onClick={() => { setClientSecret(null); setPendingOrderNumber(null); setConfirmedDeliverySchedule(null); }}
             className="w-full text-center text-xs text-muted-foreground underline mt-3"
           >
             ← Edit order details
@@ -881,6 +1065,30 @@ export default function Checkout() {
             </div>
           )}
 
+          {checkoutStartMessage && (
+            <div
+              className={`w-full rounded-2xl border p-4 text-xs leading-relaxed ${
+                checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN ||
+                checkoutStartStage === CHECKOUT_START_STAGES.SLOW_PROCESSING
+                  ? 'border-amber-300 bg-amber-50 text-amber-950'
+                  : 'border-destructive/20 bg-destructive/5 text-foreground'
+              }`}
+            >
+              <p className="font-semibold">
+                {checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN
+                  ? 'Checkout status needs review'
+                  : checkoutStartStage === CHECKOUT_START_STAGES.SLOW_PROCESSING
+                    ? 'Still checking checkout'
+                    : 'Checkout needs attention'}
+              </p>
+              <p className="mt-1">{checkoutStartMessage}</p>
+              {(checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN ||
+                checkoutStartStage === CHECKOUT_START_STAGES.SLOW_PROCESSING) && (
+                <p className="mt-2 font-medium">Please contact NuVira before trying again.</p>
+              )}
+            </div>
+          )}
+
           {/* Place Order — shown until PaymentIntent is created (not shown for Zone 3 — handled by Zone3RouteReviewPanel) */}
           <div>
             {(() => {
@@ -894,7 +1102,9 @@ export default function Checkout() {
               !addressValidated || needsMinimum || isWaitlist
             );
             let label = `Review Payment · $${total.toFixed(2)}`;
-            if (isSubmitting) label = 'Processing...';
+            if (checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN) label = 'Checkout status unknown';
+            else if (checkoutStartStage === CHECKOUT_START_STAGES.SLOW_PROCESSING) label = 'Still checking...';
+            else if (isSubmitting) label = 'Processing...';
             else if (validatingAddress) label = 'Checking address...';
             else if (fulfillmentType === 'delivery' && !zone && address.street) label = 'Checking delivery area...';
             else if (fulfillmentType === 'delivery' && !address.street) label = 'Enter a delivery address';
@@ -904,7 +1114,7 @@ export default function Checkout() {
             return (
               <Button
                 onClick={handlePlaceOrder}
-                disabled={isSubmitting || isBlocked || !healthAdvisoryAcknowledged}
+                disabled={isSubmitting || checkoutStartLocked || isBlocked || !healthAdvisoryAcknowledged}
                 className="w-full h-12 rounded-xl font-semibold text-sm"
               >
                 {label}
