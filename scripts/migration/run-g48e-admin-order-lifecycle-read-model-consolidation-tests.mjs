@@ -212,7 +212,8 @@ test('3b. Legacy no-mode response remains unchanged', async () => {
 test('4. Existing filters/search/date behavior remains unchanged', () => {
   assert.match(uiSource, /const \[filter, setFilter\] = useState\('active'\)/);
   assert.match(uiSource, /const \[search, setSearch\] = useState\(''\)/);
-  assert.match(uiSource, /statusFiltered\.filter/);
+  assert.match(uiSource, /queryKey:\s*\['admin-orders-page', filter, search\]/);
+  assert.match(uiSource, /filter,\s*\n\s*search,/);
 });
 
 test('5. Exact Order/native-order/task matching works', () => {
@@ -313,8 +314,9 @@ test('21. Admin page uses canonical model only when enabled', () => {
 });
 
 test('22. Disabled page behavior remains unchanged', () => {
-  assert.match(uiSource, /const primaryOrders = ordersData\.orders \|\| \[\]/);
-  assert.match(uiSource, /queryKey:\s*\['admin-orders'\][\s\S]*?response_mode:\s*ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE/);
+  assert.match(uiSource, /const primaryOrders = orderPages\.flatMap/);
+  assert.match(uiSource, /queryKey:\s*\['admin-orders-page', filter, search\][\s\S]*?response_mode:\s*ADMIN_ORDER_LIST_PAGE_RESPONSE_MODE/);
+  assert.match(uiSource, /getNextPageParam:\s*lastPage => lastPage\?\.has_more \? lastPage\.next_cursor : undefined/);
   assert.match(uiSource, /deliveryFallbackOrders\.forEach/);
 });
 

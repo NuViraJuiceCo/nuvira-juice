@@ -4,7 +4,7 @@ import Zone3ReviewPanel from '@/components/admin/Zone3ReviewPanel';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { format } from 'date-fns';
 import { ChevronRight, ChevronDown, Mail, Search, ShieldCheck } from 'lucide-react';
@@ -35,8 +35,11 @@ const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_producti
 const ORDER_WORKFLOW_CONTROLS_FROZEN = true;
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE = 'ADMIN_ORDER_LIFECYCLE';
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION = 'g48e_admin_order_lifecycle_v1';
-const ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE = 'ADMIN_ORDER_LIST_COMPACT';
-const ADMIN_ORDER_LIST_COMPACT_CONTRACT = 'g48e_admin_order_list_compact_v1';
+const ADMIN_ORDER_LIST_PAGE_RESPONSE_MODE = 'ADMIN_ORDER_LIST_PAGE';
+const ADMIN_ORDER_LIST_PAGE_CONTRACT = 'g48e_admin_order_list_page_v1';
+const ADMIN_ORDER_DETAIL_COMPACT_RESPONSE_MODE = 'ADMIN_ORDER_DETAIL_COMPACT';
+const ADMIN_ORDER_DETAIL_COMPACT_CONTRACT = 'g48e_admin_order_detail_compact_v1';
+const ADMIN_ORDER_LIST_PAGE_SIZE = 10;
 
 const orderOpsReadinessItems = [
   {
@@ -110,10 +113,17 @@ function unwrapFunctionData(response, fallback = {}) {
   }
 }
 
-function hasValidAdminOrderListCompactResponse(data) {
+function hasValidAdminOrderListPageResponse(data) {
   return data?.success === true &&
-    data?.response_contract === ADMIN_ORDER_LIST_COMPACT_CONTRACT &&
+    data?.response_contract === ADMIN_ORDER_LIST_PAGE_CONTRACT &&
     Array.isArray(data?.orders) &&
+    data?.writes_performed === false;
+}
+
+function hasValidAdminOrderDetailCompactResponse(data) {
+  return data?.success === true &&
+    data?.response_contract === ADMIN_ORDER_DETAIL_COMPACT_CONTRACT &&
+    data?.order &&
     data?.writes_performed === false;
 }
 
@@ -986,6 +996,25 @@ function InternalHubNoteComposer({ order }) {
 
 function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const [expanded, setExpanded] = useState(false);
+  const shouldLoadDetail = expanded && !order.is_native_delivery_fallback;
+  const { data: detailData, isLoading: detailLoading, isError: detailError } = useQuery({
+    queryKey: ['admin-order-detail-compact', order.customer_app_order_id || order.id, order.order_number],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminOrdersWithHub', {
+        response_mode: ADMIN_ORDER_DETAIL_COMPACT_RESPONSE_MODE,
+        customer_app_order_id: order.customer_app_order_id || order.id || null,
+        order_number: order.order_number || null,
+      });
+      const result = unwrapFunctionData(res, {});
+      if (!hasValidAdminOrderDetailCompactResponse(result)) {
+        throw new Error(result?.error || 'Compact admin-order detail contract is unavailable');
+      }
+      return result;
+    },
+    enabled: shouldLoadDetail,
+    staleTime: 60000,
+  });
+  const detailOrder = detailData?.order || order;
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
   const currentIndex = stages.findIndex(s => s.key === order.status);
   const nextStage = stages[currentIndex + 1];
@@ -998,9 +1027,9 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
   const orderedDateStr = order.created_date
     ? format(new Date(order.created_date), 'MMM d, yyyy · h:mm a')
     : null;
-  const itemsSummary = order.items?.length > 0
+  const itemsSummary = order.item_summary || (order.items?.length > 0
     ? order.items.map(i => `${i.title} ×${i.quantity}`).join(', ')
-    : null;
+    : null);
   const customerAppStatusLabel = stages.find(s => s.key === order.status)?.label || formatStatusLabel(order.status);
 
   return (
@@ -1059,15 +1088,22 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
           >
             <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-4">
 
-              <OperationalContextPanel order={order} />
+              {detailLoading && (
+                <div className="rounded-xl border border-border/60 bg-secondary/40 p-3 text-xs text-muted-foreground">Loading exact order detail...</div>
+              )}
+              {detailError && (
+                <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">Unable to load exact order detail. List row remains visible; heavy panels may be incomplete.</div>
+              )}
+
+              <OperationalContextPanel order={detailOrder} />
 
               {/* Customer info block */}
               <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Customer</p>
                 <InfoRow label="Name" value={customerName || '—'} />
-                <InfoRow label="Email" value={order.customer_email} />
-                <InfoRow label="Phone" value={order.contact_phone || '—'} />
-                <InfoRow label="Address" value={order.delivery_address || (order.fulfillment_type === 'pickup' ? 'In-store pickup' : '—')} />
+                <InfoRow label="Email" value={detailOrder.customer_email} />
+                <InfoRow label="Phone" value={detailOrder.contact_phone || '—'} />
+                <InfoRow label="Address" value={detailOrder.delivery_address || (detailOrder.fulfillment_type === 'pickup' ? 'In-store pickup' : '—')} />
                 {deliveryDateStr && <InfoRow label="Delivery" value={deliveryDateStr} />}
                 {orderedDateStr && <InfoRow label="Ordered" value={orderedDateStr} />}
               </div>
@@ -1076,7 +1112,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               <div className="bg-secondary/40 rounded-xl p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Items</p>
                 <div className="space-y-1">
-                  {order.items?.length > 0 ? order.items.map((item, i) => (
+                  {detailOrder.items?.length > 0 ? detailOrder.items.map((item, i) => (
                     <div key={i} className="flex justify-between text-xs">
                       <span className="text-foreground">{item.title} × {item.quantity}</span>
                       {item.price > 0 && <span className="font-medium text-foreground">${(item.price * item.quantity).toFixed(2)}</span>}
@@ -1085,16 +1121,16 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                     <p className="text-xs text-muted-foreground italic">No items listed</p>
                   )}
                 </div>
-                {order.notes && (
-                  <p className="text-[10px] text-primary mt-2 pt-2 border-t border-border/40">{order.notes}</p>
+                {detailOrder.notes && (
+                  <p className="text-[10px] text-primary mt-2 pt-2 border-t border-border/40">{detailOrder.notes}</p>
                 )}
                 <div className="flex justify-between text-xs font-semibold mt-2 pt-2 border-t border-border/40">
                   <span>Total</span>
-                  <span>${(order.total || 0).toFixed(2)}</span>
+                  <span>${(detailOrder.total || 0).toFixed(2)}</span>
                 </div>
               </div>
 
-              {order.is_hub_order && (
+              {detailOrder.is_hub_order && (
                 <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
                   <SectionLabel
                     title="Hub Read-Only Context"
@@ -1102,25 +1138,25 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                     badge="Read-only"
                   />
                   <div className="space-y-2">
-                    <HubOperationsPanel order={order} customerAppStatusLabel={customerAppStatusLabel} />
-                    <FulfillmentTasksPanel order={order} />
-                    <HubTimelinePanel order={order} />
+                    <HubOperationsPanel order={detailOrder} customerAppStatusLabel={customerAppStatusLabel} />
+                    <FulfillmentTasksPanel order={detailOrder} />
+                    <HubTimelinePanel order={detailOrder} />
                   </div>
                 </section>
               )}
 
-              {(order.is_native_order || order.has_native_order) && (
+              {(detailOrder.is_native_order || detailOrder.has_native_order) && (
                 <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
                   <SectionLabel
                     title="Native Customer App Context"
                     description="Operational mirror/task context created in Customer App for May 30 launch processing."
                     badge="Parallel"
                   />
-                  <NativeOperationsPanel order={order} />
+                  <NativeOperationsPanel order={detailOrder} />
                 </section>
               )}
 
-              <InternalHubNoteComposer order={order} />
+              <InternalHubNoteComposer order={detailOrder} />
 
               <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
                 <SectionLabel
@@ -1194,22 +1230,34 @@ export default function AdminOrders() {
   const [search, setSearch] = useState('');
 
   const {
-    data: ordersData = {},
+    data: pagedOrdersData,
     isLoading: ordersLoading,
+    isFetching: ordersFetching,
+    isFetchingNextPage,
     isError: ordersError,
     error: ordersQueryError,
-  } = useQuery({
-    queryKey: ['admin-orders'],
-    queryFn: async () => {
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['admin-orders-page', filter, search],
+    queryFn: async ({ pageParam = null }) => {
       const res = await base44.functions.invoke('getAdminOrdersWithHub', {
-        response_mode: ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE,
+        response_mode: ADMIN_ORDER_LIST_PAGE_RESPONSE_MODE,
+        page_size: ADMIN_ORDER_LIST_PAGE_SIZE,
+        cursor: pageParam,
+        filter,
+        search,
+        sort_field: 'created_date',
+        sort_direction: 'desc',
       });
-      const result = unwrapFunctionData(res, { orders: [], total: 0 });
-      if (!hasValidAdminOrderListCompactResponse(result)) {
-        throw new Error('Compact admin-order list contract is unavailable');
+      const result = unwrapFunctionData(res, { orders: [], total_count: 0 });
+      if (!hasValidAdminOrderListPageResponse(result)) {
+        throw new Error(result?.error || 'Paginated admin-order list contract is unavailable');
       }
       return result;
     },
+    initialPageParam: null,
+    getNextPageParam: lastPage => lastPage?.has_more ? lastPage.next_cursor : undefined,
     enabled: user?.role === 'admin',
     refetchInterval: 30000,
   });
@@ -1228,7 +1276,9 @@ export default function AdminOrders() {
     refetchInterval: 30000,
   });
 
-  const primaryOrders = ordersData.orders || [];
+  const orderPages = pagedOrdersData?.pages || [];
+  const ordersData = orderPages[0] || {};
+  const primaryOrders = orderPages.flatMap(page => Array.isArray(page.orders) ? page.orders : []);
   const adminOrderLifecycleReadModel = hasValidAdminOrderLifecycleReadModel(orderLifecycleData)
     ? orderLifecycleData.admin_order_lifecycle_read_model
     : null;
@@ -1319,25 +1369,7 @@ export default function AdminOrders() {
     o.status !== 'cancelled'
   );
 
-  const statusFiltered = filter === 'active'
-    ? operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status))
-    : filter === 'completed'
-    ? operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status))
-    : pendingOrders; // 'pending' tab
-
-  const filtered = search
-    ? statusFiltered.filter(o => {
-        const q = search.toLowerCase();
-        const name = nameMap[o.customer_email] || '';
-        return (
-          o.customer_email?.toLowerCase().includes(q) ||
-          o.order_number?.toLowerCase().includes(q) ||
-          o.contact_phone?.includes(q) ||
-          name.toLowerCase().includes(q) ||
-          o.delivery_address?.toLowerCase().includes(q)
-        );
-      })
-    : statusFiltered;
+  const filtered = orders;
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ order, stage }) => {
@@ -1351,7 +1383,7 @@ export default function AdminOrders() {
       };
     },
     onSuccess: (result, { stage, direction }) => {
-      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-orders-page'] });
       if (result?.skipped) {
         toast.info('Order workflow controls are paused for the May 30 launch freeze.');
         setAdvancingId(null);
@@ -1482,21 +1514,41 @@ export default function AdminOrders() {
             <div className="flex items-center justify-center py-16">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
+          ) : ordersError && filtered.length === 0 ? (
+            <div className="text-center py-16 rounded-xl border border-destructive/40 bg-destructive/10">
+              <p className="text-destructive text-sm">Unable to load bounded admin-order list. Existing rows were not replaced by the legacy SDK response.</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">{ordersQueryError?.message || 'Admin-order list page request failed'}</p>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-16">
               <p className="text-muted-foreground text-sm">{search ? 'No orders match your search' : `No ${filter} orders`}</p>
             </div>
           ) : (
-            filtered.map(order => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                onAdvance={handleAdvance}
-                onGoBack={handleGoBack}
-                isAdvancing={advancingId === order.id}
-                customerName={nameMap[order.customer_email] || order.customer_name || null}
-              />
-            ))
+            <>
+              {filtered.map(order => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  onAdvance={handleAdvance}
+                  onGoBack={handleGoBack}
+                  isAdvancing={advancingId === order.id}
+                  customerName={nameMap[order.customer_email] || order.customer_name || null}
+                />
+              ))}
+              {hasNextPage && (
+                <button
+                  type="button"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground disabled:opacity-50"
+                >
+                  {isFetchingNextPage ? 'Loading more orders...' : 'Load more orders'}
+                </button>
+              )}
+              {ordersFetching && !isFetchingNextPage && !ordersLoading && (
+                <p className="text-center text-[10px] text-muted-foreground">Refreshing bounded admin-order page...</p>
+              )}
+            </>
           )}
         </div>
       )}
