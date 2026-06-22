@@ -22,6 +22,8 @@ import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 
 const NUVIRA_BASE_ADDRESS = '619 N Main St Unit 3, O\'Fallon, MO 63366';
+const DELIVERY_LIFECYCLE_READ_MODEL_MODE = 'DELIVERY_LIFECYCLE';
+const DELIVERY_LIFECYCLE_READ_MODEL_VERSION = 'g48d_delivery_lifecycle_v1';
 
 const deliveryReadinessItems = [
   {
@@ -104,6 +106,61 @@ function dataSourceLabel(value) {
   if (value === 'customer_app_native_order') return 'Native Order';
   if (value === 'hub') return 'Hub';
   return 'Source pending';
+}
+
+
+function hasValidDeliveryLifecycleReadModel(data) {
+  const model = data?.delivery_lifecycle_read_model;
+  return data?.delivery_lifecycle_read_model_available === true &&
+    data?.delivery_lifecycle_read_model_enabled === true &&
+    data?.delivery_lifecycle_read_model_version === DELIVERY_LIFECYCLE_READ_MODEL_VERSION &&
+    model?.read_model_enabled === true &&
+    model?.read_model_version === DELIVERY_LIFECYCLE_READ_MODEL_VERSION &&
+    model?.read_model_available === true &&
+    Array.isArray(model?.rows) &&
+    model?.summary &&
+    typeof model.summary === 'object';
+}
+
+function DeliveryLifecycleReadModelPanel({ model }) {
+  const summary = model?.summary || {};
+  const classificationCounts = model?.classification_counts || {};
+  const topClassifications = Object.entries(classificationCounts).slice(0, 4);
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3">
+      <div className="flex items-start gap-2">
+        <Truck className="w-4 h-4 text-blue-700 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-xs font-semibold text-blue-950">Delivery lifecycle read model</p>
+          <p className="text-[10px] text-blue-900 mt-0.5">
+            Backend-authoritative read model only. It does not make delivery commands, route mutations, customer status updates, or notifications ready.
+          </p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <StatCard icon={Package} label="Exact Chains" value={summary.exact_order_chain_count ?? 0} />
+        <StatCard icon={Truck} label="Route Linked" value={summary.route_linked_count ?? 0} />
+        <StatCard icon={AlertTriangle} label="Fallback" value={summary.fallback_required_count ?? 0} />
+        <StatCard icon={AlertTriangle} label="Review" value={summary.review_required_count ?? 0} />
+      </div>
+      {topClassifications.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {topClassifications.map(([classification, count]) => (
+            <span
+              key={classification}
+              className="text-[10px] font-semibold rounded-full border border-blue-200 bg-white/70 px-2 py-1 text-blue-900"
+            >
+              {formatLabel(classification)}: {count}
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-blue-900">
+        Write readiness remains false for driver assignment, route mutation, out-for-delivery, delivered, Shopify fulfillment, notifications, customer status writes, and Hub write suppression.
+      </p>
+    </div>
+  );
 }
 
 function isNativeDeliveryStop(stop) {
@@ -1596,6 +1653,7 @@ export default function DeliveryQueue() {
       const res = await base44.functions.invoke('getAdminDeliveryRouteSummary', {
         delivery_date: deliveryDate,
         limit: 100,
+        read_model_mode: DELIVERY_LIFECYCLE_READ_MODEL_MODE,
       });
       const result = res?.data || res;
       if (result?.error) throw new Error(result.error);
@@ -1620,6 +1678,7 @@ export default function DeliveryQueue() {
   const hubFallbackReconciliation = data?.hub_fallback_reconciliation || {};
   const suppressedHubRows = hubFallbackReconciliation.suppressed_hub_rows || [];
   const hasRows = deliveryStops.length > 0 || completedStops.length > 0 || unscheduledStops.length > 0;
+  const deliveryLifecycleReadModel = hasValidDeliveryLifecycleReadModel(data) ? data.delivery_lifecycle_read_model : null;
 
   async function refreshDeliveryActionSummaries() {
     await Promise.all([
@@ -1710,6 +1769,10 @@ export default function DeliveryQueue() {
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
+
+        {deliveryLifecycleReadModel && (
+          <DeliveryLifecycleReadModelPanel model={deliveryLifecycleReadModel} />
+        )}
 
         {suppressedHubRows.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">

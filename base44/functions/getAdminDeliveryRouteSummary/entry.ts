@@ -1,10 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { buildDeliveryLifecycleReadModel } from './deliveryLifecycleReadModel.js';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const CHICAGO_TZ = 'America/Chicago';
 const MAX_LIMIT = 100;
 const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
+const DELIVERY_LIFECYCLE_READ_MODEL_ENABLE = 'ENABLE_ADMIN_DELIVERY_LIFECYCLE_READ_MODEL';
+const DELIVERY_LIFECYCLE_READ_MODEL_KILL_SWITCH = 'ADMIN_DELIVERY_LIFECYCLE_READ_MODEL_KILL_SWITCH';
+const DELIVERY_LIFECYCLE_READ_MODEL_VERSION = 'g48d_delivery_lifecycle_v1';
+const DELIVERY_LIFECYCLE_READ_MODEL_MODE = 'DELIVERY_LIFECYCLE';
 
 async function readJsonBody(req) {
   try {
@@ -22,6 +27,20 @@ function normalizeText(value) {
 function normalizeLower(value) {
   return normalizeText(value).toLowerCase();
 }
+
+function envFlagEnabled(key) {
+  const value = normalizeLower(Deno.env.get(key));
+  return ['1', 'true', 'yes', 'on', 'enabled'].includes(value);
+}
+
+function deliveryLifecycleReadModelEnabled() {
+  return envFlagEnabled(DELIVERY_LIFECYCLE_READ_MODEL_ENABLE) && !envFlagEnabled(DELIVERY_LIFECYCLE_READ_MODEL_KILL_SWITCH);
+}
+
+function isDeliveryLifecycleReadModelRequest(body) {
+  return normalizeText(body?.read_model_mode || body?.preview_mode || body?.mode).toUpperCase() === DELIVERY_LIFECYCLE_READ_MODEL_MODE;
+}
+
 
 function normalizeDate(value) {
   const text = normalizeText(value);
@@ -411,6 +430,28 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit) {
   };
 }
 
+
+async function loadDeliveryLifecycleReadModelSources(base44) {
+  const entities = base44.asServiceRole.entities;
+  const [customerOrders, nativeOrders, fulfillmentTasks, reviewRows, orderSyncLogs, safeSyncParityLogs] = await Promise.all([
+    entities.Order.list('-created_date', 500).catch(() => []),
+    entities.ShopifyOrder.list('-created_date', 500).catch(() => []),
+    entities.FulfillmentTask.list('-delivery_date', 500).catch(() => []),
+    entities.OrderReviewQueue.list('-created_date', 500).catch(() => []),
+    entities.OrderSyncLog.list('-created_date', 500).catch(() => []),
+    entities.SafeSyncParityLog.list('-created_date', 500).catch(() => []),
+  ]);
+
+  return {
+    customerOrders,
+    nativeOrders,
+    fulfillmentTasks,
+    reviewRows,
+    orderSyncLogs,
+    safeSyncParityLogs,
+  };
+}
+
 function orderKey(value) {
   return normalizeLower(value).replace(/^#/, '');
 }
@@ -659,6 +700,8 @@ Deno.serve(async (req) => {
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
     }
+    const deliveryLifecycleReadModelRequested = isDeliveryLifecycleReadModelRequest(body);
+    const deliveryLifecycleReadModelActive = deliveryLifecycleReadModelEnabled();
     let deliveryDate;
     let limit;
 
@@ -741,6 +784,18 @@ Deno.serve(async (req) => {
     const hubFallbackRowCount = allVisibleRows.filter(stop => stop?.hub_fallback_used === true || stop?.data_source === 'hub_fallback').length;
     const nativeRowCount = allVisibleRows.filter(stop => stop?.native_primary === true || (stop?.data_source || '').startsWith('customer_app_native') || stop?.data_source === 'native_with_hub_fallback_context').length;
     const staleHubFallbackDetected = suppressedHubRows.some(row => row.merge_status === 'native_schedule_active_hub_fallback_stale_date');
+    const deliveryLifecycleReadModelRows = allVisibleRows;
+    let deliveryLifecycleReadModel = null;
+    const deliveryLifecycleReadModelCanBuild = deliveryLifecycleReadModelRequested && deliveryLifecycleReadModelActive && typeof buildDeliveryLifecycleReadModel === 'function';
+    if (deliveryLifecycleReadModelCanBuild) {
+      const readModelSources = await loadDeliveryLifecycleReadModelSources(base44);
+      deliveryLifecycleReadModel = buildDeliveryLifecycleReadModel({
+        deliveryDate: hubData?.delivery_date || deliveryDate,
+        routeSummaryRows: deliveryLifecycleReadModelRows,
+        ...readModelSources,
+        sourceMode: hubData ? 'native_first_with_hub_fallback' : 'native_only',
+      });
+    }
 
     if (!hubData && !nativeData.source_available) {
       return Response.json({
@@ -765,6 +820,18 @@ Deno.serve(async (req) => {
       fallback_reasons: fallbackReasons,
       stale_hub_fallback_detected: staleHubFallbackDetected,
       native_first_enabled: true,
+      delivery_lifecycle_read_model_available: true,
+      delivery_lifecycle_read_model_enabled: Boolean(deliveryLifecycleReadModelActive && deliveryLifecycleReadModelRequested),
+      delivery_lifecycle_read_model_version: DELIVERY_LIFECYCLE_READ_MODEL_VERSION,
+      ...(deliveryLifecycleReadModel ? { delivery_lifecycle_read_model: deliveryLifecycleReadModel } : {}),
+      driver_assignment_write_ready: false,
+      route_mutation_ready: false,
+      out_for_delivery_write_ready: false,
+      delivered_write_ready: false,
+      shopify_fulfillment_write_ready: false,
+      notification_expansion_ready: false,
+      customer_status_write_ready: false,
+      hub_write_suppression_ready: false,
       writes_performed: false,
       provider_call_impact: false,
       notifications_sent: false,
