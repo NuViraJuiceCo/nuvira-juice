@@ -1,8 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { buildProductionComplianceLifecycleReadModel } from './productionComplianceReadModel.js';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_RANGE_DAYS = 31;
+const PRODUCTION_COMPLIANCE_READ_MODEL_MODE = 'PRODUCTION_COMPLIANCE_LIFECYCLE';
+const ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL_ENABLE = 'ENABLE_ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL';
+const ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL_KILL_SWITCH = 'ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL_KILL_SWITCH';
+const PRODUCTION_COMPLIANCE_READ_MODEL_LIMIT = 500;
 const VALID_PRESETS = new Set(['today', 'this_week', 'next_7_days']);
 const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data']);
 const DATE_PENDING = 'date_pending';
@@ -215,6 +220,14 @@ function sanitizeSummary(summary) {
 
 function sanitizeBoolean(value, fallback = false) {
   return typeof value === 'boolean' ? value : fallback;
+}
+
+function envFlagEnabled(name) {
+  return Deno.env.get(name) === 'true';
+}
+
+function readModelGateOpen() {
+  return envFlagEnabled(ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL_ENABLE) && !envFlagEnabled(ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL_KILL_SWITCH);
 }
 
 function sanitizeProductGroup(group) {
@@ -583,6 +596,17 @@ function buildNativeFirstPlanningParts(nativePlanning, hubData) {
       production_lifecycle_command_recommendation: 'preview_only_fresh_active_order_required',
     },
   };
+}
+
+async function safeEntityList(base44, entityName, sort, limit) {
+  try {
+    const entity = base44.asServiceRole?.entities?.[entityName];
+    if (!entity?.list) return { rows: [], warning: `${entityName}_entity_unavailable` };
+    const rows = await entity.list(sort, limit);
+    return { rows: Array.isArray(rows) ? rows : [], warning: null };
+  } catch {
+    return { rows: [], warning: `${entityName}_read_failed` };
+  }
 }
 
 async function fetchHubJson(url, headers) {
@@ -1269,6 +1293,8 @@ Deno.serve(async (req) => {
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
     }
+    const productionComplianceReadModelRequested = normalizeText(body.read_model_mode).toUpperCase() === PRODUCTION_COMPLIANCE_READ_MODEL_MODE;
+    const productionComplianceReadModelEnabled = readModelGateOpen();
     let dateFrom;
     let dateTo;
     let preset;
@@ -1360,7 +1386,26 @@ Deno.serve(async (req) => {
 
     const nativeFirstPlanning = buildNativeFirstPlanningParts(nativePlanning, hubData);
 
-    return Response.json({
+    let productionComplianceReadModel = null;
+    if (productionComplianceReadModelRequested && productionComplianceReadModelEnabled) {
+      const [productionBatchResult, complianceLogResult, manualBatchResult] = await Promise.all([
+        safeEntityList(base44, 'ProductionBatch', '-production_date', PRODUCTION_COMPLIANCE_READ_MODEL_LIMIT),
+        safeEntityList(base44, 'BatchComplianceLog', '-created_date', PRODUCTION_COMPLIANCE_READ_MODEL_LIMIT),
+        safeEntityList(base44, 'ManualProductionBatch', '-production_date', 200),
+      ]);
+      for (const warning of [productionBatchResult.warning, complianceLogResult.warning, manualBatchResult.warning].filter(Boolean)) warnings.push(warning);
+      productionComplianceReadModel = buildProductionComplianceLifecycleReadModel({
+        productionBatches: productionBatchResult.rows,
+        batchComplianceLogs: complianceLogResult.rows,
+        manualProductionBatches: manualBatchResult.rows,
+        dateFrom: resolvedRange.dateFrom,
+        dateTo: resolvedRange.dateTo,
+        enabled: true,
+        sourceMode: 'customer_app_native_first_with_hub_fallback',
+      });
+    }
+
+    const responseBody = {
       success: true,
       date_from: resolvedRange.dateFrom,
       date_to: resolvedRange.dateTo,
@@ -1395,7 +1440,13 @@ Deno.serve(async (req) => {
         purchase_order_automation_enabled: false,
       },
       warnings,
-    });
+    };
+
+    if (productionComplianceReadModel) {
+      responseBody.production_compliance_lifecycle_read_model = productionComplianceReadModel;
+    }
+
+    return Response.json(responseBody);
   } catch (error) {
     console.error('[getAdminProductionPlanningSummary] Error:', error.message);
     return Response.json({ error: 'Unable to load production planning summary' }, { status: 500 });
