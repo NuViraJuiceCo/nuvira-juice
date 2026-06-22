@@ -1182,17 +1182,30 @@ export default function AdminOrders() {
   } = useQuery({
     queryKey: ['admin-orders'],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getAdminOrdersWithHub', {
-        read_model_mode: ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE,
-      });
+      const res = await base44.functions.invoke('getAdminOrdersWithHub', {});
       return res.data || { orders: [], total: 0 };
     },
     enabled: user?.role === 'admin',
     refetchInterval: 30000,
   });
+
+  const {
+    data: orderLifecycleData = {},
+  } = useQuery({
+    queryKey: ['admin-order-lifecycle-read-model'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getAdminOrdersWithHub', {
+        read_model_mode: ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE,
+      });
+      return res.data || {};
+    },
+    enabled: user?.role === 'admin',
+    refetchInterval: 30000,
+  });
+
   const primaryOrders = ordersData.orders || [];
-  const adminOrderLifecycleReadModel = hasValidAdminOrderLifecycleReadModel(ordersData)
-    ? ordersData.admin_order_lifecycle_read_model
+  const adminOrderLifecycleReadModel = hasValidAdminOrderLifecycleReadModel(orderLifecycleData)
+    ? orderLifecycleData.admin_order_lifecycle_read_model
     : null;
 
   const {

@@ -9,6 +9,7 @@ const ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION = 'g48e_admin_order_lifecycle_v1'
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE = 'ADMIN_ORDER_LIFECYCLE';
 const G48E_RUNTIME_DIAGNOSTIC_MODE = 'G48E_RUNTIME_CONTRACT';
 const G48E_RUNTIME_CONTRACT_VERSION = 'g48e_runtime_contract_v1';
+const G48E_COMPACT_READ_MODEL_CONTRACT = 'g48e_compact_read_model_v1';
 
 function normalizeOrderNum(num) {
   return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
@@ -30,8 +31,88 @@ function adminOrderLifecycleReadModelModeValue(body) {
   return body?.read_model_mode || body?.preview_mode || body?.mode || '';
 }
 
+function adminOrderLifecycleReadModelModeValues(body) {
+  return [body?.read_model_mode, body?.preview_mode, body?.mode]
+    .map(value => normalizeLower(value).toUpperCase())
+    .filter(Boolean);
+}
+
+function hasConflictingAdminOrderLifecycleModeValues(body) {
+  return new Set(adminOrderLifecycleReadModelModeValues(body)).size > 1;
+}
+
 function isAdminOrderLifecycleReadModelRequest(body) {
   return normalizeLower(adminOrderLifecycleReadModelModeValue(body)).toUpperCase() === ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE;
+}
+
+function buildAdminOrderLifecycleCompactResponse({ enabled = false, readModel = null } = {}) {
+  return {
+    success: true,
+    dry_run: true,
+    writes_performed: false,
+    read_model_mode: ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE,
+    admin_order_lifecycle_read_model_available: true,
+    admin_order_lifecycle_read_model_enabled: Boolean(enabled),
+    admin_order_lifecycle_read_model_version: ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION,
+    read_model_payload_present: Boolean(readModel),
+    legacy_orders_payload_included: false,
+    response_contract: G48E_COMPACT_READ_MODEL_CONTRACT,
+    ...(readModel ? { admin_order_lifecycle_read_model: readModel } : {}),
+    order_write_ready: false,
+    payment_write_ready: false,
+    refund_write_ready: false,
+    fulfillment_write_ready: false,
+    delivery_write_ready: false,
+    notification_expansion_ready: false,
+    hub_write_suppression_ready: false,
+    repair_replay_ready: false,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    stripe_calls: false,
+    shopify_calls: false,
+    hub_calls: false,
+    notifications_sent: false,
+    order_mutation_performed: false,
+    native_order_mutation_performed: false,
+    fulfillment_task_mutation_performed: false,
+    payment_mutation_performed: false,
+    refund_mutation_performed: false,
+    repair_replay_performed: false,
+  };
+}
+
+function buildAdminOrderLifecycleModeConflictResponse() {
+  return {
+    success: false,
+    error: 'conflicting_read_model_mode',
+    dry_run: true,
+    writes_performed: false,
+    read_model_mode: ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE,
+    legacy_orders_payload_included: false,
+    response_contract: G48E_COMPACT_READ_MODEL_CONTRACT,
+    order_write_ready: false,
+    payment_write_ready: false,
+    refund_write_ready: false,
+    fulfillment_write_ready: false,
+    delivery_write_ready: false,
+    notification_expansion_ready: false,
+    hub_write_suppression_ready: false,
+    repair_replay_ready: false,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    stripe_calls: false,
+    shopify_calls: false,
+    hub_calls: false,
+    notifications_sent: false,
+    order_mutation_performed: false,
+    native_order_mutation_performed: false,
+    fulfillment_task_mutation_performed: false,
+    payment_mutation_performed: false,
+    refund_mutation_performed: false,
+    repair_replay_performed: false,
+  };
 }
 
 function isG48eRuntimeDiagnosticRequest(body) {
@@ -526,6 +607,10 @@ Deno.serve(async (req) => {
     const adminOrderLifecycleReadModelRequested = isAdminOrderLifecycleReadModelRequest(body);
     const adminOrderLifecycleReadModelActive = adminOrderLifecycleReadModelEnabled();
 
+    if (hasConflictingAdminOrderLifecycleModeValues(body)) {
+      return Response.json(buildAdminOrderLifecycleModeConflictResponse(), { status: 400 });
+    }
+
     if (isG48eRuntimeDiagnosticRequest(body)) {
       return Response.json({
         success: true,
@@ -559,6 +644,10 @@ Deno.serve(async (req) => {
         raw_payloads_returned: false,
         pii_returned: false,
       });
+    }
+
+    if (adminOrderLifecycleReadModelRequested && !adminOrderLifecycleReadModelActive) {
+      return Response.json(buildAdminOrderLifecycleCompactResponse({ enabled: false }));
     }
 
     // 1. Fetch all local orders, exclude superseded, cancelled, and ghost pre-orders
@@ -989,6 +1078,13 @@ Deno.serve(async (req) => {
       : null;
 
     console.log(`[AdminOrders] Final: ${merged.length} orders (${expandedLocalOrders.length} local expanded including fulfillments, ${filteredHubOrders.length} hub expanded)`);
+
+    if (adminOrderLifecycleReadModelRequested && adminOrderLifecycleReadModelActive) {
+      return Response.json(buildAdminOrderLifecycleCompactResponse({
+        enabled: true,
+        readModel: adminOrderLifecycleReadModel,
+      }));
+    }
 
     return Response.json({
       success: true,

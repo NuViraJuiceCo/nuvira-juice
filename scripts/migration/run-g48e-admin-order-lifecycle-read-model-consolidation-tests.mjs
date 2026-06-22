@@ -180,11 +180,29 @@ test('2. Helper performs no reads/writes/provider calls', () => {
   assert.doesNotMatch(helperSource, /base44\.|createClientFromRequest|fetch\s*\(|entities\.|asServiceRole|\.create\s*\(|\.update\s*\(|\.delete\s*\(|bulkCreate|updateMany|deleteMany|Stripe\.|shopify\.|HUB_API_URL|Notification\./);
 });
 
-test('3. Existing response remains unchanged when disabled', async () => {
+test('3. Explicit disabled response is compact and avoids legacy reads', async () => {
   const result = await invokeEntry({ env: {} });
   assert.equal(result.status, 200);
   assert.equal(result.payload.success, true);
+  assert.equal(result.payload.dry_run, true);
+  assert.equal(result.payload.writes_performed, false);
+  assert.equal(result.payload.orders, undefined);
+  assert.equal(result.payload.admin_order_lifecycle_read_model_available, true);
+  assert.equal(result.payload.admin_order_lifecycle_read_model_enabled, false);
+  assert.equal(result.payload.admin_order_lifecycle_read_model, undefined);
+  assert.equal(result.payload.read_model_payload_present, false);
+  assert.equal(result.payload.legacy_orders_payload_included, false);
+  assert.equal(result.payload.response_contract, 'g48e_compact_read_model_v1');
+  assert.deepEqual(result.reads, []);
+  assert.equal(result.writes.length, 0);
+});
+
+test('3b. Legacy no-mode response remains unchanged', async () => {
+  const result = await invokeEntry({ env: {}, body: {} });
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.success, true);
   assert.ok(Array.isArray(result.payload.orders));
+  assert.ok(result.reads.includes('Order'));
   assert.equal(result.payload.admin_order_lifecycle_read_model_available, true);
   assert.equal(result.payload.admin_order_lifecycle_read_model_enabled, false);
   assert.equal(result.payload.admin_order_lifecycle_read_model, undefined);
@@ -291,10 +309,12 @@ test('21. Admin page uses canonical model only when enabled', () => {
   assert.match(uiSource, /hasValidAdminOrderLifecycleReadModel/);
   assert.match(uiSource, /admin_order_lifecycle_read_model_enabled === true/);
   assert.match(uiSource, /admin_order_lifecycle_read_model_version === ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION/);
+  assert.match(uiSource, /queryKey:\s*\['admin-order-lifecycle-read-model'\]/);
 });
 
 test('22. Disabled page behavior remains unchanged', () => {
   assert.match(uiSource, /const primaryOrders = ordersData\.orders \|\| \[\]/);
+  assert.match(uiSource, /queryKey:\s*\['admin-orders'\][\s\S]*?base44\.functions\.invoke\('getAdminOrdersWithHub',\s*\{\s*\}\)/);
   assert.match(uiSource, /deliveryFallbackOrders\.forEach/);
 });
 
