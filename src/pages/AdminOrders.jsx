@@ -33,6 +33,8 @@ const PICKUP_STAGES = [
 
 const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
 const ORDER_WORKFLOW_CONTROLS_FROZEN = true;
+const ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE = 'ADMIN_ORDER_LIFECYCLE';
+const ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION = 'g48e_admin_order_lifecycle_v1';
 
 const orderOpsReadinessItems = [
   {
@@ -80,6 +82,70 @@ function parseLocalDate(str) {
   if (!str) return new Date();
   const [y, m, d] = str.split('-').map(Number);
   return new Date(y, m - 1, d);
+}
+
+
+function hasValidAdminOrderLifecycleReadModel(data) {
+  const model = data?.admin_order_lifecycle_read_model;
+  return data?.admin_order_lifecycle_read_model_available === true &&
+    data?.admin_order_lifecycle_read_model_enabled === true &&
+    data?.admin_order_lifecycle_read_model_version === ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION &&
+    model?.read_model_available === true &&
+    model?.read_model_enabled === true &&
+    model?.read_model_version === ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION &&
+    model?.summary &&
+    typeof model.summary === 'object' &&
+    Array.isArray(model?.rows);
+}
+
+function AdminOrderLifecycleReadModelPanel({ model }) {
+  const summary = model?.summary || {};
+  const classificationCounts = Object.entries(model?.classification_counts || {}).slice(0, 5);
+  return (
+    <section className="px-4 mt-4">
+      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/30">
+        <div className="flex items-start gap-2">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-700 dark:text-blue-300" />
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-blue-900 dark:text-blue-100">Admin order lifecycle read model</p>
+            <p className="mt-0.5 text-xs font-medium text-blue-900/80 dark:text-blue-100/80">
+              Backend-authoritative read model only. It does not enable order, payment, refund, fulfillment, delivery, notification, repair, replay, or Hub write actions.
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl border border-blue-200 bg-white/70 p-2 dark:border-blue-900/70 dark:bg-blue-950/40">
+            <p className="text-lg font-black text-blue-950 dark:text-blue-100">{summary.complete_native_chain_count ?? 0}</p>
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-200">Complete chains</p>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-white/70 p-2 dark:border-blue-900/70 dark:bg-blue-950/40">
+            <p className="text-lg font-black text-blue-950 dark:text-blue-100">{summary.hub_only_valid_count ?? 0}</p>
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-200">Hub-only valid</p>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-white/70 p-2 dark:border-blue-900/70 dark:bg-blue-950/40">
+            <p className="text-lg font-black text-blue-950 dark:text-blue-100">{summary.fallback_required_count ?? 0}</p>
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-200">Fallback</p>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-white/70 p-2 dark:border-blue-900/70 dark:bg-blue-950/40">
+            <p className="text-lg font-black text-blue-950 dark:text-blue-100">{summary.review_hold_count ?? 0}</p>
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-200">Review holds</p>
+          </div>
+        </div>
+        {classificationCounts.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {classificationCounts.map(([classification, count]) => (
+              <span key={classification} className="rounded-full border border-blue-200 bg-white/80 px-2 py-1 text-[10px] font-bold text-blue-900 dark:border-blue-900/70 dark:bg-blue-950/50 dark:text-blue-100">
+                {formatStatusLabel(classification)}: {count}
+              </span>
+            ))}
+          </div>
+        )}
+        <p className="mt-2 text-[10px] font-medium text-blue-900/80 dark:text-blue-100/80">
+          Hub fallback remains active. Customer App Order identity remains canonical. Read readiness does not imply write readiness.
+        </p>
+      </div>
+    </section>
+  );
 }
 
 function InfoRow({ label, value }) {
@@ -1116,13 +1182,18 @@ export default function AdminOrders() {
   } = useQuery({
     queryKey: ['admin-orders'],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getAdminOrdersWithHub', {});
+      const res = await base44.functions.invoke('getAdminOrdersWithHub', {
+        read_model_mode: ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE,
+      });
       return res.data || { orders: [], total: 0 };
     },
     enabled: user?.role === 'admin',
     refetchInterval: 30000,
   });
   const primaryOrders = ordersData.orders || [];
+  const adminOrderLifecycleReadModel = hasValidAdminOrderLifecycleReadModel(ordersData)
+    ? ordersData.admin_order_lifecycle_read_model
+    : null;
 
   const {
     data: deliveryFallbackData = {},
@@ -1291,6 +1362,10 @@ export default function AdminOrders() {
         isLoading={isLoading}
         nameMap={nameMap}
       />
+
+      {adminOrderLifecycleReadModel && (
+        <AdminOrderLifecycleReadModelPanel model={adminOrderLifecycleReadModel} />
+      )}
 
       <AdminOrderSourceDiagnostics
         ordersData={ordersData}
