@@ -64,16 +64,16 @@ jobs:
           cache: npm
       - run: mkdir -p release-evidence
       - run: npm ci
-      - name: Verify open release-critical PRs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: npm run release:verify-open-critical-prs -- --out release-evidence/critical-prs.json
       - name: Verify PR source policy
         if: github.event_name == 'pull_request'
         run: node scripts/release/verify-native-release-source.mjs --policy-mode pr --approved-commit ${{ github.sha }} --out release-evidence/source-policy.json
       - name: Verify main source policy
         if: github.event_name == 'push'
         run: npm run release:verify-source -- --out release-evidence/source-policy.json
+      - name: Verify open release-critical PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run release:verify-open-critical-prs -- --out release-evidence/critical-prs.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
