@@ -77,6 +77,7 @@ const sourceScript = abs('scripts/release/verify-native-release-source.mjs');
 const criticalPrScript = abs('scripts/release/verify-open-critical-prs.mjs');
 const manifestScript = abs('scripts/release/generate-native-release-manifest.mjs');
 const criticalRegressionScript = abs('scripts/ci/run-critical-regressions.mjs');
+const secretScanScript = abs('scripts/ci/verify-secret-scan.mjs');
 
 // Required test cases from G50C prompt.
 test('1. dirty worktree fails', () => {
@@ -183,6 +184,23 @@ test('15. Missing manifest field fails', () => {
 test('16. Secret material is excluded', () => {
   const source = read('scripts/release/generate-native-release-manifest.mjs');
   assert(source.includes('contains_credentials: false') && source.includes('contains_customer_information: false'), 'manifest does not explicitly exclude secret/customer material');
+
+  const cleanDir = tempDir('g50c-secret-clean');
+  write('src/policy.md', 'Allowed policy placeholders: sk_live_, whsec_, Authorization: ***\n', cleanDir);
+  run('git', ['init', '-b', 'main'], { cwd: cleanDir });
+  run('git', ['add', '.'], { cwd: cleanDir });
+  run('git', ['commit', '-m', 'clean'], { cwd: cleanDir });
+  const cleanResult = run(process.execPath, [secretScanScript], { cwd: cleanDir, env: { G50C_SECRET_SCAN_MODE: 'all' } });
+  assert(cleanResult.status === 0, 'secret scan should allow placeholders and policy text');
+
+  const dirtyDir = tempDir('g50c-secret-dirty');
+  const fakeSecret = `sk_live_${'A'.repeat(24)}`;
+  write('src/leak.txt', `Do not commit ${fakeSecret}\n`, dirtyDir);
+  run('git', ['init', '-b', 'main'], { cwd: dirtyDir });
+  run('git', ['add', '.'], { cwd: dirtyDir });
+  run('git', ['commit', '-m', 'dirty'], { cwd: dirtyDir });
+  const dirtyResult = run(process.execPath, [secretScanScript], { cwd: dirtyDir, env: { G50C_SECRET_SCAN_MODE: 'all' } });
+  assert(dirtyResult.status !== 0 && dirtyResult.stderr.includes('stripe_secret_key'), 'secret scan should fail on real-looking secret values');
 });
 
 test('17. Clean exact-main source passes', () => {

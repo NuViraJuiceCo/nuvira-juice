@@ -27,12 +27,7 @@ jobs:
       - name: Startup and checkout source marker assertions
         run: node scripts/migration/run-g50b-native-startup-hotfix-tests.mjs && node scripts/migration/run-g49a-checkout-processing-error-boundary-tests.mjs
       - name: Secret scan
-        shell: bash
-        run: |
-          set -euo pipefail
-          if grep -RInE "(sk_live_|sk_test_|pk_live_[A-Za-z0-9]{12,}|pk_test_[A-Za-z0-9]{12,}|whsec_|client_secret[=:][A-Za-z0-9_\-]+|Bearer [A-Za-z0-9._-]+)" src scripts docs config .github; then
-            exit 1
-          fi
+        run: npm run ci:secret-scan
       - name: Bundle size measurement
         run: du -ah dist | sort -h | tail -30
       - name: Build must not dirty tracked files
