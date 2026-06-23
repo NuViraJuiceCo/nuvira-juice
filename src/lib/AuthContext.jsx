@@ -10,6 +10,7 @@ import {
   hasBase44AuthParamsInUrl,
   logoutInsideApp,
   redirectToLogin,
+  replaceInAppRoute,
 } from '@/lib/nativeAuthRedirect';
 
 const AuthContext = createContext();
@@ -112,7 +113,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
         if (currentUser?.email) {
-          window.location.replace(callbackResult.returnTo);
+          replaceInAppRoute(callbackResult.returnTo || '/');
         }
       } catch (error) {
         console.warn('[AuthContext] Native auth callback failed', error?.message || 'unknown_error');

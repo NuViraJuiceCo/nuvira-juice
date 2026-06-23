@@ -69,6 +69,32 @@ export function normalizeReturnRoute(route) {
   return route;
 }
 
+
+function dispatchInAppNavigationEvent() {
+  try {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  } catch {
+    try {
+      window.dispatchEvent(new Event('popstate'));
+    } catch {
+      // Event dispatch is best effort only.
+    }
+  }
+}
+
+export function replaceInAppRoute(route = '/') {
+  if (typeof window === 'undefined') return false;
+  const safeRoute = normalizeReturnRoute(route);
+  try {
+    window.history.replaceState({}, document.title, safeRoute);
+    dispatchInAppNavigationEvent();
+    return true;
+  } catch {
+    console.warn('[nativeAuthRedirect] In-app route replacement failed', 'navigation_unavailable');
+    return false;
+  }
+}
+
 export function getNativeProviderReturnUrl(returnRoute = '/') {
   const callbackUrl = new URL(NATIVE_CALLBACK_ROUTE, appParams.appBaseUrl);
   callbackUrl.searchParams.set('return_to', normalizeReturnRoute(returnRoute));
@@ -165,7 +191,7 @@ export async function redirectToLogin(returnRoute = getCurrentRoute()) {
   // hosted Base44 login can open in an external browser/webview and return
   // without sharing the same token storage, which creates a sign-in loop.
   const loginUrl = `/native-login?return_to=${encodeURIComponent(safeReturnRoute)}`;
-  window.location.assign(loginUrl);
+  replaceInAppRoute(loginUrl);
 }
 
 export async function logoutInsideApp(returnRoute = '/account') {
@@ -185,5 +211,5 @@ export async function logoutInsideApp(returnRoute = '/account') {
     // endpoint cannot be reached from the app shell, keep the user in-app.
   }
 
-  window.location.replace(signedOutRoute);
+  replaceInAppRoute(signedOutRoute);
 }

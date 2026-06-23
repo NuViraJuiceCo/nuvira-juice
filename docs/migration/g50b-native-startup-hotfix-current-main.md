@@ -1,0 +1,215 @@
+# G50B — native startup hotfix on current main
+
+## Status
+
+Classification: `native_startup_hotfix_pr_ready`
+
+G50B ports the logical native startup fix from PR #332 onto the latest canonical `main` after G50A merged. It is intentionally narrow: startup routing, error-boundary recovery, and native auth callback routing only.
+
+No Base44 publish, Builder publish, App Store upload, TestFlight upload, schema change, backend function change, checkout change, payment change, provider call, Hub mutation, notification, delivery command, or migration feature activation is included.
+
+## G50A closeout
+
+G50A PR #566 merged into `main` with merge commit `eae7ca0dd239c137626c735f72481365f4e270b4`.
+
+G50A confirmed the root cause:
+
+- PR #332 contains the earlier native startup fix.
+- PR #332 remained open, draft, and unmerged.
+- A later iOS build was generated from current `main`.
+- Current `main` still contained render-time hard navigation and automatic crash/reload recovery.
+- The previously fixed native bundle could therefore be overwritten by a later current-main bundle containing older startup behavior.
+
+## Exact regression cause
+
+Current `main` before G50B contained these startup hazards:
+
+- `src/App.jsx` called `window.location.replace('/account-setup')` during render when onboarding appeared incomplete.
+- `src/App.jsx` called login navigation directly while rendering an auth-required error branch.
+- `src/components/AppErrorBoundary.jsx` automatically cleared startup/auth storage, appended recovery query parameters, hard-navigated, and reloaded after a render crash.
+- `src/lib/AuthContext.jsx` used `window.location.replace(callbackResult.returnTo)` after native auth callbacks.
+- `src/lib/nativeAuthRedirect.js` hard-assigned same-origin login/logout routes.
+
+## PR #332 comparison
+
+PR #332 changed:
+
+- `ios/App/App.xcodeproj/project.pbxproj`
+- `src/App.jsx`
+- `src/components/AppErrorBoundary.jsx`
+- `src/lib/AuthContext.jsx`
+
+The iOS project changes in PR #332 are old release metadata and are intentionally excluded from G50B.
+
+```text
+pr332_behavior_ported=
+- account setup hard redirect replaced with React Router navigation
+- native auth callback hard replace replaced with in-app route replacement
+- automatic error-boundary reload loop removed
+- stable user-visible recovery fallback added
+
+pr332_behavior_obsolete=
+- old minimal recovery copy superseded by explicit Try Again, Restart App, and Reset Sign-In actions
+- old callback fallback behavior superseded by shared replaceInAppRoute helper
+
+pr332_metadata_excluded=
+- ios/App/App.xcodeproj/project.pbxproj marketing version changes
+- ios/App/App.xcodeproj/project.pbxproj build number changes
+
+current_main_conflicts=
+- current main had newer checkout/idempotency and migration work that was not part of PR #332
+- G50B did not cherry-pick PR #332 wholesale
+```
+
+## Behavior ported
+
+### Render-time navigation removal
+
+`src/App.jsx` now keeps React render pure for account setup routing:
+
+- Incomplete loaded profile and missing profile are explicitly distinguished from pending and failed profile requests.
+- Profile request failure shows a stable retry screen instead of being treated as incomplete onboarding.
+- Incomplete/missing profile routing uses `<Navigate to="/account-setup" replace />`.
+- Auth-required login navigation is triggered from a guarded effect, not directly from render.
+
+### Error-boundary recovery change
+
+`src/components/AppErrorBoundary.jsx` no longer:
+
+- schedules automatic recovery;
+- clears every Base44 storage key;
+- uses recovery-attempt counters;
+- appends `native_reopen`;
+- hard-reloads automatically;
+- leaves the customer on a logo-only fallback.
+
+The fallback now shows a stable accessible recovery card with explicit user actions:
+
+- **Try Again**: clears only the React error-boundary state.
+- **Restart App**: user-triggered in-app route replacement to `/`.
+- **Reset Sign-In**: user-triggered clearing of only documented auth/session keys, then in-app route replacement to `/native-login`.
+
+Raw exception details are not displayed to customers.
+
+### Native auth callback change
+
+`src/lib/nativeAuthRedirect.js` adds `replaceInAppRoute(route)`:
+
+- normalizes return routes;
+- rejects external/open redirects through existing `normalizeReturnRoute` rules;
+- uses `window.history.replaceState`;
+- dispatches one `popstate` event so `BrowserRouter` observes the in-app navigation.
+
+`src/lib/AuthContext.jsx` now uses this helper for native auth callback return routing.
+
+## Loading and onboarding behavior
+
+G50B does not rewrite the full bootstrap model. That remains G50E.
+
+The hotfix preserves the existing public-settings/auth/profile loading surface while preventing the confirmed regression mechanisms:
+
+- no hard reload during account setup routing;
+- no account setup redirect during profile pending state;
+- no account setup redirect during profile request failure;
+- no direct login navigation during render;
+- no automatic crash recovery loop.
+
+## Web/native compatibility
+
+The same React source is used for Web and Capacitor.
+
+G50B preserves:
+
+- public Home access;
+- `/native-login`;
+- account setup routing;
+- protected customer routes;
+- admin route definitions;
+- browser direct-link routing;
+- Capacitor local bundle model with `webDir=dist` and no `server.url`.
+
+## Generated-bundle proof
+
+After `npm run build` and `npx cap sync ios`, the generated bundle under `ios/App/App/public/` was scanned by `scripts/migration/run-g50b-native-startup-hotfix-tests.mjs`.
+
+Required absent legacy markers:
+
+```text
+window.location.replace('/account-setup')
+scheduleAutomaticRecovery()
+MAX_IMMEDIATE_RECOVERY_ATTEMPTS
+native_reopen
+clearNativeBootstrapState
+```
+
+Required present behavior:
+
+```text
+manual recovery copy
+in-app auth callback route replacement
+React Router account setup navigation
+```
+
+## Tests
+
+New harness:
+
+```text
+scripts/migration/run-g50b-native-startup-hotfix-tests.mjs
+```
+
+G50A closeout ran and passed the G50A audit harness before this source hotfix. On this G50B branch, the G50A harness is intentionally superseded by the G50B harness because the G50A harness asserts that legacy startup defect markers still exist in source. Those markers are removed by G50B and are now forbidden by the G50B harness.
+
+Coverage includes:
+
+- no account setup hard redirect during render;
+- incomplete profile routes through React Router;
+- profile request failure does not redirect as incomplete onboarding;
+- auth-required navigation does not run during render;
+- navigation is guarded to avoid repeated redirects;
+- global error boundary performs no automatic reload or broad storage clearing;
+- Try Again, Restart App, and Reset Sign-In require user action;
+- Reset Sign-In clears only the intended auth/bootstrap keys;
+- fallback is visible and accessible;
+- raw exceptions are not displayed;
+- native auth callback uses in-app route replacement and normalized return routes;
+- old startup/recovery markers are absent from generated iOS bundle after sync;
+- checkout/payment/backend/Hub behavior is unchanged.
+
+## Release prerequisites
+
+G50B is source PR prep only. After merge, do not build or release native production from anything except the merged canonical commit.
+
+Required next gates:
+
+- **G50C**: release-source and CI gate with release manifest, dirty-worktree check, critical-open-PR check, bundle hash/source parity, and startup marker assertions.
+- **G50D**: controlled native release from exact merged G50B commit, TestFlight first, upgrade install over current App Store build, clean install, signed-in/out, complete/incomplete profile, auth callback, offline, background/resume, and recovery smoke.
+
+## Rollback
+
+If G50B causes a startup regression before native release:
+
+1. Revert the G50B commit from `main`.
+2. Do not archive or upload iOS from the reverted/dirty state.
+3. Re-run G50A/G50B startup marker harnesses.
+4. Re-plan G50B as a narrower startup-only patch.
+
+If a native build has already been distributed, rollback requires the G50C/G50D release manifest and App Store/TestFlight rollback plan.
+
+## No-write confirmation
+
+G50B changes frontend startup source, one static migration harness, and documentation only.
+
+It does not change:
+
+- checkout/payment source;
+- `createPaymentIntent`;
+- Stripe webhook code;
+- Base44 functions;
+- entities/schemas;
+- Hub/provider functions;
+- admin read models;
+- iOS version/build metadata;
+- blocked Apple Pay PR #545.
+
+It performs no live Order, ShopifyOrder, FulfillmentTask, Hub, provider, Stripe, Shopify, notification, sync, repair, replay, inventory, PurchaseOrder, Base44 publish, Builder publish, TestFlight upload, or App Store upload action.

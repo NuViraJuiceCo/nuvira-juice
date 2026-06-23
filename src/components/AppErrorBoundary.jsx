@@ -1,21 +1,36 @@
 import React from 'react';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
-const RECOVERY_SESSION_KEY = 'nuvira_native_recovery_attempted_at_v1';
-const RECOVERY_COUNT_KEY = 'nuvira_native_recovery_attempt_count_v1';
-const MAX_IMMEDIATE_RECOVERY_ATTEMPTS = 3;
-const RECOVERY_QUERY_PARAM = 'native_reopen';
-const LEGACY_STORAGE_KEYS = [
-  'splashShown',
+const AUTH_SESSION_STORAGE_KEYS = [
   'base44_access_token',
   'token',
   'base44_clear_access_token',
-  'base44_app_base_url',
-  'base44_functions_version',
   'base44_from_url',
 ];
 
-function safelyRemoveItem(storage, key) {
+function safeDispatchPopState() {
+  try {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  } catch {
+    try {
+      window.dispatchEvent(new Event('popstate'));
+    } catch {
+      // Event dispatch is best effort only.
+    }
+  }
+}
+
+function replaceInAppRoute(route) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.history.replaceState({}, document.title, route);
+    safeDispatchPopState();
+  } catch {
+    window.location.assign(route);
+  }
+}
+
+function removeStorageItem(storage, key) {
   try {
     storage?.removeItem(key);
   } catch {
@@ -23,102 +38,42 @@ function safelyRemoveItem(storage, key) {
   }
 }
 
-function safelyRemoveBase44Keys(storage) {
-  try {
-    if (!storage) return;
-    const keys = [];
-    for (let index = 0; index < storage.length; index += 1) {
-      const key = storage.key(index);
-      if (key?.startsWith('base44_')) keys.push(key);
-    }
-    keys.forEach((key) => storage.removeItem(key));
-  } catch {
-    // Best effort only. The recovery URL also asks Base44 auth to clear tokens.
-  }
-}
-
-function clearNativeBootstrapState({ preserveRecoveryFlag = false } = {}) {
+function resetAuthSessionStorage() {
   if (typeof window === 'undefined') return;
-
-  for (const key of LEGACY_STORAGE_KEYS) {
-    safelyRemoveItem(window.localStorage, key);
-    if (key !== RECOVERY_SESSION_KEY || !preserveRecoveryFlag) {
-      safelyRemoveItem(window.sessionStorage, key);
-    }
-  }
-
-  safelyRemoveBase44Keys(window.localStorage);
-  safelyRemoveBase44Keys(window.sessionStorage);
-
-  if (!preserveRecoveryFlag) {
-    safelyRemoveItem(window.sessionStorage, RECOVERY_SESSION_KEY);
-    safelyRemoveItem(window.sessionStorage, RECOVERY_COUNT_KEY);
-  }
-}
-
-function getFreshHomePath() {
-  const params = new URLSearchParams();
-  params.set(RECOVERY_QUERY_PARAM, String(Date.now()));
-  params.set('clear_access_token', 'true');
-  return `/?${params.toString()}`;
-}
-
-function navigateToFreshHome() {
-  const target = getFreshHomePath();
-  try {
-    window.location.replace(target);
-    window.setTimeout(() => window.location.reload(), 180);
-  } catch {
-    window.location.href = target;
+  for (const key of AUTH_SESSION_STORAGE_KEYS) {
+    removeStorageItem(window.localStorage, key);
+    removeStorageItem(window.sessionStorage, key);
   }
 }
 
 export default class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, errorClassification: null };
   }
 
   static getDerivedStateFromError() {
-    return { hasError: true };
+    return { hasError: true, errorClassification: 'render_error' };
   }
 
-  componentDidCatch(error) {
-    console.warn('[AppErrorBoundary] App render failed', error?.message || 'unknown_error');
-    this.scheduleAutomaticRecovery();
+  componentDidCatch() {
+    console.warn('[AppErrorBoundary] App render failed', 'render_error');
   }
 
-  getRecoveryAttemptCount() {
-    try {
-      return Number(window.sessionStorage?.getItem(RECOVERY_COUNT_KEY) || 0);
-    } catch {
-      return 0;
-    }
-  }
+  handleTryAgain = () => {
+    this.setState({ hasError: false, errorClassification: null });
+  };
 
-  markRecoveryAttempt() {
-    try {
-      const nextCount = this.getRecoveryAttemptCount() + 1;
-      window.sessionStorage?.setItem(RECOVERY_SESSION_KEY, String(Date.now()));
-      window.sessionStorage?.setItem(RECOVERY_COUNT_KEY, String(nextCount));
-      return nextCount;
-    } catch {
-      // Recovery still proceeds if sessionStorage is unavailable.
-      return 1;
-    }
-  }
+  handleRestartApp = () => {
+    replaceInAppRoute('/');
+    this.setState({ hasError: false, errorClassification: null });
+  };
 
-  scheduleAutomaticRecovery() {
-    if (typeof window === 'undefined') return;
-
-    const attemptCount = this.markRecoveryAttempt();
-    window.setTimeout(() => {
-      clearNativeBootstrapState({
-        preserveRecoveryFlag: attemptCount < MAX_IMMEDIATE_RECOVERY_ATTEMPTS,
-      });
-      navigateToFreshHome();
-    }, 0);
-  }
+  handleResetSignIn = () => {
+    resetAuthSessionStorage();
+    replaceInAppRoute('/native-login?return_to=%2Faccount&reset_sign_in=1');
+    this.setState({ hasError: false, errorClassification: null });
+  };
 
   render() {
     if (!this.state.hasError) {
@@ -126,8 +81,43 @@ export default class AppErrorBoundary extends React.Component {
     }
 
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6" aria-label="Loading NuVira">
-        <img src={LOGO_URL} alt="NuVira Juice Company" className="h-10 opacity-85" />
+      <div className="min-h-screen bg-background flex items-center justify-center px-6" role="alert" aria-live="assertive">
+        <div className="w-full max-w-sm text-center">
+          <img src={LOGO_URL} alt="NuVira Juice Company" className="mx-auto mb-6 h-9 opacity-90" />
+          <div className="nuvira-premium-card rounded-3xl p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">App recovery</p>
+            <h1 className="font-heading mt-2 text-2xl font-bold">NuVira hit a loading issue</h1>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              The app stopped loading safely. It will not keep refreshing or reset your sign-in unless you choose that option.
+            </p>
+            <div className="mt-5 space-y-3">
+              <button
+                type="button"
+                onClick={this.handleTryAgain}
+                className="nuvira-gradient-button h-11 w-full rounded-2xl text-sm font-semibold"
+              >
+                Try Again
+              </button>
+              <button
+                type="button"
+                onClick={this.handleRestartApp}
+                className="h-11 w-full rounded-2xl border border-border bg-card text-sm font-semibold text-foreground"
+              >
+                Restart App
+              </button>
+              <button
+                type="button"
+                onClick={this.handleResetSignIn}
+                className="h-11 w-full rounded-2xl border border-amber-300 bg-amber-50 text-sm font-semibold text-amber-900"
+              >
+                Reset Sign-In
+              </button>
+            </div>
+            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+              If this keeps happening, contact NuVira support and mention app recovery.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
