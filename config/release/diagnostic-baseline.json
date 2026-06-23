@@ -1,0 +1,19 @@
+{
+  "generated_from_commit": "5998e9c7a820759c27839b3efa37aa090a81aede",
+  "policy": "G50C records current repository debt and fails on new regressions; it does not claim lint/typecheck/audit are clean.",
+  "lint": {
+    "max_errors": 12,
+    "max_warnings": 0,
+    "max_files_with_messages": 10
+  },
+  "typecheck": {
+    "max_diagnostics": 838
+  },
+  "audit": {
+    "max_total": 23,
+    "max_low": 1,
+    "max_moderate": 12,
+    "max_high": 9,
+    "max_critical": 1
+  }
+}

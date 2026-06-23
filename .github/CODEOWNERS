@@ -1,0 +1,17 @@
+# G50C critical release paths. CODEOWNERS documents ownership but does not assume
+# an impossible second-reviewer requirement for an owner-only repository.
+/src/App.jsx @NuViraJuiceCo
+/src/components/AppErrorBoundary.jsx @NuViraJuiceCo
+/src/lib/AuthContext.jsx @NuViraJuiceCo
+/src/lib/nativeAuthRedirect.js @NuViraJuiceCo
+/src/pages/NativeLogin.jsx @NuViraJuiceCo
+/src/pages/Checkout.jsx @NuViraJuiceCo
+/src/components/checkout/ @NuViraJuiceCo
+/base44/functions/createPaymentIntent/ @NuViraJuiceCo
+/base44/functions/stripeWebhook/ @NuViraJuiceCo
+/capacitor.config.json @NuViraJuiceCo
+/ios/App/App.xcodeproj/project.pbxproj @NuViraJuiceCo
+/.github/workflows/ @NuViraJuiceCo
+/scripts/ci/ @NuViraJuiceCo
+/scripts/release/ @NuViraJuiceCo
+/config/release/ @NuViraJuiceCo

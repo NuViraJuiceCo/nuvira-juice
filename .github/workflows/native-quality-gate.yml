@@ -1,0 +1,34 @@
+name: Native Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  native-quality-gate:
+    name: native-quality-gate
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build web bundle
+        run: npm run build
+      - name: Capacitor sync iOS
+        run: npx cap sync ios
+      - name: Verify Web/native bundle parity and markers
+        run: npm run release:verify-bundle-parity
+      - name: iOS simulator build
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Generate safe release evidence manifest
+        run: npm run release:generate-manifest -- --out release-evidence/native-release-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-release-evidence
+          path: release-evidence/native-release-manifest.json

@@ -1,0 +1,45 @@
+name: Native Release Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      approved_commit:
+        description: Exact approved origin/main commit for a native release verification run
+        required: true
+        type: string
+
+jobs:
+  release-policy-gate:
+    name: release-policy-gate
+    runs-on: macos-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify canonical release source
+        run: node scripts/release/verify-native-release-source.mjs --policy-mode release --approved-commit ${{ inputs.approved_commit }}
+      - name: Verify open release-critical PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run release:verify-open-critical-prs
+      - name: Build and sync native bundle
+        run: npm run build && npx cap sync ios
+      - name: Verify Web/native bundle parity and required markers
+        run: npm run release:verify-bundle-parity
+      - name: iOS simulator build
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Generate release manifest
+        run: npm run release:generate-manifest -- --out release-evidence/native-release-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-release-manifest
+          path: release-evidence/native-release-manifest.json

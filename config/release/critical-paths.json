@@ -1,0 +1,24 @@
+{
+  "description": "Release-critical paths that must be reviewed before Web/native release source is approved.",
+  "critical_paths": [
+    "src/App.jsx",
+    "src/components/AppErrorBoundary.jsx",
+    "src/lib/AuthContext.jsx",
+    "src/lib/nativeAuthRedirect.js",
+    "src/pages/NativeLogin.jsx",
+    "src/pages/Checkout.jsx",
+    "src/components/checkout/**",
+    "base44/functions/createPaymentIntent/**",
+    "base44/functions/stripeWebhook/**",
+    "capacitor.config.json",
+    "ios/App/App.xcodeproj/project.pbxproj",
+    "ios/App/App/Info.plist",
+    "ios/App/App/Entitlements.plist",
+    "ios/App/App/GoogleService-Info.plist",
+    ".github/workflows/**",
+    "scripts/ci/**",
+    "scripts/release/**",
+    "config/release/**",
+    "docs/release/**"
+  ]
+}
