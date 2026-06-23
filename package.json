@@ -15,7 +15,7 @@
     "cap:android": "npm run cap:sync && npx cap open android",
     "ci:critical-regressions": "node scripts/ci/run-critical-regressions.mjs",
     "ci:diagnostic-baseline": "node scripts/ci/verify-diagnostic-baseline.mjs",
-    "ci:secret-scan": "node scripts/ci/verify-secret-scan.mjs",
+    "ci:secret-scan": "node scripts/ci/scan-tracked-secrets.mjs",
     "release:verify-bundle-parity": "node scripts/release/verify-web-native-bundle-parity.mjs",
     "release:verify-open-critical-prs": "node scripts/release/verify-open-critical-prs.mjs",
     "release:verify-source": "node scripts/release/verify-native-release-source.mjs",

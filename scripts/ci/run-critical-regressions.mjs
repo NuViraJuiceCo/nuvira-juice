@@ -4,6 +4,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = process.cwd();
+const args = process.argv.slice(2);
+const outIndex = args.indexOf('--out');
+const outPath = outIndex >= 0 ? args[outIndex + 1] : null;
+function gitHead() {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' });
+  return result.status === 0 ? result.stdout.trim() : 'unknown';
+}
+function writeEvidence(result) {
+  if (!outPath) return;
+  fs.mkdirSync(path.dirname(path.resolve(repoRoot, outPath)), { recursive: true });
+  fs.writeFileSync(path.resolve(repoRoot, outPath), `${JSON.stringify(result, null, 2)}\n`);
+}
 const harnesses = [
   'scripts/migration/run-g50b-native-startup-hotfix-tests.mjs',
   'scripts/migration/run-g49a-checkout-processing-error-boundary-tests.mjs',
@@ -23,7 +35,9 @@ const harnesses = [
 ];
 
 function fail(message, extra = {}) {
-  console.error(JSON.stringify({ ok: false, suite: 'g50c-critical-regressions', message, ...extra }, null, 2));
+  const result = { ok: false, suite: 'g50c-critical-regressions', git_commit: gitHead(), generated_at_utc: new Date().toISOString(), message, ...extra };
+  writeEvidence(result);
+  console.error(JSON.stringify(result, null, 2));
   process.exit(1);
 }
 
@@ -46,11 +60,15 @@ for (const harness of harnesses) {
   }
 }
 
-console.log(JSON.stringify({
+const result = {
   ok: true,
   suite: 'g50c-critical-regressions',
+  git_commit: gitHead(),
+  generated_at_utc: new Date().toISOString(),
   harness_count: harnesses.length,
   writes_performed: false,
   provider_calls_performed: false,
   results,
-}, null, 2));
+};
+writeEvidence(result);
+console.log(JSON.stringify(result, null, 2));

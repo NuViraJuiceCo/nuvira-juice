@@ -1,0 +1,8 @@
+{
+  "description": "Tracked generated outputs that may change only during an explicit build/sync verification step. Source changes outside these paths fail release evidence.",
+  "generated_output_paths": [
+    "dist/**",
+    "ios/App/App/public/**",
+    "release-evidence/**"
+  ]
+}

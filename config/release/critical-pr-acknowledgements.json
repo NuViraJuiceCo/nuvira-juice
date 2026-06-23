@@ -1,19 +1,35 @@
 {
+  "description": "Pinned acknowledgements for open release-critical PRs that are intentionally excluded from G50C native release source.",
   "acknowledged_excluded_critical_prs": [
     {
       "number": 545,
+      "head_sha": "41f603075826bdc0a9d7662728d7f26ac9f2076b",
+      "base_branch": "main",
       "reason": "Apple Pay deferred-intent backend is intentionally blocked by Base44 platform atomicity; PR remains draft/unmerged/unpublished and must not be included in native release source.",
-      "status": "blocked_excluded_from_release"
+      "status": "blocked_excluded_from_release",
+      "acknowledged_by": "codex-g50c-amendment",
+      "acknowledged_at": "2026-06-23T00:00:00Z",
+      "expires_at": "2026-07-31T00:00:00Z"
     },
     {
       "number": 563,
-      "reason": "Draft G49B native checkout release candidate was prepared from the old build-19 native baseline, not merged current main after G50B; excluded from future release source and superseded by G50C/G50D exact-main release process.",
-      "status": "stale_release_candidate_excluded_from_release"
+      "head_sha": "203b07decc456919e9990adccf5d9a8f9a92cd93",
+      "base_branch": "codex/p0-ios-app-access-build-19",
+      "reason": "Draft G49B native checkout release candidate was prepared from an old build-19 native baseline, not merged current main after G50B; excluded from future release source and superseded by G50C/G50D exact-main release process.",
+      "status": "stale_release_candidate_excluded_from_release",
+      "acknowledged_by": "codex-g50c-amendment",
+      "acknowledged_at": "2026-06-23T00:00:00Z",
+      "expires_at": "2026-07-31T00:00:00Z"
     },
     {
       "number": 331,
+      "head_sha": "660a76462ac16c57806b199a6f23779cd146d83c",
+      "base_branch": "main",
       "reason": "Old iOS build 19 metadata/upload branch predates G50B/G50C release gates; excluded from future release source and must not be used as native release source.",
-      "status": "stale_build_metadata_branch_excluded_from_release"
+      "status": "stale_build_metadata_branch_excluded_from_release",
+      "acknowledged_by": "codex-g50c-amendment",
+      "acknowledged_at": "2026-06-23T00:00:00Z",
+      "expires_at": "2026-07-31T00:00:00Z"
     }
   ]
 }

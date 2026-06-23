@@ -8,38 +8,59 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: native-release-gate-${{ github.workflow }}-${{ github.event.inputs.approved_commit }}
+  cancel-in-progress: false
+
 jobs:
-  release-policy-gate:
-    name: release-policy-gate
+  native-release-gate:
+    name: native-quality-gate
     runs-on: macos-latest
-    permissions:
-      contents: read
-      pull-requests: read
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
-          ref: main
-      - uses: actions/setup-node@v4
+          ref: ${{ inputs.approved_commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           cache: npm
+      - run: mkdir -p release-evidence
       - run: npm ci
-      - name: Verify canonical release source
-        run: node scripts/release/verify-native-release-source.mjs --policy-mode release --approved-commit ${{ inputs.approved_commit }}
+      - name: Verify canonical release source before build
+        run: node scripts/release/verify-native-release-source.mjs --policy-mode release --approved-commit ${{ inputs.approved_commit }} --out release-evidence/source-policy.json
+      - name: Secret scan
+        run: npm run ci:secret-scan -- --out release-evidence/secret-scan.json
+      - name: Diagnostic baseline gate
+        run: npm run ci:diagnostic-baseline -- --out release-evidence/diagnostics.json
+      - name: Critical regression suite
+        run: npm run ci:critical-regressions -- --out release-evidence/critical-regressions.json
       - name: Verify open release-critical PRs
         env:
           GH_TOKEN: ${{ github.token }}
-        run: npm run release:verify-open-critical-prs
-      - name: Build and sync native bundle
-        run: npm run build && npx cap sync ios
-      - name: Verify Web/native bundle parity and required markers
-        run: npm run release:verify-bundle-parity
-      - name: iOS simulator build
-        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+        run: npm run release:verify-open-critical-prs -- --out release-evidence/critical-prs.json
+      - name: Build web bundle
+        run: npm run build
+      - name: Capacitor sync iOS
+        run: npx cap sync ios
+      - name: Verify post-build source mutation policy
+        run: node scripts/release/verify-native-release-source.mjs --skip-fetch --phase postbuild --policy-mode release --approved-commit ${{ inputs.approved_commit }} --out release-evidence/source-policy.json
+      - name: Verify Web/native bundle parity, markers, and budgets
+        run: npm run release:verify-bundle-parity -- --out release-evidence/bundle-parity.json
+      - name: iOS Release simulator build
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Record simulator build evidence
+        run: node scripts/release/write-gate-evidence.mjs --suite g50c-ios-release-simulator-build --out release-evidence/simulator-build.json
       - name: Generate release manifest
-        run: npm run release:generate-manifest -- --out release-evidence/native-release-manifest.json
-      - uses: actions/upload-artifact@v4
+        run: npm run release:generate-manifest -- --evidence-dir release-evidence --out release-evidence/native-release-manifest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
         with:
           name: native-release-manifest
-          path: release-evidence/native-release-manifest.json
+          path: release-evidence/*.json

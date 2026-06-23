@@ -1,0 +1,12 @@
+{
+  "description": "G50C no-new-regression bundle budget for active Web/native entry assets. Values include current bundle plus limited headroom; performance rewrites are separate work.",
+  "max_initial_js_raw_bytes": 2500000,
+  "max_initial_js_gzip_bytes": 650000,
+  "max_initial_js_brotli_bytes": 550000,
+  "max_initial_css_raw_bytes": 450000,
+  "max_initial_css_gzip_bytes": 80000,
+  "max_initial_css_brotli_bytes": 70000,
+  "max_single_js_chunk_raw_bytes": 2500000,
+  "max_single_css_chunk_raw_bytes": 450000,
+  "growth_policy": "New or larger active entry bundles above these budgets require an explicit release-critical budget update and explanation."
+}
