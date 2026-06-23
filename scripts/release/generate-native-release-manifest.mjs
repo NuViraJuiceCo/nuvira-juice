@@ -94,13 +94,13 @@ function criticalPathMatch(files) {
   const config = readJson('config/release/critical-paths.json');
   return files.some((file) => config.critical_paths.some((pattern) => pathMatchesPattern(file, pattern)));
 }
-function deriveIncludedPrs(head) {
+function deriveIncludedPrs(head, rangeHead = head) {
   const input = readJson(releaseInputPath);
   const previous = input.previous_released_commit;
   if (!previous) fail('Release input missing previous_released_commit', { releaseInputPath });
-  const reachable = spawnSync('git', ['merge-base', '--is-ancestor', previous, head], { cwd: repoRoot }).status === 0;
-  if (!reachable) fail('previous_released_commit is not an ancestor of approved commit', { previous_released_commit: previous, approved_commit: head });
-  const log = run('git', ['log', '--merges', '--pretty=%H%x00%s', `${previous}..${head}`], { allowFailure: false });
+  const reachable = spawnSync('git', ['merge-base', '--is-ancestor', previous, rangeHead], { cwd: repoRoot }).status === 0;
+  if (!reachable) fail('previous_released_commit is not an ancestor of release range head', { previous_released_commit: previous, release_range_head: rangeHead, manifest_commit: head });
+  const log = run('git', ['log', '--merges', '--pretty=%H%x00%s', `${previous}..${rangeHead}`], { allowFailure: false });
   const merges = log ? log.split('\n').filter(Boolean).map((line) => {
     const [mergeCommit, title] = line.split('\0');
     const prMatch = title.match(/#(\d+)/);
@@ -120,10 +120,10 @@ function deriveIncludedPrs(head) {
       critical_path_match: criticalPathMatch(files),
     });
   }
-  if (merges.length && !included.length) fail('Manifest included_prs cannot remain empty when release range has merge commits', { previous_released_commit: previous, approved_commit: head });
+  if (merges.length && !included.length) fail('Manifest included_prs cannot remain empty when release range has merge commits', { previous_released_commit: previous, release_range_head: rangeHead, manifest_commit: head });
   if (unrepresented.length) fail('Release range has merge commits that cannot be represented as PRs without explicit release input', { unrepresented });
-  if (!merges.length && input.allow_empty_included_prs_when_no_merge_commits !== true) fail('Release range has no merge commits but empty included_prs is not explicitly allowed', { previous_released_commit: previous, approved_commit: head });
-  return { previous_released_commit: previous, included_prs: included, merge_commit_count: merges.length };
+  if (!merges.length && input.allow_empty_included_prs_when_no_merge_commits !== true) fail('Release range has no merge commits but empty included_prs is not explicitly allowed', { previous_released_commit: previous, release_range_head: rangeHead, manifest_commit: head });
+  return { previous_released_commit: previous, release_range_head: rangeHead, included_prs: included, merge_commit_count: merges.length };
 }
 
 try {
@@ -133,7 +133,8 @@ try {
   const xcode = xcodeBuildSettings();
   const webEntry = activeEntry('dist/index.html');
   const nativeEntry = activeEntry('ios/App/App/public/index.html');
-  const range = deriveIncludedPrs(head);
+  const releaseRangeHead = process.env.G50C_RELEASE_RANGE_HEAD || head;
+  const range = deriveIncludedPrs(head, releaseRangeHead);
   const acknowledgementPath = 'config/release/critical-pr-acknowledgements.json';
   const acknowledgements = fs.existsSync(path.join(repoRoot, acknowledgementPath)) ? readJson(acknowledgementPath).acknowledged_excluded_critical_prs || [] : [];
   const manifest = {
@@ -142,6 +143,7 @@ try {
     git_commit: head,
     origin_main_commit: originMain,
     previous_released_commit: range.previous_released_commit,
+    release_range_head: range.release_range_head,
     included_prs: range.included_prs,
     release_range_merge_commit_count: range.merge_commit_count,
     acknowledged_excluded_critical_prs: acknowledgements.map(({ number, head_sha, base_branch, reason, status, acknowledged_by, acknowledged_at, expires_at }) => ({ number, head_sha, base_branch, reason, status, acknowledged_by, acknowledged_at, expires_at })),
