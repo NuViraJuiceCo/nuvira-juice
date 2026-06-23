@@ -4,7 +4,7 @@ import { Toaster as AppToaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
@@ -67,7 +67,6 @@ import ProgramDetail from '@/pages/ProgramDetail';
 import AccountSetup from '@/pages/AccountSetup';
 import NativeLogin from '@/pages/NativeLogin';
 import { base44 } from '@/api/base44Client';
-import { useLocation } from 'react-router-dom';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
 
 // Protected route wrapper—redirect to login if not authenticated
@@ -116,8 +115,14 @@ function markSplashShown() {
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, checkAppState } = useAuth();
   const [showSplash, setShowSplash] = React.useState(() => !hasSplashBeenShown());
+  const hasRequestedAuthRedirectRef = React.useRef(false);
 
   const location = useLocation();
+  const isResetSignInRoute = React.useMemo(() => {
+    if (location.pathname !== '/native-login') return false;
+    const params = new URLSearchParams(location.search);
+    return params.get('reset_sign_in') === '1';
+  }, [location.pathname, location.search]);
 
   React.useEffect(() => {
     if (hasBase44AuthParamsInUrl()) {
@@ -126,13 +131,18 @@ const AuthenticatedApp = () => {
   }, [location.search, checkAppState]);
 
   // Fetch user profile for onboarding check (must be at top level)
-  const { data: userProfileForOnboarding, isLoading: isLoadingProfile } = useQuery({
+  const {
+    data: userProfileForOnboarding,
+    isLoading: isLoadingProfile,
+    isError: isProfileError,
+    refetch: retryProfileForOnboarding,
+  } = useQuery({
     queryKey: ['user-onboarding-check', user?.email],
     queryFn: async () => {
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
       return profiles[0] || null;
     },
-    enabled: !!user?.email,
+    enabled: Boolean(user?.email && !isResetSignInRoute),
     staleTime: 0,
     gcTime: 0,
   });
@@ -144,8 +154,35 @@ const AuthenticatedApp = () => {
 
   // No auto-redirect to orders on app open — customers should always land on Home.
 
+  const profileLookupEnabled = Boolean(user?.email && !isResetSignInRoute);
+  const profileRequestPending = Boolean(profileLookupEnabled && isLoadingProfile);
+  const profileRequestFailed = Boolean(profileLookupEnabled && isProfileError);
+  const profileLookupFinished = Boolean(profileLookupEnabled && !isLoadingProfile && !isProfileError);
+  const profileMissing = Boolean(profileLookupFinished && !userProfileForOnboarding);
+  const profileLoadedAndIncomplete = Boolean(
+    profileLookupFinished &&
+    userProfileForOnboarding &&
+    !userProfileForOnboarding.onboarding_complete
+  );
+  const shouldRouteToAccountSetup = Boolean(
+    location.pathname !== '/account-setup' &&
+    (profileMissing || profileLoadedAndIncomplete)
+  );
+  const shouldRouteToLogin = Boolean(authError?.type === 'auth_required' && !isResetSignInRoute);
+
+  React.useEffect(() => {
+    if (!shouldRouteToLogin) {
+      hasRequestedAuthRedirectRef.current = false;
+      return;
+    }
+
+    if (hasRequestedAuthRedirectRef.current) return;
+    hasRequestedAuthRedirectRef.current = true;
+    navigateToLogin();
+  }, [navigateToLogin, shouldRouteToLogin]);
+
   // Show loading spinner while checking app public settings, auth, or profile
-  if (isLoadingPublicSettings || isLoadingAuth || (user?.email && isLoadingProfile)) {
+  if (isLoadingPublicSettings || (!isResetSignInRoute && isLoadingAuth) || profileRequestPending) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
@@ -154,21 +191,37 @@ const AuthenticatedApp = () => {
   }
 
   // Handle authentication errors
-  if (authError) {
+  if (authError && !isResetSignInRoute) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
-      navigateToLogin();
       return null;
     }
   }
 
+  if (profileRequestFailed) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center px-6" role="alert" aria-live="polite">
+        <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-5 text-center shadow-sm">
+          <h1 className="font-heading text-xl font-bold text-foreground">We could not load your account setup yet</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Check your connection and try again. NuVira will not redirect you until your profile status is confirmed.
+          </p>
+          <button
+            type="button"
+            onClick={() => retryProfileForOnboarding()}
+            className="nuvira-gradient-button mt-5 h-11 w-full rounded-2xl text-sm font-semibold"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-
-  // Auto-redirect to account setup if profile is not complete (but skip if already on setup page)
-  if (user?.email && !userProfileForOnboarding?.onboarding_complete && location.pathname !== '/account-setup') {
-    window.location.replace('/account-setup');
-    return null;
+  // Route to account setup declaratively so native startup never hard-reloads during render.
+  if (shouldRouteToAccountSetup) {
+    return <Navigate to="/account-setup" replace />;
   }
 
   // Render the main app

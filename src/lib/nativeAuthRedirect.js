@@ -2,9 +2,11 @@ import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 
 const AUTH_TOKEN_STORAGE_KEYS = ['base44_access_token', 'token', 'base44_clear_access_token'];
+const SIGN_IN_RESET_STORAGE_KEYS = [...AUTH_TOKEN_STORAGE_KEYS, 'base44_from_url'];
 const NATIVE_CALLBACK_ROUTE = '/native-login';
 const NATIVE_URL_SCHEME = 'nuvira';
 const NATIVE_CALLBACK_MARKER = 'native_provider_callback';
+export const SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000;
 
 export function isNativeAppShell() {
   return typeof window !== 'undefined';
@@ -67,6 +69,106 @@ export function normalizeReturnRoute(route) {
   if (!route || typeof route !== 'string') return '/';
   if (!route.startsWith('/') || route.startsWith('//')) return '/';
   return route;
+}
+
+
+function dispatchInAppNavigationEvent() {
+  try {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  } catch {
+    try {
+      window.dispatchEvent(new Event('popstate'));
+    } catch {
+      // Event dispatch is best effort only.
+    }
+  }
+}
+
+export function replaceInAppRoute(route = '/') {
+  if (typeof window === 'undefined') return false;
+  const safeRoute = normalizeReturnRoute(route);
+  try {
+    window.history.replaceState({}, document.title, safeRoute);
+    dispatchInAppNavigationEvent();
+    return true;
+  } catch {
+    console.warn('[nativeAuthRedirect] In-app route replacement failed', 'navigation_unavailable');
+    return false;
+  }
+}
+
+
+export function getNativeLoginResetRoute(returnRoute = '/account') {
+  const params = new URLSearchParams();
+  params.set('return_to', normalizeReturnRoute(returnRoute));
+  params.set('reset_sign_in', '1');
+  params.set('clear_access_token', 'true');
+  return `${NATIVE_CALLBACK_ROUTE}?${params.toString()}`;
+}
+
+function fullReplaceRoute(route) {
+  try {
+    window.location.replace(route);
+  } catch {
+    try {
+      window.location.assign(route);
+    } catch {
+      window.location.href = route;
+    }
+  }
+}
+
+async function attemptHostedLogoutWithTimeout(fromUrl) {
+  const abortController = typeof AbortController !== 'undefined'
+    ? new AbortController()
+    : null;
+  let logoutTimeoutId;
+
+  try {
+    const logoutRequest = fetch(`${appParams.appBaseUrl}/api/apps/auth/logout?from_url=${encodeURIComponent(fromUrl)}`, {
+      method: 'GET',
+      credentials: 'include',
+      ...(abortController ? { signal: abortController.signal } : {}),
+    });
+    const timeoutRequest = new Promise((_, reject) => {
+      logoutTimeoutId = window.setTimeout(() => {
+        abortController?.abort();
+        reject(new Error('logout_request_timeout'));
+      }, SIGN_IN_RESET_LOGOUT_TIMEOUT_MS);
+    });
+
+    await Promise.race([logoutRequest, timeoutRequest]);
+  } catch {
+    console.warn('[nativeAuthRedirect] Sign-in reset logout request failed', 'logout_request_failed');
+  } finally {
+    if (logoutTimeoutId) {
+      window.clearTimeout(logoutTimeoutId);
+    }
+  }
+}
+
+export async function resetSignInAndReload(returnRoute = '/account') {
+  if (typeof window === 'undefined') return;
+
+  const resetRoute = getNativeLoginResetRoute(returnRoute);
+  clearBase44AuthTokens();
+  for (const key of SIGN_IN_RESET_STORAGE_KEYS) {
+    try {
+      window.localStorage?.removeItem(key);
+      window.sessionStorage?.removeItem(key);
+    } catch {
+      // Storage can be unavailable; the reset route carries clear_access_token as a second guard.
+    }
+  }
+
+  try {
+    const fromUrl = window.location.origin && window.location.origin !== 'null'
+      ? new URL(resetRoute, window.location.origin).toString()
+      : resetRoute;
+    await attemptHostedLogoutWithTimeout(fromUrl);
+  } finally {
+    fullReplaceRoute(resetRoute);
+  }
 }
 
 export function getNativeProviderReturnUrl(returnRoute = '/') {
@@ -165,7 +267,7 @@ export async function redirectToLogin(returnRoute = getCurrentRoute()) {
   // hosted Base44 login can open in an external browser/webview and return
   // without sharing the same token storage, which creates a sign-in loop.
   const loginUrl = `/native-login?return_to=${encodeURIComponent(safeReturnRoute)}`;
-  window.location.assign(loginUrl);
+  replaceInAppRoute(loginUrl);
 }
 
 export async function logoutInsideApp(returnRoute = '/account') {
@@ -185,5 +287,5 @@ export async function logoutInsideApp(returnRoute = '/account') {
     // endpoint cannot be reached from the app shell, keep the user in-app.
   }
 
-  window.location.replace(signedOutRoute);
+  replaceInAppRoute(signedOutRoute);
 }

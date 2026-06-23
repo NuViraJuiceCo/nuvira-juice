@@ -82,6 +82,7 @@ export default function NativeLogin() {
     () => normalizeReturnRoute(searchParams.get('return_to')),
     [searchParams]
   );
+  const isSignInReset = searchParams.get('reset_sign_in') === '1';
 
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -90,7 +91,9 @@ export default function NativeLogin() {
   const [otpCode, setOtpCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [statusText, setStatusText] = useState('');
+  const [statusText, setStatusText] = useState(() => (
+    isSignInReset ? 'Sign-in was reset. Please sign in again.' : ''
+  ));
   const [formError, setFormError] = useState('');
 
   const normalizedEmail = email.trim().toLowerCase();
@@ -113,10 +116,11 @@ export default function NativeLogin() {
   };
 
   useEffect(() => {
+    if (isSignInReset) return;
     if (isAuthenticated && user?.email) {
       navigate(returnTo, { replace: true });
     }
-  }, [isAuthenticated, navigate, returnTo, user?.email]);
+  }, [isAuthenticated, isSignInReset, navigate, returnTo, user?.email]);
 
   const handleProviderLogin = (provider) => {
     setStatusText('');
