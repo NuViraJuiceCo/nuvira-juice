@@ -5,11 +5,12 @@ const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f794548115
 export default class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, errorClassification: null };
+    this.state = { hasError: false, errorClassification: null, isResettingSignIn: false };
+    this.resetSignInStarted = false;
   }
 
   static getDerivedStateFromError() {
-    return { hasError: true, errorClassification: 'render_error' };
+    return { hasError: true, errorClassification: 'render_error', isResettingSignIn: false };
   }
 
   componentDidCatch() {
@@ -17,15 +18,20 @@ export default class AppErrorBoundary extends React.Component {
   }
 
   handleTryAgain = () => {
+    if (this.state.isResettingSignIn) return;
     this.setState({ hasError: false, errorClassification: null });
   };
 
   handleReturnHome = () => {
+    if (this.state.isResettingSignIn) return;
     replaceInAppRoute('/');
     this.setState({ hasError: false, errorClassification: null });
   };
 
   handleResetSignIn = () => {
+    if (this.resetSignInStarted) return;
+    this.resetSignInStarted = true;
+    this.setState({ isResettingSignIn: true });
     resetSignInAndReload('/account');
   };
 
@@ -33,6 +39,8 @@ export default class AppErrorBoundary extends React.Component {
     if (!this.state.hasError) {
       return this.props.children;
     }
+
+    const { isResettingSignIn } = this.state;
 
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-6" role="alert" aria-live="assertive">
@@ -48,6 +56,7 @@ export default class AppErrorBoundary extends React.Component {
               <button
                 type="button"
                 onClick={this.handleTryAgain}
+                disabled={isResettingSignIn}
                 className="nuvira-gradient-button h-11 w-full rounded-2xl text-sm font-semibold"
               >
                 Try Again
@@ -55,6 +64,7 @@ export default class AppErrorBoundary extends React.Component {
               <button
                 type="button"
                 onClick={this.handleReturnHome}
+                disabled={isResettingSignIn}
                 className="h-11 w-full rounded-2xl border border-border bg-card text-sm font-semibold text-foreground"
               >
                 Return Home
@@ -62,9 +72,10 @@ export default class AppErrorBoundary extends React.Component {
               <button
                 type="button"
                 onClick={this.handleResetSignIn}
-                className="h-11 w-full rounded-2xl border border-amber-300 bg-amber-50 text-sm font-semibold text-amber-900"
+                disabled={isResettingSignIn}
+                className="h-11 w-full rounded-2xl border border-amber-300 bg-amber-50 text-sm font-semibold text-amber-900 disabled:opacity-70"
               >
-                Reset Sign-In
+                {isResettingSignIn ? 'Resetting Sign-In…' : 'Reset Sign-In'}
               </button>
             </div>
             <p className="mt-4 text-xs leading-relaxed text-muted-foreground">

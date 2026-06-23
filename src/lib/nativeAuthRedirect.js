@@ -6,6 +6,7 @@ const SIGN_IN_RESET_STORAGE_KEYS = [...AUTH_TOKEN_STORAGE_KEYS, 'base44_from_url
 const NATIVE_CALLBACK_ROUTE = '/native-login';
 const NATIVE_URL_SCHEME = 'nuvira';
 const NATIVE_CALLBACK_MARKER = 'native_provider_callback';
+export const SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000;
 
 export function isNativeAppShell() {
   return typeof window !== 'undefined';
@@ -105,6 +106,47 @@ export function getNativeLoginResetRoute(returnRoute = '/account') {
   return `${NATIVE_CALLBACK_ROUTE}?${params.toString()}`;
 }
 
+function fullReplaceRoute(route) {
+  try {
+    window.location.replace(route);
+  } catch {
+    try {
+      window.location.assign(route);
+    } catch {
+      window.location.href = route;
+    }
+  }
+}
+
+async function attemptHostedLogoutWithTimeout(fromUrl) {
+  const abortController = typeof AbortController !== 'undefined'
+    ? new AbortController()
+    : null;
+  let logoutTimeoutId;
+
+  try {
+    const logoutRequest = fetch(`${appParams.appBaseUrl}/api/apps/auth/logout?from_url=${encodeURIComponent(fromUrl)}`, {
+      method: 'GET',
+      credentials: 'include',
+      ...(abortController ? { signal: abortController.signal } : {}),
+    });
+    const timeoutRequest = new Promise((_, reject) => {
+      logoutTimeoutId = window.setTimeout(() => {
+        abortController?.abort();
+        reject(new Error('logout_request_timeout'));
+      }, SIGN_IN_RESET_LOGOUT_TIMEOUT_MS);
+    });
+
+    await Promise.race([logoutRequest, timeoutRequest]);
+  } catch {
+    console.warn('[nativeAuthRedirect] Sign-in reset logout request failed', 'logout_request_failed');
+  } finally {
+    if (logoutTimeoutId) {
+      window.clearTimeout(logoutTimeoutId);
+    }
+  }
+}
+
 export async function resetSignInAndReload(returnRoute = '/account') {
   if (typeof window === 'undefined') return;
 
@@ -123,15 +165,10 @@ export async function resetSignInAndReload(returnRoute = '/account') {
     const fromUrl = window.location.origin && window.location.origin !== 'null'
       ? new URL(resetRoute, window.location.origin).toString()
       : resetRoute;
-    await fetch(`${appParams.appBaseUrl}/api/apps/auth/logout?from_url=${encodeURIComponent(fromUrl)}`, {
-      method: 'GET',
-      credentials: 'include',
-    });
-  } catch {
-    console.warn('[nativeAuthRedirect] Sign-in reset logout request failed', 'logout_request_failed');
+    await attemptHostedLogoutWithTimeout(fromUrl);
+  } finally {
+    fullReplaceRoute(resetRoute);
   }
-
-  window.location.replace(resetRoute);
 }
 
 export function getNativeProviderReturnUrl(returnRoute = '/') {

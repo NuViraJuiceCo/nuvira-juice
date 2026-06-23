@@ -87,7 +87,7 @@ The fallback now shows a stable accessible recovery card with explicit user acti
 
 - **Try Again**: clears only the React error-boundary state.
 - **Return Home**: user-triggered in-app route replacement to `/`, with no storage clearing.
-- **Reset Sign-In**: user-triggered hosted logout attempt, narrow auth/bootstrap key clearing, and one full navigation/remount to `/native-login` with safe `return_to`, `reset_sign_in`, and `clear_access_token` parameters.
+- **Reset Sign-In**: user-triggered hosted logout attempt, narrow auth/bootstrap key clearing, and one full navigation/remount to `/native-login` with safe `return_to`, `reset_sign_in`, and `clear_access_token` parameters. After the first tap, the recovery actions are disabled and the card shows `Resetting Sign-In…` so repeat taps cannot start duplicate logout/navigation attempts.
 
 Raw exception details are not displayed to customers.
 
@@ -100,11 +100,13 @@ Raw exception details are not displayed to customers.
 - uses `window.history.replaceState`;
 - dispatches one `popstate` event so `BrowserRouter` observes the in-app navigation.
 
-`resetSignInAndReload(returnRoute)` is reserved for explicit Reset Sign-In taps from the recovery screen. It clears only documented auth/bootstrap keys, attempts the existing hosted logout endpoint with `credentials: include`, tolerates logout-network failure, and then performs one full route replacement to NativeLogin so `AuthProvider` and the Base44 client remount. `NativeLogin` now recognizes `reset_sign_in=1` and suppresses its normal already-authenticated auto-navigation, preventing a bounce from stale in-memory auth state.
+`resetSignInAndReload(returnRoute)` is reserved for explicit Reset Sign-In taps from the recovery screen. It clears only documented auth/bootstrap keys, attempts the existing hosted logout endpoint with `credentials: include`, bounds that request with a 4-second timeout, tolerates success, rejection, timeout, or hang, and then proceeds from `finally` to one full route replacement to NativeLogin so `AuthProvider` and the Base44 client remount. A full-navigation fallback is present if `location.replace()` itself is unavailable. `NativeLogin` now recognizes `reset_sign_in=1` and suppresses its normal already-authenticated auto-navigation, preventing a bounce from stale in-memory auth state.
 
 `src/lib/AuthContext.jsx` now uses the in-app route helper for native auth callback return routing.
 
 `src/pages/NativeLogin.jsx` preserves normal already-authenticated redirect behavior except when the explicit reset-sign-in route parameter is present.
+
+`src/App.jsx` also recognizes the exact reset route (`/native-login` plus `reset_sign_in=1`). On that route only, it bypasses onboarding profile lookup, profile-loading wait state, profile-error UI, account-setup routing, and auth-required redirects so a stale hosted session cannot prevent NativeLogin from rendering after a best-effort logout failure.
 
 ## Loading and onboarding behavior
 
@@ -115,6 +117,7 @@ The hotfix preserves the existing public-settings/auth/profile loading surface w
 - no hard reload during account setup routing;
 - no account setup redirect during profile pending state;
 - no account setup redirect during profile request failure;
+- no onboarding/profile gate on the exact reset-sign-in route;
 - no direct login navigation during render;
 - no automatic crash recovery loop.
 
@@ -177,11 +180,13 @@ Coverage includes:
 - global error boundary performs no automatic reload or broad storage clearing;
 - Try Again, Return Home, and Reset Sign-In require user action;
 - Return Home uses in-app navigation only and clears no storage;
-- Reset Sign-In attempts hosted logout, clears only intended auth/bootstrap keys, preserves unrelated storage, and performs one full navigation/remount;
+- Reset Sign-In attempts hosted logout with a bounded timeout, clears only intended auth/bootstrap keys, preserves unrelated storage, and performs one full navigation/remount even if logout fails or hangs;
+- Reset Sign-In double taps are ignored after the first tap;
 - fallback is visible and accessible;
 - raw exceptions are not displayed;
 - native auth callback uses in-app route replacement and normalized return routes;
 - NativeLogin reset cannot bounce from stale in-memory auth because reset mode suppresses its already-authenticated auto-navigation after the full remount;
+- App startup gating cannot route the exact reset-sign-in path into profile loading, profile-error UI, or account setup before NativeLogin renders;
 - old startup/recovery markers are absent from generated iOS bundle after sync;
 - checkout/payment/backend/Hub behavior is unchanged.
 

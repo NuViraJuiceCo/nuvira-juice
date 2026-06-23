@@ -62,6 +62,14 @@ assert(app.includes('profileRequestPending'), 'Profile pending state is not expl
 assert(app.includes('profileMissing'), 'Profile missing state is not explicitly distinguished');
 assert(app.includes('profileLoadedAndIncomplete'), 'Loaded incomplete profile state is not explicitly distinguished');
 assert(app.includes('retryProfileForOnboarding'), 'Profile failure screen does not expose a controlled retry');
+assert(app.includes('const isResetSignInRoute = React.useMemo(() => {'), 'App does not derive exact reset sign-in route state');
+assert(app.includes("location.pathname !== '/native-login'"), 'Reset sign-in route bypass is not scoped to NativeLogin path');
+assert(app.includes("params.get('reset_sign_in') === '1'"), 'Reset sign-in route bypass does not require reset marker');
+assert(app.includes('enabled: Boolean(user?.email && !isResetSignInRoute)'), 'Reset route does not bypass UserProfile lookup');
+assert(app.includes('const profileLookupEnabled = Boolean(user?.email && !isResetSignInRoute)'), 'Reset route does not bypass profile onboarding state');
+assert(app.includes("authError?.type === 'auth_required' && !isResetSignInRoute"), 'Reset route can still trigger auth-required redirect');
+assert(app.includes('(!isResetSignInRoute && isLoadingAuth)'), 'Reset route can still wait on auth loading before NativeLogin renders');
+assert(app.includes('if (authError && !isResetSignInRoute)'), 'Reset route can still show auth-error UI before NativeLogin renders');
 assert(!app.includes('navigateToLogin();\n      return null;'), 'Auth-required navigation still appears to execute directly in render');
 assert(app.includes('React.useEffect(() =>') && app.includes('hasRequestedAuthRedirectRef'), 'Auth-required navigation is not guarded by an effect/ref');
 
@@ -72,6 +80,12 @@ assert(!tryAgainBlock.includes('removeItem') && !tryAgainBlock.includes('replace
 
 assert(errorBoundary.includes('handleReturnHome'), 'Return Home handler missing');
 assert(errorBoundary.includes('handleResetSignIn'), 'Reset Sign-In handler missing');
+assert(errorBoundary.includes('isResettingSignIn'), 'Reset Sign-In in-flight state missing');
+assert(errorBoundary.includes('this.resetSignInStarted = false'), 'Reset Sign-In one-shot guard missing');
+assert(errorBoundary.includes('if (this.resetSignInStarted) return;'), 'Reset Sign-In double-tap guard missing');
+assert(errorBoundary.includes('this.resetSignInStarted = true'), 'Reset Sign-In one-shot guard is not armed');
+assert(errorBoundary.includes('disabled={isResettingSignIn}'), 'Recovery buttons are not disabled while reset is in flight');
+assert(errorBoundary.includes('Resetting Sign-In…'), 'Reset in-flight copy missing');
 assert(!errorBoundary.includes('AUTH_SESSION_STORAGE_KEYS'), 'Error boundary should not own auth reset storage clearing');
 assert(!errorBoundary.includes("key?.startsWith('base44_')"), 'Error boundary still clears broad Base44 storage keys');
 assert(!errorBoundary.includes('window.setTimeout(() => {'), 'Error boundary still schedules automatic recovery');
@@ -83,7 +97,8 @@ assert(returnHomeBlock.includes("replaceInAppRoute('/')"), 'Return Home does not
 assert(!returnHomeBlock.includes('resetSignInAndReload') && !returnHomeBlock.includes('removeItem'), 'Return Home clears auth or uses reset helper');
 const resetSignInBlock = errorBoundary.match(/handleResetSignIn = \(\) => \{[\s\S]*?\n  \};/)?.[0] || '';
 assert(resetSignInBlock.includes("resetSignInAndReload('/account')"), 'Reset Sign-In does not call dedicated reset helper');
-assert(!resetSignInBlock.includes('this.setState'), 'Reset Sign-In should rely on full remount, not keep old AuthProvider mounted');
+assert(resetSignInBlock.includes('this.setState({ isResettingSignIn: true })'), 'Reset Sign-In does not mark recovery in flight');
+assert(!resetSignInBlock.includes('hasError: false'), 'Reset Sign-In should not clear the boundary and keep old AuthProvider mounted');
 assert(errorBoundary.includes('role="alert"'), 'Error fallback is not marked as an accessible alert');
 assert(errorBoundary.includes('NuVira hit a loading issue'), 'Visible recovery copy missing');
 assert(errorBoundary.includes('Return Home'), 'Return Home copy missing');
@@ -110,8 +125,17 @@ assert(nativeAuthRedirect.includes("'base44_access_token'") && nativeAuthRedirec
 assert(!nativeAuthRedirect.includes('splashShown') && !nativeAuthRedirect.includes('nuvira_pending_checkout_session') && !nativeAuthRedirect.includes('active_reward'), 'Reset helper touches unrelated storage keys');
 assert(nativeAuthRedirect.includes("credentials: 'include'"), 'Reset helper does not attempt hosted logout with credentials');
 assert(nativeAuthRedirect.includes('logout_request_failed'), 'Reset helper does not tolerate logout-network failure generically');
-assert(nativeAuthRedirect.includes('window.location.replace(resetRoute)'), 'Reset helper does not perform one full navigation/remount');
-assert(!nativeAuthRedirect.includes('setTimeout'), 'Reset helper or auth redirect schedules repeated reload');
+assert(nativeAuthRedirect.includes('SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000'), 'Reset helper does not define a bounded logout timeout');
+assert(nativeAuthRedirect.includes('AbortController'), 'Reset helper does not use AbortController for hung logout requests');
+assert(nativeAuthRedirect.includes('Promise.race([logoutRequest, timeoutRequest])'), 'Reset helper does not bound logout request wait time');
+assert(nativeAuthRedirect.includes("reject(new Error('logout_request_timeout'))"), 'Reset helper does not classify logout timeout generically');
+assert(nativeAuthRedirect.includes('abortController?.abort()'), 'Reset helper does not abort timed-out logout request');
+assert(nativeAuthRedirect.includes('window.clearTimeout(logoutTimeoutId)'), 'Reset helper does not clear logout timeout resources');
+assert(nativeAuthRedirect.includes('finally') && nativeAuthRedirect.includes('fullReplaceRoute(resetRoute)'), 'Reset helper does not navigate from finally');
+assert(nativeAuthRedirect.includes('window.location.replace(route)') && nativeAuthRedirect.includes('window.location.assign(route)') && nativeAuthRedirect.includes('window.location.href = route'), 'Reset helper does not provide full-navigation fallbacks');
+assert(!nativeAuthRedirect.includes('setInterval'), 'Reset helper or auth redirect schedules repeated reload');
+const resetSignInCallCount = (errorBoundary.match(/resetSignInAndReload\('\/account'\)/g) || []).length;
+assert(resetSignInCallCount === 1, 'Reset Sign-In should initiate exactly one reset call from the recovery screen');
 const logoutInsideAppBlock = nativeAuthRedirect.match(/export async function logoutInsideApp[\s\S]*?^}/m)?.[0] || '';
 assert(logoutInsideAppBlock.includes('clearBase44AuthTokens()'), 'Existing normal logout behavior lost auth token clearing');
 assert(!logoutInsideAppBlock.includes('SIGN_IN_RESET_STORAGE_KEYS'), 'Existing normal logout behavior should not inherit reset-sign-in storage clearing');
@@ -169,7 +193,7 @@ if (exists('ios/App/App/public/index.html')) {
 console.log(JSON.stringify({
   ok: true,
   classification: 'native_startup_hotfix_static_regression_passed',
-  casesCovered: 54,
+  casesCovered: 67,
   runtimeWritesPerformed: false,
   backendFunctionsChanged: false,
   providerCallsPerformed: false,

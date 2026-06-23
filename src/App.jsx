@@ -118,6 +118,11 @@ const AuthenticatedApp = () => {
   const hasRequestedAuthRedirectRef = React.useRef(false);
 
   const location = useLocation();
+  const isResetSignInRoute = React.useMemo(() => {
+    if (location.pathname !== '/native-login') return false;
+    const params = new URLSearchParams(location.search);
+    return params.get('reset_sign_in') === '1';
+  }, [location.pathname, location.search]);
 
   React.useEffect(() => {
     if (hasBase44AuthParamsInUrl()) {
@@ -137,7 +142,7 @@ const AuthenticatedApp = () => {
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
       return profiles[0] || null;
     },
-    enabled: !!user?.email,
+    enabled: Boolean(user?.email && !isResetSignInRoute),
     staleTime: 0,
     gcTime: 0,
   });
@@ -149,7 +154,7 @@ const AuthenticatedApp = () => {
 
   // No auto-redirect to orders on app open — customers should always land on Home.
 
-  const profileLookupEnabled = Boolean(user?.email);
+  const profileLookupEnabled = Boolean(user?.email && !isResetSignInRoute);
   const profileRequestPending = Boolean(profileLookupEnabled && isLoadingProfile);
   const profileRequestFailed = Boolean(profileLookupEnabled && isProfileError);
   const profileLookupFinished = Boolean(profileLookupEnabled && !isLoadingProfile && !isProfileError);
@@ -163,7 +168,7 @@ const AuthenticatedApp = () => {
     location.pathname !== '/account-setup' &&
     (profileMissing || profileLoadedAndIncomplete)
   );
-  const shouldRouteToLogin = authError?.type === 'auth_required';
+  const shouldRouteToLogin = Boolean(authError?.type === 'auth_required' && !isResetSignInRoute);
 
   React.useEffect(() => {
     if (!shouldRouteToLogin) {
@@ -177,7 +182,7 @@ const AuthenticatedApp = () => {
   }, [navigateToLogin, shouldRouteToLogin]);
 
   // Show loading spinner while checking app public settings, auth, or profile
-  if (isLoadingPublicSettings || isLoadingAuth || profileRequestPending) {
+  if (isLoadingPublicSettings || (!isResetSignInRoute && isLoadingAuth) || profileRequestPending) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
@@ -186,7 +191,7 @@ const AuthenticatedApp = () => {
   }
 
   // Handle authentication errors
-  if (authError) {
+  if (authError && !isResetSignInRoute) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
