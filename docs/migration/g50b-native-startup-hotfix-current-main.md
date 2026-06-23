@@ -49,7 +49,7 @@ pr332_behavior_ported=
 - stable user-visible recovery fallback added
 
 pr332_behavior_obsolete=
-- old minimal recovery copy superseded by explicit Try Again, Restart App, and Reset Sign-In actions
+- old minimal recovery copy superseded by explicit Try Again, Return Home, and Reset Sign-In actions
 - old callback fallback behavior superseded by shared replaceInAppRoute helper
 
 pr332_metadata_excluded=
@@ -86,21 +86,25 @@ current_main_conflicts=
 The fallback now shows a stable accessible recovery card with explicit user actions:
 
 - **Try Again**: clears only the React error-boundary state.
-- **Restart App**: user-triggered in-app route replacement to `/`.
-- **Reset Sign-In**: user-triggered clearing of only documented auth/session keys, then in-app route replacement to `/native-login`.
+- **Return Home**: user-triggered in-app route replacement to `/`, with no storage clearing.
+- **Reset Sign-In**: user-triggered hosted logout attempt, narrow auth/bootstrap key clearing, and one full navigation/remount to `/native-login` with safe `return_to`, `reset_sign_in`, and `clear_access_token` parameters.
 
 Raw exception details are not displayed to customers.
 
 ### Native auth callback change
 
-`src/lib/nativeAuthRedirect.js` adds `replaceInAppRoute(route)`:
+`src/lib/nativeAuthRedirect.js` adds `replaceInAppRoute(route)` and `resetSignInAndReload(returnRoute)`:
 
 - normalizes return routes;
 - rejects external/open redirects through existing `normalizeReturnRoute` rules;
 - uses `window.history.replaceState`;
 - dispatches one `popstate` event so `BrowserRouter` observes the in-app navigation.
 
-`src/lib/AuthContext.jsx` now uses this helper for native auth callback return routing.
+`resetSignInAndReload(returnRoute)` is reserved for explicit Reset Sign-In taps from the recovery screen. It clears only documented auth/bootstrap keys, attempts the existing hosted logout endpoint with `credentials: include`, tolerates logout-network failure, and then performs one full route replacement to NativeLogin so `AuthProvider` and the Base44 client remount. `NativeLogin` now recognizes `reset_sign_in=1` and suppresses its normal already-authenticated auto-navigation, preventing a bounce from stale in-memory auth state.
+
+`src/lib/AuthContext.jsx` now uses the in-app route helper for native auth callback return routing.
+
+`src/pages/NativeLogin.jsx` preserves normal already-authenticated redirect behavior except when the explicit reset-sign-in route parameter is present.
 
 ## Loading and onboarding behavior
 
@@ -146,7 +150,10 @@ Required present behavior:
 
 ```text
 manual recovery copy
+Return Home recovery copy
+Reset Sign-In recovery copy
 in-app auth callback route replacement
+full-remount sign-in reset route
 React Router account setup navigation
 ```
 
@@ -168,11 +175,13 @@ Coverage includes:
 - auth-required navigation does not run during render;
 - navigation is guarded to avoid repeated redirects;
 - global error boundary performs no automatic reload or broad storage clearing;
-- Try Again, Restart App, and Reset Sign-In require user action;
-- Reset Sign-In clears only the intended auth/bootstrap keys;
+- Try Again, Return Home, and Reset Sign-In require user action;
+- Return Home uses in-app navigation only and clears no storage;
+- Reset Sign-In attempts hosted logout, clears only intended auth/bootstrap keys, preserves unrelated storage, and performs one full navigation/remount;
 - fallback is visible and accessible;
 - raw exceptions are not displayed;
 - native auth callback uses in-app route replacement and normalized return routes;
+- NativeLogin reset cannot bounce from stale in-memory auth because reset mode suppresses its already-authenticated auto-navigation after the full remount;
 - old startup/recovery markers are absent from generated iOS bundle after sync;
 - checkout/payment/backend/Hub behavior is unchanged.
 

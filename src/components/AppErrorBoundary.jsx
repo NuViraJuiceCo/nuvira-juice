@@ -1,51 +1,7 @@
 import React from 'react';
+import { replaceInAppRoute, resetSignInAndReload } from '@/lib/nativeAuthRedirect';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
-const AUTH_SESSION_STORAGE_KEYS = [
-  'base44_access_token',
-  'token',
-  'base44_clear_access_token',
-  'base44_from_url',
-];
-
-function safeDispatchPopState() {
-  try {
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  } catch {
-    try {
-      window.dispatchEvent(new Event('popstate'));
-    } catch {
-      // Event dispatch is best effort only.
-    }
-  }
-}
-
-function replaceInAppRoute(route) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.history.replaceState({}, document.title, route);
-    safeDispatchPopState();
-  } catch {
-    window.location.assign(route);
-  }
-}
-
-function removeStorageItem(storage, key) {
-  try {
-    storage?.removeItem(key);
-  } catch {
-    // Storage can be unavailable in restricted native webview contexts.
-  }
-}
-
-function resetAuthSessionStorage() {
-  if (typeof window === 'undefined') return;
-  for (const key of AUTH_SESSION_STORAGE_KEYS) {
-    removeStorageItem(window.localStorage, key);
-    removeStorageItem(window.sessionStorage, key);
-  }
-}
-
 export default class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -64,15 +20,13 @@ export default class AppErrorBoundary extends React.Component {
     this.setState({ hasError: false, errorClassification: null });
   };
 
-  handleRestartApp = () => {
+  handleReturnHome = () => {
     replaceInAppRoute('/');
     this.setState({ hasError: false, errorClassification: null });
   };
 
   handleResetSignIn = () => {
-    resetAuthSessionStorage();
-    replaceInAppRoute('/native-login?return_to=%2Faccount&reset_sign_in=1');
-    this.setState({ hasError: false, errorClassification: null });
+    resetSignInAndReload('/account');
   };
 
   render() {
@@ -100,10 +54,10 @@ export default class AppErrorBoundary extends React.Component {
               </button>
               <button
                 type="button"
-                onClick={this.handleRestartApp}
+                onClick={this.handleReturnHome}
                 className="h-11 w-full rounded-2xl border border-border bg-card text-sm font-semibold text-foreground"
               >
-                Restart App
+                Return Home
               </button>
               <button
                 type="button"

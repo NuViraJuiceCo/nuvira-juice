@@ -14,6 +14,7 @@ const errorBoundary = read('src/components/AppErrorBoundary.jsx');
 const authContext = read('src/lib/AuthContext.jsx');
 const nativeAuthRedirect = read('src/lib/nativeAuthRedirect.js');
 const checkout = read('src/pages/Checkout.jsx');
+const nativeLogin = read('src/pages/NativeLogin.jsx');
 const createPaymentIntent = read('base44/functions/createPaymentIntent/entry.ts');
 const capacitor = JSON.parse(read('capacitor.config.json'));
 const doc = read('docs/migration/g50b-native-startup-hotfix-current-main.md');
@@ -65,19 +66,35 @@ assert(!app.includes('navigateToLogin();\n      return null;'), 'Auth-required n
 assert(app.includes('React.useEffect(() =>') && app.includes('hasRequestedAuthRedirectRef'), 'Auth-required navigation is not guarded by an effect/ref');
 
 assert(errorBoundary.includes('handleTryAgain'), 'Try Again handler missing');
-assert(errorBoundary.includes('handleRestartApp'), 'Restart App handler missing');
+const tryAgainBlock = errorBoundary.match(/handleTryAgain = \(\) => \{[\s\S]*?\n  \};/)?.[0] || '';
+assert(tryAgainBlock.includes('this.setState({ hasError: false'), 'Try Again does not clear only boundary state');
+assert(!tryAgainBlock.includes('removeItem') && !tryAgainBlock.includes('replaceInAppRoute') && !tryAgainBlock.includes('resetSignInAndReload'), 'Try Again clears storage or navigates');
+
+assert(errorBoundary.includes('handleReturnHome'), 'Return Home handler missing');
 assert(errorBoundary.includes('handleResetSignIn'), 'Reset Sign-In handler missing');
-assert(errorBoundary.includes('AUTH_SESSION_STORAGE_KEYS'), 'Reset Sign-In does not use a narrow auth key list');
+assert(!errorBoundary.includes('AUTH_SESSION_STORAGE_KEYS'), 'Error boundary should not own auth reset storage clearing');
 assert(!errorBoundary.includes("key?.startsWith('base44_')"), 'Error boundary still clears broad Base44 storage keys');
 assert(!errorBoundary.includes('window.setTimeout(() => {'), 'Error boundary still schedules automatic recovery');
 assert(!errorBoundary.includes('window.location.reload()'), 'Error boundary still reloads automatically');
+assert(!errorBoundary.includes('window.location.replace('), 'Error boundary should not directly perform hard navigation');
+assert(!errorBoundary.includes('window.location.assign('), 'Error boundary should not directly perform hard navigation');
+const returnHomeBlock = errorBoundary.match(/handleReturnHome = \(\) => \{[\s\S]*?\n  \};/)?.[0] || '';
+assert(returnHomeBlock.includes("replaceInAppRoute('/')"), 'Return Home does not use in-app navigation');
+assert(!returnHomeBlock.includes('resetSignInAndReload') && !returnHomeBlock.includes('removeItem'), 'Return Home clears auth or uses reset helper');
+const resetSignInBlock = errorBoundary.match(/handleResetSignIn = \(\) => \{[\s\S]*?\n  \};/)?.[0] || '';
+assert(resetSignInBlock.includes("resetSignInAndReload('/account')"), 'Reset Sign-In does not call dedicated reset helper');
+assert(!resetSignInBlock.includes('this.setState'), 'Reset Sign-In should rely on full remount, not keep old AuthProvider mounted');
 assert(errorBoundary.includes('role="alert"'), 'Error fallback is not marked as an accessible alert');
 assert(errorBoundary.includes('NuVira hit a loading issue'), 'Visible recovery copy missing');
+assert(errorBoundary.includes('Return Home'), 'Return Home copy missing');
+assert(errorBoundary.includes('Reset Sign-In'), 'Reset Sign-In copy missing');
 assert(!errorBoundary.includes('error?.message'), 'Error boundary still exposes or logs raw exception messages');
 
 assert(authContext.includes('replaceInAppRoute(callbackResult.returnTo || \'/\')'), 'Native auth callback does not use in-app route replacement');
 assert(!authContext.includes('window.location.replace(callbackResult.returnTo)'), 'Native auth callback hard replace remains');
 assert(nativeAuthRedirect.includes('export function replaceInAppRoute'), 'In-app route helper missing');
+assert(nativeAuthRedirect.includes('export async function resetSignInAndReload'), 'Dedicated sign-in reset helper missing');
+assert(nativeAuthRedirect.includes("getNativeLoginResetRoute(returnRoute = '/account')"), 'Native login reset route builder missing');
 assert(nativeAuthRedirect.includes('normalizeReturnRoute(route)'), 'In-app route helper does not normalize return routes');
 assert(nativeAuthRedirect.includes('window.history.replaceState'), 'In-app route helper does not use history replacement');
 assert(nativeAuthRedirect.includes("window.dispatchEvent(new PopStateEvent('popstate'))"), 'In-app route helper does not notify BrowserRouter');
@@ -85,6 +102,22 @@ assert(!nativeAuthRedirect.includes('window.location.assign(loginUrl)'), 'Login 
 assert(!nativeAuthRedirect.includes('window.location.replace(signedOutRoute)'), 'Logout still hard-replaces signed-out route');
 assert(!nativeAuthRedirect.includes('window.location.href = safeRoute'), 'In-app auth route helper still falls back to hard reload');
 assert(nativeAuthRedirect.includes("if (!route.startsWith('/') || route.startsWith('//')) return '/'"), 'External/open return routes are not rejected');
+assert(nativeAuthRedirect.includes("params.set('return_to', normalizeReturnRoute(returnRoute))"), 'Reset route does not normalize return route');
+assert(nativeAuthRedirect.includes("params.set('reset_sign_in', '1')"), 'Reset route does not mark reset_sign_in');
+assert(nativeAuthRedirect.includes("params.set('clear_access_token', 'true')"), 'Reset route does not carry clear_access_token');
+assert(nativeAuthRedirect.includes('SIGN_IN_RESET_STORAGE_KEYS'), 'Reset helper does not use documented narrow reset storage keys');
+assert(nativeAuthRedirect.includes("'base44_access_token'") && nativeAuthRedirect.includes("'token'") && nativeAuthRedirect.includes("'base44_clear_access_token'") && nativeAuthRedirect.includes("'base44_from_url'"), 'Reset helper is missing expected auth/bootstrap keys');
+assert(!nativeAuthRedirect.includes('splashShown') && !nativeAuthRedirect.includes('nuvira_pending_checkout_session') && !nativeAuthRedirect.includes('active_reward'), 'Reset helper touches unrelated storage keys');
+assert(nativeAuthRedirect.includes("credentials: 'include'"), 'Reset helper does not attempt hosted logout with credentials');
+assert(nativeAuthRedirect.includes('logout_request_failed'), 'Reset helper does not tolerate logout-network failure generically');
+assert(nativeAuthRedirect.includes('window.location.replace(resetRoute)'), 'Reset helper does not perform one full navigation/remount');
+assert(!nativeAuthRedirect.includes('setTimeout'), 'Reset helper or auth redirect schedules repeated reload');
+const logoutInsideAppBlock = nativeAuthRedirect.match(/export async function logoutInsideApp[\s\S]*?^}/m)?.[0] || '';
+assert(logoutInsideAppBlock.includes('clearBase44AuthTokens()'), 'Existing normal logout behavior lost auth token clearing');
+assert(!logoutInsideAppBlock.includes('SIGN_IN_RESET_STORAGE_KEYS'), 'Existing normal logout behavior should not inherit reset-sign-in storage clearing');
+assert(nativeLogin.includes("const isSignInReset = searchParams.get('reset_sign_in') === '1'"), 'NativeLogin does not detect reset_sign_in mode');
+assert(nativeLogin.includes('if (isSignInReset) return;'), 'NativeLogin can still auto-bounce during reset mode');
+assert(nativeLogin.includes('Sign-in was reset. Please sign in again.'), 'NativeLogin reset mode does not show stable reset copy');
 
 assert(checkout.includes('checkout_idempotency_key'), 'Checkout idempotency key unexpectedly removed');
 assert(createPaymentIntent.includes('stripe.paymentIntents.create'), 'createPaymentIntent unexpectedly changed or lost PI creation evidence');
@@ -101,6 +134,8 @@ const requiredDocPhrases = [
   'Render-time navigation removal',
   'Error-boundary recovery change',
   'Native auth callback change',
+  'Reset Sign-In',
+  'Return Home',
   'Generated-bundle proof',
   'No-write confirmation',
   'G50C',
@@ -134,7 +169,7 @@ if (exists('ios/App/App/public/index.html')) {
 console.log(JSON.stringify({
   ok: true,
   classification: 'native_startup_hotfix_static_regression_passed',
-  casesCovered: 36,
+  casesCovered: 54,
   runtimeWritesPerformed: false,
   backendFunctionsChanged: false,
   providerCallsPerformed: false,
