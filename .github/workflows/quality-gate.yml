@@ -1,0 +1,81 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-quality-gate:
+    name: web-quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: mkdir -p release-evidence
+      - run: npm ci
+      - name: Secret scan
+        run: npm run ci:secret-scan -- --out release-evidence/secret-scan.json
+      - name: Diagnostic baseline gate
+        run: npm run ci:diagnostic-baseline -- --out release-evidence/diagnostics.json
+      - name: Critical regression suite
+        run: npm run ci:critical-regressions -- --out release-evidence/critical-regressions.json
+      - name: Build web bundle
+        run: npm run build
+      - name: Startup and checkout source marker assertions
+        run: node scripts/migration/run-g50b-native-startup-hotfix-tests.mjs && node scripts/migration/run-g49a-checkout-processing-error-boundary-tests.mjs
+      - name: Build must not dirty tracked source files
+        run: git diff --exit-code -- . ':(exclude)dist/**' ':(exclude)ios/App/App/public/**'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: web-quality-gate-evidence
+          path: release-evidence/*.json
+
+  release-policy-gate:
+    name: release-policy-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: mkdir -p release-evidence
+      - run: npm ci
+      - name: Verify PR source policy
+        if: github.event_name == 'pull_request'
+        run: node scripts/release/verify-native-release-source.mjs --policy-mode pr --approved-commit ${{ github.sha }} --out release-evidence/source-policy.json
+      - name: Verify main source policy
+        if: github.event_name == 'push'
+        run: npm run release:verify-source -- --out release-evidence/source-policy.json
+      - name: Verify open release-critical PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run release:verify-open-critical-prs -- --out release-evidence/critical-prs.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: release-policy-gate-evidence
+          path: release-evidence/*.json
