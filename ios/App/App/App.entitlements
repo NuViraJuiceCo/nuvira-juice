@@ -9,5 +9,9 @@
 	</array>
 	<key>aps-environment</key>
 	<string>$(APS_ENVIRONMENT)</string>
+	<key>com.apple.developer.in-app-payments</key>
+	<array>
+		<string>$(APPLE_PAY_MERCHANT_ID)</string>
+	</array>
 </dict>
 </plist>
