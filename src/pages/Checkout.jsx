@@ -1029,7 +1029,7 @@ function CheckoutFlow() {
             publishableKey={publishableKey}
             total={paymentTotal}
             isSubmitting={isSubmitting}
-            setIsSubmitting={setIsSubmitting}
+            setIsSubmitting={setIsSubmitting} showWalletDiagnostics={user?.role === 'admin' || user?.role === 'owner'}
             onSuccess={(paymentIntentId) => {
               clearCart();
               localStorage.removeItem('nuvira_pending_checkout_session');
