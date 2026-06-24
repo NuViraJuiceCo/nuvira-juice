@@ -223,7 +223,7 @@ function itemSummary(items = []) {
     .join(' · ') + (items.length > 2 ? ` +${items.length - 2} more` : '');
 }
 
-function todayIsoDate() {
+function _todayIsoDate() {
   const now = new Date();
   const offset = now.getTimezoneOffset();
   const localDate = new Date(now.getTime() - offset * 60 * 1000);
@@ -397,8 +397,8 @@ function LiveCustomerContextPanel({ orders, isLoading, nameMap }) {
   return (
     <section className="px-4 mb-4">
       <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-black text-white">Live Customer Context</h2>
               <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-black text-emerald-950">Admin</span>
@@ -407,18 +407,18 @@ function LiveCustomerContextPanel({ orders, isLoading, nameMap }) {
               Recent operational customer/order context lives here, not on the Operations launchpad.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-1 text-right">
-            <div>
+          <div className="grid w-full grid-cols-3 gap-2 text-center sm:w-auto sm:min-w-[12rem]">
+            <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
               <p className="text-sm font-black text-white">{deliveryCount}</p>
-              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Delivery</p>
+              <p className="text-[8px] font-black uppercase leading-tight text-slate-500">Delivery</p>
             </div>
-            <div>
+            <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
               <p className="text-sm font-black text-white">{pickupCount}</p>
-              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Pickup/POS</p>
+              <p className="text-[8px] font-black uppercase leading-tight text-slate-500">Pickup / POS</p>
             </div>
-            <div>
+            <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
               <p className="text-sm font-black text-white">{reviewCount}</p>
-              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Review</p>
+              <p className="text-[8px] font-black uppercase leading-tight text-slate-500">Review</p>
             </div>
           </div>
         </div>

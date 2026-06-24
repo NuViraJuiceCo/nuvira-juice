@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -11,7 +12,7 @@ import {
 } from '@stripe/react-stripe-js';
 
 // Inner form — must be inside <Elements>
-function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus, confirmLabel }) {
+function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus, confirmLabel, showWalletDiagnostics }) {
   const stripe   = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
@@ -21,7 +22,7 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
   // ExpressCheckoutElement calls this after the user authorizes in the wallet sheet.
   // The express element has already collected the payment method — just confirm the PI.
-  const handleExpressConfirm = async (event) => {
+  const handleExpressConfirm = async () => {
     if (!stripe) return;
     setIsSubmitting(true);
     setErrorMsg('');
@@ -83,6 +84,8 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
     },
   };
 
+  const formatDiagnosticBool = (value) => (value ? 'yes' : 'no');
+
   return (
     <div className="space-y-4">
       {/* Express Checkout — Apple Pay / Google Pay. Collapse the section if Stripe reports no wallet methods. */}
@@ -122,6 +125,21 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
           <div className="flex-1 h-px bg-border" />
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">or pay with card</span>
           <div className="flex-1 h-px bg-border" />
+        </div>
+      )}
+
+      {showWalletDiagnostics && expressReady && !expressAvailable && (
+        <div className="rounded-xl border border-amber-300/70 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-950">
+          <p className="font-semibold">Admin wallet diagnostic: Stripe reported no eligible wallet buttons for this checkout environment.</p>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px]">
+            <span>apple_pay</span>
+            <span>{formatDiagnosticBool(false)}</span>
+            <span>google_pay</span>
+            <span>{formatDiagnosticBool(false)}</span>
+            <span>link</span>
+            <span>{formatDiagnosticBool(false)}</span>
+          </div>
+          <p className="mt-2 text-amber-900/80">Card checkout remains active. Verify Stripe domain/mode and native WebView eligibility before releasing Apple Pay messaging.</p>
         </div>
       )}
 
@@ -186,13 +204,14 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
  *   isSubmitting: boolean
  *   setIsSubmitting: (v: boolean) => void
  */
-export default function EmbeddedPayment({ clientSecret, publishableKey, total, onSuccess, onError, isSubmitting, setIsSubmitting, confirmLabel }) {
+export default function EmbeddedPayment({ clientSecret, publishableKey, total, onSuccess, onError, isSubmitting, setIsSubmitting, confirmLabel = undefined, showWalletDiagnostics = false }) {
   const stripePromise = useMemo(() => publishableKey ? loadStripe(publishableKey) : null, [publishableKey]);
   const [walletStatus, setWalletStatus] = useState(null); // { mounted: bool, methods: { applePay, googlePay, link, ... } }
 
-  const piId = clientSecret ? clientSecret.split('_secret_')[0] : null;
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
   const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
+  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
+  const isNative = Capacitor.isNativePlatform?.() === true;
   const showDebug = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
 
   // Early return AFTER all hooks
@@ -221,8 +240,10 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
       {showDebug && (
         <div className="mb-3 rounded-xl border border-cyan-400 bg-cyan-50 px-3 py-2 text-[11px] text-cyan-800 space-y-0.5">
           <div><span className="font-semibold">Origin:</span> {origin}</div>
+          <div><span className="font-semibold">Protocol:</span> {protocol}</div>
+          <div><span className="font-semibold">Native shell:</span> {isNative ? 'YES' : 'No'}</div>
           <div><span className="font-semibold">In iframe:</span> {isIframe ? 'YES ⚠️' : 'No'}</div>
-          <div><span className="font-semibold">PI:</span> {piId}</div>
+          <div><span className="font-semibold">PaymentIntent client secret:</span> present</div>
           <div><span className="font-semibold">Key mode:</span> {publishableKey?.startsWith('pk_live') ? 'LIVE ✅' : 'TEST ⚠️'}</div>
           <div><span className="font-semibold">ExpressCheckout mounted:</span> {walletStatus ? 'true ✅' : 'false ❌'}</div>
           <div><span className="font-semibold">Apple Pay available:</span> {fmt(walletStatus?.methods?.applePay)}</div>
@@ -244,6 +265,7 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
           setIsSubmitting={setIsSubmitting}
           onWalletStatus={setWalletStatus}
           confirmLabel={confirmLabel}
+          showWalletDiagnostics={showWalletDiagnostics}
         />
       </Elements>
     </div>

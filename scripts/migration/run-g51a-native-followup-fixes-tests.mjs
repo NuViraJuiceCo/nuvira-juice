@@ -33,7 +33,7 @@ assert(/onLoadError=\{\(err\) => \{[\s\S]*setExpressReady\(true\)[\s\S]*setExpre
 assert(/const \[expressReady, setExpressReady\] = useState\(false\)/.test(subscription), 'SubscriptionPaymentPanel must track Express Checkout readiness');
 assert(/\(!expressReady \|\| expressAvailable\)/.test(subscription), 'SubscriptionPaymentPanel must collapse the wallet section when no wallet methods are available');
 
-assert(/\.nuvira-admin-header\s*\{[\s\S]*padding-top\s*:\s*max\(0\.75rem,\s*calc\(env\(safe-area-inset-top\) \+ 0\.75rem\)\)/.test(indexCss), 'Admin header must include iOS safe-area top padding');
+assert(/\.nuvira-admin-header\s*\{[\s\S]*padding-top\s*:\s*max\(3\.75rem,\s*calc\(env\(safe-area-inset-top\) \+ 0\.75rem\)\)/.test(indexCss), 'Admin header must include a hard iOS status-bar padding floor plus safe-area top padding');
 assert(/const ENABLE_PROVIDER_BUTTONS = import\.meta\.env\.VITE_ENABLE_AUTH_PROVIDER_BUTTONS === ['"]true['"]/.test(nativeLogin), 'Native provider buttons must be opt-in, not on by default');
 assert(!/VITE_ENABLE_AUTH_PROVIDER_BUTTONS !== ['"]false['"]/.test(nativeLogin), 'Native provider buttons must not default to enabled');
 
