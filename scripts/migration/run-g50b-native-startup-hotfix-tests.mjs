@@ -107,6 +107,10 @@ assert(!errorBoundary.includes('error?.message'), 'Error boundary still exposes 
 
 assert(authContext.includes('replaceInAppRoute(callbackResult.returnTo || \'/\')'), 'Native auth callback does not use in-app route replacement');
 assert(!authContext.includes('window.location.replace(callbackResult.returnTo)'), 'Native auth callback hard replace remains');
+assert(authContext.includes("const registration = capacitorApp.addListener('appUrlOpen'"), 'Native URL listener registration capture missing');
+assert(authContext.includes("if (registration && typeof registration.then === 'function')"), 'Native URL listener does not support promise-returning Capacitor versions');
+assert(authContext.includes('registerListenerHandle(registration)'), 'Native URL listener does not support synchronous handle-returning Capacitor versions');
+assert(!/addListener\('appUrlOpen'[\s\S]{0,2500}\)\.then/.test(authContext), 'Native URL listener assumes addListener always returns a Promise');
 assert(nativeAuthRedirect.includes('export function replaceInAppRoute'), 'In-app route helper missing');
 assert(nativeAuthRedirect.includes('export async function resetSignInAndReload'), 'Dedicated sign-in reset helper missing');
 assert(nativeAuthRedirect.includes("getNativeLoginResetRoute(returnRoute = '/account')"), 'Native login reset route builder missing');

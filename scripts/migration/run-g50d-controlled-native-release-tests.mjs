@@ -24,7 +24,7 @@ function git(args, options = {}) {
 
 const head = git(['rev-parse', 'HEAD']);
 const originMain = git(['rev-parse', 'origin/main']);
-assert.equal(originMain, '90d0104f65e764a04b69533bda2560e6dc9bdeb9', 'origin/main is not the approved G50D baseline');
+assert(run('git', ['merge-base', '--is-ancestor', '5ba4cffe57bb2d44a7de77a12429ab249f1d5042', head], { allowFailure: true }).status === 0, 'approved G50D build 22 source is not an ancestor of this replacement release');
 
 const project = read('ios/App/App.xcodeproj/project.pbxproj');
 const docPath = 'docs/migration/g50d-controlled-native-startup-hotfix-release.md';
@@ -33,7 +33,7 @@ const doc = read(docPath);
 const marketingMatches = [...project.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((match) => match[1]);
 const buildMatches = [...project.matchAll(/CURRENT_PROJECT_VERSION = ([^;]+);/g)].map((match) => match[1]);
 assert.deepEqual(marketingMatches, ['2.117907.0', '2.117907.0'], 'MARKETING_VERSION must be 2.117907.0 in both Release/Debug settings');
-assert.deepEqual(buildMatches, ['22', '22'], 'CURRENT_PROJECT_VERSION must be 22 in both Release/Debug settings');
+assert.deepEqual(buildMatches, ['23', '23'], 'CURRENT_PROJECT_VERSION must be 23 in both Release/Debug settings');
 assert.equal((project.match(/PRODUCT_BUNDLE_IDENTIFIER = com\.base69d48d0c39891f7945481152\.app;/g) || []).length, 2, 'bundle identifier changed or is missing');
 
 const changedFiles = git(['diff', '--name-only', 'origin/main...HEAD'], { allowFailure: true })
@@ -59,12 +59,14 @@ const worktreeFiles = [...new Set([...changedFiles, ...unstagedFiles, ...stagedF
 const allowedFiles = new Set([
   'docs/migration/g50d-controlled-native-startup-hotfix-release.md',
   'ios/App/App.xcodeproj/project.pbxproj',
+  'scripts/migration/run-g50b-native-startup-hotfix-tests.mjs',
   'scripts/migration/run-g50d-controlled-native-release-tests.mjs',
+  'src/lib/AuthContext.jsx',
 ]);
 const disallowed = worktreeFiles.filter((file) => !allowedFiles.has(file));
-assert.deepEqual(disallowed, [], `G50D metadata branch touched disallowed files: ${disallowed.join(', ')}`);
+assert.deepEqual(disallowed, [], `G50D build 23 replacement branch touched disallowed files: ${disallowed.join(', ')}`);
 
-const forbiddenPrefixes = ['src/', 'base44/', 'ios/App/App/public/', 'ios/App/CapApp-SPM/', '.github/'];
+const forbiddenPrefixes = ['base44/', 'ios/App/App/public/', 'ios/App/CapApp-SPM/', '.github/'];
 const forbiddenExact = ['package.json', 'package-lock.json', 'capacitor.config.json'];
 for (const file of worktreeFiles) {
   assert(!forbiddenPrefixes.some((prefix) => file.startsWith(prefix)), `forbidden runtime/generated path changed: ${file}`);
@@ -77,8 +79,10 @@ const requiredDocPhrases = [
   'current_main_build_number=21',
   'app_store_current_version=2.117906.0',
   'proposed_marketing_version=2.117907.0',
-  'proposed_build_number=22',
+  'failed_testflight_build_number=22',
+  'proposed_build_number=23',
   'G50B startup hotfix',
+  'Capacitor appUrlOpen listener compatibility repair',
   'G49A checkout processing protection',
   'critical_vulnerabilities=0',
   'high_vulnerabilities=0',
@@ -94,7 +98,7 @@ const requiredDocPhrases = [
   'automatic_release_enabled=false',
   'website checkout remains the immediate customer fallback',
   'No-payment / no-write confirmation',
-  'native_startup_hotfix_metadata_pr_ready',
+  'native_startup_hotfix_build23_replacement_ready',
 ];
 for (const phrase of requiredDocPhrases) {
   assert(doc.includes(phrase), `${docPath} missing required phrase: ${phrase}`);
@@ -120,6 +124,7 @@ for (const file of sourceFiles) {
 }
 const app = read('src/App.jsx');
 const boundary = read('src/components/AppErrorBoundary.jsx');
+const authContext = read('src/lib/AuthContext.jsx');
 const redirect = read('src/lib/nativeAuthRedirect.js');
 const checkout = read('src/pages/Checkout.jsx');
 assert(!app.includes("window.location.replace('/account-setup')"), 'render-time account setup hard redirect returned');
@@ -131,6 +136,10 @@ assert(boundary.includes('Return Home'), 'G50B Return Home copy missing');
 assert(boundary.includes('Reset Sign-In'), 'G50B Reset Sign-In copy missing');
 assert(redirect.includes("params.set('reset_sign_in', '1')"), 'G50B reset_sign_in marker missing');
 assert(redirect.includes('SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000'), 'G50B bounded logout timeout missing');
+assert(authContext.includes("const registration = capacitorApp.addListener('appUrlOpen'"), 'Native URL listener registration capture missing');
+assert(authContext.includes("if (registration && typeof registration.then === 'function')"), 'Native URL listener does not support promise-returning Capacitor versions');
+assert(authContext.includes('registerListenerHandle(registration)'), 'Native URL listener does not support synchronous handle-returning Capacitor versions');
+assert(!/addListener\('appUrlOpen'[\s\S]{0,2500}\)\.then/.test(authContext), 'Native URL listener assumes addListener always returns a Promise');
 assert(checkout.includes('PAYMENT_ATTEMPT_STATE_UNKNOWN'), 'G49A unknown payment-attempt marker missing');
 assert(checkout.includes('Still checking your checkout'), 'G49A ambiguous checkout copy missing');
 assert(!checkout.includes('clientSecret prefix'), 'unsafe client-secret logging marker returned');
@@ -146,14 +155,14 @@ console.log(JSON.stringify({
   git_commit: head,
   origin_main: originMain,
   marketing_version: '2.117907.0',
-  build_number: '22',
+  build_number: '23',
   changed_files: worktreeFiles,
-  runtime_source_changed: false,
+  runtime_source_changed: true,
   package_json_changed: false,
   package_lock_changed: false,
   capacitor_config_changed: false,
   base44_changed: false,
   archive_created: false,
   app_store_upload_performed: false,
-  classification: 'native_startup_hotfix_metadata_pr_ready',
+  classification: 'native_startup_hotfix_build23_replacement_ready',
 }, null, 2));
