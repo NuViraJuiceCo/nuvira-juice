@@ -127,6 +127,7 @@
 .nuvira-admin-header {
   background:
     linear-gradient(135deg, rgba(6, 42, 32, 0.98) 0%, rgba(11, 61, 46, 0.98) 42%, rgba(29, 140, 53, 0.92) 100%);
+  padding-top: max(0.75rem, calc(env(safe-area-inset-top) + 0.75rem));
 }
 .nuvira-brand-ring {
   border-color: rgba(61, 184, 74, 0.32);

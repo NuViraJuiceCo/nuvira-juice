@@ -9,15 +9,14 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { Button } from '@/components/ui/button';
 
 // Inner form — must be inside <Elements>
 function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus, confirmLabel }) {
   const stripe   = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
+  const [expressReady, setExpressReady] = useState(false);
   const [expressAvailable, setExpressAvailable] = useState(false);
-  const [expressMounted, setExpressMounted] = useState(false);
 
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
   // ExpressCheckoutElement calls this after the user authorizes in the wallet sheet.
@@ -86,31 +85,36 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
 
   return (
     <div className="space-y-4">
-      {/* Express Checkout — Apple Pay / Google Pay — always rendered, never hidden */}
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
-        <div style={{ minHeight: '48px' }}>
-          <ExpressCheckoutElement
-            onConfirm={handleExpressConfirm}
-            onReady={({ availablePaymentMethods }) => {
-              const methods = availablePaymentMethods || {};
-              const hasExpress = Object.values(methods).some(Boolean);
-              setExpressAvailable(hasExpress);
-              setExpressMounted(true);
-              if (onWalletStatus) onWalletStatus({ mounted: true, methods });
-            }}
-            onLoadError={(err) => {
-              console.error('[ExpressCheckout] onLoadError:', err);
-              if (onWalletStatus) onWalletStatus({ mounted: false, methods: {}, error: err?.message });
-            }}
-            options={{
-              buttonType: { applePay: 'buy', googlePay: 'buy' },
-              layout: { maxColumns: 1, maxRows: 3, overflow: 'auto' },
-              wallets: { applePay: 'always', googlePay: 'always' },
-            }}
-          />
+      {/* Express Checkout — Apple Pay / Google Pay. Collapse the section if Stripe reports no wallet methods. */}
+      {(!expressReady || expressAvailable) && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
+          <div style={{ minHeight: '48px' }}>
+            <ExpressCheckoutElement
+              onConfirm={handleExpressConfirm}
+              onReady={({ availablePaymentMethods }) => {
+                const methods = availablePaymentMethods || {};
+                const hasExpress = Object.values(methods).some(Boolean);
+                setExpressReady(true);
+                setExpressAvailable(hasExpress);
+                if (onWalletStatus) onWalletStatus({ mounted: true, ready: true, available: hasExpress, methods });
+              }}
+              onLoadError={(err) => {
+                const errorMessage = err?.error?.message || 'load_error';
+                console.error('[ExpressCheckout] onLoadError:', err);
+                setExpressReady(true);
+                setExpressAvailable(false);
+                if (onWalletStatus) onWalletStatus({ mounted: false, ready: true, available: false, methods: {}, error: errorMessage });
+              }}
+              options={{
+                buttonType: { applePay: 'buy', googlePay: 'buy' },
+                layout: { maxColumns: 1, maxRows: 3, overflow: 'auto' },
+                paymentMethods: { applePay: 'always', googlePay: 'always', link: 'auto' },
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Divider — only shown when express wallets are available */}
       {expressAvailable && (
@@ -150,13 +154,13 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
           </div>
         )}
 
-        <Button
+        <button
           type="submit"
           disabled={!stripe || isSubmitting}
-          className="w-full h-12 rounded-xl font-semibold text-sm"
+          className="w-full h-12 rounded-xl font-semibold text-sm inline-flex items-center justify-center bg-primary text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
         >
           {isSubmitting ? 'Processing…' : (confirmLabel || `Pay $${total.toFixed(2)}`)}
-        </Button>
+        </button>
 
         <p className="text-center text-[10px] text-muted-foreground">
           {expressAvailable
@@ -194,6 +198,7 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
   // Early return AFTER all hooks
   if (!clientSecret || !stripePromise) return null;
 
+  /** @type {import('@stripe/stripe-js').Appearance} */
   const appearance = {
     theme: 'stripe',
     variables: {

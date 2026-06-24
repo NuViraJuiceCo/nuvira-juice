@@ -21,6 +21,7 @@ const harnesses = [
   'scripts/migration/run-g49a-checkout-processing-error-boundary-tests.mjs',
   'scripts/migration/run-g47f-patch1-config2-public-key-delivery-tests.mjs',
   'scripts/migration/run-g47f-patch1-side-effect-free-apple-pay-mount-tests.mjs',
+  'scripts/migration/run-g51a-native-followup-fixes-tests.mjs',
   'scripts/migration/run-g47b-customer-checkout-order-chain-parity-tests.mjs',
   'scripts/migration/run-g43b-customer-order-history-limited-native-first-tests.mjs',
   'scripts/migration/run-g43c-customer-order-tracker-limited-native-first-tests.mjs',
