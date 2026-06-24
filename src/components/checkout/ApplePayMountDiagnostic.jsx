@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, ExpressCheckoutElement } from '@stripe/react-stripe-js';
 import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 
 export const APPLE_PAY_MOUNT_DIAGNOSTIC_QUERY = 'apple_pay_mount_diagnostic';
@@ -61,8 +60,8 @@ function DiagnosticExpressCheckout({ onWalletStatus }) {
     }));
   };
 
-  const handleReady = ({ availablePaymentMethods } = {}) => {
-    const methods = availablePaymentMethods || {};
+  const handleReady = (event) => {
+    const methods = event?.availablePaymentMethods || {};
     setReady(true);
     onWalletStatus?.({
       express_checkout_mounted: true,
@@ -75,7 +74,8 @@ function DiagnosticExpressCheckout({ onWalletStatus }) {
     });
   };
 
-  const handleLoadError = (error) => {
+  const handleLoadError = (event) => {
+    const errorMessage = event?.error?.message || 'load_error';
     setReady(false);
     setMessage('Express Checkout diagnostic failed to load.');
     onWalletStatus?.({
@@ -85,7 +85,7 @@ function DiagnosticExpressCheckout({ onWalletStatus }) {
       google_pay_available: false,
       link_available: false,
       diagnostic_mode_active: true,
-      mount_error: error?.message || 'load_error',
+      mount_error: errorMessage,
       payment_submitted: false,
     });
   };
@@ -104,7 +104,7 @@ function DiagnosticExpressCheckout({ onWalletStatus }) {
             options={{
               buttonType: { applePay: 'buy', googlePay: 'buy' },
               layout: { maxColumns: 1, maxRows: 3, overflow: 'auto' },
-              wallets: { applePay: 'always', googlePay: 'always' },
+              paymentMethods: { applePay: 'always', googlePay: 'always', link: 'auto' },
             }}
           />
         </div>
@@ -120,7 +120,7 @@ function DiagnosticExpressCheckout({ onWalletStatus }) {
 export default function ApplePayMountDiagnostic({ isAuthLoading = false, isAuthorized = false }) {
   const [publicConfig, setPublicConfig] = useState({ status: 'idle', publishableKey: '', error: null });
   const stripePromise = useMemo(() => (isLivePublishableKey(publicConfig.publishableKey) ? loadStripe(publicConfig.publishableKey) : null), [publicConfig.publishableKey]);
-  const [walletStatus, setWalletStatus] = useState({ diagnostic_mode_active: true });
+  const [walletStatus, setWalletStatus] = useState(/** @type {Record<string, any>} */ ({ diagnostic_mode_active: true }));
 
   useEffect(() => {
     if (isAuthLoading || !isAuthorized) return undefined;
@@ -168,9 +168,9 @@ export default function ApplePayMountDiagnostic({ isAuthLoading = false, isAutho
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Admin diagnostic</p>
           <h1 className="mt-2 text-xl font-bold">Access restricted</h1>
           <p className="mt-2 text-sm text-slate-600">This Apple Pay mount diagnostic is restricted to owner/admin accounts and is not available to customer checkout sessions.</p>
-          <Button type="button" variant="outline" className="mt-4" onClick={() => { window.location.href = '/checkout'; }}>
+          <button type="button" className="mt-4 inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 shadow-sm" onClick={() => { window.location.href = '/checkout'; }}>
             Return to checkout
-          </Button>
+          </button>
         </div>
       </div>
     );
@@ -205,6 +205,7 @@ export default function ApplePayMountDiagnostic({ isAuthLoading = false, isAutho
     );
   }
 
+  /** @type {import('@stripe/stripe-js').Appearance} */
   const appearance = {
     theme: 'stripe',
     variables: {

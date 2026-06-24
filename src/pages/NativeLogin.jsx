@@ -20,7 +20,7 @@ import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
-const ENABLE_PROVIDER_BUTTONS = import.meta.env.VITE_ENABLE_AUTH_PROVIDER_BUTTONS !== 'false';
+const ENABLE_PROVIDER_BUTTONS = import.meta.env.VITE_ENABLE_AUTH_PROVIDER_BUTTONS === 'true';
 const NATIVE_LOGIN_AUTH_TIMEOUT_MS = 10000;
 
 function normalizeReturnRoute(value) {
@@ -127,7 +127,7 @@ export default function NativeLogin() {
     setFormError('');
 
     if (!ENABLE_PROVIDER_BUTTONS) {
-      const message = 'Apple and Google sign-in are being finalized. Email sign-in is the reliable active path in this build.';
+      const message = 'Apple and Google sign-in are paused in the app so sign-in stays in-app. Email sign-in is the reliable active path in this build.';
       setStatusText(message);
       toast.info(message);
       return;
@@ -347,7 +347,7 @@ export default function NativeLogin() {
 
           {!ENABLE_PROVIDER_BUTTONS && (
             <p className="mb-4 rounded-2xl border border-nuvira bg-nuvira-gradient-soft px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-              Apple and Google sign-in are visible here, but kept in safe mode until the native redirect domain is connected. Email sign-in is active now.
+              Apple and Google sign-in are visible here, but kept in safe mode so sign-in stays inside the app. Email sign-in is active now.
             </p>
           )}
 

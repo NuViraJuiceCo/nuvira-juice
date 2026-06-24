@@ -34,6 +34,7 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [expressReady, setExpressReady] = useState(false);
   const [expressAvailable, setExpressAvailable] = useState(false);
 
   const cardElementStyle = {
@@ -112,24 +113,31 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
       </div>
 
       {/* Express Checkout */}
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
-        <div style={{ minHeight: '48px' }}>
-          <ExpressCheckoutElement
-            onConfirm={handleExpressConfirm}
-            onReady={({ availablePaymentMethods }) => {
-              const methods = availablePaymentMethods || {};
-              setExpressAvailable(Object.values(methods).some(Boolean));
-            }}
-            onLoadError={(err) => console.error('[SubPE Express] error:', err)}
-            options={{
-              buttonType: { applePay: 'subscribe', googlePay: 'subscribe' },
-              layout: { maxColumns: 1, maxRows: 3, overflow: 'auto' },
-              wallets: { applePay: 'always', googlePay: 'always' },
-            }}
-          />
+      {(!expressReady || expressAvailable) && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
+          <div style={{ minHeight: '48px' }}>
+            <ExpressCheckoutElement
+              onConfirm={handleExpressConfirm}
+              onReady={({ availablePaymentMethods }) => {
+                const methods = availablePaymentMethods || {};
+                setExpressReady(true);
+                setExpressAvailable(Object.values(methods).some(Boolean));
+              }}
+              onLoadError={(err) => {
+                console.error('[SubPE Express] error:', err);
+                setExpressReady(true);
+                setExpressAvailable(false);
+              }}
+              options={{
+                buttonType: { applePay: 'subscribe', googlePay: 'subscribe' },
+                layout: { maxColumns: 1, maxRows: 3, overflow: 'auto' },
+                paymentMethods: { applePay: 'always', googlePay: 'always', link: 'auto' },
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {expressAvailable && (
         <div className="flex items-center gap-3 my-1">

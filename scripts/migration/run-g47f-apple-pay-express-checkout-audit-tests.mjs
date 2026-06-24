@@ -123,14 +123,17 @@ if (!cspConfigured) classify('apple_pay_csp_or_origin_unverified');
 assert.match(source.embeddedPayment, /minHeight\s*:\s*['"]48px['"]/, 'Express Checkout container must have nonzero min height');
 evidence.ui_layout.express_container_min_height_px = 48;
 evidence.ui_layout.zero_height_container_detected = false;
-assert.doesNotMatch(source.embeddedPayment, /ExpressCheckoutElement[\s\S]{0,250}className=['"][^'"]*hidden/, 'Express Checkout must not be locally hidden');
+assert.doesNotMatch(source.embeddedPayment, /ExpressCheckoutElement[\s\S]{0,250}className=['"][^'"]*hidden/, 'Express Checkout must not be locally hidden while evaluating wallet readiness');
 evidence.ui_layout.hidden_by_local_class = false;
 
-// Current Stripe docs use paymentMethods for always-show wallet behavior. The source uses wallets.
-if (/wallets\s*:\s*\{\s*applePay\s*:\s*['"]always['"]/.test(source.embeddedPayment) && !/paymentMethods\s*:\s*\{\s*applePay\s*:\s*['"]always['"]/.test(source.embeddedPayment)) {
-  classify('apple_pay_express_checkout_option_contract_mismatch_risk');
-  warn('source_uses_wallets_option_where_current_stripe_docs_describe_paymentMethods');
-}
+// Current Stripe docs and installed types prefer paymentMethods for wallet behavior.
+assert.match(
+  source.embeddedPayment,
+  /paymentMethods\s*:\s*\{[\s\S]*applePay\s*:\s*['"]always['"][\s\S]*googlePay\s*:\s*['"]always['"]/,
+  'Express Checkout must use paymentMethods.applePay/googlePay for wallet behavior'
+);
+assert.doesNotMatch(source.embeddedPayment, /wallets\s*:\s*\{[\s\S]*applePay/, 'Deprecated wallets.applePay option must not be used');
+evidence.integration.express_checkout_uses_current_payment_methods_option = true;
 
 // PaymentIntent and Order creation boundary: do not test live mount by clicking through without approval.
 assert.match(source.createPaymentIntent, /stripe\.paymentIntents\.create\(/, 'createPaymentIntent creates a PaymentIntent');
