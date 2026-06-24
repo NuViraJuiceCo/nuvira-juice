@@ -15,6 +15,9 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		8E1A4B1D2D7C4AF49D64E501 /* AppBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1A4B1C2D7C4AF49D64E501 /* AppBridgeViewController.swift */; };
+		8E1A4B1F2D7C4AF49D64E501 /* NativeApplePayPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1A4B1E2D7C4AF49D64E501 /* NativeApplePayPlugin.swift */; };
+		8E1A4B222D7C4AF49D64E501 /* StripeApplePay in Frameworks */ = {isa = PBXBuildFile; productRef = 8E1A4B212D7C4AF49D64E501 /* StripeApplePay */; };
 		C5A8D1022DE6823400123450 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C5A8D1012DE6823400123450 /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
@@ -29,6 +32,8 @@
 		504EC3191FED79650016851F /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		8E1A4B1C2D7C4AF49D64E501 /* AppBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBridgeViewController.swift; sourceTree = "<group>"; };
+		8E1A4B1E2D7C4AF49D64E501 /* NativeApplePayPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeApplePayPlugin.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		C5A8D1012DE6823400123450 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -39,6 +44,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+				8E1A4B222D7C4AF49D64E501 /* StripeApplePay in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -67,6 +73,8 @@
 			children = (
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				8E1A4B1C2D7C4AF49D64E501 /* AppBridgeViewController.swift */,
+				8E1A4B1E2D7C4AF49D64E501 /* NativeApplePayPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -97,6 +105,7 @@
 			name = App;
 			packageProductDependencies = (
 				4D22ABE82AF431CB00220026 /* CapApp-SPM */,
+				8E1A4B212D7C4AF49D64E501 /* StripeApplePay */,
 			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
@@ -129,6 +138,7 @@
 			mainGroup = 504EC2FB1FED79650016851F;
 			packageReferences = (
 				D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */,
+				8E1A4B202D7C4AF49D64E501 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */,
 			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
@@ -162,6 +172,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				8E1A4B1D2D7C4AF49D64E501 /* AppBridgeViewController.swift in Sources */,
+				8E1A4B1F2D7C4AF49D64E501 /* NativeApplePayPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -302,9 +314,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				APS_ENVIRONMENT = development;
+				APPLE_PAY_MERCHANT_ID = merchant.com.nuvirajuice;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-					CURRENT_PROJECT_VERSION = 25;
+					CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = JPFWU38MTS;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -312,7 +325,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-					MARKETING_VERSION = 2.117909.0;
+					MARKETING_VERSION = 2.117910.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.base69d48d0c39891f7945481152.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -327,9 +340,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				APS_ENVIRONMENT = production;
+				APPLE_PAY_MERCHANT_ID = merchant.com.nuvirajuice;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-					CURRENT_PROJECT_VERSION = 25;
+					CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = JPFWU38MTS;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -337,7 +351,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-					MARKETING_VERSION = 2.117909.0;
+					MARKETING_VERSION = 2.117910.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.base69d48d0c39891f7945481152.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -376,11 +390,27 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		8E1A4B202D7C4AF49D64E501 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stripe/stripe-ios-spm";
+			requirement = {
+				kind = exactVersion;
+				version = 26.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		4D22ABE82AF431CB00220026 /* CapApp-SPM */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */;
 			productName = "CapApp-SPM";
+		};
+		8E1A4B212D7C4AF49D64E501 /* StripeApplePay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8E1A4B202D7C4AF49D64E501 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */;
+			productName = StripeApplePay;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

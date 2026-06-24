@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { loadStripe } from '@stripe/stripe-js';
+import { confirmNativeApplePayPayment, getNativeApplePayAvailability, isNativeApplePayPlatform, paymentIntentIdFromClientSecret } from '@/lib/nativeApplePay';
 import {
   Elements,
   CardNumberElement,
@@ -12,12 +13,44 @@ import {
 } from '@stripe/react-stripe-js';
 
 // Inner form — must be inside <Elements>
-function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus, confirmLabel, showWalletDiagnostics }) {
+function PaymentForm({ total, clientSecret, publishableKey, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus, confirmLabel, showWalletDiagnostics }) {
   const stripe   = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
   const [expressReady, setExpressReady] = useState(false);
   const [expressAvailable, setExpressAvailable] = useState(false);
+  const [nativeApplePayStatus, setNativeApplePayStatus] = useState({
+    ready: false,
+    available: false,
+    reason: '',
+    deviceSupportsApplePay: false,
+    canMakePayments: false,
+    canMakeCardPayments: false,
+    merchantIdentifierConfigured: false,
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!isNativeApplePayPlatform()) {
+      setNativeApplePayStatus({
+        ready: true,
+        available: false,
+        reason: 'not_ios_native',
+        deviceSupportsApplePay: false,
+        canMakePayments: false,
+        canMakeCardPayments: false,
+        merchantIdentifierConfigured: false,
+      });
+      return () => { isMounted = false; };
+    }
+
+    getNativeApplePayAvailability().then((status) => {
+      if (!isMounted) return;
+      setNativeApplePayStatus({ ready: true, ...status });
+    });
+
+    return () => { isMounted = false; };
+  }, []);
 
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
   // ExpressCheckoutElement calls this after the user authorizes in the wallet sheet.
@@ -72,6 +105,36 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
     }
   };
 
+  const handleNativeApplePay = async () => {
+    setIsSubmitting(true);
+    setErrorMsg('');
+
+    try {
+      const result = await confirmNativeApplePayPayment({
+        clientSecret,
+        publishableKey,
+        total,
+      });
+
+      const resolvedPaymentIntentId = result?.paymentIntentId || paymentIntentIdFromClientSecret(clientSecret);
+      if (result?.status === 'success' && resolvedPaymentIntentId) {
+        onSuccess(resolvedPaymentIntentId);
+        return;
+      }
+
+      throw new Error('Apple Pay did not complete. Please try again.');
+    } catch (error) {
+      if (error?.code === 'USER_CANCELED') {
+        setErrorMsg('');
+      } else {
+        const message = error?.message || 'Apple Pay failed. Please try again.';
+        setErrorMsg(message);
+        onError(message);
+      }
+      setIsSubmitting(false);
+    }
+  };
+
   const cardElementStyle = {
     style: {
       base: {
@@ -85,9 +148,24 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
   };
 
   const formatDiagnosticBool = (value) => (value ? 'yes' : 'no');
+  const formatDiagnosticText = (value) => String(value ?? 'unknown');
 
   return (
     <div className="space-y-4">
+      {nativeApplePayStatus.available && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Apple Pay</p>
+          <button
+            type="button"
+            onClick={handleNativeApplePay}
+            disabled={isSubmitting}
+            className="w-full h-12 rounded-xl bg-black text-white font-semibold text-sm inline-flex items-center justify-center shadow disabled:pointer-events-none disabled:opacity-50"
+          >
+            {isSubmitting ? 'Opening Apple Pay…' : `Pay $${total.toFixed(2)} with Apple Pay`}
+          </button>
+        </div>
+      )}
+
       {/* Express Checkout — Apple Pay / Google Pay. Collapse the section if Stripe reports no wallet methods. */}
       {(!expressReady || expressAvailable) && (
         <div>
@@ -138,6 +216,18 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
             <span>{formatDiagnosticBool(false)}</span>
             <span>link</span>
             <span>{formatDiagnosticBool(false)}</span>
+            <span>native_apple_pay</span>
+            <span>{nativeApplePayStatus.ready ? formatDiagnosticBool(nativeApplePayStatus.available) : 'checking'}</span>
+            <span>native_reason</span>
+            <span>{formatDiagnosticText(nativeApplePayStatus.reason)}</span>
+            <span>native_device</span>
+            <span>{formatDiagnosticBool(nativeApplePayStatus.deviceSupportsApplePay)}</span>
+            <span>native_wallet</span>
+            <span>{formatDiagnosticBool(nativeApplePayStatus.canMakePayments)}</span>
+            <span>native_card</span>
+            <span>{formatDiagnosticBool(nativeApplePayStatus.canMakeCardPayments)}</span>
+            <span>native_merchant</span>
+            <span>{formatDiagnosticBool(nativeApplePayStatus.merchantIdentifierConfigured)}</span>
           </div>
           <p className="mt-2 text-amber-900/80">Card checkout remains active. Verify Stripe domain/mode and native WebView eligibility before releasing Apple Pay messaging.</p>
         </div>
@@ -181,8 +271,8 @@ function PaymentForm({ total, clientSecret, onSuccess, onError, isSubmitting, se
         </button>
 
         <p className="text-center text-[10px] text-muted-foreground">
-          {expressAvailable
-            ? 'Apple Pay · Google Pay · Card — Secured by Stripe'
+          {nativeApplePayStatus.available || expressAvailable
+            ? 'Apple Pay · Card — Secured by Stripe'
             : 'Card — Secured by Stripe'}
         </p>
         <p className="text-center text-[10px] text-muted-foreground opacity-60">
@@ -259,6 +349,7 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
         <PaymentForm
           total={total}
           clientSecret={clientSecret}
+          publishableKey={publishableKey}
           onSuccess={onSuccess}
           onError={onError}
           isSubmitting={isSubmitting}

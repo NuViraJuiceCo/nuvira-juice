@@ -20,6 +20,8 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>NuViraApplePayMerchantIdentifier</key>
+	<string>$(APPLE_PAY_MERCHANT_ID)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
