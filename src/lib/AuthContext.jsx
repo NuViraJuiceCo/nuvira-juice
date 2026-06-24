@@ -106,27 +106,42 @@ export const AuthProvider = ({ children }) => {
     let listenerHandle = null;
     let isMounted = true;
 
-    capacitorApp.addListener('appUrlOpen', async (event) => {
-      const callbackResult = consumeNativeAuthCallbackUrl(event?.url);
-      if (!callbackResult) return;
-
-      try {
-        const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
-        if (currentUser?.email) {
-          replaceInAppRoute(callbackResult.returnTo || '/');
-        }
-      } catch (error) {
-        console.warn('[AuthContext] Native auth callback failed', error?.message || 'unknown_error');
-      }
-    }).then((handle) => {
+    const registerListenerHandle = (handle) => {
+      if (!handle?.remove) return;
       if (!isMounted) {
         handle.remove();
         return;
       }
       listenerHandle = handle;
-    }).catch((error) => {
+    };
+
+    const handleRegistrationError = (error) => {
       console.warn('[AuthContext] Native URL listener unavailable', error?.message || 'unknown_error');
-    });
+    };
+
+    try {
+      const registration = capacitorApp.addListener('appUrlOpen', async (event) => {
+        const callbackResult = consumeNativeAuthCallbackUrl(event?.url);
+        if (!callbackResult) return;
+
+        try {
+          const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
+          if (currentUser?.email) {
+            replaceInAppRoute(callbackResult.returnTo || '/');
+          }
+        } catch (error) {
+          console.warn('[AuthContext] Native auth callback failed', error?.message || 'unknown_error');
+        }
+      });
+
+      if (registration && typeof registration.then === 'function') {
+        registration.then(registerListenerHandle).catch(handleRegistrationError);
+      } else {
+        registerListenerHandle(registration);
+      }
+    } catch (error) {
+      handleRegistrationError(error);
+    }
 
     return () => {
       isMounted = false;

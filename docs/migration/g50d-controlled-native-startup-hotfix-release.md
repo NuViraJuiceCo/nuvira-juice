@@ -11,6 +11,7 @@ head_matches_origin_main_at_worktree_create=true
 canonical_release_source_ci_gate_live=true
 dependency_release_risk_gate_passed=true
 g50d_native_release_planning_allowed=true
+replacement_release_reason=build_22_testflight_startup_recovery_regression
 ```
 
 G50D starts from the exact reviewed main commit that merged PR #570. The existing website checkout remains the fallback until the new native build passes TestFlight smoke and is manually released.
@@ -24,15 +25,16 @@ current_main_marketing_version=2.117906.0
 current_main_build_number=21
 app_store_current_version=2.117906.0
 app_store_current_build=21
-highest_processed_build_number=21
-latest_testflight_build=not_confirmed_in_local_shell
+highest_processed_build_number=22
+latest_testflight_build=2.117907.0_22_do_not_submit
+failed_testflight_build_number=22
 bundle_identifier=com.base69d48d0c39891f7945481152.app
 signing_release_configuration=Release
 proposed_marketing_version=2.117907.0
-proposed_build_number=22
+proposed_build_number=23
 ```
 
-Apple's public lookup endpoint confirmed `app_store_current_version=2.117906.0` on 2026-06-23. The public lookup endpoint does not expose App Store build number, highest processed build, or TestFlight build state. The build values above are based on the current main release train and prior G49C version-train evidence. Before archive or upload, App Store Connect must confirm that no processed build exceeds `21`; otherwise this release must stop and bump again before archiving.
+Apple's public lookup endpoint confirmed `app_store_current_version=2.117906.0` on 2026-06-23. Build `2.117907.0 (22)` was uploaded to TestFlight, processed, installed on a real iPhone, and held because startup landed on App Recovery. Build `23` is the replacement build for the same marketing version. Before archive or upload, App Store Connect must confirm that build `23` does not already exist; otherwise this release must stop and bump again before archiving.
 
 No signing identities, team ids, API keys, certificates, or provisioning profiles are recorded in this document.
 
@@ -58,9 +60,10 @@ Explicitly out of scope:
 
 ## Included runtime fixes
 
-G50D does not add runtime behavior. It prepares a native release of already merged main that includes:
+G50D build 23 adds one focused runtime repair on top of the already merged startup hotfix release metadata:
 
 - G50B startup hotfix from current main: stable recovery screen, `Try Again`, `Return Home`, `Reset Sign-In`, `reset_sign_in`, bounded hosted logout timeout, no render-time `/account-setup` hard redirect, no automatic storage-clear/reload loop.
+- Capacitor appUrlOpen listener compatibility repair: supports both synchronous listener handles and Promise-returning listener registration so native startup cannot crash on `.then is not a function`.
 - G49A checkout processing protection from current main: `PAYMENT_ATTEMPT_STATE_UNKNOWN`, "Still checking your checkout" copy, ambiguous checkout-state handling, and no unsafe client-secret or PaymentIntent logging.
 - G50C release-source and native release gates.
 - G50C-SEC2 lockfile remediation with critical and high dependency vulnerabilities cleared.
@@ -87,7 +90,7 @@ After this metadata PR merges, the manual Native Release Gate must be dispatched
 git_commit=<metadata_merge_commit>
 origin_main_commit=<metadata_merge_commit>
 marketing_version=2.117907.0
-build_number=22
+build_number=23
 critical=0
 high=0
 g50d_triage_required=false
@@ -193,5 +196,5 @@ This metadata phase does not:
 ## Classification
 
 ```text
-native_startup_hotfix_metadata_pr_ready
+native_startup_hotfix_build23_replacement_ready
 ```
