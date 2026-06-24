@@ -53,6 +53,13 @@ test('admin diagnostic distinguishes native Apple Pay from Stripe web Express Ch
   assert.match(source.embeddedPayment, /Stripe reported no eligible wallet buttons/);
 });
 
+test('inline wallet diagnostics are hidden unless an admin explicitly opts in', () => {
+  assert.match(source.checkout, /wallet_diagnostics/);
+  assert.match(source.checkout, /new URLSearchParams\(window\.location\.search\)\.get\(['"]wallet_diagnostics['"]\) === ['"]1['"]/);
+  assert.match(source.checkout, /showWalletDiagnostics=\{\(user\?\.role === ['"]admin['"] \|\| user\?\.role === ['"]owner['"]\) && typeof window !== ['"]undefined['"] && new URLSearchParams\(window\.location\.search\)\.get\(['"]wallet_diagnostics['"]\) === ['"]1['"]\}/);
+  assert.doesNotMatch(source.checkout, /showWalletDiagnostics=\{user\?\.role === ['"]admin['"] \|\| user\?\.role === ['"]owner['"]\}/);
+});
+
 test('Swift plugin uses StripeApplePay and existing PaymentIntent client secret', () => {
   assert.match(source.swiftPlugin, /import StripeApplePay/);
   assert.match(source.swiftPlugin, /public class NativeApplePayPlugin: CAPPlugin, CAPBridgedPlugin, ApplePayContextDelegate/);
