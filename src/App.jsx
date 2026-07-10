@@ -51,6 +51,7 @@ import POSOrders from '@/pages/admin/POSOrders';
 import Resources from '@/pages/admin/Resources';
 import ComplianceOps from '@/pages/admin/ComplianceOps';
 import AdminProducts from '@/pages/admin/AdminProducts';
+import EventCatalogSetup from '@/pages/admin/EventCatalogSetup';
 import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
 import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
 import SyncStatus from '@/pages/admin/SyncStatus';
@@ -274,6 +275,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/compliance" element={<Navigate to="/admin/compliance-ops" replace />} />
           <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
           <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
+          <Route path="/admin/event-catalog-setup" element={<ProtectedRoute element={<EventCatalogSetup />} user={user} />} />
           <Route path="/admin/bag-returns" element={<ProtectedRoute element={<BagReturnAdmin />} user={user} />} />
           <Route path="/admin/loyalty-members" element={<ProtectedRoute element={<LoyaltyMembers />} user={user} />} />
           <Route path="/admin/sync-status" element={<ProtectedRoute element={<SyncStatus />} user={user} />} />

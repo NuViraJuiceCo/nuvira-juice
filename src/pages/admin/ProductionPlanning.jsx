@@ -25,7 +25,7 @@ const planningReadinessItems = [
   {
     label: 'Product demand',
     status: 'ready',
-    detail: 'Date groups show Hub batches plus accepted native May 30 order mirror demand.',
+    detail: 'Date groups show Hub batches plus accepted native order mirror demand and event stock plans.',
   },
   {
     label: 'Ingredient demand',
@@ -189,7 +189,7 @@ function StatusBadge({ status }) {
 
 function sourceLabel(source) {
   if (source === 'customer_app_native') return 'Native Customer App';
-  if (source === 'may30_pos_event_stock_plan') return 'May 30 POS Event Stock';
+  if (source === 'may30_pos_event_stock_plan') return 'POS Event Stock';
   if (source === 'mixed_native_and_event_plan') return 'Native + POS Event Stock';
   return 'Hub';
 }
@@ -655,10 +655,10 @@ export default function ProductionPlanning() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Production Planning view</p>
-            <p className="text-[10px] text-muted-foreground">Hub batch and ingredient coverage plus native May 30 order mirrors. Make-to-order shortfalls are procurement needs, not inventory deduction approval.</p>
+            <p className="text-[10px] text-muted-foreground">Hub batch and ingredient coverage plus native order mirrors. Make-to-order shortfalls are procurement needs, not inventory deduction approval.</p>
             {Number(nativeOverlay.order_count || 0) > 0 && (
               <p className="text-[10px] text-emerald-700 mt-1">
-                Native May 30 overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · read-only
+                Native overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · read-only
               </p>
             )}
             {eventStockPlan.included && (
@@ -735,7 +735,7 @@ export default function ProductionPlanning() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Date-Grouped Production Summary</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Grouped production demand from Hub batches and accepted native May 30 order mirrors</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Grouped production demand from Hub batches, native order mirrors, and event stock plans</p>
               </div>
               {dateGroups.length > 0 ? (
                 <div className="space-y-3">
