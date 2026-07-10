@@ -510,6 +510,8 @@ Deno.serve(async (req) => {
           price:      i.price,
           quantity:   i.quantity,
           image_url:  i.image_url || null,
+          category:   i.category || null,
+          size:       i.size || null,
         })),
         subtotal,
         delivery_fee:             effectiveDeliveryFee,

@@ -31,6 +31,12 @@
           },
           "image_url": {
             "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "size": {
+            "type": "string"
           }
         }
       }
