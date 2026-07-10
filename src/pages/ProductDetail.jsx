@@ -78,20 +78,6 @@ export default function ProductDetail() {
     enabled: !!product?.category,
   });
 
-  const related = relatedProducts.filter(p => p.id !== product?.id).slice(0, 4);
-  const isMerchProduct = isMerchLikeProduct(product);
-  const seoTitle = isMerchProduct
-    ? `${product.title} — NuVira Merch | Wentzville, MO`
-    : `${product.title} — Cold-Pressed Juice | Wentzville, MO`;
-  const seoDescription = product.short_description || product.description || (
-    isMerchProduct
-      ? `${product.title} from NuVira Juice Co.`
-      : `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`
-  );
-  const seoKeywords = isMerchProduct
-    ? `${product.title}, NuVira merch, NuVira Juice Co., ${product.category} Wentzville MO`
-    : `${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`;
-
   const handleAddToCart = () => {
     if (!product) return;
     const extra = {};
@@ -135,6 +121,20 @@ export default function ProductDetail() {
       </div>
     );
   }
+
+  const related = relatedProducts.filter(p => p.id !== product.id).slice(0, 4);
+  const isMerchProduct = isMerchLikeProduct(product);
+  const seoTitle = isMerchProduct
+    ? `${product.title} — NuVira Merch | Wentzville, MO`
+    : `${product.title} — Cold-Pressed Juice | Wentzville, MO`;
+  const seoDescription = product.short_description || product.description || (
+    isMerchProduct
+      ? `${product.title} from NuVira Juice Co.`
+      : `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`
+  );
+  const seoKeywords = isMerchProduct
+    ? `${product.title}, NuVira merch, NuVira Juice Co., ${product.category} Wentzville MO`
+    : `${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`;
 
   const productStructuredData = {
     "@context": "https://schema.org",

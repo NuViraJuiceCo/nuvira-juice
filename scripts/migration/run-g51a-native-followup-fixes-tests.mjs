@@ -14,6 +14,7 @@ const diagnostic = read('src/components/checkout/ApplePayMountDiagnostic.jsx');
 const indexCss = read('src/index.css');
 const nativeLogin = read('src/pages/NativeLogin.jsx');
 const createPaymentIntent = read('base44/functions/createPaymentIntent/entry.ts');
+const productDetail = read('src/pages/ProductDetail.jsx');
 
 function assertCurrentExpressCheckoutOptions(source, label) {
   assert(/<ExpressCheckoutElement\b/.test(source), `${label} must render ExpressCheckoutElement`);
@@ -40,6 +41,13 @@ assert(!/VITE_ENABLE_AUTH_PROVIDER_BUTTONS !== ['"]false['"]/.test(nativeLogin),
 assert(/payment_method_types\s*:\s*\[\s*['"]card['"]\s*\]/.test(createPaymentIntent), 'Checkout PaymentIntent must stay card-backed for wallet/card safety');
 assert(!/automatic_payment_methods\s*:/.test(createPaymentIntent), 'Checkout PaymentIntent must not enable automatic payment methods');
 
+const loadingGuardIndex = productDetail.indexOf('if (isLoading)');
+const notFoundGuardIndex = productDetail.indexOf('if (!product)');
+const productDerivedMetadataIndex = productDetail.indexOf('const seoTitle');
+assert(loadingGuardIndex >= 0 && loadingGuardIndex < productDerivedMetadataIndex, 'Product detail must not read product fields before the loading guard');
+assert(notFoundGuardIndex >= 0 && notFoundGuardIndex < productDerivedMetadataIndex, 'Product detail must not read product fields before the not-found guard');
+assert(/!\s*isMerchProduct\s*&&\s*\([\s\S]*<HealthAdvisory variant=['"]expanded['"] \/>/.test(productDetail), 'Merch product detail pages must not show the Before You Drink advisory');
+
 console.log(JSON.stringify({
   ok: true,
   classification: 'g51a_native_followup_fixes_static_regression_passed',
@@ -48,4 +56,6 @@ console.log(JSON.stringify({
   adminHeaderSafeAreaPatched: true,
   nativeProviderAuthOptInOnly: true,
   backendPaymentMethodContractPreserved: true,
+  productDetailLoadingGuardPreserved: true,
+  merchHealthAdvisoryHidden: true,
 }, null, 2));
