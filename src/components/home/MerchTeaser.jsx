@@ -19,11 +19,11 @@ export default function MerchTeaser() {
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-1">
               <Shirt className="w-4 h-4 text-white/75" />
-              <span className="text-[10px] font-bold text-white/65 uppercase tracking-widest">Coming Soon</span>            </div>
+              <span className="text-[10px] font-bold text-white/65 uppercase tracking-widest">Now Available</span>            </div>
             <p className="font-heading text-lg font-bold text-white">NuVira Merch</p>
-            <p className="text-xs text-white/70 mt-0.5">Gear for the wellness lifestyle.</p>
+            <p className="text-xs text-white/70 mt-0.5">Totes and limited event drops.</p>
           </div>
-          <div className="relative z-10 flex items-center gap-1 text-white/85">            <span className="text-xs font-medium">Preview</span>
+          <div className="relative z-10 flex items-center gap-1 text-white/85">            <span className="text-xs font-medium">Shop</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </div>

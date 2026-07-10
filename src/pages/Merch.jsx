@@ -1,27 +1,78 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Bell } from 'lucide-react';
+import { ArrowLeft, Bell, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { useCart } from '@/lib/cartContext';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
 
+function normalizeProductMerch(item) {
+  return {
+    id: item.id,
+    name: item.title,
+    description: item.short_description || item.description,
+    image_url: item.image_url,
+    price: Number(item.price || 0),
+    sizes: item.size ? [item.size] : [],
+    is_available: item.is_available !== false,
+    product: item,
+  };
+}
+
+function normalizeLegacyMerch(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    image_url: item.image_url,
+    price: Number(item.price || 0),
+    sizes: Array.isArray(item.sizes) ? item.sizes : [],
+    is_available: item.is_available === true,
+    product: {
+      id: item.id,
+      title: item.name,
+      short_description: item.description,
+      description: item.description,
+      image_url: item.image_url,
+      price: Number(item.price || 0),
+      size: Array.isArray(item.sizes) ? item.sizes.join(', ') : undefined,
+      category: 'merch',
+    },
+  };
+}
+
 export default function Merch() {
   const { user } = useAuth();
+  const { addItem } = useCart();
   const [email, setEmail] = useState(user?.email || '');
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const { data: merchItems = [] } = useQuery({
-    queryKey: ['merch'],
+  const { data: productMerchItems = [], isLoading: isProductMerchLoading } = useQuery({
+    queryKey: ['product-merch'],
+    queryFn: () => base44.entities.Product.filter({ category: 'merch', is_available: true }, 'sort_order', 50),
+  });
+
+  const { data: legacyMerchItems = [], isLoading: isLegacyMerchLoading } = useQuery({
+    queryKey: ['legacy-merch'],
     queryFn: () => base44.entities.Merch.filter({}, 'sort_order', 50),
   });
+
+  const merchItems = [
+    ...productMerchItems.map(normalizeProductMerch),
+    ...legacyMerchItems
+      .filter(item => !productMerchItems.some(product => product.id === item.id))
+      .map(normalizeLegacyMerch),
+  ];
+  const isMerchLoading = isProductMerchLoading || isLegacyMerchLoading;
+  const hasAvailableMerch = merchItems.some(item => item.is_available);
 
   const handleNotify = async () => {
     if (!email) return;
@@ -34,6 +85,12 @@ export default function Merch() {
     setSubmitted(true);
     setLoading(false);
     toast.success("You're on the list! We'll notify you when merch drops.");
+  };
+
+  const handleAddMerch = (item) => {
+    if (!item?.is_available) return;
+    addItem(item.product, 1);
+    toast.success(`${item.name} added to cart`);
   };
 
   return (
@@ -53,14 +110,14 @@ export default function Merch() {
         <img src={TRIO_URL} alt="NuVira Merch" className="w-full h-full object-cover object-[center_30%]" />
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/70" />
         <div className="absolute bottom-0 left-0 right-0 p-5">
-          <span className="text-white/70 text-[9px] font-bold uppercase tracking-widest">Coming Soon</span>
+          <span className="text-white/70 text-[9px] font-bold uppercase tracking-widest">{hasAvailableMerch ? 'Available Now' : 'Coming Soon'}</span>
           <h1 className="font-heading text-2xl font-bold text-white mt-0.5">NuVira Merch</h1>
-          <p className="text-white/80 text-xs mt-1">Minimal. Intentional. STL-rooted.</p>
+          <p className="text-white/80 text-xs mt-1">{hasAvailableMerch ? 'Event-ready essentials and limited drops.' : 'Minimal. Intentional. STL-rooted.'}</p>
         </div>
       </div>
 
       {/* Notify CTA */}
-      {merchItems.length === 0 && (
+      {!isMerchLoading && merchItems.length === 0 && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -100,7 +157,13 @@ export default function Merch() {
       {/* Merch Items */}
       <div className="px-4 mt-6">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Shop</p>
-        {merchItems.length === 0 ? (
+        {isMerchLoading ? (
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2].map(i => (
+              <div key={i} className="nuvira-premium-card rounded-2xl aspect-[3/4] animate-pulse" />
+            ))}
+          </div>
+        ) : merchItems.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-8">No items yet</p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -126,11 +189,19 @@ export default function Merch() {
                     <p className="text-[10px] text-muted-foreground mb-2">Sizes: {item.sizes.join(', ')}</p>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-primary">${item.price?.toFixed(2)}</span>
+                    <span className="text-xs font-bold text-primary">${item.price.toFixed(2)}</span>
                     <span className={`text-[9px] px-2 py-0.5 rounded-full font-medium ${item.is_available ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>
                       {item.is_available ? 'Available' : 'Coming Soon'}
                     </span>
                   </div>
+                  <Button
+                    onClick={() => handleAddMerch(item)}
+                    disabled={!item.is_available}
+                    className="mt-3 h-9 w-full rounded-xl text-xs font-semibold nuvira-gradient-button disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
+                    Add
+                  </Button>
                 </div>
               </motion.div>
             ))}

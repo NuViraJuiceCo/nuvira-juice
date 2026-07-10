@@ -15,6 +15,7 @@ const ALL_CATEGORIES = [
   { key: 'juice', label: 'Juices' },
   { key: 'shot', label: 'Wellness Shots' },
   { key: 'bundle', label: 'Bundles' },
+  { key: 'merch', label: 'Merch' },
   { key: 'wellness_pack', label: 'Wellness' },
   { key: 'seasonal', label: 'Seasonal' },
 ];
@@ -120,7 +121,7 @@ export default function Shop() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search juices, bundles..."
+            placeholder="Search juices, bundles, merch..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-10 rounded-xl bg-nuvira-gradient-soft border border-nuvira text-sm"

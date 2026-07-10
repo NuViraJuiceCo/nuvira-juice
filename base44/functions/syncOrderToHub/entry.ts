@@ -735,6 +735,8 @@ Deno.serve(async (req) => {
         price:      i.price,
         product_id: i.product_id,
         image_url:  i.image_url || null,
+        category:   i.category || null,
+        size:       i.size || null,
       })),
       items:                   order.items,
       subtotal:                order.subtotal,

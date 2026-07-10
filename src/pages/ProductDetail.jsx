@@ -66,6 +66,7 @@ export default function ProductDetail() {
   });
 
   const related = relatedProducts.filter(p => p.id !== product?.id).slice(0, 4);
+  const isMerchProduct = ['merch', 'apparel'].includes(product?.category);
 
   const handleAddToCart = () => {
     if (!product) return;
@@ -218,12 +219,14 @@ export default function ProductDetail() {
             </div>
 
             {/* Certifications */}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
-                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">                  ✓ {cert}
-                </span>
-              ))}
-            </div>
+            {!isMerchProduct && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
+                  <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">                  ✓ {cert}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {/* You might also like */}
             {related.length > 0 && (
@@ -260,10 +263,11 @@ export default function ProductDetail() {
           </div>
         )}
 
-        {/* Health Advisory */}
-        <div className="mt-4">
-          <HealthAdvisory variant="expanded" />
-        </div>
+        {!isMerchProduct && (
+          <div className="mt-4">
+            <HealthAdvisory variant="expanded" />
+          </div>
+        )}
       </div>
 
       {/* Sticky Purchase Bar — fixed above bottom nav */}

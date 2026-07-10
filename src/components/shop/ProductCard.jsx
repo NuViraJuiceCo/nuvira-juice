@@ -22,6 +22,7 @@ function useTapGuard() {
 export default function ProductCard({ product, compact = false }) {
   const { addItem } = useCart();
   const tapGuard = useTapGuard();
+  const fallbackIcon = product.category === 'merch' || product.category === 'apparel' ? '🛍️' : '🍊';
 
   const handleQuickAdd = (e) => {
     e.preventDefault();
@@ -66,7 +67,7 @@ export default function ProductCard({ product, compact = false }) {
                 decoding="async"
               />
             ) : (
-              <div className="w-full h-full bg-secondary/50 flex items-center justify-center text-4xl">🍊</div>
+              <div className="w-full h-full bg-secondary/50 flex items-center justify-center text-4xl">{fallbackIcon}</div>
             )}
             {/* Bottom gradient */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
@@ -110,7 +111,7 @@ export default function ProductCard({ product, compact = false }) {
           {product.image_url ? (
             <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" width="400" height="300" loading="lazy" decoding="async" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-5xl">🍊</div>
+            <div className="w-full h-full flex items-center justify-center text-5xl">{fallbackIcon}</div>
           )}
           {product.is_seasonal && (
             <span className="absolute top-2 left-2 bg-accent text-accent-foreground text-[10px] font-bold px-2 py-0.5 rounded-full">
