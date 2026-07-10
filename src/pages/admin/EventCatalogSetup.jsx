@@ -120,7 +120,8 @@ export default function EventCatalogSetup() {
             <div className="rounded-lg border border-border/50 bg-background p-3">
               <PackageCheck className="h-4 w-4 text-primary" />
               <p className="mt-2 text-xs font-black text-foreground">Large tote</p>
-              <p className="text-[10px] font-semibold text-muted-foreground">$12.00 · merch · POS</p>
+              <p className="text-[10px] font-semibold text-muted-foreground">$12.00 · insulated merch · POS</p>
+              <p className="mt-1 text-[10px] font-semibold text-muted-foreground">13 in W x 15 in H x 9 in D · image included</p>
             </div>
             <div className="rounded-lg border border-border/50 bg-background p-3">
               <PackageCheck className="h-4 w-4 text-primary" />

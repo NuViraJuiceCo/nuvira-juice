@@ -18,14 +18,15 @@ const EVENT_STOCK_PLAN = {
 
 const TOTE_PRODUCT = {
   title: 'Large NuVira Tote Bag',
-  short_description: 'Large reusable NuVira tote.',
-  description: 'Large reusable NuVira tote bag for event days, juice runs, and everyday carry.',
-  wellness_note: 'Reusable carryall for bottles, merch, and daily essentials.',
+  short_description: 'Large insulated NuVira tote with a zippered closure, front pocket, and reinforced handles.',
+  description: 'Large insulated NuVira tote bag for event days, juice runs, groceries, and everyday carry. Features a zippered closure, front pocket, flat-bottom gusset, reinforced handles, and water-resistant non-woven polypropylene. Dimensions: 13 in W x 15 in H x 9 in D.',
+  wellness_note: 'Reusable insulated carryall for bottles, merch, groceries, and daily essentials.',
   category: 'merch',
   price: 12,
-  size: 'Large tote',
+  size: '13 in W x 15 in H x 9 in D',
+  image_url: 'https://nuvirajuice.com/assets/large-nuvira-tote-bag.jpg',
   sort_order: 40,
-  tags: ['merch', 'event', 'tote', 'pos'],
+  tags: ['merch', 'event', 'tote', 'pos', 'insulated', 'reusable', 'zippered'],
 };
 
 const TRIO_PRODUCT = {
@@ -101,6 +102,15 @@ function sanitizeShopifyProduct(product) {
       }))
       : [],
   };
+}
+
+function shopifyProductHasToteImage(product) {
+  const images = Array.isArray(product?.images) ? product.images : [];
+  return images.some(image => {
+    const src = normalizeText(image?.src).toLowerCase();
+    const alt = normalizeText(image?.alt).toLowerCase();
+    return src.includes('large-nuvira-tote-bag') || alt === TOTE_PRODUCT.title.toLowerCase();
+  });
 }
 
 function errorSummary(status, bodyText) {
@@ -291,6 +301,10 @@ async function upsertBase44ToteProduct(base44) {
 
 async function upsertShopifyToteProduct(base44, config, product) {
   const productId = normalizeText(product?.shopify_product_id);
+  const existingShopifyProduct = productId
+    ? await shopifyRest({ ...config, path: `/products/${productId}.json`, method: 'GET' }).then(data => data?.product).catch(() => null)
+    : null;
+  const shouldUploadImage = Boolean(product?.image_url) && !shopifyProductHasToteImage(existingShopifyProduct);
   const payload = {
     product: {
       title: TOTE_PRODUCT.title,
@@ -307,12 +321,12 @@ async function upsertShopifyToteProduct(base44, config, product) {
         {
           price: TOTE_PRODUCT.price.toFixed(2),
           sku: product.id,
-          requires_shipping: false,
+          requires_shipping: true,
           taxable: true,
           inventory_management: null,
         },
       ],
-      images: product?.image_url ? [{ src: product.image_url }] : [],
+      ...(shouldUploadImage ? { images: [{ src: product.image_url, alt: TOTE_PRODUCT.title }] } : {}),
     },
   };
 
