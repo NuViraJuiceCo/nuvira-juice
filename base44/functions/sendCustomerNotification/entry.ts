@@ -16,6 +16,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  *   order_id?: string,              // optional order reference
  *   deep_link?: string,             // optional route e.g. /account/orders
  *   idempotency_key?: string,       // prevents duplicates on retries
+ *   source?: string,                // optional source; notification_campaign enables approved campaign sends
  * }
  */
 
@@ -62,7 +63,12 @@ function customerPushNotificationsEnabled() {
   return Deno.env.get('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS') === 'true';
 }
 
-function customerNotificationSubtypeAllowed(notificationSubtype: string) {
+function notificationCampaignSendsEnabled() {
+  return Deno.env.get('DISABLE_NOTIFICATION_CAMPAIGN_SENDS') !== 'true';
+}
+
+function customerNotificationSubtypeAllowed(notificationSubtype: string, source: string) {
+  if (source === 'notification_campaign' && notificationCampaignSendsEnabled()) return true;
   if (MAY30_DEFAULT_ALLOWED_SUBTYPES.has(notificationSubtype)) return true;
   if (nonConfirmationNotificationsEnabled()) return true;
   return MAY30_DELIVERY_STATUS_SUBTYPES.has(notificationSubtype) && deliveryStatusNotificationsEnabled();
@@ -114,13 +120,14 @@ Deno.serve(async (req) => {
       order_id = null,
       deep_link = null,
       idempotency_key = null,
+      source = '',
     } = body;
 
     if (!customer_email || !title || !message) {
       return Response.json({ error: 'Missing required fields: customer_email, title, message' }, { status: 400 });
     }
 
-    if (!customerNotificationSubtypeAllowed(notification_subtype)) {
+    if (!customerNotificationSubtypeAllowed(notification_subtype, source)) {
       return Response.json({
         success: true,
         skipped: true,
@@ -212,6 +219,7 @@ Deno.serve(async (req) => {
         order_id: order_id || null,
         deep_link: deep_link || '/notifications',
         idempotency_key: idempotency_key || created.id,
+        source,
       })
       : {
         push_attempted: false,
