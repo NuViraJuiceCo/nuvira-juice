@@ -606,8 +606,8 @@ export default function Rewards() {
       {pointsData?.points_history?.length > 0 ? (
         <div className="mx-4 mt-8 mb-4">
           <h2 className="font-heading text-xl font-bold mb-4" style={{ color: 'hsl(var(--foreground))' }}>Recent Activity</h2>
-          <div className="rounded-2xl overflow-hidden divide-y"
-            style={{ background: 'hsl(var(--card))', border: '1.5px solid hsl(var(--border) / 0.5)', divideColor: 'hsl(var(--border) / 0.5)' }}>
+          <div className="rounded-2xl overflow-hidden divide-y divide-border/50"
+            style={{ background: 'hsl(var(--card))', border: '1.5px solid hsl(var(--border) / 0.5)' }}>
             {pointsData.points_history.slice(-6).reverse().map((entry, i) => (
               <div key={i} className="flex items-center justify-between px-4 py-3.5">
                 <div className="flex items-center gap-3">

@@ -14,11 +14,11 @@ export default function May30EventStockPlanPanel({ includedInPlanning = false })
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Store className="h-4 w-4 text-emerald-700" />
-            <h2 className="text-sm font-black text-emerald-950">May 30 POS event stock plan</h2>
-            <AdminStatusPill value="pos_event_stock_plan" label="Total across 2 events" tone="source" size="md" />
+            <h2 className="text-sm font-black text-emerald-950">July 11 POS event stock plan</h2>
+            <AdminStatusPill value="pos_event_stock_plan" label="Event stock" tone="source" size="md" />
             <AdminStatusPill
               value={includedInPlanning ? 'included' : 'watch'}
-              label={includedInPlanning ? 'Included in planning range' : 'Choose May 30 to include'}
+              label={includedInPlanning ? 'Included in planning range' : 'Choose July 11 to include'}
               tone={includedInPlanning ? 'success' : 'warning'}
               size="md"
             />
