@@ -6,7 +6,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Minus, Plus, ShoppingBag, Leaf } from 'lucide-react';
 import HealthAdvisory from '@/components/HealthAdvisory';
-import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -24,6 +23,20 @@ function slugifyProductTitle(value) {
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function normalizeCategory(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isMerchLikeProduct(product) {
+  const category = normalizeCategory(product?.category);
+  const title = normalizeProductLookup(product?.title);
+
+  return (
+    ['merch', 'apparel', 'tote', 'bag', 'accessory', 'accessories'].includes(category) ||
+    /\b(tote|bag|merch|shirt|hoodie|hat)\b/.test(title)
+  );
 }
 
 function productLookupKeys(product) {
@@ -66,7 +79,18 @@ export default function ProductDetail() {
   });
 
   const related = relatedProducts.filter(p => p.id !== product?.id).slice(0, 4);
-  const isMerchProduct = ['merch', 'apparel'].includes(product?.category);
+  const isMerchProduct = isMerchLikeProduct(product);
+  const seoTitle = isMerchProduct
+    ? `${product.title} — NuVira Merch | Wentzville, MO`
+    : `${product.title} — Cold-Pressed Juice | Wentzville, MO`;
+  const seoDescription = product.short_description || product.description || (
+    isMerchProduct
+      ? `${product.title} from NuVira Juice Co.`
+      : `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`
+  );
+  const seoKeywords = isMerchProduct
+    ? `${product.title}, NuVira merch, NuVira Juice Co., ${product.category} Wentzville MO`
+    : `${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`;
 
   const handleAddToCart = () => {
     if (!product) return;
@@ -99,7 +123,14 @@ export default function ProductDetail() {
   if (!product) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <SEO title="Product Not Found" description="This product could not be found." />
+        <SEO
+          title="Product Not Found"
+          description="This product could not be found."
+          image=""
+          keywords=""
+          structuredData={null}
+          noindex
+        />
         <p className="text-muted-foreground">Product not found</p>
       </div>
     );
@@ -109,7 +140,7 @@ export default function ProductDetail() {
     "@context": "https://schema.org",
     "@type": "Product",
     "name": product.title,
-    "description": product.description || product.short_description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co.`,
+    "description": product.description || product.short_description || seoDescription,
     "image": product.image_url || "https://media.base44.com/images/public/69d48d0c39891f7945481152/421b89061_generated_image.png",
     "brand": { "@type": "Brand", "name": "NuVira Juice Co." },
     "offers": {
@@ -154,13 +185,13 @@ export default function ProductDetail() {
   };
 
   return (
-    <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 6.5rem)' }}>
+    <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 11rem)' }}>
       <SEO
-        title={`${product.title} — Cold-Pressed Juice | Wentzville, MO`}
-        description={product.short_description || product.description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`}
+        title={seoTitle}
+        description={seoDescription}
         image={product.image_url}
         type="product"
-        keywords={`${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`}
+        keywords={seoKeywords}
         structuredData={productStructuredData}
       />
       {/* Desktop back button */}
@@ -174,9 +205,17 @@ export default function ProductDetail() {
       <div className="md:flex md:gap-8 md:px-6 md:pb-24 md:items-start">
         {/* Image */}
         <div className="md:w-1/2 md:shrink-0">
-          <div className="relative aspect-square md:aspect-square md:max-h-[60vh] md:rounded-2xl bg-secondary/50 overflow-hidden">
+          <div
+            className={`relative w-full md:aspect-square md:max-h-[60vh] md:rounded-2xl bg-secondary/50 overflow-hidden ${
+              isMerchProduct ? 'h-[44vh] min-h-[260px] max-h-[360px]' : 'aspect-square'
+            }`}
+          >
             {product.image_url ? (
-              <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" />
+              <img
+                src={product.image_url}
+                alt={product.title}
+                className={`w-full h-full ${isMerchProduct ? 'object-contain p-2 md:p-0' : 'object-cover'}`}
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-7xl">🍊</div>
             )}
@@ -196,7 +235,7 @@ export default function ProductDetail() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="px-4 pt-6 md:pt-2 md:px-0"
+            className="px-4 pt-5 md:pt-2 md:px-0"
           >
             {product.is_seasonal && (
               <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-0.5 rounded-full mb-2">
@@ -222,7 +261,8 @@ export default function ProductDetail() {
             {!isMerchProduct && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
-                  <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">                  ✓ {cert}
+                  <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">
+                    ✓ {cert}
                   </span>
                 ))}
               </div>
@@ -246,7 +286,7 @@ export default function ProductDetail() {
       </div>
 
       {/* About & Ingredients — full width below */}
-      <div className="px-4 md:px-6 mt-6">
+      <div className="px-4 md:px-6 mt-6 pb-4">
         {product.description && (
           <div className="mb-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">About</h3>
@@ -299,12 +339,14 @@ export default function ProductDetail() {
             </button>
           </div>
           {/* Add to Cart Button */}
-          <Button
+          <button
+            type="button"
             onClick={handleAddToCart}
-            className="flex-1 h-10 rounded-xl font-semibold text-sm nuvira-gradient-button"          >
+            className="flex-1 h-10 rounded-xl font-semibold text-sm nuvira-gradient-button inline-flex items-center justify-center"
+          >
             <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
             {`$${(product.price * quantity).toFixed(2)}`}
-          </Button>
+          </button>
         </div>
       </div>
     </div>
