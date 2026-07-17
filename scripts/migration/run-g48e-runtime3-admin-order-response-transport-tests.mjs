@@ -348,14 +348,15 @@ test('20. G48E remains disabled', async () => {
   assert.equal(result.payload.admin_order_lifecycle_read_model_enabled, false);
 });
 
-test('21. AdminOrders consumes compact list only through the proven contract', () => {
-  assert.match(uiSource, /response_mode:\s*ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE/);
-  assert.match(uiSource, /hasValidAdminOrderListCompactResponse/);
-  assert.match(uiSource, /g48e_admin_order_list_compact_v1/);
+test('21. AdminOrders consumes bounded page/detail contracts only', () => {
+  assert.match(uiSource, /response_mode:\s*ADMIN_ORDER_LIST_PAGE_RESPONSE_MODE/);
+  assert.match(uiSource, /response_mode:\s*ADMIN_ORDER_DETAIL_COMPACT_RESPONSE_MODE/);
+  assert.match(uiSource, /g48e_admin_order_list_page_v1/);
+  assert.doesNotMatch(uiSource, /response_mode:\s*ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE/);
 });
 
 test('22. Backend failure does not silently hide orders', () => {
-  assert.match(uiSource, /throw new Error\('Compact admin-order list contract is unavailable'\)/);
+  assert.match(uiSource, /Paginated admin-order list contract is unavailable|Unable to load bounded admin-order list/);
   assert.match(uiSource, /ordersError/);
 });
 

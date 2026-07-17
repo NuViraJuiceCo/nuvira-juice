@@ -12,6 +12,13 @@ const G48E_RUNTIME_CONTRACT_VERSION = 'g48e_runtime_contract_v1';
 const G48E_COMPACT_READ_MODEL_CONTRACT = 'g48e_compact_read_model_v1';
 const ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE = 'ADMIN_ORDER_LIST_COMPACT';
 const ADMIN_ORDER_LIST_COMPACT_CONTRACT = 'g48e_admin_order_list_compact_v1';
+const ADMIN_ORDER_LIST_PAGE_RESPONSE_MODE = 'ADMIN_ORDER_LIST_PAGE';
+const ADMIN_ORDER_LIST_PAGE_CONTRACT = 'g48e_admin_order_list_page_v1';
+const ADMIN_ORDER_DETAIL_COMPACT_RESPONSE_MODE = 'ADMIN_ORDER_DETAIL_COMPACT';
+const ADMIN_ORDER_DETAIL_COMPACT_CONTRACT = 'g48e_admin_order_detail_compact_v1';
+const ADMIN_ORDER_LIST_PAGE_DEFAULT_SIZE = 10;
+const ADMIN_ORDER_LIST_PAGE_MAX_SIZE = 10;
+const ADMIN_ORDER_LIST_PAGE_SIZE_BUDGET_BYTES = 32000;
 
 function normalizeOrderNum(num) {
   return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
@@ -121,8 +128,20 @@ function isG48eRuntimeDiagnosticRequest(body) {
   return normalizeLower(body?.diagnostic_mode).toUpperCase() === G48E_RUNTIME_DIAGNOSTIC_MODE;
 }
 
+function adminOrderResponseMode(body) {
+  return normalizeLower(body?.response_mode).toUpperCase();
+}
+
 function isAdminOrderListCompactRequest(body) {
-  return normalizeLower(body?.response_mode).toUpperCase() === ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE;
+  return adminOrderResponseMode(body) === ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE;
+}
+
+function isAdminOrderListPageRequest(body) {
+  return adminOrderResponseMode(body) === ADMIN_ORDER_LIST_PAGE_RESPONSE_MODE;
+}
+
+function isAdminOrderDetailCompactRequest(body) {
+  return adminOrderResponseMode(body) === ADMIN_ORDER_DETAIL_COMPACT_RESPONSE_MODE;
 }
 
 function compactLineItem(item = {}) {
@@ -275,6 +294,338 @@ function compactAdminOrderRow(order = {}) {
           tone: item.tone || null,
         }))
       : [],
+  };
+}
+
+
+function compactListItemSummary(order = {}) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  if (items.length === 0) return null;
+  const first = items[0] || {};
+  const title = first.title || first.name || first.product_name || first.variant_title || 'Item';
+  const quantity = Number(first.quantity || first.qty || 1);
+  const suffix = items.length > 1 ? ` +${items.length - 1} more` : '';
+  return `${Number.isFinite(quantity) ? quantity : 1}x ${title}${suffix}`;
+}
+
+function adminOrderItemCount(order = {}) {
+  if (Array.isArray(order.items)) return order.items.length;
+  if (Number.isFinite(Number(order.customer_app_line_item_count))) return Number(order.customer_app_line_item_count);
+  if (Number.isFinite(Number(order.native_line_item_count))) return Number(order.native_line_item_count);
+  return 0;
+}
+
+function compactAdminOrderListPageRow(order = {}) {
+  const taskSummary = compactTaskSummary(order.native_fulfillment_task_summary);
+  return {
+    canonical_order_ref: order.customer_app_order_id || order.id || order.hub_order_id || order.order_number || null,
+    id: order.id || order.customer_app_order_id || order.hub_order_id || order.order_number || null,
+    customer_app_order_id: order.customer_app_order_id || (order.has_customer_app_order ? order.id : null) || null,
+    order_number: order.order_number || null,
+    created_date: order.created_date || null,
+    status: order.status || null,
+    payment_status: order.payment_status || order.financial_status || null,
+    financial_status: order.financial_status || null,
+    payment_captured: order.payment_captured === true,
+    order_type: order.order_type || order.native_order_type || null,
+    fulfillment_type: order.fulfillment_type || null,
+    estimated_delivery_date: order.estimated_delivery_date || order.assigned_delivery_date || order.delivery_date || null,
+    assigned_delivery_date: order.assigned_delivery_date || null,
+    delivery_window_label: order.delivery_window_label || null,
+    total: Number.isFinite(Number(order.total)) ? Number(order.total) : 0,
+    item_count: adminOrderItemCount(order),
+    item_summary: compactListItemSummary(order),
+    notes_present: Boolean(order.notes),
+    subscription_indicator: Boolean(order.stripe_subscription_id || order.order_type === 'subscription' || order.native_order_type === 'subscription'),
+    is_test_order: order.is_test_order === true,
+    do_not_recover: order.do_not_recover === true,
+    is_abandoned_checkout: order.is_abandoned_checkout === true,
+    is_hub_order: order.is_hub_order === true,
+    is_native_order: order.is_native_order === true,
+    has_customer_app_order: order.has_customer_app_order === true,
+    has_native_order: order.has_native_order === true,
+    has_native_task: order.has_native_task === true,
+    customer_email: order.customer_email || order.hub_customer_email || null,
+    customer_name: order.customer_name || order.full_name || order.shipping_name || order.billing_name || null,
+    hub_customer_email: order.hub_customer_email || null,
+    contact_phone: order.contact_phone || null,
+    delivery_address: order.delivery_address || null,
+    customer_app_order_status: order.customer_app_order_status || null,
+    customer_app_payment_status: order.customer_app_payment_status || null,
+    customer_app_payment_captured: order.customer_app_payment_captured === true,
+    customer_app_line_item_count: Number.isFinite(Number(order.customer_app_line_item_count)) ? Number(order.customer_app_line_item_count) : null,
+    native_shopify_order_id: order.native_shopify_order_id || null,
+    native_production_status: order.native_production_status || null,
+    native_fulfillment_status: order.native_fulfillment_status || null,
+    native_sync_status: order.native_sync_status || null,
+    native_review_status: order.native_review_status || null,
+    native_order_lock_status: order.native_order_lock_status || null,
+    order_lock_status: order.order_lock_status || null,
+    ...(taskSummary ? { native_fulfillment_task_summary: { count: taskSummary.count, task_ids: taskSummary.task_ids } } : {}),
+    hub_order_id: order.hub_order_id || null,
+    hub_fulfillment_number: order.hub_fulfillment_number || null,
+    hub_operational_status: order.hub_operational_status || null,
+    hub_fulfillment_status: order.hub_fulfillment_status || null,
+    hub_updated_date: order.hub_updated_date || null,
+    approval_status: order.approval_status || null,
+    sync_status: order.sync_status || null,
+    admin_context_badges: Array.isArray(order.admin_context_badges) ? order.admin_context_badges.slice(0, 8).filter(Boolean) : [],
+  };
+}
+
+function adminOrderTransportStatusFilter(order = {}, filter = 'active') {
+  const normalizedFilter = normalizeLower(filter || 'active');
+  if (normalizedFilter === 'all') return true;
+  const abandoned = isAbandonedOrUnpaidAdminOrder(order);
+  if (normalizedFilter === 'pending') return abandoned;
+  if (abandoned || order.is_test_order || order.do_not_recover || order.payment_status === 'refunded' || order.financial_status === 'refunded' || order.status === 'cancelled') return false;
+  if (normalizedFilter === 'completed') return ['delivered', 'picked_up'].includes(normalizeLower(order.status));
+  return ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'].includes(normalizeLower(order.status));
+}
+
+function isAbandonedOrUnpaidAdminOrder(order = {}) {
+  if (order.is_hub_order && !['pending_payment', 'cancelled', 'refunded'].includes(normalizeLower(order.status)) && !['pending', 'unpaid', 'requires_payment_method'].includes(normalizeLower(order.payment_status)) && !['pending', 'unpaid'].includes(normalizeLower(order.financial_status))) {
+    return false;
+  }
+  return order.is_abandoned_checkout ||
+    order.status === 'pending_payment' ||
+    order.do_not_recover === true ||
+    (!order.payment_captured && order.payment_status !== 'paid' && order.financial_status !== 'paid');
+}
+
+function adminOrderSearchMatches(order = {}, search = '') {
+  const q = normalizeLower(search);
+  if (!q) return true;
+  return [
+    order.customer_email,
+    order.hub_customer_email,
+    order.customer_name,
+    order.full_name,
+    order.shipping_name,
+    order.billing_name,
+    order.order_number,
+    order.contact_phone,
+    order.delivery_address,
+  ].some(value => normalizeLower(value).includes(q));
+}
+
+function adminOrderDateInRange(order = {}, from = '', to = '') {
+  const value = order.created_date ? new Date(order.created_date).getTime() : 0;
+  if (from && value < new Date(from).getTime()) return false;
+  if (to && value >= new Date(to).getTime()) return false;
+  return true;
+}
+
+function compareAdminOrderRows(a = {}, b = {}, sortField = 'created_date', sortDirection = 'desc') {
+  const direction = normalizeLower(sortDirection) === 'asc' ? 1 : -1;
+  const field = ['created_date', 'order_number', 'total', 'status', 'payment_status', 'estimated_delivery_date'].includes(sortField) ? sortField : 'created_date';
+  let aValue = a[field] || '';
+  let bValue = b[field] || '';
+  if (field === 'created_date' || field === 'estimated_delivery_date') {
+    aValue = aValue ? new Date(aValue).getTime() : 0;
+    bValue = bValue ? new Date(bValue).getTime() : 0;
+  }
+  if (field === 'total') {
+    aValue = Number(aValue || 0);
+    bValue = Number(bValue || 0);
+  }
+  if (aValue < bValue) return -1 * direction;
+  if (aValue > bValue) return 1 * direction;
+  const aTie = `${a.created_date || ''}|${a.order_number || ''}|${a.id || ''}`;
+  const bTie = `${b.created_date || ''}|${b.order_number || ''}|${b.id || ''}`;
+  return aTie < bTie ? 1 : aTie > bTie ? -1 : 0;
+}
+
+function encodeAdminOrderCursor(row = {}, index = 0, sort = {}) {
+  try {
+    return btoa(JSON.stringify({
+      index,
+      sort_field: sort.field,
+      sort_direction: sort.direction,
+      created_date: row.created_date || null,
+      order_number: row.order_number || null,
+      id: row.id || null,
+    }));
+  } catch (_) {
+    return null;
+  }
+}
+
+function decodeAdminOrderCursor(cursor = '') {
+  if (!cursor) return null;
+  try {
+    const decoded = JSON.parse(atob(cursor));
+    if (!Number.isInteger(decoded.index) || decoded.index < 0) return { invalid: true };
+    return decoded;
+  } catch (_) {
+    return { invalid: true };
+  }
+}
+
+function adminOrderPageSize(value) {
+  const requested = Number(value || ADMIN_ORDER_LIST_PAGE_DEFAULT_SIZE);
+  if (!Number.isFinite(requested) || requested <= 0) return ADMIN_ORDER_LIST_PAGE_DEFAULT_SIZE;
+  return Math.min(Math.floor(requested), ADMIN_ORDER_LIST_PAGE_MAX_SIZE);
+}
+
+function filterAndSortAdminOrderRows(merged = [], body = {}) {
+  const filter = body.filter || body.status_filter || 'active';
+  const search = body.search || '';
+  const paymentFilter = normalizeLower(body.payment_filter || '');
+  const orderTypeFilter = normalizeLower(body.order_type_filter || '');
+  const fulfillmentFilter = normalizeLower(body.fulfillment_filter || '');
+  const rows = merged
+    .filter(order => adminOrderTransportStatusFilter(order, filter))
+    .filter(order => adminOrderSearchMatches(order, search))
+    .filter(order => !paymentFilter || normalizeLower(order.payment_status || order.financial_status) === paymentFilter)
+    .filter(order => !orderTypeFilter || normalizeLower(order.order_type || order.native_order_type) === orderTypeFilter)
+    .filter(order => !fulfillmentFilter || normalizeLower(order.fulfillment_type) === fulfillmentFilter)
+    .filter(order => adminOrderDateInRange(order, body.created_from || body.date_from || '', body.created_to || body.date_to || ''));
+  const sortField = body.sort_field || 'created_date';
+  const sortDirection = normalizeLower(body.sort_direction || 'desc') === 'asc' ? 'asc' : 'desc';
+  return {
+    rows: rows.sort((a, b) => compareAdminOrderRows(a, b, sortField, sortDirection)),
+    sort: { field: sortField, direction: sortDirection },
+    filters: { filter, search: search || null, payment_filter: paymentFilter || null, order_type_filter: orderTypeFilter || null, fulfillment_filter: fulfillmentFilter || null, created_from: body.created_from || body.date_from || null, created_to: body.created_to || body.date_to || null },
+  };
+}
+
+function buildAdminOrderListPageResponse({ merged = [], localOrders = [], allLocalOrders = localOrders, allHubOrders = [], nativeShopifyOrders = [], fulfillmentTasks = [], body = {}, diagnostics = {} } = {}) {
+  const { rows, sort, filters } = filterAndSortAdminOrderRows(merged, body);
+  const pageSize = adminOrderPageSize(body.page_size);
+  const cursor = decodeAdminOrderCursor(body.cursor || body.page_token || '');
+  if (cursor?.invalid || (cursor && (cursor.sort_field !== sort.field || cursor.sort_direction !== sort.direction))) {
+    return {
+      success: false,
+      response_mode: ADMIN_ORDER_LIST_PAGE_RESPONSE_MODE,
+      response_contract: ADMIN_ORDER_LIST_PAGE_CONTRACT,
+      error: 'invalid_or_stale_cursor',
+      orders: [],
+      writes_performed: false,
+      raw_payloads_returned: false,
+    };
+  }
+  const start = cursor ? cursor.index + 1 : 0;
+  const pageRows = rows.slice(start, start + pageSize);
+  const lastRow = pageRows[pageRows.length - 1];
+  const hasMore = start + pageRows.length < rows.length;
+  const sourceTruncated = {
+    local_orders: allLocalOrders.length >= 500,
+    hub_orders: allHubOrders.length >= 500,
+    native_shopify_orders: nativeShopifyOrders.length >= 500,
+    fulfillment_tasks: fulfillmentTasks.length >= 500,
+  };
+  const anySourceTruncated = Object.values(sourceTruncated).some(Boolean);
+  const normalizedAll = merged.map(order => normalizeOrderNum(order?.order_number)).filter(Boolean);
+  const normalizedFiltered = rows.map(order => normalizeOrderNum(order?.order_number)).filter(Boolean);
+  const serializedRows = pageRows.map(compactAdminOrderListPageRow);
+  const estimatedResponse = JSON.stringify({ orders: serializedRows }).length;
+  return {
+    success: true,
+    response_mode: ADMIN_ORDER_LIST_PAGE_RESPONSE_MODE,
+    response_contract: ADMIN_ORDER_LIST_PAGE_CONTRACT,
+    orders: serializedRows,
+    page_size: pageSize,
+    default_page_size: ADMIN_ORDER_LIST_PAGE_DEFAULT_SIZE,
+    maximum_page_size: ADMIN_ORDER_LIST_PAGE_MAX_SIZE,
+    returned_count: serializedRows.length,
+    total_count: rows.length,
+    total_count_known: true,
+    complete_order_count: merged.length,
+    has_more: hasMore,
+    next_cursor: hasMore ? encodeAdminOrderCursor(lastRow, start + pageRows.length - 1, sort) : null,
+    sort,
+    filters_applied: filters,
+    source_counts: {
+      local_orders: localOrders.length,
+      hub_orders: allHubOrders.length,
+      native_shopify_orders: nativeShopifyOrders.length,
+      fulfillment_tasks: fulfillmentTasks.length,
+    },
+    local_count: localOrders.length,
+    hub_count: allHubOrders.length,
+    native_shopify_order_count: nativeShopifyOrders.length,
+    source_truncated: anySourceTruncated,
+    source_truncated_by_entity: sourceTruncated,
+    source_reads_bounded: false,
+    response_transport_bounded: true,
+    fallback_active: true,
+    duplicate_order_number_count: normalizedAll.length - new Set(normalizedAll).size,
+    filtered_duplicate_order_number_count: normalizedFiltered.length - new Set(normalizedFiltered).size,
+    largest_test_page_size_bytes: estimatedResponse,
+    response_size_budget_passed: estimatedResponse < ADMIN_ORDER_LIST_PAGE_SIZE_BUDGET_BYTES,
+    warnings: [
+      anySourceTruncated ? 'source_truncated' : null,
+      estimatedResponse >= ADMIN_ORDER_LIST_PAGE_SIZE_BUDGET_BYTES ? 'page_response_size_budget_exceeded' : null,
+    ].filter(Boolean),
+    writes_performed: false,
+    order_mutation_performed: false,
+    native_order_mutation_performed: false,
+    fulfillment_task_mutation_performed: false,
+    payment_mutation_performed: false,
+    refund_mutation_performed: false,
+    provider_call_impact: false,
+    stripe_calls: false,
+    shopify_calls: false,
+    hub_calls: false,
+    notifications_sent: false,
+    repair_replay_performed: false,
+    logs_or_queues_created: false,
+    hub_write_suppression_ready: false,
+    raw_payloads_returned: false,
+    pii_returned: false,
+    ...(diagnostics && typeof diagnostics === 'object' ? {
+      exact_native_match_count: diagnostics.exact_native_match_count,
+      status_mismatch_count: diagnostics.status_mismatch_count,
+      payment_mismatch_count: diagnostics.payment_mismatch_count,
+      delivery_date_mismatch_count: diagnostics.delivery_date_mismatch_count,
+    } : {}),
+  };
+}
+
+function buildAdminOrderDetailCompactResponse({ merged = [], body = {} } = {}) {
+  const requestedId = (body.customer_app_order_id || '').toString().trim();
+  const requestedOrderNumber = normalizeOrderNum(body.order_number);
+  const matches = merged.filter(order => {
+    const idMatch = requestedId && [order.customer_app_order_id, order.id].filter(Boolean).map(String).includes(requestedId);
+    const numberMatch = requestedOrderNumber && normalizeOrderNum(order.order_number) === requestedOrderNumber;
+    return idMatch || numberMatch;
+  });
+  const unique = new Map();
+  matches.forEach(order => unique.set(`${order.customer_app_order_id || order.id || ''}|${normalizeOrderNum(order.order_number)}`, order));
+  const rows = Array.from(unique.values());
+  if (!requestedId && !requestedOrderNumber) {
+    return { success: false, response_mode: ADMIN_ORDER_DETAIL_COMPACT_RESPONSE_MODE, response_contract: ADMIN_ORDER_DETAIL_COMPACT_CONTRACT, error: 'exact_order_identifier_required', writes_performed: false, raw_payloads_returned: false };
+  }
+  if (rows.length !== 1) {
+    return { success: false, response_mode: ADMIN_ORDER_DETAIL_COMPACT_RESPONSE_MODE, response_contract: ADMIN_ORDER_DETAIL_COMPACT_CONTRACT, error: rows.length > 1 ? 'ambiguous_order_identity' : 'order_not_found', match_count: rows.length, writes_performed: false, raw_payloads_returned: false };
+  }
+  const detail = compactAdminOrderRow(rows[0]);
+  return {
+    success: true,
+    response_mode: ADMIN_ORDER_DETAIL_COMPACT_RESPONSE_MODE,
+    response_contract: ADMIN_ORDER_DETAIL_COMPACT_CONTRACT,
+    order: detail,
+    order_number: detail.order_number,
+    source_context_complete: true,
+    exact_identity_match: true,
+    action_references_present: Boolean(detail.id || detail.customer_app_order_id || detail.hub_order_id || detail.order_number || detail.native_shopify_order_id),
+    writes_performed: false,
+    order_mutation_performed: false,
+    native_order_mutation_performed: false,
+    fulfillment_task_mutation_performed: false,
+    payment_mutation_performed: false,
+    refund_mutation_performed: false,
+    provider_call_impact: false,
+    stripe_calls: false,
+    shopify_calls: false,
+    hub_calls: false,
+    notifications_sent: false,
+    repair_replay_performed: false,
+    logs_or_queues_created: false,
+    hub_write_suppression_ready: false,
+    raw_payloads_returned: false,
+    pii_returned: false,
   };
 }
 
@@ -780,10 +1131,10 @@ function applyLimitedNativePrimaryMetadata(order, evaluation) {
 
 /**
  * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
- * 
+ *
  * Role: Admin view of ALL orders (local + Hub-verified) with full merge and expansion.
  * Source of Truth: Hub (for operational orders, subscriptions, deliveries)
- * 
+ *
  * PROCESS:
  * 1. Fetch all local orders (excluding superseded, cancelled, ghost pre-orders)
  * 2. Fetch ALL UserProfile records to get every customer's contact email
@@ -792,16 +1143,16 @@ function applyLimitedNativePrimaryMetadata(order, evaluation) {
  * 5. Expand local subscription orders via FulfillmentTask references
  * 6. Merge: Hub remains the primary row on order_number; local + native context attach for same-order visibility
  * 7. Return merged list sorted by created_date (newest first)
- * 
+ *
  * FULFILLMENT EXPANSION:
  * - Hub subscriptions: broken into individual fulfillments (e.g., 4 weekly deliveries)
  * - Local subscriptions: expanded via FulfillmentTask if available
  * - Result: Admins see individual deliveries, not parent "0-item" records
- * 
+ *
  * STATUS UPDATES:
  * - Generic order workflow controls are frozen in the admin UI during launch hardening
  * - This function is read-only aggregation and does not create, update, sync, repair, notify, or call providers
- * 
+ *
  * Called by: pages/AdminOrders (admin order management)
  */
 Deno.serve(async (req) => {
@@ -829,12 +1180,14 @@ Deno.serve(async (req) => {
     const adminOrderLifecycleReadModelRequested = isAdminOrderLifecycleReadModelRequest(body);
     const adminOrderLifecycleReadModelActive = adminOrderLifecycleReadModelEnabled();
     const adminOrderListCompactRequested = isAdminOrderListCompactRequest(body);
+    const adminOrderListPageRequested = isAdminOrderListPageRequest(body);
+    const adminOrderDetailCompactRequested = isAdminOrderDetailCompactRequest(body);
 
     if (hasConflictingAdminOrderLifecycleModeValues(body)) {
       return Response.json(buildAdminOrderLifecycleModeConflictResponse(), { status: 400 });
     }
 
-    if (adminOrderLifecycleReadModelRequested && adminOrderListCompactRequested) {
+    if (adminOrderLifecycleReadModelRequested && (adminOrderListCompactRequested || adminOrderListPageRequested || adminOrderDetailCompactRequested)) {
       return Response.json({
         success: false,
         error: 'conflicting_response_contract_modes',
@@ -899,7 +1252,7 @@ Deno.serve(async (req) => {
     // A "ghost" pre-order is one that was authorized but never completed payment capture
     // (payment_captured=false AND no stripe_payment_intent_id means it's an abandoned/admin-created stub)
     const allLocalOrders = await base44.asServiceRole.entities.Order.list('-created_date', 500);
-    
+
     // Fetch all FulfillmentTasks for expanding local subscription orders
     let fulfillmentTasks = [];
     try {
@@ -1204,7 +1557,7 @@ Deno.serve(async (req) => {
     const expandedLocalOrders = [];
     for (const order of localOrders) {
       const tasksForOrder = fulfillmentTasks.filter(t => t.order_id === order.id);
-      
+
       if (tasksForOrder.length > 0) {
         // Subscription order — expand each fulfillment task into a display record
         for (const task of tasksForOrder) {
@@ -1329,6 +1682,23 @@ Deno.serve(async (req) => {
         enabled: true,
         readModel: adminOrderLifecycleReadModel,
       }));
+    }
+
+    if (adminOrderListPageRequested) {
+      return Response.json(buildAdminOrderListPageResponse({
+        merged,
+        localOrders,
+        allLocalOrders,
+        allHubOrders,
+        nativeShopifyOrders,
+        fulfillmentTasks,
+        body,
+        diagnostics,
+      }));
+    }
+
+    if (adminOrderDetailCompactRequested) {
+      return Response.json(buildAdminOrderDetailCompactResponse({ merged, body }));
     }
 
     if (adminOrderListCompactRequested) {
