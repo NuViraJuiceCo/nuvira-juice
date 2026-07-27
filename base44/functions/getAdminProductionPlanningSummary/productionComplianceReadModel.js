@@ -240,9 +240,11 @@ export function buildProductionComplianceLifecycleReadModel({
   sourceMode = 'disabled',
 } = {}) {
   const filteredBatches = (Array.isArray(productionBatches) ? productionBatches : [])
+    .filter(row => row?.is_test_batch !== true)
     .filter(row => inRangeByAnyDate(row, dateFrom, dateTo))
     .slice(0, 500);
   const filteredLogs = (Array.isArray(batchComplianceLogs) ? batchComplianceLogs : [])
+    .filter(row => row?.is_test_record !== true)
     .filter(row => inRangeByAnyDate(row, dateFrom, dateTo))
     .slice(0, 500);
   const filteredManual = (Array.isArray(manualProductionBatches) ? manualProductionBatches : [])

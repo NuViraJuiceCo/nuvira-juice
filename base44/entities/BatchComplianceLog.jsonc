@@ -87,6 +87,15 @@
       "type": "boolean",
       "default": true,
       "description": "Compliance logs are locked from editing once created"
+    },
+    "is_test_record": {
+      "type": "boolean",
+      "default": false,
+      "description": "Derived from the linked ProductionBatch; excluded from normal compliance totals when true"
+    },
+    "test_batch_id": {
+      "type": "string",
+      "description": "Display ID of the linked internal test ProductionBatch"
     }
   },
   "required": [

@@ -213,6 +213,20 @@ test('16. manifest included PRs cannot remain empty when release range has unrep
   const result = run(process.execPath, [manifestScript, '--evidence-dir', 'release-evidence'], { cwd: dir, env: { G50C_XCODE_BUILD_SETTINGS_FIXTURE: path.join(dir, 'xcode-settings.json') } });
   assert(result.status !== 0 && result.stderr.includes('cannot be represented'), 'unrepresented merge did not fail');
 });
+test('16b. current PR validation can represent a branch-local merge commit', () => {
+  const { dir } = makeManifestRepo({ mergeWithoutPr: true });
+  const result = run(process.execPath, [manifestScript, '--evidence-dir', 'release-evidence'], {
+    cwd: dir,
+    env: {
+      G50C_XCODE_BUILD_SETTINGS_FIXTURE: path.join(dir, 'xcode-settings.json'),
+      G50C_CURRENT_PR_NUMBER: '585',
+    },
+  });
+  assert(result.status === 0, `current PR merge representation failed: ${result.stderr}`);
+  const manifest = JSON.parse(result.stdout);
+  const representedMerge = manifest.included_prs.find((item) => item.number === 585);
+  assert(representedMerge?.current_pr_validation_branch_merge === true, 'current PR branch merge marker missing');
+});
 
 // 17-20 source/dependency/xcode/bundle/no-side-effect coverage.
 test('17. filesystem mtime alone cannot prove bundle freshness', () => {

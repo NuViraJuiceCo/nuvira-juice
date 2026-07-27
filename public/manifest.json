@@ -1,18 +1,24 @@
 {
   "name": "NuVira Juice Co.",
   "short_name": "NuVira",
+  "description": "Fresh cold-pressed juices, wellness shots, programs, and local delivery from NuVira Juice Co.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f8f5ef",
+  "background_color": "#2d6a4f",
   "theme_color": "#2d6a4f",
-  "description": "Fresh cold-pressed juice ordering and delivery updates from NuVira Juice Co.",
   "icons": [
     {
-      "src": "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

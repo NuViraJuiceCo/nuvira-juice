@@ -73,6 +73,7 @@ jobs:
       - name: Verify open release-critical PRs
         env:
           GH_TOKEN: ${{ github.token }}
+          G50C_CURRENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: npm run release:verify-open-critical-prs -- --out release-evidence/critical-prs.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()

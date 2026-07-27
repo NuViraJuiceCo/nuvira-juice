@@ -1,11 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, format, parseISO } from 'date-fns';
+import { Link, useSearchParams } from 'react-router-dom';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import {
   AlertTriangle,
+  ArrowRight,
   CalendarDays,
+  Camera,
   CheckCircle2,
+  ClipboardList,
   Clock,
   Copy,
   ExternalLink,
@@ -15,42 +19,34 @@ import {
   Package,
   RefreshCw,
   Truck,
+  X,
 } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
-import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
+import { unwrapBase44Result } from '@/lib/base44-result';
+import { usePageVisibility } from '@/lib/usePageVisibility';
 
 const NUVIRA_BASE_ADDRESS = '619 N Main St Unit 3, O\'Fallon, MO 63366';
 const DELIVERY_LIFECYCLE_READ_MODEL_MODE = 'DELIVERY_LIFECYCLE';
 const DELIVERY_LIFECYCLE_READ_MODEL_VERSION = 'g48d_delivery_lifecycle_v1';
 
-const deliveryReadinessItems = [
-  {
-    label: 'Driver assignment',
-    status: 'controlled',
-    detail: 'Eligible scheduled tasks can be assigned, reassigned, or unassigned with an internal driver label.',
-  },
-  {
-    label: 'Out For Delivery',
-    status: 'controlled',
-    detail: 'Eligible assigned tasks can be marked Out For Delivery without directly sending customer notifications.',
-  },
-  {
-    label: 'Delivered',
-    status: 'controlled',
-    detail: 'Out-for-delivery tasks can be marked Delivered as an operational update while notification gates stay separate.',
-  },
-  {
-    label: 'Route preview',
-    status: 'ready',
-    detail: 'Admins can copy a route manifest, open a static route, and preview optimization without saving route order.',
-  },
-  {
-    label: 'Frozen actions',
-    status: 'frozen',
-    detail: 'Proof/drop upload, unable-to-deliver, route save, bag credits, and customer-facing delivery notifications are not exposed here.',
-  },
+const DELIVERY_DROP_OPTIONS = [
+  'Front Door',
+  'Handed to Customer',
+  'Cooler / Delivery Bag',
+  'Reception / Front Desk',
+  'Garage / Side Door',
+  'Other',
 ];
 
 function todayDate() {
@@ -59,6 +55,18 @@ function todayDate() {
   const month = `${today.getMonth() + 1}`.padStart(2, '0');
   const day = `${today.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function normalizeDeliveryDateInput(value) {
+  const text = (value || '').toString().trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+
+  try {
+    const parsed = parseISO(text);
+    return Number.isNaN(parsed.getTime()) ? null : text;
+  } catch {
+    return null;
+  }
 }
 
 function shiftDate(dateStr, days) {
@@ -104,8 +112,12 @@ function sourceTypeLabel(value) {
 function dataSourceLabel(value) {
   if (value === 'customer_app_native_task') return 'Native Task';
   if (value === 'customer_app_native_order') return 'Native Order';
-  if (value === 'hub') return 'Hub';
+  if (value === 'hub') return 'Source';
   return 'Source pending';
+}
+
+function deliveryLifecycleClassificationLabel(value) {
+  return formatLabel(value).replace(/\bHub\b/g, 'Source');
 }
 
 
@@ -128,13 +140,13 @@ function DeliveryLifecycleReadModelPanel({ model }) {
   const topClassifications = Object.entries(classificationCounts).slice(0, 4);
 
   return (
-    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3">
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3 dark:border-sky-900/60 dark:bg-sky-950/30">
       <div className="flex items-start gap-2">
-        <Truck className="w-4 h-4 text-blue-700 mt-0.5 shrink-0" />
+        <Truck className="w-4 h-4 text-blue-700 mt-0.5 shrink-0 dark:text-sky-300" />
         <div>
-          <p className="text-xs font-semibold text-blue-950">Delivery lifecycle read model</p>
-          <p className="text-[10px] text-blue-900 mt-0.5">
-            Backend-authoritative read model only. It does not make delivery commands, route mutations, customer status updates, or notifications ready.
+          <p className="text-xs font-semibold text-blue-950 dark:text-sky-100">Delivery lifecycle read model</p>
+          <p className="text-[10px] text-blue-900 mt-0.5 dark:text-sky-200/80">
+            Diagnostics-only view for native/source reconciliation. Use the delivery task controls for operational work.
           </p>
         </div>
       </div>
@@ -149,17 +161,31 @@ function DeliveryLifecycleReadModelPanel({ model }) {
           {topClassifications.map(([classification, count]) => (
             <span
               key={classification}
-              className="text-[10px] font-semibold rounded-full border border-blue-200 bg-white/70 px-2 py-1 text-blue-900"
+              className="text-[10px] font-semibold rounded-full border border-blue-200 bg-white/70 px-2 py-1 text-blue-900 dark:border-sky-800/70 dark:bg-background/70 dark:text-sky-100"
             >
-              {formatLabel(classification)}: {count}
+              {deliveryLifecycleClassificationLabel(classification)}: {count}
             </span>
           ))}
         </div>
       )}
-      <p className="text-[10px] text-blue-900">
-        Write readiness remains false for driver assignment, route mutation, out-for-delivery, delivered, Shopify fulfillment, notifications, customer status writes, and Hub write suppression.
+      <p className="text-[10px] text-blue-900 dark:text-sky-200/80">
+        Route save, Shopify fulfillment, provider routing, and source write suppression remain separate migration gates.
       </p>
     </div>
+  );
+}
+
+function DeliveryLifecycleDiagnosticsDisclosure({ model }) {
+  return (
+    <details className="rounded-xl border border-border/50 bg-card p-3">
+      <summary className="cursor-pointer text-xs font-semibold text-foreground">
+        Delivery diagnostics{' '}
+        <span className="ml-2 text-[10px] font-medium text-muted-foreground">native/source reconciliation</span>
+      </summary>
+      <div className="mt-3">
+        <DeliveryLifecycleReadModelPanel model={model} />
+      </div>
+    </details>
   );
 }
 
@@ -172,14 +198,21 @@ function isNativeDeliveryTaskStop(stop) {
 }
 
 function canonicalTaskStatus(value) {
-  const key = normalizedStatus(value);
-  if (key === 'out for delivery') return 'out_for_delivery';
-  if (key === 'in transit') return 'out_for_delivery';
-  return value || null;
+  return taskStatusKey(value) || null;
 }
 
 function normalizedStatus(value) {
   return (value || '').toString().trim().toLowerCase();
+}
+
+function taskStatusKey(value) {
+  const key = normalizedStatus(value).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!key) return '';
+  if (key === 'out for delivery' || key === 'in transit') return 'out_for_delivery';
+  if (key === 'bottled packed') return 'bottled_packed';
+  if (key === 'ready for delivery') return 'ready_for_delivery';
+  if (key === 'complete' || key === 'completed' || key === 'fulfilled') return 'delivered';
+  return key.replace(/\s+/g, '_');
 }
 
 function trimDriverLabel(value) {
@@ -256,6 +289,38 @@ function nativeScheduleCorrectionErrorText(error) {
   return error?.message || 'Unable to run native schedule correction.';
 }
 
+function itemsSummaryToDriverItems(summary) {
+  const text = `${summary || ''}`.trim();
+  if (!text) return [];
+  const parsed = text
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      const prefixMatch = part.match(/^(\d+(?:\.\d+)?)\s*(?:x|×)\s+(.+)$/i);
+      if (prefixMatch) {
+        return {
+          title: prefixMatch[2].trim(),
+          quantity: Number(prefixMatch[1]),
+        };
+      }
+      const suffixMatch = part.match(/^(.+?)\s*(?:x|×)\s*(\d+(?:\.\d+)?)$/i);
+      if (suffixMatch) {
+        return {
+          title: suffixMatch[1].trim(),
+          quantity: Number(suffixMatch[2]),
+        };
+      }
+      return null;
+    });
+
+  if (parsed.length > 0 && parsed.every(item => item?.title && Number.isFinite(item.quantity))) {
+    return parsed;
+  }
+
+  return [{ title: text, quantity: null }];
+}
+
 function nativeTaskPayload(stop) {
   return {
     id: stop.task_id || null,
@@ -268,7 +333,7 @@ function nativeTaskPayload(stop) {
     delivery_date: stop.delivery_date || null,
     address: stop.delivery_address || null,
     assigned_driver: stop.assigned_driver || null,
-    items: stop.items_summary ? [{ title: stop.items_summary, quantity: 1 }] : [],
+    items: itemsSummaryToDriverItems(stop.items_summary),
   };
 }
 
@@ -374,7 +439,7 @@ function RouteOptimizationPanel({ deliveryDate, stops }) {
         optimize: true,
         stops: stops.map(routeStopPayload),
       });
-      const payload = res?.data || res;
+      const payload = unwrapBase44Result(res);
       if (payload?.error) throw new Error(payload.error);
 
       if (payload?.skipped) {
@@ -425,7 +490,7 @@ function RouteOptimizationPanel({ deliveryDate, stops }) {
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Route Optimization</p>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Admin preview only. Uses active Hub delivery stops and does not save route order.
+            Admin preview only. Uses active source delivery stops and does not save route order.
           </p>
         </div>
         <button
@@ -588,7 +653,7 @@ function DriverAssignmentControls({ stop, onAssignmentSuccess }) {
 
     try {
       const res = await base44.functions.invoke('updateAdminFulfillmentTaskAssignment', payload);
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error('assignment_failed');
       setMessage({ type: 'success', text: 'Driver assignment updated.' });
       setDriverLabel('');
@@ -668,24 +733,36 @@ function DriverAssignmentControls({ stop, onAssignmentSuccess }) {
 
 function OperationalStatusControls({ stop, onStatusSuccess }) {
   const taskId = stop.task_id;
-  const status = normalizedStatus(stop.task_status);
+  const status = taskStatusKey(stop.task_status || stop.delivery_status);
   const assignedDriver = trimDriverLabel(stop.assigned_driver);
   const hasDriver = Boolean(assignedDriver);
-  const eligibleOutForDeliveryStatus = status === 'scheduled' || status === 'packed' || status === 'in transit';
-  const isOutForDelivery = status === 'out for delivery';
-  const isCompleted = status === 'completed';
+  const eligibleOutForDeliveryStatus = ['scheduled', 'assigned', 'packed', 'bottled_packed', 'ready_for_delivery'].includes(status);
+  const isOutForDelivery = status === 'out_for_delivery';
+  const isCompleted = status === 'delivered';
 
   const [pendingOutForDeliveryTaskId, setPendingOutForDeliveryTaskId] = useState(null);
   const [pendingDeliveredTaskId, setPendingDeliveredTaskId] = useState(null);
+  const [deliveredDialogOpen, setDeliveredDialogOpen] = useState(false);
+  const [deliveredForm, setDeliveredForm] = useState({
+    dropLocation: 'Front Door',
+    otherDropLocation: '',
+    deliveryNotes: '',
+    deliveryPhotoUrl: '',
+  });
+  const [uploadingProof, setUploadingProof] = useState(false);
   const [message, setMessage] = useState(null);
+  const proofFileRef = useRef(null);
   const outForDeliveryPending = pendingOutForDeliveryTaskId === taskId;
   const deliveredPending = pendingDeliveredTaskId === taskId;
+  const selectedDropLocation = deliveredForm.dropLocation === 'Other'
+    ? trimDriverLabel(deliveredForm.otherDropLocation)
+    : trimDriverLabel(deliveredForm.dropLocation);
 
   if (isCompleted) {
     return (
-      <div className="rounded-lg border border-green-100 bg-green-50 p-2">
-        <p className="text-[10px] uppercase tracking-wider text-green-700 font-semibold">Operational Status</p>
-        <p className="text-xs font-semibold text-green-800 mt-1">Delivered</p>
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+        <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold dark:text-emerald-200">Operational Status</p>
+        <p className="text-xs font-semibold text-emerald-800 mt-1 dark:text-emerald-100">Delivered</p>
       </div>
     );
   }
@@ -694,7 +771,7 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
 
   async function markOutForDelivery() {
     if (!hasDriver) return;
-    if (!window.confirm('Mark this task as Out For Delivery in Operations? Customer delivery notifications are controlled by separate backend gates and are not sent directly by this button.')) return;
+    if (!window.confirm('Mark this task as Out For Delivery in Operations? Customer delivery notifications are handled by separate backend gates and are not sent directly by this button.')) return;
 
     setPendingOutForDeliveryTaskId(taskId);
     setMessage(null);
@@ -705,7 +782,7 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
         request_id: outForDeliveryRequestId(taskId),
         reason: 'Marked out for delivery from Delivery Queue.',
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error('out_for_delivery_failed');
       setMessage({ type: 'success', text: 'Task marked Out For Delivery.' });
       await onStatusSuccess?.();
@@ -716,22 +793,66 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
     }
   }
 
-  async function markDelivered() {
+  async function uploadProofPhoto(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingProof(true);
+    setMessage(null);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setDeliveredForm(prev => ({ ...prev, deliveryPhotoUrl: file_url || '' }));
+    } catch {
+      setMessage({ type: 'error', text: 'Unable to upload proof photo.' });
+    } finally {
+      setUploadingProof(false);
+      event.target.value = '';
+    }
+  }
+
+  function updateDeliveredForm(field, value) {
+    setDeliveredForm(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  async function markDelivered(event) {
+    event?.preventDefault?.();
     if (!hasDriver) return;
-    if (!window.confirm('Mark this task Delivered in Operations? Customer delivery notifications are controlled by separate backend gates and are not sent directly by this button.')) return;
+    if (!selectedDropLocation) {
+      setMessage({ type: 'error', text: 'Choose where the order was left.' });
+      return;
+    }
 
     setPendingDeliveredTaskId(taskId);
     setMessage(null);
 
     try {
+      const notes = trimDriverLabel(deliveredForm.deliveryNotes).slice(0, 300);
       const res = await base44.functions.invoke('recordAdminFulfillmentTaskDelivered', {
         fulfillment_task_id: taskId,
         request_id: deliveredRequestId(taskId),
-        reason: 'Marked delivered from Delivery Queue.',
+        reason: notes || 'Marked delivered from Delivery Queue.',
+        delivery_drop_location: selectedDropLocation.slice(0, 120),
+        delivery_notes: notes,
+        delivery_photo_url: trimDriverLabel(deliveredForm.deliveryPhotoUrl).slice(0, 500),
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error('delivered_failed');
-      setMessage({ type: 'success', text: 'Task marked Delivered.' });
+      setMessage({
+        type: result.proof_drop_omitted ? 'warning' : 'success',
+        text: result.proof_drop_omitted
+          ? 'Task marked Delivered. Proof/drop details were not accepted by the backend contract.'
+          : 'Task marked Delivered with delivery details.',
+      });
+      setDeliveredDialogOpen(false);
+      setDeliveredForm({
+        dropLocation: 'Front Door',
+        otherDropLocation: '',
+        deliveryNotes: '',
+        deliveryPhotoUrl: '',
+      });
       await onStatusSuccess?.();
     } catch {
       setMessage({ type: 'error', text: 'Unable to mark task delivered.' });
@@ -748,14 +869,166 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
       </div>
 
       {isOutForDelivery && hasDriver && (
-        <button
-          type="button"
-          onClick={markDelivered}
-          disabled={deliveredPending}
-          className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
-        >
-          {deliveredPending ? 'Saving...' : 'Mark Delivered'}
-        </button>
+        <Dialog open={deliveredDialogOpen} onOpenChange={open => !deliveredPending && setDeliveredDialogOpen(open)}>
+          <button
+            type="button"
+            onClick={() => {
+              setMessage(null);
+              setDeliveredDialogOpen(true);
+            }}
+            disabled={deliveredPending}
+            className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
+          >
+            {deliveredPending ? 'Saving...' : 'Mark Delivered'}
+          </button>
+          <DialogContent className="max-w-xl gap-0 overflow-y-auto border-emerald-200 bg-card p-0 text-card-foreground dark:border-emerald-900/70">
+            <DialogHeader className="border-b border-border bg-secondary/50 px-4 py-4 pr-12 text-left">
+              <DialogTitle className="text-base font-black text-foreground">Delivery Completed</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Record where the order was left and attach an optional proof photo. Customer notifications are handled by backend gates.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={markDelivered} className="space-y-4 px-4 py-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor={`drop-location-${taskId}`}>
+                    Drop Location
+                  </label>
+                  <select
+                    id={`drop-location-${taskId}`}
+                    value={deliveredForm.dropLocation}
+                    onChange={event => updateDeliveredForm('dropLocation', event.target.value)}
+                    disabled={deliveredPending}
+                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                  >
+                    {DELIVERY_DROP_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor={`delivered-by-${taskId}`}>
+                    Driver
+                  </label>
+                  <input
+                    id={`delivered-by-${taskId}`}
+                    type="text"
+                    value={assignedDriver}
+                    readOnly
+                    className="h-10 w-full rounded-lg border border-border bg-secondary/60 px-3 text-sm font-semibold text-foreground"
+                  />
+                </div>
+              </div>
+
+              {deliveredForm.dropLocation === 'Other' && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor={`other-drop-location-${taskId}`}>
+                    Specific Location
+                  </label>
+                  <input
+                    id={`other-drop-location-${taskId}`}
+                    type="text"
+                    value={deliveredForm.otherDropLocation}
+                    onChange={event => updateDeliveredForm('otherDropLocation', event.target.value.slice(0, 120))}
+                    disabled={deliveredPending}
+                    placeholder="Example: left with concierge"
+                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-60"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor={`delivery-notes-${taskId}`}>
+                  Delivery Notes
+                </label>
+                <textarea
+                  id={`delivery-notes-${taskId}`}
+                  value={deliveredForm.deliveryNotes}
+                  onChange={event => updateDeliveredForm('deliveryNotes', event.target.value.slice(0, 300))}
+                  disabled={deliveredPending}
+                  placeholder="Optional notes for the route record"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-60"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Proof Photo</p>
+                    <p className="text-xs text-muted-foreground">Optional, but useful for completed-delivery disputes.</p>
+                  </div>
+                  {deliveredForm.deliveryPhotoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => updateDeliveredForm('deliveryPhotoUrl', '')}
+                      disabled={deliveredPending}
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-background px-2 text-xs font-semibold text-foreground disabled:opacity-60"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={proofFileRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={uploadProofPhoto}
+                />
+                {deliveredForm.deliveryPhotoUrl ? (
+                  <div className="overflow-hidden rounded-xl border border-border bg-secondary/40">
+                    <img
+                      src={deliveredForm.deliveryPhotoUrl}
+                      alt="Delivery proof preview"
+                      className="max-h-52 w-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => proofFileRef.current?.click()}
+                    disabled={uploadingProof || deliveredPending}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-secondary/40 px-4 py-4 text-sm font-semibold text-foreground transition hover:bg-secondary disabled:opacity-60"
+                  >
+                    {uploadingProof ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Camera className="h-4 w-4" />
+                    )}
+                    {uploadingProof ? 'Uploading...' : 'Take or Upload Photo'}
+                  </button>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                This action records operational delivery completion. It does not manually send customer notifications from this screen.
+              </div>
+
+              <DialogFooter className="gap-2 border-t border-border pt-4 sm:space-x-0">
+                <button
+                  type="button"
+                  onClick={() => setDeliveredDialogOpen(false)}
+                  disabled={deliveredPending}
+                  className="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deliveredPending || uploadingProof || !selectedDropLocation}
+                  className="h-10 rounded-lg bg-nuvira-gradient px-4 text-sm font-black text-white disabled:opacity-60"
+                >
+                  {deliveredPending ? 'Saving...' : 'Confirm Delivered'}
+                </button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       )}
 
       {eligibleOutForDeliveryStatus && hasDriver && (
@@ -774,7 +1047,13 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
       )}
 
       {message && (
-        <p className={`text-xs ${message.type === 'error' ? 'text-destructive' : 'text-green-700'}`}>
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warning'
+              ? 'text-amber-700 dark:text-amber-300'
+              : 'text-green-700 dark:text-green-300'
+        }`}>
           {message.text}
         </p>
       )}
@@ -784,18 +1063,380 @@ function OperationalStatusControls({ stop, onStatusSuccess }) {
 
 function NativeDeliveryReadOnlyNotice({ stop }) {
   return (
-    <div className="rounded-lg border border-sky-200 bg-sky-50 p-2">
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 dark:border-emerald-900/60 dark:bg-emerald-950/30">
       <div className="flex items-start gap-2">
-        <Truck className="w-3.5 h-3.5 text-sky-700 mt-0.5 shrink-0" />
+        <Truck className="w-3.5 h-3.5 text-emerald-700 mt-0.5 shrink-0 dark:text-emerald-300" />
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-sky-800 font-semibold">
+          <p className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold dark:text-emerald-100">
             {isNativeDeliveryTaskStop(stop) ? 'Native FulfillmentTask' : 'Native Delivery Order'}
           </p>
-          <p className="text-xs text-sky-800 mt-1">
-            Hub-backed delivery write controls are hidden for this row. Use the dry-run preview below for native readiness until native delivery writes are explicitly allowlisted.
+          <p className="text-xs text-emerald-800 mt-1 dark:text-emerald-200/80">
+            Customer App native task. Operational actions are exact-task gated; diagnostics remain available below when a gate blocks execution.
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function NativeDeliveryActionControls({ stop, onActionSuccess }) {
+  const taskId = stop.task_id;
+  const status = taskStatusKey(stop.task_status || stop.delivery_status);
+  const assignedDriver = trimDriverLabel(stop.assigned_driver);
+  const hasDriver = Boolean(assignedDriver);
+  const [driverLabel, setDriverLabel] = useState(assignedDriver || '');
+  const [pendingAction, setPendingAction] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [deliveredDialogOpen, setDeliveredDialogOpen] = useState(false);
+  const [deliveredForm, setDeliveredForm] = useState({
+    dropLocation: 'Front Door',
+    otherDropLocation: '',
+    deliveryNotes: '',
+    deliveryPhotoUrl: '',
+  });
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const proofFileRef = useRef(null);
+  const selectedDropLocation = deliveredForm.dropLocation === 'Other'
+    ? trimDriverLabel(deliveredForm.otherDropLocation)
+    : trimDriverLabel(deliveredForm.dropLocation);
+  const isTerminal = status === 'delivered' || status === 'cancelled' || status === 'unable_to_deliver';
+  const canAssign = Boolean(taskId) && !isTerminal;
+  const canPack = Boolean(taskId) && ['pending', 'scheduled', 'assigned', 'in_production'].includes(status);
+  const canOutForDelivery = Boolean(taskId) && hasDriver && ['packed', 'bottled_packed', 'ready_for_delivery'].includes(status);
+  const canDeliver = Boolean(taskId) && hasDriver && status === 'out_for_delivery';
+  const pending = Boolean(pendingAction);
+
+  function updateDeliveredForm(field, value) {
+    setDeliveredForm(prev => ({ ...prev, [field]: value }));
+  }
+
+  function notificationText(result) {
+    const projection = result?.customer_order_projection || {};
+    const notification = result?.customer_notification || {};
+    const pieces = [];
+    if (projection.updated) pieces.push('customer order updated');
+    if (notification.sent) pieces.push('customer notified');
+    if (notification.attempted && !notification.sent) pieces.push(`notification ${notification.reason ? formatLabel(notification.reason) : 'not sent'}`);
+    return pieces.length ? ` (${pieces.join(', ')})` : '';
+  }
+
+  async function runNativeAction(action, extras = {}) {
+    if (!taskId) return;
+    const nextDriver = trimDriverLabel(driverLabel || assignedDriver);
+    if (action === 'assign') {
+      const labelError = validateDriverLabel(nextDriver);
+      if (labelError) {
+        setMessage({ type: 'error', text: labelError });
+        return;
+      }
+    }
+
+    const customerImpact = action === 'out_for_delivery' || action === 'delivered_operational'
+      ? ' This will also project customer-visible order status and use the gated customer notification path.'
+      : '';
+    if (action !== 'delivered_operational' && !window.confirm(`Run ${formatLabel(action)} for ${stop.order_number || taskId}?${customerImpact}`)) {
+      return;
+    }
+
+    setPendingAction(action);
+    setMessage(null);
+
+    try {
+      const payload = {
+        mode: 'live',
+        confirmation: 'execute_native_fulfillment_task_lifecycle',
+        fulfillment_task_id: taskId,
+        action,
+        request_id: nativeExecuteRequestId(action, stop),
+        reason: extras.reason || `Admin Delivery Queue native ${formatLabel(action)}.`,
+        ...extras,
+      };
+
+      if (action === 'assign') {
+        payload.assigned_driver = nextDriver;
+      }
+      if (action === 'out_for_delivery' || action === 'delivered_operational') {
+        payload.update_customer_order_status = true;
+        payload.notify_customer = true;
+      }
+
+      const res = await base44.functions.invoke('executeNativeFulfillmentTaskLifecycle', payload);
+      const result = unwrapBase44Result(res);
+      if (!result?.success) {
+        const gate = result?.error_code ? ` (${formatLabel(result.error_code)})` : '';
+        throw new Error(`${result?.error || 'Native delivery action was not allowed'}${gate}`);
+      }
+
+      setMessage({
+        type: result.warnings?.length ? 'warn' : 'success',
+        text: result.skipped
+          ? `Native ${formatLabel(action)} was already recorded.`
+          : `Native ${formatLabel(action)} completed${notificationText(result)}.`,
+      });
+      if (action === 'delivered_operational') {
+        setDeliveredDialogOpen(false);
+        setDeliveredForm({
+          dropLocation: 'Front Door',
+          otherDropLocation: '',
+          deliveryNotes: '',
+          deliveryPhotoUrl: '',
+        });
+      }
+      await onActionSuccess?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || `Unable to run ${formatLabel(action)}.` });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function uploadProofPhoto(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingProof(true);
+    setMessage(null);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setDeliveredForm(prev => ({ ...prev, deliveryPhotoUrl: file_url || '' }));
+    } catch {
+      setMessage({ type: 'error', text: 'Unable to upload proof photo.' });
+    } finally {
+      setUploadingProof(false);
+      event.target.value = '';
+    }
+  }
+
+  async function markDelivered(event) {
+    event?.preventDefault?.();
+    if (!selectedDropLocation) {
+      setMessage({ type: 'error', text: 'Choose where the order was left.' });
+      return;
+    }
+    const notes = trimDriverLabel(deliveredForm.deliveryNotes).slice(0, 300);
+    await runNativeAction('delivered_operational', {
+      reason: notes || 'Marked delivered from Customer App Delivery Queue.',
+      delivery_drop_location: selectedDropLocation.slice(0, 120),
+      delivery_notes: notes,
+      delivery_photo_url: trimDriverLabel(deliveredForm.deliveryPhotoUrl).slice(0, 500),
+    });
+  }
+
+  if (!taskId) return null;
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-background p-3 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Delivery Controls</p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {stop.is_test_task
+              ? 'Internal validation task. Customer order projection and notifications are server-forbidden.'
+              : 'Exact task command with customer-status and notification projection for delivery milestones.'}
+          </p>
+        </div>
+        <AdminStatusPill value={stop.task_status} label={formatLabel(stop.task_status)} />
+      </div>
+
+      {!isTerminal && (
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+          <input
+            type="text"
+            value={driverLabel}
+            onChange={event => setDriverLabel(event.target.value.slice(0, 120))}
+            placeholder="Driver name or internal label"
+            disabled={pending}
+            maxLength={120}
+            className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={() => runNativeAction('assign')}
+            disabled={pending || !canAssign || !trimDriverLabel(driverLabel || assignedDriver)}
+            className="h-10 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground disabled:opacity-50"
+          >
+            {pendingAction === 'assign' ? 'Assigning...' : hasDriver ? 'Update Driver' : 'Assign Driver'}
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <button
+          type="button"
+          onClick={() => runNativeAction('pack')}
+          disabled={pending || !canPack}
+          className="h-10 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground disabled:opacity-50"
+        >
+          {pendingAction === 'pack' ? 'Saving...' : 'Mark Packed'}
+        </button>
+        <button
+          type="button"
+          onClick={() => runNativeAction('out_for_delivery')}
+          disabled={pending || !canOutForDelivery}
+          className="h-10 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          {pendingAction === 'out_for_delivery' ? 'Saving...' : 'Out For Delivery'}
+        </button>
+        <Dialog open={deliveredDialogOpen} onOpenChange={open => !pending && setDeliveredDialogOpen(open)}>
+          <button
+            type="button"
+            onClick={() => {
+              setMessage(null);
+              setDeliveredDialogOpen(true);
+            }}
+            disabled={pending || !canDeliver}
+            className="h-10 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {pendingAction === 'delivered_operational' ? 'Saving...' : 'Mark Delivered'}
+          </button>
+          <DialogContent className="max-w-xl gap-0 overflow-y-auto border-emerald-200 bg-card p-0 text-card-foreground dark:border-emerald-900/70">
+            <DialogHeader className="border-b border-border bg-secondary/50 px-4 py-4 pr-12 text-left">
+              <DialogTitle className="text-base font-black text-foreground">Complete Delivery</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Record drop location and optional proof. This projects the order to delivered and uses the gated notification path once.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={markDelivered} className="space-y-4 px-4 py-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor={`native-drop-location-${taskId}`}>
+                    Drop Location
+                  </label>
+                  <select
+                    id={`native-drop-location-${taskId}`}
+                    value={deliveredForm.dropLocation}
+                    onChange={event => updateDeliveredForm('dropLocation', event.target.value)}
+                    disabled={pending}
+                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                  >
+                    {DELIVERY_DROP_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor={`native-delivered-driver-${taskId}`}>
+                    Driver
+                  </label>
+                  <input
+                    id={`native-delivered-driver-${taskId}`}
+                    type="text"
+                    value={assignedDriver || driverLabel}
+                    readOnly
+                    className="h-10 w-full rounded-lg border border-border bg-secondary/60 px-3 text-sm font-semibold text-foreground"
+                  />
+                </div>
+              </div>
+
+              {deliveredForm.dropLocation === 'Other' && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor={`native-other-drop-location-${taskId}`}>
+                    Specific Location
+                  </label>
+                  <input
+                    id={`native-other-drop-location-${taskId}`}
+                    type="text"
+                    value={deliveredForm.otherDropLocation}
+                    onChange={event => updateDeliveredForm('otherDropLocation', event.target.value.slice(0, 120))}
+                    disabled={pending}
+                    placeholder="Example: left with concierge"
+                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-60"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor={`native-delivery-notes-${taskId}`}>
+                  Delivery Notes
+                </label>
+                <textarea
+                  id={`native-delivery-notes-${taskId}`}
+                  value={deliveredForm.deliveryNotes}
+                  onChange={event => updateDeliveredForm('deliveryNotes', event.target.value.slice(0, 300))}
+                  disabled={pending}
+                  placeholder="Optional notes for the route record"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-60"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Proof Photo</p>
+                    <p className="text-xs text-muted-foreground">Optional, but recommended for completed deliveries.</p>
+                  </div>
+                  {deliveredForm.deliveryPhotoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => updateDeliveredForm('deliveryPhotoUrl', '')}
+                      disabled={pending}
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-background px-2 text-xs font-semibold text-foreground disabled:opacity-60"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={proofFileRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={uploadProofPhoto}
+                />
+                {deliveredForm.deliveryPhotoUrl ? (
+                  <div className="overflow-hidden rounded-xl border border-border bg-secondary/40">
+                    <img src={deliveredForm.deliveryPhotoUrl} alt="Delivery proof preview" className="max-h-52 w-full object-cover" />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => proofFileRef.current?.click()}
+                    disabled={uploadingProof || pending}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-secondary/40 px-4 py-4 text-sm font-semibold text-foreground transition hover:bg-secondary disabled:opacity-60"
+                  >
+                    {uploadingProof ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                    {uploadingProof ? 'Uploading...' : 'Take or Upload Photo'}
+                  </button>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2 border-t border-border pt-4 sm:space-x-0">
+                <button
+                  type="button"
+                  onClick={() => setDeliveredDialogOpen(false)}
+                  disabled={pending}
+                  className="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pending || uploadingProof || !selectedDropLocation}
+                  className="h-10 rounded-lg bg-nuvira-gradient px-4 text-sm font-black text-white disabled:opacity-60"
+                >
+                  {pendingAction === 'delivered_operational' ? 'Saving...' : 'Confirm Delivered'}
+                </button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {message && (
+        <p className={`text-xs ${
+          message.type === 'error'
+            ? 'text-destructive'
+            : message.type === 'warn'
+              ? 'text-cyan-700 dark:text-cyan-200'
+              : 'text-green-700 dark:text-green-300'
+        }`}>
+          {message.text}
+        </p>
+      )}
     </div>
   );
 }
@@ -845,7 +1486,7 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
       }
 
       const res = await base44.functions.invoke('previewNativeFulfillmentTaskLifecycle', payload);
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error && result?.success !== true) throw new Error(result.error);
       setPreview(result);
       setMessage({
@@ -894,7 +1535,7 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
       }
 
       const res = await base44.functions.invoke('executeNativeFulfillmentTaskLifecycle', payload);
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) {
         const gate = result?.error_code ? ` (${formatLabel(result.error_code)})` : '';
         throw new Error(`${result?.error || 'Native fulfillment action was not allowed'}${gate}`);
@@ -1004,7 +1645,7 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
 
           {projectedWrites.length > 0 && (
             <p className="text-[10px] text-muted-foreground">
-              Would write if a future native command is explicitly approved: {projectedWrites.map(formatLabel).join(', ')}
+              Checked fields: {projectedWrites.map(formatLabel).join(', ')}
             </p>
           )}
 
@@ -1015,10 +1656,10 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
               disabled={!canExecuteNative || actionPending}
               className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
             >
-              {actionPending ? 'Running...' : `Run Native ${formatLabel(activeAction)}`}
+              {actionPending ? 'Saving...' : `Save ${formatLabel(activeAction)}`}
             </button>
             <p className="text-[10px] text-muted-foreground">
-              Default off. Requires exact task allowlist and native fulfillment gates before any write can occur.
+              Requires exact task allowlist and native fulfillment gates before saving.
             </p>
           </div>
         </div>
@@ -1028,8 +1669,8 @@ function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
 }
 
 function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected }) {
-  const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || '');
-  const [productionDate, setProductionDate] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || selectedDate || '');
+  const [productionDate, setProductionDate] = useState(stop.production_date || (selectedDate ? shiftDate(selectedDate, -1) : ''));
   const [windowLabel, setWindowLabel] = useState(stop.delivery_window_label || '');
   const [preview, setPreview] = useState(null);
   const [pending, setPending] = useState(false);
@@ -1065,7 +1706,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
 
     try {
       const res = await base44.functions.invoke('previewNativeOrderScheduleCorrection', schedulePayload('dry_run'));
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error && result?.success !== true) throw new Error(result.error);
       setPreview(result);
       setMessage({
@@ -1097,7 +1738,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
         request_id: requestId,
         confirmation: 'execute_native_order_schedule_correction',
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) {
         const gate = result?.error_code ? ` (${formatLabel(result.error_code)})` : '';
         throw new Error(`${result?.error || 'Native schedule correction was not allowed'}${gate}`);
@@ -1116,10 +1757,10 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
   }
 
   return (
-    <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-2 space-y-3">
+    <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-2 space-y-3 dark:border-sky-900/60 dark:bg-sky-950/30">
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-sky-950 font-semibold">Native Schedule Correction</p>
-        <p className="text-[10px] text-sky-900 mt-1">
+        <p className="text-[10px] uppercase tracking-wider text-sky-950 font-semibold dark:text-sky-100">Native Schedule Correction</p>
+        <p className="text-[10px] text-sky-900 mt-1 dark:text-sky-200/80">
           For native delivery orders missing schedule fields. Preview first. Execution is exact-order gated and does not create tasks, notify customers, call providers, deduct inventory, or run sync/repair.
         </p>
       </div>
@@ -1137,8 +1778,8 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
             className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
           />
           {!deliveryDate && (
-            <span className="text-[10px] text-cyan-700">
-              Required. Route filter is {formatDate(selectedDate)} but is not auto-applied.
+            <span className="text-[10px] text-cyan-700 dark:text-cyan-300">
+              Required. Route filter is {formatDate(selectedDate)} and is prefilled for review.
             </span>
           )}
         </label>
@@ -1171,9 +1812,9 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
           type="button"
           disabled={!canPreview || pending || actionPending}
           onClick={runPreview}
-          className="h-9 rounded-lg border border-sky-300 bg-white px-3 text-xs font-semibold text-sky-950 disabled:opacity-50"
+          className="h-9 rounded-lg border border-sky-300 bg-white px-3 text-xs font-semibold text-sky-950 disabled:opacity-50 dark:border-sky-800/70 dark:bg-background/70 dark:text-sky-100"
         >
-          {pending ? 'Previewing...' : 'Preview Schedule'}
+          {pending ? 'Checking...' : 'Check Schedule'}
         </button>
         <button
           type="button"
@@ -1181,7 +1822,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
           onClick={runCorrection}
           className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
         >
-          {actionPending ? 'Running...' : 'Run Schedule Correction'}
+          {actionPending ? 'Saving...' : 'Save Schedule'}
         </button>
       </div>
 
@@ -1190,8 +1831,8 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-cyan-700'
-              : 'text-green-700'
+              ? 'text-cyan-700 dark:text-cyan-300'
+              : 'text-green-700 dark:text-green-300'
         }`}>
           {message.text}
         </p>
@@ -1217,7 +1858,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`native-schedule-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
+                <div key={`native-schedule-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800 dark:text-cyan-200">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -1233,7 +1874,7 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
 
           {projectedWrites.length > 0 && (
             <p className="text-[10px] text-muted-foreground">
-              Would write if exact native gates are open: {projectedWrites.map(formatLabel).join(', ')}
+              Checked fields: {projectedWrites.map(formatLabel).join(', ')}
             </p>
           )}
 
@@ -1249,8 +1890,8 @@ function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected })
 }
 
 function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMaterialized }) {
-  const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || '');
-  const [productionDate, setProductionDate] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || selectedDate || '');
+  const [productionDate, setProductionDate] = useState(stop.production_date || (selectedDate ? shiftDate(selectedDate, -1) : ''));
   const [windowLabel, setWindowLabel] = useState(stop.delivery_window_label || '');
   const [preview, setPreview] = useState(null);
   const [pending, setPending] = useState(false);
@@ -1286,7 +1927,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
 
     try {
       const res = await base44.functions.invoke('previewNativeFulfillmentTaskMaterialization', materializationPayload('dry_run'));
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error && result?.success !== true) throw new Error(result.error);
       setPreview(result);
       setMessage({
@@ -1318,7 +1959,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
         request_id: requestId,
         confirmation: 'execute_native_fulfillment_task_materialization',
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) {
         const gate = result?.error_code ? ` (${formatLabel(result.error_code)})` : '';
         throw new Error(`${result?.error || 'Native task materialization was not allowed'}${gate}`);
@@ -1337,10 +1978,10 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
   }
 
   return (
-    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-2 space-y-3">
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-2 space-y-3 dark:border-emerald-900/60 dark:bg-emerald-950/30">
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-emerald-900 font-semibold">Native Task Materialization</p>
-        <p className="text-[10px] text-emerald-800 mt-1">
+        <p className="text-[10px] uppercase tracking-wider text-emerald-900 font-semibold dark:text-emerald-100">Native Task Materialization</p>
+        <p className="text-[10px] text-emerald-800 mt-1 dark:text-emerald-200/80">
           For native delivery orders without a task. Enter the actual customer delivery date, preview first, then exact-order gated execution can create one native FulfillmentTask.
         </p>
       </div>
@@ -1356,7 +1997,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
             className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs"
           />
           {!deliveryDate && (
-            <span className="text-[10px] text-cyan-700">
+            <span className="text-[10px] text-cyan-700 dark:text-cyan-300">
               Required. Route filter is {formatDate(selectedDate)} but is not auto-applied.
             </span>
           )}
@@ -1388,9 +2029,9 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
           type="button"
           disabled={!canPreview || pending || actionPending}
           onClick={runPreview}
-          className="h-9 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-900 disabled:opacity-50"
+          className="h-9 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-900 disabled:opacity-50 dark:border-emerald-800/70 dark:bg-background/70 dark:text-emerald-100"
         >
-          {pending ? 'Previewing...' : 'Preview Task Create'}
+          {pending ? 'Checking...' : 'Check Task'}
         </button>
         <button
           type="button"
@@ -1398,7 +2039,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
           onClick={runMaterialization}
           className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
         >
-          {actionPending ? 'Running...' : 'Run Native Task Create'}
+          {actionPending ? 'Saving...' : 'Create Task'}
         </button>
       </div>
 
@@ -1450,7 +2091,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
 
           {projectedWrites.length > 0 && (
             <p className="text-[10px] text-muted-foreground">
-              Would write if exact native gates are open: {projectedWrites.map(formatLabel).join(', ')}
+              Checked fields: {projectedWrites.map(formatLabel).join(', ')}
             </p>
           )}
 
@@ -1467,6 +2108,7 @@ function NativeFulfillmentTaskMaterializationPanel({ stop, selectedDate, onMater
 
 function StopCard({ stop, completed, selectedDate, onAssignmentSuccess }) {
   const nativeStop = isNativeDeliveryStop(stop);
+  const orderRef = stop.order_number || '';
 
   return (
     <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
@@ -1553,18 +2195,24 @@ function StopCard({ stop, completed, selectedDate, onAssignmentSuccess }) {
         </div>
       </div>
 
-      {(completed || stop.delivered_at || stop.delivery_drop_location) && (
-        <div className="rounded-lg bg-green-50 border border-green-100 p-2 space-y-1">
+      {(completed || stop.delivered_at || stop.delivery_drop_location || stop.delivery_notes) && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 space-y-1 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100">
           {stop.delivered_at && (
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-3.5 h-3.5 text-green-700" />
-              <p className="text-xs text-green-800">Delivered: {formatDateTime(stop.delivered_at)}</p>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
+              <p className="text-xs">Delivered: {formatDateTime(stop.delivered_at)}</p>
             </div>
           )}
           {stop.delivery_drop_location && (
             <div className="flex items-center gap-2">
-              <MapPin className="w-3.5 h-3.5 text-green-700" />
-              <p className="text-xs text-green-800">Drop location: {stop.delivery_drop_location}</p>
+              <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
+              <p className="text-xs">Drop location: {stop.delivery_drop_location}</p>
+            </div>
+          )}
+          {stop.delivery_notes && (
+            <div className="flex items-start gap-2">
+              <ClipboardList className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" />
+              <p className="text-xs">Notes: {stop.delivery_notes}</p>
             </div>
           )}
         </div>
@@ -1574,11 +2222,24 @@ function StopCard({ stop, completed, selectedDate, onAssignmentSuccess }) {
         Task ID: {stop.task_id || 'Task pending'}
       </p>
 
+      {orderRef && stop.is_test_task !== true && (
+        <Link
+          to={`/admin/orders?order=${encodeURIComponent(orderRef)}`}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground hover:border-primary/60"
+        >
+          View order details
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      )}
+
       {nativeStop ? (
         <>
           <NativeDeliveryReadOnlyNotice stop={stop} />
           {isNativeDeliveryTaskStop(stop) ? (
-            <NativeFulfillmentPreviewPanel stop={stop} onActionSuccess={onAssignmentSuccess} />
+            <>
+              <NativeDeliveryActionControls stop={stop} onActionSuccess={onAssignmentSuccess} />
+              <NativeFulfillmentPreviewPanel stop={stop} onActionSuccess={onAssignmentSuccess} />
+            </>
           ) : (
             <>
               <NativeOrderScheduleCorrectionPanel
@@ -1622,7 +2283,7 @@ function StopSection({ title, subtitle, stops, completed, selectedDate, onAssign
           <p className="text-sm font-semibold text-foreground">
             {completed ? 'No completed deliveries found' : 'No active delivery stops found'}
           </p>
-          <p className="text-xs text-muted-foreground mt-1">This Hub route summary has no rows for this section.</p>
+          <p className="text-xs text-muted-foreground mt-1">This source route summary has no rows for this section.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -1644,26 +2305,75 @@ function StopSection({ title, subtitle, stops, completed, selectedDate, onAssign
 export default function DeliveryQueue() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isPageVisible = usePageVisibility();
+  const canUseAdmin = isAdminUser(user);
+  const [searchParams, setSearchParams] = useSearchParams();
   const defaultDate = useMemo(() => todayDate(), []);
-  const [deliveryDate, setDeliveryDate] = useState(defaultDate);
+  const [deliveryDate, setDeliveryDateState] = useState(
+    () => normalizeDeliveryDateInput(searchParams.get('date') || searchParams.get('delivery_date')) || defaultDate
+  );
+  const [testTaskMode, setTestTaskModeState] = useState(
+    () => searchParams.get('test_task_mode') === 'only' ? 'only' : 'exclude'
+  );
+  const showInternalTestValidation = searchParams.get('internal_test_validation') === '1';
+  const setDeliveryDate = useCallback((value) => {
+    const nextDate = normalizeDeliveryDateInput(value) || defaultDate;
+    setDeliveryDateState(nextDate);
+    setSearchParams((previous) => {
+      const nextParams = new URLSearchParams(previous);
+      nextParams.set('date', nextDate);
+      nextParams.delete('delivery_date');
+      return nextParams;
+    }, { replace: true });
+  }, [defaultDate, setSearchParams]);
+  const setTestTaskMode = useCallback((value) => {
+    const nextMode = value === 'only' ? 'only' : 'exclude';
+    setTestTaskModeState(nextMode);
+    setSearchParams((previous) => {
+      const nextParams = new URLSearchParams(previous);
+      if (nextMode === 'only') nextParams.set('test_task_mode', 'only');
+      else nextParams.delete('test_task_mode');
+      return nextParams;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  useEffect(() => {
+    const routeDate = normalizeDeliveryDateInput(searchParams.get('date') || searchParams.get('delivery_date'));
+    if (routeDate && routeDate !== deliveryDate) {
+      setDeliveryDateState(routeDate);
+    }
+    const routeTestTaskMode = searchParams.get('test_task_mode') === 'only' ? 'only' : 'exclude';
+    if (routeTestTaskMode !== testTaskMode) {
+      setTestTaskModeState(routeTestTaskMode);
+    }
+  }, [deliveryDate, searchParams, testTaskMode]);
+
+  useEffect(() => {
+    if (!canUseAdmin || !isPageVisible || !deliveryDate) return;
+    queryClient.invalidateQueries({ queryKey: ['admin-delivery-route-summary', deliveryDate, testTaskMode] });
+  }, [canUseAdmin, deliveryDate, isPageVisible, queryClient, testTaskMode]);
 
   const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
-    queryKey: ['admin-delivery-route-summary', deliveryDate],
+    queryKey: ['admin-delivery-route-summary', deliveryDate, testTaskMode],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminDeliveryRouteSummary', {
         delivery_date: deliveryDate,
         limit: 100,
         read_model_mode: DELIVERY_LIFECYCLE_READ_MODEL_MODE,
+        test_task_mode: testTaskMode,
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error) throw new Error(result.error);
       return result || { summary: {}, sections: { delivery_stops: [], completed: [] } };
     },
-    enabled: user?.role === 'admin' && Boolean(deliveryDate),
+    enabled: canUseAdmin && isPageVisible && Boolean(deliveryDate),
     staleTime: 60000,
+    refetchInterval: isPageVisible ? 30000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
-  if (user?.role !== 'admin') {
+  if (!canUseAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -1677,6 +2387,7 @@ export default function DeliveryQueue() {
   const unscheduledStops = data?.sections?.unscheduled_delivery_orders || [];
   const hubFallbackReconciliation = data?.hub_fallback_reconciliation || {};
   const suppressedHubRows = hubFallbackReconciliation.suppressed_hub_rows || [];
+  const suppressedNativeRows = data?.sections?.suppressed_stale_delivery_tasks || [];
   const hasRows = deliveryStops.length > 0 || completedStops.length > 0 || unscheduledStops.length > 0;
   const deliveryLifecycleReadModel = hasValidDeliveryLifecycleReadModel(data) ? data.delivery_lifecycle_read_model : null;
 
@@ -1693,12 +2404,14 @@ export default function DeliveryQueue() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
-        title="Delivery Queue"
-        subtitle="Hub delivery summary with controlled operational actions"
-        badge="Ops v1"
-        badgeTone="warning"
+        title={testTaskMode === 'only' ? 'Delivery Queue · Internal Test' : 'Delivery Queue'}
+        subtitle={testTaskMode === 'only'
+          ? 'Isolated validation tasks; excluded from operational totals'
+          : 'Customer App delivery queue with live operational actions'}
+        badge={testTaskMode === 'only' ? 'Test-only' : 'Ops v1'}
+        badgeTone={testTaskMode === 'only' ? 'warning' : 'warning'}
       />
 
       <div className="px-4 mt-4 space-y-4">
@@ -1743,10 +2456,25 @@ export default function DeliveryQueue() {
           </label>
 
           <p className="text-xs text-muted-foreground">
-            Showing Hub and native Customer App delivery route summary for {formatDate(deliveryDate)}.
+            {testTaskMode === 'only'
+              ? `Showing formally marked internal test tasks only for ${formatDate(deliveryDate)}.`
+              : `Showing Customer App and source-backed delivery route summary for ${formatDate(deliveryDate)}.`}
           </p>
+          {(showInternalTestValidation || testTaskMode === 'only') && (
+            <button
+              type="button"
+              onClick={() => setTestTaskMode(testTaskMode === 'only' ? 'exclude' : 'only')}
+              className={`w-full h-10 rounded-lg border px-3 text-xs font-semibold ${
+                testTaskMode === 'only'
+                  ? 'border-amber-400 bg-amber-50 text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100'
+                  : 'border-border bg-background text-foreground'
+              }`}
+            >
+              {testTaskMode === 'only' ? 'Return to Operational Queue' : 'Open Internal Test Validation'}
+            </button>
+          )}
           <AdminStatusLegend />
-          <p className="text-[10px] text-muted-foreground">Hub data plus native Customer App delivery rows. Native delivery writes remain preview-first and exact-gated.</p>
+          <p className="text-[10px] text-muted-foreground">Source-backed data plus native Customer App delivery rows. Native task controls are exact-gated and show diagnostics when a gate blocks execution.</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
@@ -1765,61 +2493,83 @@ export default function DeliveryQueue() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Driver Portal route view</p>
-            <p className="text-[10px] text-muted-foreground">Date-pending native orders can be previewed for task creation. Proof, bag return, and manual notification actions remain omitted. Route optimization is preview-only.</p>
+            <p className="text-[10px] text-muted-foreground">Date-pending native orders can be previewed for task creation. Eligible native tasks support driver assignment, packing, out-for-delivery, delivered proof/drop capture, and gated customer status notifications. Route optimization remains preview-only.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
 
         {deliveryLifecycleReadModel && (
-          <DeliveryLifecycleReadModelPanel model={deliveryLifecycleReadModel} />
+          <DeliveryLifecycleDiagnosticsDisclosure model={deliveryLifecycleReadModel} />
         )}
 
         {suppressedHubRows.length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2 dark:border-amber-900/60 dark:bg-amber-950/30">
             <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0 dark:text-amber-300" />
               <div>
-                <p className="text-xs font-semibold text-amber-950">Hub fallback stale-date context</p>
-                <p className="text-[10px] text-amber-900">
-                  Native corrected schedule rows are preferred. Stale or duplicate Hub fallback rows are not shown as separate active delivery stops for this date, but remain visible here for audit context.
+                <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">Source fallback stale-date context</p>
+                <p className="text-[10px] text-amber-900 dark:text-amber-200/80">
+                  Native corrected schedule rows are preferred. Stale or duplicate source fallback rows are not shown as separate active delivery stops for this date, but remain visible here for audit context.
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200">
-                {formatLabel(hubFallbackReconciliation.merge_status)}
+              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200 dark:border-amber-800/70 dark:bg-background/70 dark:text-amber-100">
+                {deliveryLifecycleClassificationLabel(hubFallbackReconciliation.merge_status)}
               </span>
-              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200">
-                Suppressed Hub rows: {suppressedHubRows.length}
+              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200 dark:border-amber-800/70 dark:bg-background/70 dark:text-amber-100">
+                Suppressed source rows: {suppressedHubRows.length}
               </span>
               {hubFallbackReconciliation.stale_hub_fallback_detected && (
-                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200">
-                  Hub fallback stale date detected
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200 dark:border-amber-800/70 dark:bg-background/70 dark:text-amber-100">
+                  Source fallback stale date detected
                 </span>
               )}
             </div>
             <div className="space-y-1">
               {suppressedHubRows.slice(0, 5).map(row => (
-                <p key={`${row.order_number}-${row.hub_delivery_date}-${row.native_delivery_date}`} className="text-[10px] text-amber-900">
-                  {row.order_number}: Hub {row.hub_delivery_date || 'date pending'} → native {row.native_delivery_date || 'date pending'} · {formatLabel(row.merge_status)}
+                <p key={`${row.order_number}-${row.hub_delivery_date}-${row.native_delivery_date}`} className="text-[10px] text-amber-900 dark:text-amber-200/80">
+                  {row.order_number}: source {row.hub_delivery_date || 'date pending'} → native {row.native_delivery_date || 'date pending'} · {deliveryLifecycleClassificationLabel(row.merge_status)}
                 </p>
               ))}
             </div>
           </div>
         )}
 
-        <May30ReadinessPanel
-          title="Fulfillment / delivery ops"
-          description="Use this page for approved operational delivery actions. Customer-facing notification expansion remains separate and gated."
-          items={deliveryReadinessItems}
-          actions={[
-            { label: 'Admin Orders', to: '/admin/orders' },
-            { label: 'Production Queue', to: '/admin/production-queue' },
-            { label: 'Review / Sync Health', to: '/admin/sync-health' },
-          ]}
-        />
+        {suppressedNativeRows.length > 0 && (
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 space-y-2 dark:border-cyan-900/60 dark:bg-cyan-950/30">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-cyan-700 mt-0.5 shrink-0 dark:text-cyan-300" />
+              <div>
+                <p className="text-xs font-semibold text-cyan-950 dark:text-cyan-100">Historical native task context</p>
+                <p className="text-[10px] text-cyan-900 dark:text-cyan-200/80">
+                  Legacy nonterminal native tasks are excluded from active route totals for this date and kept here for audit context.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-cyan-900 border border-cyan-200 dark:border-cyan-800/70 dark:bg-background/70 dark:text-cyan-100">
+                Suppressed native rows: {suppressedNativeRows.length}
+              </span>
+              {data?.stale_native_delivery_task_detected && (
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-cyan-900 border border-cyan-200 dark:border-cyan-800/70 dark:bg-background/70 dark:text-cyan-100">
+                  Active route impact prevented
+                </span>
+              )}
+            </div>
+            <div className="space-y-1">
+              {suppressedNativeRows.slice(0, 5).map(row => (
+                <p key={`${row.order_number}-${row.delivery_date}-${row.native_fulfillment_task_id || row.task_id}`} className="text-[10px] text-cyan-900 dark:text-cyan-200/80">
+                  {row.order_number}: {formatLabel(row.task_status || row.delivery_status || 'pending')} · {formatLabel(row.suppression_reason)}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
 
-        <RouteOptimizationPanel deliveryDate={deliveryDate} stops={deliveryStops} />
+        {testTaskMode !== 'only' && (
+          <RouteOptimizationPanel deliveryDate={deliveryDate} stops={deliveryStops} />
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
@@ -1833,7 +2583,7 @@ export default function DeliveryQueue() {
         ) : !hasRows ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
             <p className="text-sm font-semibold text-foreground">No delivery stops found</p>
-            <p className="text-xs text-muted-foreground mt-1">This date has no scheduled Hub delivery route summary or native date-pending delivery orders yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">This date has no scheduled source-backed delivery route summary or native date-pending delivery orders yet.</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -1849,7 +2599,7 @@ export default function DeliveryQueue() {
             )}
             <StopSection
               title="Delivery Stops"
-              subtitle="Active Hub and native delivery tasks for this date"
+              subtitle="Active source and native delivery tasks for this date"
               stops={deliveryStops}
               completed={false}
               selectedDate={deliveryDate}

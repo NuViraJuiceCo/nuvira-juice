@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { useNavigate } from 'react-router-dom';
 import { ImagePlus, Check, X, Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
@@ -150,7 +151,7 @@ export default function AdminProducts() {
       const payload = res?.data || res;
       return Array.isArray(payload?.rows) ? payload.rows : [];
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
   });
 
   const filtered = products.filter(p =>
@@ -171,7 +172,7 @@ export default function AdminProducts() {
     });
   };
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Access denied. Admins only.</p>
@@ -180,7 +181,7 @@ export default function AdminProducts() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Product Images"
         subtitle="Tap an image to upload a new one"

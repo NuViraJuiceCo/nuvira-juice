@@ -4,6 +4,9 @@ const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
+const DEFAULT_REVIEW_LIMIT = 150;
+const MAX_REVIEW_LIMIT = 300;
+const VALID_REVIEW_STATUSES = new Set(['all', 'open', 'pending', 'reviewing', 'resolved', 'rejected', 'archived']);
 
 async function readJsonBody(req) {
   try {
@@ -30,6 +33,24 @@ function normalizeLimit(value) {
     throw new Error('limit must be a positive integer');
   }
   return Math.min(parsed, MAX_LIMIT);
+}
+
+function normalizeReviewLimit(value) {
+  const text = normalizeText(value);
+  if (!text) return DEFAULT_REVIEW_LIMIT;
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error('review_limit must be a positive integer');
+  }
+  return Math.min(parsed, MAX_REVIEW_LIMIT);
+}
+
+function normalizeReviewStatus(value) {
+  const status = normalizeLower(value) || 'open';
+  if (!VALID_REVIEW_STATUSES.has(status)) {
+    throw new Error('review_status must be one of all, open, pending, reviewing, resolved, rejected, archived');
+  }
+  return status;
 }
 
 function sanitizeText(value, maxLength = 240) {
@@ -73,12 +94,94 @@ function sanitizeAlert(alert) {
   };
 }
 
+function sanitizeReviewRow(row) {
+  return {
+    id: sanitizeText(row?.id, 120),
+    incident_type: sanitizeText(row?.incident_type, 120),
+    customer_email: sanitizeText(row?.customer_email, 160),
+    customer_name: sanitizeText(row?.customer_name, 160),
+    existing_order_id: sanitizeText(row?.existing_order_id, 120),
+    existing_order_number: sanitizeText(row?.existing_order_number, 120),
+    existing_order_type: sanitizeText(row?.existing_order_type, 80),
+    incoming_source: sanitizeText(row?.incoming_source, 120),
+    issue_description: sanitizeText(row?.issue_description, 600),
+    recommended_action: sanitizeText(row?.recommended_action, 600),
+    admin_notes: sanitizeText(row?.admin_notes, 600),
+    status: sanitizeText(row?.status || 'pending', 40),
+    resolved_action: sanitizeText(row?.resolved_action, 160),
+    resolved_at: normalizeText(row?.resolved_at) || null,
+    resolved_by: sanitizeText(row?.resolved_by, 160),
+    occurrence_count: Number(row?.occurrence_count) || 0,
+    first_seen_at: normalizeText(row?.first_seen_at) || null,
+    last_seen_at: normalizeText(row?.last_seen_at) || null,
+    queue_visibility_status: sanitizeText(row?.queue_visibility_status, 80),
+    archived_at: normalizeText(row?.archived_at) || null,
+    archived_by: sanitizeText(row?.archived_by, 160),
+    archived_reason: sanitizeText(row?.archived_reason, 240),
+    created_date: normalizeText(row?.created_date) || null,
+    updated_date: normalizeText(row?.updated_date) || null,
+  };
+}
+
 function isTerminalStatus(status) {
   return ['resolved', 'dismissed', 'archived', 'closed'].includes(normalizeLower(status));
 }
 
 function isActiveReviewStatus(status) {
   return !['resolved', 'rejected', 'archived'].includes(normalizeLower(status));
+}
+
+function isOpenReviewStatus(status) {
+  return ['pending', 'reviewing'].includes(normalizeLower(status));
+}
+
+function isLegacyLaunchReviewQueueNoise(row) {
+  const source = normalizeLower(row?.incoming_source);
+  const incident = normalizeLower(row?.incident_type);
+  const existingOrder = normalizeText(row?.existing_order_number || row?.order_number || row?.shopify_order_number);
+  const description = normalizeLower(`${row?.issue_description || ''} ${row?.recommended_action || ''}`);
+  return source === 'shopify_pos' &&
+    incident === 'payment_not_paid' &&
+    !existingOrder &&
+    description.includes('may 30 native order ops rejected order');
+}
+
+function isInternalTestReviewQueueItem(row) {
+  if (row?.is_test_record === true || row?.is_test_order === true || row?.internal_test === true) return true;
+  const orderRef = normalizeLower(row?.existing_order_number || row?.order_number || row?.shopify_order_number);
+  return orderRef.startsWith('nv-test-') || orderRef.includes('-test-');
+}
+
+function reviewStatusMatches(row, status) {
+  const current = normalizeLower(row?.status) || 'pending';
+  if (status === 'all') return true;
+  if (status === 'open') return isOpenReviewStatus(current);
+  return current === status;
+}
+
+function reviewMatchesSearch(row, search) {
+  const query = normalizeLower(search);
+  if (!query) return true;
+  const haystack = [
+    row?.incident_type,
+    row?.customer_email,
+    row?.customer_name,
+    row?.existing_order_number,
+    row?.incoming_source,
+    row?.issue_description,
+    row?.recommended_action,
+    row?.admin_notes,
+    row?.status,
+  ].map(normalizeLower).join(' ');
+  return haystack.includes(query);
+}
+
+function countReviewByStatus(rows) {
+  return rows.reduce((acc, row) => {
+    const status = normalizeLower(row?.status) || 'pending';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
 }
 
 function normalizeSeverity(value, fallback = 'warning') {
@@ -147,6 +250,86 @@ async function listEntity(base44, entityName, sort, limit = 500) {
   });
 }
 
+async function loadNativeReviewQueue(base44, { status, search, limit, includeLegacy = false, includeInternalTest = false }) {
+  const entity = base44.asServiceRole?.entities?.OrderReviewQueue;
+  if (!entity || typeof entity.list !== 'function') {
+    return {
+      source: 'customer_app_native_review_queue_unavailable',
+      summary: {
+        total: 0,
+        open: 0,
+        pending: 0,
+        reviewing: 0,
+        resolved: 0,
+        rejected: 0,
+        archived: 0,
+        refund_related: 0,
+      },
+      rows: [],
+      count: 0,
+      total_matching: 0,
+      truncated: false,
+      warnings: ['order_review_queue_entity_unavailable'],
+      safety: {
+        raw_payloads_included: false,
+        writes_performed: false,
+        provider_calls_performed: false,
+        notifications_sent: false,
+        hub_mutation_performed: false,
+      },
+    };
+  }
+
+  const rows = await entity.list('-created_date', MAX_REVIEW_LIMIT).catch(error => {
+    console.warn('[getAdminOpsAlertsSummary] Native OrderReviewQueue unavailable:', error.message);
+    return [];
+  });
+  const allRows = Array.isArray(rows) ? rows : [];
+  const legacyLaunchRows = allRows.filter(isLegacyLaunchReviewQueueNoise);
+  const internalTestRows = allRows.filter(isInternalTestReviewQueueItem);
+  const operationalRows = allRows.filter(row =>
+    (includeLegacy || !isLegacyLaunchReviewQueueNoise(row)) &&
+    (includeInternalTest || !isInternalTestReviewQueueItem(row))
+  );
+  const statusCounts = countReviewByStatus(operationalRows);
+  const filtered = operationalRows
+    .filter(row => reviewStatusMatches(row, status))
+    .filter(row => reviewMatchesSearch(row, search));
+  const visibleRows = filtered.slice(0, limit).map(sanitizeReviewRow);
+
+  return {
+    source: 'customer_app_native_review_queue_service_role_read',
+    generated_at: new Date().toISOString(),
+    status_filter: status,
+    search_applied: Boolean(search),
+    count: visibleRows.length,
+    total_matching: filtered.length,
+    truncated: filtered.length > visibleRows.length,
+    summary: {
+      total: operationalRows.length,
+      total_raw: allRows.length,
+      open: operationalRows.filter(row => isOpenReviewStatus(row?.status)).length,
+      pending: statusCounts.pending || 0,
+      reviewing: statusCounts.reviewing || 0,
+      resolved: statusCounts.resolved || 0,
+      rejected: statusCounts.rejected || 0,
+      archived: statusCounts.archived || 0,
+      refund_related: operationalRows.filter(row => normalizeLower(row?.incident_type).includes('refund')).length,
+      legacy_launch_suppressed: includeLegacy ? 0 : legacyLaunchRows.length,
+      internal_test_suppressed: includeInternalTest ? 0 : internalTestRows.length,
+    },
+    rows: visibleRows,
+    warnings: [],
+    safety: {
+      raw_payloads_included: false,
+      writes_performed: false,
+      provider_calls_performed: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
+    },
+  };
+}
+
 async function loadNativeOpsAlerts(base44, filters, limit) {
   const [operationalAlerts, complianceAlerts, reviewQueueItems] = await Promise.all([
     listEntity(base44, 'OperationalAlert', '-created_date'),
@@ -185,6 +368,8 @@ async function loadNativeOpsAlerts(base44, filters, limit) {
     })),
     ...reviewQueueItems
       .filter(item => isActiveReviewStatus(item.status))
+      .filter(item => !isLegacyLaunchReviewQueueNoise(item))
+      .filter(item => !isInternalTestReviewQueueItem(item))
       .map(item => ({
         id: `native_review_${item.id}`,
         title: sanitizeText(`Order review: ${item.incident_type || 'needs review'}`, 120),
@@ -211,7 +396,7 @@ async function loadNativeOpsAlerts(base44, filters, limit) {
   };
 }
 
-function nativeFallbackResponse({ nativeAlerts, reason, hubStatus = null }) {
+function nativeFallbackResponse({ nativeAlerts, reason, hubStatus = null, reviewQueue = null }) {
   return Response.json({
     success: true,
     source: 'customer_app_native_ops_alerts_fallback',
@@ -219,6 +404,7 @@ function nativeFallbackResponse({ nativeAlerts, reason, hubStatus = null }) {
     count: nativeAlerts.alerts.length,
     truncated: nativeAlerts.truncated === true,
     alerts: nativeAlerts.alerts,
+    review_queue: reviewQueue,
     warnings: [
       hubStatus ? `hub_ops_alerts_unavailable:${hubStatus}` : `hub_ops_alerts_unavailable:${reason}`,
       'native_read_only_fallback',
@@ -228,6 +414,10 @@ function nativeFallbackResponse({ nativeAlerts, reason, hubStatus = null }) {
       native_available: true,
       native_read_only: true,
     },
+    writes_performed: false,
+    provider_calls_performed: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
   });
 }
 
@@ -254,10 +444,20 @@ Deno.serve(async (req) => {
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
     }
+    const includeReviewQueue = body.include_review_queue === true || body.include_review_queue_only === true;
+    const includeReviewQueueOnly = body.include_review_queue_only === true;
+    const includeLegacyReviewQueue = body.include_legacy_review_queue === true;
+    const includeInternalTestReviewQueue = body.include_internal_test_review_queue === true;
     let limit;
+    let reviewLimit = DEFAULT_REVIEW_LIMIT;
+    let reviewStatus = 'open';
 
     try {
       limit = normalizeLimit(body.limit);
+      if (includeReviewQueue) {
+        reviewLimit = normalizeReviewLimit(body.review_limit ?? body.limit);
+        reviewStatus = normalizeReviewStatus(body.review_status);
+      }
     } catch (error) {
       return Response.json({ error: error.message }, { status: 400 });
     }
@@ -267,13 +467,56 @@ Deno.serve(async (req) => {
     const category = normalizeText(body.category);
     const search = normalizeText(body.search);
     const filters = { severity, status, category, search };
+    const reviewSearch = normalizeText(body.review_search ?? body.search);
     const loadNativeAlerts = () => loadNativeOpsAlerts(base44, filters, limit);
+
+    if (includeReviewQueueOnly) {
+      const reviewQueue = await loadNativeReviewQueue(base44, {
+        status: reviewStatus,
+        search: reviewSearch,
+        limit: reviewLimit,
+        includeLegacy: includeLegacyReviewQueue,
+        includeInternalTest: includeInternalTestReviewQueue,
+      });
+      return Response.json({
+        success: true,
+        source: reviewQueue.source,
+        generated_at: reviewQueue.generated_at || new Date().toISOString(),
+        status_filter: reviewQueue.status_filter,
+        search_applied: reviewQueue.search_applied === true,
+        summary: reviewQueue.summary,
+        rows: reviewQueue.rows,
+        count: reviewQueue.count,
+        total_matching: reviewQueue.total_matching,
+        truncated: reviewQueue.truncated === true,
+        warnings: reviewQueue.warnings,
+        safety: reviewQueue.safety,
+        data_sources: {
+          hub_available: false,
+          native_available: true,
+          native_read_only: true,
+        },
+        writes_performed: false,
+        provider_calls_performed: false,
+        notifications_sent: false,
+        hub_mutation_performed: false,
+      });
+    }
+
+    const reviewQueue = includeReviewQueue ? await loadNativeReviewQueue(base44, {
+      status: reviewStatus,
+      search: reviewSearch,
+      limit: reviewLimit,
+      includeLegacy: includeLegacyReviewQueue,
+      includeInternalTest: includeInternalTestReviewQueue,
+    }) : null;
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       const nativeAlerts = await loadNativeAlerts();
       return nativeFallbackResponse({
         nativeAlerts,
         reason: 'missing_config',
+        reviewQueue,
       });
     }
 
@@ -300,6 +543,7 @@ Deno.serve(async (req) => {
       return nativeFallbackResponse({
         nativeAlerts,
         reason: 'fetch_failed',
+        reviewQueue,
       });
     }
 
@@ -309,6 +553,7 @@ Deno.serve(async (req) => {
         nativeAlerts,
         reason: 'non_ok',
         hubStatus: hubResponse.status,
+        reviewQueue,
       });
     }
 
@@ -318,6 +563,7 @@ Deno.serve(async (req) => {
       return nativeFallbackResponse({
         nativeAlerts,
         reason: 'malformed_response',
+        reviewQueue,
       });
     }
 
@@ -330,6 +576,11 @@ Deno.serve(async (req) => {
       count: sanitizedAlerts.length,
       truncated,
       alerts: sanitizedAlerts,
+      review_queue: reviewQueue,
+      writes_performed: false,
+      provider_calls_performed: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
     });
   } catch (error) {
     console.error('[getAdminOpsAlertsSummary] Error:', error.message);

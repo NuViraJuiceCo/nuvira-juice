@@ -5,6 +5,7 @@ const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_RANGE_DAYS = 31;
 const DEFAULT_RANGE_DAYS_BACK = 6;
 const CHICAGO_TZ = 'America/Chicago';
+const TEST_RECORD_MODES = new Set(['exclude', 'only']);
 
 async function readJsonBody(req) {
   try {
@@ -142,6 +143,10 @@ function sanitizeTemperatureRecord(row) {
     ['max_range', 'max_range', 40],
     ['within_range', 'within_range'],
     ['notes', 'notes', 1000],
+    ['batch_id', 'batch_id', 120],
+    ['source_production_batch_id', 'source_production_batch_id', 160],
+    ['is_test_record', 'is_test_record'],
+    ['test_batch_id', 'test_batch_id', 120],
   ]);
 }
 
@@ -187,6 +192,9 @@ function sanitizeSanitationRecord(row) {
     ['verified_by', 'verified_by', 120],
     ['batch_id', 'batch_id', 120],
     ['notes', 'notes', 1000],
+    ['source_production_batch_id', 'source_production_batch_id', 160],
+    ['is_test_record', 'is_test_record'],
+    ['test_batch_id', 'test_batch_id', 120],
   ]);
 }
 
@@ -229,6 +237,10 @@ function sanitizeChecklistRecord(row) {
     ['overall_status', 'overall_status', 80],
     ['completed_at', 'completed_at', 80],
     ['manager_reviewed', 'manager_reviewed'],
+    ['batch_id', 'batch_id', 120],
+    ['source_production_batch_id', 'source_production_batch_id', 160],
+    ['is_test_record', 'is_test_record'],
+    ['test_batch_id', 'test_batch_id', 120],
   ]);
 }
 
@@ -249,6 +261,9 @@ function sanitizeBatchComplianceRecord(row) {
       ['verified_by', 'verified_by', 120],
       ['verified_at', 'verified_at', 80],
       ['notes', 'notes', 1000],
+      ['source_production_batch_id', 'source_production_batch_id', 160],
+      ['is_test_record', 'is_test_record'],
+      ['test_batch_id', 'test_batch_id', 120],
     ]),
     staff_on_duty: safeStringArray(row?.staff_on_duty),
     ingredients: safeArrayOfObjects(row?.ingredients, ing => ({
@@ -359,6 +374,76 @@ function inDateRange(value, dateFrom, dateTo) {
   return Boolean(text && text >= dateFrom && text <= dateTo);
 }
 
+function idHasInternalTestMarker(value) {
+  const text = normalizeText(value).toUpperCase();
+  return Boolean(text && (
+    text.includes('BATCH-G53-TEST') ||
+    text.includes('-TEST-') ||
+    text.startsWith('TEST-')
+  ));
+}
+
+function textHasInternalTestMarker(value) {
+  const text = normalizeText(value).toLowerCase();
+  return Boolean(text && (
+    text.includes('customer_app_internal_validation') ||
+    text.includes('internal_validation') ||
+    text.includes('internal validation') ||
+    text.includes('internal_test') ||
+    text.includes('internal test') ||
+    text.includes('held_internal_test') ||
+    text.includes('test_batch') ||
+    text.includes('test batch') ||
+    text.includes('test_record') ||
+    text.includes('test record')
+  ));
+}
+
+function arrayHasInternalTestMarker(value) {
+  return Array.isArray(value) && value.some(item => (
+    idHasInternalTestMarker(item) ||
+    textHasInternalTestMarker(item)
+  ));
+}
+
+function isInternalTestRecord(row) {
+  if (!row || typeof row !== 'object') return false;
+  if (
+    row.is_test_record === true ||
+    row.is_test_batch === true ||
+    row.is_internal_test === true ||
+    row.internal_test === true
+  ) return true;
+
+  const idFields = [
+    row.id,
+    row.batch_id,
+    row.test_batch_id,
+    row.source_batch_id,
+    row.source_production_batch_id,
+    row.production_batch_id,
+  ];
+  if (idFields.some(idHasInternalTestMarker)) return true;
+
+  const markerFields = [
+    row.source_system,
+    row.native_owner_status,
+    row.inventory_deduction_status,
+    row.test_purpose,
+    row.test_marker,
+    row.record_purpose,
+    row.validation_scope,
+  ];
+  if (markerFields.some(textHasInternalTestMarker)) return true;
+
+  return arrayHasInternalTestMarker(row.related_batch_ids) ||
+    arrayHasInternalTestMarker(row.related_source_production_batch_ids);
+}
+
+function isInternalTestBatch(row) {
+  return isInternalTestRecord(row);
+}
+
 function nativeComplianceLog(entityName, row, type) {
   const valueMap = {
     temperature: row?.temperature,
@@ -404,7 +489,7 @@ async function safeEntityList(base44, entityName, sort, limit = 500) {
   }
 }
 
-async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
+async function loadNativeComplianceSummary(base44, dateFrom, dateTo, testRecordMode = 'exclude') {
   const [
     temperatureResult,
     phResult,
@@ -451,19 +536,21 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
     productionBatchResult.warning,
   ].filter(Boolean);
 
-  const temperature = temperatureResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
-  const ph = phResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
-  const ccp = ccpResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
-  const sanitation = sanitationResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
-  const checklists = checklistResult.rows.filter(row => inDateRange(row.checklist_date, dateFrom, dateTo));
-  const corrective = correctiveResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
-  const batch = batchResult.rows.filter(row => inDateRange(row.date, dateFrom, dateTo));
-  const alerts = alertResult.rows.filter(row => inDateRange(row.triggered_date, dateFrom, dateTo));
-  const unified = unifiedResult.rows.filter(row => inDateRange(row.log_date, dateFrom, dateTo));
-  const labelReviews = labelResult.rows;
-  const haccpReviews = haccpResult.rows;
-  const complianceDocuments = documentResult.rows;
-  const productionBatches = productionBatchResult.rows.filter(row => inDateRange(row.production_date, dateFrom, dateTo));
+  const modeMatches = row => testRecordMode === 'only' ? isInternalTestRecord(row) : !isInternalTestRecord(row);
+  const batchModeMatches = row => testRecordMode === 'only' ? isInternalTestBatch(row) : !isInternalTestBatch(row);
+  const temperature = temperatureResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const ph = testRecordMode === 'only' ? [] : phResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const ccp = testRecordMode === 'only' ? [] : ccpResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const sanitation = sanitationResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const checklists = checklistResult.rows.filter(modeMatches).filter(row => inDateRange(row.checklist_date, dateFrom, dateTo));
+  const corrective = testRecordMode === 'only' ? [] : correctiveResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const batch = batchResult.rows.filter(modeMatches).filter(row => inDateRange(row.date, dateFrom, dateTo));
+  const alerts = testRecordMode === 'only' ? [] : alertResult.rows.filter(modeMatches).filter(row => inDateRange(row.triggered_date, dateFrom, dateTo));
+  const unified = testRecordMode === 'only' ? [] : unifiedResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const labelReviews = testRecordMode === 'only' ? [] : labelResult.rows;
+  const haccpReviews = testRecordMode === 'only' ? [] : haccpResult.rows;
+  const complianceDocuments = testRecordMode === 'only' ? [] : documentResult.rows;
+  const productionBatches = productionBatchResult.rows.filter(batchModeMatches).filter(row => inDateRange(row.production_date, dateFrom, dateTo));
 
   const recentLogs = [
     ...temperature.map(row => nativeComplianceLog('TemperatureLog', row, 'temperature')),
@@ -541,6 +628,8 @@ async function loadNativeComplianceSummary(base44, dateFrom, dateTo) {
       compliance_documents: newestFirst(complianceDocuments, 'expiry_date', 100).map(sanitizeComplianceDocument),
     },
     warnings,
+    test_record_mode: testRecordMode,
+    operational_totals_exclude_test_records: true,
   };
 }
 
@@ -552,6 +641,8 @@ function sanitizeBatch(batch) {
       ['product_name', 'product_name', 120],
       ['production_date', 'production_date', 40],
       ['status', 'status', 80],
+      ['is_test_batch', 'is_test_batch'],
+      ['test_purpose', 'test_purpose', 160],
       ['assigned_to', 'assigned_to', 120],
       ['planned_units', 'planned_units', 40],
       ['actual_units', 'actual_units', 40],
@@ -578,6 +669,7 @@ function sanitizeBatch(batch) {
       ['quantity_disposed', 'quantity_disposed', 40],
       ['preventive_steps', 'preventive_steps', 500],
     ]),
+    is_test_batch: isInternalTestBatch(batch),
     compliance_log_id_present: safeBoolean(batch?.compliance_log_id_present),
     corrective_action_required: safeBoolean(batch?.corrective_action_required),
     corrective_action_log_id_present: safeBoolean(batch?.corrective_action_log_id_present),
@@ -669,26 +761,90 @@ function fallbackHubUnavailableSummary(dateFrom, dateTo, reason, hubStatus = nul
   };
 }
 
+function nativeComplianceReady(native) {
+  return Boolean(native?.read_only === true && native?.summary && typeof native.summary === 'object');
+}
+
 function withNativeFallback(fallback, native) {
+  const nativeSummary = native?.summary || {};
+  const nativeIssues = native?.issues || {};
+  const fallbackSummary = fallback?.summary || {};
+  const fallbackIssues = fallback?.issues || {};
+  const countFromFallbackOrNative = (key) => {
+    const fallbackValue = safeNumber(fallbackSummary[key]);
+    return fallbackValue > 0 ? fallbackValue : safeNumber(nativeSummary[key]);
+  };
+
   return {
     ...fallback,
     native,
+    native_available: nativeComplianceReady(native),
+    source_fallback_warnings: safeStringArray(fallback.warnings),
     summary: {
-      ...fallback.summary,
-      native_temperature: native.summary.temperature,
-      native_ph: native.summary.ph,
-      native_ccp: native.summary.ccp,
-      native_sanitation: native.summary.sanitation,
-      native_daily_checklists: native.summary.daily_checklists,
-      native_corrective_actions: native.summary.corrective_actions,
-      native_batch_compliance_logs: native.summary.batch_compliance_logs,
+      ...fallbackSummary,
+      temperature: countFromFallbackOrNative('temperature'),
+      ph: countFromFallbackOrNative('ph'),
+      ccp: countFromFallbackOrNative('ccp'),
+      sanitation: countFromFallbackOrNative('sanitation'),
+      daily_checklists: countFromFallbackOrNative('daily_checklists'),
+      corrective_actions: countFromFallbackOrNative('corrective_actions'),
+      batch_compliance_logs: countFromFallbackOrNative('batch_compliance_logs'),
+      unified_logs: countFromFallbackOrNative('unified_logs'),
+      production_batches: countFromFallbackOrNative('production_batches'),
+      native_temperature: safeNumber(nativeSummary.temperature),
+      native_ph: safeNumber(nativeSummary.ph),
+      native_ccp: safeNumber(nativeSummary.ccp),
+      native_sanitation: safeNumber(nativeSummary.sanitation),
+      native_daily_checklists: safeNumber(nativeSummary.daily_checklists),
+      native_corrective_actions: safeNumber(nativeSummary.corrective_actions),
+      native_batch_compliance_logs: safeNumber(nativeSummary.batch_compliance_logs),
+      native_production_batches: safeNumber(nativeSummary.production_batches),
     },
     issues: {
-      ...fallback.issues,
-      native_attention_items: native.issues.total_attention_items,
+      ...fallbackIssues,
+      temp_out_of_range: safeNumber(fallbackIssues.temp_out_of_range) || safeNumber(nativeIssues.temp_out_of_range),
+      ph_out_of_range: safeNumber(fallbackIssues.ph_out_of_range) || safeNumber(nativeIssues.ph_out_of_range),
+      ccp_failed: safeNumber(fallbackIssues.ccp_failed) || safeNumber(nativeIssues.ccp_failed),
+      sanitation_issues: safeNumber(fallbackIssues.sanitation_issues) || safeNumber(nativeIssues.sanitation_issues),
+      incomplete_checklists: safeNumber(fallbackIssues.incomplete_checklists) || safeNumber(nativeIssues.incomplete_checklists),
+      open_corrective_actions: safeNumber(fallbackIssues.open_corrective_actions) || safeNumber(nativeIssues.open_corrective_actions),
+      total_attention_items: safeNumber(fallbackIssues.total_attention_items) || safeNumber(nativeIssues.total_attention_items),
+      native_attention_items: safeNumber(nativeIssues.total_attention_items),
     },
     recent_logs: native.recent_logs,
-    warnings: [...fallback.warnings, ...native.warnings],
+    warnings: nativeComplianceReady(native)
+      ? safeStringArray(native.warnings)
+      : [...safeStringArray(fallback.warnings), ...safeStringArray(native.warnings)],
+  };
+}
+
+function mergeNativeComplianceCounts(primarySummary, nativeSummary) {
+  const source = primarySummary || {};
+  const nativeCounts = nativeSummary || {};
+  const countFromPrimaryOrNative = (key) => {
+    const primaryValue = safeNumber(source[key]);
+    return primaryValue > 0 ? primaryValue : safeNumber(nativeCounts[key]);
+  };
+
+  return {
+    ...source,
+    temperature: countFromPrimaryOrNative('temperature'),
+    ph: countFromPrimaryOrNative('ph'),
+    ccp: countFromPrimaryOrNative('ccp'),
+    sanitation: countFromPrimaryOrNative('sanitation'),
+    daily_checklists: countFromPrimaryOrNative('daily_checklists'),
+    corrective_actions: countFromPrimaryOrNative('corrective_actions'),
+    batch_compliance_logs: countFromPrimaryOrNative('batch_compliance_logs'),
+    unified_logs: countFromPrimaryOrNative('unified_logs'),
+    production_batches: countFromPrimaryOrNative('production_batches'),
+    native_temperature: safeNumber(nativeCounts.temperature),
+    native_ph: safeNumber(nativeCounts.ph),
+    native_ccp: safeNumber(nativeCounts.ccp),
+    native_sanitation: safeNumber(nativeCounts.sanitation),
+    native_daily_checklists: safeNumber(nativeCounts.daily_checklists),
+    native_corrective_actions: safeNumber(nativeCounts.corrective_actions),
+    native_batch_compliance_logs: safeNumber(nativeCounts.batch_compliance_logs),
+    native_production_batches: safeNumber(nativeCounts.production_batches),
   };
 }
 
@@ -713,9 +869,14 @@ Deno.serve(async (req) => {
     }
     let dateFrom;
     let dateTo;
+    let testRecordMode;
     try {
       dateFrom = parseIsoDate(body.date_from, 'date_from');
       dateTo = parseIsoDate(body.date_to, 'date_to');
+      testRecordMode = normalizeText(body.test_record_mode || 'exclude').toLowerCase();
+      if (!TEST_RECORD_MODES.has(testRecordMode)) {
+        throw new Error('test_record_mode must be exclude or only');
+      }
     } catch (error) {
       return Response.json({ error: error.message }, { status: 400 });
     }
@@ -741,7 +902,26 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    const native = await loadNativeComplianceSummary(base44, dateFrom, dateTo);
+    const native = await loadNativeComplianceSummary(base44, dateFrom, dateTo, testRecordMode);
+    if (testRecordMode === 'only') {
+      return Response.json({
+        success: true,
+        dry_run: true,
+        read_only: true,
+        source: 'customer_app_native_internal_test',
+        native_available: nativeComplianceReady(native),
+        date_from: dateFrom,
+        date_to: dateTo,
+        test_record_mode: 'only',
+        operational_totals_exclude_test_records: true,
+        summary: native.summary,
+        issues: native.issues,
+        recent_logs: native.recent_logs,
+        records: native.records,
+        native,
+        warnings: ['internal_test_compliance_records_only', ...safeStringArray(native.warnings)],
+      });
+    }
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       const fallback = fallbackHubUnavailableSummary(
@@ -789,24 +969,20 @@ Deno.serve(async (req) => {
     }
 
     const hub = sanitizeHubResponse(hubData, dateFrom, dateTo);
+    const hubWarnings = safeStringArray(hub.warnings);
     return Response.json({
       ...hub,
       native,
-      summary: {
-        ...hub.summary,
-        native_temperature: native.summary.temperature,
-        native_ph: native.summary.ph,
-        native_ccp: native.summary.ccp,
-        native_sanitation: native.summary.sanitation,
-        native_daily_checklists: native.summary.daily_checklists,
-        native_corrective_actions: native.summary.corrective_actions,
-        native_batch_compliance_logs: native.summary.batch_compliance_logs,
-      },
+      native_available: nativeComplianceReady(native),
+      source_warnings: hubWarnings,
+      summary: mergeNativeComplianceCounts(hub.summary, native.summary),
       issues: {
         ...hub.issues,
         native_attention_items: native.issues.total_attention_items,
       },
-      warnings: [...safeStringArray(hub.warnings), ...native.warnings],
+      warnings: nativeComplianceReady(native)
+        ? safeStringArray(native.warnings)
+        : [...hubWarnings, ...safeStringArray(native.warnings)],
     });
   } catch (error) {
     console.error('[getAdminComplianceOpsSummary] Error:', error.message);

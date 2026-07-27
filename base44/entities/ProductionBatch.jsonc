@@ -60,6 +60,15 @@
       "type": "string",
       "description": "Production notes"
     },
+    "is_test_batch": {
+      "type": "boolean",
+      "default": false,
+      "description": "True only for explicitly approved internal validation batches. Test batches are excluded from operational queues, totals, planning, procurement, inventory, delivery, and customer reporting."
+    },
+    "test_purpose": {
+      "type": "string",
+      "description": "Short internal reason for creating an explicitly marked test batch"
+    },
     "is_locked": {
       "type": "boolean",
       "description": "Locked batches cannot be edited without admin reason and audit trail"

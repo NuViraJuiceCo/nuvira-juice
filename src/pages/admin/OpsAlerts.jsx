@@ -14,6 +14,8 @@ import {
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
+import { usePageVisibility } from '@/lib/usePageVisibility';
 
 function formatDateTime(value) {
   if (!value) return null;
@@ -124,7 +126,7 @@ function AlertCard({ alert, feedback, pendingAction, onAction }) {
       </div>
 
       <p className="text-sm text-foreground/85 leading-relaxed break-words">
-        {alert.summary || 'Additional details available in Operations Hub.'}
+        {alert.summary || 'Additional details available in the source operations record.'}
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -203,6 +205,7 @@ function AlertCard({ alert, feedback, pendingAction, onAction }) {
 export default function OpsAlerts() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isPageVisible = usePageVisibility();
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -226,8 +229,9 @@ export default function OpsAlerts() {
       if (result?.error) throw new Error(result.error);
       return result || { summary: {}, alerts: [] };
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user) && isPageVisible,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
   });
 
   const alerts = data?.alerts || [];
@@ -256,7 +260,7 @@ export default function OpsAlerts() {
 
     let resolutionNote = '';
     if (action === 'resolve') {
-      const confirmed = window.confirm('Resolve this ops alert? This will mark it resolved in Operations Hub.');
+      const confirmed = window.confirm('Resolve this ops alert? This will mark it resolved in the source operations record.');
       if (!confirmed) return;
       const note = window.prompt('Optional resolution note. Leave blank for no note.', '');
       if (note === null) return;
@@ -308,7 +312,7 @@ export default function OpsAlerts() {
     }
   };
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -317,7 +321,7 @@ export default function OpsAlerts() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Ops Alerts"
         subtitle="Sanitized operations inbox"
@@ -394,11 +398,11 @@ export default function OpsAlerts() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">
-              {isNativeFallback ? 'Native Customer App alerts fallback' : 'Hub Alerts view'}
+              {isNativeFallback ? 'Native Customer App alerts fallback' : 'Source Alerts view'}
             </p>
             <p className="text-[10px] text-muted-foreground">
               {isNativeFallback
-                ? 'Sanitized native alert and review visibility only. Actions remain disabled while Hub alerts are unavailable.'
+                ? 'Sanitized native alert and review visibility only. Actions remain disabled while source alerts are unavailable.'
                 : 'Sanitized alert visibility only. Acknowledge, resolve, and dismiss are available for active alerts only.'}
             </p>
             <AdminStatusLegend className="mt-2" />
@@ -407,10 +411,10 @@ export default function OpsAlerts() {
         </div>
 
         {warnings.length > 0 && (
-          <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
+          <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-100">
             {warnings.includes('native_read_only_fallback')
-              ? 'Hub ops alerts are unavailable. Showing native Customer App read-only alerts and review issues so operational visibility stays available.'
-              : warnings.slice(0, 2).join(', ')}
+              ? 'Source ops alerts are unavailable. Showing native Customer App read-only alerts and review issues so operational visibility stays available.'
+              : warnings.slice(0, 2).map(warning => String(warning).replace(/^hub_/i, 'source_').replace(/_/g, ' ')).join(', ')}
           </p>
         )}
 
@@ -432,7 +436,7 @@ export default function OpsAlerts() {
         ) : (
           <div className="space-y-3">
             {data?.truncated && (
-              <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
+              <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-100">
                 Results are capped. Narrow the search or filters for a more complete view.
               </p>
             )}

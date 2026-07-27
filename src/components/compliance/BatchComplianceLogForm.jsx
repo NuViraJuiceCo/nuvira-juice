@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
+import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
 function parseList(value) {
   return value
@@ -108,8 +109,8 @@ export default function BatchComplianceLogForm({ onClose }) {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 dark:text-red-300" />
               <span>{error}</span>
             </div>
           )}
@@ -201,13 +202,12 @@ export default function BatchComplianceLogForm({ onClose }) {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium">Staff On Duty</label>
-              <input
-                type="text"
+              <StaffMemberPicker
+                label="Staff on duty"
                 value={formData.staff_on_duty_text}
-                onChange={(e) => handleChange('staff_on_duty_text', e.target.value)}
-                placeholder="Name, Name"
-                className="mt-1 w-full rounded-md border bg-background p-2 text-foreground"
+                onChange={(value) => handleChange('staff_on_duty_text', value)}
+                multiple
+                helperText="Select each person who worked this batch, or type another name."
               />
             </div>
           </div>

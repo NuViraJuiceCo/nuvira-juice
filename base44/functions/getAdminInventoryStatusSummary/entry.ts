@@ -4,7 +4,8 @@ const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 100;
-const VALID_STATUSES = new Set(['ok', 'low', 'critical', 'out_of_stock']);
+const VALID_STATUSES = new Set(['ok', 'low', 'critical', 'out_of_stock', 'demand_based']);
+const FOOD_STOCK_EXCLUDED_CATEGORIES = new Set(['produce', 'juice base', 'spices & herbs']);
 
 async function readJsonBody(req) {
   try {
@@ -44,7 +45,7 @@ function normalizeStatus(value) {
   const status = normalizeText(value).toLowerCase();
   if (!status) return '';
   if (!VALID_STATUSES.has(status)) {
-    throw new Error('status must be one of ok, low, critical, out_of_stock');
+    throw new Error('status must be one of ok, low, critical, out_of_stock, demand_based');
   }
   return status;
 }
@@ -57,6 +58,9 @@ function numberOrNull(value) {
 function sanitizeSummary(summary) {
   return {
     total_items: Number(summary?.total_items) || 0,
+    stock_tracked_item_count: Number(summary?.stock_tracked_item_count) || 0,
+    demand_based_food_count: Number(summary?.demand_based_food_count) || 0,
+    food_stock_warnings_suppressed_count: Number(summary?.food_stock_warnings_suppressed_count) || 0,
     low_stock_count: Number(summary?.low_stock_count) || 0,
     critical_count: Number(summary?.critical_count) || 0,
     out_of_stock_count: Number(summary?.out_of_stock_count) || 0,
@@ -71,6 +75,9 @@ function sanitizeSummary(summary) {
 function mergeSummary(a, b) {
   return sanitizeSummary({
     total_items: Number(a?.total_items || 0) + Number(b?.total_items || 0),
+    stock_tracked_item_count: Number(a?.stock_tracked_item_count || 0) + Number(b?.stock_tracked_item_count || 0),
+    demand_based_food_count: Number(a?.demand_based_food_count || 0) + Number(b?.demand_based_food_count || 0),
+    food_stock_warnings_suppressed_count: Number(a?.food_stock_warnings_suppressed_count || 0) + Number(b?.food_stock_warnings_suppressed_count || 0),
     low_stock_count: Number(a?.low_stock_count || 0) + Number(b?.low_stock_count || 0),
     critical_count: Number(a?.critical_count || 0) + Number(b?.critical_count || 0),
     out_of_stock_count: Number(a?.out_of_stock_count || 0) + Number(b?.out_of_stock_count || 0),
@@ -82,18 +89,42 @@ function mergeSummary(a, b) {
   });
 }
 
-function deriveInventoryStatus(item) {
+function isFoodInventoryItem(item) {
+  return FOOD_STOCK_EXCLUDED_CATEGORIES.has(normalizeLower(item?.category));
+}
+
+function rawThresholdStatus(item) {
   const stock = Number(item.stock);
   const reorderPoint = Number(item.reorder_point);
   if (!Number.isFinite(stock)) return null;
   if (stock <= 0) return 'out_of_stock';
-  if (Number.isFinite(reorderPoint) && stock <= reorderPoint * 0.5) return 'critical';
-  if (Number.isFinite(reorderPoint) && stock <= reorderPoint) return 'low';
+  if (Number.isFinite(reorderPoint) && reorderPoint > 0 && stock <= reorderPoint * 0.5) return 'critical';
+  if (Number.isFinite(reorderPoint) && reorderPoint > 0 && stock <= reorderPoint) return 'low';
   return 'ok';
 }
 
+function deriveInventoryStatus(item) {
+  if (isFoodInventoryItem(item)) return 'demand_based';
+  return rawThresholdStatus(item);
+}
+
+function stockTrackingPolicy(item) {
+  return isFoodInventoryItem(item) ? 'food_make_to_order' : 'stock_tracked';
+}
+
+function stockWarningSuppressed(item) {
+  if (!isFoodInventoryItem(item)) return false;
+  return ['low', 'critical', 'out_of_stock'].includes(rawThresholdStatus(item));
+}
+
 function sanitizeItem(item) {
-  const status = normalizeText(item.status).toLowerCase();
+  const policy = stockTrackingPolicy(item);
+  const rawStatus = normalizeText(item.status).toLowerCase();
+  const status = policy === 'food_make_to_order'
+    ? 'demand_based'
+    : VALID_STATUSES.has(rawStatus)
+      ? rawStatus
+      : null;
   return {
     id: item.id || null,
     ingredient: item.ingredient || null,
@@ -108,7 +139,10 @@ function sanitizeItem(item) {
     supplier_packaging_qty: item.supplier_packaging_qty || null,
     supplier: item.supplier || null,
     location: item.location || null,
-    status: VALID_STATUSES.has(status) ? status : null,
+    status,
+    stock_tracking_policy: policy,
+    stock_authoritative: policy === 'stock_tracked',
+    stock_warning_suppressed: stockWarningSuppressed(item),
     updated_date: item.updated_date || null,
     source: item.source || null,
   };
@@ -123,12 +157,18 @@ function sanitizeStringArray(values, max = 20) {
 }
 
 function sanitizeProcurementPlanItem(item) {
+  const policy = stockTrackingPolicy(item);
+  const rawStatus = normalizeText(item.status).toLowerCase();
   return {
     inventory_item_id: item.inventory_item_id || null,
     ingredient: item.ingredient || null,
     category: item.category || null,
     supplier: item.supplier || null,
-    status: VALID_STATUSES.has(normalizeText(item.status).toLowerCase()) ? normalizeText(item.status).toLowerCase() : null,
+    status: policy === 'food_make_to_order'
+      ? 'demand_based'
+      : VALID_STATUSES.has(rawStatus)
+        ? rawStatus
+        : null,
     stock: numberOrNull(item.stock),
     reorder_point: numberOrNull(item.reorder_point),
     max_stock: numberOrNull(item.max_stock),
@@ -140,8 +180,31 @@ function sanitizeProcurementPlanItem(item) {
     open_po_numbers: sanitizeStringArray(item.open_po_numbers, 10),
     net_suggested_quantity: numberOrNull(item.net_suggested_quantity),
     estimated_cost: numberOrNull(item.estimated_cost),
+    stock_tracking_policy: policy,
+    stock_authoritative: policy === 'stock_tracked',
+    stock_warning_suppressed: stockWarningSuppressed(item),
     source: item.source || null,
   };
+}
+
+function summaryFromItems(items, procurementPlan, openPurchaseOrders) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const safePlan = Array.isArray(procurementPlan) ? procurementPlan : [];
+  const safePurchaseOrders = Array.isArray(openPurchaseOrders) ? openPurchaseOrders : [];
+  return sanitizeSummary({
+    total_items: safeItems.length,
+    stock_tracked_item_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked').length,
+    demand_based_food_count: safeItems.filter(item => item.stock_tracking_policy === 'food_make_to_order').length,
+    food_stock_warnings_suppressed_count: safeItems.filter(item => item.stock_warning_suppressed === true).length,
+    low_stock_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status === 'low').length,
+    critical_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status === 'critical').length,
+    out_of_stock_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status === 'out_of_stock').length,
+    category_count: new Set(safeItems.map(item => item.category).filter(Boolean)).size,
+    procurement_item_count: safePlan.length,
+    procurement_supplier_count: new Set(safePlan.map(item => item.supplier).filter(Boolean)).size,
+    open_purchase_order_count: safePurchaseOrders.length,
+    net_procurement_item_count: safePlan.filter(item => Number(item.net_suggested_quantity || 0) > 0).length,
+  });
 }
 
 function sanitizePurchaseOrder(po) {
@@ -217,7 +280,7 @@ async function loadNativeInventorySummary(base44, { status, category, search, li
   }
 
   const procurementPlan = items
-    .filter(item => item.status && item.status !== 'ok')
+    .filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status && item.status !== 'ok')
     .map(item => {
       const key = poItemKey(item.ingredient);
       const poCoverage = openPoByIngredient.get(key) || { quantity: 0, poNumbers: [] };
@@ -251,19 +314,7 @@ async function loadNativeInventorySummary(base44, { status, category, search, li
     .slice(0, 50)
     .map(po => sanitizePurchaseOrder({ ...po, source: 'customer_app_native' }));
 
-  const categoryCount = new Set(items.map(item => item.category).filter(Boolean)).size;
-  const supplierCount = new Set(procurementPlan.map(item => item.supplier).filter(Boolean)).size;
-  const summary = sanitizeSummary({
-    total_items: items.length,
-    low_stock_count: items.filter(item => item.status === 'low').length,
-    critical_count: items.filter(item => item.status === 'critical').length,
-    out_of_stock_count: items.filter(item => item.status === 'out_of_stock').length,
-    category_count: categoryCount,
-    procurement_item_count: procurementPlan.length,
-    procurement_supplier_count: supplierCount,
-    open_purchase_order_count: openPurchaseOrders.length,
-    net_procurement_item_count: procurementPlan.filter(item => Number(item.net_suggested_quantity || 0) > 0).length,
-  });
+  const summary = summaryFromItems(items, procurementPlan, openPurchaseOrders);
 
   return {
     summary,
@@ -321,7 +372,6 @@ Deno.serve(async (req) => {
         limit: limit.toString(),
       });
       if (category) params.set('category', category);
-      if (status) params.set('status', status);
       if (search) params.set('search', search);
 
       let hubResponse;
@@ -350,23 +400,40 @@ Deno.serve(async (req) => {
       }
     }
 
-    const hubItems = hubData ? hubData.items.map(item => sanitizeItem({ ...item, source: 'hub' })) : [];
-    const hubItemKeys = new Set(hubItems.map(item => normalizeMatchKey(item.ingredient)).filter(Boolean));
+    let hubItemsForDedupe = hubData ? hubData.items.map(item => sanitizeItem({ ...item, source: 'hub' })) : [];
+    if (category) {
+      hubItemsForDedupe = hubItemsForDedupe.filter(item => normalizeLower(item.category) === normalizeLower(category));
+    }
+    if (search) {
+      const searchKey = normalizeLower(search);
+      hubItemsForDedupe = hubItemsForDedupe.filter(item => [
+        item.ingredient,
+        item.category,
+        item.supplier,
+        item.location,
+      ].some(value => normalizeLower(value).includes(searchKey)));
+    }
+    const hubItemKeys = new Set(hubItemsForDedupe.map(item => normalizeMatchKey(item.ingredient)).filter(Boolean));
+    const hubItems = status
+      ? hubItemsForDedupe.filter(item => normalizeLower(item.status) === status)
+      : hubItemsForDedupe;
     const nativeOnlyItems = nativeData.items.filter(item => !hubItemKeys.has(normalizeMatchKey(item.ingredient)));
-    const sanitizedItems = [...hubItems, ...nativeOnlyItems].slice(0, limit);
+    const allSanitizedItems = [...hubItems, ...nativeOnlyItems];
+    const sanitizedItems = allSanitizedItems.slice(0, limit);
     const procurementPlan = [
       ...(hubData && Array.isArray(hubData.procurement_plan)
         ? hubData.procurement_plan.slice(0, 100).map(item => sanitizeProcurementPlanItem({ ...item, source: 'hub' })).filter(Boolean)
         : []),
       ...nativeData.procurement_plan.filter(item => !hubItemKeys.has(normalizeMatchKey(item.ingredient))),
-    ].slice(0, 100);
-    const openPurchaseOrders = [
+    ].filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status && item.status !== 'ok' && item.status !== 'demand_based').slice(0, 100);
+    const allOpenPurchaseOrders = [
       ...(hubData && Array.isArray(hubData.open_purchase_orders)
         ? hubData.open_purchase_orders.slice(0, 50).map(po => sanitizePurchaseOrder({ ...po, source: 'hub' })).filter(Boolean)
         : []),
       ...nativeData.open_purchase_orders,
-    ].slice(0, 50);
-    const truncated = hubData?.truncated === true || sanitizedItems.length < (hubData?.items?.length || 0);
+    ];
+    const openPurchaseOrders = allOpenPurchaseOrders.slice(0, 50);
+    const truncated = hubData?.truncated === true || sanitizedItems.length < allSanitizedItems.length;
 
     if (!hubData && !nativeData.source_available) {
       return Response.json({
@@ -377,7 +444,7 @@ Deno.serve(async (req) => {
 
     return Response.json({
       success: true,
-      summary: mergeSummary(hubData?.summary, nativeData.summary),
+      summary: summaryFromItems(allSanitizedItems, procurementPlan, allOpenPurchaseOrders),
       count: sanitizedItems.length,
       truncated,
       items: sanitizedItems,
@@ -387,6 +454,9 @@ Deno.serve(async (req) => {
         hub_available: Boolean(hubData),
         native_available: nativeData.source_available,
         native_read_only: true,
+        food_inventory_policy: 'food_and_juice_make_to_order',
+        food_stock_warnings_suppressed: true,
+        non_food_inventory_counts_enabled: true,
         inventory_deduction_enabled: false,
         purchase_order_automation_enabled: false,
       },

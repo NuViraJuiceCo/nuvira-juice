@@ -7,6 +7,10 @@ const VALID_PRESETS = new Set(['today', 'last_7_days', 'last_30_days']);
 const CHICAGO_TZ = 'America/Chicago';
 const G39N_DIAGNOSTICS_MARKER = 'g39n_operations_dashboard_aggregate_diagnostics';
 const G39Q_DELIVERY_COMPLETED_MARKER = 'g39q_delivery_completed_in_range_route_date_guard';
+const UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS = 14;
+const BACKEND_READINESS_MAX_ROWS = 500;
+const BACKEND_READINESS_RECENT_ORDER_WRITE_MINUTES = 60;
+const FOOD_STOCK_EXCLUDED_CATEGORIES = new Set(['produce', 'juice base', 'spices & herbs']);
 
 const G39N_AGGREGATE_SPECS = Object.freeze([
   {
@@ -96,6 +100,15 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     recommendation: 'reference_g39d_native_first_route_summary_for_date_bucket_semantics',
   },
   {
+    name: 'delivery.unscheduled',
+    group: 'delivery',
+    key: 'unscheduled',
+    domain: 'delivery_route',
+    source_of_truth: 'mixed',
+    native_first_candidate_if_match: true,
+    recommendation: 'surface_paid_delivery_orders_without_route_dates_before_planning_routes',
+  },
+  {
     name: 'delivery.completed_in_range',
     group: 'delivery',
     key: 'completed_in_range',
@@ -123,7 +136,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     source_of_truth: 'manual_review',
     mismatch_category: 'schema_meaning_mismatch',
     blocker: 'inventory_stock_not_authoritative_po_automation_held',
-    recommendation: 'keep_inventory_counts_as_diagnostics_only_until_stock_policy_is_owner_approved',
+    recommendation: 'count_only_non_food_stock_thresholds_food_and_juice_items_are_demand_based',
   },
   {
     name: 'inventory.critical',
@@ -133,7 +146,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     source_of_truth: 'manual_review',
     mismatch_category: 'schema_meaning_mismatch',
     blocker: 'inventory_stock_not_authoritative_po_automation_held',
-    recommendation: 'keep_inventory_counts_as_diagnostics_only_until_stock_policy_is_owner_approved',
+    recommendation: 'count_only_non_food_stock_thresholds_food_and_juice_items_are_demand_based',
   },
   {
     name: 'inventory.out_of_stock',
@@ -143,7 +156,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     source_of_truth: 'manual_review',
     mismatch_category: 'schema_meaning_mismatch',
     blocker: 'inventory_stock_not_authoritative_po_automation_held',
-    recommendation: 'do_not_trigger_inventory_deduction_or_purchase_orders_from_dashboard_counts',
+    recommendation: 'do_not_trigger_inventory_deduction_or_purchase_orders_from_dashboard_counts_food_is_demand_based',
   },
   {
     name: 'alerts.active',
@@ -244,6 +257,18 @@ function normalizeLower(value) {
   return normalizeText(value).toLowerCase();
 }
 
+function isInternalTestProductionBatch(batch) {
+  const batchId = normalizeLower(batch?.batch_id || batch?.id);
+  const sourceSystem = normalizeLower(batch?.source_system);
+  const ownerStatus = normalizeLower(batch?.native_owner_status);
+  const testPurpose = normalizeLower(batch?.test_purpose);
+  return batch?.is_test_batch === true ||
+    batchId.includes('-test-') ||
+    sourceSystem.includes('internal_validation') ||
+    ownerStatus.includes('internal_test') ||
+    testPurpose.includes('internal validation');
+}
+
 function parseIsoDate(value, fieldName) {
   const text = normalizeText(value);
   if (!text) return null;
@@ -314,14 +339,49 @@ function sanitizeCountGroup(group, keys) {
   return result;
 }
 
+function sanitizeCountMap(map, limit = 6) {
+  return Object.fromEntries(
+    Object.entries(map || {})
+      .sort((a, b) => numberOrZero(b[1]) - numberOrZero(a[1]) || a[0].localeCompare(b[0]))
+      .slice(0, limit)
+      .map(([key, value]) => [normalizeLower(key).replace(/\s+/g, '_') || 'not_recorded', numberOrZero(value)]),
+  );
+}
+
+function sanitizeOpsHealthDetails(details) {
+  const review = details?.review_queue || {};
+  const commands = details?.commands || {};
+  return {
+    review_queue: {
+      open: numberOrZero(review.open),
+      legacy_launch_suppressed: numberOrZero(review.legacy_launch_suppressed),
+      internal_test_suppressed: numberOrZero(review.internal_test_suppressed),
+      missing_order_number: numberOrZero(review.missing_order_number),
+      has_order_number: numberOrZero(review.has_order_number),
+      oldest_open_at: normalizeText(review.oldest_open_at) || null,
+      newest_open_at: normalizeText(review.newest_open_at) || null,
+      by_incident_type: sanitizeCountMap(review.by_incident_type),
+      by_source: sanitizeCountMap(review.by_source),
+    },
+    commands: {
+      failed: numberOrZero(commands.failed),
+      rejected: numberOrZero(commands.rejected),
+      running: numberOrZero(commands.running),
+      outside_window_suppressed: numberOrZero(commands.outside_window_suppressed),
+    },
+  };
+}
+
 function sanitizeSummary(summary) {
   return {
     orders: sanitizeCountGroup(summary?.orders, ['total', 'paid', 'fulfilled', 'delivered']),
     production: sanitizeCountGroup(summary?.production, ['batch_count', 'planned_units', 'produced_units']),
-    delivery: sanitizeCountGroup(summary?.delivery, ['today_stops', 'tomorrow_stops', 'completed_in_range']),
-    inventory: sanitizeCountGroup(summary?.inventory, ['low', 'critical', 'out_of_stock']),
+    delivery: sanitizeCountGroup(summary?.delivery, ['today_stops', 'tomorrow_stops', 'completed_in_range', 'unscheduled']),
+    inventory: sanitizeCountGroup(summary?.inventory, ['low', 'critical', 'out_of_stock', 'demand_based_food', 'stock_tracked']),
     alerts: sanitizeCountGroup(summary?.alerts, ['active', 'critical', 'warning', 'info']),
     source_mix: sanitizeCountGroup(summary?.source_mix, ['one_time', 'subscription', 'pos', 'other']),
+    ops_health: sanitizeCountGroup(summary?.ops_health, ['review_open', 'command_failed', 'command_rejected', 'command_running']),
+    ops_health_details: sanitizeOpsHealthDetails(summary?.ops_health_details),
   };
 }
 
@@ -333,6 +393,31 @@ function numberOrNull(value) {
 function incrementCount(counts, key) {
   if (!key) return;
   counts[key] = (counts[key] || 0) + 1;
+}
+
+function topCountMap(rows, keyFn, limit = 6) {
+  const counts = {};
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = normalizeStatus(keyFn(row) || 'not_recorded') || 'not_recorded';
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return Object.fromEntries(
+    Object.entries(counts)
+      .sort((a, b) => numberOrZero(b[1]) - numberOrZero(a[1]) || a[0].localeCompare(b[0]))
+      .slice(0, limit),
+  );
+}
+
+function dateWindow(rows, dateFn) {
+  const values = (Array.isArray(rows) ? rows : [])
+    .map(dateFn)
+    .map(normalizeText)
+    .filter(Boolean)
+    .sort();
+  return {
+    oldest: values[0] || null,
+    newest: values[values.length - 1] || null,
+  };
 }
 
 function summaryAggregateValue(summary, spec) {
@@ -454,6 +539,25 @@ function aggregateDiagnosticForSpec({
       recommendation: deliveryCompletedGuard.guard_passed
         ? 'native_route_date_semantic_applied'
         : diagnostic.recommendation,
+    };
+  }
+
+  if (
+    spec.name === 'delivery.unscheduled' &&
+    currentDisplaySource === 'hub_primary_with_native_operations_overlay' &&
+    displayedValue === nativeValue &&
+    numberOrZero(nativeValue) > numberOrZero(hubValue)
+  ) {
+    return {
+      ...diagnostic,
+      mismatch_detected: false,
+      mismatch_category: null,
+      source_of_truth: 'native_unscheduled_delivery_overlay',
+      native_first_ready: true,
+      fallback_required: false,
+      review_required: false,
+      blocker: null,
+      recommendation: 'native_unscheduled_delivery_overlay_applied',
     };
   }
 
@@ -608,6 +712,13 @@ function orderReferenceDate(order) {
   );
 }
 
+function isInRecentUnscheduledWindow(referenceDate, dateFrom, dateTo) {
+  const key = dateKey(referenceDate);
+  if (!key || !dateFrom || !dateTo) return false;
+  const reviewStart = addDays(dateFrom, -UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS);
+  return key >= reviewStart && key <= dateTo;
+}
+
 function orderMatchesSource(order, sourceType, sourceChannel) {
   if (!sourceType && !sourceChannel) return true;
   const type = normalizeLower(order?.source_type || order?.order_type || order?.fulfillment_type);
@@ -644,6 +755,86 @@ function isDeliveredOrder(order) {
     order?.production_status,
   ].map(normalizeStatus);
   return Boolean(order?.delivered_at) || statuses.some(status => ['delivered', 'picked_up', 'fulfilled'].includes(status));
+}
+
+function isInactiveOrder(order) {
+  const statuses = [
+    order?.status,
+    order?.payment_status,
+    order?.financial_status,
+    order?.fulfillment_status,
+    order?.delivery_status,
+  ].map(normalizeStatus);
+  return statuses.some(status => ['cancelled', 'canceled', 'refunded', 'voided', 'failed'].includes(status));
+}
+
+function orderDeliveryDate(order) {
+  return (
+    order?.delivery_date ||
+    order?.selected_delivery_date ||
+    order?.requested_delivery_date ||
+    order?.assigned_delivery_date ||
+    order?.scheduled_delivery_date ||
+    order?.estimated_delivery_date ||
+    order?.delivery_window_date ||
+    null
+  );
+}
+
+function isDeliveryOrder(order) {
+  const signals = [
+    order?.fulfillment_type,
+    order?.fulfillment_method,
+    order?.delivery_method,
+    order?.shipping_method,
+    order?.source_type,
+  ].map(normalizeStatus);
+  return signals.includes('delivery') || Boolean(order?.delivery_address || order?.shipping_address);
+}
+
+function orderTaskKeys(order) {
+  return [
+    order?.id,
+    order?.base44_order_id,
+    order?.order_number,
+    order?.shopify_order_number,
+  ].map(normalizeOrderNumber).filter(Boolean);
+}
+
+function taskOrderKeys(task) {
+  return [
+    task?.order_id,
+    task?.base44_order_id,
+    task?.order_number,
+    task?.shopify_order_number,
+  ].map(normalizeOrderNumber).filter(Boolean);
+}
+
+function taskReferenceDate(task) {
+  return task?.created_date || task?.updated_date || task?.order_created_date || null;
+}
+
+function countUnscheduledDeliveryWork(orders, deliveryTasks, { dateFrom, dateTo } = {}) {
+  const taskKeys = new Set();
+  let unscheduledTaskCount = 0;
+  for (const task of Array.isArray(deliveryTasks) ? deliveryTasks : []) {
+    taskOrderKeys(task).forEach(key => taskKeys.add(key));
+    if (!taskDate(task) && !isCompletedTask(task) && isInRecentUnscheduledWindow(taskReferenceDate(task), dateFrom, dateTo)) {
+      unscheduledTaskCount += 1;
+    }
+  }
+
+  let unscheduledOrderCount = 0;
+  for (const order of Array.isArray(orders) ? orders : []) {
+    if (!isDeliveryOrder(order)) continue;
+    if (!isPaidOrder(order) || isDeliveredOrder(order) || isInactiveOrder(order)) continue;
+    if (orderDeliveryDate(order)) continue;
+    if (!isInRecentUnscheduledWindow(orderReferenceDate(order), dateFrom, dateTo)) continue;
+    if (orderTaskKeys(order).some(key => taskKeys.has(key))) continue;
+    unscheduledOrderCount += 1;
+  }
+
+  return unscheduledTaskCount + unscheduledOrderCount;
 }
 
 function classifyOrderSource(order) {
@@ -801,8 +992,8 @@ function buildDeliveryCompletedInRangeGuard({ currentSummary, nativeRouteDateRes
     && nativeValue !== null
     && comparisonValue !== null;
   const blockerReasons = [...new Set(nativeRouteDateResult?.blocker_reasons || [])];
-  const guardPassed = comparisonAvailable && blockerReasons.length === 0;
   const mismatchDetected = comparisonAvailable && nativeValue !== comparisonValue;
+  const guardPassed = comparisonAvailable && blockerReasons.length === 0;
   const guardReason = guardPassed
     ? 'native_route_date_semantic_applied'
     : blockerReasons[0] || (comparisonAvailable ? 'native_route_date_guard_failed' : 'native_route_date_comparison_unavailable');
@@ -839,6 +1030,151 @@ function applyDeliveryCompletedInRangeGuard(summary, guard) {
   };
 }
 
+function buildNativeProductionOverlay(hubSummary, nativeSummary) {
+  const hubProduction = sanitizeCountGroup(hubSummary?.production, ['batch_count', 'planned_units', 'produced_units']);
+  const nativeProduction = sanitizeCountGroup(nativeSummary?.production, ['batch_count', 'planned_units', 'produced_units']);
+  const nativeHasProduction = nativeProduction.batch_count > 0 || nativeProduction.planned_units > 0 || nativeProduction.produced_units > 0;
+  const hubMissingProduction = hubProduction.batch_count === 0 && hubProduction.planned_units === 0 && hubProduction.produced_units === 0;
+  const nativeMoreComplete = nativeProduction.batch_count > hubProduction.batch_count ||
+    nativeProduction.planned_units > hubProduction.planned_units ||
+    nativeProduction.produced_units > hubProduction.produced_units;
+  return {
+    applied: nativeHasProduction && (hubMissingProduction || nativeMoreComplete),
+    hub_production: hubProduction,
+    native_production: nativeProduction,
+    reason: hubMissingProduction
+      ? 'hub_missing_current_production'
+      : nativeMoreComplete
+        ? 'native_current_production_more_complete'
+        : 'hub_production_retained',
+  };
+}
+
+function applyNativeProductionOverlay(summary, overlay) {
+  if (!overlay?.applied) return summary;
+  return {
+    ...summary,
+    production: {
+      ...(summary?.production || {}),
+      ...overlay.native_production,
+    },
+  };
+}
+
+function buildNativeDeliveryOverlay(hubSummary, nativeSummary) {
+  const hubDelivery = sanitizeCountGroup(hubSummary?.delivery, ['today_stops', 'tomorrow_stops', 'completed_in_range', 'unscheduled']);
+  const nativeDelivery = sanitizeCountGroup(nativeSummary?.delivery, ['today_stops', 'tomorrow_stops', 'completed_in_range', 'unscheduled']);
+  return {
+    applied: nativeDelivery.unscheduled > hubDelivery.unscheduled,
+    hub_delivery: hubDelivery,
+    native_delivery: nativeDelivery,
+  };
+}
+
+function applyNativeDeliveryOverlay(summary, overlay) {
+  if (!overlay?.applied) return summary;
+  return {
+    ...summary,
+    delivery: {
+      ...(summary?.delivery || {}),
+      unscheduled: overlay.native_delivery.unscheduled,
+    },
+  };
+}
+
+function responseData(response) {
+  return response?.data || response || {};
+}
+
+function inventoryStatusSummaryToDashboardCounts(summary) {
+  return {
+    low: numberOrZero(summary?.low_stock_count),
+    critical: numberOrZero(summary?.critical_count),
+    out_of_stock: numberOrZero(summary?.out_of_stock_count),
+    demand_based_food: numberOrZero(summary?.demand_based_food_count),
+    stock_tracked: numberOrZero(summary?.stock_tracked_item_count),
+  };
+}
+
+function buildNativeInventoryPolicyOverlay(hubSummary, nativeSummary) {
+  const hubInventory = sanitizeCountGroup(hubSummary?.inventory, ['low', 'critical', 'out_of_stock', 'demand_based_food', 'stock_tracked']);
+  const nativeInventory = sanitizeCountGroup(nativeSummary?.inventory, ['low', 'critical', 'out_of_stock', 'demand_based_food', 'stock_tracked']);
+  const nativeHasInventoryPolicy = nativeInventory.stock_tracked > 0 || nativeInventory.demand_based_food > 0;
+  return {
+    applied: nativeHasInventoryPolicy,
+    hub_inventory: hubInventory,
+    native_inventory: nativeInventory,
+    reason: nativeHasInventoryPolicy
+      ? 'native_food_demand_based_inventory_policy_applied'
+      : 'native_inventory_policy_unavailable',
+  };
+}
+
+async function buildInventoryPolicyOverlay(base44, hubSummary, nativeSummary) {
+  const fallback = buildNativeInventoryPolicyOverlay(hubSummary, nativeSummary);
+  const invoke = base44?.asServiceRole?.functions?.invoke;
+  if (!invoke) return fallback;
+
+  try {
+    const inventorySummary = responseData(await invoke('getAdminInventoryStatusSummary', { limit: 200 }));
+    const dataSources = inventorySummary?.data_sources || {};
+    const mergedInventory = inventoryStatusSummaryToDashboardCounts(inventorySummary?.summary || {});
+    const mergedPolicyAvailable = dataSources.food_inventory_policy === 'food_and_juice_make_to_order' &&
+      dataSources.food_stock_warnings_suppressed === true;
+    if (!mergedPolicyAvailable) return fallback;
+
+    return {
+      ...fallback,
+      applied: true,
+      merged_inventory: mergedInventory,
+      inventory_summary_source: 'getAdminInventoryStatusSummary',
+      reason: 'merged_food_demand_based_inventory_policy_applied',
+    };
+  } catch {
+    return {
+      ...fallback,
+      reason: fallback.applied
+        ? 'native_food_demand_based_inventory_policy_applied_inventory_summary_unavailable'
+        : 'inventory_policy_summary_unavailable',
+    };
+  }
+}
+
+function applyNativeInventoryPolicyOverlay(summary, overlay) {
+  if (!overlay?.applied) return summary;
+  const inventory = overlay.merged_inventory || overlay.native_inventory;
+  return {
+    ...summary,
+    inventory: {
+      ...(summary?.inventory || {}),
+      ...inventory,
+    },
+  };
+}
+
+function buildNativeOpsHealthOverlay(summary, nativeSummary) {
+  const nativeOpsHealth = nativeSummary?.ops_health || {};
+  const activeCount = numberOrZero(nativeOpsHealth.review_open) +
+    numberOrZero(nativeOpsHealth.command_failed) +
+    numberOrZero(nativeOpsHealth.command_rejected) +
+    numberOrZero(nativeOpsHealth.command_running);
+  return {
+    applied: activeCount > 0,
+    native_ops_health: sanitizeCountGroup(nativeSummary?.ops_health, ['review_open', 'command_failed', 'command_rejected', 'command_running']),
+    native_ops_health_details: sanitizeOpsHealthDetails(nativeSummary?.ops_health_details),
+    previous_ops_health: sanitizeCountGroup(summary?.ops_health, ['review_open', 'command_failed', 'command_rejected', 'command_running']),
+    reason: activeCount > 0 ? 'native_current_ops_health_overlay_applied' : 'native_current_ops_health_clear',
+  };
+}
+
+function applyNativeOpsHealthOverlay(summary, overlay) {
+  return {
+    ...summary,
+    ops_health: overlay?.native_ops_health || sanitizeCountGroup(summary?.ops_health, ['review_open', 'command_failed', 'command_rejected', 'command_running']),
+    ops_health_details: overlay?.native_ops_health_details || sanitizeOpsHealthDetails(summary?.ops_health_details),
+  };
+}
+
 function deliveryCompletedWarnings(guard) {
   if (!guard?.guard_passed) return [];
   return [
@@ -860,7 +1196,41 @@ function alertSeverity(row) {
   return normalizeStatus(row?.severity || row?.priority || row?.level || row?.incident_type);
 }
 
+function commandStatus(row) {
+  return normalizeStatus(row?.status);
+}
+
+function commandReferenceDate(row) {
+  return row?.updated_date || row?.completed_at || row?.failed_at || row?.created_date;
+}
+
+function isOpenReviewItem(row) {
+  return ['pending', 'reviewing'].includes(normalizeStatus(row?.status));
+}
+
+function isLegacyLaunchReviewQueueNoise(row) {
+  const source = normalizeStatus(row?.incoming_source);
+  const incident = normalizeStatus(row?.incident_type);
+  const existingOrder = normalizeOrderNumber(row?.existing_order_number || row?.order_number || row?.shopify_order_number);
+  const description = normalizeLower(`${row?.issue_description || ''} ${row?.recommended_action || ''}`);
+  return source === 'shopify_pos' &&
+    incident === 'payment_not_paid' &&
+    !existingOrder &&
+    description.includes('may 30 native order ops rejected order');
+}
+
+function isInternalTestReviewQueueItem(row) {
+  if (row?.is_test_record === true || row?.is_test_order === true || row?.internal_test === true) return true;
+  const orderRef = normalizeOrderNumber(row?.existing_order_number || row?.order_number || row?.shopify_order_number);
+  return orderRef.startsWith('nv-test-') || orderRef.includes('-test-');
+}
+
+function isFoodInventoryItem(item) {
+  return FOOD_STOCK_EXCLUDED_CATEGORIES.has(normalizeLower(item?.category));
+}
+
 function inventoryStatus(item) {
+  if (isFoodInventoryItem(item)) return 'demand_based';
   const stock = Number(item?.stock);
   const reorderPoint = Number(item?.reorder_point);
   if (!Number.isFinite(stock)) return 'unknown';
@@ -879,6 +1249,376 @@ async function listEntity(base44, entityName, sort, limit = 500) {
   });
 }
 
+function sanitizeBackendId(value, maxLength = 160) {
+  return normalizeText(value).replace(/[^A-Za-z0-9._:@/#-]/g, '').slice(0, maxLength);
+}
+
+function sanitizeBackendDisplay(value, maxLength = 120) {
+  const text = normalizeText(value)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted email]')
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Circle|Cir|Way|Place|Pl)\b/gi, '[redacted address]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]');
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
+function backendReadinessDate(row, fields) {
+  for (const field of fields) {
+    const match = normalizeText(row?.[field]).match(/^\d{4}-\d{2}-\d{2}/);
+    if (match) return match[0];
+  }
+  return '';
+}
+
+function recentBackendIso(value, sinceMs) {
+  const time = Date.parse(normalizeText(value));
+  return Number.isFinite(time) && time >= sinceMs;
+}
+
+function backendBatchDisplayId(batch) {
+  return sanitizeBackendDisplay(batch?.batch_id || batch?.id, 140) || 'unknown_batch';
+}
+
+function backendTaskDisplayId(task) {
+  return sanitizeBackendDisplay(task?.fulfillment_task_id || task?.order_number || task?.shopify_order_number || task?.id, 140) || 'unknown_task';
+}
+
+function backendOrderNumber(value) {
+  return sanitizeBackendDisplay(value, 80).replace(/^#/, '').toUpperCase();
+}
+
+function isBackendTestBatch(batch) {
+  return isInternalTestProductionBatch(batch);
+}
+
+function isBackendTestTask(task) {
+  const id = normalizeLower(task?.fulfillment_task_id || task?.id || task?.order_number);
+  return task?.is_test_task === true || id.includes('-test-') || normalizeLower(task?.test_purpose).includes('internal');
+}
+
+function backendListRefs(value) {
+  const values = Array.isArray(value) ? value : normalizeText(value).split(',');
+  return new Set(values.map(item => sanitizeBackendId(item)).filter(Boolean));
+}
+
+function backendComplianceMatches(record, batch) {
+  const sourceBatchId = sanitizeBackendId(batch?.id);
+  const displayBatchId = sanitizeBackendId(batch?.batch_id);
+  const sourceRefs = backendListRefs(record?.related_source_production_batch_ids);
+  const displayRefs = backendListRefs(record?.related_batch_ids);
+  const recordSource = sanitizeBackendId(record?.source_production_batch_id);
+  const recordBatch = sanitizeBackendId(record?.batch_id);
+  return Boolean(
+    (sourceBatchId && (recordSource === sourceBatchId || sourceRefs.has(sourceBatchId))) ||
+    (displayBatchId && (recordBatch === displayBatchId || displayRefs.has(displayBatchId)))
+  );
+}
+
+function backendReadinessIssue({ severity, domain, code, entityType, displayId, status, recommendation }) {
+  return {
+    severity,
+    domain,
+    code,
+    entity_type: entityType || null,
+    display_id: sanitizeBackendDisplay(displayId, 140) || null,
+    status: sanitizeBackendDisplay(status, 80) || null,
+    recommendation,
+  };
+}
+
+function backendCommandTargetKey(command) {
+  return sanitizeBackendId(command?.target_id || command?.target_display_id);
+}
+
+function backendCommandType(command) {
+  return normalizeLower(command?.command_type);
+}
+
+function addBackendTestRefs(refs, row, fields) {
+  for (const field of fields) {
+    const value = sanitizeBackendId(row?.[field]);
+    if (value) refs.add(value);
+  }
+}
+
+function isBackendInternalCommand(command, { testBatchRefs, testTaskRefs }) {
+  const payload = command?.payload || {};
+  const commandType = backendCommandType(command);
+  const targetEntity = normalizeLower(command?.target_entity);
+  const targetRefs = [
+    command?.target_id,
+    command?.target_display_id,
+    payload?.target_id,
+    payload?.target_display_id,
+    payload?.batch_id,
+    payload?.production_batch_id,
+    payload?.fulfillment_task_id,
+    payload?.task_id,
+  ].map(value => sanitizeBackendId(value)).filter(Boolean);
+
+  if (payload?.is_test_batch === true || payload?.is_test_task === true || command?.is_test_record === true) return true;
+  if (normalizeLower(payload?.test_purpose || command?.test_purpose).includes('internal')) return true;
+  if (commandType.includes('g53') && commandType.includes('test')) return true;
+  if (targetEntity === 'productionbatch' && targetRefs.some(ref => testBatchRefs.has(ref))) return true;
+  if (targetEntity === 'fulfillmenttask' && targetRefs.some(ref => testTaskRefs.has(ref))) return true;
+  return false;
+}
+
+async function buildOperationalBackendReadiness(base44, { dateFrom, dateTo, actorRole }) {
+  const [
+    batchesRaw,
+    tasksRaw,
+    ordersRaw,
+    shopifyOrdersRaw,
+    sanitationLogs,
+    dailyChecklists,
+    temperatureLogs,
+    batchComplianceLogs,
+    commandLogs,
+    orderSyncLogs,
+    campaigns,
+  ] = await Promise.all([
+    listEntity(base44, 'ProductionBatch', 'production_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'FulfillmentTask', '-delivery_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'Order', '-created_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'ShopifyOrder', '-updated_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'SanitationLog', '-created_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'DailyChecklist', '-created_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'TemperatureLog', '-created_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'BatchComplianceLog', '-created_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'CommandLog', '-created_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'OrderSyncLog', '-created_date', BACKEND_READINESS_MAX_ROWS),
+    listEntity(base44, 'NotificationCampaign', '-created_date', 100),
+  ]);
+
+  const batches = batchesRaw.filter(batch => {
+    const productionDate = backendReadinessDate(batch, ['production_date']);
+    return productionDate && productionDate >= dateFrom && productionDate <= dateTo;
+  });
+  const tasks = tasksRaw.filter(task => {
+    const routeDate = backendReadinessDate(task, ['delivery_date', 'assigned_delivery_date', 'scheduled_date']);
+    return routeDate && routeDate >= dateFrom && routeDate <= dateTo;
+  });
+
+  const orderIndex = new Map();
+  for (const order of ordersRaw) {
+    const number = backendOrderNumber(order?.order_number);
+    if (number && !orderIndex.has(number)) orderIndex.set(number, order);
+  }
+
+  const syncOrderNumbers = new Set(orderSyncLogs.map(row => backendOrderNumber(row?.order_number)).filter(Boolean));
+  const syncOrderIds = new Set(orderSyncLogs.map(row => sanitizeBackendId(row?.order_id)).filter(Boolean));
+  const testBatchRefs = new Set();
+  const testTaskRefs = new Set();
+  for (const batch of batchesRaw.filter(isBackendTestBatch)) {
+    addBackendTestRefs(testBatchRefs, batch, ['id', 'batch_id', 'native_batch_id']);
+  }
+  for (const task of tasksRaw.filter(isBackendTestTask)) {
+    addBackendTestRefs(testTaskRefs, task, ['id', 'fulfillment_task_id', 'order_number', 'shopify_order_number']);
+  }
+  const issues = [];
+
+  for (const batch of batches) {
+    if (isBackendTestBatch(batch)) continue;
+    const status = normalizeLower(batch?.status);
+    const displayId = backendBatchDisplayId(batch);
+    const sanitationReady = sanitationLogs.some(row => (
+      backendComplianceMatches(row, batch) &&
+      row.cleaned === true &&
+      row.sanitized === true &&
+      normalizeLower(row.sanitizer_level) !== 'low'
+    ));
+    const checklistReady = dailyChecklists.some(row => (
+      backendComplianceMatches(row, batch) &&
+      ['complete', 'pre-production complete'].includes(normalizeLower(row.overall_status)) &&
+      row.morning_fridge_temp_logged === true &&
+      row.sanitizer_levels_checked === true &&
+      row.equipment_sanitized === true &&
+      row.work_areas_cleaned === true
+    ));
+    const tempReady = temperatureLogs.some(row => (
+      backendComplianceMatches(row, batch) &&
+      row.within_range === true &&
+      numberOrZero(row.temperature) !== 0
+    ));
+    const batchLogReady = batchComplianceLogs.some(row => backendComplianceMatches(row, batch));
+
+    if (['in_production', 'completed_pending_verification', 'verified_logged'].includes(status) && (!sanitationReady || !checklistReady || !tempReady)) {
+      issues.push(backendReadinessIssue({
+        severity: 'blocker',
+        domain: 'production_compliance',
+        code: 'batch_started_without_complete_prestart_compliance',
+        entityType: 'ProductionBatch',
+        displayId,
+        status,
+        recommendation: 'Review linked sanitation, daily checklist, and temperature logs before using this batch as a source-of-truth pilot record.',
+      }));
+    }
+    if (status === 'verified_logged' && !batchLogReady) {
+      issues.push(backendReadinessIssue({
+        severity: 'blocker',
+        domain: 'production_compliance',
+        code: 'verified_batch_missing_batch_compliance_log',
+        entityType: 'ProductionBatch',
+        displayId,
+        status,
+        recommendation: 'Create or link the batch compliance log before treating verification as complete.',
+      }));
+    }
+    if (numberOrZero(batch?.planned_units) <= 0 && status !== 'archived') {
+      issues.push(backendReadinessIssue({
+        severity: 'warning',
+        domain: 'production',
+        code: 'active_batch_missing_planned_quantity',
+        entityType: 'ProductionBatch',
+        displayId,
+        status,
+        recommendation: 'Confirm the batch quantity before it enters production or fulfillment planning.',
+      }));
+    }
+  }
+
+  for (const task of tasks) {
+    if (isBackendTestTask(task)) continue;
+    const status = normalizeLower(task?.status);
+    const displayId = backendTaskDisplayId(task);
+    const taskOrderNumber = backendOrderNumber(task?.order_number || task?.shopify_order_number);
+    const order = taskOrderNumber ? orderIndex.get(taskOrderNumber) : null;
+    const orderStatus = normalizeLower(order?.status);
+    if (status === 'delivered' && !normalizeText(task?.delivered_at)) {
+      issues.push(backendReadinessIssue({
+        severity: 'blocker',
+        domain: 'delivery',
+        code: 'delivered_task_missing_delivered_at',
+        entityType: 'FulfillmentTask',
+        displayId,
+        status,
+        recommendation: 'Backfill or correct the delivery completion timestamp before relying on route history.',
+      }));
+    }
+    if (status === 'delivered' && order && orderStatus && !['delivered', 'picked_up'].includes(orderStatus)) {
+      issues.push(backendReadinessIssue({
+        severity: 'warning',
+        domain: 'fulfillment_order_projection',
+        code: 'delivered_task_order_status_not_projected',
+        entityType: 'FulfillmentTask',
+        displayId,
+        status,
+        recommendation: 'Use the exact approved delivery reconciliation path if the customer order should be marked delivered.',
+      }));
+    }
+    if (!['delivered', 'cancelled', 'canceled', 'unable_to_deliver'].includes(status) && backendReadinessDate(task, ['delivery_date', 'assigned_delivery_date', 'scheduled_date']) < todayChicagoDate()) {
+      issues.push(backendReadinessIssue({
+        severity: 'warning',
+        domain: 'delivery',
+        code: 'past_due_task_not_terminal',
+        entityType: 'FulfillmentTask',
+        displayId,
+        status,
+        recommendation: 'Review whether the task is genuinely open or the source status needs reconciliation.',
+      }));
+    }
+  }
+
+  const recentSince = Date.now() - BACKEND_READINESS_RECENT_ORDER_WRITE_MINUTES * 60 * 1000;
+  const recentShopifyOrders = shopifyOrdersRaw.filter(row => recentBackendIso(row?.updated_date || row?.created_date, recentSince));
+  for (const order of recentShopifyOrders) {
+    const displayId = sanitizeBackendDisplay(order?.shopify_order_number || order?.id, 120);
+    const orderId = sanitizeBackendId(order?.id);
+    const number = backendOrderNumber(order?.shopify_order_number);
+    if ((number && syncOrderNumbers.has(number)) || (orderId && syncOrderIds.has(orderId))) continue;
+    issues.push(backendReadinessIssue({
+      severity: 'warning',
+      domain: 'order_sync',
+      code: 'recent_shopify_order_update_without_order_sync_log',
+      entityType: 'ShopifyOrder',
+      displayId,
+      status: sanitizeBackendDisplay(order?.fulfillment_status || order?.production_status, 80),
+      recommendation: 'Audit recently deployed functions for direct ShopifyOrder writes that bypass safe sync logging.',
+    }));
+  }
+
+  for (const command of commandLogs.slice(0, 80)) {
+    const status = normalizeLower(command?.status);
+    if (!['failed', 'rejected'].includes(status)) continue;
+    if (isBackendInternalCommand(command, { testBatchRefs, testTaskRefs })) continue;
+    issues.push(backendReadinessIssue({
+      severity: status === 'failed' ? 'warning' : 'info',
+      domain: 'command_audit',
+      code: `recent_command_${status}`,
+      entityType: sanitizeBackendDisplay(command?.target_entity, 80) || 'CommandLog',
+      displayId: backendCommandTargetKey(command) || sanitizeBackendId(command?.id),
+      status,
+      recommendation: `Review ${sanitizeBackendDisplay(backendCommandType(command), 100) || 'the command'} before running related live workflow tests.`,
+    }));
+  }
+
+  for (const campaign of campaigns.slice(0, 30)) {
+    const audience = normalizeLower(campaign?.audience);
+    if (normalizeLower(campaign?.status) === 'sent' && audience !== 'test_only' && numberOrZero(campaign?.recipients_total) > 0 && numberOrZero(campaign?.eligible_count) === 0) {
+      issues.push(backendReadinessIssue({
+        severity: 'warning',
+        domain: 'notifications',
+        code: 'broad_campaign_sent_with_no_eligible_recipients',
+        entityType: 'NotificationCampaign',
+        displayId: sanitizeBackendId(campaign?.id),
+        status: sanitizeBackendDisplay(campaign?.status, 80),
+        recommendation: 'Review customer notification preferences before sending another broad campaign.',
+      }));
+    }
+    if (audience !== 'test_only' && numberOrZero(campaign?.failed_count) > 0) {
+      issues.push(backendReadinessIssue({
+        severity: 'warning',
+        domain: 'notifications',
+        code: 'campaign_has_delivery_failures',
+        entityType: 'NotificationCampaign',
+        displayId: sanitizeBackendId(campaign?.id),
+        status: sanitizeBackendDisplay(campaign?.status, 80),
+        recommendation: 'Review skipped and failed campaign counts before broad notification use.',
+      }));
+    }
+  }
+
+  const blockers = issues.filter(row => row.severity === 'blocker');
+  const warnings = issues.filter(row => row.severity === 'warning');
+
+  return {
+    success: true,
+    source: 'getAdminOperationsDashboardSummary.backend_readiness',
+    classification: blockers.length ? 'backend_readiness_blocked' : warnings.length ? 'backend_live_ready_with_warnings' : 'backend_live_ready_readonly_clean',
+    date_from: dateFrom,
+    date_to: dateTo,
+    generated_at: new Date().toISOString(),
+    actor_role: actorRole,
+    summary: {
+      production_batches_checked: batches.filter(batch => !isBackendTestBatch(batch)).length,
+      internal_test_batches_excluded: batches.filter(isBackendTestBatch).length,
+      fulfillment_tasks_checked: tasks.filter(task => !isBackendTestTask(task)).length,
+      internal_test_tasks_excluded: tasks.filter(isBackendTestTask).length,
+      recent_shopify_orders_checked: recentShopifyOrders.length,
+      command_logs_checked: Math.min(commandLogs.length, 80),
+      notification_campaigns_checked: Math.min(campaigns.length, 30),
+      blocker_count: blockers.length,
+      warning_count: warnings.length,
+      info_count: issues.filter(row => row.severity === 'info').length,
+    },
+    issues: issues.slice(0, 120),
+    next_action: blockers.length
+      ? 'resolve_blockers_before_live_bundle_test'
+      : warnings.length ? 'review_warnings_before_live_bundle_test' : 'ready_for_controlled_live_bundle_test_preflight',
+    read_only_safety: {
+      writes_performed: false,
+      provider_calls_performed: false,
+      customer_notifications_sent: false,
+      inventory_mutation: false,
+      bulk_sync: false,
+      raw_records_returned: false,
+      pii_redacted: true,
+    },
+  };
+}
+
 async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, sourceType, sourceChannel }) {
   const [
     customerOrders,
@@ -889,6 +1629,7 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
     reviewQueueItems,
     operationalAlerts,
     complianceAlerts,
+    commandLogs,
   ] = await Promise.all([
     listEntity(base44, 'Order', '-created_date'),
     listEntity(base44, 'ShopifyOrder', '-created_date'),
@@ -898,28 +1639,47 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
     listEntity(base44, 'OrderReviewQueue', '-created_date'),
     listEntity(base44, 'OperationalAlert', '-created_date'),
     listEntity(base44, 'ComplianceAlert', '-created_date'),
+    listEntity(base44, 'CommandLog', '-created_date', 150),
   ]);
 
-  const orders = uniqueByOrderNumber([
+  const sourceMatchedOrders = uniqueByOrderNumber([
     ...customerOrders
-      .filter(order => inRange(orderReferenceDate(order), dateFrom, dateTo))
+      .filter(order => order?.is_test_order !== true)
       .filter(order => orderMatchesSource(order, sourceType, sourceChannel)),
     ...shopifyOrders
-      .filter(order => inRange(orderReferenceDate(order), dateFrom, dateTo))
       .filter(order => orderMatchesSource(order, sourceType, sourceChannel))
       .map(order => ({
         ...order,
         order_number: order.shopify_order_number || order.order_number,
       })),
   ]);
+  const orders = sourceMatchedOrders.filter(order => inRange(orderReferenceDate(order), dateFrom, dateTo));
 
-  const batches = productionBatches.filter(batch => inRange(batch.production_date, dateFrom, dateTo));
+  const batches = productionBatches.filter(batch => !isInternalTestProductionBatch(batch) && inRange(batch.production_date, dateFrom, dateTo));
+  const nonTestCommandLogs = commandLogs.filter(
+    row => row?.payload?.is_test_batch !== true && row?.payload?.is_test_task !== true,
+  );
+  const operationalCommandLogs = nonTestCommandLogs.filter(row => inRange(commandReferenceDate(row), dateFrom, dateTo));
+  const commandOutsideWindowSuppressedCount = nonTestCommandLogs.length - operationalCommandLogs.length;
+  const operationalReviewQueueItems = reviewQueueItems
+    .filter(row => !isLegacyLaunchReviewQueueNoise(row))
+    .filter(row => !isInternalTestReviewQueueItem(row));
+  const openReviewItems = operationalReviewQueueItems.filter(isOpenReviewItem);
+  const legacyLaunchReviewSuppressedCount = reviewQueueItems.filter(row => isOpenReviewItem(row) && isLegacyLaunchReviewQueueNoise(row)).length;
+  const internalTestReviewSuppressedCount = reviewQueueItems.filter(row => isOpenReviewItem(row) && isInternalTestReviewQueueItem(row)).length;
+  const openReviewWindow = dateWindow(openReviewItems, row => row?.last_seen_at || row?.updated_date || row?.created_date);
+  const failedCommandCount = operationalCommandLogs.filter(row => commandStatus(row) === 'failed').length;
+  const rejectedCommandCount = operationalCommandLogs.filter(row => commandStatus(row) === 'rejected').length;
+  const runningCommandCount = operationalCommandLogs.filter(row => ['pending', 'running'].includes(commandStatus(row))).length;
   const today = todayChicagoDate();
   const tomorrow = addDays(today, 1);
   const deliveryTasks = fulfillmentTasks.filter(task => {
     const source = normalizeLower(task.source_type || task.source_channel);
-    return source !== 'pos' && normalizeLower(task.fulfillment_type) !== 'event_pos';
+    return task?.is_test_task !== true &&
+      source !== 'pos' &&
+      normalizeLower(task.fulfillment_type) !== 'event_pos';
   });
+  const unscheduledDeliveryCount = countUnscheduledDeliveryWork(sourceMatchedOrders, deliveryTasks, { dateFrom, dateTo });
   const deliveryCompletedRouteDate = computeNativeCompletedDeliveriesInRangeByRouteDate({
     deliveryTasks,
     customerOrders,
@@ -928,14 +1688,19 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
     dateTo,
   });
   const alerts = [
-    ...reviewQueueItems.map(item => ({ ...item, severity: item.incident_type || 'warning' })),
+    ...operationalReviewQueueItems.map(item => ({ ...item, severity: item.incident_type || 'warning' })),
     ...operationalAlerts,
     ...complianceAlerts,
   ].filter(alert => inRange(alertDate(alert), dateFrom, dateTo)).filter(isActiveAlert);
 
-  const inventoryCounts = { low: 0, critical: 0, out_of_stock: 0 };
+  const inventoryCounts = { low: 0, critical: 0, out_of_stock: 0, demand_based_food: 0, stock_tracked: 0 };
   for (const item of inventoryItems) {
     const status = inventoryStatus(item);
+    if (status === 'demand_based') {
+      inventoryCounts.demand_based_food += 1;
+      continue;
+    }
+    inventoryCounts.stock_tracked += 1;
     if (status === 'low') inventoryCounts.low += 1;
     if (status === 'critical') inventoryCounts.critical += 1;
     if (status === 'out_of_stock') inventoryCounts.out_of_stock += 1;
@@ -963,6 +1728,7 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
       today_stops: deliveryTasks.filter(task => dateKey(taskDate(task)) === today).length,
       tomorrow_stops: deliveryTasks.filter(task => dateKey(taskDate(task)) === tomorrow).length,
       completed_in_range: deliveryCompletedRouteDate.value,
+      unscheduled: unscheduledDeliveryCount,
     },
     inventory: inventoryCounts,
     alerts: {
@@ -972,6 +1738,31 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
       info: alerts.filter(alert => ['info', 'notice'].includes(alertSeverity(alert))).length,
     },
     source_mix: sourceMix,
+    ops_health: {
+      review_open: openReviewItems.length,
+      command_failed: failedCommandCount,
+      command_rejected: rejectedCommandCount,
+      command_running: runningCommandCount,
+    },
+    ops_health_details: {
+      review_queue: {
+        open: openReviewItems.length,
+        legacy_launch_suppressed: legacyLaunchReviewSuppressedCount,
+        internal_test_suppressed: internalTestReviewSuppressedCount,
+        missing_order_number: openReviewItems.filter(row => !normalizeText(row?.existing_order_number || row?.order_number || row?.shopify_order_number)).length,
+        has_order_number: openReviewItems.filter(row => normalizeText(row?.existing_order_number || row?.order_number || row?.shopify_order_number)).length,
+        oldest_open_at: openReviewWindow.oldest,
+        newest_open_at: openReviewWindow.newest,
+        by_incident_type: topCountMap(openReviewItems, row => row?.incident_type),
+        by_source: topCountMap(openReviewItems, row => row?.incoming_source || row?.source || row?.source_type),
+      },
+      commands: {
+        failed: failedCommandCount,
+        rejected: rejectedCommandCount,
+        running: runningCommandCount,
+        outside_window_suppressed: commandOutsideWindowSuppressedCount,
+      },
+    },
   });
 
   return {
@@ -980,7 +1771,7 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
   };
 }
 
-function nativeFallbackResponse({ dateFrom, dateTo, summary, deliveryCompletedGuard, reason, hubStatus = null }) {
+function nativeFallbackResponse({ dateFrom, dateTo, summary, deliveryCompletedGuard, reason, hubStatus = null, backendReadiness = null }) {
   const diagnostics = buildOperationsDashboardDiagnostics({
     displayedSummary: summary,
     nativeSummary: summary,
@@ -1011,6 +1802,11 @@ function nativeFallbackResponse({ dateFrom, dateTo, summary, deliveryCompletedGu
       native_available: true,
       native_read_only: true,
     },
+    writes_performed: false,
+    provider_calls_performed: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    ...(backendReadiness ? { backend_readiness: backendReadiness } : {}),
     ...diagnostics,
   });
 }
@@ -1074,6 +1870,14 @@ Deno.serve(async (req) => {
     const sourceType = normalizeText(body.source_type);
     const sourceChannel = normalizeText(body.source_channel);
     const resolvedRange = resolveDateRange({ preset, dateFrom, dateTo });
+    const includeBackendReadiness = body.include_backend_readiness === true;
+    const backendReadiness = includeBackendReadiness
+      ? await buildOperationalBackendReadiness(base44, {
+        dateFrom: resolvedRange.date_from,
+        dateTo: resolvedRange.date_to,
+        actorRole: user.role,
+      })
+      : null;
     const loadNativeContext = () => loadNativeOperationsDashboardContext(base44, {
       dateFrom: resolvedRange.date_from,
       dateTo: resolvedRange.date_to,
@@ -1096,6 +1900,7 @@ Deno.serve(async (req) => {
         summary: guardedSummary,
         deliveryCompletedGuard,
         reason: 'missing_config',
+        backendReadiness,
       });
     }
 
@@ -1134,6 +1939,7 @@ Deno.serve(async (req) => {
         summary: guardedSummary,
         deliveryCompletedGuard,
         reason: 'fetch_failed',
+        backendReadiness,
       });
     }
 
@@ -1153,6 +1959,7 @@ Deno.serve(async (req) => {
         deliveryCompletedGuard,
         reason: 'non_ok',
         hubStatus: hubResponse.status,
+        backendReadiness,
       });
     }
 
@@ -1172,24 +1979,33 @@ Deno.serve(async (req) => {
         summary: guardedSummary,
         deliveryCompletedGuard,
         reason: 'malformed_response',
+        backendReadiness,
       });
     }
 
     const hubSummary = sanitizeSummary(hubData.summary);
     const nativeContext = await loadNativeContext();
     const nativeSummary = nativeContext.summary;
+    const productionOverlay = buildNativeProductionOverlay(hubSummary, nativeSummary);
+    const productionAwareSummary = applyNativeProductionOverlay(hubSummary, productionOverlay);
+    const deliveryOverlay = buildNativeDeliveryOverlay(productionAwareSummary, nativeSummary);
+    const operationsAwareSummary = applyNativeDeliveryOverlay(productionAwareSummary, deliveryOverlay);
+    const inventoryPolicyOverlay = await buildInventoryPolicyOverlay(base44, operationsAwareSummary, nativeSummary);
+    const inventoryAwareSummary = applyNativeInventoryPolicyOverlay(operationsAwareSummary, inventoryPolicyOverlay);
+    const opsHealthOverlay = buildNativeOpsHealthOverlay(inventoryAwareSummary, nativeSummary);
     const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
-      currentSummary: hubSummary,
+      currentSummary: inventoryAwareSummary,
       nativeRouteDateResult: nativeContext.delivery_completed_route_date,
       hubSummary,
-      currentDisplaySource: 'hub_primary',
+      currentDisplaySource: productionOverlay.applied || deliveryOverlay.applied || inventoryPolicyOverlay.applied ? 'hub_primary_with_native_operations_overlay' : 'hub_primary',
     });
-    const displayedSummary = applyDeliveryCompletedInRangeGuard(hubSummary, deliveryCompletedGuard);
+    const deliveryGuardedSummary = applyDeliveryCompletedInRangeGuard(inventoryAwareSummary, deliveryCompletedGuard);
+    const displayedSummary = applyNativeOpsHealthOverlay(deliveryGuardedSummary, opsHealthOverlay);
     const diagnostics = buildOperationsDashboardDiagnostics({
       displayedSummary,
       nativeSummary,
       hubSummary,
-      currentDisplaySource: 'hub_primary',
+      currentDisplaySource: productionOverlay.applied || deliveryOverlay.applied || inventoryPolicyOverlay.applied ? 'hub_primary_with_native_operations_overlay' : 'hub_primary',
       requestedRange: resolvedRange,
       hubRange: {
         date_from: hubData.date_from || (preset === 'custom' ? dateFrom : resolvedRange.date_from),
@@ -1197,7 +2013,13 @@ Deno.serve(async (req) => {
       },
       deliveryCompletedGuard,
     });
-    const warnings = deliveryCompletedWarnings(deliveryCompletedGuard);
+    const warnings = [
+      productionOverlay.applied ? 'native_production_queue_overlay_applied' : null,
+      deliveryOverlay.applied ? 'native_unscheduled_delivery_overlay_applied' : null,
+      inventoryPolicyOverlay.applied ? 'native_food_demand_based_inventory_policy_applied' : null,
+      opsHealthOverlay.applied ? 'native_current_ops_health_overlay_applied' : null,
+      ...deliveryCompletedWarnings(deliveryCompletedGuard),
+    ].filter(Boolean);
 
     return Response.json({
       success: true,
@@ -1208,6 +2030,15 @@ Deno.serve(async (req) => {
       summary: displayedSummary,
       truncated: hubData.truncated === true,
       ...(warnings.length > 0 ? { warnings } : {}),
+      ...(productionOverlay.applied ? { native_production_overlay: productionOverlay } : {}),
+      ...(deliveryOverlay.applied ? { native_delivery_overlay: deliveryOverlay } : {}),
+      native_inventory_policy_overlay: inventoryPolicyOverlay,
+      native_ops_health_overlay: opsHealthOverlay,
+      writes_performed: false,
+      provider_calls_performed: false,
+      notifications_sent: false,
+      hub_mutation_performed: false,
+      ...(backendReadiness ? { backend_readiness: backendReadiness } : {}),
       ...diagnostics,
     });
   } catch (error) {

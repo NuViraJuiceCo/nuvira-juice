@@ -99,6 +99,52 @@ function maskEmail(email: string | null | undefined) {
   return `${safeLocal}@${domain}`;
 }
 
+async function deliveredEmailSent(base44: any, idempotencyKey: string) {
+  if (!idempotencyKey) return false;
+  try {
+    const existing = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
+      idempotency_key: idempotencyKey,
+    }, undefined, 5);
+    return existing.some((row: any) => row?.status === 'sent');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'unknown');
+    console.warn(`[sendOrderStatusNotification] Delivered email log lookup failed: ${message}`);
+    return false;
+  }
+}
+
+async function recordDeliveredEmailLog(base44: any, {
+  idempotencyKey,
+  orderId,
+  orderNumber,
+  customerEmail,
+  status,
+  errorMessage = '',
+}: Record<string, any>) {
+  if (!idempotencyKey) return;
+  try {
+    await base44.asServiceRole.entities.CustomerMessageDeliveryLog.create({
+      idempotency_key: idempotencyKey,
+      channel: 'email',
+      message_type: 'order_status',
+      order_id: orderId || null,
+      order_number: orderNumber || null,
+      customer_email: customerEmail || null,
+      provider: 'resend',
+      status,
+      error_message: errorMessage || null,
+      sent_at: status === 'sent' ? new Date().toISOString() : null,
+      metadata: {
+        notification_subtype: 'delivered',
+        order_status: 'delivered',
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'unknown');
+    console.warn(`[sendOrderStatusNotification] Delivered email log write failed: ${message}`);
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -148,7 +194,7 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         reason: 'order_status_notifications_disabled',
-        message: 'Order status notifications are disabled for May 30 launch freeze.',
+        message: 'Order status notifications are disabled by current delivery-notification gates.',
         status: new_status,
         delivery_status_notifications_enabled: deliveryStatusNotificationsEnabled(),
         delivery_status_allowed: isDeliveryStatus(new_status) && allowedDeliveryStatuses().has(new_status),
@@ -169,6 +215,12 @@ Deno.serve(async (req) => {
     // Build deep link for order tracker
     const deepLink = notifConfig.deep_link ?? `/order-tracker/${orderNum}`;
     const idempotencyKey = `order_status_${order_id}_${new_status}`;
+    const deliveredEmailIdempotencyKey = new_status === 'delivered'
+      ? `order_status_email_${order_id}_${new_status}`
+      : null;
+    const deliveredEmailAlreadySent = deliveredEmailIdempotencyKey
+      ? await deliveredEmailSent(base44, deliveredEmailIdempotencyKey)
+      : false;
 
     if (dryRun) {
       return Response.json({
@@ -186,7 +238,12 @@ Deno.serve(async (req) => {
         delivered_proof_details_email_enabled: deliveredProofDetailsEmailEnabled(),
         would_create_in_app_notification: enabledForStatus,
         would_attempt_push: enabledForStatus && customerPushNotificationsEnabled(),
-        would_send_delivered_email: enabledForStatus && new_status === 'delivered' && deliveredCustomerEmailEnabled(),
+        delivered_email_already_sent: deliveredEmailAlreadySent,
+        delivered_email_idempotency_key: deliveredEmailIdempotencyKey,
+        would_send_delivered_email: enabledForStatus &&
+          new_status === 'delivered' &&
+          deliveredCustomerEmailEnabled() &&
+          !deliveredEmailAlreadySent,
         would_include_delivery_proof_details: enabledForStatus &&
           new_status === 'delivered' &&
           deliveredCustomerEmailEnabled() &&
@@ -221,11 +278,13 @@ Deno.serve(async (req) => {
       notifData?.skipped !== true;
 
     // ── Delivery confirmation email ───────────────────────────────────────────
-    if (new_status === 'delivered' && deliveredNotificationAlreadyExists) {
+    if (new_status === 'delivered' && deliveredEmailAlreadySent) {
+      console.log('[sendOrderStatusNotification] Delivered email already logged as sent; skipping duplicate');
+    } else if (new_status === 'delivered' && deliveredNotificationAlreadyExists && !deliveredCustomerEmailEnabled()) {
       console.log('[sendOrderStatusNotification] Delivered email already sent; skipping duplicate');
     } else if (new_status === 'delivered' && !deliveredCustomerEmailEnabled()) {
       console.log('[sendOrderStatusNotification] Delivered email disabled; skipping');
-    } else if (new_status === 'delivered' && !deliveredNotificationCreated) {
+    } else if (new_status === 'delivered' && !deliveredNotificationCreated && !deliveredNotificationAlreadyExists) {
       console.log('[sendOrderStatusNotification] Delivered notification was not created; skipping delivered email');
     } else if (new_status === 'delivered') {
       try {
@@ -243,7 +302,7 @@ Deno.serve(async (req) => {
             .join('');
 
           // Proof/drop evidence is gated separately from delivered email status.
-          // Keep May 30 delivered email status-only unless proof visibility is explicitly approved.
+          // Keep delivered email status-only unless proof visibility is explicitly approved.
           const includeProofDetails = deliveredProofDetailsEmailEnabled();
           const dropLocationLine = includeProofDetails && fullOrder.delivery_drop_location
             ? `<div class="detail-row">📍 Left at: <strong>${fullOrder.delivery_drop_location}</strong></div>`
@@ -300,10 +359,25 @@ Deno.serve(async (req) => {
             body: html,
             from_name: 'NuVira Juice Co.',
           });
+          await recordDeliveredEmailLog(base44, {
+            idempotencyKey: deliveredEmailIdempotencyKey,
+            orderId: order_id,
+            orderNumber: orderNum,
+            customerEmail: email,
+            status: 'sent',
+          });
           console.log(`[sendOrderStatusNotification] ✅ Delivery confirmation email sent to ${maskEmail(email)} for order ${orderNum}`);
         }
       } catch (emailErr) {
         const emailMessage = emailErr instanceof Error ? emailErr.message : String(emailErr || 'unknown');
+        await recordDeliveredEmailLog(base44, {
+          idempotencyKey: deliveredEmailIdempotencyKey,
+          orderId: order_id,
+          orderNumber: orderNum,
+          customerEmail: email,
+          status: 'failed',
+          errorMessage: emailMessage,
+        });
         console.error(`[sendOrderStatusNotification] ❌ Delivery email failed: ${emailMessage}`);
       }
     }

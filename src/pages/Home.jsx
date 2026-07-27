@@ -17,6 +17,8 @@ import MerchTeaser from '@/components/home/MerchTeaser';
 import SustainabilityTeaser from '@/components/home/SustainabilityTeaser';
 import SubscriptionCard from '@/components/home/SubscriptionCard';
 import NotificationPrompt from '@/components/home/NotificationPrompt';
+
+
 import ProgramCards from '@/components/home/ProgramCards';
 import DeliveryAvailabilityCard from '@/components/delivery/DeliveryAvailabilityCard';
 import { Link } from 'react-router-dom';
@@ -25,11 +27,7 @@ import { Bell } from 'lucide-react';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
-function asList(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-export default function Home() {
+export default function Home({ seoActive = true }) {
   const { user } = useAuth();
 
   // Read first name from localStorage cache so it reflects immediately after settings change
@@ -43,22 +41,22 @@ export default function Home() {
 
   const displayFirstName = cachedFirstName || user?.first_name;
 
-  const { data: productsData = [] } = useQuery({
+  const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 50),
   });
 
-  const { data: schedulesData = [] } = useQuery({
+  const { data: schedules = [] } = useQuery({
     queryKey: ['delivery-schedule'],
     queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
   });
 
-  const { data: bannersData = [] } = useQuery({
+  const { data: banners = [] } = useQuery({
     queryKey: ['banners'],
     queryFn: () => base44.entities.Banner.filter({ is_active: true }, 'sort_order', 10),
   });
 
-  const { data: ordersData = [] } = useQuery({
+  const { data: orders = [] } = useQuery({
     queryKey: ['my-orders'],
     queryFn: () => base44.entities.Order.filter(
       { customer_email: user?.email },
@@ -68,7 +66,7 @@ export default function Home() {
     enabled: !!user?.email,
   });
 
-  const { data: notificationsData = [] } = useQuery({
+  const { data: notifications = [] } = useQuery({
     queryKey: ['unread-notifications'],
     queryFn: () => base44.entities.Notification.filter(
       { customer_email: user?.email, is_read: false },
@@ -77,12 +75,6 @@ export default function Home() {
     ),
     enabled: !!user?.email,
   });
-
-  const products = asList(productsData);
-  const schedules = asList(schedulesData);
-  const banners = asList(bannersData);
-  const orders = asList(ordersData);
-  const notifications = asList(notificationsData);
 
   const scheduleRules = schedules[0]?.rules || [];
   const productionInfo = getProductionInfo(scheduleRules);
@@ -104,6 +96,7 @@ export default function Home() {
   const bundles = products.filter(p => p.category === 'bundle');
   const lastOrder = orders[0];
   const unreadCount = notifications.length;
+
   // Pull refetch handles from the queries already registered above — no duplicate registration
   const { refetch: refetchProducts } = useQuery({ queryKey: ['products'] });
   const { refetch: refetchSchedules } = useQuery({ queryKey: ['delivery-schedule'] });
@@ -117,14 +110,18 @@ export default function Home() {
     <BrowserAppPrompt pageRoute="/" />
     <PullToRefresh onRefresh={handleRefresh}>
     <div className="pb-4">
-      <SEO
-        title="Cold-Pressed Juice Delivery in Wentzville & St. Louis, MO"
-        description="NuVira Juice Co. delivers fresh cold-pressed juices in Wentzville, O'Fallon, St. Charles, and the greater St. Louis area. Order online today — Real. Living. Nutrition."
-        keywords="cold pressed juice Wentzville MO, juice delivery St. Louis, fresh juice O'Fallon, NuVira Juice Co, juice cleanse St. Charles, wellness shots Missouri, cold pressed juice delivery near me"
-        structuredData={LOCAL_BUSINESS_SCHEMA}
-      />
-      {/* Visually hidden h1 for SEO — the logo serves as the visual brand mark */}
-      <h1 className="sr-only">NuVira Juice Co. — Cold-Pressed Juice Delivery in Wentzville &amp; St. Louis, MO</h1>
+      {seoActive && (
+        <>
+          <SEO
+            title="Cold-Pressed Juice Delivery in Wentzville & St. Louis, MO"
+            description="NuVira Juice Co. delivers fresh cold-pressed juices in Wentzville, O'Fallon, St. Charles, and the greater St. Louis area. Order online today — Real. Living. Nutrition."
+            keywords="cold pressed juice Wentzville MO, juice delivery St. Louis, fresh juice O'Fallon, NuVira Juice Co, juice cleanse St. Charles, wellness shots Missouri, cold pressed juice delivery near me"
+            structuredData={LOCAL_BUSINESS_SCHEMA}
+          />
+          {/* Visually hidden h1 for SEO — the logo serves as the visual brand mark */}
+          <h1 className="sr-only">NuVira Juice Co. — Cold-Pressed Juice Delivery in Wentzville &amp; St. Louis, MO</h1>
+        </>
+      )}
 
       {/* Header */}
       <motion.div
@@ -132,7 +129,7 @@ export default function Home() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
         className="flex items-center justify-between px-5 pb-2"
-        style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))', background: 'linear-gradient(180deg, rgba(200,232,106,0.08) 0%, transparent 100%)' }}
+        style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))' }}
       >
         <div>
           <img src={LOGO_URL} alt="NuVira Juice Company" className="h-8" />
@@ -164,8 +161,6 @@ export default function Home() {
           </Link>
         </div>
       </motion.div>
-
-
 
       <HeroBanner banners={banners} scheduleRules={scheduleRules} heroHeadline="Build Your Routine" heroSubtext="Choose your goal. We'll handle the rest." />
 
@@ -226,8 +221,34 @@ export default function Home() {
 
       {/* Site Footer — SEO & trust links */}
       <footer className="px-5 pt-6 pb-2 border-t border-border/30 mt-4">
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <Link to="/cold-pressed-juice-delivery" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            Cold-Pressed Delivery
+          </Link>
+          <Link to="/fresh-juice-delivery-st-louis" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            St. Louis Juice Delivery
+          </Link>
+          <Link to="/cold-pressed-juice-wentzville" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            Wentzville Juice
+          </Link>
+          <Link to="/juice-catering-st-louis" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            Event Juice Catering
+          </Link>
+          <Link to="/cold-pressed-juice-ofallon-mo" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            O'Fallon Juice
+          </Link>
+          <Link to="/juice-delivery-st-charles-mo" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            St. Charles Delivery
+          </Link>
+          <Link to="/juice-delivery-lake-saint-louis" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            Lake Saint Louis
+          </Link>
+          <Link to="/wellness-shots-wentzville" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            Wellness Shots
+          </Link>
+        </div>
         <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mb-3">
-          <Link to="/about" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
+          <Link to="/our-story" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
           <Link to="/contact" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
           <Link to="/support" className="text-xs text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
           <Link to="/legal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Legal</Link>

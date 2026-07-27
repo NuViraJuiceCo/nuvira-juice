@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { SprayCan } from 'lucide-react';
+import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
 export default function SanitationLogForm({ onClose }) {
   const [, setUser] = useState(null);
@@ -56,11 +58,14 @@ export default function SanitationLogForm({ onClose }) {
   return (
     <Card className="mb-6">
       <CardHeader>
-        <CardTitle>🧹 Sanitation Log</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <SprayCan className="h-5 w-5 text-primary" />
+          Sanitation Log
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Date</label>
               <input
@@ -81,18 +86,13 @@ export default function SanitationLogForm({ onClose }) {
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium">Staff Member</label>
-            <input
-              type="text"
-              value={formData.staff_member}
-              onChange={(e) => handleChange('staff_member', e.target.value)}
-                className="w-full border rounded-md p-2 mt-1 bg-muted text-foreground"
-              disabled
-            />
-          </div>
+          <StaffMemberPicker
+            label="Staff member"
+            value={formData.staff_member}
+            onChange={(value) => handleChange('staff_member', value)}
+          />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Area</label>
               <select
@@ -143,7 +143,7 @@ export default function SanitationLogForm({ onClose }) {
                 onCheckedChange={(checked) => handleChange('cleaned', checked)}
                 id="cleaned"
               />
-              <label htmlFor="cleaned" className="text-sm cursor-pointer">✓ Area cleaned</label>
+              <label htmlFor="cleaned" className="text-sm cursor-pointer">Area cleaned</label>
             </div>
             <div className="flex items-center gap-2">
               <Checkbox
@@ -151,20 +151,17 @@ export default function SanitationLogForm({ onClose }) {
                 onCheckedChange={(checked) => handleChange('sanitized', checked)}
                 id="sanitized"
               />
-              <label htmlFor="sanitized" className="text-sm cursor-pointer">✓ Area sanitized</label>
+              <label htmlFor="sanitized" className="text-sm cursor-pointer">Area sanitized</label>
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium">Verified By (Optional)</label>
-            <input
-              type="text"
-              value={formData.verified_by}
-              onChange={(e) => handleChange('verified_by', e.target.value)}
-              placeholder="Manager or supervisor name"
-              className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
-            />
-          </div>
+          <StaffMemberPicker
+            label="Verified by"
+            value={formData.verified_by}
+            onChange={(value) => handleChange('verified_by', value)}
+            placeholder="Manager or supervisor name"
+            helperText="Optional manager or supervisor verification."
+          />
 
           <div>
             <label className="text-sm font-medium">Notes (Optional)</label>

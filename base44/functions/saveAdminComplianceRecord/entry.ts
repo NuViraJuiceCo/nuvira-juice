@@ -61,6 +61,56 @@ function ingredientRows(value) {
   }).filter(row => row.ingredient_name);
 }
 
+function batchLinkFields(data) {
+  const relatedBatchIds = stringArray(data?.related_batch_ids || data?.batch_ids);
+  const relatedSourceBatchIds = stringArray(data?.related_source_production_batch_ids || data?.source_production_batch_ids || data?.production_batch_ids);
+  return compact({
+    batch_id: text(data?.batch_id, 120),
+    source_production_batch_id: text(data?.source_production_batch_id || data?.production_batch_id, 160),
+    related_batch_ids: relatedBatchIds.length > 0 ? relatedBatchIds : undefined,
+    related_source_production_batch_ids: relatedSourceBatchIds.length > 0 ? relatedSourceBatchIds : undefined,
+  });
+}
+
+async function resolveLinkedProductionBatch(base44, data) {
+  const entity = base44.asServiceRole?.entities?.ProductionBatch;
+  if (!entity) return null;
+
+  const sourceId = text(data?.source_production_batch_id || data?.production_batch_id, 160);
+  if (sourceId && typeof entity.get === 'function') {
+    const byId = await entity.get(sourceId).catch(() => null);
+    if (byId?.id) return byId;
+  }
+
+  const displayIds = [
+    text(data?.batch_id, 120),
+    ...stringArray(data?.related_batch_ids || data?.batch_ids),
+  ].filter(Boolean);
+  if (typeof entity.filter === 'function') {
+    for (const batchId of displayIds) {
+      const matches = await entity.filter({ batch_id: batchId }, '-created_date', 2).catch(() => []);
+      if (Array.isArray(matches) && matches.length === 1) return matches[0];
+    }
+  }
+
+  return null;
+}
+
+async function deriveComplianceTestContext(base44, data) {
+  const linkedBatch = await resolveLinkedProductionBatch(base44, data);
+  const requestedTestRecord = data?.is_test_record === true;
+  if (requestedTestRecord && linkedBatch?.is_test_batch !== true) {
+    throw new Error('test_record_requires_linked_test_batch');
+  }
+  if (linkedBatch?.is_test_batch === true) {
+    return {
+      is_test_record: true,
+      test_batch_id: text(linkedBatch.batch_id || linkedBatch.id, 120),
+    };
+  }
+  return { is_test_record: false };
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -106,6 +156,7 @@ function temperatureRecord(data, user) {
   const withinRange = Number.isFinite(temperature) && temperature >= min && temperature <= max;
   return compact({
     ...baseFields(data, user),
+    ...batchLinkFields(data),
     location: text(data?.location || 'Cold Room 1', 120),
     temperature,
     unit: text(data?.unit || 'F', 10),
@@ -147,6 +198,7 @@ function ccpRecord(data, user) {
 function sanitationRecord(data, user) {
   return compact({
     ...baseFields(data, user),
+    ...batchLinkFields(data),
     area: text(data?.area || 'Prep Area', 120),
     sanitizer_type: text(data?.sanitizer_type || 'Bleach Solution', 120),
     sanitizer_level: text(data?.sanitizer_level || 'Adequate', 80),
@@ -171,9 +223,16 @@ function correctiveRecord(data, user) {
 }
 
 function checklistRecord(data, user) {
+  const batchRefs = stringArray(data?.related_batch_ids || data?.batch_ids);
+  const linkFields = batchLinkFields(data);
+  const batchesLogged = text(
+    data?.batches_logged || data?.batch_id || batchRefs.join(', '),
+    500
+  );
   return compact({
     checklist_date: safeDate(data?.checklist_date),
     staff_member: text(data?.staff_member || user?.full_name || user?.email, 120),
+    ...linkFields,
     shift: text(data?.shift || 'Morning', 40),
     morning_fridge_temp_logged: bool(data?.morning_fridge_temp_logged),
     morning_fridge_time: text(data?.morning_fridge_time, 20),
@@ -186,7 +245,7 @@ function checklistRecord(data, user) {
     work_areas_cleaned: bool(data?.work_areas_cleaned),
     cleaning_time: text(data?.cleaning_time, 20),
     batch_logs_completed: bool(data?.batch_logs_completed),
-    batches_logged: text(data?.batches_logged, 500),
+    batches_logged: batchesLogged,
     ccp_logs_completed: bool(data?.ccp_logs_completed),
     ccp_notes: text(data?.ccp_notes, 500),
     issues_reported: text(data?.issues_reported, 1000),
@@ -366,6 +425,9 @@ Deno.serve(async (req) => {
 
     const data = body?.data && typeof body.data === 'object' ? body.data : {};
     const { entity, record } = buildRecord(recordType, data, user);
+    if (['temperature', 'sanitation', 'daily_checklist', 'batch_compliance'].includes(recordType)) {
+      Object.assign(record, await deriveComplianceTestContext(base44, data));
+    }
     const validationError = validate(recordType, record);
     if (validationError) {
       return Response.json({ success: false, error: validationError }, { status: 400 });
@@ -380,6 +442,15 @@ Deno.serve(async (req) => {
     let saved;
     const existingId = text(body?.existing_id || data?.id, 140);
     if (['daily_checklist', 'label_allergen', 'haccp_plan'].includes(recordType) && existingId && entityApi.update) {
+      if (recordType === 'daily_checklist' && typeof entityApi.get === 'function') {
+        const existing = await entityApi.get(existingId).catch(() => null);
+        if (!existing) {
+          return Response.json({ success: false, error: 'existing_record_not_found' }, { status: 404 });
+        }
+        if ((existing.is_test_record === true) !== (record.is_test_record === true)) {
+          return Response.json({ success: false, error: 'test_and_operational_checklists_cannot_be_merged' }, { status: 409 });
+        }
+      }
       saved = await entityApi.update(existingId, record);
       action = 'updated';
     } else {

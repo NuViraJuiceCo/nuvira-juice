@@ -14,6 +14,8 @@ import {
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
+import { usePageVisibility } from '@/lib/usePageVisibility';
 
 const MAX_RANGE_DAYS = 31;
 const presetOptions = [
@@ -451,6 +453,7 @@ function MonthGrid({ dates, rangeFrom, rangeTo, selectedDate, onSelectDate }) {
 
 export default function Calendar() {
   const { user } = useAuth();
+  const isPageVisible = usePageVisibility();
   const today = useMemo(() => todayDate(), []);
   const [preset, setPreset] = useState('current_month');
   const [dateFrom, setDateFrom] = useState(firstDayOfMonth(today));
@@ -489,11 +492,12 @@ export default function Calendar() {
       if (result?.error) throw new Error(result.error);
       return result || { summary: {}, dates: [] };
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user) && isPageVisible,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
   });
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -548,7 +552,7 @@ export default function Calendar() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Calendar"
         subtitle="Read-only operations schedule"
@@ -684,7 +688,7 @@ export default function Calendar() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">
-              {isNativeFallback ? 'Native Customer App calendar fallback' : 'Hub Calendar view'}
+              {isNativeFallback ? 'Native Customer App calendar fallback' : 'Source Calendar view'}
             </p>
             <p className="text-[10px] text-muted-foreground">Read-only schedule visibility. Use the month controls to move the calendar; event, production, delivery, compliance, and order actions are not available here.</p>
             <p className="text-[10px] font-semibold text-primary mt-1">{formatMonthLabel(visibleDateFrom, visibleDateTo)}</p>
@@ -751,8 +755,8 @@ export default function Calendar() {
         {warnings.length > 0 && (
           <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
             {warnings.includes('native_read_only_fallback')
-              ? 'Hub calendar aggregation is unavailable. Showing native Customer App read-only schedule counts so calendar visibility stays available.'
-              : warnings.slice(0, 2).join(', ')}
+              ? 'Source calendar aggregation is unavailable. Showing native Customer App read-only schedule counts so calendar visibility stays available.'
+              : warnings.slice(0, 2).map(warning => String(warning).replace(/^hub_/i, 'source_').replace(/_/g, ' ')).join(', ')}
           </p>
         )}
 

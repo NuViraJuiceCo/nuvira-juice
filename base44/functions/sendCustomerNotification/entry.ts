@@ -63,12 +63,8 @@ function customerPushNotificationsEnabled() {
   return Deno.env.get('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS') === 'true';
 }
 
-function notificationCampaignSendsEnabled() {
-  return Deno.env.get('DISABLE_NOTIFICATION_CAMPAIGN_SENDS') !== 'true';
-}
-
-function customerNotificationSubtypeAllowed(notificationSubtype: string, source: string) {
-  if (source === 'notification_campaign' && notificationCampaignSendsEnabled()) return true;
+function customerNotificationSubtypeAllowed(notificationSubtype: string, source: unknown = null) {
+  if (String(source || '') === 'notification_campaign') return Deno.env.get('DISABLE_NOTIFICATION_CAMPAIGN_SENDS') !== 'true';
   if (MAY30_DEFAULT_ALLOWED_SUBTYPES.has(notificationSubtype)) return true;
   if (nonConfirmationNotificationsEnabled()) return true;
   return MAY30_DELIVERY_STATUS_SUBTYPES.has(notificationSubtype) && deliveryStatusNotificationsEnabled();
@@ -132,7 +128,7 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         reason: 'non_confirmation_customer_notifications_disabled',
-        message: 'Non-confirmation customer notifications are disabled for the May 30 launch freeze.',
+        message: 'Non-confirmation customer notifications are disabled for this source.',
         notification_subtype,
         delivery_status_notifications_enabled: deliveryStatusNotificationsEnabled(),
       }, { status: 409 });

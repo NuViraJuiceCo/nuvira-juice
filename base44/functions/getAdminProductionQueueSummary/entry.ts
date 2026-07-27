@@ -6,6 +6,7 @@ const MAX_RANGE_DAYS = 31;
 const DEFAULT_RANGE_DAYS_AHEAD = 14;
 const MAX_LIMIT = 100;
 const CHICAGO_TZ = 'America/Chicago';
+const TEST_BATCH_MODES = new Set(['exclude', 'only']);
 
 async function readJsonBody(req) {
   try {
@@ -113,7 +114,20 @@ function sourceKey(batch) {
   return normalizeText(batch.batch_id || batch.id).toLowerCase();
 }
 
+function isInternalTestBatch(batch) {
+  const batchId = normalizeText(batch?.batch_id || batch?.id).toLowerCase();
+  const sourceSystem = normalizeText(batch?.source_system).toLowerCase();
+  const ownerStatus = normalizeText(batch?.native_owner_status).toLowerCase();
+  const testPurpose = normalizeText(batch?.test_purpose).toLowerCase();
+  return batch?.is_test_batch === true ||
+    batchId.includes('-test-') ||
+    sourceSystem.includes('internal_validation') ||
+    ownerStatus.includes('internal_test') ||
+    testPurpose.includes('internal validation');
+}
+
 function sanitizeBatch(batch) {
+  const isTestBatch = isInternalTestBatch(batch);
   return {
     id: batch.id || null,
     batch_id: batch.batch_id || null,
@@ -123,6 +137,8 @@ function sanitizeBatch(batch) {
     status: batch.status || null,
     planned_units: batch.planned_units ?? null,
     actual_units: batch.actual_units ?? null,
+    is_test_batch: isTestBatch,
+    test_purpose: isTestBatch ? normalizeText(batch.test_purpose) : null,
     is_locked: batch.is_locked === true,
     order_count: Number(batch.order_count) || 0,
     order_numbers: Array.isArray(batch.order_numbers)
@@ -144,7 +160,7 @@ function nativeSourceTypeCounts(orderSources) {
   return counts;
 }
 
-async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit) {
+async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, testBatchMode = 'exclude') {
   try {
     const entity = base44.asServiceRole?.entities?.ProductionBatch;
     if (!entity || typeof entity.list !== 'function') return [];
@@ -154,7 +170,9 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit) {
     const filtered = rows
       .filter(batch => {
         const productionDate = normalizeText(batch.production_date);
-        return productionDate && productionDate >= dateFrom && productionDate <= dateTo;
+        const isTestBatch = isInternalTestBatch(batch);
+        const modeMatches = testBatchMode === 'only' ? isTestBatch : !isTestBatch;
+        return modeMatches && productionDate && productionDate >= dateFrom && productionDate <= dateTo;
       })
       .map(batch => {
         const orderSources = Array.isArray(batch.order_sources) ? batch.order_sources : [];
@@ -220,7 +238,7 @@ function mergeHubAndNativeBatches(hubBatches, nativeBatches, limit) {
   return limit ? merged.slice(0, limit) : merged;
 }
 
-function nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }) {
+function nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, testBatchMode = 'exclude' }) {
   return {
     success: true,
     date_from: dateFrom,
@@ -234,8 +252,10 @@ function nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, wa
       native_read_only: true,
       native_batch_count: nativeBatches.length,
       hub_batch_count: 0,
-      live_actions_source: 'hub_backed_only',
+      live_actions_source: testBatchMode === 'only' ? 'native_internal_test_only' : 'hub_backed_only',
     },
+    test_batch_mode: testBatchMode,
+    operational_totals_exclude_test_batches: true,
     warnings,
   };
 }
@@ -266,11 +286,16 @@ Deno.serve(async (req) => {
     let dateFrom;
     let dateTo;
     let limit;
+    let testBatchMode;
 
     try {
       dateFrom = parseIsoDate(body.date_from, 'date_from');
       dateTo = parseIsoDate(body.date_to, 'date_to');
       limit = normalizeLimit(body.limit);
+      testBatchMode = normalizeText(body.test_batch_mode || 'exclude').toLowerCase();
+      if (!TEST_BATCH_MODES.has(testBatchMode)) {
+        throw new Error('test_batch_mode must be exclude or only');
+      }
     } catch (error) {
       return Response.json({ error: error.message }, { status: 400 });
     }
@@ -296,8 +321,18 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    const nativeBatches = await loadNativeProductionBatches(base44, dateFrom, dateTo, limit);
+    const nativeBatches = await loadNativeProductionBatches(base44, dateFrom, dateTo, limit, testBatchMode);
     const warnings = [];
+    if (testBatchMode === 'only') {
+      warnings.push('internal_test_batches_only');
+      return Response.json(nativeOnlyProductionQueueResponse({
+        dateFrom,
+        dateTo,
+        nativeBatches,
+        warnings,
+        testBatchMode,
+      }));
+    }
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       if (nativeBatches.length === 0) {
@@ -308,7 +343,7 @@ Deno.serve(async (req) => {
       }
 
       warnings.push('hub_production_queue_service_not_configured');
-      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }));
+      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, testBatchMode }));
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -335,7 +370,7 @@ Deno.serve(async (req) => {
         }, { status: 503 });
       }
 
-      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }));
+      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, testBatchMode }));
     }
 
     if (!hubResponse.ok) {
@@ -348,7 +383,7 @@ Deno.serve(async (req) => {
         }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
       }
 
-      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings }));
+      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, testBatchMode }));
     }
 
     const hubData = await hubResponse.json().catch(() => null);
@@ -384,6 +419,8 @@ Deno.serve(async (req) => {
         live_actions_source: 'hub_backed_only',
       },
       warnings,
+      test_batch_mode: 'exclude',
+      operational_totals_exclude_test_batches: true,
     });
   } catch (error) {
     console.error('[getAdminProductionQueueSummary] Error:', error.message);

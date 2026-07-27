@@ -305,6 +305,17 @@ test('20. Complete native chain is represented safely', () => {
   assert.equal(result.delivery_write_ready, false);
 });
 
+test('20b. Admin Orders exposes effective source-of-truth statuses without hiding raw native context', () => {
+  assert.match(entrySource, /function effectiveAdminOperationalStatuses/);
+  assert.match(entrySource, /native_status_stale_against_source/);
+  assert.match(entrySource, /native_status_stale_fields/);
+  assert.match(entrySource, /effective_production_status/);
+  assert.match(entrySource, /effective_fulfillment_status/);
+  assert.match(uiSource, /order\.effective_production_status \|\| order\.native_production_status/);
+  assert.match(uiSource, /order\.effective_fulfillment_status \|\| order\.native_fulfillment_status/);
+  assert.match(uiSource, /Raw Native/);
+});
+
 test('21. Admin page uses canonical model only when enabled', () => {
   assert.match(uiSource, /hasValidAdminOrderLifecycleReadModel/);
   assert.match(uiSource, /admin_order_lifecycle_read_model_enabled === true/);
@@ -336,7 +347,7 @@ test('26. Existing admin actions remain unchanged', () => {
   const changed = (process.env.G48E_CHANGED_FILES || '').split(/\n/).filter(Boolean);
   const forbidden = changed.filter(file => /appendAdminHubOrderNote|manualSync|repair|refund|pushOrder|Fulfillment|Delivery|Notification/.test(file) && !/getAdminOrdersWithHub|AdminOrders|g48e/.test(file));
   assert.deepEqual(forbidden, []);
-  assert.match(uiSource, /ORDER_WORKFLOW_CONTROLS_FROZEN = true/);
+  assert.match(uiSource, /ORDER_DIRECT_STATUS_MUTATIONS_LOCKED = true/);
 });
 
 test('27. No Order mutation', () => assert.doesNotMatch(helperSource, /Order\.create|Order\.update|entities\.Order\.create|entities\.Order\.update/));

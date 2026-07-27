@@ -63,7 +63,7 @@ export default function ComplianceDocumentsTab({ nativeCompliance }) {
 
       <div className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-900">
         <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-        <p>Document deletes are locked during launch operations. Use the existing compliance fallback/admin process for destructive document changes.</p>
+        <p>Document deletes are controlled. Use the existing compliance fallback/admin process for destructive document changes.</p>
       </div>
 
       <div className="space-y-3">

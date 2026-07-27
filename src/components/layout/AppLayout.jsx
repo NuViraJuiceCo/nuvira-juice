@@ -9,21 +9,40 @@ const TAB_PATHS = ['/', '/shop', '/cart'];
 import MobileNav from './MobileNav';
 import SideNav from './SideNav';
 
+function tabPanelProps(active) {
+  return {
+    style: { display: active ? 'block' : 'none' },
+    'aria-hidden': active ? undefined : true,
+    inert: active ? undefined : '',
+  };
+}
+
 export default function AppLayout() {
   const location = useLocation();
   const isTabRoute = TAB_PATHS.includes(location.pathname);
+  const homeActive = location.pathname === '/';
+  const shopActive = location.pathname === '/shop';
+  const cartActive = location.pathname === '/cart';
+  const adminShell = location.pathname.startsWith('/admin');
+  const mainClassName = adminShell
+    ? 'pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 max-w-none mx-auto overflow-x-hidden w-full'
+    : 'pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto overflow-x-hidden w-full';
   return (
-    <div className="bg-background flex" style={{ minHeight: '100dvh' }}>
+    <div
+      className="bg-background flex"
+      data-admin-shell={adminShell ? 'true' : undefined}
+      style={{ minHeight: '100dvh' }}
+    >
       {/* Sidebar — tablet & desktop */}
       <SideNav />
 
       {/* Main content — single natural scroll container, no overflow-hidden */}
       <div className="flex-1 min-w-0 md:ml-60 overflow-x-hidden w-full">
-        <main className="pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto overflow-x-hidden w-full">
+        <main className={mainClassName}>
           {/* Always-mounted tab panels — display toggled to preserve scroll & state */}
-          <div style={{ display: location.pathname === '/' ? 'block' : 'none' }}><Home /></div>
-          <div style={{ display: location.pathname === '/shop' ? 'block' : 'none' }}><Shop /></div>
-          <div style={{ display: location.pathname === '/cart' ? 'block' : 'none' }}><Cart /></div>
+          <div {...tabPanelProps(homeActive)}><Home seoActive={homeActive} /></div>
+          <div {...tabPanelProps(shopActive)}><Shop seoActive={shopActive} /></div>
+          <div {...tabPanelProps(cartActive)}><Cart seoActive={cartActive} /></div>
 
           {/* Non-tab routes — fade+lift transition (no x-axis reflow) */}
           {!isTabRoute && (

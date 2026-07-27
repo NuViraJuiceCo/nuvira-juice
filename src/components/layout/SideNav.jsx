@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, ShoppingBag, User, Star, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Home, Search, ShoppingBag, User, Star, ShieldCheck } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
+import { adminNavGroups, isAdminNavActive } from './adminNavItems';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -20,7 +22,8 @@ export default function SideNav() {
   const location = useLocation();
   const { itemCount } = useCart();
   const { user } = useAuth();
-  const visibleNavItems = user?.role === 'admin' ? [...navItems, adminNavItem] : navItems;
+  const adminMode = isAdminUser(user) && location.pathname.startsWith('/admin');
+  const visibleNavItems = isAdminUser(user) ? [...navItems, adminNavItem] : navItems;
 
   return (
     <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-nuvira min-h-screen fixed left-0 top-0 h-screen overflow-y-auto shadow-sm">
@@ -31,41 +34,75 @@ export default function SideNav() {
       </Link>
 
       {/* Nav Items */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {visibleNavItems.map(({ path, icon: Icon, label }) => {
-          const isActive =
-            location.pathname === path ||
-            (path === '/shop' && location.pathname.startsWith('/shop')) ||
-            (path === '/account' && location.pathname.startsWith('/account')) ||
-            (path === '/admin/operations' && location.pathname.startsWith('/admin'));
+      {adminMode ? (
+        <nav className="flex-1 px-3 py-4 space-y-5">
+          <Link
+            to="/"
+            className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Customer app
+          </Link>
+          {adminNavGroups.map(group => (
+            <div key={group.label} className="space-y-1">
+              <p className="px-3 text-[10px] font-black uppercase tracking-wider text-muted-foreground">{group.label}</p>
+              {group.items.map(({ path, icon: Icon, label }) => {
+                const isActive = isAdminNavActive(location.pathname, { path, label });
+                return (
+                  <Link
+                    key={path}
+                    to={path}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-950/20'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="h-4.5 w-4.5" strokeWidth={isActive ? 2.5 : 1.8} />
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+      ) : (
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {visibleNavItems.map(({ path, icon: Icon, label }) => {
+            const isActive =
+              location.pathname === path ||
+              (path === '/shop' && location.pathname.startsWith('/shop')) ||
+              (path === '/account' && location.pathname.startsWith('/account')) ||
+              (path === '/admin/operations' && location.pathname.startsWith('/admin'));
 
-          return (
-            <Link
-              key={path}
-              to={path}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors relative ${
-                isActive
-                  ? label === 'Admin'
-                    ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-950/20'
-                    : 'bg-nuvira-gradient text-white shadow-sm shadow-emerald-950/15'
-                  : label === 'Admin'
-                    ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-              }`}
-            >
-              <div className="relative">
-                <Icon className="w-4.5 h-4.5" strokeWidth={isActive ? 2.5 : 1.8} />
-                {label === 'Cart' && itemCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2 bg-accent text-accent-foreground text-[9px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
-                    {itemCount}
-                  </span>
-                )}
-              </div>
-              <span className="text-sm font-medium">{label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors relative ${
+                  isActive
+                    ? label === 'Admin'
+                      ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-950/20'
+                      : 'bg-nuvira-gradient text-white shadow-sm shadow-emerald-950/15'
+                    : label === 'Admin'
+                      ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                }`}
+              >
+                <div className="relative">
+                  <Icon className="w-4.5 h-4.5" strokeWidth={isActive ? 2.5 : 1.8} />
+                  {label === 'Cart' && itemCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-accent text-accent-foreground text-[9px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                      {itemCount}
+                    </span>
+                  )}
+                </div>
+                <span className="text-sm font-medium">{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
 
       {/* Footer */}
       <div className="px-6 py-4 border-t border-border space-y-1">

@@ -210,7 +210,7 @@ test('4. Existing route-summary response remains unchanged when disabled', async
   assert.equal(result.payload.delivery_lifecycle_read_model_available, true);
   assert.equal(result.payload.delivery_lifecycle_read_model_enabled, false);
   assert.equal(result.payload.delivery_lifecycle_read_model, undefined);
-  assert.deepEqual(result.reads.sort(), ['FulfillmentTask', 'ShopifyOrder'].sort());
+  assert.deepEqual(result.reads.sort(), ['FulfillmentTask', 'Order', 'ShopifyOrder'].sort());
   assert.equal(result.writes.length, 0);
 });
 test('5. Existing date/range filtering remains unchanged', () => {
@@ -301,6 +301,73 @@ test('22. Out-for-delivery state is represented safely', () => {
 test('23. Delivered state is represented safely', () => {
   const row = rowFor(model({ tasks: [task({ status: 'delivered', delivery_status: 'delivered' })], stops: [stop({ task_status: 'delivered', delivery_status: 'delivered' })] }), 'NV-CLEAN');
   assert.equal(row.classification, 'delivery_lifecycle_already_completed');
+});
+test('23b. Hub completed route context counts as delivered even when native task lags', () => {
+  const result = model({
+    tasks: [task({ status: 'scheduled', delivery_status: 'pending' })],
+    stops: [stop({ task_status: 'Completed', delivery_status: 'delivered', data_source: 'native_with_hub_completed_context', hub_fallback_used: true })],
+  });
+  const row = rowFor(result, 'NV-CLEAN');
+  assert.equal(row.delivery_status, 'delivered');
+  assert.equal(row.production_status, 'delivered');
+  assert.equal(result.summary.delivered_count, 1);
+  assert.equal(row.review_required, true);
+});
+test('23c. Route summary completed duplicate maps stale native production to delivered when Hub omits production status', async () => {
+  const store = base44Fake({
+    tasks: [task({
+      status: 'delivered',
+      delivery_status: 'delivered',
+      production_status: 'awaiting_production',
+      delivery_window_label: '5 PM - 8 PM',
+      delivery_address: '619 N Main St, O Fallon, MO',
+      items_summary: '1x Hydration Program (3-Day)',
+    })],
+    nativeOrders: [nativeOrder({
+      fulfillment_status: 'pending',
+      production_status: 'awaiting_production',
+    })],
+    orders: [baseOrder({
+      status: 'delivered',
+      delivery_status: 'delivered',
+      fulfillment_status: 'delivered',
+    })],
+  });
+  const handler = loadEntryHandler({
+    env: {
+      HUB_API_URL: 'https://hub.example',
+      CUSTOMER_APP_SYNC_SECRET: 'secret',
+    },
+    hubData: {
+      success: true,
+      delivery_date: DELIVERY_DATE,
+      sections: {
+        delivery_stops: [],
+        completed: [stop({
+          task_id: 'hub_task_NV-CLEAN',
+          order_number: 'NV-CLEAN',
+          task_status: 'Completed',
+          delivery_status: 'delivered',
+          fulfillment_status: 'delivered',
+          delivery_window_label: '5 PM - 8 PM',
+          delivery_address: '619 N Main St, O Fallon, MO',
+          items_summary: '9x OASIS, 3x AURA',
+          data_source: 'hub',
+        })],
+      },
+    },
+  });
+  const response = await handler({ __base44: store.base44, json: async () => ({ delivery_date: DELIVERY_DATE, limit: 100 }) });
+  const payload = await response.json();
+  const row = payload.sections.completed.find(item => orderNumber(item.order_number) === 'NV-CLEAN');
+  assert.equal(response.status, 200);
+  assert.equal(row.production_status, 'delivered');
+  assert.equal(row.fulfillment_status, 'delivered');
+  assert.equal(row.items_summary, '9x OASIS, 3x AURA');
+  assert.equal(row.data_source, 'native_with_hub_completed_context');
+  assert.equal(row.hub_fallback_used, true);
+  assert.match(row.warnings.join('|'), /hub_completed_state_used_for_native_duplicate/);
+  assert.equal(store.writes.length, 0);
 });
 test('24. Hub-only valid row remains visible through fallback', () => {
   const result = model({ orders: [], nativeOrders: [], tasks: [], stops: [stop({ order_number: 'NV-HUBONLY', customer_app_order_id: null, task_id: 'hub_task', data_source: 'hub_fallback', hub_fallback_used: true })] });

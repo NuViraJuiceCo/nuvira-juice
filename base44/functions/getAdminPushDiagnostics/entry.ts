@@ -92,7 +92,8 @@ async function readSubscriptionCounts(base44: Base44Client, adminEmail: string) 
 }
 
 function providerReadiness() {
-  const webPushConfigured = Boolean(Deno.env.get('WEB_PUSH_VAPID_PRIVATE_KEY'));
+  const webPushPublicKey = (Deno.env.get('WEB_PUSH_VAPID_PUBLIC_KEY') || '').trim();
+  const webPushConfigured = Boolean(webPushPublicKey && Deno.env.get('WEB_PUSH_VAPID_PRIVATE_KEY'));
   const firebaseConfigured = Boolean(
     (Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON') || Deno.env.get('FIREBASE_SERVICE_ACCOUNT_B64'))
     && (Deno.env.get('FIREBASE_PROJECT_ID') || Deno.env.get('FCM_PROJECT_ID'))
@@ -106,6 +107,8 @@ function providerReadiness() {
 
   return {
     web_push_configured: webPushConfigured,
+    web_push_public_key_configured: Boolean(webPushPublicKey),
+    web_push_public_key: webPushPublicKey,
     fcm_configured: firebaseConfigured,
     apns_configured: apnsConfigured,
   };

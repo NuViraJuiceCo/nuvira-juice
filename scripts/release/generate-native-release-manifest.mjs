@@ -33,6 +33,19 @@ function fail(message, extra = {}) {
   console.error(JSON.stringify({ ok: false, suite: 'g50c-native-release-manifest', message, ...extra }, null, 2));
   process.exit(1);
 }
+function currentPullRequestNumber() {
+  const explicit = Number(process.env.G50C_CURRENT_PR_NUMBER || '');
+  if (Number.isInteger(explicit) && explicit > 0) return explicit;
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath || !fs.existsSync(eventPath)) return null;
+  try {
+    const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+    const number = Number(event.pull_request?.number || event.number || '');
+    return Number.isInteger(number) && number > 0 ? number : null;
+  } catch {
+    return null;
+  }
+}
 function validateEvidence(head) {
   const required = [
     'source-policy.json',
@@ -97,6 +110,7 @@ function criticalPathMatch(files) {
 function deriveIncludedPrs(head, rangeHead = head) {
   const input = readJson(releaseInputPath);
   const previous = input.previous_released_commit;
+  const currentPrNumber = currentPullRequestNumber();
   if (!previous) fail('Release input missing previous_released_commit', { releaseInputPath });
   const reachable = spawnSync('git', ['merge-base', '--is-ancestor', previous, rangeHead], { cwd: repoRoot }).status === 0;
   if (!reachable) fail('previous_released_commit is not an ancestor of release range head', { previous_released_commit: previous, release_range_head: rangeHead, manifest_commit: head });
@@ -112,12 +126,14 @@ function deriveIncludedPrs(head, rangeHead = head) {
   for (const merge of merges) {
     const files = run('git', ['diff-tree', '--no-commit-id', '--name-only', '-r', merge.merge_commit], { allowFailure: true }).split('\n').filter(Boolean);
     const fromInput = explicit.get(merge.merge_commit);
-    if (!merge.number && !fromInput) unrepresented.push(merge);
+    const representedByCurrentPr = Boolean(!merge.number && !fromInput && currentPrNumber);
+    if (!merge.number && !fromInput && !representedByCurrentPr) unrepresented.push(merge);
     included.push({
-      number: merge.number || fromInput?.number || null,
+      number: merge.number || fromInput?.number || (representedByCurrentPr ? currentPrNumber : null),
       merge_commit: merge.merge_commit,
       title: merge.title || fromInput?.title || '',
       critical_path_match: criticalPathMatch(files),
+      current_pr_validation_branch_merge: representedByCurrentPr || undefined,
     });
   }
   if (merges.length && !included.length) fail('Manifest included_prs cannot remain empty when release range has merge commits', { previous_released_commit: previous, release_range_head: rangeHead, manifest_commit: head });

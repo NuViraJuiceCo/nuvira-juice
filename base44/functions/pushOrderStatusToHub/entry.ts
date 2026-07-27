@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         reason: 'legacy_driver_status_hub_push_disabled',
-        message: 'Legacy driver status Hub push is disabled for May 30 launch freeze. Use the controlled Delivery Queue task wrappers.',
+        message: 'Legacy driver status Hub push is disabled by the current controlled-delivery gate. Use the controlled Delivery Queue task wrappers.',
       });
     }
 

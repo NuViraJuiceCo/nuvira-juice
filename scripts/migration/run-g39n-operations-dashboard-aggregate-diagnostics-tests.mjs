@@ -77,7 +77,7 @@ function fullSummary(overrides = {}) {
   return {
     orders: { total: 1, paid: 1, fulfilled: 1, delivered: 1, ...(overrides.orders || {}) },
     production: { batch_count: 1, planned_units: 12, produced_units: 10, ...(overrides.production || {}) },
-    delivery: { today_stops: 1, tomorrow_stops: 0, completed_in_range: 1, ...(overrides.delivery || {}) },
+    delivery: { today_stops: 1, tomorrow_stops: 0, completed_in_range: 1, unscheduled: 0, ...(overrides.delivery || {}) },
     inventory: { low: 0, critical: 1, out_of_stock: 0, ...(overrides.inventory || {}) },
     alerts: { active: 1, critical: 0, warning: 1, info: 0, ...(overrides.alerts || {}) },
     source_mix: { one_time: 1, subscription: 0, pos: 0, other: 0, ...(overrides.source_mix || {}) },
@@ -172,6 +172,19 @@ function reviewQueueItem(overrides = {}) {
   };
 }
 
+function commandLog(overrides = {}) {
+  return {
+    id: overrides.id || 'command_native_1',
+    created_date: overrides.created_date || DATE,
+    updated_date: overrides.updated_date || overrides.created_date || DATE,
+    status: overrides.status || 'failed',
+    command_type: overrides.command_type || 'synthetic_command',
+    payload: overrides.payload || {},
+    raw_payload: { should_not_return: true },
+    ...overrides,
+  };
+}
+
 function makeStore(overrides = {}) {
   return {
     Order: overrides.Order ?? [nativeOrder()],
@@ -182,10 +195,11 @@ function makeStore(overrides = {}) {
     OrderReviewQueue: overrides.OrderReviewQueue ?? [reviewQueueItem()],
     OperationalAlert: overrides.OperationalAlert ?? [],
     ComplianceAlert: overrides.ComplianceAlert ?? [],
+    CommandLog: overrides.CommandLog ?? [],
   };
 }
 
-function makeBase44(rowsByName = makeStore()) {
+function makeBase44(rowsByName = makeStore(), functionResponses = null) {
   const writes = [];
   const api = name => ({
     list: async (_sort, limit = 500) => (rowsByName[name] || []).slice(0, limit),
@@ -196,19 +210,29 @@ function makeBase44(rowsByName = makeStore()) {
     upsert: async payload => { writes.push({ entity: name, action: 'upsert', payload }); throw new Error(`unexpected upsert ${name}`); },
   });
 
+  const asServiceRole = {
+    entities: Object.fromEntries(Object.keys(rowsByName).map(name => [name, api(name)])),
+  };
+  if (functionResponses) {
+    asServiceRole.functions = {
+      invoke: async name => {
+        if (!(name in functionResponses)) throw new Error(`unexpected function invoke ${name}`);
+        return functionResponses[name];
+      },
+    };
+  }
+
   return {
     writes,
     base44: {
       auth: { me: async () => ({ id: 'synthetic_admin', role: 'admin' }) },
-      asServiceRole: {
-        entities: Object.fromEntries(Object.keys(rowsByName).map(name => [name, api(name)])),
-      },
+      asServiceRole,
     },
   };
 }
 
-async function invoke({ store = makeStore(), hubData = hubResponse(), hubEnv = true, hubStatus = 200, body = {}, fetchError = null } = {}) {
-  const { base44, writes } = makeBase44(store);
+async function invoke({ store = makeStore(), functionResponses = null, hubData = hubResponse(), hubEnv = true, hubStatus = 200, body = {}, fetchError = null } = {}) {
+  const { base44, writes } = makeBase44(store, functionResponses);
   const handler = loadHandler({
     env: hubEnv ? { HUB_API_URL: 'https://hub.example.test/functions/getOperationsDashboardSummaryForCustomerApp', CUSTOMER_APP_SYNC_SECRET: 'synthetic-secret' } : {},
     hubData,
@@ -306,12 +330,223 @@ test('delivery aggregate references native-first route summary readiness', async
   assert.match(delivery.recommendation, /g39d/i);
 });
 
+test('unscheduled paid delivery work is surfaced from native order rows', async () => {
+  const store = makeStore({
+    Order: [],
+    ShopifyOrder: [
+      nativeOrder({
+        id: 'shopify_unscheduled_delivery',
+        order_number: '1009',
+        shopify_order_number: '1009',
+        created_date: PRIOR_DATE,
+        status: 'active',
+        fulfillment_status: null,
+        delivery_status: 'date_pending',
+        fulfillment_type: 'delivery',
+        fulfillment_method: 'delivery',
+        delivery_date: null,
+        assigned_delivery_date: null,
+        estimated_delivery_date: null,
+        delivery_address: 'redacted fixture address',
+      }),
+    ],
+    FulfillmentTask: [],
+  });
+  const { data } = await invoke({
+    store,
+    hubData: hubResponse({ summary: fullSummary({ delivery: { today_stops: 0, tomorrow_stops: 0, completed_in_range: 0, unscheduled: 0 } }) }),
+  });
+  assert.equal(data.summary.delivery.unscheduled, 1);
+  const unscheduled = diagnostic(data, 'delivery.unscheduled');
+  assert.equal(unscheduled.native_value, 1);
+  assert.equal(unscheduled.displayed_value, 1);
+  assert.equal(unscheduled.native_first_ready, true);
+});
+
+test('stale undated native delivery rows do not inflate current dashboard unscheduled work', async () => {
+  const store = makeStore({
+    Order: [],
+    ShopifyOrder: [
+      nativeOrder({
+        id: 'shopify_stale_unscheduled_delivery',
+        order_number: '1009',
+        shopify_order_number: '1009',
+        created_date: addDays(DATE, -45),
+        updated_date: addDays(DATE, -45),
+        customer_order_date: addDays(DATE, -45),
+        status: 'active',
+        fulfillment_status: null,
+        delivery_status: 'date_pending',
+        fulfillment_type: 'delivery',
+        fulfillment_method: 'delivery',
+        delivery_date: null,
+        assigned_delivery_date: null,
+        estimated_delivery_date: null,
+        delivery_address: 'redacted fixture address',
+      }),
+    ],
+    FulfillmentTask: [],
+  });
+  const { data } = await invoke({
+    store,
+    hubData: hubResponse({ summary: fullSummary({ delivery: { today_stops: 0, tomorrow_stops: 0, completed_in_range: 0, unscheduled: 0 } }) }),
+  });
+  assert.equal(data.summary.delivery.unscheduled, 0);
+  const unscheduled = diagnostic(data, 'delivery.unscheduled');
+  assert.equal(unscheduled.native_value, 0);
+  assert.equal(unscheduled.displayed_value, 0);
+});
+
+test('legacy launch-era review queue rejects do not inflate current operations health', async () => {
+  const store = makeStore({
+    OrderReviewQueue: [
+      reviewQueueItem({
+        id: 'legacy_may30_pos_reject',
+        status: 'pending',
+        incident_type: 'payment_not_paid',
+        incoming_source: 'shopify_pos',
+        existing_order_number: null,
+        order_number: null,
+        shopify_order_number: null,
+        issue_description: 'May 30 native order ops rejected order: payment_not_paid',
+        recommended_action: 'manual_review_before_operational_processing',
+        last_seen_at: DATE,
+      }),
+    ],
+  });
+  const { data } = await invoke({
+    store,
+    hubData: hubResponse({
+      summary: fullSummary({
+        alerts: { active: 0, critical: 0, warning: 0, info: 0 },
+        ops_health: { review_open: 0, command_failed: 0, command_rejected: 0, command_running: 0 },
+      }),
+    }),
+  });
+  assert.equal(data.summary.ops_health.review_open, 0);
+  assert.equal(data.summary.ops_health_details.review_queue.open, 0);
+  assert.equal(data.summary.ops_health_details.review_queue.legacy_launch_suppressed, 1);
+  assert.equal(data.summary.alerts.active, 0);
+});
+
+test('internal test review queue records do not inflate current operations health', async () => {
+  const store = makeStore({
+    OrderReviewQueue: [
+      reviewQueueItem({
+        id: 'internal_g22_review',
+        status: 'pending',
+        incident_type: 'unknown_order_attempt',
+        incoming_source: 'customer_app',
+        existing_order_number: 'NV-TEST-G22I-UPDATE-20260604044012',
+        issue_description: 'Synthetic test order review row.',
+        recommended_action: 'manual_review_before_operational_processing',
+        last_seen_at: DATE,
+      }),
+    ],
+  });
+  const { data } = await invoke({
+    store,
+    hubData: hubResponse({
+      summary: fullSummary({
+        alerts: { active: 0, critical: 0, warning: 0, info: 0 },
+        ops_health: { review_open: 0, command_failed: 0, command_rejected: 0, command_running: 0 },
+      }),
+    }),
+  });
+  assert.equal(data.summary.ops_health.review_open, 0);
+  assert.equal(data.summary.ops_health_details.review_queue.open, 0);
+  assert.equal(data.summary.ops_health_details.review_queue.internal_test_suppressed, 1);
+  assert.equal(data.summary.alerts.active, 0);
+});
+
+test('current failed command logs surface in operations health', async () => {
+  const { data } = await invoke({
+    store: makeStore({
+      CommandLog: [
+        commandLog({ id: 'current_failed_command', status: 'failed', created_date: DATE, updated_date: DATE }),
+      ],
+    }),
+    hubData: hubResponse({
+      summary: fullSummary({
+        ops_health: { review_open: 0, command_failed: 0, command_rejected: 0, command_running: 0 },
+      }),
+    }),
+  });
+  assert.equal(data.summary.ops_health.command_failed, 1);
+  assert.equal(data.summary.ops_health_details.commands.failed, 1);
+  assert.equal(data.summary.ops_health_details.commands.outside_window_suppressed, 0);
+});
+
+test('old failed command logs do not inflate current operations health', async () => {
+  const { data } = await invoke({
+    store: makeStore({
+      CommandLog: [
+        commandLog({
+          id: 'old_failed_command',
+          status: 'failed',
+          created_date: addDays(DATE, -45),
+          updated_date: addDays(DATE, -45),
+        }),
+      ],
+    }),
+    hubData: hubResponse({
+      summary: fullSummary({
+        ops_health: { review_open: 0, command_failed: 0, command_rejected: 0, command_running: 0 },
+      }),
+    }),
+  });
+  assert.equal(data.summary.ops_health.command_failed, 0);
+  assert.equal(data.summary.ops_health_details.commands.failed, 0);
+  assert.equal(data.summary.ops_health_details.commands.outside_window_suppressed, 1);
+});
+
 test('production planning aggregate references native-first planning readiness', async () => {
   const { data } = await invoke();
   const production = diagnostic(data, 'production.batch_count');
   assert.equal(production.source_of_truth, 'mixed');
   assert.equal(production.native_first_ready, true);
   assert.match(production.recommendation, /g39f/i);
+});
+
+test('native production overlay fills dashboard when Hub omits current native batches', async () => {
+  const { data } = await invoke({
+    store: makeStore({
+      ProductionBatch: [
+        productionBatch({ id: 'batch_a', planned_units: 50, actual_units: 0 }),
+        productionBatch({ id: 'batch_b', planned_units: 100, actual_units: 0 }),
+        productionBatch({ id: 'batch_c', planned_units: 20, actual_units: 0 }),
+      ],
+    }),
+    hubData: hubResponse({ summary: fullSummary({ production: { batch_count: 0, planned_units: 0, produced_units: 0 } }) }),
+  });
+  assert.equal(data.summary.production.batch_count, 3);
+  assert.equal(data.summary.production.planned_units, 170);
+  assert.equal(data.native_production_overlay.applied, true);
+  assert.ok(data.warnings.includes('native_production_queue_overlay_applied'));
+  const production = diagnostic(data, 'production.planned_units');
+  assert.equal(production.displayed_value, 170);
+  assert.equal(production.hub_value, 0);
+  assert.equal(production.native_value, 170);
+});
+
+test('native production overlay replaces stale lower Hub production counts', async () => {
+  const { data } = await invoke({
+    store: makeStore({
+      ProductionBatch: [
+        productionBatch({ id: 'batch_a', planned_units: 50, actual_units: 0 }),
+        productionBatch({ id: 'batch_b', planned_units: 100, actual_units: 0 }),
+        productionBatch({ id: 'batch_c', planned_units: 20, actual_units: 0 }),
+        productionBatch({ id: 'batch_d', planned_units: 10, actual_units: 0 }),
+        productionBatch({ id: 'batch_e', planned_units: 5, actual_units: 0 }),
+      ],
+    }),
+    hubData: hubResponse({ summary: fullSummary({ production: { batch_count: 4, planned_units: 112, produced_units: 0 } }) }),
+  });
+  assert.equal(data.summary.production.batch_count, 5);
+  assert.equal(data.summary.production.planned_units, 185);
+  assert.equal(data.native_production_overlay.applied, true);
+  assert.equal(data.native_production_overlay.reason, 'native_current_production_more_complete');
+  assert.ok(data.warnings.includes('native_production_queue_overlay_applied'));
 });
 
 test('calendar aggregate references native-first calendar readiness', async () => {
@@ -339,6 +574,66 @@ test('inventory/PO aggregate remains held', async () => {
   assert.equal(critical.source_of_truth, 'manual_review');
   assert.equal(critical.native_first_ready, false);
   assert.match(critical.blocker, /po_automation_held/i);
+});
+
+test('food inventory rows are demand-based and do not inflate low-stock operations counts', async () => {
+  const store = makeStore({
+    InventoryItem: [
+      inventoryItem({
+        id: 'produce_watermelon',
+        ingredient: 'Watermelon',
+        category: 'Produce',
+        stock: 0,
+        reorder_point: 10,
+      }),
+      inventoryItem({
+        id: 'packaging_bottles',
+        ingredient: 'Bottle Cases',
+        category: 'Packaging',
+        stock: 2,
+        reorder_point: 10,
+      }),
+    ],
+  });
+  const { data } = await invoke({
+    store,
+    hubData: hubResponse({ summary: fullSummary({ inventory: { low: 0, critical: 1, out_of_stock: 0 } }) }),
+  });
+  assert.equal(data.summary.inventory.demand_based_food, 1);
+  assert.equal(data.summary.inventory.stock_tracked, 1);
+  assert.equal(data.summary.inventory.out_of_stock, 0);
+  assert.equal(data.summary.inventory.critical, 1);
+});
+
+test('merged inventory policy summary keeps operations dashboard aligned with inventory page', async () => {
+  const { data } = await invoke({
+    hubData: hubResponse({ summary: fullSummary({ inventory: { low: 0, critical: 0, out_of_stock: 23 } }) }),
+    functionResponses: {
+      getAdminInventoryStatusSummary: {
+        data: {
+          success: true,
+          summary: {
+            low_stock_count: 0,
+            critical_count: 0,
+            out_of_stock_count: 6,
+            demand_based_food_count: 20,
+            stock_tracked_item_count: 15,
+          },
+          data_sources: {
+            food_inventory_policy: 'food_and_juice_make_to_order',
+            food_stock_warnings_suppressed: true,
+          },
+        },
+      },
+    },
+  });
+  assert.equal(data.summary.inventory.low, 0);
+  assert.equal(data.summary.inventory.critical, 0);
+  assert.equal(data.summary.inventory.out_of_stock, 6);
+  assert.equal(data.summary.inventory.demand_based_food, 20);
+  assert.equal(data.summary.inventory.stock_tracked, 15);
+  assert.equal(data.native_inventory_policy_overlay.merged_inventory.out_of_stock, 6);
+  assert.equal(data.native_inventory_policy_overlay.reason, 'merged_food_demand_based_inventory_policy_applied');
 });
 
 test('repair/replay aggregate remains manual-review/log governed', async () => {
@@ -423,7 +718,8 @@ test('displayed values remain current behavior', async () => {
   assert.equal(data.summary.orders.total, 9);
   const total = diagnostic(data, 'orders.total');
   assert.equal(total.displayed_value, 9);
-  assert.equal(total.current_display_source, 'hub_primary');
+  assert.equal(total.current_display_source, 'hub_primary_with_native_operations_overlay');
+  assert.equal(data.native_inventory_policy_overlay.applied, true);
 });
 
 let passed = 0;

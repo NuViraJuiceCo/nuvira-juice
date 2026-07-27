@@ -50,6 +50,106 @@ function safeNumber(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+const PROGRAM_COMPOSITIONS = [
+  {
+    matcher: /hydration/i,
+    items: [
+      { title: 'OASIS', quantity: 9 },
+      { title: 'AURA', quantity: 3 },
+    ],
+  },
+  {
+    matcher: /radiance/i,
+    items: [
+      { title: 'AURA', quantity: 9 },
+      { title: 'OASIS', quantity: 3 },
+    ],
+  },
+  {
+    matcher: /reset/i,
+    items: [
+      { title: 'RE-NU', quantity: 9 },
+      { title: 'OASIS', quantity: 3 },
+    ],
+  },
+];
+
+function safeQuantity(value, fallback = 1) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function itemTitle(item) {
+  return operationalText(item?.title || item?.name || item?.product_name || item?.product_title, 120);
+}
+
+function compositionItems(item) {
+  const explicitComposition = Array.isArray(item?.bundle_composition)
+    ? item.bundle_composition
+    : Array.isArray(item?.composition)
+      ? item.composition
+      : [];
+
+  return explicitComposition
+    .map(component => ({
+      title: operationalText(component?.product_name || component?.title || component?.name || component?.flavor, 120),
+      quantity: safeQuantity(component?.quantity || component?.qty, 0),
+    }))
+    .filter(component => component.title && component.quantity > 0);
+}
+
+function operationalLineItems(items) {
+  if (!Array.isArray(items)) return [];
+  const expanded = [];
+
+  for (const item of items) {
+    const parentQuantity = safeQuantity(item?.quantity || item?.qty, 1);
+    const explicitComposition = compositionItems(item);
+
+    if (explicitComposition.length > 0) {
+      for (const component of explicitComposition) {
+        expanded.push({
+          title: component.title,
+          quantity: component.quantity * parentQuantity,
+        });
+      }
+      continue;
+    }
+
+    const title = itemTitle(item);
+    const programComposition = PROGRAM_COMPOSITIONS.find(program => program.matcher.test(title));
+
+    if (programComposition) {
+      for (const component of programComposition.items) {
+        expanded.push({
+          title: component.title,
+          quantity: component.quantity * parentQuantity,
+        });
+      }
+      continue;
+    }
+
+    if (title) {
+      expanded.push({
+        product_id: item?.shopify_line_item_id || item?.id || item?.product_id,
+        title,
+        price: item?.price,
+        quantity: parentQuantity,
+      });
+    }
+  }
+
+  const byTitle = new Map();
+  for (const item of expanded) {
+    const key = item.title.toLowerCase();
+    const current = byTitle.get(key) || { title: item.title, quantity: 0, product_id: item.product_id, price: item.price };
+    current.quantity += item.quantity;
+    byTitle.set(key, current);
+  }
+
+  return Array.from(byTitle.values());
+}
+
 function safeObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -83,21 +183,21 @@ async function readJsonBody(req) {
 }
 
 function lineItemsSummary(items) {
-  if (!Array.isArray(items)) return '';
-  return items
+  const operationalItems = operationalLineItems(items);
+  if (operationalItems.length === 0) return '';
+  return operationalItems
     .slice(0, 8)
-    .map(item => `${safeNumber(item.quantity) ?? 0}x ${operationalText(item.title || item.name || item.product_title, 80)}`)
-    .filter(item => !item.startsWith('0x '))
+    .map(item => `${safeQuantity(item.quantity, 1)}x ${item.title}`)
     .join(', ');
 }
 
 function taskItemsFromOrder(order) {
   if (!Array.isArray(order.line_items)) return [];
-  return order.line_items.slice(0, SAFE_ARRAY_LIMIT).map(item => ({
-    product_id: sanitizeId(item.shopify_line_item_id || item.id, 120),
-    title: operationalText(item.title || item.name || item.product_title, 120) || 'Item',
+  return operationalLineItems(order.line_items).slice(0, SAFE_ARRAY_LIMIT).map(item => ({
+    product_id: sanitizeId(item.product_id || item.shopify_line_item_id || item.id, 120),
+    title: item.title || 'Item',
     price: safeNumber(item.price) ?? 0,
-    quantity: safeNumber(item.quantity) ?? 0,
+    quantity: safeQuantity(item.quantity, 0),
   })).filter(item => item.title && item.quantity > 0);
 }
 

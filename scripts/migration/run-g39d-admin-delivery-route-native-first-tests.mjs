@@ -111,6 +111,7 @@ function nativeTask(overrides = {}) {
     items_summary: overrides.items_summary ?? '1x Pineapple Juice, 1x RE-NU, 1x Watermelon Juice',
     delivery_photo_url: overrides.delivery_photo_url || null,
     delivery_drop_location: overrides.delivery_drop_location || null,
+    delivery_notes: overrides.delivery_notes || null,
     raw_payload: { should_not_return: true },
     proof_payload: { should_not_return: true },
     ...overrides,
@@ -145,6 +146,7 @@ function hubStop(overrides = {}) {
     proof_available: overrides.proof_available === true,
     delivery_photo_url: overrides.delivery_photo_url || null,
     delivery_drop_location: overrides.delivery_drop_location || null,
+    delivery_notes: overrides.delivery_notes || null,
     raw_payload: { should_not_return: true },
     provider_payload: { should_not_return: true },
     payment_payload: { should_not_return: true },
@@ -307,6 +309,143 @@ const results = [];
   assert.equal(rows[0].native_primary, true);
   assert.equal(payload.suppressed_hub_row_count, 1);
   results.push('duplicate_native_hub_same_date_deduped_native_primary');
+}
+
+{
+  const { payload } = await invoke({
+    orders: [nativeOrder({
+      shopify_order_number: 'NV-RECENT-PENDING',
+      id: 'shopify_NV-RECENT-PENDING',
+      assigned_delivery_date: null,
+      selected_delivery_date: null,
+      requested_delivery_date: null,
+      delivery_date: null,
+      customer_order_date: '2026-06-18T12:00:00Z',
+      created_date: '2026-06-18T12:00:00Z',
+      updated_date: '2026-06-18T12:00:00Z',
+    })],
+    tasks: [],
+    hubData: emptyHubData(),
+  });
+  assert.equal(payload.sections.unscheduled_delivery_orders.some(stop => stop.order_number === 'NV-RECENT-PENDING'), true);
+  results.push('recent_date_pending_native_delivery_order_still_surfaces_for_review');
+}
+
+{
+  const { payload } = await invoke({
+    orders: [nativeOrder({
+      shopify_order_number: 'NV-STALE-PENDING',
+      id: 'shopify_NV-STALE-PENDING',
+      assigned_delivery_date: null,
+      selected_delivery_date: null,
+      requested_delivery_date: null,
+      delivery_date: null,
+      customer_order_date: '2026-05-01T12:00:00Z',
+      created_date: '2026-05-01T12:00:00Z',
+      updated_date: '2026-05-01T12:00:00Z',
+    })],
+    tasks: [],
+    hubData: emptyHubData(),
+  });
+  assert.equal(payload.sections.unscheduled_delivery_orders.some(stop => stop.order_number === 'NV-STALE-PENDING'), false);
+  assert.equal(payload.summary.unscheduled, 0);
+  results.push('stale_date_pending_native_delivery_order_excluded_from_current_route_review');
+}
+
+{
+  const staleDeliveryDate = '2026-05-16';
+  const { status, payload, writes } = await invoke({
+    orders: [nativeOrder({
+      shopify_order_number: 'NV-HISTORICAL-TASK',
+      id: 'shopify_NV-HISTORICAL-TASK',
+      assigned_delivery_date: staleDeliveryDate,
+      selected_delivery_date: staleDeliveryDate,
+      requested_delivery_date: staleDeliveryDate,
+    })],
+    tasks: [nativeTask({
+      order_number: 'NV-HISTORICAL-TASK',
+      order_id: 'shopify_NV-HISTORICAL-TASK',
+      status: 'bottled_packed',
+      delivery_status: 'pending',
+      delivery_date: staleDeliveryDate,
+      scheduled_date: staleDeliveryDate,
+      assigned_delivery_date: staleDeliveryDate,
+    })],
+    hubData: emptyHubData({ delivery_date: staleDeliveryDate }),
+    body: { delivery_date: staleDeliveryDate },
+  });
+  assert.equal(status, 200);
+  assert.equal(payload.sections.delivery_stops.some(stop => stop.order_number === 'NV-HISTORICAL-TASK'), false);
+  assert.equal(payload.summary.active, 0);
+  assert.equal(payload.stale_native_delivery_task_detected, true);
+  assert.equal(payload.suppressed_native_stale_task_count, 1);
+  assert.equal(payload.sections.suppressed_stale_delivery_tasks[0].order_number, 'NV-HISTORICAL-TASK');
+  assert.equal(payload.sections.suppressed_stale_delivery_tasks[0].suppression_reason, 'stale_nonterminal_native_fulfillment_task_outside_action_window');
+  assert.ok(payload.warnings.includes('stale_native_fulfillment_task_excluded_from_active_route'));
+  assert.equal(payload.data_sources.stale_native_delivery_task_suppression_ready, true);
+  assert.equal(writes.length, 0);
+  results.push('stale_nonterminal_native_fulfillment_task_excluded_from_active_route');
+}
+
+{
+  const staleDeliveryDate = '2026-05-16';
+  const { payload } = await invoke({
+    orders: [],
+    tasks: [nativeTask({
+      order_number: 'NV-INTERNAL-STALE-TASK',
+      is_test_task: true,
+      test_purpose: 'G53 stale-window visibility regression',
+      status: 'pending',
+      delivery_status: 'pending',
+      delivery_date: staleDeliveryDate,
+      scheduled_date: staleDeliveryDate,
+      assigned_delivery_date: staleDeliveryDate,
+    })],
+    hubData: emptyHubData({ delivery_date: staleDeliveryDate }),
+    body: { delivery_date: staleDeliveryDate, test_task_mode: 'only' },
+  });
+  const row = payload.sections.delivery_stops.find(stop => stop.order_number === 'NV-INTERNAL-STALE-TASK');
+  assert.ok(row);
+  assert.equal(row.is_test_task, true);
+  assert.equal(payload.stale_native_delivery_task_detected, false);
+  assert.equal(payload.suppressed_native_stale_task_count, 0);
+  results.push('internal_test_task_mode_bypasses_stale_delivery_suppression');
+}
+
+{
+  const { payload } = await invoke({
+    orders: [nativeOrder({ shopify_order_number: 'NV-DONE', id: 'shopify_NV-DONE', fulfillment_status: 'pending' })],
+    tasks: [nativeTask({
+      order_number: 'NV-DONE',
+      order_id: 'shopify_NV-DONE',
+      status: 'Completed',
+      delivery_status: 'delivered',
+      delivery_photo_url: 'https://example.test/proof.jpg',
+      delivery_drop_location: 'Front Door',
+      delivery_notes: 'Left in insulated bag at front door',
+    })],
+    hubData: emptyHubData({
+      sections: {
+        delivery_stops: [],
+        completed: [hubStop({
+          order_number: 'NV-DONE',
+          task_status: 'Completed',
+          delivery_status: 'delivered',
+          fulfillment_status: 'pending',
+          delivery_photo_url: 'https://example.test/proof.jpg',
+          delivery_drop_location: 'Front Door',
+          delivery_notes: 'Left in insulated bag at front door',
+        })],
+      },
+    }),
+  });
+  const row = payload.sections.completed.find(stop => stop.order_number === 'NV-DONE');
+  assert.ok(row);
+  assert.equal(row.delivery_status, 'delivered');
+  assert.equal(row.fulfillment_status, 'delivered');
+  assert.equal(row.proof_available, true);
+  assert.equal(row.delivery_notes, 'Left in insulated bag at front door');
+  results.push('completed_route_context_overrides_stale_pending_fulfillment_status');
 }
 
 {

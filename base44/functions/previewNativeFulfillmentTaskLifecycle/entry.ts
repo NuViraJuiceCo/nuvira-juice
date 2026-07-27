@@ -276,6 +276,29 @@ function planOutForDelivery({ task, actorEmail, requestId, now }) {
   };
 }
 
+function boolFlag(value) {
+  return value === true || normalizeLower(value) === 'true' || normalizeLower(value) === 'yes';
+}
+
+function sanitizeUrl(value, maxLength = 500) {
+  const text = normalizeSingleLine(value);
+  if (!text) return '';
+  if (text.length > maxLength) throw new Error('delivery_photo_url is too long');
+
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new Error('delivery_photo_url must be a valid URL');
+  }
+
+  if (!['https:', 'http:'].includes(url.protocol)) {
+    throw new Error('delivery_photo_url must use http or https');
+  }
+
+  return text;
+}
+
 function planDeliveredOperational({ task, actorEmail, requestId, now, deliveryInput }) {
   const blockers = [];
   const warnings = [];
@@ -283,28 +306,59 @@ function planDeliveredOperational({ task, actorEmail, requestId, now, deliveryIn
   if (!DELIVERABLE_STATUSES.has(task.status)) blockers.push('status_not_deliverable');
   if (!isDeliveryFulfillment(task)) blockers.push('not_delivery_fulfillment');
   if (!hasAssignedDriver(task)) blockers.push('missing_assigned_driver');
-  if (deliveryInput.proof_url || deliveryInput.drop_photo_url || deliveryInput.delivery_photo_url || deliveryInput.drop_location) {
-    blockers.push('proof_drop_not_supported_in_native_preview');
+
+  const deliveryDropLocation = sanitizeText(deliveryInput.delivery_drop_location || deliveryInput.drop_location, 120);
+  const deliveryNotes = sanitizeText(deliveryInput.delivery_notes || deliveryInput.notes, 300);
+  const deliveryPhotoUrl = sanitizeUrl(deliveryInput.delivery_photo_url || deliveryInput.proof_url || deliveryInput.drop_photo_url);
+  const projectCustomerOrder = boolFlag(deliveryInput.update_customer_order_status);
+  const notifyCustomer = boolFlag(deliveryInput.notify_customer || deliveryInput.send_notification);
+  const proofWrites = [];
+  const proofPatch = {};
+  if (deliveryDropLocation) {
+    proofWrites.push('FulfillmentTask.delivery_drop_location');
+    proofPatch.delivery_drop_location = deliveryDropLocation;
+  } else {
+    warnings.push('delivery_drop_location_not_provided');
   }
-  if (deliveryInput.send_notification === true || deliveryInput.customer_facing === true) {
-    blockers.push('customer_facing_delivery_notification_not_approved');
+  if (deliveryNotes) {
+    proofWrites.push('FulfillmentTask.delivery_notes');
+    proofPatch.delivery_notes = deliveryNotes;
+  }
+  if (deliveryPhotoUrl) {
+    proofWrites.push('FulfillmentTask.delivery_photo_url');
+    proofPatch.delivery_photo_url = deliveryPhotoUrl;
+  } else {
+    warnings.push('proof_photo_not_provided');
   }
 
   const proposedPatch = blockers.length ? null : {
     status: 'delivered',
     delivery_status: 'delivered',
     delivered_at: now,
+    delivered_by: sanitizeText(actorEmail, 120) || null,
+    ...proofPatch,
     audit_trail_append: auditTrailAppend({ action: 'delivered_operational', actorEmail, requestId, now }),
   };
-  warnings.push('customer_status_projection_deferred');
-  warnings.push('customer_notification_not_included');
+  if (!projectCustomerOrder) warnings.push('customer_status_projection_deferred');
+  if (!notifyCustomer) warnings.push('customer_notification_not_included');
 
   return {
     projected_writes: blockers.length ? [] : [
       'FulfillmentTask.status',
       'FulfillmentTask.delivery_status',
       'FulfillmentTask.delivered_at',
+      'FulfillmentTask.delivered_by',
       'FulfillmentTask.audit_trail',
+      ...proofWrites,
+      ...(projectCustomerOrder ? [
+        'Order.status',
+        'Order.status_history',
+        'Order.delivered_at',
+        'Order.delivery_photo_url',
+        'Order.delivery_drop_location',
+        'Order.delivery_notes',
+      ] : []),
+      ...(notifyCustomer ? ['Notification.order_status'] : []),
     ],
     proposed_patch: proposedPatch,
     blockers,

@@ -255,6 +255,31 @@
       "type": "string",
       "description": "ISO timestamp when fulfillment was marked delivered"
     },
+    "delivery_photo_url": {
+      "type": "string",
+      "description": "Proof of delivery photo captured by driver or admin"
+    },
+    "delivery_drop_location": {
+      "type": "string",
+      "description": "Where the delivery was left, such as Front Door or Handed to Customer"
+    },
+    "delivery_notes": {
+      "type": "string",
+      "description": "Driver/admin notes captured when a delivery is completed"
+    },
+    "delivered_by": {
+      "type": "string",
+      "description": "Driver or admin email/label that completed the delivery"
+    },
+    "is_test_task": {
+      "type": "boolean",
+      "default": false,
+      "description": "True only for formally isolated internal fulfillment validation tasks"
+    },
+    "test_purpose": {
+      "type": "string",
+      "description": "Internal-only purpose for a formally isolated fulfillment validation task"
+    },
     "route_id": {
       "type": "string",
       "description": "Route plan id if assigned"

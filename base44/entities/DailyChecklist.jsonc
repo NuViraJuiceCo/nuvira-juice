@@ -11,6 +11,28 @@
       "type": "string",
       "description": "Staff member responsible for checklist"
     },
+    "batch_id": {
+      "type": "string",
+      "description": "Current production batch display ID tied to this checklist update, if applicable"
+    },
+    "source_production_batch_id": {
+      "type": "string",
+      "description": "Source ProductionBatch entity ID tied to this checklist update, if applicable"
+    },
+    "related_batch_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Related production batch IDs covered by this daily checklist"
+    },
+    "related_source_production_batch_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Related source ProductionBatch entity IDs covered by this daily checklist"
+    },
     "shift": {
       "type": "string",
       "enum": [
@@ -85,7 +107,8 @@
       "enum": [
         "Complete",
         "Incomplete",
-        "Pending"
+        "Pending",
+        "Pre-Production Complete"
       ],
       "description": "Checklist completion status"
     },
@@ -100,6 +123,15 @@
     "manager_comments": {
       "type": "string",
       "description": "Manager review comments"
+    },
+    "is_test_record": {
+      "type": "boolean",
+      "default": false,
+      "description": "Derived from the linked ProductionBatch; excluded from normal compliance totals when true"
+    },
+    "test_batch_id": {
+      "type": "string",
+      "description": "Display ID of the linked internal test ProductionBatch"
     }
   },
   "required": [

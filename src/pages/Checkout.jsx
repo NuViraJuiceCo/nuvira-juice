@@ -11,6 +11,7 @@ import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { Label } from '@/components/ui/label';
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { base44 } from '@/api/base44Client';
@@ -1032,7 +1033,7 @@ function CheckoutFlow() {
             publishableKey={publishableKey}
             total={paymentTotal}
             isSubmitting={isSubmitting}
-            setIsSubmitting={setIsSubmitting} showWalletDiagnostics={(user?.role === 'admin' || user?.role === 'owner') && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('wallet_diagnostics') === '1'}
+            setIsSubmitting={setIsSubmitting} showWalletDiagnostics={(isAdminUser(user)) && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('wallet_diagnostics') === '1'}
             onSuccess={(paymentIntentId) => {
               clearCart();
               localStorage.removeItem('nuvira_pending_checkout_session');

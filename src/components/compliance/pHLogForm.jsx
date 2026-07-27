@@ -3,7 +3,8 @@ import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, FlaskConical } from 'lucide-react';
+import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
 export default function PHLogForm({ onClose }) {
   const [, setUser] = useState(null);
@@ -73,18 +74,21 @@ export default function PHLogForm({ onClose }) {
   return (
     <Card className="mb-6">
       <CardHeader>
-        <CardTitle>🧪 pH Test Log</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <FlaskConical className="h-5 w-5 text-primary" />
+          pH Test Log
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Date</label>
               <input
                 type="date"
                 value={formData.log_date}
                 onChange={(e) => handleChange('log_date', e.target.value)}
-                className="w-full border rounded-md p-2 mt-1"
+                className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
               />
             </div>
             <div>
@@ -93,23 +97,18 @@ export default function PHLogForm({ onClose }) {
                 type="time"
                 value={formData.log_time}
                 onChange={(e) => handleChange('log_time', e.target.value)}
-                className="w-full border rounded-md p-2 mt-1"
+                className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
               />
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium">Staff Member</label>
-            <input
-              type="text"
-              value={formData.staff_member}
-              onChange={(e) => handleChange('staff_member', e.target.value)}
-              className="w-full border rounded-md p-2 mt-1"
-              disabled
-            />
-          </div>
+          <StaffMemberPicker
+            label="Staff member"
+            value={formData.staff_member}
+            onChange={(value) => handleChange('staff_member', value)}
+          />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Batch ID</label>
               <input
@@ -117,7 +116,7 @@ export default function PHLogForm({ onClose }) {
                 value={formData.batch_id}
                 onChange={(e) => handleChange('batch_id', e.target.value)}
                 placeholder="e.g., #101"
-                className="w-full border rounded-md p-2 mt-1"
+                className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
                 required
               />
             </div>
@@ -126,7 +125,7 @@ export default function PHLogForm({ onClose }) {
               <select
                 value={formData.product_name}
                 onChange={(e) => handleChange('product_name', e.target.value)}
-                className="w-full border rounded-md p-2 mt-1"
+                className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
               >
                 <option>Green Glow Juice</option>
                 <option>Berry Blast Juice</option>
@@ -143,17 +142,17 @@ export default function PHLogForm({ onClose }) {
               value={formData.ph_value}
               onChange={(e) => handleChange('ph_value', e.target.value)}
               placeholder="e.g., 4.5"
-              className="w-full border rounded-md p-2 mt-1"
+              className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
               required
             />
             <p className="text-xs text-muted-foreground mt-1">Target range: {formData.min_ph} - {formData.max_ph}</p>
           </div>
 
           {warning && (
-            <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-md">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-red-800">
-                <p className="font-semibold">⚠️ CRITICAL: pH OUT OF RANGE</p>
+            <div className="flex gap-2 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/30">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5 dark:text-red-300" />
+              <div className="text-sm text-red-800 dark:text-red-100">
+                <p className="font-semibold">Critical: pH out of range</p>
                 <p>{warning}</p>
                 <p className="mt-1">Corrective action log is REQUIRED immediately.</p>
               </div>
@@ -166,7 +165,7 @@ export default function PHLogForm({ onClose }) {
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
               placeholder="Any additional observations..."
-              className="w-full border rounded-md p-2 mt-1 resize-none"
+              className="w-full border rounded-md p-2 mt-1 resize-none bg-background text-foreground"
               rows="3"
             />
           </div>

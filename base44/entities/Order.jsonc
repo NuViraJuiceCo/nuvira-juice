@@ -180,6 +180,10 @@
       "type": "string",
       "description": "Where the driver left the order (e.g. Front door, With neighbor)"
     },
+    "delivery_notes": {
+      "type": "string",
+      "description": "Delivery completion notes captured by driver or admin"
+    },
     "delivered_by": {
       "type": "string",
       "description": "Driver email who completed the delivery"

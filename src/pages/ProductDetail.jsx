@@ -1,29 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import SEO from '@/components/SEO';
-
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Minus, Plus, ShoppingBag, Leaf } from 'lucide-react';
 import HealthAdvisory from '@/components/HealthAdvisory';
+import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
+import { absoluteUrl, normalizeProductIdentifier, productLookupKeys, productPath } from '@/lib/seo-slugs';
+import { findPublicProductFallback } from '@/lib/public-products';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
-
-function normalizeProductLookup(value) {
-  return String(value || '')
-    .trim()
-    .replace(/^\/+|\/+$/g, '')
-    .toLowerCase();
-}
-
-function slugifyProductTitle(value) {
-  return normalizeProductLookup(value)
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+import { BRAND_OG_IMAGE, brandImageUrl } from '@/lib/brandImages';
 
 function normalizeCategory(value) {
   return String(value || '').trim().toLowerCase();
@@ -31,45 +20,43 @@ function normalizeCategory(value) {
 
 function isMerchLikeProduct(product) {
   const category = normalizeCategory(product?.category);
-  const title = normalizeProductLookup(product?.title);
+  const title = String(product?.title || '').trim().toLowerCase();
 
   return (
-    ['merch', 'apparel', 'tote', 'bag', 'accessory', 'accessories'].includes(category) ||
+    ['merch', 'merchandise', 'apparel', 'tote', 'bag', 'accessory', 'accessories'].includes(category) ||
     /\b(tote|bag|merch|shirt|hoodie|hat)\b/.test(title)
   );
 }
 
-function productLookupKeys(product) {
-  return [
-    product?.id,
-    product?.shopify_handle,
-    product?.handle,
-    product?.shopify_product_id,
-    product?.shopify_variant_id,
-    slugifyProductTitle(product?.title),
-  ]
-    .filter(Boolean)
-    .map(normalizeProductLookup);
-}
-
 export default function ProductDetail() {
-  const { id, handle } = useParams();
-  const routeIdentifier = decodeURIComponent(handle || id || window.location.pathname.split('/').pop() || '');
-  const normalizedRouteIdentifier = normalizeProductLookup(routeIdentifier);
+  const { id, slug, handle } = useParams();
+  const identifier = normalizeProductIdentifier(slug || handle || id || '');
   const navigate = useNavigate();
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
 
   const { data: product, isLoading } = useQuery({
-    queryKey: ['product', normalizedRouteIdentifier],
+    queryKey: ['product-detail', identifier],
     queryFn: async () => {
-      const directMatches = await base44.entities.Product.filter({ id: routeIdentifier });
-      if (directMatches[0]) return directMatches[0];
+      const fallbackProduct = findPublicProductFallback(identifier);
 
-      const products = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 200);
-      return products.find((candidate) => productLookupKeys(candidate).includes(normalizedRouteIdentifier));
+      try {
+        const availableProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 200);
+        const productByLookupKey = availableProducts.find(p => productLookupKeys(p).includes(identifier));
+        if (productByLookupKey) return productByLookupKey;
+
+        if (/^[a-f0-9]{24}$/.test(identifier)) {
+          const productsById = await base44.entities.Product.filter({ id: identifier });
+          if (productsById?.[0]) return productsById[0];
+        }
+
+        return fallbackProduct;
+      } catch (error) {
+        console.warn('[ProductDetail] Falling back to public product metadata for SEO route', identifier, error);
+        return fallbackProduct;
+      }
     },
-    enabled: !!normalizedRouteIdentifier,
+    enabled: !!identifier,
   });
 
   const { data: relatedProducts = [] } = useQuery({
@@ -78,12 +65,19 @@ export default function ProductDetail() {
     enabled: !!product?.category,
   });
 
+  const related = relatedProducts.filter(p => p.id !== product?.id).slice(0, 4);
+
+  useEffect(() => {
+    if ((id || handle) && product) {
+      navigate(productPath(product), { replace: true });
+    }
+  }, [handle, id, product, navigate]);
+
   const handleAddToCart = () => {
     if (!product) return;
     const extra = {};
     if (product.category === 'bundle') {
       extra.bottles_per_unit = product.bottle_count || 3;
-      // NuVira Trio has fixed composition: 1 RE-NU, 1 OASIS, 1 AURA
       if (product.title?.includes('Trio')) {
         extra.bundle_composition = [
           { product_id: 're-nu', product_name: 'RE-NU', quantity: 1 },
@@ -109,79 +103,76 @@ export default function ProductDetail() {
   if (!product) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <SEO
-          title="Product Not Found"
-          description="This product could not be found."
-          image=""
-          keywords=""
-          structuredData={null}
-          noindex
-        />
+        <SEO title="Product Not Found" description="This product could not be found." noindex />
         <p className="text-muted-foreground">Product not found</p>
       </div>
     );
   }
 
-  const related = relatedProducts.filter(p => p.id !== product.id).slice(0, 4);
-  const isMerchProduct = isMerchLikeProduct(product);
-  const seoTitle = isMerchProduct
-    ? `${product.title} — NuVira Merch | Wentzville, MO`
-    : `${product.title} — Cold-Pressed Juice | Wentzville, MO`;
+  const isMerch = isMerchLikeProduct(product);
+  const isMerchProduct = isMerch;
+  const productDescriptor = isMerchProduct ? 'NuVira merch' : 'Cold-pressed juice';
+  const productBadges = isMerch
+    ? ['Reusable', 'Insulated', 'Large Capacity']
+    : ['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'];
+  const detailUrl = absoluteUrl(productPath(product));
+  const productImage = product.image_url ? brandImageUrl(product.image_url) : BRAND_OG_IMAGE;
+  const seoTitle = `${product.title} | ${productDescriptor} | Wentzville, MO`;
   const seoDescription = product.short_description || product.description || (
     isMerchProduct
       ? `${product.title} from NuVira Juice Co.`
-      : `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`
+      : `${product.title} - fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`
   );
   const seoKeywords = isMerchProduct
     ? `${product.title}, NuVira merch, NuVira Juice Co., ${product.category} Wentzville MO`
     : `${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`;
 
   const productStructuredData = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    "name": product.title,
-    "description": product.description || product.short_description || seoDescription,
-    "image": product.image_url || "https://media.base44.com/images/public/69d48d0c39891f7945481152/421b89061_generated_image.png",
-    "brand": { "@type": "Brand", "name": "NuVira Juice Co." },
-    "offers": {
-      "@type": "Offer",
-      "url": `https://www.nuvirajuice.com/shop/${product.id}`,
-      "priceCurrency": "USD",
-      "price": product.price?.toFixed(2),
-      "availability": product.is_available !== false ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-      "seller": { "@type": "Organization", "name": "NuVira Juice Co." },
-      "shippingDetails": {
-        "@type": "OfferShippingDetails",
-        "shippingRate": {
-          "@type": "MonetaryAmount",
-          "value": "0",
-          "currency": "USD"
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.title,
+    description: product.description || product.short_description || seoDescription,
+    image: productImage,
+    brand: { '@type': 'Brand', name: 'NuVira Juice Co.' },
+    offers: {
+      '@type': 'Offer',
+      url: detailUrl,
+      priceCurrency: 'USD',
+      price: product.price?.toFixed(2),
+      availability: product.is_available !== false ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+      seller: { '@type': 'Organization', name: 'NuVira Juice Co.' },
+      shippingDetails: {
+        '@type': 'OfferShippingDetails',
+        shippingRate: {
+          '@type': 'MonetaryAmount',
+          value: '0',
+          currency: 'USD',
         },
-        "shippingDestination": {
-          "@type": "DefinedRegion",
-          "addressCountry": "US",
-          "addressRegion": ["MO"]
+        shippingDestination: {
+          '@type': 'DefinedRegion',
+          addressCountry: 'US',
+          addressRegion: ['MO'],
         },
-        "deliveryTime": {
-          "@type": "ShippingDeliveryTime",
-          "handlingTime": { "@type": "QuantitativeValue", "minValue": 0, "maxValue": 1, "unitCode": "DAY" },
-          "transitTime": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 3, "unitCode": "DAY" }
-        }
+        deliveryTime: {
+          '@type': 'ShippingDeliveryTime',
+          handlingTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 1, unitCode: 'DAY' },
+          transitTime: { '@type': 'QuantitativeValue', minValue: 1, maxValue: 3, unitCode: 'DAY' },
+        },
       },
-      "hasMerchantReturnPolicy": {
-        "@type": "MerchantReturnPolicy",
-        "applicableCountry": "US",
-        "returnPolicyCategory": "https://schema.org/MerchantReturnNotPermitted",
-        "merchantReturnDays": 0,
-        "returnMethod": "https://schema.org/ReturnByMail",
-        "returnFees": "https://schema.org/FreeReturn"
-      }
+      hasMerchantReturnPolicy: {
+        '@type': 'MerchantReturnPolicy',
+        applicableCountry: 'US',
+        returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
+        merchantReturnDays: 0,
+        returnMethod: 'https://schema.org/ReturnByMail',
+        returnFees: 'https://schema.org/FreeReturn',
+      },
     },
-    "additionalProperty": product.ingredients ? [{
-      "@type": "PropertyValue",
-      "name": "Ingredients",
-      "value": product.ingredients
-    }] : undefined
+    additionalProperty: product.ingredients ? [{
+      '@type': 'PropertyValue',
+      name: 'Ingredients',
+      value: product.ingredients,
+    }] : undefined,
   };
 
   return (
@@ -189,21 +180,20 @@ export default function ProductDetail() {
       <SEO
         title={seoTitle}
         description={seoDescription}
-        image={product.image_url}
+        image={productImage}
         type="product"
         keywords={seoKeywords}
+        canonicalUrl={detailUrl}
         structuredData={productStructuredData}
       />
-      {/* Desktop back button */}
+
       <div className="hidden md:flex items-center gap-2 px-6 pt-5 pb-2">
         <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
       </div>
 
-      {/* Two-column layout on desktop, single column on mobile */}
       <div className="md:flex md:gap-8 md:px-6 md:pb-24 md:items-start">
-        {/* Image */}
         <div className="md:w-1/2 md:shrink-0">
           <div
             className={`relative w-full md:aspect-square md:max-h-[60vh] md:rounded-2xl bg-secondary/50 overflow-hidden ${
@@ -217,20 +207,19 @@ export default function ProductDetail() {
                 className={`w-full h-full ${isMerchProduct ? 'object-contain p-2 md:p-0' : 'object-cover'}`}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-7xl">🍊</div>
+              <div className="w-full h-full flex items-center justify-center text-7xl">{isMerchProduct ? '🛍️' : '🍊'}</div>
             )}
-            {/* Mobile back button overlay */}
             <button
               onClick={() => navigate(-1)}
               className="md:hidden absolute left-4 w-9 h-9 bg-card/80 backdrop-blur-md rounded-full flex items-center justify-center"
               style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
+              aria-label="Go back"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Content */}
         <div className="md:w-1/2">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -257,18 +246,14 @@ export default function ProductDetail() {
               )}
             </div>
 
-            {/* Certifications */}
-            {!isMerchProduct && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
-                  <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">
-                    ✓ {cert}
-                  </span>
-                ))}
-              </div>
-            )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {productBadges.map(cert => (
+                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">
+                  ✓ {cert}
+                </span>
+              ))}
+            </div>
 
-            {/* You might also like */}
             {related.length > 0 && (
               <div className="mt-6">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">You might also like</h3>
@@ -285,7 +270,6 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      {/* About & Ingredients — full width below */}
       <div className="px-4 md:px-6 mt-6 pb-4">
         {product.description && (
           <div className="mb-4">
@@ -294,7 +278,7 @@ export default function ProductDetail() {
           </div>
         )}
         {product.ingredients && (
-          <div className="bg-nuvira-gradient-soft border border-nuvira rounded-xl p-3.5">
+          <div className="bg-secondary/40 rounded-xl p-3.5">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Leaf className="w-3.5 h-3.5 text-primary" />
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ingredients</h3>
@@ -303,16 +287,17 @@ export default function ProductDetail() {
           </div>
         )}
 
-        {!isMerchProduct && (
-          <div className="mt-4">
-            <HealthAdvisory variant="expanded" />
-          </div>
+        {!isMerch && (
+          !isMerchProduct && (
+            <div className="mt-4">
+              <HealthAdvisory variant="expanded" />
+            </div>
+          )
         )}
       </div>
 
-      {/* Sticky Purchase Bar — fixed above bottom nav */}
-      <div 
-        className="fixed left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border/50"
+      <div
+        className="fixed left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border/50 md:left-60"
         style={{
           bottom: 'calc(4rem + env(safe-area-inset-bottom))',
           padding: '10px 16px',
@@ -320,33 +305,31 @@ export default function ProductDetail() {
         }}
       >
         <div className="flex items-center gap-2">
-          {/* Quantity Stepper */}
           <div className="flex items-center gap-2.5 bg-secondary rounded-xl px-3 py-2.5 shrink-0">
-            <button 
-              onClick={() => setQuantity(Math.max(1, quantity - 1))} 
+            <button
+              onClick={() => setQuantity(Math.max(1, quantity - 1))}
               className="active:scale-90 transition-transform hover:opacity-60"
               aria-label="Decrease quantity"
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
             <span className="text-xs font-semibold w-6 text-center">{quantity}</span>
-            <button 
-              onClick={() => setQuantity(quantity + 1)} 
+            <button
+              onClick={() => setQuantity(quantity + 1)}
               className="active:scale-90 transition-transform hover:opacity-60"
               aria-label="Increase quantity"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
-          {/* Add to Cart Button */}
-          <button
+          <Button
             type="button"
             onClick={handleAddToCart}
-            className="flex-1 h-10 rounded-xl font-semibold text-sm nuvira-gradient-button inline-flex items-center justify-center"
+            className="nuvira-gradient-button flex-1 h-10 rounded-xl font-semibold text-sm inline-flex items-center justify-center"
           >
             <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
-            {`$${(product.price * quantity).toFixed(2)}`}
-          </button>
+            {`$${((product.price || 0) * quantity).toFixed(2)}`}
+          </Button>
         </div>
       </div>
     </div>

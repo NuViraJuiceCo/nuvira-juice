@@ -4,6 +4,10 @@ function normalizeText(value) {
   return (value || '').toString().trim();
 }
 
+function normalizeLower(value) {
+  return normalizeText(value).toLowerCase();
+}
+
 function safeString(value, maxLength = 240) {
   const text = normalizeText(value);
   if (!text) return null;
@@ -43,20 +47,20 @@ function sanitizeWorkflowChecklist(value) {
   );
 }
 
-function sanitizeOrder(order) {
+function sanitizeOrder(order, customerOrder = null) {
   return {
     id: safeString(order?.id, 140),
     shopify_order_id: safeString(order?.shopify_order_id, 140),
     shopify_order_number: safeString(order?.shopify_order_number, 80),
     source_channel: safeString(order?.source_channel, 80),
-    customer_name: safeString(order?.customer_name, 160),
+    customer_name: safeString(customerOrder?.customer_name || order?.customer_name, 160),
     customer_email: safeString(order?.customer_email, 180),
     customer_phone: safeString(order?.customer_phone, 80),
     line_items: sanitizeLineItems(order?.line_items),
     fulfillment_method: safeString(order?.fulfillment_method, 80),
-    delivery_address: safeString(order?.delivery_address, 260),
-    requested_delivery_date: safeString(order?.requested_delivery_date, 80),
-    requested_time_window: safeString(order?.requested_time_window, 120),
+    delivery_address: safeString(order?.delivery_address || customerOrder?.delivery_address, 260),
+    requested_delivery_date: safeString(order?.requested_delivery_date || order?.selected_delivery_date || customerOrder?.requested_delivery_date || customerOrder?.estimated_delivery_date, 80),
+    requested_time_window: safeString(order?.requested_time_window || customerOrder?.delivery_window_label, 120),
     payment_status: safeString(order?.payment_status, 80),
     fulfillment_status: safeString(order?.fulfillment_status, 80),
     shopify_fulfillment_status: safeString(order?.shopify_fulfillment_status, 80),
@@ -176,11 +180,17 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Method not allowed' }, { status: 405 });
     }
 
-    const [ordersRaw, alertsRaw, productsRaw, syncLogsRaw, webhookLogsRaw] = await Promise.all([
+    const [ordersRaw, customerOrdersRaw, alertsRaw, productsRaw, syncLogsRaw, webhookLogsRaw] = await Promise.all([
       base44.asServiceRole.entities.ShopifyOrder.list('-created_date', 500).catch(error => {
         console.warn('[getAdminShopifyOpsSummary] ShopifyOrder unavailable:', error.message);
         return [];
       }),
+      base44.asServiceRole.entities.Order?.list
+        ? base44.asServiceRole.entities.Order.list('-created_date', 500).catch(error => {
+          console.warn('[getAdminShopifyOpsSummary] Order unavailable:', error.message);
+          return [];
+        })
+        : Promise.resolve([]),
       base44.asServiceRole.entities.OperationalAlert.list('-created_date', 100).catch(error => {
         console.warn('[getAdminShopifyOpsSummary] OperationalAlert unavailable:', error.message);
         return [];
@@ -199,7 +209,22 @@ Deno.serve(async (req) => {
       }),
     ]);
 
-    const orders = ordersRaw.map(sanitizeOrder);
+    const customerOrdersById = new Map();
+    const customerOrdersByNumber = new Map();
+    for (const order of customerOrdersRaw) {
+      if (order.id) customerOrdersById.set(order.id, order);
+      const orderNumber = normalizeLower(order.order_number || order.shopify_order_number);
+      if (orderNumber) customerOrdersByNumber.set(orderNumber, order);
+    }
+
+    const orders = ordersRaw.map(order => {
+      const customerOrder = (
+        customerOrdersById.get(order.base44_order_id) ||
+        customerOrdersByNumber.get(normalizeLower(order.shopify_order_number || order.order_number)) ||
+        null
+      );
+      return sanitizeOrder(order, customerOrder);
+    });
     const alerts = alertsRaw.map(sanitizeAlert);
     const products = productsRaw.map(sanitizeProduct);
     const sync_logs = syncLogsRaw.map(sanitizeSyncLog);

@@ -235,7 +235,10 @@ async function loadNativeResources(base44, { category, status, search, limit }) 
   ]);
 
   const team = mapNativeTeam(users);
-  const equipment = mapNativeEquipment({ productionBatches, inventoryItems });
+  const equipment = mapNativeEquipment({
+    productionBatches: productionBatches.filter(batch => batch?.is_test_batch !== true),
+    inventoryItems,
+  });
   const filtered = applyNativeFilters({ team, equipment, category, status, search, limit });
   const sections = {
     team: filtered.team,

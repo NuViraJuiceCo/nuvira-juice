@@ -26,11 +26,37 @@ function isDeliveredStatus(value) {
   return ['delivered', 'completed', 'fulfilled', 'complete'].includes(lower(value).replace(/\s+/g, '_'));
 }
 
+function isStalePendingProductionStatus(value) {
+  return ['awaiting_production', 'scheduled', 'pending', 'not_required'].includes(lower(value).replace(/\s+/g, '_'));
+}
+
 function canonicalDeliveryStatus(row = {}) {
   const raw = lower(row.delivery_status || row.task_status || row.status || row.fulfillment_status);
   if (raw === 'out for delivery' || raw === 'in transit') return 'out_for_delivery';
   if (raw === 'complete') return 'completed';
   return raw || null;
+}
+
+function visibleDeliveryStatus({ stop, task, nativeOrder, order }) {
+  return canonicalDeliveryStatus(stop) ||
+    canonicalDeliveryStatus(task) ||
+    canonicalDeliveryStatus(nativeOrder) ||
+    canonicalDeliveryStatus(order);
+}
+
+function visibleProductionStatus({ stop, task, nativeOrder, order }) {
+  const stopDeliveryStatus = canonicalDeliveryStatus(stop);
+  const taskProductionStatus = task?.production_status;
+  const nativeProductionStatus = nativeOrder?.production_status;
+  if (
+    isDeliveredStatus(stopDeliveryStatus) &&
+    (isStalePendingProductionStatus(taskProductionStatus) || isStalePendingProductionStatus(nativeProductionStatus))
+  ) {
+    return stop?.production_status && !isStalePendingProductionStatus(stop.production_status)
+      ? stop.production_status
+      : 'delivered';
+  }
+  return taskProductionStatus || nativeProductionStatus || order?.production_status || stop?.production_status || null;
 }
 
 function canonicalOrderNumber(row = {}) {
@@ -285,9 +311,9 @@ function buildDeliveryLifecycleRow({ stop, orderIndexes, customerOrders, nativeO
     canonical_delivery_date: canonicalDeliveryDateFor(order, nativeOrder, task, stop),
     task_delivery_date: normalizeDate(task?.delivery_date || task?.scheduled_date || stop?.delivery_date),
     schedule_match: scheduleMatch,
-    delivery_status: canonicalDeliveryStatus(task || stop || nativeOrder || order),
-    fulfillment_status: task?.status || nativeOrder?.fulfillment_status || order?.fulfillment_status || stop?.fulfillment_status || null,
-    production_status: task?.production_status || nativeOrder?.production_status || order?.production_status || stop?.production_status || null,
+    delivery_status: visibleDeliveryStatus({ stop, task, nativeOrder, order }),
+    fulfillment_status: stop?.task_status || stop?.fulfillment_status || task?.status || nativeOrder?.fulfillment_status || order?.fulfillment_status || null,
+    production_status: visibleProductionStatus({ stop, task, nativeOrder, order }),
     payment_safe_for_delivery: paymentSafeForDelivery(order, nativeOrder, task),
     driver_assignment_present: route.driver_assignment_present,
     route_context_present: route.route_context_present,

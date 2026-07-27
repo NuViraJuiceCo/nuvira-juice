@@ -442,7 +442,7 @@ async function loadNativeCalendarSummary(base44, { dateFrom, dateTo, type, statu
   }
 
   const batchesByDate = new Map();
-  for (const batch of productionBatches.filter(row => inRange(batchProductionDate(row), dateFrom, dateTo))) {
+  for (const batch of productionBatches.filter(row => row?.is_test_batch !== true && inRange(batchProductionDate(row), dateFrom, dateTo))) {
     const productionDate = batchProductionDate(batch);
     const rows = batchesByDate.get(productionDate) || [];
     rows.push(batch);
@@ -461,7 +461,7 @@ async function loadNativeCalendarSummary(base44, { dateFrom, dateTo, type, statu
   }
 
   const tasksByDate = new Map();
-  for (const task of fulfillmentTasks.filter(row => inRange(taskDeliveryDate(row), dateFrom, dateTo))) {
+  for (const task of fulfillmentTasks.filter(row => row?.is_test_task !== true && inRange(taskDeliveryDate(row), dateFrom, dateTo))) {
     const sourceType = normalizeLower(task.source_type || task.source_channel || task.fulfillment_type);
     if (sourceType === 'pos' || sourceType === 'event_pos') continue;
     const deliveryDate = taskDeliveryDate(task);
@@ -488,7 +488,7 @@ async function loadNativeCalendarSummary(base44, { dateFrom, dateTo, type, statu
     ...batchComplianceLogs.map(row => ({ ...row, _compliance_type: 'batch_compliance' })),
     ...ccpLogs.map(row => ({ ...row, _compliance_type: 'ccp' })),
     ...phLogs.map(row => ({ ...row, _compliance_type: 'ph' })),
-  ].filter(row => inRange(complianceDate(row), dateFrom, dateTo));
+  ].filter(row => row?.is_test_record !== true && inRange(complianceDate(row), dateFrom, dateTo));
 
   const complianceByDate = new Map();
   for (const row of complianceRows) {

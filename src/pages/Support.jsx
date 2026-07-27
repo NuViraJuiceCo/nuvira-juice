@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, MessageCircle, HelpCircle, Mail, ChevronDown, ChevronUp, ShieldCheck, Star, Send } from 'lucide-react';
+import { ArrowLeft, MessageCircle, HelpCircle, ChevronDown, ChevronUp, ShieldCheck, Star, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

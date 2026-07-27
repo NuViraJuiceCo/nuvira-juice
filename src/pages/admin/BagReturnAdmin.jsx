@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Leaf, ChevronDown, ChevronRight, Search, Package } from 'lucide-react';
@@ -31,7 +32,7 @@ function bagSummary(r) {
   return parts.join(' + ') || '—';
 }
 
-function ReturnCard({ ret, verificationFrozen }) {
+function ReturnCard({ ret, verificationLocked }) {
   const [expanded, setExpanded] = useState(false);
   const [smallStatus, setSmallStatus] = useState('accepted');
   const [toteStatus, setToteStatus] = useState('accepted');
@@ -48,7 +49,7 @@ function ReturnCard({ ret, verificationFrozen }) {
   };
 
   const handleSubmit = async () => {
-    toast.error('Bag return verification, credits, and customer emails are disabled during the May 30 launch freeze.');
+    toast.error('Bag return verification, credits, and customer emails are disabled until this exact live credit workflow is approved.');
   };
 
   return (
@@ -147,17 +148,17 @@ function ReturnCard({ ret, verificationFrozen }) {
                     <p className="text-sm font-medium">Credit to Issue</p>
                     <p className="font-heading text-xl font-bold text-primary">${calcCredit().toFixed(2)}</p>
                   </div>
-                  {verificationFrozen && (
+                  {verificationLocked && (
                     <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
-                      Bag return verification, credits, and customer emails are frozen for May 30 launch operations unless explicitly approved.
+                      Bag return credits and customer emails are protected until this exact workflow is approved for live customer credit issuance.
                     </div>
                   )}
                   <button
                     onClick={handleSubmit}
-                    disabled={verificationFrozen}
+                    disabled={verificationLocked}
                     className="w-full py-3 bg-nuvira-gradient text-white rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
                   >
-                    {verificationFrozen ? 'Verification Frozen' : 'Submit Verification'}
+                    {verificationLocked ? 'Verification Requires Approval' : 'Submit Verification'}
                   </button>
                 </>
               )}
@@ -174,7 +175,7 @@ export default function BagReturnAdmin() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState('pending');
   const [search, setSearch] = useState('');
-  const verificationFrozen = true;
+  const verificationLocked = true;
 
   const { data: returns = [], isLoading } = useQuery({
     queryKey: ['admin-bag-returns'],
@@ -185,10 +186,10 @@ export default function BagReturnAdmin() {
       const payload = res?.data || res;
       return Array.isArray(payload?.rows) ? payload.rows : [];
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
   });
 
-  if (user?.role !== 'admin') return null;
+  if (!isAdminUser(user)) return null;
 
   const filtered = returns.filter(r => {
     const matchFilter = filter === 'pending' ? r.verification_status === 'requested' : r.verification_status !== 'requested';
@@ -215,11 +216,11 @@ export default function BagReturnAdmin() {
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Return + Reward"
         subtitle="Verify bag returns · Issue NuVira Credits"
-        badge="Frozen"
+        badge="Read-only"
         badgeTone="warning"
         onBack={() => navigate('/admin/operations')}
         actions={<Leaf className="h-4 w-4 text-muted-foreground" />}
@@ -227,7 +228,7 @@ export default function BagReturnAdmin() {
 
       <div className="px-4 mt-4">
         <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
-          Bag return verification, credits, and customer emails are frozen for May 30 launch operations. This page remains read-only for review.
+          Bag return credits and customer emails are protected until this exact workflow is approved for live customer credit issuance. This page remains review-only.
         </div>
       </div>
 
@@ -289,7 +290,7 @@ export default function BagReturnAdmin() {
             <ReturnCard
               key={ret.id}
               ret={ret}
-              verificationFrozen={verificationFrozen}
+              verificationLocked={verificationLocked}
             />
           ))
         )}

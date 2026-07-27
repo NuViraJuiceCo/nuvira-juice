@@ -11,37 +11,15 @@ import {
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
-import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
+import { isAdminUser } from '@/lib/admin-access';
 import May30EventStockPlanPanel from '@/components/admin/May30EventStockPlanPanel';
+import { usePageVisibility } from '@/lib/usePageVisibility';
 
 const MAX_RANGE_DAYS = 31;
 const presetOptions = [
   { value: 'today', label: 'Today' },
   { value: 'this_week', label: 'This Week' },
   { value: 'next_7_days', label: 'Next 7 Days' },
-];
-
-const planningReadinessItems = [
-  {
-    label: 'Product demand',
-    status: 'ready',
-    detail: 'Date groups show Hub batches plus accepted native order mirror demand and event stock plans.',
-  },
-  {
-    label: 'Ingredient demand',
-    status: 'ready',
-    detail: 'Recipe-derived ingredient rows show quantity, stock coverage, and source dates without deducting stock.',
-  },
-  {
-    label: 'Procurement model',
-    status: 'ready',
-    detail: 'Make-to-order shortfalls are marked as procurement needs, not fatal blockers or automatic purchase orders.',
-  },
-  {
-    label: 'Production handoff',
-    status: 'fallback',
-    detail: 'Use Production Queue for preview-first start, complete, verify, ingredient correction, and post-verify task packing.',
-  },
 ];
 
 function todayDate() {
@@ -109,7 +87,7 @@ function hasNativeYieldContext(item) {
 
 function procurementNeedLabel(item) {
   if (item.procurement_needed_quantity === null || item.procurement_needed_quantity === undefined) {
-    if (!hasNativeYieldContext(item)) return 'Hub summary';
+    if (!hasNativeYieldContext(item)) return 'Source summary';
     if (item.procurement_basis === 'missing_yield') return 'Yield needed';
     if (item.procurement_basis === 'yield_missing_conversion') return 'Yield conversion needed';
     return 'Not available';
@@ -125,8 +103,22 @@ function procurementNeedLabel(item) {
   return quantityLabel;
 }
 
+function isDemandBasedIngredient(item) {
+  return item?.status === 'demand_based' || item?.stock_tracking_policy === 'food_make_to_order' || item?.stock_authoritative === false;
+}
+
+function stockBasisLabel(item) {
+  if (isDemandBasedIngredient(item)) return 'Demand-based';
+  return item.available_stock === null ? 'No data' : `${formatNumber(item.available_stock)} ${item.unit || ''}`.trim();
+}
+
+function procurementBasisLabel(item) {
+  if (isDemandBasedIngredient(item)) return `Demand: ${formatNumber(item.required_quantity)} ${item.unit || ''}`.trim();
+  return `Shortfall: ${formatNumber(item.shortage_amount)} ${item.unit || ''}`.trim();
+}
+
 function yieldContextLabel(item) {
-  if (!hasNativeYieldContext(item) && !item.yield_match_found) return 'Hub demand summary';
+  if (!hasNativeYieldContext(item) && !item.yield_match_found) return 'Source demand summary';
   if (!item.yield_match_found) return 'Missing yield';
   const parts = [
     item.oz_per_purchase_unit ? `${formatNumber(item.oz_per_purchase_unit)} oz/${item.purchase_unit || 'unit'}` : null,
@@ -182,8 +174,12 @@ function StatCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefr
 }
 
 function StatusBadge({ status }) {
-  const label = status === 'short' ? 'Procurement Needed' : formatLabel(status);
-  const tone = status === 'short' ? 'warning' : undefined;
+  const label = status === 'short'
+    ? 'Procurement Needed'
+    : status === 'demand_based'
+      ? 'Demand Based'
+      : formatLabel(status);
+  const tone = status === 'short' ? 'warning' : status === 'demand_based' ? 'native' : undefined;
   return <AdminStatusPill value={status} label={label} tone={tone} size="md" />;
 }
 
@@ -191,7 +187,7 @@ function sourceLabel(source) {
   if (source === 'customer_app_native') return 'Native Customer App';
   if (source === 'may30_pos_event_stock_plan') return 'POS Event Stock';
   if (source === 'mixed_native_and_event_plan') return 'Native + POS Event Stock';
-  return 'Hub';
+  return 'Source';
 }
 
 function ProductGroupList({ groups }) {
@@ -246,7 +242,9 @@ function DateGroup({ group }) {
           <h2 className="text-sm font-bold text-foreground mt-0.5">{formatDate(group.production_date)}</h2>
         </div>
         <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-secondary text-secondary-foreground border border-border/50">
-          {group.source === 'customer_app_native'
+          {group.excluded_from_scheduled_totals
+            ? 'Review only'
+            : group.source === 'customer_app_native'
             ? 'Native mirror'
             : group.source === 'may30_pos_event_stock_plan'
               ? 'POS event stock'
@@ -256,11 +254,21 @@ function DateGroup({ group }) {
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <StatCard label="Batches" value={formatNumber(group.batch_count, 0)} />
-        <StatCard label="Planned Units" value={formatNumber(group.planned_units, 0)} />
+        <StatCard label={group.excluded_from_scheduled_totals ? 'Review Units' : 'Planned Units'} value={formatNumber(group.planned_units, 0)} />
         <StatCard label="Produced Units" value={formatNumber(group.produced_units, 0)} />
         <StatCard label="Ingredients" value={formatNumber(group.ingredient_count, 0)} />
-        <StatCard label="Shortages" value={formatNumber(group.shortage_count, 0)} tone={Number(group.shortage_count || 0) > 0 ? 'danger' : 'default'} />
+        <StatCard
+          label={Number(group.shortage_count || 0) > 0 ? 'Shortages' : 'Demand Procure Rows'}
+          value={formatNumber(Number(group.shortage_count || 0) > 0 ? group.shortage_count : group.demand_based_procurement_count, 0)}
+          tone={Number(group.shortage_count || 0) > 0 ? 'danger' : 'default'}
+        />
       </div>
+
+      {group.excluded_from_scheduled_totals && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+          This native mirror demand needs a production date before it can affect scheduled production or procurement totals.
+        </p>
+      )}
 
       <ProductGroupList groups={group.product_groups} />
     </section>
@@ -286,7 +294,8 @@ function productionBatchDraftRows(dateGroups, ingredients) {
       if (productionDate === 'date_pending') blockers.push('production_date_required');
       if (Number(product.planned_units || 0) <= 0) blockers.push('planned_units_required');
       if (matchingIngredients.some(item => hasNativeYieldContext(item) && !item.yield_match_found)) warnings.push('ingredient_yield_review');
-      if (matchingIngredients.some(item => item.status === 'short' || Number(item.procurement_needed_quantity || 0) > 0)) warnings.push('procurement_needed');
+      if (matchingIngredients.some(item => item.status === 'short')) warnings.push('procurement_shortfall');
+      if (matchingIngredients.some(item => item.status === 'demand_based' && Number(item.procurement_needed_quantity || 0) > 0)) warnings.push('demand_procurement_context');
       if (matchingIngredients.some(item => item.status === 'no_data')) warnings.push('inventory_context_missing');
 
       return {
@@ -320,7 +329,7 @@ function ProductionBatchDraftCards({ dateGroups, ingredients }) {
           <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Native ProductionBatch drafts</p>
           <h2 className="text-sm font-bold text-emerald-950">Proposed batch records from planning demand</h2>
           <p className="text-xs text-emerald-900/80 mt-1">
-            Read-only draft fields for the future native batch materialization step. No ProductionBatch, CommandLog, inventory, purchase order, notification, or Hub record is created here.
+            Read-only draft fields for the future native batch materialization step. No ProductionBatch, CommandLog, inventory, purchase order, notification, or source record is created here.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -405,7 +414,7 @@ function IngredientTable({ ingredients }) {
             <tr className="border-b border-border bg-muted/30">
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Ingredient</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Required</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Available</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stock Policy</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Procurement Need</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Source</th>
@@ -418,9 +427,9 @@ function IngredientTable({ ingredients }) {
               <tr key={`${item.ingredient || 'ingredient'}-${item.unit || 'unit'}`} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors align-top">
                 <td className="px-4 py-3.5 font-medium text-foreground">{item.ingredient || 'Unnamed ingredient'}</td>
                 <td className="px-4 py-3.5 text-muted-foreground">{formatNumber(item.required_quantity)} {item.unit || ''}</td>
-                <td className="px-4 py-3.5 text-muted-foreground">{item.available_stock === null ? 'No data' : `${formatNumber(item.available_stock)} ${item.unit || ''}`}</td>
+                <td className="px-4 py-3.5 text-muted-foreground">{stockBasisLabel(item)}</td>
                 <td className="px-4 py-3.5 text-muted-foreground">
-                  <p>{formatNumber(item.shortage_amount)} {item.unit || ''}</p>
+                  <p>{procurementBasisLabel(item)}</p>
                   <p className="text-[10px] text-foreground font-semibold mt-1">Buy: {procurementNeedLabel(item)}</p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">{yieldContextLabel(item)}</p>
                 </td>
@@ -456,12 +465,12 @@ function IngredientCards({ ingredients }) {
               <p className="text-xs font-bold">{formatNumber(item.required_quantity)}</p>
             </div>
             <div className="rounded-lg bg-secondary/50 p-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Available</p>
-              <p className="text-xs font-bold">{item.available_stock === null ? 'No data' : formatNumber(item.available_stock)}</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Stock Policy</p>
+              <p className="text-xs font-bold">{stockBasisLabel(item)}</p>
             </div>
             <div className="rounded-lg bg-secondary/50 p-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Shortage</p>
-              <p className="text-xs font-bold">{formatNumber(item.shortage_amount)}</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Need Basis</p>
+              <p className="text-xs font-bold">{isDemandBasedIngredient(item) ? formatNumber(item.required_quantity) : formatNumber(item.shortage_amount)}</p>
             </div>
           </div>
 
@@ -491,6 +500,7 @@ function IngredientCards({ ingredients }) {
 
 export default function ProductionPlanning() {
   const { user } = useAuth();
+  const isPageVisible = usePageVisibility();
   const today = useMemo(() => todayDate(), []);
   const [preset, setPreset] = useState('next_7_days');
   const [dateFrom, setDateFrom] = useState(today);
@@ -513,11 +523,12 @@ export default function ProductionPlanning() {
       if (result?.error) throw new Error(result.error);
       return result || { summary: {}, dates: [], ingredients: [] };
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user) && isPageVisible,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
   });
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -531,6 +542,9 @@ export default function ProductionPlanning() {
   const nativeOverlay = data?.native_overlay || {};
   const eventStockPlan = nativeOverlay?.event_stock_plan || {};
   const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+  const datePendingUnits = Number(summary.date_pending_planned_units || 0);
+  const datePendingOrders = Number(summary.date_pending_order_count || nativeOverlay.skipped_missing_date_count || 0);
+  const datePendingIngredients = Number(summary.date_pending_ingredient_count || 0);
   const hasResults = dateGroups.length > 0 || ingredients.length > 0;
   const showError = isError && !data && !isFetching;
   const contextLabel = (() => {
@@ -547,11 +561,12 @@ export default function ProductionPlanning() {
   })();
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Production Planning"
-        subtitle="Read-only ingredient demand"
-        badge="Read-only"
+        subtitle="Ingredient demand, batch coverage, and procurement context"
+        badge="Planning"
+        badgeTone="native"
       />
 
       <div className="px-4 mt-4 space-y-4">
@@ -643,7 +658,12 @@ export default function ProductionPlanning() {
           <StatCard icon={Package} label="Batches" value={formatNumber(summary.batch_count, 0)} />
           <StatCard label="Planned Units" value={formatNumber(summary.planned_units, 0)} />
           <StatCard icon={FlaskConical} label="Ingredients" value={formatNumber(summary.ingredient_count, 0)} />
-          <StatCard icon={AlertTriangle} label="Procurement Needs" value={formatNumber(summary.shortage_count, 0)} tone={Number(summary.shortage_count || 0) > 0 ? 'danger' : 'default'} />
+          <StatCard
+            icon={AlertTriangle}
+            label={Number(summary.shortage_count || 0) > 0 ? 'Shortages' : 'Demand Procure Rows'}
+            value={formatNumber(Number(summary.shortage_count || 0) > 0 ? summary.shortage_count : summary.demand_based_procurement_count, 0)}
+            tone={Number(summary.shortage_count || 0) > 0 ? 'danger' : 'default'}
+          />
           <StatCard
             icon={RefreshCw}
             label="Missing Recipes / Yields"
@@ -655,10 +675,15 @@ export default function ProductionPlanning() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Production Planning view</p>
-            <p className="text-[10px] text-muted-foreground">Hub batch and ingredient coverage plus native order mirrors. Make-to-order shortfalls are procurement needs, not inventory deduction approval.</p>
+            <p className="text-[10px] text-muted-foreground">Source batches, native Customer App production demand, and event stock plans. Food and juice ingredients are calculated from recipes/yields, not standing inventory counts.</p>
             {Number(nativeOverlay.order_count || 0) > 0 && (
               <p className="text-[10px] text-emerald-700 mt-1">
-                Native overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · read-only
+                Native production overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · {formatNumber(nativeOverlay.demand_based_procurement_count, 0)} demand procurement row{Number(nativeOverlay.demand_based_procurement_count) === 1 ? '' : 's'} · read-only
+              </p>
+            )}
+            {datePendingUnits > 0 && (
+              <p className="text-[10px] text-amber-700 mt-1">
+                Date-pending native demand: {formatNumber(datePendingUnits, 0)} unit{datePendingUnits === 1 ? '' : 's'} · {formatNumber(datePendingOrders, 0)} order{datePendingOrders === 1 ? '' : 's'} · {formatNumber(datePendingIngredients, 0)} ingredient row{datePendingIngredients === 1 ? '' : 's'} · excluded from scheduled totals until assigned to a production date.
               </p>
             )}
             {eventStockPlan.included && (
@@ -678,33 +703,31 @@ export default function ProductionPlanning() {
             )}
             {Number(nativeOverlay.skipped_missing_date_count || 0) > 0 && (
               <p className="text-[10px] text-blue-700 mt-1">
-                Native orders needing date assignment: {formatNumber(nativeOverlay.skipped_missing_date_count, 0)}. These appear under Date pending so production and procurement demand stay visible.
+                Native orders needing date assignment: {formatNumber(nativeOverlay.skipped_missing_date_count, 0)}. These appear under Date pending as review-only demand.
               </p>
             )}
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
 
-        <May30ReadinessPanel
-          title="Production planning visibility"
-          description="This view is the planning layer: it tells operations what to make and what to procure before any production lifecycle action runs."
-          items={planningReadinessItems}
-          actions={[
-            { label: 'Production Queue', to: '/admin/production-queue' },
-            { label: 'Inventory Status', to: '/admin/inventory-status' },
-            { label: 'Admin Orders', to: '/admin/orders' },
-          ]}
-        />
-
-        <May30EventStockPlanPanel includedInPlanning={eventStockPlan.included === true} />
+        {eventStockPlan.included === true && (
+          <details className="rounded-xl border border-border/60 bg-card p-3">
+            <summary className="cursor-pointer text-xs font-black uppercase tracking-wider text-muted-foreground">
+              Legacy Event Stock Context
+            </summary>
+            <div className="mt-3">
+              <May30EventStockPlanPanel includedInPlanning />
+            </div>
+          </details>
+        )}
 
         <ProductionBatchDraftCards dateGroups={dateGroups} ingredients={ingredients} />
 
         {warnings.length > 0 && (
           <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
             {warnings.includes('hub_production_planning_service_not_configured') || warnings.some(warning => warning?.startsWith?.('hub_production_planning_unavailable'))
-              ? 'Hub production planning is unavailable, so this view is showing native Customer App order mirror demand only.'
-              : 'Production planning returned warnings. Review native and Hub planning context before batching.'}
+              ? 'Source production planning is unavailable, so this view is showing native Customer App order mirror demand only.'
+              : 'Production planning returned warnings. Review native and source planning context before batching.'}
           </div>
         )}
 
@@ -753,7 +776,7 @@ export default function ProductionPlanning() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Ingredient Demand</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Sanitized ingredient requirements, stock coverage, and IngredientYield purchase-unit needs. No inventory is deducted and no purchase order is created here.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Sanitized ingredient requirements and IngredientYield purchase-unit needs. Food stock counts are informational only; no inventory is deducted and no purchase order is created here.</p>
               </div>
               {ingredients.length > 0 ? (
                 <>

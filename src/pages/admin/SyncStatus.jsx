@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { Button } from '@/components/ui/button';
 
 export default function SyncStatus() {
   const { user } = useAuth();
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted-foreground">Admin access required</p>
@@ -17,12 +18,11 @@ export default function SyncStatus() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Order Sync Status"
-        subtitle="Legacy recovery tools disabled for launch freeze"
-        badge="Disabled tools"
-        badgeTone="warning"
+        subtitle="Current read-only sync guidance"
+        badge="Read-only"
       />
 
       <div className="px-4 mt-5 max-w-3xl mx-auto space-y-4">
@@ -30,10 +30,9 @@ export default function SyncStatus() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-cyan-700 mt-0.5 shrink-0" />
             <div>
-              <h2 className="text-sm font-bold text-cyan-900">Manual recovery is disabled</h2>
-              <p className="text-xs text-cyan-800 mt-1 leading-relaxed">
-                Stuck-order detection and recovery can write sync logs and retry Hub sync. During the May 30 launch freeze,
-                use the read-only Sync Health page unless a specific paid order recovery is explicitly approved.
+              <h2 className="text-sm font-bold text-cyan-900 dark:text-cyan-100">Legacy recovery actions stay controlled</h2>
+              <p className="text-xs text-cyan-800 mt-1 leading-relaxed dark:text-cyan-200">
+                Stuck-order recovery can write sync logs and retry source sync. Use Sync Health for current visibility, and only run an exact paid-order recovery when that order is explicitly approved.
               </p>
             </div>
           </div>
@@ -45,7 +44,7 @@ export default function SyncStatus() {
             <div>
               <h2 className="text-sm font-bold text-foreground">Use read-only bridge visibility</h2>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Sync Health shows sanitized Hub bridge status without sync, retry, recover, replay, repair, export, or raw-log actions.
+                Sync Health shows sanitized source bridge status without broad sync, retry, recover, replay, repair, export, or raw-log actions.
               </p>
               <Button asChild className="mt-4 rounded-xl">
                 <Link to="/admin/sync-health">Open Sync Health</Link>

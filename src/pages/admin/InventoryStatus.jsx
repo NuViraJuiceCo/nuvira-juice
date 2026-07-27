@@ -6,6 +6,7 @@ import { AlertTriangle, ClipboardList, Copy, Download, MapPin, Package, RefreshC
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 
 function formatDateTime(value) {
   if (!value) return null;
@@ -20,6 +21,7 @@ function formatStatus(value) {
   const key = (value || '').toString();
   if (key === 'ok') return 'OK';
   if (key === 'out_of_stock') return 'Out of Stock';
+  if (key === 'demand_based') return 'Demand Based';
   return key
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -37,13 +39,22 @@ function formatQuantity(value, unit) {
   return unit ? `${value} ${unit}` : value;
 }
 
+function isDemandBasedFood(item) {
+  return item?.stock_tracking_policy === 'food_make_to_order' || item?.stock_authoritative === false || item?.status === 'demand_based';
+}
+
+function stockBasisLabel(item, field) {
+  if (isDemandBasedFood(item)) return field === 'stock' ? 'Demand-based' : 'Not tracked';
+  return formatQuantity(item?.[field], item?.unit);
+}
+
 function csvEscape(value) {
   const text = value === null || value === undefined ? '' : value.toString();
   return `"${text.replace(/"/g, '""')}"`;
 }
 
 function procurementManifest(items = []) {
-  if (!Array.isArray(items) || items.length === 0) return 'No procurement needs found.';
+  if (!Array.isArray(items) || items.length === 0) return 'No tracked-supply procurement needs found.';
   return items.map(item => [
     item.supplier || 'Supplier pending',
     item.ingredient || 'Ingredient pending',
@@ -52,8 +63,12 @@ function procurementManifest(items = []) {
     formatQuantity(item.max_stock, item.unit),
     formatQuantity(item.open_po_quantity, item.unit),
     formatQuantity(item.net_suggested_quantity, item.unit),
-    item.source === 'customer_app_native' ? 'Native' : 'Hub',
+    sourceLabel(item.source),
   ].join(' | ')).join('\n');
+}
+
+function sourceLabel(source) {
+  return source === 'customer_app_native' ? 'Native' : 'Source';
 }
 
 function procurementCsv(items = []) {
@@ -70,6 +85,7 @@ function procurementCsv(items = []) {
     'open_po_numbers',
     'net_suggested_quantity',
     'estimated_cost',
+    'stock_tracking_policy',
     'source',
   ];
   const rows = items.map(item => [
@@ -85,6 +101,7 @@ function procurementCsv(items = []) {
     Array.isArray(item.open_po_numbers) ? item.open_po_numbers.join('; ') : '',
     item.net_suggested_quantity ?? '',
     item.estimated_cost ?? '',
+    item.stock_tracking_policy || '',
     item.source || '',
   ]);
   return [header, ...rows].map(row => row.map(csvEscape).join(',')).join('\n');
@@ -126,14 +143,14 @@ function InventoryTable({ items }) {
             <tr className="border-b border-border bg-muted/30">
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Ingredient</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Category</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stock</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stock Basis</th>
               <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Reorder At</th>
               <th className="hidden lg:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Max Stock</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
               <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Source</th>
               <th className="hidden lg:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Supplier</th>
               <th className="hidden xl:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Location</th>
-              <th className="hidden xl:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Last Hub update</th>
+              <th className="hidden xl:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Last source update</th>
             </tr>
           </thead>
           <tbody>
@@ -141,11 +158,11 @@ function InventoryTable({ items }) {
               <tr key={item.id || item.ingredient} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                 <td className="px-4 py-3.5 font-medium text-foreground">{item.ingredient || 'Unnamed item'}</td>
                 <td className="px-4 py-3.5 text-muted-foreground">{item.category || 'Uncategorized'}</td>
-                <td className="px-4 py-3.5 font-semibold text-foreground">{formatQuantity(item.stock, item.unit)}</td>
-                <td className="hidden md:table-cell px-4 py-3.5 text-muted-foreground">{formatQuantity(item.reorder_point, item.unit)}</td>
-                <td className="hidden lg:table-cell px-4 py-3.5 text-muted-foreground">{formatQuantity(item.max_stock, item.unit)}</td>
+                <td className="px-4 py-3.5 font-semibold text-foreground">{stockBasisLabel(item, 'stock')}</td>
+                <td className="hidden md:table-cell px-4 py-3.5 text-muted-foreground">{stockBasisLabel(item, 'reorder_point')}</td>
+                <td className="hidden lg:table-cell px-4 py-3.5 text-muted-foreground">{stockBasisLabel(item, 'max_stock')}</td>
                 <td className="px-4 py-3.5"><StatusBadge status={item.status} /></td>
-                <td className="hidden md:table-cell px-4 py-3.5 text-muted-foreground">{item.source === 'customer_app_native' ? 'Native' : 'Hub'}</td>
+                <td className="hidden md:table-cell px-4 py-3.5 text-muted-foreground">{sourceLabel(item.source)}</td>
                 <td className="hidden lg:table-cell px-4 py-3.5 text-muted-foreground truncate">{item.supplier || '-'}</td>
                 <td className="hidden xl:table-cell px-4 py-3.5 text-muted-foreground truncate">{item.location || '-'}</td>
                 <td className="hidden xl:table-cell px-4 py-3.5 text-muted-foreground">{formatDateTime(item.updated_date) || '-'}</td>
@@ -167,7 +184,7 @@ function InventoryCards({ items }) {
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-foreground text-sm">{item.ingredient || 'Unnamed item'}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {item.category || 'Uncategorized'} · {item.source === 'customer_app_native' ? 'Native' : 'Hub'}
+                {item.category || 'Uncategorized'} · {sourceLabel(item.source)}
               </p>
             </div>
             <StatusBadge status={item.status} />
@@ -175,16 +192,16 @@ function InventoryCards({ items }) {
 
           <div className="grid grid-cols-3 gap-2 py-2 border-t border-b border-border/30">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Stock</p>
-              <p className="font-semibold text-sm mt-0.5">{formatQuantity(item.stock, item.unit)}</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Stock Basis</p>
+              <p className="font-semibold text-sm mt-0.5">{stockBasisLabel(item, 'stock')}</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Reorder At</p>
-              <p className="font-semibold text-sm mt-0.5">{formatQuantity(item.reorder_point, item.unit)}</p>
+              <p className="font-semibold text-sm mt-0.5">{stockBasisLabel(item, 'reorder_point')}</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Max Stock</p>
-              <p className="font-semibold text-sm mt-0.5">{formatQuantity(item.max_stock, item.unit)}</p>
+              <p className="font-semibold text-sm mt-0.5">{stockBasisLabel(item, 'max_stock')}</p>
             </div>
           </div>
 
@@ -204,7 +221,7 @@ function InventoryCards({ items }) {
 
           {item.updated_date && (
             <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-              Last Hub update: {formatDateTime(item.updated_date)}
+              Last source update: {formatDateTime(item.updated_date)}
             </p>
           )}
         </div>
@@ -217,8 +234,8 @@ function ProcurementPlan({ items }) {
   if (!Array.isArray(items) || items.length === 0) {
     return (
       <div className="rounded-xl border border-border/50 bg-card p-4">
-        <p className="text-sm font-semibold text-foreground">No procurement needs found</p>
-        <p className="text-xs text-muted-foreground mt-1">Hub inventory is not reporting low, critical, or out-of-stock items for the current filters.</p>
+        <p className="text-sm font-semibold text-foreground">No tracked-supply procurement needs found</p>
+        <p className="text-xs text-muted-foreground mt-1">Food and juice ingredients are demand-based. Low-stock warnings only apply to tracked non-food items like packaging and supplies.</p>
       </div>
     );
   }
@@ -255,12 +272,12 @@ function ProcurementPlan({ items }) {
 
                 <div className="grid grid-cols-3 gap-2 mt-3">
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Stock</p>
-                    <p className="text-xs font-bold">{formatQuantity(item.stock, item.unit)}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Stock Basis</p>
+                    <p className="text-xs font-bold">{stockBasisLabel(item, 'stock')}</p>
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Target</p>
-                    <p className="text-xs font-bold">{formatQuantity(item.max_stock ?? item.reorder_point, item.unit)}</p>
+                    <p className="text-xs font-bold">{stockBasisLabel(item, item.max_stock !== null && item.max_stock !== undefined ? 'max_stock' : 'reorder_point')}</p>
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Net Need</p>
@@ -294,7 +311,7 @@ function OpenPurchaseOrders({ purchaseOrders }) {
     return (
       <div className="rounded-xl border border-border/50 bg-card p-4">
         <p className="text-sm font-semibold text-foreground">No open purchase orders returned</p>
-        <p className="text-xs text-muted-foreground mt-1">Draft, ordered, and in-transit Hub purchase orders will appear here.</p>
+        <p className="text-xs text-muted-foreground mt-1">Draft, ordered, and in-transit source purchase orders will appear here.</p>
       </div>
     );
   }
@@ -365,7 +382,7 @@ export default function InventoryStatus() {
       if (result?.error) throw new Error(result.error);
       return result || { summary: {}, items: [] };
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
     staleTime: 60000,
   });
 
@@ -396,7 +413,7 @@ export default function InventoryStatus() {
     setCopyMessage({ type: 'success', text: 'Procurement CSV downloaded. No purchase order was created.' });
   }
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -405,21 +422,21 @@ export default function InventoryStatus() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Inventory"
-        subtitle="Read-only Hub inventory status"
+        subtitle="Read-only inventory status"
         badge="Read-only"
       />
 
       <div className="px-4 mt-4 space-y-4">
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
           <StatCard icon={Package} label="Total Items" value={summary.total_items ?? 0} />
-          <StatCard icon={TrendingDown} label="Low Stock" value={summary.low_stock_count ?? 0} />
-          <StatCard icon={AlertTriangle} label="Critical / Out" value={(summary.critical_count ?? 0) + (summary.out_of_stock_count ?? 0)} />
-          <StatCard icon={ShoppingCart} label="Procurement Needs" value={summary.net_procurement_item_count ?? 0} />
+          <StatCard icon={TrendingDown} label="Demand-Based Food" value={summary.demand_based_food_count ?? 0} />
+          <StatCard icon={Package} label="Tracked Supplies" value={summary.stock_tracked_item_count ?? 0} />
+          <StatCard icon={AlertTriangle} label="Supply Critical / Out" value={(summary.critical_count ?? 0) + (summary.out_of_stock_count ?? 0)} />
+          <StatCard icon={ShoppingCart} label="Supply Needs" value={summary.net_procurement_item_count ?? 0} />
           <StatCard icon={ClipboardList} label="Open POs" value={summary.open_purchase_order_count ?? 0} />
-          <StatCard icon={RefreshCw} label="Categories" value={summary.category_count ?? 0} isRefreshing={isFetching} />
         </div>
 
         <div className="bg-card border border-border rounded-xl p-4 space-y-3">
@@ -442,6 +459,7 @@ export default function InventoryStatus() {
                 className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="all">All Statuses</option>
+                <option value="demand_based">Demand Based</option>
                 <option value="ok">OK</option>
                 <option value="low">Low</option>
                 <option value="critical">Critical</option>
@@ -468,10 +486,10 @@ export default function InventoryStatus() {
           <div>
             <p className="text-xs font-semibold text-foreground">Inventory view</p>
             <p className="text-[10px] text-muted-foreground">
-              Hub operational inventory plus native Customer App fallback records · Procurement plan only · No stock deduction or purchase orders are created here.
+              Food and juice ingredients are demand-based; packaging, supplies, merch, and other non-food items remain stock-tracked. No stock deduction or purchase orders are created here.
             </p>
             <p className="text-[10px] text-muted-foreground mt-1">
-              Sources: Hub {dataSources.hub_available ? 'available' : 'unavailable'} · Native {dataSources.native_available ? 'available' : 'empty'}
+              Sources: Primary source {dataSources.hub_available ? 'available' : 'unavailable'} · Native {dataSources.native_available ? 'available' : 'empty'} · Food warnings suppressed {dataSources.food_stock_warnings_suppressed ? 'yes' : 'no'}
             </p>
             <AdminStatusLegend className="mt-2" />
           </div>
@@ -511,8 +529,8 @@ export default function InventoryStatus() {
         {warnings.length > 0 && (
           <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
             {warnings.includes('hub_inventory_status_service_not_configured') || warnings.some(warning => warning?.startsWith?.('hub_inventory_status_unavailable'))
-              ? 'Hub inventory summary is unavailable, so this view is showing native Customer App inventory/procurement records only.'
-              : 'Inventory status returned warnings. Review Hub and native source context before making procurement decisions.'}
+              ? 'Primary inventory summary is unavailable, so this view is showing native Customer App inventory/procurement records only.'
+              : 'Inventory status returned warnings. Review source and native context before making procurement decisions.'}
           </div>
         )}
 
@@ -535,7 +553,7 @@ export default function InventoryStatus() {
             <section className="space-y-2">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Procurement Plan</h2>
-                <p className="text-xs text-muted-foreground">Supplier-grouped buy list from Hub inventory thresholds and open PO coverage. This is make-to-order planning, not inventory deduction.</p>
+                <p className="text-xs text-muted-foreground">Supplier-grouped buy list for tracked non-food thresholds and open PO coverage. Food purchasing should come from production demand, not standing stock counts.</p>
               </div>
               <ProcurementPlan items={procurementPlan} />
             </section>
@@ -543,7 +561,7 @@ export default function InventoryStatus() {
             <section className="space-y-2">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Open Purchase Orders</h2>
-                <p className="text-xs text-muted-foreground">Hub draft, ordered, and in-transit purchase orders for procurement context.</p>
+                <p className="text-xs text-muted-foreground">Source draft, ordered, and in-transit purchase orders for procurement context.</p>
               </div>
               <OpenPurchaseOrders purchaseOrders={openPurchaseOrders} />
             </section>

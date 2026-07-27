@@ -5,6 +5,8 @@ const SOURCE = 'customer_app_native_admin';
 const ENABLE_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_LIFECYCLE_WRITES';
 const ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_EMAILS';
 const BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_BATCH_ALLOWLIST';
+const TEST_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_BATCH_ALLOWLIST';
+const COMPLIANCE_GATE_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_COMPLIANCE_GATE_BATCH_ALLOWLIST';
 const ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS';
 const KILL_SWITCH_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH';
 const CONFIRMATION_PHRASE = 'execute_native_production_batch_lifecycle';
@@ -133,6 +135,113 @@ function safeStringArray(value, maxLength = 120) {
   return value.slice(0, SAFE_ARRAY_LIMIT).map((item) => sanitizeText(item, maxLength)).filter(Boolean);
 }
 
+function referenceList(value) {
+  if (Array.isArray(value)) return value.map(item => sanitizeId(item)).filter(Boolean);
+  return normalizeText(value).split(',').map(item => sanitizeId(item)).filter(Boolean);
+}
+
+function complianceRecordMatchesBatch(record, batch) {
+  const sourceBatchId = sanitizeId(batch?.id);
+  const displayBatchId = sanitizeId(batch?.batch_id);
+  const sourceRefs = new Set([
+    sanitizeId(record?.source_production_batch_id),
+    ...referenceList(record?.related_source_production_batch_ids),
+  ].filter(Boolean));
+  const displayRefs = new Set([
+    sanitizeId(record?.batch_id),
+    ...referenceList(record?.related_batch_ids),
+    ...referenceList(record?.batches_logged),
+  ].filter(Boolean));
+  return Boolean(
+    (sourceBatchId && sourceRefs.has(sourceBatchId)) ||
+    (displayBatchId && displayRefs.has(displayBatchId))
+  );
+}
+
+function uniqueRecords(rows) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : []).filter(row => {
+    const key = sanitizeId(row?.id) || JSON.stringify([
+      sanitizeId(row?.source_production_batch_id),
+      sanitizeId(row?.batch_id),
+      sanitizeText(row?.created_date, 80),
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function evaluatePreStartCompliance({ batch, sanitationLogs = [], dailyChecklists = [], temperatureLogs = [], unavailable = false }) {
+  const sanitationMatches = uniqueRecords(sanitationLogs).filter(row => complianceRecordMatchesBatch(row, batch));
+  const checklistMatches = uniqueRecords(dailyChecklists).filter(row => complianceRecordMatchesBatch(row, batch));
+  const temperatureMatches = uniqueRecords(temperatureLogs).filter(row => complianceRecordMatchesBatch(row, batch));
+
+  const sanitationReady = sanitationMatches.some(row => (
+    row.cleaned === true &&
+    row.sanitized === true &&
+    normalizeLower(row.sanitizer_level) !== 'low'
+  ));
+  const checklistReady = checklistMatches.some(row => (
+    ['complete', 'pre-production complete'].includes(normalizeLower(row.overall_status)) &&
+    row.morning_fridge_temp_logged === true &&
+    row.sanitizer_levels_checked === true &&
+    row.equipment_sanitized === true &&
+    row.work_areas_cleaned === true
+  ));
+  const temperatureReady = temperatureMatches.some(row => (
+    row.within_range === true &&
+    safeNumber(row.temperature) !== null
+  ));
+
+  const blockers = [];
+  if (unavailable) blockers.push('pre_start_compliance_unavailable');
+  if (!sanitationReady) blockers.push('pre_start_sanitation_missing_or_incomplete');
+  if (!checklistReady) blockers.push('pre_start_daily_checklist_missing_or_incomplete');
+  if (!temperatureReady) blockers.push('pre_start_temperature_missing_or_out_of_range');
+
+  return {
+    enforced: true,
+    ready: blockers.length === 0,
+    blockers,
+    matched_record_counts: {
+      sanitation: sanitationMatches.length,
+      daily_checklist: checklistMatches.length,
+      temperature: temperatureMatches.length,
+    },
+    ready_record_ids: {
+      sanitation: sanitationMatches.filter(row => row.cleaned === true && row.sanitized === true).map(row => sanitizeId(row.id)).filter(Boolean).slice(0, 5),
+      daily_checklist: checklistMatches.filter(row => ['complete', 'pre-production complete'].includes(normalizeLower(row.overall_status))).map(row => sanitizeId(row.id)).filter(Boolean).slice(0, 5),
+      temperature: temperatureMatches.filter(row => row.within_range === true).map(row => sanitizeId(row.id)).filter(Boolean).slice(0, 5),
+    },
+  };
+}
+
+async function linkedComplianceRows(base44, entityName, batch) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  if (!entity || typeof entity.filter !== 'function') throw new Error(`${entityName}_unavailable`);
+  const sourceBatchId = sanitizeId(batch?.id);
+  const displayBatchId = sanitizeId(batch?.batch_id);
+  const results = await Promise.all([
+    sourceBatchId ? entity.filter({ source_production_batch_id: sourceBatchId }, '-created_date', 20).catch(() => []) : [],
+    displayBatchId ? entity.filter({ batch_id: displayBatchId }, '-created_date', 20).catch(() => []) : [],
+  ]);
+  return uniqueRecords(results.flat());
+}
+
+async function loadPreStartCompliance(base44, batch) {
+  try {
+    const [sanitationLogs, dailyChecklists, temperatureLogs] = await Promise.all([
+      linkedComplianceRows(base44, 'SanitationLog', batch),
+      linkedComplianceRows(base44, 'DailyChecklist', batch),
+      linkedComplianceRows(base44, 'TemperatureLog', batch),
+    ]);
+    return evaluatePreStartCompliance({ batch, sanitationLogs, dailyChecklists, temperatureLogs });
+  } catch {
+    return evaluatePreStartCompliance({ batch, unavailable: true });
+  }
+}
+
 function parseCsvSet(value) {
   return new Set(
     normalizeText(value)
@@ -181,7 +290,7 @@ function findUnsupportedBodyKey(body) {
   return null;
 }
 
-function envGateFailure({ action, batchKey, actorEmail }) {
+function envGateFailure({ action, batchKeys, actorEmail }) {
   if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') return 'kill_switch_active';
   if (Deno.env.get(ENABLE_WRITES_FLAG) !== 'true') return 'native_production_batch_lifecycle_writes_disabled';
 
@@ -193,11 +302,47 @@ function envGateFailure({ action, batchKey, actorEmail }) {
   if (allowedActions.size === 0) return 'allowed_action_gate_required';
   if (!allowedActions.has(action)) return 'action_not_allowlisted';
 
-  const allowedBatches = parseCsvSet(Deno.env.get(BATCH_ALLOWLIST_FLAG) || '');
+  const allowedBatches = new Set([
+    ...parseCsvSet(Deno.env.get(BATCH_ALLOWLIST_FLAG) || ''),
+    ...parseCsvSet(Deno.env.get(TEST_BATCH_ALLOWLIST_FLAG) || ''),
+  ]);
   if (allowedBatches.size === 0) return 'batch_allowlist_required';
-  if (!allowedBatches.has(normalizeLower(batchKey))) return 'batch_not_allowlisted';
+  const requestedBatchKeys = Array.isArray(batchKeys)
+    ? batchKeys.map(normalizeLower).filter(Boolean)
+    : [];
+  if (requestedBatchKeys.length === 0) return 'production_batch_id_or_batch_id_required';
+  if (!requestedBatchKeys.some(batchKey => allowedBatches.has(batchKey))) return 'batch_not_allowlisted';
+  if (action === 'start') {
+    const complianceGateBatches = parseCsvSet(Deno.env.get(COMPLIANCE_GATE_BATCH_ALLOWLIST_FLAG) || '');
+    if (complianceGateBatches.size === 0) return 'pre_start_compliance_gate_batch_allowlist_required';
+    if (!requestedBatchKeys.some(batchKey => complianceGateBatches.has(batchKey))) {
+      return 'pre_start_compliance_gate_batch_not_allowlisted';
+    }
+  }
 
   return null;
+}
+
+function testBatchMarkerFailure({ batchKeys, batch }) {
+  const testBatches = parseCsvSet(Deno.env.get(TEST_BATCH_ALLOWLIST_FLAG) || '');
+  const requestedBatchKeys = Array.isArray(batchKeys)
+    ? batchKeys.map(normalizeLower).filter(Boolean)
+    : [];
+  const usesTestAllowlist = requestedBatchKeys.some(batchKey => testBatches.has(batchKey));
+  if (usesTestAllowlist && !isInternalTestBatch(batch)) return 'test_batch_allowlist_requires_test_marker';
+  return null;
+}
+
+function isInternalTestBatch(batch) {
+  const batchId = normalizeLower(batch?.batch_id || batch?.id);
+  const sourceSystem = normalizeLower(batch?.source_system);
+  const ownerStatus = normalizeLower(batch?.native_owner_status);
+  const testPurpose = normalizeLower(batch?.test_purpose);
+  return batch?.is_test_batch === true ||
+    batchId.includes('-test-') ||
+    sourceSystem.includes('internal_validation') ||
+    ownerStatus.includes('internal_test') ||
+    testPurpose.includes('internal validation');
 }
 
 function appendCommonGuards(batch, blockers, warnings) {
@@ -237,7 +382,7 @@ function safeIngredientRows(value) {
   }).filter(row => row.ingredient_name);
 }
 
-function planStart({ batch, actorEmail, requestId, now, reason }) {
+function planStart({ batch, actorEmail, requestId, now, reason, preStartCompliance }) {
   const blockers = [];
   const warnings = [];
   appendCommonGuards(batch, blockers, warnings);
@@ -246,6 +391,11 @@ function planStart({ batch, actorEmail, requestId, now, reason }) {
   if (batch.actual_start_time) blockers.push('already_started');
   if (batch.actual_end_time || batch.completed_by) blockers.push('already_completed');
   if (batch.compliance_log_id || batch.verified_at || batch.verified_by) blockers.push('already_verified_logged');
+  if (preStartCompliance?.enforced !== true) {
+    blockers.push('pre_start_compliance_unavailable');
+  } else {
+    blockers.push(...safeStringArray(preStartCompliance.blockers));
+  }
 
   const proposedPatch = blockers.length ? null : {
     status: 'in_production',
@@ -356,6 +506,8 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
     verified_at: now,
     source_production_batch_id: sanitizeId(batch.id) || null,
     locked: true,
+      is_test_record: isInternalTestBatch(batch),
+      ...(isInternalTestBatch(batch) ? { test_batch_id: sanitizeId(batch.batch_id) || sanitizeId(batch.id) } : {}),
   };
 
   const proposedPatch = blockers.length ? null : {
@@ -387,8 +539,8 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
   };
 }
 
-function planLifecycle({ action, batch, actorEmail, requestId, now, body, reason }) {
-  if (action === 'start') return planStart({ batch, actorEmail, requestId, now, reason });
+function planLifecycle({ action, batch, actorEmail, requestId, now, body, reason, preStartCompliance }) {
+  if (action === 'start') return planStart({ batch, actorEmail, requestId, now, reason, preStartCompliance });
   if (action === 'complete') return planComplete({ batch, actorEmail, requestId, now, body, reason });
   return planVerify({ batch, actorEmail, requestId, now, body, reason });
 }
@@ -434,6 +586,8 @@ async function createCommandLog({ base44, batch, action, status, idempotencyKey,
     payload: {
       action,
       exact_batch_allowlist: true,
+      is_test_batch: isInternalTestBatch(batch),
+      test_batch_id: isInternalTestBatch(batch) ? sanitizeId(batch?.batch_id) || sanitizeId(batch?.id) || null : null,
     },
     result,
     error_code: errorCode || null,
@@ -467,6 +621,27 @@ function safeBatchSummary(batch) {
     product_name: sanitizeText(batch?.product_name, 120) || null,
     previous_status: sanitizeText(batch?.status, 80) || null,
     production_date: sanitizeText(batch?.production_date, 40) || null,
+    is_test_batch: isInternalTestBatch(batch),
+    test_purpose: isInternalTestBatch(batch) ? sanitizeText(batch?.test_purpose, 160) || null : null,
+  };
+}
+
+function safePreStartComplianceSummary(value) {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    enforced: value.enforced === true,
+    ready: value.ready === true,
+    blockers: safeStringArray(value.blockers),
+    matched_record_counts: {
+      sanitation: Number(value.matched_record_counts?.sanitation) || 0,
+      daily_checklist: Number(value.matched_record_counts?.daily_checklist) || 0,
+      temperature: Number(value.matched_record_counts?.temperature) || 0,
+    },
+    ready_record_ids: {
+      sanitation: safeStringArray(value.ready_record_ids?.sanitation),
+      daily_checklist: safeStringArray(value.ready_record_ids?.daily_checklist),
+      temperature: safeStringArray(value.ready_record_ids?.temperature),
+    },
   };
 }
 
@@ -508,6 +683,7 @@ Deno.serve(async (req) => {
     }
 
     let batchKey;
+    let batchKeys;
     let action;
     let requestId;
     let actorEmail;
@@ -515,7 +691,8 @@ Deno.serve(async (req) => {
     try {
       if (normalizeLower(body.mode) !== 'live') throw new Error('mode live is required');
       if (normalizeText(body.confirmation) !== CONFIRMATION_PHRASE) throw new Error('confirmation phrase is required');
-      batchKey = sanitizeId(body.production_batch_id) || sanitizeId(body.batch_id);
+      batchKeys = [sanitizeId(body.production_batch_id), sanitizeId(body.batch_id)].filter(Boolean);
+      batchKey = batchKeys[0];
       if (!batchKey) throw new Error('production_batch_id or batch_id is required');
       action = normalizeAction(body.action);
       requestId = normalizeRequiredId(body.request_id, 'request_id');
@@ -525,7 +702,7 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error_code: 'invalid_input', error: error.message }, { status: 400 });
     }
 
-    const gateFailure = envGateFailure({ action, batchKey, actorEmail });
+    const gateFailure = envGateFailure({ action, batchKeys, actorEmail });
     if (gateFailure) {
       return Response.json({
         success: false,
@@ -539,7 +716,7 @@ Deno.serve(async (req) => {
     const idempotencyKey = `${COMMAND_TYPE}:${requestId}`;
     const existingLogs = await findExistingCommandLog(base44, idempotencyKey);
     const existingLog = Array.isArray(existingLogs) && existingLogs.length > 0 ? existingLogs[0] : null;
-    if (existingLog && existingLog.status !== 'failed') {
+    if (existingLog && ['success', 'skipped'].includes(normalizeLower(existingLog.status))) {
       return Response.json({
         success: true,
         skipped: true,
@@ -551,6 +728,36 @@ Deno.serve(async (req) => {
         writes_performed: false,
         reason: 'idempotency_log_present',
       });
+    }
+    if (existingLog && normalizeLower(existingLog.status) === 'rejected') {
+      return Response.json({
+        success: false,
+        skipped: true,
+        idempotent: true,
+        action,
+        request_id: requestId,
+        idempotency_key: idempotencyKey,
+        error_code: existingLog.error_code || 'lifecycle_preflight_blocked',
+        blockers: safeStringArray(existingLog.result?.blockers),
+        warnings: safeStringArray(existingLog.result?.warnings),
+        pre_start_compliance: existingLog.result?.pre_start_compliance || null,
+        native_writer_enabled: true,
+        writes_performed: false,
+        reason: 'idempotent_rejected_command_replay',
+      }, { status: 409 });
+    }
+    if (existingLog && ['pending', 'running'].includes(normalizeLower(existingLog.status))) {
+      return Response.json({
+        success: false,
+        skipped: true,
+        idempotent: true,
+        action,
+        request_id: requestId,
+        idempotency_key: idempotencyKey,
+        error_code: 'command_already_in_progress',
+        native_writer_enabled: true,
+        writes_performed: false,
+      }, { status: 409 });
     }
     if (existingLog?.status === 'failed' && action === 'verify' && sanitizeId(existingLog.result?.compliance_log_id)) {
       return Response.json({
@@ -576,9 +783,22 @@ Deno.serve(async (req) => {
         writes_performed: false,
       }, { status: 404 });
     }
+    const testMarkerFailure = testBatchMarkerFailure({ batchKeys, batch });
+    if (testMarkerFailure) {
+      return Response.json({
+        success: false,
+        skipped: true,
+        error_code: testMarkerFailure,
+        native_writer_enabled: true,
+        writes_performed: false,
+      }, { status: 409 });
+    }
 
     const now = new Date().toISOString();
-    const plan = planLifecycle({ action, batch, actorEmail, requestId, now, body, reason });
+    const preStartCompliance = action === 'start'
+      ? await loadPreStartCompliance(base44, batch)
+      : null;
+    const plan = planLifecycle({ action, batch, actorEmail, requestId, now, body, reason, preStartCompliance });
     const blockers = safeStringArray(plan.blockers);
     const warnings = safeStringArray(plan.warnings);
     if (blockers.length > 0 || !plan.proposed_patch) {
@@ -593,6 +813,7 @@ Deno.serve(async (req) => {
         result: {
           blockers,
           warnings,
+          pre_start_compliance: safePreStartComplianceSummary(preStartCompliance),
           writes_performed: false,
           native_writer_enabled: true,
         },
@@ -609,6 +830,7 @@ Deno.serve(async (req) => {
         error_code: 'lifecycle_preflight_blocked',
         blockers,
         warnings,
+        pre_start_compliance: safePreStartComplianceSummary(preStartCompliance),
         native_writer_enabled: true,
         writes_performed: false,
       }, { status: 409 });
@@ -627,6 +849,7 @@ Deno.serve(async (req) => {
         action,
         projected_writes: safeStringArray(plan.projected_writes),
         warnings,
+        pre_start_compliance: safePreStartComplianceSummary(preStartCompliance),
         writes_performed: false,
         native_writer_enabled: true,
       },
@@ -655,6 +878,7 @@ Deno.serve(async (req) => {
           action,
           projected_writes: safeStringArray(plan.projected_writes),
           warnings,
+          pre_start_compliance: safePreStartComplianceSummary(preStartCompliance),
           writes_performed: false,
           native_writer_enabled: true,
           compliance_log_created: Boolean(complianceLog?.id),
@@ -674,6 +898,7 @@ Deno.serve(async (req) => {
         action,
         projected_writes: safeStringArray(plan.projected_writes),
         warnings,
+        pre_start_compliance: safePreStartComplianceSummary(preStartCompliance),
         writes_performed: true,
         native_writer_enabled: true,
         compliance_log_created: Boolean(complianceLog?.id),
@@ -697,6 +922,7 @@ Deno.serve(async (req) => {
       compliance_log_id: sanitizeId(complianceLog?.id) || null,
       projected_writes: safeStringArray(plan.projected_writes),
       warnings,
+      pre_start_compliance: safePreStartComplianceSummary(preStartCompliance),
       native_writer_enabled: true,
       writes_performed: true,
       compliance_log_created: Boolean(complianceLog?.id),

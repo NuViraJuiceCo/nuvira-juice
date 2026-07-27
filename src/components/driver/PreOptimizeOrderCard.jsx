@@ -5,7 +5,15 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useRef } from 'react';
 
-export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyReturn, user, isUpdating }) {
+function driverItemLine(item) {
+  const title = `${item?.title || item?.name || ''}`.trim();
+  if (!title) return null;
+  const quantity = item?.quantity ?? item?.qty;
+  if (quantity === null || quantity === undefined || quantity === '') return title;
+  return `${title} ×${quantity}`;
+}
+
+export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyReturn, user, isUpdating: _isUpdating }) {
   const [expanded, setExpanded] = useState(false);
   const [showReturnForm, setShowReturnForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -102,7 +110,7 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
             <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
               <p className="text-sm font-bold">#{order.order_number}</p>
               {pendingReturn && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 flex items-center gap-0.5">
+                <span className="flex items-center gap-0.5 rounded-full border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-800 dark:border-cyan-900/60 dark:bg-cyan-950/40 dark:text-cyan-100">
                   <Recycle className="w-2.5 h-2.5" />
                   Return
                 </span>
@@ -113,7 +121,7 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
             {order.estimated_delivery_date && (
               <p className="text-[10px] text-primary font-medium">📅 {order.estimated_delivery_date}</p>
             )}
-            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight truncate max-w-[180px]">{order.items?.map(i => `${i.title} ×${i.quantity}`).join(', ')}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight truncate max-w-[180px]">{order.items?.map(driverItemLine).filter(Boolean).join(', ')}</p>
           </div>
         </button>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -152,19 +160,19 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
               <div className="bg-secondary/40 rounded-xl p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Items</p>
                 {order.items?.length > 0 ? order.items.map((item, i) => (
-                  <p key={i} className="text-xs">{item.title} × {item.quantity}</p>
+                  <p key={i} className="text-xs">{driverItemLine(item)}</p>
                 )) : <p className="text-xs text-muted-foreground italic">No items listed</p>}
                 {order.notes && <p className="text-[10px] text-primary mt-2 pt-2 border-t border-border/30">{order.notes}</p>}
               </div>
 
               {/* Bag Return Form */}
               {pendingReturn && pendingReturn.verification_status === 'requested' && !showReturnForm && (
-                <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-3">
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-900/60 dark:bg-cyan-950/30">
                   <div className="flex items-center gap-2 mb-2">
-                    <Recycle className="w-4 h-4 text-cyan-600 shrink-0" />
-                    <p className="text-sm font-bold text-cyan-800">Bag Return — Pre-Pickup Review</p>
+                    <Recycle className="w-4 h-4 text-cyan-700 shrink-0 dark:text-cyan-300" />
+                    <p className="text-sm font-bold text-cyan-900 dark:text-cyan-100">Bag Return — Pre-Pickup Review</p>
                   </div>
-                  <p className="text-xs text-cyan-700 mb-3">
+                  <p className="text-xs text-cyan-800 mb-3 dark:text-cyan-200/80">
                     Customer requested: {pendingReturn.small_bags_requested || 0} small + {pendingReturn.tote_bags_requested || 0} tote bags
                   </p>
                   <button onClick={() => setShowReturnForm(true)} className="w-full py-2 bg-cyan-600 text-white rounded-lg text-xs font-semibold">
@@ -175,30 +183,30 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
 
               {/* Inline Form */}
               {showReturnForm && pendingReturn && (pendingReturn.verification_status === 'requested' || isEditing) && (
-                <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4 space-y-4">
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 space-y-4 dark:border-cyan-900/60 dark:bg-cyan-950/30">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-cyan-800">{isEditing ? 'Re-Verify & Adjust' : 'Confirm Bag Amounts'}</p>
-                    <button onClick={() => { setShowReturnForm(false); setIsEditing(false); }} className="text-cyan-400">
+                    <p className="text-sm font-bold text-cyan-900 dark:text-cyan-100">{isEditing ? 'Re-Verify & Adjust' : 'Confirm Bag Amounts'}</p>
+                    <button onClick={() => { setShowReturnForm(false); setIsEditing(false); }} className="text-cyan-700 dark:text-cyan-300">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
 
                   {pendingReturn.small_bags_requested > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-cyan-800 mb-2">Small Bags ({pendingReturn.small_bags_requested} requested)</p>
+                      <p className="text-xs font-semibold text-cyan-900 mb-2 dark:text-cyan-100">Small Bags ({pendingReturn.small_bags_requested} requested)</p>
                       <div className="flex gap-2 flex-wrap mb-2">
                         {bagStatusOptions.map(([v, l]) => (
                           <button key={v} onClick={() => setSmallStatus(v)}
-                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${smallStatus === v ? 'bg-cyan-600 text-white border-cyan-600' : 'border-cyan-300 bg-white text-cyan-800'}`}>
+                            className={`rounded-xl border px-3 py-2 text-[11px] font-medium transition-colors ${smallStatus === v ? 'border-cyan-600 bg-cyan-600 text-white' : 'border-cyan-300 bg-background text-cyan-900 dark:border-cyan-800/70 dark:text-cyan-100'}`}>
                             {l}
                           </button>
                         ))}
                       </div>
                       {smallStatus === 'accepted' && (
-                        <div className="flex items-center gap-2 bg-white border border-cyan-300 rounded-xl px-3 py-2">
-                          <button onClick={() => setSmallAccepted(Math.max(0, smallAccepted - 1))} className="text-cyan-700 font-bold text-lg">−</button>
-                          <span className="flex-1 text-center text-sm font-semibold text-cyan-800">{smallAccepted} collected</span>
-                          <button onClick={() => setSmallAccepted(smallAccepted + 1)} className="text-cyan-700 font-bold text-lg">+</button>
+                        <div className="flex items-center gap-2 rounded-xl border border-cyan-300 bg-background px-3 py-2 dark:border-cyan-800/70">
+                          <button onClick={() => setSmallAccepted(Math.max(0, smallAccepted - 1))} className="text-lg font-bold text-cyan-800 dark:text-cyan-200">−</button>
+                          <span className="flex-1 text-center text-sm font-semibold text-cyan-900 dark:text-cyan-100">{smallAccepted} collected</span>
+                          <button onClick={() => setSmallAccepted(smallAccepted + 1)} className="text-lg font-bold text-cyan-800 dark:text-cyan-200">+</button>
                         </div>
                       )}
                     </div>
@@ -206,20 +214,20 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
 
                   {pendingReturn.tote_bags_requested > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-cyan-800 mb-2">Tote Bags ({pendingReturn.tote_bags_requested} requested)</p>
+                      <p className="text-xs font-semibold text-cyan-900 mb-2 dark:text-cyan-100">Tote Bags ({pendingReturn.tote_bags_requested} requested)</p>
                       <div className="flex gap-2 flex-wrap mb-2">
                         {bagStatusOptions.map(([v, l]) => (
                           <button key={v} onClick={() => setToteStatus(v)}
-                            className={`text-[11px] font-medium px-3 py-2 rounded-xl border transition-colors ${toteStatus === v ? 'bg-cyan-600 text-white border-cyan-600' : 'border-cyan-300 bg-white text-cyan-800'}`}>
+                            className={`rounded-xl border px-3 py-2 text-[11px] font-medium transition-colors ${toteStatus === v ? 'border-cyan-600 bg-cyan-600 text-white' : 'border-cyan-300 bg-background text-cyan-900 dark:border-cyan-800/70 dark:text-cyan-100'}`}>
                             {l}
                           </button>
                         ))}
                       </div>
                       {toteStatus === 'accepted' && (
-                        <div className="flex items-center gap-2 bg-white border border-cyan-300 rounded-xl px-3 py-2">
-                          <button onClick={() => setToteAccepted(Math.max(0, toteAccepted - 1))} className="text-cyan-700 font-bold text-lg">−</button>
-                          <span className="flex-1 text-center text-sm font-semibold text-cyan-800">{toteAccepted} collected</span>
-                          <button onClick={() => setToteAccepted(toteAccepted + 1)} className="text-cyan-700 font-bold text-lg">+</button>
+                        <div className="flex items-center gap-2 rounded-xl border border-cyan-300 bg-background px-3 py-2 dark:border-cyan-800/70">
+                          <button onClick={() => setToteAccepted(Math.max(0, toteAccepted - 1))} className="text-lg font-bold text-cyan-800 dark:text-cyan-200">−</button>
+                          <span className="flex-1 text-center text-sm font-semibold text-cyan-900 dark:text-cyan-100">{toteAccepted} collected</span>
+                          <button onClick={() => setToteAccepted(toteAccepted + 1)} className="text-lg font-bold text-cyan-800 dark:text-cyan-200">+</button>
                         </div>
                       )}
                     </div>
@@ -227,11 +235,11 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
 
                   {(smallStatus === 'not_eligible' || toteStatus === 'not_eligible') && (
                     <div>
-                      <p className="text-xs font-semibold text-cyan-800 mb-2">Rejection Reason</p>
+                      <p className="text-xs font-semibold text-cyan-900 mb-2 dark:text-cyan-100">Rejection Reason</p>
                       <div className="flex gap-2 flex-wrap">
                         {REJECTION_REASONS.map(r => (
                           <button key={r.key} onClick={() => setReason(r.key)}
-                            className={`text-[11px] px-3 py-1.5 rounded-xl border transition-colors ${reason === r.key ? 'bg-red-100 border-red-300 text-red-700' : 'border-cyan-300 bg-white text-cyan-800'}`}>
+                            className={`rounded-xl border px-3 py-1.5 text-[11px] transition-colors ${reason === r.key ? 'border-red-300 bg-red-100 text-red-800 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-100' : 'border-cyan-300 bg-background text-cyan-900 dark:border-cyan-800/70 dark:text-cyan-100'}`}>
                             {r.label}
                           </button>
                         ))}
@@ -240,18 +248,18 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
                   )}
 
                   <div>
-                    <p className="text-xs font-semibold text-cyan-800 mb-2">Photo <span className="font-normal text-cyan-600">(optional)</span></p>
+                    <p className="text-xs font-semibold text-cyan-900 mb-2 dark:text-cyan-100">Photo <span className="font-normal text-cyan-700 dark:text-cyan-300">(optional)</span></p>
                     <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
                     {photoUrl ? (
                       <div className="relative inline-block w-full">
-                        <img src={photoUrl} alt="Evidence" className="w-full max-w-xs rounded-xl border border-cyan-200" />
+                        <img src={photoUrl} alt="Evidence" className="w-full max-w-xs rounded-xl border border-cyan-200 dark:border-cyan-900/60" />
                         <button onClick={() => setPhotoUrl('')} className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center">
                           <X className="w-3.5 h-3.5 text-white" />
                         </button>
                       </div>
                     ) : (
                       <button onClick={() => fileRef.current?.click()} disabled={uploading}
-                        className="flex items-center gap-2 px-4 py-2.5 border-2 border-dashed border-cyan-300 rounded-xl text-xs text-cyan-700 w-full justify-center bg-white">
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-cyan-300 bg-background px-4 py-2.5 text-xs text-cyan-900 dark:border-cyan-800/70 dark:text-cyan-100">
                         {uploading ? <div className="w-4 h-4 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin" /> : <Camera className="w-4 h-4" />}
                         {uploading ? 'Uploading...' : 'Take or Upload Photo'}
                       </button>
@@ -259,11 +267,11 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
                   </div>
 
                   <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Driver notes (optional)"
-                    className="w-full text-xs border border-cyan-300 rounded-xl px-3 py-2.5 bg-white resize-none focus:outline-none focus:ring-1 focus:ring-cyan-400 text-cyan-900 placeholder:text-cyan-400" />
+                    className="w-full resize-none rounded-xl border border-cyan-300 bg-background px-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-cyan-400 dark:border-cyan-800/70" />
 
-                  <div className="bg-white border border-cyan-200 rounded-xl p-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-cyan-800">Estimated Credit</p>
-                    <p className="text-lg font-bold text-cyan-700">${calcCredit().toFixed(2)}</p>
+                  <div className="flex items-center justify-between rounded-xl border border-cyan-200 bg-background p-3 dark:border-cyan-800/70">
+                    <p className="text-sm font-semibold text-cyan-900 dark:text-cyan-100">Estimated Credit</p>
+                    <p className="text-lg font-bold text-cyan-800 dark:text-cyan-200">${calcCredit().toFixed(2)}</p>
                   </div>
 
                   <button onClick={handleSubmit} disabled={saving || uploading}
@@ -275,18 +283,18 @@ export default function PreOptimizeOrderCard({ order, pendingReturn, onVerifyRet
 
               {/* Already verified */}
               {pendingReturn && pendingReturn.verification_status !== 'requested' && !isEditing && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4 space-y-3 dark:border-green-900/60 dark:bg-green-950/30">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-semibold text-green-700">✓ Return Verified</p>
-                      <p className="text-[10px] text-green-600 mt-0.5">${(pendingReturn.credit_issued || 0).toFixed(2)} credit issued</p>
+                      <p className="text-xs font-semibold text-green-800 dark:text-green-100">✓ Return Verified</p>
+                      <p className="text-[10px] text-green-700 mt-0.5 dark:text-green-200/80">${(pendingReturn.credit_issued || 0).toFixed(2)} credit issued</p>
                     </div>
                     <button onClick={handleEditMode} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg active:scale-95 transition-transform">
                       <Edit2 className="w-3 h-3" />
                       Adjust
                     </button>
                   </div>
-                  <div className="space-y-1.5 text-[10px] text-green-700">
+                  <div className="space-y-1.5 text-[10px] text-green-800 dark:text-green-200/80">
                     <p>Small: {pendingReturn.small_bags_accepted || 0} of {pendingReturn.small_bags_requested || 0}</p>
                     <p>Tote: {pendingReturn.tote_bags_accepted || 0} of {pendingReturn.tote_bags_requested || 0}</p>
                   </div>

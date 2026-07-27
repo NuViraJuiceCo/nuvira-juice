@@ -50,6 +50,15 @@ export function adminStatusTone(value, context = 'status') {
   }
 
   if (
+    key.includes('demand_based') ||
+    key.includes('demand based') ||
+    key.includes('make_to_order') ||
+    key.includes('make to order')
+  ) {
+    return 'native';
+  }
+
+  if (
     key.includes('error') ||
     key.includes('fail') ||
     key.includes('blocked') ||
@@ -124,7 +133,7 @@ export function AdminStatusPill({
   );
 }
 
-export function AdminStatusLegend({ className = '' }) {
+export function AdminStatusLegend({ className = '', showHubFallback = true }) {
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
       <AdminStatusPill label="Ready / Complete" tone="success" />
@@ -132,7 +141,7 @@ export function AdminStatusLegend({ className = '' }) {
       <AdminStatusPill label="Needs Attention" tone="warning" />
       <AdminStatusPill label="Blocked" tone="danger" />
       <AdminStatusPill label="POS / Event" tone="source" />
-      <AdminStatusPill label="Hub Fallback" tone="hub" />
+      {showHubFallback && <AdminStatusPill label="Source Fallback" tone="hub" />}
     </div>
   );
 }

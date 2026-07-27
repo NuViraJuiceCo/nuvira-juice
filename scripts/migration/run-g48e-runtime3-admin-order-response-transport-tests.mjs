@@ -330,6 +330,27 @@ test('17. Compact response is materially smaller than large legacy fixture', asy
   assert.ok(compactSize < legacyFixtureSize, `${compactSize} !< ${legacyFixtureSize}`);
 });
 
+test('17b. Compact response remains under transport-safe size for high order volume', async () => {
+  const many = Array.from({ length: 90 }, (_, i) => order({
+    order_number: `NV-WINDOW-${i}`,
+    created_date: `2026-07-${String((i % 28) + 1).padStart(2, '0')}T10:00:00.000Z`,
+    notes: 'operator note '.repeat(40),
+    delivery_address: '123 Long Delivery Address '.repeat(16),
+    items: Array.from({ length: 12 }, (_unused, itemIndex) => ({
+      title: `Hydration Program Bottle Row ${itemIndex} With Extra Source Text`,
+      quantity: 1,
+      price: 13,
+      raw_provider_blob: 'not returned'.repeat(80),
+    })),
+  }));
+  const result = await invoke({ body: { response_mode: 'ADMIN_ORDER_LIST_COMPACT' }, records: { orders: many } });
+  const compactSize = JSON.stringify(result.payload).length;
+  assert.equal(result.payload.orders.length, result.payload.compact_order_limit);
+  assert.equal(result.payload.compact_order_windowed, true);
+  assert.equal(result.payload.orders_returned, result.payload.compact_order_limit);
+  assert.ok(compactSize < 60000, `compact response too large for SDK transport: ${compactSize}`);
+});
+
 test('18. Source truncation is reported', async () => {
   const many = Array.from({ length: 500 }, (_, i) => order({ order_number: `NV-${i}` }));
   const result = await invoke({ body: { response_mode: 'ADMIN_ORDER_LIST_COMPACT' }, records: { orders: many } });

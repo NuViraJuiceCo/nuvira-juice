@@ -44,6 +44,7 @@ jobs:
       - name: Verify open release-critical PRs
         env:
           GH_TOKEN: ${{ github.token }}
+          G50C_CURRENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: npm run release:verify-open-critical-prs -- --out release-evidence/critical-prs.json
       - name: Build web bundle
         run: npm run build
@@ -64,6 +65,7 @@ jobs:
       - name: Generate safe release evidence manifest
         env:
           G50C_RELEASE_RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          G50C_CURRENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: npm run release:generate-manifest -- --evidence-dir release-evidence --out release-evidence/native-release-manifest.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()

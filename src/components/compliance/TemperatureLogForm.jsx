@@ -3,7 +3,8 @@ import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Thermometer } from 'lucide-react';
+import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
 export default function TemperatureLogForm({ onClose }) {
   const [, setUser] = useState(null);
@@ -79,11 +80,14 @@ export default function TemperatureLogForm({ onClose }) {
   return (
     <Card className="mb-6">
       <CardHeader>
-        <CardTitle>🌡️ Temperature Log</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Thermometer className="h-5 w-5 text-primary" />
+          Temperature Log
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Date</label>
               <input
@@ -104,18 +108,13 @@ export default function TemperatureLogForm({ onClose }) {
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium">Staff Member</label>
-            <input
-              type="text"
-              value={formData.staff_member}
-              onChange={(e) => handleChange('staff_member', e.target.value)}
-              className="w-full border rounded-md p-2 mt-1 bg-muted text-foreground"
-              disabled
-            />
-          </div>
+          <StaffMemberPicker
+            label="Staff member"
+            value={formData.staff_member}
+            onChange={(value) => handleChange('staff_member', value)}
+          />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Location</label>
               <select
@@ -158,9 +157,9 @@ export default function TemperatureLogForm({ onClose }) {
           </div>
 
           {warning && (
-            <div className="flex gap-2 p-3 bg-lime-50 border border-lime-200 rounded-md">
-              <AlertCircle className="w-5 h-5 text-lime-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-lime-800">
+            <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/30">
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5 dark:text-amber-300" />
+              <div className="text-sm text-amber-800 dark:text-amber-100">
                 <p className="font-semibold">Out of Range</p>
                 <p>{warning}</p>
                 <p className="mt-1">A corrective action log will be required.</p>

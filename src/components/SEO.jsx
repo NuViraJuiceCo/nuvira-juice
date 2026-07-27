@@ -1,9 +1,11 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
+import { SITE_URL } from '@/lib/seo-slugs';
+import { BRAND_OG_IMAGE } from '@/lib/brandImages';
 
 const SITE_NAME = 'NuVira Juice Co.';
-const SITE_URL = 'https://www.nuvirajuice.com';
-const DEFAULT_IMAGE = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/6200af615_generated_image.png';
+const BRAND_ICON = `${SITE_URL}/icons/icon-512.png`;
+const DEFAULT_IMAGE = BRAND_OG_IMAGE;
 const DEFAULT_DESCRIPTION = "NuVira Juice Co. delivers fresh cold-pressed juices, wellness shots, and 3-day juice programs to your door in Wentzville, O'Fallon, St. Charles, and the greater St. Louis, MO area. Small-batch, made to order — Real. Living. Nutrition.";
 const DEFAULT_KEYWORDS = "cold pressed juice Wentzville MO, juice delivery St. Louis, fresh juice O'Fallon, NuVira Juice, juice cleanse St. Charles, wellness juice Missouri";
 
@@ -13,14 +15,12 @@ export const LOCAL_BUSINESS_SCHEMA = {
   "name": "NuVira Juice Co.",
   "alternateName": "NuVira Juice Company",
   "url": SITE_URL,
-  "logo": "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png",
+  "logo": BRAND_ICON,
   "image": DEFAULT_IMAGE,
   "description": DEFAULT_DESCRIPTION,
-  "telephone": "",
   "email": "info@nuvirajuice.com",
   "address": {
     "@type": "PostalAddress",
-    "streetAddress": "",
     "addressLocality": "Wentzville",
     "addressRegion": "MO",
     "postalCode": "63385",
@@ -39,6 +39,43 @@ export const LOCAL_BUSINESS_SCHEMA = {
   ],
   "servesCuisine": "Juice Bar",
   "priceRange": "$$",
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "customer support",
+    "email": "info@nuvirajuice.com",
+    "areaServed": "US-MO",
+    "availableLanguage": "English"
+  },
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "NuVira juice, wellness, and event services",
+    "itemListElement": [
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Service",
+          "name": "Cold-pressed juice delivery",
+          "serviceType": "Local cold-pressed juice delivery"
+        }
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Service",
+          "name": "3-day juice programs",
+          "serviceType": "Structured cold-pressed juice programs"
+        }
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Service",
+          "name": "Juice catering",
+          "serviceType": "Fresh juice for wellness events and private gatherings"
+        }
+      }
+    ]
+  },
   "openingHoursSpecification": {
     "@type": "OpeningHoursSpecification",
     "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
@@ -51,16 +88,18 @@ export const LOCAL_BUSINESS_SCHEMA = {
   ],
 };
 
-export default function SEO({ title, description, image, type = 'website', keywords, structuredData, noindex = false }) {
+export default function SEO({ title, description, image, type = 'website', keywords, structuredData, noindex = false, canonicalUrl: canonicalUrlOverride, canonicalPath }) {
   const fullTitle = title
     ? `${title} | ${SITE_NAME}`
     : `${SITE_NAME} | Cold-Pressed Juice Delivery — Wentzville & St. Louis, MO`;
   const metaDesc = description || DEFAULT_DESCRIPTION;
   const metaImage = image || DEFAULT_IMAGE;
   const metaKeywords = keywords || DEFAULT_KEYWORDS;
-  const canonicalUrl = typeof window !== 'undefined'
-    ? `${SITE_URL}${window.location.pathname.toLowerCase()}`
-    : SITE_URL;
+  const canonicalUrl = canonicalUrlOverride
+    || (canonicalPath ? `${SITE_URL}${canonicalPath.startsWith('/') ? canonicalPath : `/${canonicalPath}`}` : null)
+    || (typeof window !== 'undefined'
+      ? `${SITE_URL}${window.location.pathname.toLowerCase()}`
+      : SITE_URL);
 
   return (
     <Helmet>

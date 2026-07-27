@@ -276,8 +276,18 @@ const results = [];
   assert.equal(payload.dates[0].native_primary, true);
   assert.equal(payload.dates[0].hub_fallback_used, false);
   assert.ok(payload.summary.planned_units >= 1);
+  const nativeIngredient = payload.ingredients.find(row => row.ingredient === 'Pineapple' && row.data_source === 'customer_app_native');
+  assert.equal(nativeIngredient?.status, 'demand_based');
+  assert.equal(nativeIngredient?.available_stock, null);
+  assert.equal(nativeIngredient?.shortage_amount, 0);
+  assert.equal(nativeIngredient?.stock_authoritative, false);
+  assert.equal(nativeIngredient?.procurement_basis, 'demand_based_required');
+  assert.equal(nativeIngredient?.procurement_needed_quantity, 1);
+  assert.equal(payload.summary.shortage_count, 0);
+  assert.equal(payload.summary.demand_based_procurement_count, 1);
   assert.equal(writes.length, 0);
   results.push('native_production_planning_data_present_native_primary');
+  results.push('food_ingredient_planning_demand_based_not_stock_shortage');
   results.push('writes_performed_false');
   results.push('provider_call_impact_false');
   results.push('notifications_sent_false');
@@ -308,6 +318,80 @@ const results = [];
   assert.ok(payload.fallback_reasons.includes('native_planning_row_missing'));
   assert.ok(payload.dates.some(row => row.data_source === 'hub_fallback'));
   results.push('native_data_missing_hub_fallback_used');
+}
+
+{
+  const { payload } = await invoke({
+    store: {
+      nativeOrders: [
+        nativeOrder({
+          shopify_order_number: 'NV-G39F-DATE-PENDING',
+          production_date: null,
+          delivery_date: null,
+          assigned_delivery_date: null,
+          selected_delivery_date: null,
+          requested_delivery_date: null,
+          scheduled_delivery_date: null,
+          first_fulfillment: null,
+          fulfillments: [],
+        }),
+      ],
+    },
+    hubData: hubPlanningWithPineapple({ planned_units: 15, required_quantity: 480 }),
+  });
+  const scheduledHubRow = payload.dates.find(row => row.production_date === PRODUCTION_DATE && row.data_source === 'hub_fallback');
+  const pendingNativeRow = payload.dates.find(row => row.production_date === 'date_pending' && row.data_source === 'customer_app_native');
+  const scheduledHubIngredient = payload.ingredients.find(row => (
+    row.data_source === 'hub_fallback' &&
+    Array.isArray(row.production_dates) &&
+    row.production_dates.includes(PRODUCTION_DATE)
+  ));
+  const pendingNativeIngredient = payload.ingredients.find(row => (
+    row.data_source === 'customer_app_native' &&
+    Array.isArray(row.production_dates) &&
+    row.production_dates.includes('date_pending')
+  ));
+  assert.equal(payload.summary.planned_units, 15);
+  assert.equal(payload.summary.date_pending_planned_units, 1);
+  assert.equal(payload.summary.production_date_count, 1);
+  assert.equal(pendingNativeRow?.excluded_from_scheduled_totals, true);
+  assert.equal(pendingNativeRow?.review_only, true);
+  assert.ok(pendingNativeRow?.warnings?.includes('date_pending_review_only'));
+  assert.ok(scheduledHubRow);
+  assert.ok(scheduledHubIngredient);
+  assert.equal(pendingNativeIngredient?.excluded_from_scheduled_totals, true);
+  assert.ok(payload.warnings.includes('native_date_pending_excluded_from_scheduled_totals'));
+  results.push('date_pending_native_overlay_excluded_from_scheduled_hub_totals');
+  results.push('date_pending_native_ingredients_do_not_suppress_dated_hub_ingredients');
+}
+
+{
+  const { payload } = await invoke({
+    store: {
+      nativeOrders: [
+        nativeOrder({
+          shopify_order_number: 'NV-G39F-STALE-DATE-PENDING',
+          production_date: null,
+          delivery_date: null,
+          assigned_delivery_date: null,
+          selected_delivery_date: null,
+          requested_delivery_date: null,
+          scheduled_delivery_date: null,
+          first_fulfillment: null,
+          fulfillments: [],
+          customer_order_date: '2026-05-01T12:00:00Z',
+          created_date: '2026-05-01T12:00:00Z',
+          updated_date: '2026-05-01T12:00:00Z',
+        }),
+      ],
+    },
+    hubData: emptyHubPlanning(),
+  });
+  assert.equal(payload.summary.planned_units, 0);
+  assert.equal(payload.summary.skipped_missing_date_count, 0);
+  assert.equal(payload.summary.date_pending_planned_units, 0);
+  assert.equal(payload.dates.some(row => row.production_date === 'date_pending'), false);
+  results.push('stale_date_pending_native_overlay_excluded_from_current_planning_window');
 }
 
 {
