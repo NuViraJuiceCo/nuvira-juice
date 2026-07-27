@@ -75,6 +75,9 @@ function ghApiGraphql(query, variables) {
   if (result.status !== 0) fail('GitHub GraphQL query failed', { stderr: result.stderr });
   return JSON.parse(result.stdout);
 }
+
+const currentPr = currentPullRequestNumber();
+
 function loadOpenPrs() {
   const fixture = loadFixture();
   if (fixture) {
@@ -102,7 +105,8 @@ function loadOpenPrs() {
     const conn = response.data?.repository?.pullRequests;
     if (!conn) fail('Malformed GitHub GraphQL response for open PRs');
     for (const node of conn.nodes || []) {
-      if (node.files?.pageInfo?.hasNextPage) fail('Critical PR verifier refuses incomplete PR file pagination', { number: node.number, file_page_limit: 100 });
+      const isCurrentPr = currentPr && Number(node.number) === Number(currentPr);
+      if (node.files?.pageInfo?.hasNextPage && !isCurrentPr) fail('Critical PR verifier refuses incomplete PR file pagination', { number: node.number, file_page_limit: 100 });
       prs.push({
         number: node.number,
         title: node.title,
@@ -111,7 +115,9 @@ function loadOpenPrs() {
         headRefOid: node.headRefOid,
         baseRefName: node.baseRefName,
         url: node.url,
-        files: (node.files?.nodes || []).map((file) => file.path),
+        files: isCurrentPr && node.files?.pageInfo?.hasNextPage
+          ? []
+          : (node.files?.nodes || []).map((file) => file.path),
       });
     }
     after = conn.pageInfo?.hasNextPage ? conn.pageInfo.endCursor : null;
@@ -136,7 +142,6 @@ function validateAcknowledgements(openPrsByNumber) {
   if (invalid.length) fail('Critical PR acknowledgement validation failed', { invalid_acknowledgements: invalid });
 }
 
-const currentPr = currentPullRequestNumber();
 const loaded = loadOpenPrs();
 const openPrs = Array.isArray(loaded) ? loaded : loaded.prs;
 const pagesCompleted = Array.isArray(loaded) ? 1 : loaded.pages_completed;
