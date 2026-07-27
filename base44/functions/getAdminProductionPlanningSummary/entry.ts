@@ -13,18 +13,15 @@ const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data',
 const DATE_PENDING = 'date_pending';
 const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
 const UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS = 14;
-const MAY30_EVENT_DATE = '2026-05-30';
+const MAY30_EVENT_DATE = '2026-07-11';
 const MAY30_POS_EVENT_STOCK_PLAN = {
   event_date: MAY30_EVENT_DATE,
-  event_count: 2,
+  event_count: 1,
   target: 'sell_out',
   items: [
-    { product_name: 'Oasis', quantity: 45, product_category: 'May 30 POS Event Stock' },
-    { product_name: 'Aura', quantity: 45, product_category: 'May 30 POS Event Stock' },
-    { product_name: 'Re-Nu', quantity: 15, product_category: 'May 30 POS Event Stock' },
-    { product_name: 'Hydration Shot', quantity: 9, product_category: 'May 30 POS Event Stock' },
-    { product_name: 'Reset Shot', quantity: 1, product_category: 'May 30 POS Event Stock' },
-    { product_name: 'Radiance Shot', quantity: 5, product_category: 'May 30 POS Event Stock' },
+    { product_name: 'Oasis', quantity: 75, product_category: 'July 11 POS Event Stock' },
+    { product_name: 'Aura', quantity: 75, product_category: 'July 11 POS Event Stock' },
+    { product_name: 'Re-Nu', quantity: 20, product_category: 'July 11 POS Event Stock' },
   ],
 };
 const BUILT_IN_RECIPE_FALLBACKS = {
@@ -1267,8 +1264,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   if (isInRange(MAY30_POS_EVENT_STOCK_PLAN.event_date, dateFrom, dateTo)) {
     eventStockPlanIncluded = true;
     ensurePlanningDate(MAY30_POS_EVENT_STOCK_PLAN.event_date);
-    orderNumbersByDate.get(MAY30_POS_EVENT_STOCK_PLAN.event_date).add('May 30 POS Event 1');
-    orderNumbersByDate.get(MAY30_POS_EVENT_STOCK_PLAN.event_date).add('May 30 POS Event 2');
+    orderNumbersByDate.get(MAY30_POS_EVENT_STOCK_PLAN.event_date).add('July 11 POS Event');
 
     for (const item of MAY30_POS_EVENT_STOCK_PLAN.items) {
       addProductDemand({

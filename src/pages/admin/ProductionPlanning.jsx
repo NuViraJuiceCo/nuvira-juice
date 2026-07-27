@@ -185,7 +185,7 @@ function StatusBadge({ status }) {
 
 function sourceLabel(source) {
   if (source === 'customer_app_native') return 'Native Customer App';
-  if (source === 'may30_pos_event_stock_plan') return 'May 30 POS Event Stock';
+  if (source === 'may30_pos_event_stock_plan') return 'POS Event Stock';
   if (source === 'mixed_native_and_event_plan') return 'Native + POS Event Stock';
   return 'Source';
 }
@@ -675,7 +675,7 @@ export default function ProductionPlanning() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Production Planning view</p>
-            <p className="text-[10px] text-muted-foreground">Source batches plus native Customer App production demand. Food and juice ingredients are calculated from recipes/yields, not standing inventory counts.</p>
+            <p className="text-[10px] text-muted-foreground">Source batches, native Customer App production demand, and event stock plans. Food and juice ingredients are calculated from recipes/yields, not standing inventory counts.</p>
             {Number(nativeOverlay.order_count || 0) > 0 && (
               <p className="text-[10px] text-emerald-700 mt-1">
                 Native production overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · {formatNumber(nativeOverlay.demand_based_procurement_count, 0)} demand procurement row{Number(nativeOverlay.demand_based_procurement_count) === 1 ? '' : 's'} · read-only
@@ -758,7 +758,7 @@ export default function ProductionPlanning() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Date-Grouped Production Summary</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Grouped production demand from source batches and accepted native Customer App order mirrors</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Grouped production demand from Hub batches, native order mirrors, and event stock plans</p>
               </div>
               {dateGroups.length > 0 ? (
                 <div className="space-y-3">

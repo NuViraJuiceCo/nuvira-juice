@@ -343,7 +343,10 @@ function CheckoutFlow() {
 
   const totalBottles = items.reduce((sum, item) => {
     if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
-    return sum + item.quantity;
+    if (item.category === 'juice') return sum + item.quantity;
+    if (item.category === 'shot') return sum + item.quantity;
+    if (!item.category && item.title && !/tote|bag|shirt|merch/i.test(item.title)) return sum + item.quantity;
+    return sum;
   }, 0);
 
   const setCheckoutStartLockedSafely = (locked) => {

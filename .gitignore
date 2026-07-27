@@ -31,3 +31,4 @@ release-evidence
 
 .env
 .vite
+base44/.app.jsonc

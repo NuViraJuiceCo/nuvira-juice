@@ -7,7 +7,7 @@ This feature adds gated admin push for paid order processing events.
 - Sends an admin in-app notification when `notifyOrderProcessed` completes its existing operations email.
 - Attempts push only for admin recipients with a saved push subscription.
 - Uses notification subtype `admin_order_processed`.
-- Keeps customer campaign sending disabled.
+- Customer campaign sending is available from the admin notifications page and still requires an explicit send action.
 - Does not change Stripe, Shopify, checkout, order status, inventory, fulfillment, or sync behavior.
 
 ## Required Flags
@@ -17,6 +17,7 @@ Set these Base44 secrets to enable the order alert path:
 ```text
 ENABLE_ADMIN_PUSH_NOTIFICATIONS=true
 ENABLE_ADMIN_ORDER_PROCESSED_PUSH=true
+ENABLE_CUSTOMER_PUSH_NOTIFICATIONS=true
 ```
 
 Optional:
@@ -24,6 +25,7 @@ Optional:
 ```text
 ADMIN_PUSH_RECIPIENT_EMAILS=admin1@example.com,admin2@example.com
 ADMIN_PUSH_INTERNAL_SECRET=<shared internal secret>
+DISABLE_NOTIFICATION_CAMPAIGN_SENDS=true
 ```
 
 If `ADMIN_PUSH_RECIPIENT_EMAILS` is not set, the backend targets users with `role=admin`.
@@ -54,3 +56,14 @@ Expected result:
 - skipped reason from the last admin push test
 
 The self-test function creates a single admin-only test notification only after at least one active subscription exists.
+
+## Customer Campaigns
+
+Customer campaigns are sent from `/admin/notifications`.
+
+- `Test Only (admin)` sends only to the logged-in admin.
+- Broad audiences require the browser confirmation prompt before sending.
+- Campaign sends create in-app notifications and attempt push delivery for customers with active saved push subscriptions.
+- Promotion and new-drop campaigns respect the `promotions` notification preference.
+- Sent campaigns cannot be re-sent; create a new campaign for a new blast.
+- Set `DISABLE_NOTIFICATION_CAMPAIGN_SENDS=true` only if campaign sending needs to be emergency-disabled.

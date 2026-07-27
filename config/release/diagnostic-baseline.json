@@ -1,8 +1,7 @@
 {
   "schema_version": 2,
-  "generated_from_commit": "90f138583b19b2d252b7b94de0a58c97700720fd",
-  "generated_at_utc": "2026-06-23T22:57:52.247Z",
-  "package_lock_sha256": "9616ccd03ca8b5e9b6d585d470468adaa2996617d9bca9fcac2e1f4940cf425a",
+  "generated_from_commit": "b459b98d05eacb4f62a39de740c7f6b53787baac",
+  "generated_at_utc": "2026-07-10T16:19:50.347Z",
   "policy": "Fingerprint baseline allows resolved diagnostics and rejects new diagnostics; baseline edits are release-critical.",
   "lint": {
     "diagnostics": [
@@ -623,14 +622,6 @@
         "fingerprint": "10f01dbf798157457ff8b13a6341747c9962df6130961ca57ca1ea16542db969"
       },
       {
-        "file": "src/components/checkout/ApplePayMountDiagnostic.jsx",
-        "ts_code": "TS2339",
-        "line": 261,
-        "column": 97,
-        "message_fingerprint": "3f88cfb92e269b17b88da955",
-        "fingerprint": "111093f2396cc201dbc918fd7ac9b79bf54519e297985fefba43d0ff34ca62f8"
-      },
-      {
         "file": "src/pages/AccountSetup.jsx",
         "ts_code": "TS2322",
         "line": 303,
@@ -677,6 +668,14 @@
         "column": 28,
         "message_fingerprint": "19b3000cc2feffe40a0ae6dc",
         "fingerprint": "147b39468552d0ebc643fd3117de20d339e389768662263c5c77a70cbd088925"
+      },
+      {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 800,
+        "column": 21,
+        "message_fingerprint": "39c260864e3c3b4483ee343b",
+        "fingerprint": "14b57c9500f8ae3072b66fd875188a0c309f160fcae2dbcbd9693853d26953b4"
       },
       {
         "file": "src/components/ui/input.jsx",
@@ -781,14 +780,6 @@
         "column": 18,
         "message_fingerprint": "2c6c607f426ea7742368814f",
         "fingerprint": "18cb8cde488e4fb5e43a115912506df88ab1fc22ff24391ff763303f8c132010"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 1115,
-        "column": 16,
-        "message_fingerprint": "36fd7a2fec6ba99a4bf4d187",
-        "fingerprint": "18f77713b7691bea4730110226f987fb0c8e649e8942c4aae5000dfdb90ea83f"
       },
       {
         "file": "src/components/compliance/pHLogForm.jsx",
@@ -1103,36 +1094,12 @@
         "fingerprint": "24afb28c135cab73596b7aeebc1bd9b96b9fa189a510812d0507998bdb6a9aa9"
       },
       {
-        "file": "src/pages/Cart.jsx",
-        "ts_code": "TS2322",
-        "line": 409,
-        "column": 12,
-        "message_fingerprint": "f854a5cbce86b9c065a8e834",
-        "fingerprint": "24c3fa278a149431f192837f48b061a3c5ab709a7f705ece92bcfbaa93709499"
-      },
-      {
         "file": "src/pages/admin/ComplianceOps.jsx",
         "ts_code": "TS2322",
         "line": 270,
         "column": 12,
         "message_fingerprint": "307521ccbd49dfaf264bcf8f",
         "fingerprint": "24d5c5e29aee15687c7f7c118bbec1bdc96c0dece9fc6ec7d140fdaf03328a86"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 864,
-        "column": 12,
-        "message_fingerprint": "972fd84de65252d6dcd0b1b2",
-        "fingerprint": "24de7531eebc36abdf9b4bf0b2e77f708430e544aa8240f21986a50121ae51e7"
-      },
-      {
-        "file": "src/components/checkout/ApplePayMountDiagnostic.jsx",
-        "ts_code": "TS2322",
-        "line": 250,
-        "column": 15,
-        "message_fingerprint": "408b3f3e4ac15a95bd806c56",
-        "fingerprint": "24f48557cf697f2e19d29dcb665c604260698fa976439614a8a99aa6e401c8b8"
       },
       {
         "file": "src/pages/admin/POSOrders.jsx",
@@ -1367,6 +1334,14 @@
         "fingerprint": "2cb6e5d3ff613c8822a04fc787de0e95a3cf6ea1f6454ab636b38f46980b0b48"
       },
       {
+        "file": "src/pages/Merch.jsx",
+        "ts_code": "TS2322",
+        "line": 197,
+        "column": 20,
+        "message_fingerprint": "f854a5cbce86b9c065a8e834",
+        "fingerprint": "2d32fb4b98eab3a8ef8a63381b0633aead60a95d68df07106776d38a7a4da5ad"
+      },
+      {
         "file": "src/pages/admin/SyncHealth.jsx",
         "ts_code": "TS2739",
         "line": 217,
@@ -1447,6 +1422,14 @@
         "fingerprint": "2f9bc6a6408525291fd6b7a54e04a7e082d3e0d377f25c071ce0d3b73ed71378"
       },
       {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 836,
+        "column": 13,
+        "message_fingerprint": "8cd0a5e42bb6e340499ccb31",
+        "fingerprint": "3003fc1468328b7d638f448192df6200343fc9223fac226604f6fc93acb0b83c"
+      },
+      {
         "file": "src/components/compliance/CCPLogForm.jsx",
         "ts_code": "TS2322",
         "line": 182,
@@ -1517,14 +1500,6 @@
         "column": 18,
         "message_fingerprint": "56256d058b2cb6e5ce9124c9",
         "fingerprint": "3225dbd8b95edd1556b02a054894e0b9f8292ee6243b22778befff5dcb905916"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2739",
-        "line": 719,
-        "column": 8,
-        "message_fingerprint": "caf4815a425ff16d44c97dcb",
-        "fingerprint": "322f8265388818cfa4571336578e198f5918af79a450e8a93d40a694ea7f346e"
       },
       {
         "file": "src/pages/admin/SyncHealth.jsx",
@@ -1783,14 +1758,6 @@
         "fingerprint": "3b74d732e025b249bf2ea7bb1f49a03a5045e504aeaa0befc8e2f18d5bc6774f"
       },
       {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2551",
-        "line": 580,
-        "column": 32,
-        "message_fingerprint": "39ad32401537dd99dcf09d97",
-        "fingerprint": "3b7568ca33a4fc36089eb4c5372c888beaf01e09189c4d355a77e33bcb49cac1"
-      },
-      {
         "file": "src/components/AddressAutocomplete.jsx",
         "ts_code": "TS2322",
         "line": 94,
@@ -1943,6 +1910,14 @@
         "fingerprint": "41161cd539b5ff3e11fa0127ee9ebe747048f0d8188d557c7e2059bb6b1018f3"
       },
       {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 831,
+        "column": 10,
+        "message_fingerprint": "972fd84de65252d6dcd0b1b2",
+        "fingerprint": "41752b441674dfa8f65003f30adbd7dc0567be651026383ce1581aa624c2e526"
+      },
+      {
         "file": "src/components/compliance/HACCPPlanTab.jsx",
         "ts_code": "TS2322",
         "line": 123,
@@ -1957,14 +1932,6 @@
         "column": 28,
         "message_fingerprint": "19b3000cc2feffe40a0ae6dc",
         "fingerprint": "4251ff7293f4e25d486cf6dd971b0d8fbf4bde26a166566ddc87b175473bb3bb"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2339",
-        "line": 396,
-        "column": 13,
-        "message_fingerprint": "ce9462a571eb2d5d50f12624",
-        "fingerprint": "4257b2f40d6de4a0fe162c58d1d8c46663e9284b657171eb262f99490bbcb7eb"
       },
       {
         "file": "src/components/compliance/PrintableLogSheet.jsx",
@@ -2031,14 +1998,6 @@
         "fingerprint": "44eec25987d29c144e2e8c6b2bf16a6750c61613f375e18d4424898741052c39"
       },
       {
-        "file": "src/pages/Merch.jsx",
-        "ts_code": "TS2322",
-        "line": 82,
-        "column": 17,
-        "message_fingerprint": "ec9f02156769fbb707f87522",
-        "fingerprint": "44f1f1138a75dad9ca2cd442c19f2a38f847653b4ba8bc42e7a27f73c1d8e198"
-      },
-      {
         "file": "src/pages/Support.jsx",
         "ts_code": "TS2322",
         "line": 155,
@@ -2069,14 +2028,6 @@
         "column": 18,
         "message_fingerprint": "4637f9b4df0acf41a0a81021",
         "fingerprint": "460078fa8714c092481ba59398789ba40a0b0256ee8060cb0aa7c39f54cd76fd"
-      },
-      {
-        "file": "src/pages/Merch.jsx",
-        "ts_code": "TS2322",
-        "line": 88,
-        "column": 16,
-        "message_fingerprint": "36fd7a2fec6ba99a4bf4d187",
-        "fingerprint": "471e7635f04a0838139da149c2d6a62283ab84cc56d10f8295437715bf030500"
       },
       {
         "file": "src/pages/WhyNuVira.jsx",
@@ -2143,14 +2094,6 @@
         "fingerprint": "488b9163a53f592078ccad205763377c46c45e45f04fd91263118c4595c2a6bc"
       },
       {
-        "file": "src/pages/ProductDetail.jsx",
-        "ts_code": "TS2739",
-        "line": 101,
-        "column": 10,
-        "message_fingerprint": "6549f83715a8ac50c87cc98d",
-        "fingerprint": "48c09343890c1db5fd99745d19f21a7ab3babe009d137d4a71f4cda758f128e5"
-      },
-      {
         "file": "src/components/compliance/PrintableLogSheet.jsx",
         "ts_code": "TS2741",
         "line": 109,
@@ -2207,6 +2150,14 @@
         "fingerprint": "4a33e6b555237a5320d8424113bbcda9bda225dbfe5e8a5b177fe954037ab7e6"
       },
       {
+        "file": "src/pages/Shop.jsx",
+        "ts_code": "TS2739",
+        "line": 109,
+        "column": 8,
+        "message_fingerprint": "6549f83715a8ac50c87cc98d",
+        "fingerprint": "4ae3d7b2eabbe4f1f78a46a6bf4827255ada82b5a356901c659ccc10ad7c9e26"
+      },
+      {
         "file": "src/components/compliance/LabelAllergenTab.jsx",
         "ts_code": "TS2322",
         "line": 72,
@@ -2261,14 +2212,6 @@
         "column": 10,
         "message_fingerprint": "d2c40cfc4c95daf65e49132d",
         "fingerprint": "4cb696759d67da958f14aabc89adc82ca60d84acd5e7f652ef17ec576ee68bf8"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 868,
-        "column": 13,
-        "message_fingerprint": "758ac6060927240335beecc0",
-        "fingerprint": "4cd35a8ecf073ac4c6c99b750f050d994fa18dcc064e5c78ef646563455ec411"
       },
       {
         "file": "src/pages/admin/ProductionQueueSummary.jsx",
@@ -2407,12 +2350,12 @@
         "fingerprint": "5251a136feac729ebdcad556712407ea8c0d536f913c1af192e5e651b220d5f2"
       },
       {
-        "file": "src/pages/Checkout.jsx",
+        "file": "src/pages/Shop.jsx",
         "ts_code": "TS2322",
-        "line": 839,
-        "column": 12,
-        "message_fingerprint": "49f93976966a6eb23a4e92f7",
-        "fingerprint": "52868398174a197ca5ba34eb42372f4b52c3c04dc0431dce48786bcf95cba798"
+        "line": 124,
+        "column": 13,
+        "message_fingerprint": "3606658ad5a246babce1189d",
+        "fingerprint": "5253a0046a72e6a60776643b8069cc5cc30754c00a3f31d467e0d18cf5f1040a"
       },
       {
         "file": "src/components/compliance/UnifiedComplianceForm.jsx",
@@ -2429,6 +2372,14 @@
         "column": 10,
         "message_fingerprint": "c5ddd0f2d27c1cd73ce2c634",
         "fingerprint": "53292a5db7d8af94e7ca2a37d424cc1365c7705d3b43c0b198bce71844d30f1e"
+      },
+      {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2551",
+        "line": 583,
+        "column": 32,
+        "message_fingerprint": "39ad32401537dd99dcf09d97",
+        "fingerprint": "533356655373b619496b79eb1d2ec35d2d08b4463de96b09be071702b498232b"
       },
       {
         "file": "src/components/compliance/ComplianceDashboard.jsx",
@@ -2461,14 +2412,6 @@
         "column": 28,
         "message_fingerprint": "19b3000cc2feffe40a0ae6dc",
         "fingerprint": "54386b9bb52af04da564dfb423fb5b04fdd951d88fad894352e269e0f44898d2"
-      },
-      {
-        "file": "src/components/checkout/ApplePayMountDiagnostic.jsx",
-        "ts_code": "TS2339",
-        "line": 263,
-        "column": 92,
-        "message_fingerprint": "06a24426d478bec04423c915",
-        "fingerprint": "544bdb894d9addbb9071ce96db2f47126f1b5821aa27194918f696eabfe8dd83"
       },
       {
         "file": "src/pages/admin/LiveCheckoutMonitor.jsx",
@@ -2509,14 +2452,6 @@
         "column": 6,
         "message_fingerprint": "93ab66c862d416b56e3367bb",
         "fingerprint": "552a8440479e23f256938d2f01ea91c5c64761ed0286b4d71ef66b34dcd61bbb"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 674,
-        "column": 10,
-        "message_fingerprint": "68869efa94e302b016833ab8",
-        "fingerprint": "5551d1c60ebd15bd96e1bdaaa51c6f856b63db2739bc4d1bc1831eca3b91f9f2"
       },
       {
         "file": "src/pages/OrderConfirmation.jsx",
@@ -2605,14 +2540,6 @@
         "column": 16,
         "message_fingerprint": "972fd84de65252d6dcd0b1b2",
         "fingerprint": "57ffa8c4633199918c02a325f6a68f5b754f857527d1a04be105fca1734d949e"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 833,
-        "column": 13,
-        "message_fingerprint": "8cd0a5e42bb6e340499ccb31",
-        "fingerprint": "58344d23bb856e66e3ea04e00282aa6de18034159e47340a02b11b3061dac495"
       },
       {
         "file": "src/components/compliance/ProductionAuditPacket.jsx",
@@ -2773,14 +2700,6 @@
         "column": 11,
         "message_fingerprint": "961f758c4c31b9551080508f",
         "fingerprint": "5c3c5c5d6ccd53cb7c7bdd95aa7d54a898b41d8bf3448c0f35ad7d49d5bee2c2"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 828,
-        "column": 10,
-        "message_fingerprint": "972fd84de65252d6dcd0b1b2",
-        "fingerprint": "5c7d2289d3f127540ca934d3021bafa5be019e5351a25d19b45a5b7a0854ae11"
       },
       {
         "file": "src/components/compliance/BatchComplianceLogForm.jsx",
@@ -2981,14 +2900,6 @@
         "column": 16,
         "message_fingerprint": "88011f0f21aa16f99337e116",
         "fingerprint": "65b99444dc4eca8f1685b8614a92a4cc1f6b77b2692ec9d8b374fe8eaffe6680"
-      },
-      {
-        "file": "src/pages/Shop.jsx",
-        "ts_code": "TS2739",
-        "line": 108,
-        "column": 8,
-        "message_fingerprint": "6549f83715a8ac50c87cc98d",
-        "fingerprint": "67b435899f678cc655159b9de6c6bc44582f01e08afef79ed355a4d1baff67f9"
       },
       {
         "file": "src/pages/admin/LiveCheckoutMonitor.jsx",
@@ -3423,14 +3334,6 @@
         "fingerprint": "793d5734dbb36e82a0cbd21da599549d053b42f3f720a9362e3a48635904cb67"
       },
       {
-        "file": "src/pages/Cart.jsx",
-        "ts_code": "TS2322",
-        "line": 132,
-        "column": 12,
-        "message_fingerprint": "972fd84de65252d6dcd0b1b2",
-        "fingerprint": "795bb6d4a119a684a3f6350d27391823626ba6dedebcc997ca72072539450a90"
-      },
-      {
         "file": "src/components/compliance/SanitationLogForm.jsx",
         "ts_code": "TS2322",
         "line": 57,
@@ -3495,20 +3398,20 @@
         "fingerprint": "7d80cd7dc52e684246021577f921df3a5768c9d5874be692eaa8a2d6b41c1aba"
       },
       {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 701,
-        "column": 10,
-        "message_fingerprint": "661954ded5262c39357b57e3",
-        "fingerprint": "7e6549e91dce612291182f95705f58618e9d5389f2f3efd69def538594c2f831"
-      },
-      {
         "file": "src/pages/SubscriptionManagement.jsx",
         "ts_code": "TS2322",
         "line": 357,
         "column": 24,
         "message_fingerprint": "062e62798d151abe05364fc0",
         "fingerprint": "7e691c8941947411f06b605936944f879cc47145df1763ea89086d2f90cbc840"
+      },
+      {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 871,
+        "column": 13,
+        "message_fingerprint": "758ac6060927240335beecc0",
+        "fingerprint": "7e776c4a940abe38e68afcc7194d074ae223504426c2e72b2314c950a15e724d"
       },
       {
         "file": "src/pages/admin/ProductionQueueSummary.jsx",
@@ -3581,14 +3484,6 @@
         "column": 10,
         "message_fingerprint": "db0e579b4718c5f6f3a450b7",
         "fingerprint": "81c9c6fd2a1bd8c187dd8d58f7bf106b0e8e27c061d93fe1a4a7877fbedc4281"
-      },
-      {
-        "file": "src/components/checkout/ApplePayMountDiagnostic.jsx",
-        "ts_code": "TS2322",
-        "line": 171,
-        "column": 12,
-        "message_fingerprint": "7c36166bbcd638469aef86e9",
-        "fingerprint": "8208634f97e4bda90a3a09ad286460896331481462f483be0a17afd0b0fe240f"
       },
       {
         "file": "src/pages/admin/ComplianceOps.jsx",
@@ -3701,14 +3596,6 @@
         "column": 14,
         "message_fingerprint": "2c6c607f426ea7742368814f",
         "fingerprint": "85801a590e58ad4fb997b4e0af248b67b96e54927c43e1eca98d0f5bdaecc7e0"
-      },
-      {
-        "file": "src/pages/ProductDetail.jsx",
-        "ts_code": "TS2322",
-        "line": 298,
-        "column": 12,
-        "message_fingerprint": "389b7f9a0b90b22db9b187ac",
-        "fingerprint": "85e501043dffac783a28262fbd27cde0b5dabf8bfeffbbb35e34671b92b66eab"
       },
       {
         "file": "src/pages/admin/ComplianceOps.jsx",
@@ -3879,6 +3766,14 @@
         "fingerprint": "8b5dbdfcad5d2fdaa46036131ad3fcddb51577bc7889e81ac5b7ee57b126f8bf"
       },
       {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 842,
+        "column": 12,
+        "message_fingerprint": "49f93976966a6eb23a4e92f7",
+        "fingerprint": "8bd96e83c5e68d51e23bd87ae83f8bf09b2380e3df790e9032ca424962b1c79f"
+      },
+      {
         "file": "src/components/compliance/ProductionAuditPacket.jsx",
         "ts_code": "TS2741",
         "line": 521,
@@ -3917,14 +3812,6 @@
         "column": 10,
         "message_fingerprint": "2c6c607f426ea7742368814f",
         "fingerprint": "8cefb8a5e6ea9f06b9abd4dcb631763822de08a3284be38f28d222141efd5c41"
-      },
-      {
-        "file": "src/components/checkout/ApplePayMountDiagnostic.jsx",
-        "ts_code": "TS2339",
-        "line": 264,
-        "column": 93,
-        "message_fingerprint": "d26bd0d39af5415e98376265",
-        "fingerprint": "8d18318ae8ba59d938cb430470a65c049c68c1115ee65ebab9fefb37e0156012"
       },
       {
         "file": "src/pages/admin/SyncHealth.jsx",
@@ -3975,6 +3862,14 @@
         "fingerprint": "8e2a84c78fd7d78a096ac725b5c9b1b3bda335c18b729900fec924aba29b4e78"
       },
       {
+        "file": "src/pages/ProductDetail.jsx",
+        "ts_code": "TS2739",
+        "line": 102,
+        "column": 10,
+        "message_fingerprint": "6549f83715a8ac50c87cc98d",
+        "fingerprint": "8e4b33be92f1326912602f727cbdd71ecd4ce0f41a2485ca361ae10be23e7a10"
+      },
+      {
         "file": "src/pages/AccountSetup.jsx",
         "ts_code": "TS2322",
         "line": 239,
@@ -4007,6 +3902,14 @@
         "fingerprint": "8f7c83e02487d278a3781bc064d8bf207dd93e45e593a06faa837c0f3136be3f"
       },
       {
+        "file": "src/pages/Merch.jsx",
+        "ts_code": "TS2322",
+        "line": 145,
+        "column": 16,
+        "message_fingerprint": "36fd7a2fec6ba99a4bf4d187",
+        "fingerprint": "8f9fbe4e48716933c5c57c0a7503319954329d8a2099433318783068ca51aaa8"
+      },
+      {
         "file": "src/components/compliance/DailyChecklistForm.jsx",
         "ts_code": "TS2322",
         "line": 197,
@@ -4029,14 +3932,6 @@
         "column": 8,
         "message_fingerprint": "6549f83715a8ac50c87cc98d",
         "fingerprint": "9191031d85890758b34c5ac7f05823ea7773a33659a13e3ded59ea65209d0b70"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 887,
-        "column": 14,
-        "message_fingerprint": "972fd84de65252d6dcd0b1b2",
-        "fingerprint": "9205c38335ca8db4b3ac4f13032090784548feca4daf6bc44a90c885e0d3d27f"
       },
       {
         "file": "src/pages/admin/SyncHealth.jsx",
@@ -4101,6 +3996,14 @@
         "column": 12,
         "message_fingerprint": "307521ccbd49dfaf264bcf8f",
         "fingerprint": "94aae5ffe3351a454038429e6af67ed713f44e811d5e25da6046a43808dfeaa5"
+      },
+      {
+        "file": "src/pages/ProductDetail.jsx",
+        "ts_code": "TS2322",
+        "line": 302,
+        "column": 12,
+        "message_fingerprint": "389b7f9a0b90b22db9b187ac",
+        "fingerprint": "9503ad41f806f47a7fe9454e1a32a407aae1e607740f53b86503f8522a0297bd"
       },
       {
         "file": "src/pages/admin/SyncHealth.jsx",
@@ -4247,6 +4150,14 @@
         "fingerprint": "9a96d87a15303c25e16f44480ae6970fc5aaa6cb3439b16f21a8e9b6cb74a13b"
       },
       {
+        "file": "src/pages/Cart.jsx",
+        "ts_code": "TS2322",
+        "line": 135,
+        "column": 12,
+        "message_fingerprint": "972fd84de65252d6dcd0b1b2",
+        "fingerprint": "9aa9e4471492eb004f2ad7f155ef271449bb50fbaf95d65bec122fa675f40b6e"
+      },
+      {
         "file": "src/pages/admin/Calendar.jsx",
         "ts_code": "TS2739",
         "line": 681,
@@ -4269,6 +4180,14 @@
         "column": 8,
         "message_fingerprint": "3534bdb82cbbbdb22be07118",
         "fingerprint": "9b2bb4815f7a9baf45c8284895184de0d2f9c63c62fc06eeca131619522e271f"
+      },
+      {
+        "file": "src/pages/Merch.jsx",
+        "ts_code": "TS2322",
+        "line": 139,
+        "column": 17,
+        "message_fingerprint": "ec9f02156769fbb707f87522",
+        "fingerprint": "9b679087926c541960dfb820fc80646c54890ce4a1c2d02a43d4b63f80ad485b"
       },
       {
         "file": "src/pages/OrderConfirmation.jsx",
@@ -4519,6 +4438,14 @@
         "fingerprint": "a765a678c96c7b0f70dcc5314eeda2c4ff9561a4f98f6bbd975fdbd801b72906"
       },
       {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 821,
+        "column": 21,
+        "message_fingerprint": "39c260864e3c3b4483ee343b",
+        "fingerprint": "a7c83861f0f14bbd8689c801ae19195a2fd346291a8dcfd11bb13b180e0c1b6b"
+      },
+      {
         "file": "src/pages/admin/InventoryStatus.jsx",
         "ts_code": "TS2741",
         "line": 253,
@@ -4557,14 +4484,6 @@
         "column": 28,
         "message_fingerprint": "d628e5adb7b6326488ab17d4",
         "fingerprint": "aa53861540173320a8ba88c13afd815b3cc20f51c6e8456bc91b28bcc9b8b016"
-      },
-      {
-        "file": "src/components/checkout/ApplePayMountDiagnostic.jsx",
-        "ts_code": "TS2339",
-        "line": 262,
-        "column": 106,
-        "message_fingerprint": "088de4bbf1a9b08ade5b987a",
-        "fingerprint": "aa583f27dda0080b2316f6a364aa7943386f610791b430effa6b0887db4c44b6"
       },
       {
         "file": "src/pages/admin/ComplianceOps.jsx",
@@ -4647,22 +4566,6 @@
         "fingerprint": "ad6f7beabd9a2c36312aa6647ef3faaa587d10096cdaa46ae2691e7853ba7a85"
       },
       {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 726,
-        "column": 13,
-        "message_fingerprint": "cfd50daef96bd0e252b4fdd7",
-        "fingerprint": "ada2fa5595e0c1eca0e7baf913291f5bc6115811f2b4f7b6644c01821193320b"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 818,
-        "column": 21,
-        "message_fingerprint": "39c260864e3c3b4483ee343b",
-        "fingerprint": "adebc777e7bb629458b5da3ee2cf2677e51f655730e638e1fb7e115356649e38"
-      },
-      {
         "file": "src/components/compliance/SanitationLogForm.jsx",
         "ts_code": "TS2322",
         "line": 176,
@@ -4703,14 +4606,6 @@
         "fingerprint": "af3d1d41c55ee87edec7c95cafb6ff22fc5084d8510d364526ce3c034d2d788c"
       },
       {
-        "file": "src/components/checkout/EmbeddedPayment.jsx",
-        "ts_code": "TS2339",
-        "line": 104,
-        "column": 93,
-        "message_fingerprint": "1b0edf59c8685299b1c66266",
-        "fingerprint": "af4565a6c56adc6ffb90f79a7fbe94d5550253fd0229eed33466e0ae511b3828"
-      },
-      {
         "file": "src/components/compliance/ComplianceLogsParity.jsx",
         "ts_code": "TS2322",
         "line": 238,
@@ -4749,14 +4644,6 @@
         "column": 10,
         "message_fingerprint": "42cc9137faddc134694c5880",
         "fingerprint": "b0f45f7e5d5f53946be1ee6c1b77d79fd637a950b6872af86ab2018d076d951d"
-      },
-      {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2322",
-        "line": 797,
-        "column": 21,
-        "message_fingerprint": "39c260864e3c3b4483ee343b",
-        "fingerprint": "b1476ab65ed78914cb3b86aa3c653a0bb791cdd610ae45e77082bdf2b6f3d045"
       },
       {
         "file": "src/components/compliance/ComplianceLogsParity.jsx",
@@ -4959,14 +4846,6 @@
         "fingerprint": "ba1bb0270891b9e712cabde531953eb86bf76ffdeab893623ca2bef7ed4741ad"
       },
       {
-        "file": "src/components/checkout/EmbeddedPayment.jsx",
-        "ts_code": "TS2322",
-        "line": 231,
-        "column": 34,
-        "message_fingerprint": "408b3f3e4ac15a95bd806c56",
-        "fingerprint": "ba950e72e3f60775e2fa2cbc61662620b16c40ed28a6045520138f187c4df9c7"
-      },
-      {
         "file": "src/pages/admin/NotificationCampaigns.jsx",
         "ts_code": "TS2322",
         "line": 420,
@@ -5055,28 +4934,12 @@
         "fingerprint": "be84d197efdc2b4485cf57e9afe359b683df3369499c5e9d8b9e0e92c7914b82"
       },
       {
-        "file": "src/components/checkout/EmbeddedPayment.jsx",
-        "ts_code": "TS2322",
-        "line": 153,
-        "column": 10,
-        "message_fingerprint": "688b860f5cb8628cdeff858f",
-        "fingerprint": "be9e70d1877073c5a61cfe0adfb6d11a3c9cde024ef1489cc1d6722234eda1e3"
-      },
-      {
         "file": "src/components/compliance/CorrectiveActionForm.jsx",
         "ts_code": "TS2559",
         "line": 62,
         "column": 8,
         "message_fingerprint": "a50c70e6956b2cfebc889823",
         "fingerprint": "bec643dfb43d61932aaac140518afabf1feb2bffba4fede40ce2745e04db5821"
-      },
-      {
-        "file": "src/components/checkout/ApplePayMountDiagnostic.jsx",
-        "ts_code": "TS2339",
-        "line": 265,
-        "column": 87,
-        "message_fingerprint": "ba5d51a1980fff8117adce0b",
-        "fingerprint": "bfadc3813a9930f9f3b80b572ea922883e8802593052ab5b427ac9a8e45e114b"
       },
       {
         "file": "src/components/ui/dialog.jsx",
@@ -5231,14 +5094,6 @@
         "fingerprint": "c56928933cd2fc4e1a98e6b2ee1649f181d2313e55415cbeffb412b4e41abf6d"
       },
       {
-        "file": "src/pages/Checkout.jsx",
-        "ts_code": "TS2741",
-        "line": 1027,
-        "column": 12,
-        "message_fingerprint": "4f848b0ea53135a66fd741f0",
-        "fingerprint": "c5a6ba4d35e2fc7ffd24ac7d72e6869acc805dd1b1bd48208d31287cfde46fb6"
-      },
-      {
         "file": "src/components/AddressAutocomplete.jsx",
         "ts_code": "TS2322",
         "line": 65,
@@ -5309,6 +5164,14 @@
         "column": 8,
         "message_fingerprint": "6549f83715a8ac50c87cc98d",
         "fingerprint": "c7edb0ab6bdee0a27dfda6670a8a651b6b324cbac3246aa4edff374fbbf065f9"
+      },
+      {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 890,
+        "column": 14,
+        "message_fingerprint": "972fd84de65252d6dcd0b1b2",
+        "fingerprint": "c82adfde8b95d43e78e943d3b63008f25f577532af8ef7e2c348e558313cecb8"
       },
       {
         "file": "src/pages/Support.jsx",
@@ -5895,14 +5758,6 @@
         "fingerprint": "dc99dff8d55083b8d3a32c58116a1996586005cd14f31c5a0e7ea2903c86e572"
       },
       {
-        "file": "src/components/checkout/ApplePayMountDiagnostic.jsx",
-        "ts_code": "TS2339",
-        "line": 64,
-        "column": 26,
-        "message_fingerprint": "f214661048a01b7ab66d2e60",
-        "fingerprint": "dcc2be3842b563803a0e4a9c78ec21fce88a1cfa5c6135f7d246be47494f2d09"
-      },
-      {
         "file": "src/components/compliance/SanitationLogForm.jsx",
         "ts_code": "TS2322",
         "line": 142,
@@ -6191,6 +6046,22 @@
         "fingerprint": "e74bb153ab70e39ba37ba5f1f141e6cb5851a8bddd063f683c09d1b6f126975c"
       },
       {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 677,
+        "column": 10,
+        "message_fingerprint": "68869efa94e302b016833ab8",
+        "fingerprint": "e7621827d9e0f62fbbaf647fe7de400dd513f790719419975647e5d51b5bb693"
+      },
+      {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 1118,
+        "column": 16,
+        "message_fingerprint": "36fd7a2fec6ba99a4bf4d187",
+        "fingerprint": "e7b6d6230712af7273741e45ff42b4947253e2f371fc7da95e58845e6b3a78d9"
+      },
+      {
         "file": "src/components/ui/select.jsx",
         "ts_code": "TS2339",
         "line": 67,
@@ -6375,6 +6246,14 @@
         "fingerprint": "ed82478fda1d1ce8d39d534d229d37720777b3948f89f50cb4703f1dd2acf636"
       },
       {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 704,
+        "column": 10,
+        "message_fingerprint": "661954ded5262c39357b57e3",
+        "fingerprint": "ee839a6889b7279182862e31b71eb31df69ca735bea8da14f4c85ff3cae6eb5a"
+      },
+      {
         "file": "src/pages/admin/ComplianceOps.jsx",
         "ts_code": "TS2322",
         "line": 200,
@@ -6471,6 +6350,14 @@
         "fingerprint": "f20cd1d0024935afa2950ca0d50d15fa27e57dc02b99385bdaefb037b5bdcbd8"
       },
       {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 729,
+        "column": 13,
+        "message_fingerprint": "cfd50daef96bd0e252b4fdd7",
+        "fingerprint": "f3637c8ac129bd8b56ffcf1db30ce8df5959fb1855561cd5dfac837538809be9"
+      },
+      {
         "file": "src/components/compliance/PrintableLogSheet.jsx",
         "ts_code": "TS2741",
         "line": 191,
@@ -6511,6 +6398,14 @@
         "fingerprint": "f55b293dc5f689d8869c3f0e16e5336902afc980f505e0dd49cba98fc06a7cbc"
       },
       {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2322",
+        "line": 867,
+        "column": 12,
+        "message_fingerprint": "972fd84de65252d6dcd0b1b2",
+        "fingerprint": "f5b713c8fe2188b708d4302937b6d3358634f219229f6d04d582a659f6cfd3f0"
+      },
+      {
         "file": "src/components/admin/Zone3ReviewPanel.jsx",
         "ts_code": "TS2339",
         "line": 238,
@@ -6549,6 +6444,14 @@
         "column": 16,
         "message_fingerprint": "99aea6d7c80d3b04d169b763",
         "fingerprint": "f6497ac6056e1ed2b241eaf12b24d4f4314751305c1ec6b1910595dc975ce9a7"
+      },
+      {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2739",
+        "line": 722,
+        "column": 8,
+        "message_fingerprint": "caf4815a425ff16d44c97dcb",
+        "fingerprint": "f6694080099b8b5a2779f5f59365a9092f8117c62834ab9bc68ea5085ff1b967"
       },
       {
         "file": "src/components/compliance/BatchComplianceLogForm.jsx",
@@ -6607,6 +6510,14 @@
         "fingerprint": "f8bb05a81228e407ee494c1aa62332163b2115c1bf353b65296681ea71779a6a"
       },
       {
+        "file": "src/pages/Cart.jsx",
+        "ts_code": "TS2322",
+        "line": 414,
+        "column": 12,
+        "message_fingerprint": "f854a5cbce86b9c065a8e834",
+        "fingerprint": "f98b67b7cc684e43c59e8da2505b5aa2927419d5d0f85c9366200ca8c3967eb1"
+      },
+      {
         "file": "src/components/compliance/PrintableLogSheet.jsx",
         "ts_code": "TS2741",
         "line": 190,
@@ -6653,6 +6564,14 @@
         "column": 51,
         "message_fingerprint": "cf279341dd1e9ab5d86dcdbd",
         "fingerprint": "fb3e10cc9f3c05814991c6c2e4c978d81bb33d0093b6fa0eda64064fae390bae"
+      },
+      {
+        "file": "src/pages/Checkout.jsx",
+        "ts_code": "TS2339",
+        "line": 399,
+        "column": 13,
+        "message_fingerprint": "ce9462a571eb2d5d50f12624",
+        "fingerprint": "fb805a4485ec3ddce31e7d7095f9d43a7113c0749ecd9bf6ee563b2983380f4d"
       },
       {
         "file": "src/pages/OrderConfirmation.jsx",
@@ -6781,14 +6700,6 @@
         "column": 34,
         "message_fingerprint": "3534bdb82cbbbdb22be07118",
         "fingerprint": "ff3a08877b7283504f68e8fba04f0e60d533d48f984dcbecb3e7ff81b6d932d7"
-      },
-      {
-        "file": "src/pages/Shop.jsx",
-        "ts_code": "TS2322",
-        "line": 123,
-        "column": 13,
-        "message_fingerprint": "3606658ad5a246babce1189d",
-        "fingerprint": "ff5948b46f974f42981210e0ea377419871c2e98e77cb5a5adcb481c4022d342"
       },
       {
         "file": "src/pages/admin/NotificationCampaigns.jsx",

@@ -1,16 +1,13 @@
 export const MAY30_EVENT_STOCK_PLAN = {
-  eventDate: '2026-05-30',
-  eventCount: 2,
-  target: 'Sell out all staged units across both events',
-  totalUnits: 120,
+  eventDate: '2026-07-11',
+  eventCount: 1,
+  target: 'Sell out all staged units at the event',
+  totalUnits: 170,
   notes: 'Planning visibility only. Do not deduct inventory or create purchase orders from this plan.',
   items: [
-    { productName: 'Oasis', quantity: 45, category: 'Cold-pressed juice' },
-    { productName: 'Aura', quantity: 45, category: 'Cold-pressed juice' },
-    { productName: 'Re-Nu', quantity: 15, category: 'Cold-pressed juice' },
-    { productName: 'Hydration Shot', quantity: 9, category: 'Shot' },
-    { productName: 'Reset Shot', quantity: 1, category: 'Shot' },
-    { productName: 'Radiance Shot', quantity: 5, category: 'Shot' },
+    { productName: 'Oasis', quantity: 75, category: 'Cold-pressed juice' },
+    { productName: 'Aura', quantity: 75, category: 'Cold-pressed juice' },
+    { productName: 'Re-Nu', quantity: 20, category: 'Cold-pressed juice' },
   ],
 };
 

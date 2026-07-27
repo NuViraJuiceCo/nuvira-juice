@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { useNavigate } from 'react-router-dom';
@@ -46,7 +46,9 @@ const DEEP_LINK_OPTIONS = [
   { label: 'Subscribe', value: '/subscribe' },
 ];
 
-const CAMPAIGN_SENDS_ENABLED = true;
+const UiButton = /** @type {any} */ (Button);
+const UiInput = /** @type {any} */ (Input);
+const UiLabel = /** @type {any} */ (Label);
 
 function unwrapBase44Data(response, fallback = null) {
   return unwrapBase44Result(response, fallback);
@@ -116,6 +118,7 @@ function formatStatusReason(reason) {
 export default function NotificationCampaigns() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
     title: '',
@@ -166,6 +169,7 @@ export default function NotificationCampaigns() {
             mode: null,
             reason: 'status_check_failed',
             action: null,
+            diagnostics: null,
           });
         }
       });
@@ -310,6 +314,7 @@ export default function NotificationCampaigns() {
       });
       const data = unwrapBase44Data(response, {});
       setCampaignSendResult(data);
+      await queryClient.invalidateQueries({ queryKey: ['notification-campaigns'] });
 
       if (data.success) {
         const sent = Number(data.sent_count || 0);
@@ -430,7 +435,7 @@ export default function NotificationCampaigns() {
 
           <div className="flex gap-2 mt-4">
             {adminPushStatus.subscribed ? (
-              <Button
+              <UiButton
                 type="button"
                 variant="outline"
                 onClick={handleDisableAdminPush}
@@ -439,9 +444,9 @@ export default function NotificationCampaigns() {
               >
                 {adminPushStatus.action === 'disable' ? <Loader2 className="w-4 h-4 animate-spin" /> : <BellOff className="w-4 h-4" />}
                 Disable
-              </Button>
+              </UiButton>
             ) : (
-              <Button
+              <UiButton
                 type="button"
                 onClick={handleEnableAdminPush}
                 disabled={!adminPushStatus.supported || adminPushStatus.permission === 'denied' || adminPushStatus.action === 'enable'}
@@ -449,9 +454,9 @@ export default function NotificationCampaigns() {
               >
                 {adminPushStatus.action === 'enable' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
                 Enable
-              </Button>
+              </UiButton>
             )}
-            <Button
+            <UiButton
               type="button"
               variant="outline"
               onClick={handleSendAdminPushTest}
@@ -463,8 +468,8 @@ export default function NotificationCampaigns() {
             >
               {adminPushStatus.action === 'test' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               Test
-            </Button>
-            <Button
+            </UiButton>
+            <UiButton
               type="button"
               variant="outline"
               onClick={refreshAdminPushStatus}
@@ -474,21 +479,19 @@ export default function NotificationCampaigns() {
               title="Refresh admin push status"
             >
               {adminPushStatus.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
-            </Button>
+            </UiButton>
           </div>
         </div>
 
-        {CAMPAIGN_SENDS_ENABLED && (
-          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6 flex items-start gap-3">
-            <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-primary">Campaign sending active</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Test campaigns send only to the logged-in admin. Broader audiences require confirmation and only target customers with the matching notification preference enabled.
-              </p>
-            </div>
+        <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6 flex items-start gap-3">
+          <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-primary">Campaign sending active</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Test campaigns send only to the logged-in admin. Broader audiences require confirmation and only target customers with the matching notification preference enabled.
+            </p>
           </div>
-        )}
+        </div>
 
         {/* Compose Card */}
         <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
@@ -497,11 +500,11 @@ export default function NotificationCampaigns() {
           </h2>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs text-muted-foreground">Title *</Label>
-              <Input value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fresh Summer Drop 🌿" className="rounded-xl h-10 mt-1" maxLength={60} />
+              <UiLabel className="text-xs text-muted-foreground">Title *</UiLabel>
+              <UiInput value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fresh Summer Drop 🌿" className="rounded-xl h-10 mt-1" maxLength={60} />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Message *</Label>
+              <UiLabel className="text-xs text-muted-foreground">Message *</UiLabel>
               <textarea
                 value={form.message}
                 onChange={e => setField('message', e.target.value)}
@@ -514,7 +517,7 @@ export default function NotificationCampaigns() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Audience</Label>
+                <UiLabel className="text-xs text-muted-foreground">Audience</UiLabel>
                 <select
                   value={form.audience}
                   onChange={e => setField('audience', e.target.value)}
@@ -526,7 +529,7 @@ export default function NotificationCampaigns() {
                 </select>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Type</Label>
+                <UiLabel className="text-xs text-muted-foreground">Type</UiLabel>
                 <select
                   value={form.notification_type}
                   onChange={e => setField('notification_type', e.target.value)}
@@ -539,7 +542,7 @@ export default function NotificationCampaigns() {
               </div>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Deep Link (opens when tapped)</Label>
+              <UiLabel className="text-xs text-muted-foreground">Deep Link (opens when tapped)</UiLabel>
               <select
                 value={form.deep_link}
                 onChange={e => setField('deep_link', e.target.value)}
@@ -582,14 +585,14 @@ export default function NotificationCampaigns() {
               </div>
             )}
 
-            <Button
+            <UiButton
               onClick={handleCreateAndSend}
-              disabled={!CAMPAIGN_SENDS_ENABLED || isSendingCampaign}
+              disabled={isSendingCampaign}
               className="w-full h-11 rounded-xl font-semibold gap-2"
             >
               {isSendingCampaign ? <Loader2 className="w-4 h-4 animate-spin" /> : form.audience === 'test_only' ? <FlaskConical className="w-4 h-4" /> : <Send className="w-4 h-4" />}
               {isSendingCampaign ? 'Sending...' : form.audience === 'test_only' ? 'Send Test Campaign' : 'Send Campaign'}
-            </Button>
+            </UiButton>
           </div>
         </div>
 

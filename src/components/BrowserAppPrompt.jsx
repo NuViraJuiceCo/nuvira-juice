@@ -7,7 +7,7 @@ import { base44 } from '@/api/base44Client';
 // and deep links to /rewards, /account, /account/subscriptions, /order-tracker/:id are verified.
 const ENABLE_BROWSER_APP_PROMPT = false;
 
-const APP_STORE_URL = 'https://apps.apple.com/us/app/nuvira-juice-co/id6742692918';
+const APP_STORE_URL = 'https://apps.apple.com/us/app/nuvira-juice-co/id6762089117';
 const CUSTOM_SCHEME = 'nuvira'; // Native app must register this URL scheme
 const DISMISSAL_KEY = 'nuvira_app_prompt_dismissed_until';
 const DISMISS_DAYS = 10;

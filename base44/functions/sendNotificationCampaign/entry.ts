@@ -1,17 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * sendNotificationCampaign — admin-only function to send notifications to audience segments.
- * 
+ * sendNotificationCampaign - admin-only function to send notifications to audience segments.
+ *
  * Requires admin role. Supports test_only mode before broad send.
- * Throttles to prevent accidental blasts.
- * 
+ * Broad sends require an explicit phrase and acknowledged recipient ceiling.
+ *
  * Payload:
  * {
- *   campaign_id: string,                 // NotificationCampaign entity ID
- *   confirm: boolean,                    // Must be true to execute (safety gate)
- *   broad_send_confirmation?: string,    // send_<audience>_campaign for non-test audiences
- *   max_recipient_ack?: number           // non-test send ceiling acknowledged by admin
+ *   campaign_id: string,
+ *   confirm: boolean,
+ *   broad_send_confirmation?: string,
+ *   max_recipient_ack?: number
  * }
  */
 
@@ -20,6 +20,10 @@ const MAX_ORDER_SCAN = 1500;
 const MAX_PREFERENCE_SCAN = 2000;
 const BROAD_SEND_CONFIRMATION_SUFFIX = '_campaign';
 type CampaignRecipient = { email: string };
+
+function campaignSendsDisabled(): boolean {
+  return Deno.env.get('DISABLE_NOTIFICATION_CAMPAIGN_SENDS') === 'true';
+}
 
 function normalizeSingleLine(value: unknown): string {
   return String(value || '').trim().replace(/\s+/g, ' ');
@@ -35,7 +39,8 @@ function campaignNotificationSubtype(type: unknown): string {
 }
 
 function campaignPreferenceField(type: unknown): string {
-  return normalizeSingleLine(type) === 'order_update' ? 'order_updates' : 'promotions';
+  const value = normalizeSingleLine(type);
+  return value === 'order_update' ? 'order_updates' : 'promotions';
 }
 
 function campaignPreferenceLabel(field: string): string {
@@ -81,6 +86,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'method_not_allowed' }, { status: 405 });
     }
 
+    if (campaignSendsDisabled()) {
+      return Response.json({
+        error: 'notification_campaign_sends_disabled',
+        message: 'Notification campaign sends are disabled by the campaign kill switch.',
+      }, { status: 409 });
+    }
+
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user || user.role !== 'admin') {
@@ -106,7 +118,6 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Must pass confirm=true to execute campaign send. This is a safety gate.' }, { status: 400 });
     }
 
-    // Fetch campaign
     let campaigns: any[] = [];
     try {
       campaigns = await base44.asServiceRole.entities.NotificationCampaign.filter({ id: campaign_id });
@@ -130,18 +141,15 @@ Deno.serve(async (req) => {
 
     console.log(`[sendNotificationCampaign] Admin ${user.email} sending campaign "${campaign.title}" to audience: ${campaign.audience}`);
 
-    // Determine recipient list
     let recipients: CampaignRecipient[] = [];
     let preferencesByEmail = new Map<string, any>();
     const requiresCampaignPreference = campaign.audience !== 'test_only';
     const requiredPreferenceField = campaignPreferenceField(campaign.notification_type);
 
     if (campaign.audience === 'test_only') {
-      // Only send to the admin who triggers it
       recipients = [{ email: user.email }];
-      console.log(`[sendNotificationCampaign] TEST MODE — sending only to admin ${user.email}`);
+      console.log(`[sendNotificationCampaign] TEST MODE - sending only to admin ${user.email}`);
     } else {
-      // Fetch all user profiles
       const allProfiles = await base44.asServiceRole.entities.UserProfile.list('-created_date', MAX_PROFILE_SCAN);
       const allPreferences = await base44.asServiceRole.entities.NotificationPreference.list('-created_date', MAX_PREFERENCE_SCAN);
       preferencesByEmail = buildPreferenceIndex(allPreferences);
@@ -159,7 +167,6 @@ Deno.serve(async (req) => {
         const orderEmails = new Set(allOrders.map(o => o.customer_email).filter(Boolean));
         recipients = [...orderEmails].filter(e => !subEmails.has(e)).map(email => ({ email }));
       } else if (campaign.audience === 'lapsed_customers') {
-        // Customers with orders but nothing in the last 30 days
         const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
         const allOrders = await base44.asServiceRole.entities.Order.filter({ payment_status: 'paid' }, '-created_date', MAX_ORDER_SCAN);
         const recentEmails = new Set(allOrders.filter(o => o.created_date > cutoff).map(o => o.customer_email));
@@ -168,7 +175,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Deduplicate and apply campaign-consent eligibility for broad sends.
     const candidateEmails = [...new Set(recipients.map(r => normalizeEmail(r.email)).filter(Boolean))];
     const skippedReasons: Record<string, number> = {};
     let preferenceSkippedCount = 0;
@@ -222,7 +228,6 @@ Deno.serve(async (req) => {
     let pushTokenCount = 0;
     const notificationSubtype = campaignNotificationSubtype(campaign.notification_type);
 
-    // Send in batches to avoid overwhelming the DB
     for (const email of uniqueEmails) {
       try {
         const result = responseData(await base44.asServiceRole.functions.invoke('sendCustomerNotification', {
@@ -259,10 +264,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update campaign status
     const noEligibleRecipients = candidateEmails.length > 0 && uniqueEmails.length === 0;
     const noDelivery = sentCount === 0 && (failedCount > 0 || skippedCount > 0 || candidateEmails.length === 0);
     const finalStatus = failedCount > 0 && sentCount === 0 && skippedCount === 0 ? 'failed' : noDelivery ? 'failed' : 'sent';
+
     await base44.asServiceRole.entities.NotificationCampaign.update(campaign_id, {
       status: finalStatus,
       sent_count: sentCount,
@@ -274,7 +279,7 @@ Deno.serve(async (req) => {
       sent_at: new Date().toISOString(),
     });
 
-    console.log(`[sendNotificationCampaign] ✅ Campaign "${campaign.title}" sent: ${sentCount} success, ${failedCount} failed`);
+    console.log(`[sendNotificationCampaign] Campaign "${campaign.title}" result: ${sentCount} sent, ${failedCount} failed, ${skippedCount} skipped`);
 
     return Response.json({
       success: finalStatus === 'sent',

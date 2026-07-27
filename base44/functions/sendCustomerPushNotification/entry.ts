@@ -367,7 +367,11 @@ async function updatePushSubscriptionRecord(
   });
 }
 
-function pushSubtypeEnabled(notificationSubtype: string, type: string): { enabled: boolean; reason: string | null } {
+function notificationCampaignSendsEnabled(): boolean {
+  return Deno.env.get('DISABLE_NOTIFICATION_CAMPAIGN_SENDS') !== 'true';
+}
+
+function pushSubtypeEnabled(notificationSubtype: string, type: string, source = ''): { enabled: boolean; reason: string | null } {
   if (notificationSubtype === 'admin_push_test') {
     return envFlag('ENABLE_ADMIN_PUSH_NOTIFICATIONS')
       ? { enabled: true, reason: null }
@@ -409,6 +413,12 @@ function pushSubtypeEnabled(notificationSubtype: string, type: string): { enable
     return envFlag('ENABLE_CUSTOMER_DELIVERY_PUSH')
       ? { enabled: true, reason: null }
       : { enabled: false, reason: 'delivery_push_disabled' };
+  }
+
+  if (source === 'notification_campaign' && ['promo', 'general'].includes(notificationSubtype)) {
+    return envFlag('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS') && notificationCampaignSendsEnabled()
+      ? { enabled: true, reason: null }
+      : { enabled: false, reason: 'notification_campaign_push_disabled' };
   }
 
   if (notificationSubtype === 'promo' || type === 'promotion' || type === 'new_drop') {
@@ -676,6 +686,7 @@ Deno.serve(async (req) => {
     const message = normalizeSingleLine(body.message);
     const notificationSubtype = normalizeSingleLine(body.notification_subtype || 'general');
     const type = normalizeSingleLine(body.type || 'general');
+    const source = normalizeSingleLine(body.source);
     const notificationId = normalizeSingleLine(body.notification_id);
     const idempotencyKey = normalizeSingleLine(body.idempotency_key || notificationId || `${notificationSubtype}:${Date.now()}`);
     const deepLink = normalizeSingleLine(body.deep_link || '/notifications') || '/notifications';
@@ -684,7 +695,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing required fields: notification_id, title, message' }, { status: 400 });
     }
 
-    const allowed = pushSubtypeEnabled(notificationSubtype, type);
+    const allowed = pushSubtypeEnabled(notificationSubtype, type, source);
     if (!allowed.enabled) {
       return Response.json({
         success: true,

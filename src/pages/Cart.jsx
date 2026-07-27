@@ -110,6 +110,8 @@ export default function Cart() {
   const deliveryText = earliestOption
     ? `Delivered ${earliestOption.delivery_day_name}, ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' }).format(new Date(earliestOption.delivery_date + 'T12:00:00'))}`
     : 'Next available batch';
+  const juiceOrderCategories = new Set(['juice', 'shot', 'bundle']);
+  const containsJuiceOrderItems = items.some(item => juiceOrderCategories.has(item.category));
   // Shots are 2oz so require 6 minimum; juices/bundles require 3 minimum.
   // Normalize: each shot counts as 0.5 toward the minimum (so 6 shots = 3 units).
   const juiceCount = items.reduce((sum, item) => {
@@ -118,7 +120,8 @@ export default function Cart() {
     if (item.category === 'shot') return sum + item.quantity * 0.5;
     return sum;
   }, 0);
-  const meetsMinimum = juiceCount >= 3;
+  const meetsMinimum = !containsJuiceOrderItems || juiceCount >= 3;
+  const juiceMinimumRemaining = Math.max(0, Math.ceil(3 - juiceCount));
 
   if (items.length === 0) {
     return (
@@ -176,7 +179,7 @@ export default function Cart() {
         )}
 
         {/* Birthday Reward Banner */}
-        {birthdayActive && meetsMinimum && (
+        {birthdayActive && containsJuiceOrderItems && meetsMinimum && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-pink-500/10 border border-pink-500/30 rounded-2xl p-3.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -199,10 +202,10 @@ export default function Cart() {
         <CartDeliveryCheckPrompt />
 
         {/* Minimum Order Notice */}
-        {!meetsMinimum && (
+        {containsJuiceOrderItems && !meetsMinimum && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3.5 flex items-center gap-3">
             <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-            <p className="text-xs font-semibold text-foreground">Add {Math.ceil(3 - juiceCount)} more to checkout</p>
+            <p className="text-xs font-semibold text-foreground">Add {juiceMinimumRemaining} more bottle{juiceMinimumRemaining === 1 ? '' : 's'} to checkout</p>
           </motion.div>
         )}
 
@@ -243,7 +246,9 @@ export default function Cart() {
                       {item.image_url ? (
                         <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-2xl">🍊</div>
+                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                          {item.category === 'merch' || item.category === 'apparel' ? <ShoppingBag className="w-6 h-6" /> : <span className="text-2xl">🍊</span>}
+                        </div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -418,7 +423,7 @@ export default function Cart() {
             disabled={!meetsMinimum}
             className="w-full h-11 rounded-xl font-semibold text-sm nuvira-gradient-button disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {meetsMinimum ? 'Checkout' : 'Add more items'}
+            {meetsMinimum ? 'Checkout' : 'Add more bottles'}
             {meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
         </div>
