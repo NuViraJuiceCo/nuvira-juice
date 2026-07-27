@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { base44 } from '@/api/base44Client';
 
 /**

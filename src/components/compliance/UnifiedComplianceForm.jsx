@@ -5,60 +5,61 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
 const LOG_TYPES = {
   temperature: {
-    label: '🌡️ Temperature',
+    label: 'Temperature',
     fields: ['location', 'temperature'],
     defaults: { location: 'Cold Room 1', temperature: '', min_range: 35, max_range: 40 }
   },
   pH: {
-    label: '🧪 pH',
+    label: 'pH',
     fields: ['batch_id', 'product_name', 'ph_value', 'min_ph', 'max_ph'],
     defaults: { batch_id: '', product_name: '', ph_value: '', min_ph: 3.5, max_ph: 4.5 }
   },
   CCP: {
-    label: '⚠️ CCP',
+    label: 'CCP',
     fields: ['ccp_point', 'batch_id', 'measurement', 'critical_limit'],
     defaults: { ccp_point: 'Pasteurization', batch_id: '', measurement: '', critical_limit: '' }
   },
   sanitation: {
-    label: '🧹 Sanitation',
+    label: 'Sanitation',
     fields: ['area', 'sanitizer_type', 'cleaned', 'sanitized'],
     defaults: { area: 'Prep Area', sanitizer_type: '', cleaned: false, sanitized: false }
   },
   corrective_action: {
-    label: '🔧 Corrective Action',
+    label: 'Corrective Action',
     fields: ['issue_type', 'issue_description', 'corrective_action_taken', 'verified_by'],
     defaults: { issue_type: 'Temperature Out of Range', issue_description: '', corrective_action_taken: '', verified_by: '' }
   },
   daily_checklist: {
-    label: '📋 Daily Checklist',
+    label: 'Daily Checklist',
     fields: ['shift', 'fridge_logged', 'sanitizer_checked', 'equipment_sanitized', 'areas_cleaned', 'batches_logged'],
     defaults: { shift: 'Morning', fridge_logged: false, sanitizer_checked: false, equipment_sanitized: false, areas_cleaned: false, batches_logged: false }
   },
   batch: {
-    label: '🍵 Batch Log',
+    label: 'Batch Log',
     fields: ['batch_id', 'juice_flavor', 'ingredients', 'start_time', 'end_time', 'quantity', 'staff_on_duty', 'ph_result', 'passed_failed'],
     defaults: { batch_id: '', juice_flavor: '', ingredients: '', start_time: '', end_time: '', quantity: '', staff_on_duty: '', ph_result: '', passed_failed: 'pass' }
   },
   receiving: {
-    label: '📦 Receiving',
+    label: 'Receiving',
     fields: ['supplier', 'item', 'quantity', 'condition', 'accepted', 'stored_at'],
     defaults: { supplier: '', item: '', quantity: '', condition: '', accepted: true, stored_at: '' }
   },
   pest_monitoring: {
-    label: '🐭 Pest Monitoring',
+    label: 'Pest Monitoring',
     fields: ['inspection_area', 'evidence_observed', 'pest_type', 'action_taken', 'reported_manager'],
     defaults: { inspection_area: '', evidence_observed: '', pest_type: '', action_taken: '', reported_manager: '' }
   },
   employee_illness: {
-    label: '🏥 Employee Illness',
+    label: 'Employee Illness',
     fields: ['employee_name', 'symptoms', 'excluded_from_work', 'return_date', 'reported_manager'],
     defaults: { employee_name: '', symptoms: '', excluded_from_work: false, return_date: '', reported_manager: '' }
   },
   calibration: {
-    label: '⚙️ Calibration',
+    label: 'Calibration',
     fields: ['equipment_id', 'equipment_type', 'calibration_method', 'expected_value', 'observed_value', 'within_range', 'adjusted'],
     defaults: { equipment_id: '', equipment_type: '', calibration_method: '', expected_value: '', observed_value: '', within_range: true, adjusted: false }
   }
@@ -68,6 +69,7 @@ export default function UnifiedComplianceForm() {
   const [activeTab, setActiveTab] = useState('temperature');
   const [formData, setFormData] = useState(LOG_TYPES.temperature.defaults);
   const [user, setUser] = useState(null);
+  const [staffMember, setStaffMember] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const queryClient = useQueryClient();
@@ -90,7 +92,10 @@ export default function UnifiedComplianceForm() {
   }).data || [];
 
   useEffect(() => {
-    base44.auth.me().then(u => setUser(u));
+    base44.auth.me().then(u => {
+      setUser(u);
+      setStaffMember(u?.full_name || u?.email || '');
+    });
   }, []);
 
   const handleLogTypeChange = (type) => {
@@ -133,7 +138,7 @@ export default function UnifiedComplianceForm() {
         log_type: activeTab,
         log_date: chicagoDate.toISOString().split('T')[0],
         log_time: chicagoDate.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-        staff_member: user.full_name,
+        staff_member: staffMember || user.full_name || user.email,
         shift: getShift(),
         data: formData,
         status: getStatus(activeTab, formData),
@@ -147,13 +152,13 @@ export default function UnifiedComplianceForm() {
       });
       queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
       queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
-      setMessage('✓ Log saved successfully');
+      setMessage('Log saved successfully');
       setFormData(LOG_TYPES[activeTab].defaults);
 
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Save error:', error);
-      setMessage(`❌ Error: ${error.message}`);
+      setMessage(`Error: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -185,7 +190,14 @@ export default function UnifiedComplianceForm() {
 
   const config = LOG_TYPES[activeTab];
   const isValid = config.fields.every(f => formData[f] !== '' && formData[f] !== null);
+  const staffMemberValid = Boolean(String(staffMember || '').trim());
   const status = getStatus(activeTab, formData);
+  const staffFieldLabels = {
+    staff_on_duty: 'Staff on duty',
+    verified_by: 'Verified by',
+    employee_name: 'Employee name',
+    reported_manager: 'Reported manager',
+  };
 
   return (
     <Card className="w-full">
@@ -217,7 +229,7 @@ export default function UnifiedComplianceForm() {
                   <label className="text-sm font-medium">Select Juice Product</label>
                   <select
                     onChange={(e) => handleProductSelect(e.target.value)}
-                    className="mt-1 w-full p-2 border rounded-lg"
+                    className="mt-1 w-full rounded-lg border border-border bg-background p-2 text-foreground"
                   >
                     <option value="">-- Choose a product --</option>
                     {products.map(p => (
@@ -226,25 +238,45 @@ export default function UnifiedComplianceForm() {
                   </select>
                 </div>
               )}
+
+              <StaffMemberPicker
+                label="Responsible staff member"
+                value={staffMember}
+                onChange={setStaffMember}
+                helperText="Select from the active team list or type another staff name."
+              />
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {cfg.fields.map(field => (
                   <div key={field}>
-                    <label className="text-sm font-medium capitalize">{field.replace(/_/g, ' ')}</label>
-                    {typeof formData[field] === 'boolean' ? (
+                    {staffFieldLabels[field] ? (
+                      <StaffMemberPicker
+                        label={staffFieldLabels[field]}
+                        value={formData[field]}
+                        onChange={(value) => handleChange(field, value)}
+                        multiple={field === 'staff_on_duty'}
+                        helperText={field === 'staff_on_duty' ? 'Select each person who worked the batch, or type another name.' : undefined}
+                      />
+                    ) : (
+                      <>
+                        <label className="text-sm font-medium capitalize">{field.replace(/_/g, ' ')}</label>
+                        {typeof formData[field] === 'boolean' ? (
                       <input
                         type="checkbox"
                         checked={formData[field]}
                         onChange={(e) => handleChange(field, e.target.checked)}
-                        className="mt-1 w-full p-2 border rounded-lg"
+                        className="mt-1 w-full rounded-lg border border-border bg-background p-2 text-foreground"
                       />
-                    ) : (
+                        ) : (
                       <input
                         type={field.includes('range') || field.includes('temp') || field.includes('pH') ? 'number' : 'text'}
                         value={formData[field]}
                         onChange={(e) => handleChange(field, e.target.value)}
-                        className="mt-1 w-full p-2 border rounded-lg"
+                        className="mt-1 w-full rounded-lg border border-border bg-background p-2 text-foreground placeholder:text-muted-foreground"
                         placeholder={`Enter ${field}`}
                       />
+                        )}
+                      </>
                     )}
                   </div>
                 ))}
@@ -252,30 +284,38 @@ export default function UnifiedComplianceForm() {
 
               {/* Status indicator */}
               {['temperature', 'pH'].includes(logType) && formData[logType === 'temperature' ? 'temperature' : 'ph_value'] && (
-                <div className={`flex items-center gap-2 p-3 rounded-lg ${status === 'pass' ? 'bg-green-50' : 'bg-red-50'}`}>
+                <div className={`flex items-center gap-2 p-3 rounded-lg border ${
+                  status === 'pass'
+                    ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30'
+                    : 'border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30'
+                }`}>
                   {status === 'pass' ? (
                     <>
-                      <CheckCircle2 className="w-4 h-4 text-green-600" />
-                      <span className="text-sm text-green-700">Within range ✓</span>
+                      <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-300" />
+                      <span className="text-sm text-green-700 dark:text-green-200">Within range</span>
                     </>
                   ) : (
                     <>
-                      <AlertCircle className="w-4 h-4 text-red-600" />
-                      <span className="text-sm text-red-700">Out of range ⚠️</span>
+                      <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-300" />
+                      <span className="text-sm text-red-700 dark:text-red-200">Out of range</span>
                     </>
                   )}
                 </div>
               )}
 
               {message && (
-                <div className={`p-3 rounded-lg text-sm ${message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                <div className={`p-3 rounded-lg border text-sm ${
+                  message.includes('Error')
+                    ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200'
+                }`}>
                   {message}
                 </div>
               )}
 
               <Button
                 onClick={handleSubmit}
-                disabled={!isValid || loading}
+                disabled={!isValid || !staffMemberValid || loading}
                 className="w-full"
               >
                 {loading ? 'Saving...' : 'Save Log Entry'}

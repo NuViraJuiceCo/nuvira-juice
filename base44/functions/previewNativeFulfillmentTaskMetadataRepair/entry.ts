@@ -45,6 +45,10 @@ const SCHEMA_UNSAFE_REPAIR_FIELDS = {
   delivery_status: 'delivery_lifecycle_field_not_metadata_repair',
   items: 'array_field_not_required_for_metadata_repair',
 };
+const STALE_DERIVED_DISPLAY_FIELDS = new Set([
+  'items_summary',
+  'line_item_count',
+]);
 const APPROVED_REPAIR_PATCH_FIELD_TYPES = {
   base44_order_id: ['string'],
   shopify_order_id: ['string'],
@@ -130,6 +134,106 @@ function compactObject(value) {
   return out;
 }
 
+const PROGRAM_COMPOSITIONS = [
+  {
+    matcher: /hydration/i,
+    items: [
+      { title: 'OASIS', quantity: 9 },
+      { title: 'AURA', quantity: 3 },
+    ],
+  },
+  {
+    matcher: /radiance/i,
+    items: [
+      { title: 'AURA', quantity: 9 },
+      { title: 'OASIS', quantity: 3 },
+    ],
+  },
+  {
+    matcher: /reset/i,
+    items: [
+      { title: 'RE-NU', quantity: 9 },
+      { title: 'OASIS', quantity: 3 },
+    ],
+  },
+];
+
+function safeQuantity(value, fallback = 1) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function itemTitle(item) {
+  return operationalText(item?.title || item?.name || item?.product_name || item?.product_title, 120);
+}
+
+function compositionItems(item) {
+  const explicitComposition = Array.isArray(item?.bundle_composition)
+    ? item.bundle_composition
+    : Array.isArray(item?.composition)
+      ? item.composition
+      : [];
+
+  return explicitComposition
+    .map(component => ({
+      title: operationalText(component?.product_name || component?.title || component?.name || component?.flavor, 120),
+      quantity: safeQuantity(component?.quantity || component?.qty, 0),
+    }))
+    .filter(component => component.title && component.quantity > 0);
+}
+
+function operationalLineItems(items) {
+  if (!Array.isArray(items)) return [];
+  const expanded = [];
+
+  for (const item of items) {
+    const parentQuantity = safeQuantity(item?.quantity || item?.qty, 1);
+    const explicitComposition = compositionItems(item);
+
+    if (explicitComposition.length > 0) {
+      for (const component of explicitComposition) {
+        expanded.push({
+          title: component.title,
+          quantity: component.quantity * parentQuantity,
+        });
+      }
+      continue;
+    }
+
+    const title = itemTitle(item);
+    const programComposition = PROGRAM_COMPOSITIONS.find(program => program.matcher.test(title));
+
+    if (programComposition) {
+      for (const component of programComposition.items) {
+        expanded.push({
+          title: component.title,
+          quantity: component.quantity * parentQuantity,
+        });
+      }
+      continue;
+    }
+
+    if (title) {
+      expanded.push({
+        product_id: item?.shopify_line_item_id || item?.id || item?.product_id,
+        title,
+        price: item?.price,
+        quantity: parentQuantity,
+      });
+    }
+  }
+
+  const byTitle = new Map();
+  for (const item of expanded) {
+    const key = item.title.toLowerCase();
+    const current = byTitle.get(key) || { title: item.title, quantity: 0, product_id: item.product_id, price: item.price };
+    current.quantity += item.quantity;
+    byTitle.set(key, current);
+  }
+
+  return Array.from(byTitle.values());
+}
+
 function safeStringArray(value, maxLength = 120) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.slice(0, SAFE_ARRAY_LIMIT).map(item => sanitizeText(item, maxLength)).filter(Boolean))];
@@ -209,21 +313,20 @@ function taskMissingDisplayFields(task) {
 }
 
 function lineItemsSummary(items) {
-  if (!Array.isArray(items)) return '';
-  return items
+  return operationalLineItems(items)
     .slice(0, 8)
-    .map(item => `${safeNumber(item?.quantity) ?? 0}x ${operationalText(item?.title || item?.name || item?.product_title, 80)}`)
+    .map(item => `${safeQuantity(item?.quantity, 1)}x ${operationalText(item?.title, 80)}`)
     .filter(item => !item.startsWith('0x '))
     .join(', ');
 }
 
 function taskItemsFromOrder(order) {
   const items = Array.isArray(order?.line_items) ? order.line_items : [];
-  return items.slice(0, SAFE_ARRAY_LIMIT).map(item => compactObject({
-    product_id: sanitizeId(item?.shopify_line_item_id || item?.id || item?.product_id, 120),
-    title: operationalText(item?.title || item?.name || item?.product_title, 120) || 'Item',
+  return operationalLineItems(items).slice(0, SAFE_ARRAY_LIMIT).map(item => compactObject({
+    product_id: sanitizeId(item?.product_id || item?.shopify_line_item_id || item?.id, 120),
+    title: operationalText(item?.title, 120) || 'Item',
     price: safeNumber(item?.price) ?? 0,
-    quantity: safeNumber(item?.quantity) ?? 0,
+    quantity: safeQuantity(item?.quantity, 0),
   })).filter(item => item.title && item.quantity > 0);
 }
 
@@ -423,6 +526,7 @@ function buildMetadataRepairPlan({ task, nativeOrder, customerOrder }) {
   const source = sourceMetadata({ task, nativeOrder, customerOrder });
   const patch = {};
   const skippedExistingFields = [];
+  const staleExistingFields = [];
   const excludedUnapprovedFields = [];
   for (const [field, value] of Object.entries(source)) {
     if (isEmptyValue(value)) continue;
@@ -431,6 +535,10 @@ function buildMetadataRepairPlan({ task, nativeOrder, customerOrder }) {
       continue;
     }
     if (isEmptyValue(task?.[field])) patch[field] = value;
+    else if (STALE_DERIVED_DISPLAY_FIELDS.has(field) && !sameValue(task?.[field], value)) {
+      patch[field] = value;
+      staleExistingFields.push(field);
+    }
     else if (!isIdentityField(field)) skippedExistingFields.push(field);
   }
 
@@ -457,6 +565,7 @@ function buildMetadataRepairPlan({ task, nativeOrder, customerOrder }) {
     excluded_repair_reasons: excludedRepairFieldReasons(excludedRepairFields),
     missing_display_fields_before: taskMissingDisplayFields(task),
     missing_display_fields_after: missingDisplayFields,
+    stale_existing_fields_repaired: safeStringArray(staleExistingFields.sort(), 80),
     skipped_existing_fields: safeStringArray(skippedExistingFields.sort(), 80),
   };
 }
@@ -669,6 +778,7 @@ async function buildRepairPreview({ base44, body, actor }) {
         patch_preview: summarizePatch(plan.patch),
         missing_display_fields_before: safeStringArray(plan.missing_display_fields_before, 80),
         missing_display_fields_after: safeStringArray(plan.missing_display_fields_after, 80),
+        stale_existing_fields_repaired: safeStringArray(plan.stale_existing_fields_repaired, 80),
         skipped_existing_fields: safeStringArray(plan.skipped_existing_fields, 80),
       },
       generated_by: {

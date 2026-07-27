@@ -53,6 +53,25 @@
       "type": "number",
       "default": 0
     },
+    "skipped_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Recipients skipped by preference, idempotency, or delivery eligibility checks"
+    },
+    "recipients_total": {
+      "type": "number",
+      "default": 0,
+      "description": "Candidate audience size before preference filtering"
+    },
+    "eligible_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Recipients remaining after campaign preference filtering"
+    },
+    "skipped_reasons": {
+      "type": "object",
+      "description": "Aggregate skipped recipient reasons without customer PII"
+    },
     "sent_at": {
       "type": "string",
       "description": "ISO timestamp when campaign was sent"

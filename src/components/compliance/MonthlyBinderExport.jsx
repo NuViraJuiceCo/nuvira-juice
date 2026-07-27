@@ -129,8 +129,8 @@ export default function MonthlyBinderExport({ user, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-card text-card-foreground rounded-xl shadow-xl w-full max-w-md p-6 border border-border">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/75 p-4">
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-card p-6 text-card-foreground shadow-2xl shadow-black/40">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-green-700" />
@@ -179,8 +179,8 @@ export default function MonthlyBinderExport({ user, onClose }) {
           </div>
 
           {/* Preview counts */}
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="text-xs font-semibold text-green-800 mb-3">Records for {monthLabel}</p>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-100">
+            <p className="mb-3 text-xs font-semibold text-emerald-900 dark:text-emerald-100">Records for {monthLabel}</p>
             {countLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading counts…
@@ -196,13 +196,13 @@ export default function MonthlyBinderExport({ user, onClose }) {
                 ].filter(r => logTypeFilter === 'all' || r.key === logTypeFilter)
                   .map(r => (
                     <div key={r.label} className="flex justify-between">
-                      <span className="text-gray-600">{r.label}</span>
-                      <span className={`font-bold ${r.count > 0 ? 'text-green-700' : 'text-gray-400'}`}>{r.count}</span>
+                      <span className="text-emerald-950/75 dark:text-emerald-100/80">{r.label}</span>
+                      <span className={`font-bold ${r.count > 0 ? 'text-emerald-800 dark:text-emerald-100' : 'text-emerald-950/45 dark:text-emerald-100/45'}`}>{r.count}</span>
                     </div>
                   ))}
-                <div className="col-span-2 border-t border-green-200 pt-2 flex justify-between font-semibold">
+                <div className="col-span-2 flex justify-between border-t border-emerald-200 pt-2 font-semibold dark:border-emerald-900/70">
                   <span>Total Records</span>
-                  <span className="text-green-700">{totalRecords}</span>
+                  <span className="text-emerald-800 dark:text-emerald-100">{totalRecords}</span>
                 </div>
               </div>
             ) : null}

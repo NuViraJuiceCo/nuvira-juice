@@ -9,9 +9,10 @@ const ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL_ENABLE = 'ENABLE_ADMIN_PRODUCTION_C
 const ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL_KILL_SWITCH = 'ADMIN_PRODUCTION_COMPLIANCE_READ_MODEL_KILL_SWITCH';
 const PRODUCTION_COMPLIANCE_READ_MODEL_LIMIT = 500;
 const VALID_PRESETS = new Set(['today', 'this_week', 'next_7_days']);
-const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data']);
+const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data', 'demand_based']);
 const DATE_PENDING = 'date_pending';
 const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
+const UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS = 14;
 const MAY30_EVENT_DATE = '2026-05-30';
 const MAY30_POS_EVENT_STOCK_PLAN = {
   event_date: MAY30_EVENT_DATE,
@@ -54,6 +55,7 @@ const BUILT_IN_RECIPE_FALLBACKS = {
     { ingredient_name: 'Black Pepper', quantity_oz: 0.1, unit: 'oz' },
   ],
 };
+const NON_FOOD_STOCK_TRACKED_CATEGORIES = new Set(['packaging', 'supplies', 'supply', 'merch', 'merchandise', 'other']);
 
 async function readJsonBody(req) {
   try {
@@ -211,11 +213,31 @@ function sanitizeSummary(summary) {
     produced_units: numberOrZero(summary?.produced_units),
     ingredient_count: numberOrZero(summary?.ingredient_count),
     shortage_count: numberOrZero(summary?.shortage_count),
+    demand_based_procurement_count: numberOrZero(summary?.demand_based_procurement_count),
     missing_recipe_count: numberOrZero(summary?.missing_recipe_count),
     missing_yield_count: numberOrZero(summary?.missing_yield_count),
     native_order_count: numberOrZero(summary?.native_order_count),
     skipped_missing_date_count: numberOrZero(summary?.skipped_missing_date_count),
+    date_pending_planned_units: numberOrZero(summary?.date_pending_planned_units),
+    date_pending_order_count: numberOrZero(summary?.date_pending_order_count),
+    date_pending_ingredient_count: numberOrZero(summary?.date_pending_ingredient_count),
   };
+}
+
+function demandBasedProcurementNeeded(row) {
+  return row?.status === 'demand_based' && numberOrZero(row?.required_quantity) > 0;
+}
+
+function isDemandBasedPlanningIngredient(row) {
+  const policy = normalizeLower(row?.stock_tracking_policy);
+  if (policy === 'stock_tracked') return false;
+  if (['food_make_to_order', 'demand_based', 'make_to_order'].includes(policy)) return true;
+
+  const category = normalizeLower(row?.category || row?.inventory_category || row?.product_category);
+  if (NON_FOOD_STOCK_TRACKED_CATEGORIES.has(category)) return false;
+
+  // Production-planning ingredient rows represent recipe demand by default.
+  return true;
 }
 
 function sanitizeBoolean(value, fallback = false) {
@@ -244,6 +266,8 @@ function sanitizeProductGroup(group) {
     fallback_reason: sanitizeText(group?.fallback_reason, 100),
     native_primary: sanitizeBoolean(group?.native_primary, false),
     hub_fallback_used: sanitizeBoolean(group?.hub_fallback_used, false),
+    review_only: sanitizeBoolean(group?.review_only, false),
+    excluded_from_scheduled_totals: sanitizeBoolean(group?.excluded_from_scheduled_totals, false),
     warnings: sanitizeStringList(group?.warnings, 8, 100),
   };
 }
@@ -261,6 +285,7 @@ function sanitizeDateGroup(group) {
     product_groups: productGroups,
     ingredient_count: numberOrZero(group?.ingredient_count),
     shortage_count: numberOrZero(group?.shortage_count),
+    demand_based_procurement_count: numberOrZero(group?.demand_based_procurement_count),
     native_order_count: numberOrZero(group?.native_order_count),
     source: sanitizeText(group?.source, 80),
     data_source: sanitizeText(group?.data_source, 80),
@@ -268,6 +293,8 @@ function sanitizeDateGroup(group) {
     fallback_reason: sanitizeText(group?.fallback_reason, 100),
     native_primary: sanitizeBoolean(group?.native_primary, false),
     hub_fallback_used: sanitizeBoolean(group?.hub_fallback_used, false),
+    review_only: sanitizeBoolean(group?.review_only, false),
+    excluded_from_scheduled_totals: sanitizeBoolean(group?.excluded_from_scheduled_totals, false),
     warnings: sanitizeStringList(group?.warnings, 8, 100),
   };
 }
@@ -280,6 +307,7 @@ function mergeSummaries(hubSummary, nativeSummary) {
     produced_units: numberOrZero(hubSummary?.produced_units) + numberOrZero(nativeSummary?.produced_units),
     ingredient_count: numberOrZero(hubSummary?.ingredient_count) + numberOrZero(nativeSummary?.ingredient_count),
     shortage_count: numberOrZero(hubSummary?.shortage_count) + numberOrZero(nativeSummary?.shortage_count),
+    demand_based_procurement_count: numberOrZero(hubSummary?.demand_based_procurement_count) + numberOrZero(nativeSummary?.demand_based_procurement_count),
     missing_recipe_count: numberOrZero(hubSummary?.missing_recipe_count) + numberOrZero(nativeSummary?.missing_recipe_count),
     missing_yield_count: numberOrZero(hubSummary?.missing_yield_count) + numberOrZero(nativeSummary?.missing_yield_count),
     native_order_count: numberOrZero(nativeSummary?.native_order_count),
@@ -325,7 +353,10 @@ function decoratePlanningProductGroup(group, metadata) {
     fallback_reason: metadata.fallback_reason || null,
     native_primary: metadata.native_primary === true,
     hub_fallback_used: metadata.hub_fallback_used === true,
-    warnings: metadata.warnings || [],
+    warnings: uniqueStrings([
+      ...(Array.isArray(group?.warnings) ? group.warnings : []),
+      ...(Array.isArray(metadata.warnings) ? metadata.warnings : []),
+    ]),
   });
 }
 
@@ -341,7 +372,10 @@ function decorateDateGroup(group, metadata) {
     fallback_reason: metadata.fallback_reason || null,
     native_primary: metadata.native_primary === true,
     hub_fallback_used: metadata.hub_fallback_used === true,
-    warnings: metadata.warnings || [],
+    warnings: uniqueStrings([
+      ...(Array.isArray(group?.warnings) ? group.warnings : []),
+      ...(Array.isArray(metadata.warnings) ? metadata.warnings : []),
+    ]),
   });
 }
 
@@ -353,7 +387,10 @@ function decorateIngredient(row, metadata) {
     fallback_reason: metadata.fallback_reason || null,
     native_primary: metadata.native_primary === true,
     hub_fallback_used: metadata.hub_fallback_used === true,
-    warnings: metadata.warnings || [],
+    warnings: uniqueStrings([
+      ...(Array.isArray(row?.warnings) ? row.warnings : []),
+      ...(Array.isArray(metadata.warnings) ? metadata.warnings : []),
+    ]),
   });
 }
 
@@ -363,16 +400,71 @@ function groupSourcePriority(group) {
   return 2;
 }
 
+function isDatePendingValue(value) {
+  const text = normalizeText(value);
+  return !text || text === DATE_PENDING;
+}
+
+function isDatePendingDateGroup(group) {
+  return isDatePendingValue(group?.production_date);
+}
+
+function scheduledIngredientDates(row) {
+  return sanitizeStringList(row?.production_dates, 31, 20)
+    .filter(date => date && date !== DATE_PENDING);
+}
+
+function isDatePendingOnlyIngredient(row) {
+  const dates = sanitizeStringList(row?.production_dates, 31, 20);
+  return dates.length > 0 && dates.every(date => date === DATE_PENDING);
+}
+
+function addReviewOnlyWarning(row, warning) {
+  return uniqueStrings([
+    ...(Array.isArray(row?.warnings) ? row.warnings : []),
+    warning,
+  ]);
+}
+
+function markDatePendingDateGroup(group) {
+  if (!isDatePendingDateGroup(group)) return group;
+  return {
+    ...group,
+    production_date: DATE_PENDING,
+    review_only: true,
+    excluded_from_scheduled_totals: true,
+    warnings: addReviewOnlyWarning(group, 'date_pending_review_only'),
+    product_groups: Array.isArray(group?.product_groups)
+      ? group.product_groups.map(product => ({
+          ...product,
+          review_only: true,
+          excluded_from_scheduled_totals: true,
+          warnings: addReviewOnlyWarning(product, 'date_pending_review_only'),
+        }))
+      : [],
+  };
+}
+
+function markDatePendingIngredient(row) {
+  if (!isDatePendingOnlyIngredient(row)) return row;
+  return {
+    ...row,
+    review_only: true,
+    excluded_from_scheduled_totals: true,
+    warnings: addReviewOnlyWarning(row, 'date_pending_review_only'),
+  };
+}
+
 function mergeDateGroupsNativeFirst(nativeDates, hubDates) {
   const nativeGroups = (Array.isArray(nativeDates) ? nativeDates : [])
-    .map(group => decorateDateGroup(group, {
+    .map(group => decorateDateGroup(markDatePendingDateGroup(group), {
       data_source: 'customer_app_native',
       native_primary: true,
       hub_fallback_used: false,
     }))
     .filter(group => group.production_date || group.product_groups.length > 0 || group.planned_units > 0);
   const hubGroups = (Array.isArray(hubDates) ? hubDates : [])
-    .map(group => sanitizeDateGroup(group))
+    .map(group => sanitizeDateGroup(markDatePendingDateGroup(group)))
     .filter(group => group.production_date || group.product_groups.length > 0 || group.planned_units > 0);
 
   const nativeByDate = new Map();
@@ -462,7 +554,7 @@ function mergeDateGroupsNativeFirst(nativeDates, hubDates) {
 
 function mergeIngredientsNativeFirst(nativeIngredients, hubIngredients) {
   const nativeRows = (Array.isArray(nativeIngredients) ? nativeIngredients : [])
-    .map(row => decorateIngredient(row, {
+    .map(row => decorateIngredient(markDatePendingIngredient(row), {
       data_source: 'customer_app_native',
       native_primary: true,
       hub_fallback_used: false,
@@ -472,7 +564,13 @@ function mergeIngredientsNativeFirst(nativeIngredients, hubIngredients) {
     .map(sanitizeIngredient)
     .filter(row => row.ingredient);
 
-  const nativeByIngredient = new Map(nativeRows.map(row => [planningIngredientKey(row), row]));
+  const nativeByIngredient = new Map();
+  for (const row of nativeRows) {
+    const key = planningIngredientKey(row);
+    if (!key) continue;
+    if (!nativeByIngredient.has(key)) nativeByIngredient.set(key, []);
+    nativeByIngredient.get(key).push(row);
+  }
   const merged = [...nativeRows];
   const fallbackReasons = new Set();
   let hubFallbackRowCount = 0;
@@ -483,7 +581,7 @@ function mergeIngredientsNativeFirst(nativeIngredients, hubIngredients) {
 
   for (const hubRow of hubRows) {
     const key = planningIngredientKey(hubRow);
-    const nativeRow = nativeByIngredient.get(key);
+    const nativeRow = (nativeByIngredient.get(key) || []).find(row => ingredientRowsOverlap(row, hubRow));
     if (!nativeRow) {
       fallbackReasons.add('native_planning_row_missing');
       hubFallbackRowCount += 1;
@@ -519,7 +617,7 @@ function mergeIngredientsNativeFirst(nativeIngredients, hubIngredients) {
   }
 
   for (const row of nativeRows) {
-    if (!hubRows.some(hubRow => planningIngredientKey(hubRow) === planningIngredientKey(row))) nativeOnlyCount += 1;
+    if (!hubRows.some(hubRow => planningIngredientKey(hubRow) === planningIngredientKey(row) && ingredientRowsOverlap(row, hubRow))) nativeOnlyCount += 1;
   }
 
   merged.sort((a, b) => {
@@ -531,19 +629,63 @@ function mergeIngredientsNativeFirst(nativeIngredients, hubIngredients) {
   return { rows: merged, hubFallbackRowCount, suppressedHubRowCount, fallbackReasons, hubOnlyCount, nativeOnlyCount, mismatchCount };
 }
 
+function ingredientRowsOverlap(nativeRow, hubRow) {
+  const nativeDates = scheduledIngredientDates(nativeRow);
+  const hubDates = scheduledIngredientDates(hubRow);
+  if (isDatePendingOnlyIngredient(nativeRow) && hubDates.length > 0) return false;
+  if (nativeDates.length === 0 || hubDates.length === 0) return true;
+  return nativeDates.some(date => hubDates.includes(date));
+}
+
 function summaryFromNativeFirstRows(dateRows, ingredientRows, nativePlanning, hubData, hubFallbackUsed) {
-  const uniqueDates = new Set((dateRows || []).map(row => row.production_date).filter(Boolean));
+  const scheduledDateRows = (dateRows || []).filter(row => !isDatePendingDateGroup(row));
+  const datePendingRows = (dateRows || []).filter(row => isDatePendingDateGroup(row));
+  const scheduledIngredientRows = (ingredientRows || []).filter(row => !isDatePendingOnlyIngredient(row));
+  const datePendingIngredientRows = (ingredientRows || []).filter(row => isDatePendingOnlyIngredient(row));
+  const uniqueDates = new Set(scheduledDateRows.map(row => row.production_date).filter(Boolean));
   return sanitizeSummary({
     production_date_count: uniqueDates.size,
-    batch_count: dateRows.reduce((sum, row) => sum + numberOrZero(row.batch_count), 0),
-    planned_units: dateRows.reduce((sum, row) => sum + numberOrZero(row.planned_units), 0),
-    produced_units: dateRows.reduce((sum, row) => sum + numberOrZero(row.produced_units), 0),
-    ingredient_count: ingredientRows.length,
-    shortage_count: ingredientRows.filter(row => row.status === 'short').length,
+    batch_count: scheduledDateRows.reduce((sum, row) => sum + numberOrZero(row.batch_count), 0),
+    planned_units: scheduledDateRows.reduce((sum, row) => sum + numberOrZero(row.planned_units), 0),
+    produced_units: scheduledDateRows.reduce((sum, row) => sum + numberOrZero(row.produced_units), 0),
+    ingredient_count: scheduledIngredientRows.length,
+    shortage_count: scheduledIngredientRows.filter(row => row.status === 'short').length,
+    demand_based_procurement_count: scheduledIngredientRows.filter(demandBasedProcurementNeeded).length,
     missing_recipe_count: numberOrZero(nativePlanning?.summary?.missing_recipe_count) + (hubFallbackUsed ? numberOrZero(hubData?.summary?.missing_recipe_count) : 0),
     missing_yield_count: numberOrZero(nativePlanning?.summary?.missing_yield_count) + (hubFallbackUsed ? numberOrZero(hubData?.summary?.missing_yield_count) : 0),
     native_order_count: numberOrZero(nativePlanning?.summary?.native_order_count),
     skipped_missing_date_count: numberOrZero(nativePlanning?.summary?.skipped_missing_date_count),
+    date_pending_planned_units: datePendingRows.reduce((sum, row) => sum + numberOrZero(row.planned_units), 0),
+    date_pending_order_count: datePendingRows.reduce((sum, row) => sum + numberOrZero(row.native_order_count), 0),
+    date_pending_ingredient_count: datePendingIngredientRows.length,
+  });
+}
+
+function applyIngredientStatsToDateRows(dateRows, ingredientRows) {
+  const statsByDate = new Map();
+  for (const ingredient of Array.isArray(ingredientRows) ? ingredientRows : []) {
+    for (const productionDate of scheduledIngredientDates(ingredient)) {
+      const current = statsByDate.get(productionDate) || {
+        ingredient_count: 0,
+        shortage_count: 0,
+        demand_based_procurement_count: 0,
+      };
+      current.ingredient_count += 1;
+      if (ingredient.status === 'short') current.shortage_count += 1;
+      if (demandBasedProcurementNeeded(ingredient)) current.demand_based_procurement_count += 1;
+      statsByDate.set(productionDate, current);
+    }
+  }
+
+  return (Array.isArray(dateRows) ? dateRows : []).map(group => {
+    if (isDatePendingDateGroup(group)) return group;
+    const stats = statsByDate.get(group.production_date) || {};
+    return sanitizeDateGroup({
+      ...group,
+      ingredient_count: numberOrZero(stats.ingredient_count),
+      shortage_count: numberOrZero(stats.shortage_count),
+      demand_based_procurement_count: numberOrZero(stats.demand_based_procurement_count),
+    });
   });
 }
 
@@ -565,10 +707,12 @@ function buildNativeFirstPlanningParts(nativePlanning, hubData) {
   const hubSummaryRowCount = hubDates.length + hubIngredients.length;
   const hubFallbackUsed = hubFallbackRowCount > 0;
   const nativeDataPresent = nativeOverlayRowCount > 0;
+  const dateRows = applyIngredientStatsToDateRows(dateMerge.rows, ingredientMerge.rows);
+  const summary = summaryFromNativeFirstRows(dateRows, ingredientMerge.rows, nativePlanning, hubData, hubFallbackUsed);
 
   return {
-    summary: summaryFromNativeFirstRows(dateMerge.rows, ingredientMerge.rows, nativePlanning, hubData, hubFallbackUsed),
-    dates: dateMerge.rows,
+    summary,
+    dates: dateRows,
     ingredients: ingredientMerge.rows,
     metadata: {
       native_first_enabled: true,
@@ -584,6 +728,9 @@ function buildNativeFirstPlanningParts(nativePlanning, hubData) {
       hub_only_count: hubOnlyCount,
       native_only_count: nativeOnlyCount,
       mismatch_count: mismatchCount,
+      date_pending_review_row_count: dateMerge.rows.filter(isDatePendingDateGroup).length,
+      date_pending_review_ingredient_count: ingredientMerge.rows.filter(isDatePendingOnlyIngredient).length,
+      date_pending_excluded_from_scheduled_totals: numberOrZero(summary.date_pending_planned_units) > 0 || numberOrZero(summary.date_pending_ingredient_count) > 0,
       production_planning_source: nativeDataPresent ? 'customer_app_native_first' : (hubFallbackUsed ? 'hub_fallback' : 'empty'),
       writes_performed: false,
       provider_call_impact: false,
@@ -668,6 +815,12 @@ function isInRange(date, dateFrom, dateTo) {
   return Boolean(date && date >= dateFrom && date <= dateTo);
 }
 
+function isInRecentUnscheduledWindow(referenceDate, dateFrom, dateTo) {
+  if (!referenceDate) return false;
+  const reviewStart = addDays(dateFrom, -UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS);
+  return referenceDate >= reviewStart && referenceDate <= dateTo;
+}
+
 function orderPlanningDate(order) {
   return normalizeOrderDate(
     order?.production_date ||
@@ -678,6 +831,10 @@ function orderPlanningDate(order) {
     order?.delivery_date ||
     firstFulfillmentDate(order),
   );
+}
+
+function isUnscheduledNativePlanningOrderInReviewWindow(order, dateFrom, dateTo) {
+  return isInRecentUnscheduledWindow(orderReferenceDate(order), dateFrom, dateTo);
 }
 
 function orderReferenceDate(order) {
@@ -1083,7 +1240,10 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     if (plannedProductionDate && !isInRange(plannedProductionDate, dateFrom, dateTo)) {
       continue;
     }
-    if (!plannedProductionDate) skippedDateCount += 1;
+    if (!plannedProductionDate) {
+      if (!isUnscheduledNativePlanningOrderInReviewWindow(order, dateFrom, dateTo)) continue;
+      skippedDateCount += 1;
+    }
 
     const orderNumber = sanitizeText(order.shopify_order_number || order.order_number, 80);
     ensurePlanningDate(productionDate);
@@ -1138,6 +1298,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
         product_groups: productGroups,
         ingredient_count: 0,
         shortage_count: 0,
+        demand_based_procurement_count: 0,
         native_order_count: orderNumbersByDate.get(productionDate)?.size || 0,
         source: hasEventPlan && !hasNativeOrders ? 'may30_pos_event_stock_plan' : 'customer_app_native',
       };
@@ -1147,35 +1308,38 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const plannedUnits = dates.reduce((sum, group) => sum + numberOrZero(group.planned_units), 0);
   const nativeOrderCount = dates.reduce((sum, group) => sum + numberOrZero(group.native_order_count), 0);
   const ingredients = Array.from(ingredientMap.values()).map(row => {
-    const availableStock = row.available_stock === null || row.available_stock === undefined ? null : numberOrZero(row.available_stock);
-    const shortageAmount = availableStock === null
-      ? numberOrZero(row.required_quantity)
-      : Math.max(0, numberOrZero(row.required_quantity) - availableStock);
-    let status = 'no_data';
-    if (availableStock !== null) {
-      if (shortageAmount > 0) status = 'short';
-      else if (availableStock <= numberOrZero(row.required_quantity) * 1.15) status = 'low';
-      else status = 'covered';
-    }
+    const requiredQuantity = numberOrZero(row.required_quantity);
+    const availableStock = null;
+    const shortageAmount = 0;
     const procurementNeed = procurementNeedFromYield(
-      { ...row, available_stock: availableStock },
-      shortageAmount,
+      { ...row, available_stock: null },
+      requiredQuantity,
     );
+    const procurementBasis = procurementNeed.procurement_basis === 'required_no_stock_data'
+      ? 'demand_based_required'
+      : procurementNeed.procurement_basis;
 
     return {
       ...row,
       available_stock: availableStock,
       shortage_amount: shortageAmount,
-      status,
+      status: 'demand_based',
+      stock_tracking_policy: 'food_make_to_order',
+      stock_authoritative: false,
+      warnings: uniqueStrings([...(row.warnings || []), 'food_stock_excluded_make_to_order']),
       ...procurementNeed,
+      procurement_basis: procurementBasis,
     };
   });
   const ingredientStatsByDate = new Map();
   for (const ingredient of ingredients) {
     for (const productionDate of ingredient.production_dates || []) {
-      const current = ingredientStatsByDate.get(productionDate) || { ingredient_count: 0, shortage_count: 0 };
+      const current = ingredientStatsByDate.get(productionDate) || { ingredient_count: 0, shortage_count: 0, demand_based_procurement_count: 0 };
       current.ingredient_count += 1;
       if (ingredient.status === 'short') current.shortage_count += 1;
+      if (ingredient.status === 'demand_based' && Number(ingredient.procurement_needed_quantity || 0) > 0) {
+        current.demand_based_procurement_count += 1;
+      }
       ingredientStatsByDate.set(productionDate, current);
     }
   }
@@ -1185,6 +1349,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
       ...group,
       ingredient_count: numberOrZero(stats.ingredient_count),
       shortage_count: numberOrZero(stats.shortage_count),
+      demand_based_procurement_count: numberOrZero(stats.demand_based_procurement_count),
     };
   });
 
@@ -1196,6 +1361,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
       produced_units: 0,
       ingredient_count: ingredients.length,
       shortage_count: ingredients.filter(row => row.status === 'short').length,
+      demand_based_procurement_count: ingredients.filter(demandBasedProcurementNeeded).length,
       missing_recipe_count: missingRecipeKeys.size + ambiguousRecipeKeys.size,
       missing_yield_count: missingYieldKeys.size + ambiguousYieldKeys.size,
       native_order_count: nativeOrderCount,
@@ -1233,18 +1399,27 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
 }
 
 function sanitizeIngredient(row) {
-  const status = VALID_INGREDIENT_STATUSES.has(normalizeLower(row?.status))
+  const demandBased = isDemandBasedPlanningIngredient(row);
+  const status = demandBased
+    ? 'demand_based'
+    : VALID_INGREDIENT_STATUSES.has(normalizeLower(row?.status))
     ? normalizeLower(row?.status)
     : 'no_data';
+  const warnings = uniqueStrings([
+    ...(Array.isArray(row?.warnings) ? row.warnings : []),
+    ...(demandBased ? ['food_stock_excluded_make_to_order'] : []),
+  ]);
 
   return {
     ingredient: sanitizeText(row?.ingredient),
     unit: sanitizeText(row?.unit, 30),
     required_quantity: numberOrZero(row?.required_quantity),
-    available_stock: row?.available_stock === null || row?.available_stock === undefined
+    available_stock: demandBased
+      ? null
+      : row?.available_stock === null || row?.available_stock === undefined
       ? null
       : numberOrZero(row.available_stock),
-    shortage_amount: numberOrZero(row?.shortage_amount),
+    shortage_amount: demandBased ? 0 : numberOrZero(row?.shortage_amount),
     status,
     yield_match_found: row?.yield_match_found === true,
     purchase_unit: sanitizeText(row?.purchase_unit, 30),
@@ -1257,7 +1432,11 @@ function sanitizeIngredient(row) {
     procurement_needed_quantity: numberOrNull(row?.procurement_needed_quantity),
     procurement_unit: sanitizeText(row?.procurement_unit, 30),
     procurement_case_quantity: numberOrNull(row?.procurement_case_quantity),
-    procurement_basis: sanitizeText(row?.procurement_basis, 60),
+    procurement_basis: demandBased
+      ? (sanitizeText(row?.procurement_basis, 60) || 'demand_based_required')
+      : sanitizeText(row?.procurement_basis, 60),
+    stock_tracking_policy: demandBased ? 'food_make_to_order' : sanitizeText(row?.stock_tracking_policy, 60),
+    stock_authoritative: demandBased ? false : (typeof row?.stock_authoritative === 'boolean' ? row.stock_authoritative : null),
     source_products: sanitizeStringList(row?.source_products, 20, 100),
     production_dates: sanitizeStringList(row?.production_dates, 31, 20),
     source: sanitizeText(row?.source, 80),
@@ -1266,7 +1445,9 @@ function sanitizeIngredient(row) {
     fallback_reason: sanitizeText(row?.fallback_reason, 100),
     native_primary: sanitizeBoolean(row?.native_primary, false),
     hub_fallback_used: sanitizeBoolean(row?.hub_fallback_used, false),
-    warnings: sanitizeStringList(row?.warnings, 8, 100),
+    review_only: sanitizeBoolean(row?.review_only, false),
+    excluded_from_scheduled_totals: sanitizeBoolean(row?.excluded_from_scheduled_totals, false),
+    warnings: sanitizeStringList(warnings, 8, 100),
   };
 }
 
@@ -1385,6 +1566,9 @@ Deno.serve(async (req) => {
     }
 
     const nativeFirstPlanning = buildNativeFirstPlanningParts(nativePlanning, hubData);
+    if (nativeFirstPlanning.metadata.date_pending_excluded_from_scheduled_totals) {
+      warnings.push('native_date_pending_excluded_from_scheduled_totals');
+    }
 
     let productionComplianceReadModel = null;
     const productionComplianceReadModelCapability = productionComplianceReadModelRequested ? {
@@ -1428,6 +1612,7 @@ Deno.serve(async (req) => {
         date_count: nativePlanning.summary.production_date_count,
         ingredient_count: nativePlanning.summary.ingredient_count,
         shortage_count: nativePlanning.summary.shortage_count,
+        demand_based_procurement_count: nativePlanning.summary.demand_based_procurement_count,
         native_recipe_count: nativePlanning.native_recipe_count,
         native_bundle_count: nativePlanning.native_bundle_count,
         native_product_count: nativePlanning.native_product_count,

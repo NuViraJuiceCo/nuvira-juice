@@ -1,5 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+const ENABLE_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_LIFECYCLE_WRITES';
+const ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_EMAILS';
+const BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_BATCH_ALLOWLIST';
+const TEST_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_BATCH_ALLOWLIST';
+const COMPLIANCE_GATE_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_COMPLIANCE_GATE_BATCH_ALLOWLIST';
+const ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS';
+const KILL_SWITCH_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH';
 const ALLOWED_ACTIONS = new Set(['start', 'complete', 'verify']);
 const STARTABLE_STATUSES = new Set(['planned', 'ready_for_production']);
 const COMPLETABLE_STATUSES = new Set(['in_production']);
@@ -31,6 +38,20 @@ function normalizeSingleLine(value) {
 
 function normalizeLower(value) {
   return normalizeSingleLine(value).toLowerCase();
+}
+
+function normalizeActorEmailForGate(value) {
+  const email = normalizeSingleLine(value).toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 160 ? email : '';
+}
+
+function parseCsvSet(value) {
+  return new Set(
+    normalizeText(value)
+      .split(',')
+      .map(item => normalizeLower(item))
+      .filter(Boolean),
+  );
 }
 
 function redactProviderLikeToken(match) {
@@ -88,6 +109,171 @@ function safeStringArray(value, maxLength = 120) {
 
 function safeObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function referenceList(value) {
+  if (Array.isArray(value)) return value.map(item => sanitizeId(item)).filter(Boolean);
+  return normalizeText(value).split(',').map(item => sanitizeId(item)).filter(Boolean);
+}
+
+function complianceRecordMatchesBatch(record, batch) {
+  const sourceBatchId = sanitizeId(batch?.id);
+  const displayBatchId = sanitizeId(batch?.batch_id);
+  const sourceRefs = new Set([
+    sanitizeId(record?.source_production_batch_id),
+    ...referenceList(record?.related_source_production_batch_ids),
+  ].filter(Boolean));
+  const displayRefs = new Set([
+    sanitizeId(record?.batch_id),
+    ...referenceList(record?.related_batch_ids),
+    ...referenceList(record?.batches_logged),
+  ].filter(Boolean));
+  return Boolean(
+    (sourceBatchId && sourceRefs.has(sourceBatchId)) ||
+    (displayBatchId && displayRefs.has(displayBatchId))
+  );
+}
+
+function uniqueRecords(rows) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : []).filter(row => {
+    const key = sanitizeId(row?.id) || JSON.stringify([
+      sanitizeId(row?.source_production_batch_id),
+      sanitizeId(row?.batch_id),
+      sanitizeText(row?.created_date, 80),
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function evaluatePreStartCompliance({ batch, sanitationLogs = [], dailyChecklists = [], temperatureLogs = [], unavailable = false }) {
+  const sanitationMatches = uniqueRecords(sanitationLogs).filter(row => complianceRecordMatchesBatch(row, batch));
+  const checklistMatches = uniqueRecords(dailyChecklists).filter(row => complianceRecordMatchesBatch(row, batch));
+  const temperatureMatches = uniqueRecords(temperatureLogs).filter(row => complianceRecordMatchesBatch(row, batch));
+  const sanitationReady = sanitationMatches.some(row => row.cleaned === true && row.sanitized === true && normalizeLower(row.sanitizer_level) !== 'low');
+  const checklistReady = checklistMatches.some(row => (
+    ['complete', 'pre-production complete'].includes(normalizeLower(row.overall_status)) &&
+    row.morning_fridge_temp_logged === true &&
+    row.sanitizer_levels_checked === true &&
+    row.equipment_sanitized === true &&
+    row.work_areas_cleaned === true
+  ));
+  const temperatureReady = temperatureMatches.some(row => row.within_range === true && safeNumber(row.temperature) !== null);
+  const blockers = [];
+  if (unavailable) blockers.push('pre_start_compliance_unavailable');
+  if (!sanitationReady) blockers.push('pre_start_sanitation_missing_or_incomplete');
+  if (!checklistReady) blockers.push('pre_start_daily_checklist_missing_or_incomplete');
+  if (!temperatureReady) blockers.push('pre_start_temperature_missing_or_out_of_range');
+  return {
+    enforced: true,
+    ready: blockers.length === 0,
+    blockers,
+    matched_record_counts: {
+      sanitation: sanitationMatches.length,
+      daily_checklist: checklistMatches.length,
+      temperature: temperatureMatches.length,
+    },
+    ready_record_ids: {
+      sanitation: sanitationMatches.filter(row => row.cleaned === true && row.sanitized === true).map(row => sanitizeId(row.id)).filter(Boolean).slice(0, 5),
+      daily_checklist: checklistMatches.filter(row => ['complete', 'pre-production complete'].includes(normalizeLower(row.overall_status))).map(row => sanitizeId(row.id)).filter(Boolean).slice(0, 5),
+      temperature: temperatureMatches.filter(row => row.within_range === true).map(row => sanitizeId(row.id)).filter(Boolean).slice(0, 5),
+    },
+  };
+}
+
+async function linkedComplianceRows(base44, entityName, batch) {
+  const sourceBatchId = sanitizeId(batch?.id);
+  const displayBatchId = sanitizeId(batch?.batch_id);
+  const results = await Promise.all([
+    sourceBatchId ? filterEntity(base44, entityName, { source_production_batch_id: sourceBatchId }, '-created_date', 20) : [],
+    displayBatchId ? filterEntity(base44, entityName, { batch_id: displayBatchId }, '-created_date', 20) : [],
+  ]);
+  return uniqueRecords(results.flat());
+}
+
+async function loadPreStartCompliance(base44, batch) {
+  try {
+    const [sanitationLogs, dailyChecklists, temperatureLogs] = await Promise.all([
+      linkedComplianceRows(base44, 'SanitationLog', batch),
+      linkedComplianceRows(base44, 'DailyChecklist', batch),
+      linkedComplianceRows(base44, 'TemperatureLog', batch),
+    ]);
+    return evaluatePreStartCompliance({ batch, sanitationLogs, dailyChecklists, temperatureLogs });
+  } catch {
+    return evaluatePreStartCompliance({ batch, unavailable: true });
+  }
+}
+
+function liveGateStatus({ action, batch, actorEmail }) {
+  const blockers = [];
+  const killSwitchActive = Deno.env.get(KILL_SWITCH_FLAG) === 'true';
+  const nativeWriterEnabled = Deno.env.get(ENABLE_WRITES_FLAG) === 'true';
+
+  if (killSwitchActive) blockers.push('kill_switch_active');
+  if (!nativeWriterEnabled) blockers.push('native_production_batch_lifecycle_writes_disabled');
+
+  const allowedEmails = parseCsvSet(Deno.env.get(ALLOWED_EMAILS_FLAG) || '');
+  const normalizedActorEmail = normalizeLower(actorEmail);
+  if (allowedEmails.size === 0) blockers.push('allowed_email_gate_required');
+  else if (!allowedEmails.has(normalizedActorEmail)) blockers.push('actor_email_not_allowlisted');
+
+  const allowedActions = parseCsvSet(Deno.env.get(ALLOWED_ACTIONS_FLAG) || '');
+  const normalizedAction = normalizeLower(action);
+  if (allowedActions.size === 0) blockers.push('allowed_action_gate_required');
+  else if (!allowedActions.has(normalizedAction)) blockers.push('action_not_allowlisted');
+
+  const batchKeys = [
+    sanitizeId(batch?.id),
+    sanitizeId(batch?.batch_id),
+  ].filter(Boolean);
+  const normalAllowedBatches = parseCsvSet(Deno.env.get(BATCH_ALLOWLIST_FLAG) || '');
+  const testAllowedBatches = parseCsvSet(Deno.env.get(TEST_BATCH_ALLOWLIST_FLAG) || '');
+  const allowedBatches = new Set([...normalAllowedBatches, ...testAllowedBatches]);
+  if (batchKeys.length === 0) blockers.push('production_batch_id_or_batch_id_required');
+  else if (allowedBatches.size === 0) blockers.push('batch_allowlist_required');
+  else if (!batchKeys.some(batchKey => allowedBatches.has(normalizeLower(batchKey)))) blockers.push('batch_not_allowlisted');
+  const usesTestAllowlist = batchKeys.some(batchKey => testAllowedBatches.has(normalizeLower(batchKey)));
+  if (usesTestAllowlist && !isInternalTestBatch(batch)) blockers.push('test_batch_allowlist_requires_test_marker');
+
+  const complianceGateBatches = parseCsvSet(Deno.env.get(COMPLIANCE_GATE_BATCH_ALLOWLIST_FLAG) || '');
+  if (normalizedAction === 'start') {
+    if (complianceGateBatches.size === 0) blockers.push('pre_start_compliance_gate_batch_allowlist_required');
+    else if (!batchKeys.some(batchKey => complianceGateBatches.has(normalizeLower(batchKey)))) {
+      blockers.push('pre_start_compliance_gate_batch_not_allowlisted');
+    }
+  }
+
+  const liveCommandAvailable = blockers.length === 0;
+  return {
+    native_writer_enabled: nativeWriterEnabled,
+    native_write_allowed: liveCommandAvailable,
+    live_command_available: liveCommandAvailable,
+    live_command_blockers: uniqueStrings(blockers),
+    live_gate: {
+      kill_switch_active: killSwitchActive,
+      writer_enabled: nativeWriterEnabled,
+      actor_email_allowed: allowedEmails.size > 0 && allowedEmails.has(normalizedActorEmail),
+      action_allowed: allowedActions.size > 0 && allowedActions.has(normalizedAction),
+      batch_allowlisted: batchKeys.length > 0 && allowedBatches.size > 0 && batchKeys.some(batchKey => allowedBatches.has(normalizeLower(batchKey))),
+      test_batch_marker_valid: !usesTestAllowlist || isInternalTestBatch(batch),
+      pre_start_compliance_gate_batch_allowlisted: normalizedAction !== 'start' ||
+        (batchKeys.length > 0 && complianceGateBatches.size > 0 && batchKeys.some(batchKey => complianceGateBatches.has(normalizeLower(batchKey)))),
+    },
+  };
+}
+
+function isInternalTestBatch(batch) {
+  const batchId = normalizeLower(batch?.batch_id || batch?.id);
+  const sourceSystem = normalizeLower(batch?.source_system);
+  const ownerStatus = normalizeLower(batch?.native_owner_status);
+  const testPurpose = normalizeLower(batch?.test_purpose);
+  return batch?.is_test_batch === true ||
+    batchId.includes('-test-') ||
+    sourceSystem.includes('internal_validation') ||
+    ownerStatus.includes('internal_test') ||
+    testPurpose.includes('internal validation');
 }
 
 function uniqueStrings(values, limit = SAFE_ARRAY_LIMIT) {
@@ -192,7 +378,7 @@ async function requirePreviewAccess({ base44, req, body }) {
     const user = await base44.auth.me().catch(() => null);
     if (!user) return { ok: false, response: unauthorized() };
     if (user.role !== 'admin') return { ok: false, response: forbidden() };
-    return { ok: true, actor_type: 'admin', actor_role: 'admin', actor_email: sanitizeText(user.email, 120) || 'admin' };
+    return { ok: true, actor_type: 'admin', actor_role: 'admin', actor_email: normalizeActorEmailForGate(user.email) || 'admin' };
   } catch {
     return { ok: false, response: unauthorized() };
   }
@@ -364,6 +550,8 @@ function buildBaseSummary(batch) {
     production_status: sanitizeText(batch.production_status, 80) || null,
     production_date: sanitizeText(batch.production_date, 40) || null,
     is_locked: batch.is_locked === true,
+    is_test_batch: isInternalTestBatch(batch),
+    test_purpose: isInternalTestBatch(batch) ? sanitizeText(batch.test_purpose, 160) || null : null,
     planned_units: safeNumber(batch.planned_units),
     actual_units: safeNumber(batch.actual_units),
     actual_start_time: sanitizeText(batch.actual_start_time, 80) || null,
@@ -417,7 +605,7 @@ function buildCommandDraft({ action, batch, actorEmail, requestId, now }) {
   };
 }
 
-function planStart({ batch, actorEmail, requestId, now }) {
+function planStart({ batch, actorEmail, requestId, now, preStartCompliance }) {
   const blockers = [];
   const warnings = [];
   appendCommonGuards(batch, blockers, warnings);
@@ -429,6 +617,8 @@ function planStart({ batch, actorEmail, requestId, now }) {
   if (batch.actual_start_time) blockers.push('already_started');
   if (batch.actual_end_time || batch.completed_by) blockers.push('already_completed');
   if (batch.compliance_log_id || batch.verified_at || batch.verified_by) blockers.push('already_verified_logged');
+  if (preStartCompliance?.enforced !== true) blockers.push('pre_start_compliance_unavailable');
+  else blockers.push(...safeStringArray(preStartCompliance.blockers));
 
   const proposedPatch = blockers.length ? null : {
     status: 'in_production',
@@ -620,6 +810,8 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
     verified_at: now,
     source_production_batch_id: sanitizeId(batch.id) || null,
     locked: true,
+    is_test_record: isInternalTestBatch(batch),
+    ...(isInternalTestBatch(batch) ? { test_batch_id: sanitizeId(batch.batch_id) || sanitizeId(batch.id) } : {}),
   };
 
   const proposedPatch = blockers.length ? null : {
@@ -666,6 +858,7 @@ function planLifecycle(input) {
   const now = sanitizeText(body.now, 40) || new Date().toISOString();
   const completionInput = safeObject(body.completion_input || body);
   const verificationInput = safeObject(body.verification_input || body);
+  const preStartCompliance = safeObject(body.pre_start_compliance);
 
   if (!ALLOWED_ACTIONS.has(action)) {
     return {
@@ -690,7 +883,7 @@ function planLifecycle(input) {
 
   let plan;
   if (action === 'start') {
-    plan = planStart({ batch, actorEmail, requestId, now });
+    plan = planStart({ batch, actorEmail, requestId, now, preStartCompliance });
   } else if (action === 'complete') {
     plan = planComplete({ batch, actorEmail, requestId, now, completionInput });
   } else {
@@ -699,18 +892,24 @@ function planLifecycle(input) {
 
   const blockers = safeStringArray(plan.blockers);
   const warnings = safeStringArray(plan.warnings);
+  const gate = liveGateStatus({ action, batch, actorEmail });
+  const nativeWriteAllowed = blockers.length === 0 && gate.native_write_allowed === true;
   return {
     success: true,
     dry_run: true,
     action,
-    native_writer_enabled: false,
+    native_writer_enabled: gate.native_writer_enabled,
     source: 'customer_app_native_preview',
     ...buildBaseSummary(batch),
     lifecycle_ready: blockers.length === 0,
-    native_write_allowed: false,
+    native_write_allowed: nativeWriteAllowed,
+    live_command_available: nativeWriteAllowed,
+    live_command_blockers: gate.live_command_blockers,
+    live_gate: gate.live_gate,
     projected_writes: safeStringArray(plan.projected_writes),
     proposed_patch: plan.proposed_patch,
     compliance_log_draft: plan.compliance_log_draft || null,
+    pre_start_compliance: action === 'start' ? preStartCompliance : null,
     command_log_draft: buildCommandDraft({ action, batch, actorEmail, requestId, now }),
     blockers,
     warnings,
@@ -859,10 +1058,16 @@ function safeVerificationPreviewSummary(input) {
   };
 }
 
-function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceLogs, lookup }) {
+function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceLogs, preStartComplianceRecords, lookup }) {
   const completionInput = completionInputForBatch(batch, lookup);
   const verificationInput = verificationInputForBatch(batch, lookup);
-  const startPlan = planStart({ batch, actorEmail, requestId, now });
+  const preStartCompliance = evaluatePreStartCompliance({
+    batch,
+    sanitationLogs: preStartComplianceRecords?.sanitationLogs,
+    dailyChecklists: preStartComplianceRecords?.dailyChecklists,
+    temperatureLogs: preStartComplianceRecords?.temperatureLogs,
+  });
+  const startPlan = planStart({ batch, actorEmail, requestId, now, preStartCompliance });
   const completePlan = planComplete({ batch, actorEmail, requestId, now, completionInput });
   const verifyPlan = planVerify({ batch, actorEmail, requestId, now, verificationInput });
   const startBlockers = uniqueStrings(startPlan.blockers);
@@ -905,6 +1110,7 @@ function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceL
     ]),
     lifecycle_warnings: lifecycleWarnings,
     existing_compliance_logs: matchingComplianceLogsForBatch(batch, complianceLogs),
+    pre_start_compliance: preStartCompliance,
     expected_start_writes_if_approved: safeStringArray(startPlan.projected_writes),
     expected_complete_writes_if_approved: safeStringArray(completePlan.projected_writes),
     expected_verify_writes_if_approved: safeStringArray(verifyPlan.projected_writes),
@@ -965,7 +1171,7 @@ function buildCompliancePreview(rows, complianceLogs) {
       'verified_by',
       'verified_at',
     ],
-    sanitation_temperature_checklist_context: 'not_required_for_start_preview_and_held_for_later_compliance_policy',
+    sanitation_temperature_checklist_context: 'server_enforced_before_start',
     corrective_action_context: 'review_required_if_batch_fails_or_corrective_action_required',
     compliance_log_creation_held: true,
     no_compliance_logs_created: true,
@@ -994,7 +1200,7 @@ function buildCascadePreview({ rows, nativeOrder, task }) {
   };
 }
 
-function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches, complianceLogs, lookup, auth, now }) {
+function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches, complianceLogs, preStartComplianceRecords, lookup, auth, now }) {
   const orderNumber = orderNumberFor(customerOrder, nativeOrder, task, lookup);
   const productionDate = productionDateFor(customerOrder, nativeOrder, task, lookup);
   const deliveryDate = deliveryDateFor(customerOrder, nativeOrder, task);
@@ -1021,6 +1227,7 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     requestId: lookup.requestId,
     now,
     complianceLogs,
+    preStartComplianceRecords,
     lookup,
   }));
 
@@ -1089,6 +1296,29 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
               : allLifecycleComplete
                 ? 'lifecycle_complete_or_archived'
                 : 'review_lifecycle_state_or_hub_fallback';
+  const nextActionKey = nextAction.includes('start_production')
+    ? 'start'
+    : nextAction.includes('complete_production')
+      ? 'complete'
+      : nextAction.includes('verify_production')
+        ? 'verify'
+        : null;
+  const nextActionRows = nextActionKey ? rows.filter(row => row[`can_${nextActionKey}`] === true) : [];
+  const nextActionGates = nextActionRows.map(row => liveGateStatus({
+    action: nextActionKey,
+    batch: {
+      id: row.production_batch_id,
+      batch_id: row.batch_id,
+      is_test_batch: isInternalTestBatch(row),
+    },
+    actorEmail: auth.actor_email,
+  }));
+  const liveCommandBlockers = uniqueStrings(nextActionGates.flatMap(gate => gate.live_command_blockers || []));
+  const liveCommandAvailable = blockers.length === 0 &&
+    nextActionRows.length > 0 &&
+    nextActionGates.length === nextActionRows.length &&
+    nextActionGates.every(gate => gate.native_write_allowed === true);
+  const nativeWriterEnabled = Deno.env.get(ENABLE_WRITES_FLAG) === 'true';
 
   return {
     success: blockers.length === 0,
@@ -1132,9 +1362,12 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     blockers: uniqueStrings(blockers),
     warnings: uniqueStrings(warnings),
     hub_fallback_required: true,
-    live_execution_approved: false,
-    live_command_available: true,
-    native_writer_enabled: false,
+    live_execution_approved: liveCommandAvailable,
+    live_command_available: liveCommandAvailable,
+    live_command_action: nextActionKey,
+    live_command_blockers: liveCommandBlockers,
+    native_write_allowed: liveCommandAvailable,
+    native_writer_enabled: nativeWriterEnabled,
     inventory_deduction_ready: false,
     purchase_order_ready: false,
     compliance_log_creation_ready: verifyPreview.ready_count > 0,
@@ -1178,13 +1411,26 @@ async function buildLiveOrderPreview({ base44, body, auth }) {
   const task = await findNativeFulfillmentTask(base44, customerOrder, nativeOrder, lookup);
   const orderNumber = orderNumberFor(customerOrder, nativeOrder, task, lookup);
 
-  const [allBatches, complianceLogs] = await Promise.all([
+  const [allBatches, complianceLogs, sanitationLogs, dailyChecklists, temperatureLogs] = await Promise.all([
     listEntity(base44, 'ProductionBatch', '-production_date', DEFAULT_LIST_LIMIT),
     listEntity(base44, 'BatchComplianceLog', '-created_date', DEFAULT_LIST_LIMIT),
+    listEntity(base44, 'SanitationLog', '-created_date', DEFAULT_LIST_LIMIT),
+    listEntity(base44, 'DailyChecklist', '-created_date', DEFAULT_LIST_LIMIT),
+    listEntity(base44, 'TemperatureLog', '-created_date', DEFAULT_LIST_LIMIT),
   ]);
   const batches = filterProductionBatches(allBatches, { orderNumber, customerOrder, nativeOrder, task, lookup });
   const now = new Date().toISOString();
-  return buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches, complianceLogs, lookup, auth, now });
+  return buildOrderLifecyclePreview({
+    customerOrder,
+    nativeOrder,
+    task,
+    batches,
+    complianceLogs,
+    preStartComplianceRecords: { sanitationLogs, dailyChecklists, temperatureLogs },
+    lookup,
+    auth,
+    now,
+  });
 }
 
 Deno.serve(async (req) => {
@@ -1207,7 +1453,14 @@ Deno.serve(async (req) => {
     if (!auth.ok) return auth.response;
 
     if (body.action && body.batch) {
-      const result = planLifecycle({ ...body, actor_email: auth.actor_email });
+      const preStartCompliance = normalizeLower(body.action) === 'start'
+        ? await loadPreStartCompliance(base44, safeObject(body.batch))
+        : null;
+      const result = planLifecycle({
+        ...body,
+        actor_email: auth.actor_email,
+        pre_start_compliance: preStartCompliance,
+      });
       const status = result.status || 200;
       delete result.status;
       return Response.json({

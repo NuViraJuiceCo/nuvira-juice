@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { useNavigate } from 'react-router-dom';
 import { Send, Plus, Bell, BellOff, Users, CheckCircle2, AlertCircle, Loader2, FlaskConical, Smartphone, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import { unwrapBase44Result } from '@/lib/base44-result';
 import {
   getEventPushPermission,
   getEventPushSupportStatus,
@@ -44,12 +46,16 @@ const DEEP_LINK_OPTIONS = [
   { label: 'Subscribe', value: '/subscribe' },
 ];
 
-const CAMPAIGN_SENDS_ENABLED = false;
+const CAMPAIGN_SENDS_ENABLED = true;
+
+function unwrapBase44Data(response, fallback = null) {
+  return unwrapBase44Result(response, fallback);
+}
 
 async function readAdminPushDiagnostics() {
   try {
     const response = await base44.functions.invoke('getAdminPushDiagnostics', {});
-    return response?.data || response || null;
+    return unwrapBase44Data(response, null);
   } catch (err) {
     return {
       success: false,
@@ -129,6 +135,8 @@ export default function NotificationCampaigns() {
     diagnostics: null,
   });
   const [adminPushTestResult, setAdminPushTestResult] = useState(null);
+  const [campaignSendResult, setCampaignSendResult] = useState(null);
+  const [isSendingCampaign, setIsSendingCampaign] = useState(false);
 
   const setField = (key, val) => setForm(p => ({ ...p, [key]: val }));
 
@@ -140,7 +148,7 @@ export default function NotificationCampaigns() {
   };
 
   useEffect(() => {
-    if (user?.role !== 'admin') return;
+    if (!isAdminUser(user)) return;
 
     let active = true;
     setAdminPushStatus(prev => ({ ...prev, loading: true }));
@@ -173,16 +181,18 @@ export default function NotificationCampaigns() {
       const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
         resource: 'notification_campaigns',
       });
-      const payload = res?.data || res;
+      const payload = unwrapBase44Data(res, {});
       return Array.isArray(payload?.rows) ? payload.rows : [];
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
   });
 
   const handleEnableAdminPush = async () => {
     setAdminPushStatus(prev => ({ ...prev, action: 'enable' }));
     try {
-      const result = await subscribeToEventPushNotifications();
+      const result = await subscribeToEventPushNotifications({
+        vapidPublicKey: adminPushStatus.diagnostics?.providers?.web_push_public_key,
+      });
       await refreshAdminPushStatus();
 
       if (result.success) {
@@ -215,7 +225,7 @@ export default function NotificationCampaigns() {
       const res = await base44.functions.invoke('sendAdminPushTestNotification', {
         client_request_id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       });
-      const data = res?.data || res || {};
+      const data = unwrapBase44Data(res, {});
       setAdminPushTestResult(data);
       await refreshAdminPushStatus();
 
@@ -236,10 +246,97 @@ export default function NotificationCampaigns() {
   };
 
   const handleCreateAndSend = async () => {
-    toast.error('Notification campaign creation and customer sends are disabled during the May 30 launch freeze.');
+    const title = form.title.trim();
+    const message = form.message.trim();
+    const audienceLabel = AUDIENCE_LABELS[form.audience] || form.audience;
+
+    if (!title || !message) {
+      toast.error('Add a campaign title and message before sending.');
+      return;
+    }
+
+    let maxRecipientAck = null;
+    if (form.audience !== 'test_only') {
+      const confirmed = window.confirm(
+        `Send this campaign to ${audienceLabel}?\n\nTitle: ${title}\n\nThis will create in-app notifications and attempt push delivery for subscribed customers in this audience.`
+      );
+      if (!confirmed) return;
+
+      const recipientAck = window.prompt(
+        `Maximum eligible recipients you approve for this ${audienceLabel} send?\n\nIf the live eligible audience is larger than this number, the backend will stop the send.`
+      );
+      if (recipientAck === null) return;
+      maxRecipientAck = Number(recipientAck);
+      if (!Number.isInteger(maxRecipientAck) || maxRecipientAck < 1) {
+        toast.error('Enter a whole-number recipient maximum before sending a broad campaign.');
+        return;
+      }
+    }
+
+    setIsSendingCampaign(true);
+    setCampaignSendResult(null);
+
+    try {
+      const campaignResponse = await base44.entities.NotificationCampaign.create({
+        title,
+        message,
+        audience: form.audience,
+        notification_type: form.notification_type,
+        deep_link: form.deep_link || null,
+        status: 'draft',
+        sent_count: 0,
+        failed_count: 0,
+        skipped_count: 0,
+        recipients_total: 0,
+        eligible_count: 0,
+        skipped_reasons: {},
+        created_by: user?.email || null,
+      });
+      const campaign = unwrapBase44Data(campaignResponse, {});
+      const campaignId = campaign?.id;
+      if (!campaignId) {
+        throw new Error('Campaign was created but no campaign id was returned. Refresh campaigns and try again.');
+      }
+
+      const response = await base44.functions.invoke('sendNotificationCampaign', {
+        campaign_id: campaignId,
+        confirm: true,
+        ...(form.audience !== 'test_only'
+          ? {
+              broad_send_confirmation: `send_${form.audience}_campaign`,
+              max_recipient_ack: maxRecipientAck,
+            }
+          : {}),
+      });
+      const data = unwrapBase44Data(response, {});
+      setCampaignSendResult(data);
+
+      if (data.success) {
+        const sent = Number(data.sent_count || 0);
+        const pushSent = Number(data.push_sent_count || 0);
+        toast.success(`${form.audience === 'test_only' ? 'Test campaign' : 'Campaign'} sent to ${sent} recipient${sent === 1 ? '' : 's'}${pushSent ? `; ${pushSent} push delivery${pushSent === 1 ? '' : 'ies'}` : ''}.`);
+        setForm({
+          title: '',
+          message: '',
+          audience: 'test_only',
+          notification_type: 'promotion',
+          deep_link: '',
+        });
+      } else {
+        toast.error(data.error || data.message || 'Campaign send did not complete.');
+      }
+    } catch (err) {
+      toast.error(`Unable to send campaign: ${err.message}`);
+      setCampaignSendResult({
+        success: false,
+        error: err.message,
+      });
+    } finally {
+      setIsSendingCampaign(false);
+    }
   };
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return <div className="p-8 text-center text-muted-foreground">Admin access required.</div>;
   }
 
@@ -247,9 +344,9 @@ export default function NotificationCampaigns() {
     <div className="pb-20">
       <AdminOpsHeader
         title="Notification Campaigns"
-        subtitle="Customer campaign sends frozen for launch"
-        badge="Frozen"
-        badgeTone="warning"
+        subtitle="Admin alerts and customer campaign sends"
+        badge="Live"
+        badgeTone="success"
         onBack={() => navigate(-1)}
         actions={<Bell className="h-4 w-4 text-muted-foreground" />}
       />
@@ -264,7 +361,7 @@ export default function NotificationCampaigns() {
               <div>
                 <h2 className="font-semibold text-sm">Admin Order Alerts</h2>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Enables paid-order push alerts for this admin device. Customer campaign sends stay frozen.
+                  Enables paid-order push alerts for this admin device. Customer campaigns use the same saved push subscriptions.
                 </p>
               </div>
             </div>
@@ -272,7 +369,7 @@ export default function NotificationCampaigns() {
               adminPushStatus.subscribed
                 ? 'bg-primary/10 text-primary'
                 : adminPushStatus.permission === 'denied'
-                  ? 'bg-red-100 text-red-700'
+                  ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200'
                   : 'bg-secondary text-muted-foreground'
             }`}>
               {adminPushStatusLabel(adminPushStatus)}
@@ -316,11 +413,11 @@ export default function NotificationCampaigns() {
 
           {adminPushTestResult && (
             <div className={`mt-4 rounded-xl border px-3 py-2 ${
-              adminPushTestResult.push_sent
-                ? 'border-primary/20 bg-primary/5'
-                : 'border-cyan-200 bg-cyan-50'
+                adminPushTestResult.push_sent
+                  ? 'border-primary/20 bg-primary/5'
+                  : 'border-cyan-200 bg-cyan-50 dark:border-cyan-900/60 dark:bg-cyan-950/30'
             }`}>
-              <p className={`text-xs font-semibold ${adminPushTestResult.push_sent ? 'text-primary' : 'text-cyan-900'}`}>
+              <p className={`text-xs font-semibold ${adminPushTestResult.push_sent ? 'text-primary' : 'text-cyan-900 dark:text-cyan-100'}`}>
                 {adminPushTestResult.push_sent ? 'Test sent' : 'Test skipped'}
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
@@ -381,13 +478,13 @@ export default function NotificationCampaigns() {
           </div>
         </div>
 
-        {!CAMPAIGN_SENDS_ENABLED && (
-          <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
-            <AlertCircle className="w-4 h-4 text-cyan-700 mt-0.5 shrink-0" />
+        {CAMPAIGN_SENDS_ENABLED && (
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6 flex items-start gap-3">
+            <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-cyan-900">Campaign sending disabled</p>
-              <p className="text-xs text-cyan-800 mt-1">
-                Notification campaign creation and sends are frozen for May 30 launch operations unless explicitly re-enabled.
+              <p className="text-sm font-semibold text-primary">Campaign sending active</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Test campaigns send only to the logged-in admin. Broader audiences require confirmation and only target customers with the matching notification preference enabled.
               </p>
             </div>
           </div>
@@ -455,21 +552,43 @@ export default function NotificationCampaigns() {
             </div>
 
             {form.audience !== 'test_only' && (
-              <div className="flex items-start gap-2.5 bg-cyan-50 border border-cyan-200 rounded-xl p-3">
-                <AlertCircle className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />
-                <p className="text-xs text-cyan-700">
-                  <strong>Broad send:</strong> This will notify all customers in the "{AUDIENCE_LABELS[form.audience]}" segment. You'll see a confirmation before it sends.
+              <div className="flex items-start gap-2.5 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-900/60 dark:bg-cyan-950/30">
+                <AlertCircle className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0 dark:text-cyan-300" />
+                <p className="text-xs text-cyan-700 dark:text-cyan-100">
+                  <strong>Broad send:</strong> This will notify eligible customers in the "{AUDIENCE_LABELS[form.audience]}" segment who have the matching notification preference enabled. You'll see a confirmation before it sends.
+                </p>
+              </div>
+            )}
+
+            {campaignSendResult && (
+              <div className={`rounded-xl border px-3 py-2 ${
+                campaignSendResult.success
+                  ? 'border-primary/20 bg-primary/5'
+                  : 'border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30'
+                }`}>
+                <p className={`text-xs font-semibold ${campaignSendResult.success ? 'text-primary' : 'text-red-700 dark:text-red-100'}`}>
+                  {campaignSendResult.success ? 'Campaign sent' : 'Campaign not sent'}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {campaignSendResult.success
+                    ? `${campaignSendResult.sent_count || 0} notification${Number(campaignSendResult.sent_count || 0) === 1 ? '' : 's'} created; ${campaignSendResult.push_sent_count || 0} push delivery${Number(campaignSendResult.push_sent_count || 0) === 1 ? '' : 'ies'} sent.`
+                    : campaignSendResult.message || campaignSendResult.error || 'Send did not complete.'}
+                  {Number(campaignSendResult.skipped_count || 0) > 0 && (
+                    <span className="block mt-1">
+                      {campaignSendResult.skipped_count} skipped; {campaignSendResult.eligible_count || 0} eligible of {campaignSendResult.recipients_total || 0} candidate recipients.
+                    </span>
+                  )}
                 </p>
               </div>
             )}
 
             <Button
               onClick={handleCreateAndSend}
-              disabled={!CAMPAIGN_SENDS_ENABLED}
+              disabled={!CAMPAIGN_SENDS_ENABLED || isSendingCampaign}
               className="w-full h-11 rounded-xl font-semibold gap-2"
             >
-              {form.audience === 'test_only' ? <FlaskConical className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-              Campaign Sends Frozen
+              {isSendingCampaign ? <Loader2 className="w-4 h-4 animate-spin" /> : form.audience === 'test_only' ? <FlaskConical className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+              {isSendingCampaign ? 'Sending...' : form.audience === 'test_only' ? 'Send Test Campaign' : 'Send Campaign'}
             </Button>
           </div>
         </div>

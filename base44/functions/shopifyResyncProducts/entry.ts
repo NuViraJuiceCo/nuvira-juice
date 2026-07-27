@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
       success: true,
       skipped: true,
       reason: 'admin_shopify_resync_disabled',
-      message: 'Admin Shopify product resync is disabled for May 30 launch freeze.',
+      message: 'Admin Shopify product resync is disabled by the current controlled-sync gate.',
     }, { status: 409 });
   }
 

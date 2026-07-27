@@ -21,6 +21,7 @@ export default function NotificationPreferencesPanel() {
     production_reminders: true, promotions: true, rewards_credits: true,
   });
   const [prefId, setPrefId] = useState(null);
+  const [prefOwnerEmail, setPrefOwnerEmail] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export default function NotificationPreferencesPanel() {
         if (res[0]) {
           const rec = res[0];
           setPrefId(rec.id);
+          setPrefOwnerEmail(rec.customer_email || email);
           setPrefs({
             order_updates:        rec.order_updates        ?? true,
             delivery_updates:     rec.delivery_updates     ?? true,
@@ -51,9 +53,17 @@ export default function NotificationPreferencesPanel() {
     if (!user?.email) return;
     setSaving(true);
     try {
-      const canonicalEmail = user.email;
-      if (prefId) {
-        await base44.entities.NotificationPreference.update(prefId, prefs);
+      const canonicalEmail = String(user.email).trim().toLowerCase();
+      let targetPrefId = prefOwnerEmail === canonicalEmail ? prefId : null;
+
+      if (!targetPrefId) {
+        const ownPrefs = await base44.entities.NotificationPreference.filter({ customer_email: canonicalEmail });
+        targetPrefId = ownPrefs[0]?.id || null;
+      }
+
+      if (targetPrefId) {
+        await base44.entities.NotificationPreference.update(targetPrefId, prefs);
+        setPrefId(targetPrefId);
       } else {
         const created = await base44.entities.NotificationPreference.create({
           customer_email: canonicalEmail,
@@ -61,8 +71,10 @@ export default function NotificationPreferencesPanel() {
         });
         setPrefId(created.id);
       }
+      setPrefOwnerEmail(canonicalEmail);
       toast.success('Notification preferences saved.');
     } catch (err) {
+      console.error('[NotificationPreferencesPanel] Save failed:', err);
       toast.error('Failed to save preferences.');
     } finally {
       setSaving(false);

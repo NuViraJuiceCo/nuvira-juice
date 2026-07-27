@@ -7,8 +7,10 @@ import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import SEO from '@/components/SEO';
 import ConsumptionSchedule from '@/components/program/ConsumptionSchedule';
 import { PROGRAMS } from '@/components/home/ProgramCards';
+import { absoluteUrl } from '@/lib/seo-slugs';
 
 const PERKS = [
   'Cold-pressed same day',
@@ -31,13 +33,58 @@ export default function ProgramDetail() {
   });
 
   if (!program) {
-    navigate('/shop');
-    return null;
+    return (
+      <div className="min-h-screen bg-background px-5 py-10 md:px-8">
+        <SEO
+          title="Program Not Found"
+          description="This NuVira program could not be found."
+          noindex
+        />
+        <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Program unavailable</p>
+          <h1 className="mt-3 font-heading text-3xl font-bold text-foreground">We could not find that program</h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            It may have moved or no longer be available. You can still shop current juices, bundles, and wellness programs.
+          </p>
+          <Button
+            type="button"
+            onClick={() => navigate('/shop')}
+            className="mt-6 h-11 rounded-xl px-6 text-sm font-semibold"
+          >
+            Shop Current Options
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const basePrice = program.price;
   const shotsTotal = selectedShots.reduce((sum, id) => sum + (shots.find(s => s.id === id)?.price || 0), 0);
   const total = basePrice + shotsTotal;
+  const programTitle = `${program.name} Program (3-Day)`;
+  const programDescription = `${program.description} Includes ${program.composition} across ${program.bottles} bottles, available for local delivery in Wentzville, St. Charles County, and the St. Louis area.`;
+  const programUrl = absoluteUrl(`/program/${program.key}`);
+  const programStructuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: programTitle,
+    description: programDescription,
+    image: program.image,
+    brand: { '@type': 'Brand', name: 'NuVira Juice Co.' },
+    offers: {
+      '@type': 'Offer',
+      url: programUrl,
+      priceCurrency: 'USD',
+      price: program.price.toFixed(2),
+      availability: 'https://schema.org/InStock',
+      seller: { '@type': 'Organization', name: 'NuVira Juice Co.' },
+    },
+    additionalProperty: [
+      { '@type': 'PropertyValue', name: 'Program length', value: `${program.days} days` },
+      { '@type': 'PropertyValue', name: 'Bottle count', value: `${program.bottles} bottles` },
+      { '@type': 'PropertyValue', name: 'Composition', value: program.composition },
+    ],
+  };
 
   const handleStartProgram = () => {
     // Subscriptions temporarily disabled — go straight to one-time purchase
@@ -87,6 +134,15 @@ export default function ProgramDetail() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title={`${programTitle} | Cold-Pressed Juice Program`}
+        description={programDescription}
+        image={program.image}
+        type="product"
+        keywords={`${program.name} juice program, ${program.composition}, 3-day juice program Wentzville MO, cold-pressed juice delivery St. Louis, NuVira ${program.name}`}
+        canonicalPath={`/program/${program.key}`}
+        structuredData={programStructuredData}
+      />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <button
@@ -246,7 +302,7 @@ export default function ProgramDetail() {
       </div>
 
       {/* Bottom Sticky Purchase Tray — Premium Anchored Footer */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-primary/15" style={{ paddingBottom: `max(0.75rem, env(safe-area-inset-bottom))` }}>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-primary/15 md:left-60" style={{ paddingBottom: `max(0.75rem, env(safe-area-inset-bottom))` }}>
         <div className="bg-gradient-to-b from-card to-card/95 backdrop-blur-sm">
           <div className="px-4 py-3 md:px-6 md:py-3.5">
             {/* Mobile: Two-row compact layout */}

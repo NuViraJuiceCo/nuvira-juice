@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
+import { productPath } from '@/lib/seo-slugs';
 import { motion } from 'framer-motion';
 
 // Tap-vs-scroll guard: only fire click if touch didn't move more than 8px
@@ -22,6 +23,7 @@ function useTapGuard() {
 export default function ProductCard({ product, compact = false }) {
   const { addItem } = useCart();
   const tapGuard = useTapGuard();
+  const detailPath = productPath(product);
 
   const handleQuickAdd = (e) => {
     e.preventDefault();
@@ -45,11 +47,11 @@ export default function ProductCard({ product, compact = false }) {
 
   if (compact) {
     return (
-      <Link to={`/shop/${product.id}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
+      <Link to={detailPath} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
         <motion.div
             whileTap={{ scale: 0.94 }}
             transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            className="rounded-2xl border overflow-hidden shadow-md nuvira-premium-card"
+            className="bg-card rounded-2xl border border-border/50 overflow-hidden shadow-md"
             style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
         >
           <div className="relative overflow-hidden" style={{ aspectRatio: '1/1' }}>
@@ -79,7 +81,7 @@ export default function ProductCard({ product, compact = false }) {
               onClick={handleQuickAdd}
               whileTap={{ scale: 0.88 }}
               aria-label={`Add ${product.title} to cart`}
-              className="absolute bottom-2 right-2 w-9 h-9 bg-nuvira-gradient text-white rounded-full flex items-center justify-center shadow-md active:opacity-90 transition-opacity"
+              className="absolute bottom-2 right-2 w-9 h-9 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:opacity-90 transition-opacity"
             >
               <Plus className="w-4 h-4" />
             </motion.button>
@@ -99,11 +101,11 @@ export default function ProductCard({ product, compact = false }) {
   }
 
   return (
-    <Link to={`/shop/${product.id}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
+    <Link to={detailPath} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
       <motion.div
          whileTap={{ scale: 0.97 }}
          transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-         className="rounded-xl border overflow-hidden shadow-md nuvira-premium-card"
+         className="bg-card rounded-xl border border-border/50 overflow-hidden shadow-md"
          style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)` }}
       >
         <div className="aspect-[4/3] bg-secondary/50 relative overflow-hidden">
@@ -120,7 +122,7 @@ export default function ProductCard({ product, compact = false }) {
           <button
             onClick={handleQuickAdd}
             aria-label={`Add ${product.title} to cart`}
-            className="absolute bottom-2 right-2 w-11 h-11 bg-nuvira-gradient text-white rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"
+            className="absolute bottom-2 right-2 w-11 h-11 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"
           >
             <Plus className="w-4 h-4" />
           </button>

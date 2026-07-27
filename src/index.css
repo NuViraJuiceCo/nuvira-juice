@@ -129,6 +129,11 @@
     linear-gradient(135deg, rgba(6, 42, 32, 0.98) 0%, rgba(11, 61, 46, 0.98) 42%, rgba(29, 140, 53, 0.92) 100%);
   padding-top: max(3.75rem, calc(env(safe-area-inset-top) + 0.75rem));
 }
+@media (min-width: 768px) {
+  .nuvira-admin-header {
+    padding-top: 1rem;
+  }
+}
 .nuvira-brand-ring {
   border-color: rgba(61, 184, 74, 0.32);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), 0 10px 24px rgba(29, 140, 53, 0.16);
@@ -191,6 +196,320 @@ body {
 [role="dialog"] {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  color: hsl(var(--foreground));
+}
+
+[role="dialog"] input:not([type="checkbox"]):not([type="radio"]),
+[role="dialog"] textarea,
+[role="dialog"] select {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+  color-scheme: light;
+}
+
+.dark [role="dialog"] input:not([type="checkbox"]):not([type="radio"]),
+.dark [role="dialog"] textarea,
+.dark [role="dialog"] select,
+.dark .fixed.inset-0 input:not([type="checkbox"]):not([type="radio"]),
+.dark .fixed.inset-0 textarea,
+.dark .fixed.inset-0 select,
+.dark .fixed.inset-x-0 input:not([type="checkbox"]):not([type="radio"]),
+.dark .fixed.inset-x-0 textarea,
+.dark .fixed.inset-x-0 select {
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+  color-scheme: dark;
+}
+
+.dark [role="dialog"] input::placeholder,
+.dark [role="dialog"] textarea::placeholder,
+.dark .fixed.inset-0 input::placeholder,
+.dark .fixed.inset-0 textarea::placeholder,
+.dark .fixed.inset-x-0 input::placeholder,
+.dark .fixed.inset-x-0 textarea::placeholder {
+  color: hsl(var(--muted-foreground)) !important;
+  opacity: 1;
+}
+
+.dark [role="dialog"] option,
+.dark .fixed.inset-0 option,
+.dark .fixed.inset-x-0 option {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.dark [role="dialog"] .bg-white,
+.dark [role="dialog"] [class*="bg-white"],
+.dark [role="dialog"] .bg-slate-50,
+.dark [role="dialog"] [class*="bg-slate-50"],
+.dark [role="dialog"] .bg-blue-50,
+.dark [role="dialog"] [class*="bg-blue-50"],
+.dark [role="dialog"] .bg-cyan-50,
+.dark [role="dialog"] [class*="bg-cyan-50"],
+.dark [role="dialog"] .bg-teal-50,
+.dark [role="dialog"] [class*="bg-teal-50"],
+.dark [role="dialog"] .bg-emerald-50,
+.dark [role="dialog"] [class*="bg-emerald-50"],
+.dark [role="dialog"] .bg-green-50,
+.dark [role="dialog"] [class*="bg-green-50"],
+.dark [role="dialog"] .bg-lime-50,
+.dark [role="dialog"] [class*="bg-lime-50"],
+.dark [role="dialog"] .bg-red-50,
+.dark [role="dialog"] [class*="bg-red-50"],
+.dark [role="dialog"] .bg-rose-50,
+.dark [role="dialog"] [class*="bg-rose-50"],
+.dark [role="dialog"] .bg-orange-50,
+.dark [role="dialog"] [class*="bg-orange-50"],
+.dark [role="dialog"] .bg-amber-50,
+.dark [role="dialog"] [class*="bg-amber-50"],
+.dark [role="dialog"] .bg-yellow-50 {
+  background-color: hsl(var(--card)) !important;
+}
+
+.dark [role="dialog"] [class*="bg-yellow-50"],
+.dark .fixed.inset-0 [class*="bg-white"],
+.dark .fixed.inset-0 [class*="bg-slate-50"],
+.dark .fixed.inset-0 [class*="bg-gray-50"],
+.dark .fixed.inset-0 [class*="bg-blue-50"],
+.dark .fixed.inset-0 [class*="bg-cyan-50"],
+.dark .fixed.inset-0 [class*="bg-teal-50"],
+.dark .fixed.inset-0 [class*="bg-emerald-50"],
+.dark .fixed.inset-0 [class*="bg-green-50"],
+.dark .fixed.inset-0 [class*="bg-lime-50"],
+.dark .fixed.inset-0 [class*="bg-red-50"],
+.dark .fixed.inset-0 [class*="bg-rose-50"],
+.dark .fixed.inset-0 [class*="bg-orange-50"],
+.dark .fixed.inset-0 [class*="bg-amber-50"],
+.dark .fixed.inset-0 [class*="bg-yellow-50"],
+.dark .fixed.inset-x-0 [class*="bg-white"],
+.dark .fixed.inset-x-0 [class*="bg-slate-50"],
+.dark .fixed.inset-x-0 [class*="bg-gray-50"],
+.dark .fixed.inset-x-0 [class*="bg-blue-50"],
+.dark .fixed.inset-x-0 [class*="bg-cyan-50"],
+.dark .fixed.inset-x-0 [class*="bg-teal-50"],
+.dark .fixed.inset-x-0 [class*="bg-emerald-50"],
+.dark .fixed.inset-x-0 [class*="bg-green-50"],
+.dark .fixed.inset-x-0 [class*="bg-lime-50"],
+.dark .fixed.inset-x-0 [class*="bg-red-50"],
+.dark .fixed.inset-x-0 [class*="bg-rose-50"],
+.dark .fixed.inset-x-0 [class*="bg-orange-50"],
+.dark .fixed.inset-x-0 [class*="bg-amber-50"],
+.dark .fixed.inset-x-0 [class*="bg-yellow-50"] {
+  background-color: hsl(var(--card)) !important;
+}
+
+.dark [role="dialog"] .text-slate-400,
+.dark [role="dialog"] .text-slate-500,
+.dark [role="dialog"] .text-slate-600,
+.dark [role="dialog"] .text-blue-800,
+.dark [role="dialog"] .text-blue-900,
+.dark [role="dialog"] .text-cyan-700,
+.dark [role="dialog"] .text-cyan-800,
+.dark [role="dialog"] .text-teal-700,
+.dark [role="dialog"] .text-teal-800,
+.dark [role="dialog"] .text-emerald-800,
+.dark [role="dialog"] .text-emerald-900,
+.dark [role="dialog"] .text-green-700,
+.dark [role="dialog"] .text-green-800,
+.dark [role="dialog"] .text-lime-800,
+.dark [role="dialog"] .text-red-700,
+.dark [role="dialog"] .text-red-800,
+.dark [role="dialog"] .text-rose-700,
+.dark [role="dialog"] .text-rose-800,
+.dark [role="dialog"] .text-orange-700,
+.dark [role="dialog"] .text-orange-800,
+.dark [role="dialog"] .text-amber-700,
+.dark [role="dialog"] .text-amber-800,
+.dark [role="dialog"] .text-yellow-700,
+.dark [role="dialog"] .text-yellow-800 {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark [role="dialog"] [class*="text-slate-"],
+.dark [role="dialog"] [class*="text-gray-"],
+.dark [role="dialog"] [class*="text-blue-"],
+.dark [role="dialog"] [class*="text-cyan-"],
+.dark [role="dialog"] [class*="text-teal-"],
+.dark [role="dialog"] [class*="text-emerald-"],
+.dark [role="dialog"] [class*="text-green-"],
+.dark [role="dialog"] [class*="text-lime-"],
+.dark [role="dialog"] [class*="text-red-"],
+.dark [role="dialog"] [class*="text-rose-"],
+.dark [role="dialog"] [class*="text-orange-"],
+.dark [role="dialog"] [class*="text-amber-"],
+.dark [role="dialog"] [class*="text-yellow-"],
+.dark [role="dialog"] .text-black,
+.dark .fixed.inset-0 [class*="text-slate-"],
+.dark .fixed.inset-0 [class*="text-gray-"],
+.dark .fixed.inset-0 [class*="text-blue-"],
+.dark .fixed.inset-0 [class*="text-cyan-"],
+.dark .fixed.inset-0 [class*="text-teal-"],
+.dark .fixed.inset-0 [class*="text-emerald-"],
+.dark .fixed.inset-0 [class*="text-green-"],
+.dark .fixed.inset-0 [class*="text-lime-"],
+.dark .fixed.inset-0 [class*="text-red-"],
+.dark .fixed.inset-0 [class*="text-rose-"],
+.dark .fixed.inset-0 [class*="text-orange-"],
+.dark .fixed.inset-0 [class*="text-amber-"],
+.dark .fixed.inset-0 [class*="text-yellow-"],
+.dark .fixed.inset-0 .text-black,
+.dark .fixed.inset-x-0 [class*="text-slate-"],
+.dark .fixed.inset-x-0 [class*="text-gray-"],
+.dark .fixed.inset-x-0 [class*="text-blue-"],
+.dark .fixed.inset-x-0 [class*="text-cyan-"],
+.dark .fixed.inset-x-0 [class*="text-teal-"],
+.dark .fixed.inset-x-0 [class*="text-emerald-"],
+.dark .fixed.inset-x-0 [class*="text-green-"],
+.dark .fixed.inset-x-0 [class*="text-lime-"],
+.dark .fixed.inset-x-0 [class*="text-red-"],
+.dark .fixed.inset-x-0 [class*="text-rose-"],
+.dark .fixed.inset-x-0 [class*="text-orange-"],
+.dark .fixed.inset-x-0 [class*="text-amber-"],
+.dark .fixed.inset-x-0 [class*="text-yellow-"] {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark [role="dialog"] [class*="border-slate-"],
+.dark [role="dialog"] [class*="border-gray-"],
+.dark [role="dialog"] [class*="border-blue-"],
+.dark [role="dialog"] [class*="border-cyan-"],
+.dark [role="dialog"] [class*="border-teal-"],
+.dark [role="dialog"] [class*="border-emerald-"],
+.dark [role="dialog"] [class*="border-green-"],
+.dark [role="dialog"] [class*="border-lime-"],
+.dark [role="dialog"] [class*="border-red-"],
+.dark [role="dialog"] [class*="border-rose-"],
+.dark [role="dialog"] [class*="border-orange-"],
+.dark [role="dialog"] [class*="border-amber-"],
+.dark [role="dialog"] [class*="border-yellow-"],
+.dark .fixed.inset-0 [class*="border-slate-"],
+.dark .fixed.inset-0 [class*="border-gray-"],
+.dark .fixed.inset-0 [class*="border-blue-"],
+.dark .fixed.inset-0 [class*="border-cyan-"],
+.dark .fixed.inset-0 [class*="border-teal-"],
+.dark .fixed.inset-0 [class*="border-emerald-"],
+.dark .fixed.inset-0 [class*="border-green-"],
+.dark .fixed.inset-0 [class*="border-lime-"],
+.dark .fixed.inset-0 [class*="border-red-"],
+.dark .fixed.inset-0 [class*="border-rose-"],
+.dark .fixed.inset-0 [class*="border-orange-"],
+.dark .fixed.inset-0 [class*="border-amber-"],
+.dark .fixed.inset-0 [class*="border-yellow-"],
+.dark .fixed.inset-x-0 [class*="border-slate-"],
+.dark .fixed.inset-x-0 [class*="border-gray-"],
+.dark .fixed.inset-x-0 [class*="border-blue-"],
+.dark .fixed.inset-x-0 [class*="border-cyan-"],
+.dark .fixed.inset-x-0 [class*="border-teal-"],
+.dark .fixed.inset-x-0 [class*="border-emerald-"],
+.dark .fixed.inset-x-0 [class*="border-green-"],
+.dark .fixed.inset-x-0 [class*="border-lime-"],
+.dark .fixed.inset-x-0 [class*="border-red-"],
+.dark .fixed.inset-x-0 [class*="border-rose-"],
+.dark .fixed.inset-x-0 [class*="border-orange-"],
+.dark .fixed.inset-x-0 [class*="border-amber-"],
+.dark .fixed.inset-x-0 [class*="border-yellow-"] {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* Admin pages mix embedded panels, dialogs, and Base44-style modals. Keep light utility leftovers readable in dark mode. */
+.dark [data-admin-shell="true"] [class*="bg-white"],
+.dark [data-admin-shell="true"] [class*="bg-slate-50"],
+.dark [data-admin-shell="true"] [class*="bg-slate-100"],
+.dark [data-admin-shell="true"] [class*="bg-gray-50"],
+.dark [data-admin-shell="true"] [class*="bg-gray-100"] {
+  background-color: hsl(var(--card)) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="bg-blue-50"],
+.dark [data-admin-shell="true"] [class*="bg-blue-100"],
+.dark [data-admin-shell="true"] [class*="bg-cyan-50"],
+.dark [data-admin-shell="true"] [class*="bg-cyan-100"],
+.dark [data-admin-shell="true"] [class*="bg-teal-50"],
+.dark [data-admin-shell="true"] [class*="bg-teal-100"] {
+  background-color: rgb(8 47 73 / 0.34) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="bg-emerald-50"],
+.dark [data-admin-shell="true"] [class*="bg-emerald-100"],
+.dark [data-admin-shell="true"] [class*="bg-green-50"],
+.dark [data-admin-shell="true"] [class*="bg-green-100"],
+.dark [data-admin-shell="true"] [class*="bg-lime-50"],
+.dark [data-admin-shell="true"] [class*="bg-lime-100"] {
+  background-color: rgb(5 46 22 / 0.38) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="bg-red-50"],
+.dark [data-admin-shell="true"] [class*="bg-red-100"],
+.dark [data-admin-shell="true"] [class*="bg-rose-50"],
+.dark [data-admin-shell="true"] [class*="bg-rose-100"] {
+  background-color: rgb(69 10 10 / 0.38) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="bg-orange-50"],
+.dark [data-admin-shell="true"] [class*="bg-orange-100"],
+.dark [data-admin-shell="true"] [class*="bg-amber-50"],
+.dark [data-admin-shell="true"] [class*="bg-amber-100"],
+.dark [data-admin-shell="true"] [class*="bg-yellow-50"],
+.dark [data-admin-shell="true"] [class*="bg-yellow-100"] {
+  background-color: rgb(69 26 3 / 0.38) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="text-slate-"],
+.dark [data-admin-shell="true"] [class*="text-gray-"] {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="text-blue-"],
+.dark [data-admin-shell="true"] [class*="text-cyan-"],
+.dark [data-admin-shell="true"] [class*="text-teal-"] {
+  color: rgb(165 243 252) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="text-emerald-"],
+.dark [data-admin-shell="true"] [class*="text-green-"],
+.dark [data-admin-shell="true"] [class*="text-lime-"] {
+  color: rgb(187 247 208) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="text-red-"],
+.dark [data-admin-shell="true"] [class*="text-rose-"] {
+  color: rgb(254 202 202) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="text-orange-"],
+.dark [data-admin-shell="true"] [class*="text-amber-"],
+.dark [data-admin-shell="true"] [class*="text-yellow-"] {
+  color: rgb(253 230 138) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="border-slate-"],
+.dark [data-admin-shell="true"] [class*="border-gray-"] {
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="border-blue-"],
+.dark [data-admin-shell="true"] [class*="border-cyan-"],
+.dark [data-admin-shell="true"] [class*="border-teal-"] {
+  border-color: rgb(14 116 144 / 0.55) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="border-emerald-"],
+.dark [data-admin-shell="true"] [class*="border-green-"],
+.dark [data-admin-shell="true"] [class*="border-lime-"] {
+  border-color: rgb(22 101 52 / 0.55) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="border-red-"],
+.dark [data-admin-shell="true"] [class*="border-rose-"] {
+  border-color: rgb(127 29 29 / 0.55) !important;
+}
+
+.dark [data-admin-shell="true"] [class*="border-orange-"],
+.dark [data-admin-shell="true"] [class*="border-amber-"],
+.dark [data-admin-shell="true"] [class*="border-yellow-"] {
+  border-color: rgb(180 83 9 / 0.55) !important;
 }
 
 /* Fixed overlays must not chain scroll to body */

@@ -32,7 +32,23 @@ const harnesses = [
   'scripts/migration/run-g35b-native-refund-impact-preview-tests.mjs',
   'scripts/migration/run-g36b-subscription-occurrence-parity-tests.mjs',
   'scripts/migration/run-g39n-operations-dashboard-aggregate-diagnostics-tests.mjs',
+  'scripts/migration/run-g56a-food-demand-based-inventory-policy-tests.mjs',
+  'scripts/migration/run-g51b-admin-compliance-batch-linkage-tests.mjs',
+  'scripts/migration/run-g51c-delivery-status-sync-freshness-guard-tests.mjs',
+  'scripts/migration/run-g51d-native-production-lifecycle-gate-tests.mjs',
+  'scripts/migration/run-g51f-admin-order-pricing-rate-context-tests.mjs',
+  'scripts/migration/run-g51g-delivery-program-composition-tests.mjs',
+  'scripts/migration/run-g51h-native-delivery-fusion-workflow-tests.mjs',
+  'scripts/migration/run-g51i-notification-campaign-consent-tests.mjs',
+  'scripts/migration/run-g51j-admin-dark-surface-tests.mjs',
+  'scripts/migration/run-g51k-admin-function-result-unwrapping-tests.mjs',
+  'scripts/migration/run-g52-admin-sandbox-e2e-readiness-tests.mjs',
+  'scripts/migration/run-g53-admin-visibility-refresh-and-compliance-readiness-tests.mjs',
+  'scripts/migration/run-g53-phase-a-live-pilot-prerequisites-tests.mjs',
+  'scripts/migration/run-g53-phase-b-live-pilot-prerequisites-tests.mjs',
   'scripts/migration/run-g27-native-cutover-readiness-tests.mjs',
+  'scripts/migration/run-g54-whole-app-readiness-audit-tests.mjs',
+  'scripts/migration/run-g55-backend-live-use-readiness-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

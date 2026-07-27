@@ -4,8 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getDeliveryDisplayText } from '@/lib/deliveryUtils';
-
-const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
+import { BRAND_IMAGES } from '@/lib/brandImages';
 
 // Product image mapping for hero slides
 const PRODUCT_IMAGE_MAP = {
@@ -36,7 +35,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
     {
       title: 'Cold-Pressed.\nNever Compromised.',
       subtitle: 'Real ingredients. Made fresh for you.',
-      image_url: "https://media.base44.com/images/public/69d48d0c39891f7945481152/19cc41d64_DSC02565.jpg",
+      image_url: BRAND_IMAGES.bottlesCoolerWide,
       link_to: '/shop',
     }
   ];
@@ -58,14 +57,13 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           src={activeBanners[0].image_url}
           alt={activeBanners[0].title}
           className="w-full h-full object-cover"
-          fetchpriority="high"
+          fetchPriority="high"
           decoding="sync"
           width="800"
           height="576"
         />
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(200,232,106,0.25) 0%, rgba(29,140,53,0.85) 40%, rgba(10,60,20,0.6) 100%)' }} />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
       </div>
 
       {/* Animated layer for multi-banner transitions only */}
@@ -87,9 +85,8 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
               width="800"
               height="576"
             />
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(200,232,106,0.25) 0%, rgba(29,140,53,0.85) 40%, rgba(10,60,20,0.6) 100%)' }} />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/65 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
           </motion.div>
         </AnimatePresence>
       )}
@@ -102,7 +99,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           transition={{ delay: 0.4 }}
           className="absolute top-3 right-3 bg-white/15 backdrop-blur-sm border border-white/25 rounded-full px-2.5 py-1 flex items-center gap-1"
         >
-          <Zap className="w-2.5 h-2.5 text-lime-300 fill-lime-300" />
+          <Zap className="w-2.5 h-2.5 text-yellow-300 fill-yellow-300" />
           <span className="text-white text-[9px] font-semibold">{deliveryText}</span>
         </motion.div>
       )}
@@ -125,7 +122,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
           </p>
           <div className="flex items-center gap-3">
             <Link to={banner.link_to || '/shop'}>
-              <Button className="bg-nuvira-gradient text-white hover:opacity-95 font-bold rounded-full px-8 h-11 text-sm shadow-lg shadow-black/30 border-0">
+              <Button className="bg-[linear-gradient(135deg,#b8ef5b_0%,#35c848_48%,#0fa34a_100%)] text-white hover:brightness-105 font-bold rounded-full px-8 h-11 text-sm shadow-lg shadow-black/25">
                 Order Now <ArrowRight className="w-4 h-4 ml-1.5" />
               </Button>
             </Link>

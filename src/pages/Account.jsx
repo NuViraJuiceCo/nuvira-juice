@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 
@@ -400,7 +401,7 @@ export default function Account() {
       </div>
 
       {/* Admin Tools - Utility Section */}
-      {user?.role === 'admin' && (
+      {isAdminUser(user) && (
         <div className="px-5 mb-8">
           <div className="rounded-2xl border border-border/50 dark:border-primary/20 overflow-hidden bg-card/40 dark:bg-card/25">
             <div className="px-4 py-2.5 border-b border-border/50 dark:border-primary/20">

@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
 export default function CorrectiveActionForm({ onClose }) {
   const [, setUser] = useState(null);
@@ -26,8 +27,8 @@ export default function CorrectiveActionForm({ onClose }) {
   useEffect(() => {
     base44.auth.me().then(u => {
       setUser(u);
-      setFormData(prev => ({ ...prev, staff_member: u.full_name }));
-    });
+      setFormData(prev => ({ ...prev, staff_member: u.full_name || u.email || '' }));
+    }).catch(() => null);
   }, []);
 
   const handleChange = (field, value) => {
@@ -55,20 +56,20 @@ export default function CorrectiveActionForm({ onClose }) {
   };
 
   return (
-    <Card className="mb-6 border-rose-200 bg-rose-50">
+    <Card className="mb-6 border-border/60 bg-card text-card-foreground">
       <CardHeader>
-        <CardTitle>🔧 Corrective Action Log</CardTitle>
+        <CardTitle>Corrective Action Log</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium">Date</label>
               <input
                 type="date"
                 value={formData.log_date}
                 onChange={(e) => handleChange('log_date', e.target.value)}
-                className="w-full border rounded-md p-2 mt-1"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-foreground"
               />
             </div>
             <div>
@@ -77,19 +78,17 @@ export default function CorrectiveActionForm({ onClose }) {
                 type="time"
                 value={formData.log_time}
                 onChange={(e) => handleChange('log_time', e.target.value)}
-                className="w-full border rounded-md p-2 mt-1"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-foreground"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-sm font-medium">Staff Member</label>
-            <input
-              type="text"
+            <StaffMemberPicker
+              label="Staff member"
               value={formData.staff_member}
-              onChange={(e) => handleChange('staff_member', e.target.value)}
-              className="w-full border rounded-md p-2 mt-1"
-              disabled
+              onChange={(value) => handleChange('staff_member', value)}
+              helperText="Select the person responsible for the correction, or type another name."
             />
           </div>
 
@@ -98,7 +97,7 @@ export default function CorrectiveActionForm({ onClose }) {
             <select
               value={formData.issue_type}
               onChange={(e) => handleChange('issue_type', e.target.value)}
-              className="w-full border rounded-md p-2 mt-1"
+              className="mt-1 w-full rounded-md border border-border bg-background p-2 text-foreground"
             >
               <option>Temperature Out of Range</option>
               <option>pH Failure</option>
@@ -114,7 +113,7 @@ export default function CorrectiveActionForm({ onClose }) {
               value={formData.issue_description}
               onChange={(e) => handleChange('issue_description', e.target.value)}
               placeholder="What happened? Why is corrective action needed?"
-              className="w-full border rounded-md p-2 mt-1 resize-none"
+              className="mt-1 w-full resize-none rounded-md border border-border bg-background p-2 text-foreground placeholder:text-muted-foreground"
               rows="3"
             />
           </div>
@@ -125,20 +124,20 @@ export default function CorrectiveActionForm({ onClose }) {
               value={formData.corrective_action_taken}
               onChange={(e) => handleChange('corrective_action_taken', e.target.value)}
               placeholder="What specific action was taken to correct the issue?"
-              className="w-full border rounded-md p-2 mt-1 resize-none"
+              className="mt-1 w-full resize-none rounded-md border border-border bg-background p-2 text-foreground placeholder:text-muted-foreground"
               rows="3"
               required
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium">Action Completed Time</label>
               <input
                 type="time"
                 value={formData.action_completed_time}
                 onChange={(e) => handleChange('action_completed_time', e.target.value)}
-                className="w-full border rounded-md p-2 mt-1"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-foreground"
               />
             </div>
             <div>
@@ -146,7 +145,7 @@ export default function CorrectiveActionForm({ onClose }) {
               <select
                 value={formData.status}
                 onChange={(e) => handleChange('status', e.target.value)}
-                className="w-full border rounded-md p-2 mt-1"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-foreground"
               >
                 <option>Initiated</option>
                 <option>In Progress</option>
@@ -163,18 +162,16 @@ export default function CorrectiveActionForm({ onClose }) {
               value={formData.verification}
               onChange={(e) => handleChange('verification', e.target.value)}
               placeholder="How was the correction verified? (e.g., retest at 5pm)"
-              className="w-full border rounded-md p-2 mt-1"
+              className="mt-1 w-full rounded-md border border-border bg-background p-2 text-foreground placeholder:text-muted-foreground"
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium">Verified By</label>
-            <input
-              type="text"
+            <StaffMemberPicker
+              label="Verified by"
               value={formData.verified_by}
-              onChange={(e) => handleChange('verified_by', e.target.value)}
+              onChange={(value) => handleChange('verified_by', value)}
               placeholder="Manager or supervisor name"
-              className="w-full border rounded-md p-2 mt-1"
             />
           </div>
 
@@ -184,12 +181,12 @@ export default function CorrectiveActionForm({ onClose }) {
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
               placeholder="Additional information..."
-              className="w-full border rounded-md p-2 mt-1 resize-none"
+              className="mt-1 w-full resize-none rounded-md border border-border bg-background p-2 text-foreground placeholder:text-muted-foreground"
               rows="2"
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button type="submit" disabled={isSubmitting} className="flex-1">
               {isSubmitting ? 'Saving...' : 'Save Corrective Action'}
             </Button>

@@ -5,32 +5,32 @@ import { AlertTriangle, CheckCircle2, ShieldCheck } from 'lucide-react';
 const statusConfig = {
   ready: {
     label: 'Usable now',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-950',
-    iconClassName: 'text-emerald-700',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100',
+    iconClassName: 'text-emerald-700 dark:text-emerald-300',
     icon: CheckCircle2,
   },
   controlled: {
-    label: 'Controlled action',
-    className: 'border-sky-200 bg-sky-50 text-sky-950',
-    iconClassName: 'text-sky-700',
+    label: 'Live workflow',
+    className: 'border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100',
+    iconClassName: 'text-sky-700 dark:text-sky-300',
     icon: ShieldCheck,
   },
   fallback: {
-    label: 'Hub-backed',
-    className: 'border-violet-200 bg-violet-50 text-violet-950',
-    iconClassName: 'text-violet-700',
+    label: 'Live source',
+    className: 'border-violet-200 bg-violet-50 text-violet-950 dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-100',
+    iconClassName: 'text-violet-700 dark:text-violet-300',
     icon: ShieldCheck,
   },
   watch: {
     label: 'Watch',
-    className: 'border-cyan-200 bg-cyan-50 text-cyan-950',
-    iconClassName: 'text-cyan-700',
+    className: 'border-cyan-200 bg-cyan-50 text-cyan-950 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-100',
+    iconClassName: 'text-cyan-700 dark:text-cyan-300',
     icon: AlertTriangle,
   },
   frozen: {
-    label: 'Frozen',
-    className: 'border-slate-200 bg-slate-50 text-slate-950',
-    iconClassName: 'text-slate-700',
+    label: 'Protected safeguard',
+    className: 'border-slate-200 bg-slate-50 text-slate-950 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100',
+    iconClassName: 'text-slate-700 dark:text-slate-300',
     icon: ShieldCheck,
   },
 };
@@ -75,7 +75,7 @@ function ActionLink({ action }) {
 }
 
 export default function May30ReadinessPanel({
-  title = 'May 30 operational readiness',
+  title = 'Operational readiness',
   description,
   items = [],
   actions = [],
@@ -84,10 +84,10 @@ export default function May30ReadinessPanel({
   if (!items.length) return null;
 
   return (
-    <section className="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
+    <section className="rounded-xl border border-slate-300 bg-white p-3 shadow-sm dark:border-border/70 dark:bg-card/95">
       <div className="mb-3">
-        <p className="text-sm font-black text-slate-950">{title}</p>
-        {description && <p className="mt-0.5 text-xs font-medium text-slate-600">{description}</p>}
+        <p className="text-sm font-black text-slate-950 dark:text-foreground">{title}</p>
+        {description && <p className="mt-0.5 text-xs font-medium text-slate-600 dark:text-muted-foreground">{description}</p>}
       </div>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
         {items.map(item => (
@@ -101,7 +101,7 @@ export default function May30ReadinessPanel({
           ))}
         </div>
       )}
-      {footnote && <p className="mt-3 text-[10px] font-semibold text-slate-500">{footnote}</p>}
+      {footnote && <p className="mt-3 text-[10px] font-semibold text-slate-500 dark:text-muted-foreground">{footnote}</p>}
     </section>
   );
 }

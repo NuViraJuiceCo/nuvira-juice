@@ -1,16 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
-import Zone3ReviewPanel from '@/components/admin/Zone3ReviewPanel';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
-import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { format } from 'date-fns';
-import { ChevronRight, ChevronDown, Mail, Search, ShieldCheck } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { CalendarDays, ChevronRight, ChevronDown, DollarSign, MapPin, Search, ShieldCheck } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { usePageVisibility } from '@/lib/usePageVisibility';
 
 const DELIVERY_STAGES = [
   { key: 'order_received', label: 'Order Received' },
@@ -31,35 +31,11 @@ const PICKUP_STAGES = [
   { key: 'picked_up', label: 'Picked Up' },
 ];
 
-const ACTIVE_STATUSES = ['order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
-const ORDER_WORKFLOW_CONTROLS_FROZEN = true;
+const ACTIVE_STATUSES = ['active', 'order_received', 'scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'arriving_soon', 'ready_for_pickup'];
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_MODE = 'ADMIN_ORDER_LIFECYCLE';
 const ADMIN_ORDER_LIFECYCLE_READ_MODEL_VERSION = 'g48e_admin_order_lifecycle_v1';
 const ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE = 'ADMIN_ORDER_LIST_COMPACT';
 const ADMIN_ORDER_LIST_COMPACT_CONTRACT = 'g48e_admin_order_list_compact_v1';
-
-const orderOpsReadinessItems = [
-  {
-    label: 'One-time order visibility',
-    status: 'ready',
-    detail: 'Paid app/website orders show customer, item, payment, Hub, native, fulfillment, timeline, and review context.',
-  },
-  {
-    label: 'Native safety mirror',
-    status: 'ready',
-    detail: 'Native operational mirror and review status are visible while Hub remains the active bridge fallback.',
-  },
-  {
-    label: 'Bad order review',
-    status: 'ready',
-    detail: 'Review queue indicators and Sync Health expose incomplete or low-quality order issues without repair controls.',
-  },
-  {
-    label: 'Workflow buttons',
-    status: 'frozen',
-    detail: 'Generic order status buttons stay frozen; use Production Queue and Delivery Queue for approved operational actions.',
-  },
-];
 
 // Orders that are NOT operational — never show in active/completed views
 function isAbandonedOrUnpaid(o) {
@@ -128,7 +104,7 @@ function AdminOrderLifecycleReadModelPanel({ model }) {
           <div>
             <p className="text-[10px] font-black uppercase tracking-wider text-blue-900 dark:text-blue-100">Admin order lifecycle read model</p>
             <p className="mt-0.5 text-xs font-medium text-blue-900/80 dark:text-blue-100/80">
-              Backend-authoritative read model only. It does not enable order, payment, refund, fulfillment, delivery, notification, repair, replay, or Hub write actions.
+              Backend-authoritative read model only. It does not enable order, payment, refund, fulfillment, delivery, notification, repair, replay, or source write actions.
             </p>
           </div>
         </div>
@@ -139,7 +115,7 @@ function AdminOrderLifecycleReadModelPanel({ model }) {
           </div>
           <div className="rounded-xl border border-blue-200 bg-white/70 p-2 dark:border-blue-900/70 dark:bg-blue-950/40">
             <p className="text-lg font-black text-blue-950 dark:text-blue-100">{summary.hub_only_valid_count ?? 0}</p>
-            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-200">Hub-only valid</p>
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-200">Source-only valid</p>
           </div>
           <div className="rounded-xl border border-blue-200 bg-white/70 p-2 dark:border-blue-900/70 dark:bg-blue-950/40">
             <p className="text-lg font-black text-blue-950 dark:text-blue-100">{summary.fallback_required_count ?? 0}</p>
@@ -160,7 +136,7 @@ function AdminOrderLifecycleReadModelPanel({ model }) {
           </div>
         )}
         <p className="mt-2 text-[10px] font-medium text-blue-900/80 dark:text-blue-100/80">
-          Hub fallback remains active. Customer App Order identity remains canonical. Read readiness does not imply write readiness.
+          Source fallback remains active. Customer App Order identity remains canonical. Read readiness does not imply write readiness.
         </p>
       </div>
     </section>
@@ -186,6 +162,24 @@ function formatStatusLabel(value) {
     .join(' ');
 }
 
+function normalizedLower(value) {
+  return (value || '').toString().trim().toLowerCase();
+}
+
+function sourceDisplayText(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(/\bHub\b/g, 'Source').replace(/\bhub\b/g, 'source');
+}
+
+function orderKey(order) {
+  return (order?.order_number || order?.id || '').toString();
+}
+
+function normalizeOrderStage(status) {
+  if (status === 'active') return 'order_received';
+  return status;
+}
+
 function formatDateOnly(value) {
   if (!value) return null;
   try {
@@ -209,6 +203,15 @@ function formatCurrency(value) {
     style: 'currency',
     currency: 'USD',
   });
+}
+
+function hasRecordedValue(value) {
+  return value !== null && value !== undefined && value !== '';
+}
+
+function numericValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function itemSummary(items = []) {
@@ -257,6 +260,138 @@ function itemsFromSummary(summary) {
         price: 0,
       };
     });
+}
+
+function AuditInfoRow({ label, value, formatter, missing = 'Not recorded' }) {
+  const hasValue = hasRecordedValue(value);
+  const displayValue = hasValue && formatter ? formatter(value) : value;
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-border/50 bg-background/60 px-3 py-2">
+      <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className={`max-w-[65%] text-right text-xs font-semibold ${hasValue ? 'text-foreground' : 'text-muted-foreground italic'}`}>
+        {hasValue ? displayValue : missing}
+      </span>
+    </div>
+  );
+}
+
+function PricingBreakdownPanel({ order }) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  const tax = numericValue(order.total_tax);
+  const discounts = numericValue(order.total_discounts);
+  const total = numericValue(order.total);
+  const pricedItems = items.filter(item => numericValue(item.price) !== null);
+  const computedItemsSubtotal = pricedItems.length === items.length && items.length > 0
+    ? items.reduce((sum, item) => sum + (numericValue(item.price) || 0) * (numericValue(item.quantity) || 1), 0)
+    : null;
+  const rawSubtotal = numericValue(order.subtotal);
+  const subtotalLooksMissing = rawSubtotal === 0 && computedItemsSubtotal !== null && computedItemsSubtotal > 0 && total !== null && total > 0;
+  const subtotal = subtotalLooksMissing ? null : rawSubtotal;
+  const rawDeliveryFee = numericValue(order.delivery_fee);
+  const deliveryGapFromLineItems = computedItemsSubtotal !== null && total !== null
+    ? total - computedItemsSubtotal - (tax || 0) + (discounts || 0)
+    : null;
+  const deliveryFeeLooksMissing = rawDeliveryFee === 0 && deliveryGapFromLineItems !== null && deliveryGapFromLineItems > 0.009;
+  const deliveryFee = deliveryFeeLooksMissing ? null : rawDeliveryFee;
+  const comparableSubtotal = subtotal ?? computedItemsSubtotal;
+  const expectedTotal = comparableSubtotal !== null && total !== null
+    ? comparableSubtotal + (deliveryFee || 0) + (tax || 0) - (discounts || 0)
+    : null;
+  const reconciles = expectedTotal !== null && Math.abs(expectedTotal - total) < 0.01;
+  const unreconciledDifference = expectedTotal !== null && total !== null && !reconciles ? total - expectedTotal : null;
+
+  return (
+    <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
+      <SectionLabel
+        title="Pricing Breakdown"
+        description="Stored customer-facing pricing fields used to audit item subtotal, delivery charged, and order total."
+        badge={reconciles ? 'Reconciled' : 'Review'}
+      />
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+        <div className="grid grid-cols-[1fr_3.25rem_4.5rem_4.5rem] gap-2 border-b border-border/50 bg-muted/40 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+          <span>Item</span>
+          <span className="text-right">Qty</span>
+          <span className="text-right">Unit</span>
+          <span className="text-right">Line</span>
+        </div>
+        {items.length > 0 ? items.map((item, index) => {
+          const quantity = numericValue(item.quantity) || 1;
+          const unit = numericValue(item.price);
+          const line = unit !== null ? unit * quantity : null;
+          return (
+            <div key={`${item.title || item.product_name || 'item'}-${index}`} className="grid grid-cols-[1fr_3.25rem_4.5rem_4.5rem] gap-2 border-b border-border/40 px-3 py-2 text-xs last:border-b-0">
+              <span className="min-w-0 break-words font-semibold text-foreground">{item.title || item.product_name || item.name || 'Item'}</span>
+              <span className="text-right text-muted-foreground">{quantity}</span>
+              <span className="text-right text-muted-foreground">{unit !== null ? formatCurrency(unit) : '—'}</span>
+              <span className="text-right font-semibold text-foreground">{line !== null ? formatCurrency(line) : '—'}</span>
+            </div>
+          );
+        }) : (
+          <div className="px-3 py-3 text-xs font-medium italic text-muted-foreground">No item rows recorded</div>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <AuditInfoRow label="Line item sum" value={computedItemsSubtotal} formatter={formatCurrency} />
+        <AuditInfoRow label="Item subtotal" value={subtotal} formatter={formatCurrency} />
+        <AuditInfoRow label="Delivery charged" value={deliveryFee} formatter={formatCurrency} />
+        <AuditInfoRow label="Tax" value={tax} formatter={formatCurrency} />
+        <AuditInfoRow label="Discounts" value={discounts} formatter={formatCurrency} />
+        <AuditInfoRow label="Order total" value={total} formatter={formatCurrency} />
+        <AuditInfoRow label="Expected total" value={expectedTotal} formatter={formatCurrency} />
+        <AuditInfoRow label="Unreconciled difference" value={unreconciledDifference} formatter={formatCurrency} missing="None" />
+      </div>
+      <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${
+        reconciles
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-950/20 dark:text-emerald-100'
+          : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/20 dark:text-amber-100'
+      }`}>
+        <DollarSign className="mt-0.5 h-4 w-4 shrink-0" />
+        <p>
+          {reconciles
+            ? 'Stored pricing fields reconcile to the recorded order total.'
+            : 'Pricing fields are incomplete or do not fully reconcile. Use the recorded total and payment source as the source of truth before any adjustment.'}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function DeliveryRateContextPanel({ order }) {
+  const context = order.delivery_rate_context || {};
+  const deliveryFee = hasRecordedValue(context.delivery_fee) ? context.delivery_fee : order.delivery_fee;
+  const deliveryZone = context.delivery_zone_name || context.delivery_zone_key;
+
+  return (
+    <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
+      <SectionLabel
+        title="Delivery Rate Context"
+        description="Recorded scheduling, delivery, and zone fields available for this order."
+        badge="Audit"
+      />
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <AuditInfoRow label="Fulfillment method" value={context.fulfillment_method || order.fulfillment_type} formatter={formatStatusLabel} />
+        <AuditInfoRow label="Delivery fee" value={deliveryFee} formatter={formatCurrency} />
+        <AuditInfoRow label="Delivery zone" value={deliveryZone} formatter={formatStatusLabel} />
+        <AuditInfoRow label="Zone type" value={context.delivery_zone_type} formatter={formatStatusLabel} />
+        <AuditInfoRow label="Minimum order" value={context.minimum_order} formatter={formatCurrency} />
+        <AuditInfoRow label="Distance" value={context.distance_miles} formatter={value => `${value} mi`} />
+        <AuditInfoRow label="Drive time" value={context.drive_time_minutes} formatter={value => `${value} min`} />
+        <AuditInfoRow label="Approval status" value={context.approval_status} formatter={formatStatusLabel} />
+        <AuditInfoRow label="Requested delivery" value={order.requested_delivery_date} formatter={formatDateOnly} />
+        <AuditInfoRow label="Selected delivery" value={order.selected_delivery_date} formatter={formatDateOnly} />
+        <AuditInfoRow label="Assigned delivery" value={order.assigned_delivery_date || order.estimated_delivery_date} formatter={formatDateOnly} />
+        <AuditInfoRow label="Production date" value={order.production_date} formatter={formatDateOnly} />
+        <AuditInfoRow label="Delivery window" value={order.delivery_window_label} />
+        <AuditInfoRow label="Schedule source" value={context.schedule_source} formatter={formatStatusLabel} />
+      </div>
+      <div className="flex items-start gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-medium text-cyan-900 dark:border-cyan-500/40 dark:bg-cyan-950/20 dark:text-cyan-100">
+        <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+        <p className="break-words">
+          {context.delivery_area || order.delivery_address || 'Delivery area not recorded on this row.'}
+        </p>
+      </div>
+    </section>
+  );
 }
 
 function mapDeliveryStopToAdminOrder(stop) {
@@ -320,11 +455,22 @@ function SectionLabel({ title, description, badge }) {
 
 function statusSummary(order) {
   const nativeReviewStatus = (order.native_review_status || '').toString().toLowerCase();
+  const deliveredLike = ['delivered', 'picked_up'].includes(normalizeOrderStage(order.status)) ||
+    ['delivered', 'picked_up', 'fulfilled', 'completed'].includes(normalizedLower(order.hub_operational_status)) ||
+    ['delivered', 'fulfilled', 'completed', 'picked_up'].includes(normalizedLower(order.hub_fulfillment_status)) ||
+    Boolean(order.delivered_at);
+  const staleCompletedProduction = deliveredLike && ['awaiting_production', 'scheduled', 'pending', 'not_required'].includes(normalizedLower(order.native_production_status));
+  const staleCompletedFulfillment = deliveredLike && ['pending', 'scheduled', 'unfulfilled', 'not_required'].includes(normalizedLower(order.native_fulfillment_status));
+  const productionStatus = order.effective_production_status || (staleCompletedProduction ? null : order.native_production_status);
+  const fulfillmentStatus = order.effective_fulfillment_status || (staleCompletedFulfillment ? null : order.native_fulfillment_status);
+  const sourceFulfillmentStatus = deliveredLike ? (order.hub_fulfillment_status || order.hub_operational_status) : null;
+
   return [
     order.customer_app_order_status ? `App: ${formatStatusLabel(order.customer_app_order_status)}` : null,
     order.payment_status ? `Payment: ${formatStatusLabel(order.payment_status)}` : null,
-    order.native_production_status ? `Production: ${formatStatusLabel(order.native_production_status)}` : null,
-    order.native_fulfillment_status ? `Fulfillment: ${formatStatusLabel(order.native_fulfillment_status)}` : null,
+    productionStatus ? `Production: ${formatStatusLabel(productionStatus)}` : null,
+    fulfillmentStatus ? `Fulfillment: ${formatStatusLabel(fulfillmentStatus)}` : null,
+    sourceFulfillmentStatus ? `Source: ${formatStatusLabel(sourceFulfillmentStatus)}` : null,
     order.native_fulfillment_task_summary?.count ? `Tasks: ${order.native_fulfillment_task_summary.count}` : null,
     order.native_sync_status ? `Sync: ${formatStatusLabel(order.native_sync_status)}` : null,
     order.native_review_queue_summary ? `Review: ${formatStatusLabel(order.native_review_queue_summary.incident_type)}` : null,
@@ -336,11 +482,15 @@ function statusSummary(order) {
 function contextBadgeTone(label) {
   const normalized = (label || '').toLowerCase();
   if (normalized.includes('native')) return 'native';
-  if (normalized.includes('hub')) return 'hub';
+  if (normalized.includes('hub') || normalized.includes('source')) return 'hub';
   if (normalized.includes('review') || normalized.includes('pending') || normalized.includes('missing')) return 'warning';
   if (normalized.includes('paid')) return 'success';
   if (normalized.includes('delivery') || normalized.includes('pos') || normalized.includes('customer app')) return 'source';
   return 'neutral';
+}
+
+function contextBadgeLabel(label) {
+  return sourceDisplayText(label || '');
 }
 
 function ContextBadges({ badges = [] }) {
@@ -348,9 +498,12 @@ function ContextBadges({ badges = [] }) {
   if (safeBadges.length === 0) return null;
   return (
     <>
-      {safeBadges.map(label => (
-        <AdminStatusPill key={label} value={label} label={label} tone={contextBadgeTone(label)} />
-      ))}
+      {safeBadges.map(label => {
+        const displayLabel = contextBadgeLabel(label);
+        return (
+          <AdminStatusPill key={label} value={displayLabel} label={displayLabel} tone={contextBadgeTone(displayLabel)} />
+        );
+      })}
     </>
   );
 }
@@ -365,122 +518,12 @@ function guidanceToneClass(tone) {
   return 'border-border bg-background text-foreground';
 }
 
-function orderSourceTone(order) {
-  const source = `${order.source_type || ''} ${order.source_channel || ''} ${order.order_type || ''}`.toLowerCase();
-  if (source.includes('pos') || order.fulfillment_type === 'pickup') return 'source';
-  if (order.is_native_order) return 'native';
-  if (order.is_hub_order) return 'hub';
-  return 'neutral';
-}
-
-function LiveCustomerContextPanel({ orders, isLoading, nameMap }) {
-  const recentOrders = useMemo(() => {
-    return orders
-      .filter(order => {
-        if (!order) return false;
-        if (order.is_test_order || order.do_not_recover) return false;
-        if (order.status === 'cancelled' || order.payment_status === 'refunded' || order.financial_status === 'refunded') return false;
-        return true;
-      })
-      .slice(0, 3);
-  }, [orders]);
-
-  const deliveryCount = orders.filter(order => order.fulfillment_type === 'delivery').length;
-  const pickupCount = orders.filter(order => order.fulfillment_type === 'pickup').length;
-  const reviewCount = orders.filter(order =>
-    order.native_review_queue_summary ||
-    ['review', 'review_required', 'queued_for_review', 'rejected', 'incomplete'].includes((order.native_review_status || '').toString()) ||
-    order.sync_status === 'review' ||
-    order.approval_status === 'review_required'
-  ).length;
-
-  return (
-    <section className="px-4 mb-4">
-      <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-black text-white">Live Customer Context</h2>
-              <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-black text-emerald-950">Admin</span>
-            </div>
-            <p className="mt-0.5 text-[11px] font-medium text-slate-300">
-              Recent operational customer/order context lives here, not on the Operations launchpad.
-            </p>
-          </div>
-          <div className="grid w-full grid-cols-3 gap-2 text-center sm:w-auto sm:min-w-[12rem]">
-            <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
-              <p className="text-sm font-black text-white">{deliveryCount}</p>
-              <p className="text-[8px] font-black uppercase leading-tight text-slate-500">Delivery</p>
-            </div>
-            <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
-              <p className="text-sm font-black text-white">{pickupCount}</p>
-              <p className="text-[8px] font-black uppercase leading-tight text-slate-500">Pickup / POS</p>
-            </div>
-            <div className="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
-              <p className="text-sm font-black text-white">{reviewCount}</p>
-              <p className="text-[8px] font-black uppercase leading-tight text-slate-500">Review</p>
-            </div>
-          </div>
-        </div>
-
-        {isLoading ? (
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
-            ))}
-          </div>
-        ) : recentOrders.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs font-semibold text-slate-300">
-            No recent operational customer orders yet. New app, website, and POS orders will appear in this Orders view.
-          </div>
-        ) : (
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {recentOrders.map(order => {
-              const customerName = nameMap[order.customer_email] || order.customer_name || 'Customer name pending';
-              const sourceLabel = order.source_type || order.source_channel || (order.is_native_order ? 'Customer App' : order.is_hub_order ? 'Hub' : 'Order');
-              return (
-                <article key={order.id || order.order_number} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-[10px] font-black uppercase tracking-wider text-cyan-300">
-                        #{order.order_number || 'pending'}
-                      </p>
-                      <p className="mt-0.5 truncate text-sm font-black text-white">{customerName}</p>
-                      {order.customer_email && (
-                        <p className="mt-1 flex items-center gap-1 truncate text-[11px] font-medium text-slate-300">
-                          <Mail className="h-3 w-3 shrink-0 text-slate-500" />
-                          {order.customer_email}
-                        </p>
-                      )}
-                    </div>
-                    <p className="shrink-0 text-xs font-black text-white">{formatCurrency(order.total)}</p>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    <AdminStatusPill value={sourceLabel} label={formatStatusLabel(sourceLabel)} tone={orderSourceTone(order)} />
-                    <AdminStatusPill
-                      value={order.fulfillment_type || 'fulfillment'}
-                      label={order.fulfillment_type === 'pickup' ? 'Pickup / POS' : formatStatusLabel(order.fulfillment_type) || 'Fulfillment'}
-                      tone={order.fulfillment_type === 'pickup' ? 'source' : 'progress'}
-                    />
-                  </div>
-                  <p className="mt-2 line-clamp-2 border-t border-slate-800 pt-2 text-[11px] font-medium text-slate-300">
-                    {itemSummary(order.items)}
-                  </p>
-                </article>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-cyan-500/40 bg-cyan-950/50 p-2.5">
-          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-300" />
-          <p className="text-[10px] font-medium text-cyan-100">
-            Read-only admin context only. No provider payloads, payment secrets, fulfillment writes, inventory actions, notifications, or sync actions are triggered here.
-          </p>
-        </div>
-      </div>
-    </section>
-  );
+function adminOrderSourceDiagnosticErrors({ ordersData, ordersError, ordersQueryError, deliveryFallbackError, deliveryFallbackQueryError }) {
+  return [
+    ordersData?.error,
+    ordersError ? (ordersQueryError?.message || 'Admin orders query failed') : null,
+    deliveryFallbackError ? (deliveryFallbackQueryError?.message || 'Delivery fallback query failed') : null,
+  ].filter(Boolean);
 }
 
 function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliveryFallbackOrders, ordersError, ordersQueryError, deliveryFallbackError, deliveryFallbackQueryError }) {
@@ -489,25 +532,38 @@ function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliver
     : (deliveryFallbackData?.sections ? [deliveryFallbackData] : []);
   const sourceRows = [
     ['Local Customer App orders', ordersData?.local_count],
-    ['Hub bridge expanded rows', ordersData?.hub_count],
+    ['Source bridge expanded rows', ordersData?.hub_count],
     ['Native ShopifyOrder rows', ordersData?.native_shopify_order_count],
     ['Delivery fallback rows', deliveryFallbackOrders?.length],
     ['Delivery fallback dates checked', summaries.length],
   ];
-  const errors = [
-    ordersData?.error,
-    ordersError ? (ordersQueryError?.message || 'Admin orders query failed') : null,
-    deliveryFallbackError ? (deliveryFallbackQueryError?.message || 'Delivery fallback query failed') : null,
-  ].filter(Boolean);
+  const errors = adminOrderSourceDiagnosticErrors({
+    ordersData,
+    ordersError,
+    ordersQueryError,
+    deliveryFallbackError,
+    deliveryFallbackQueryError,
+  });
 
   return (
     <section className="px-4 mt-4">
-      <div className="rounded-2xl border border-slate-200 bg-card p-3 shadow-sm dark:border-slate-800">
-        <div className="flex items-start justify-between gap-3">
+      <details className="rounded-2xl border border-slate-200 bg-card p-3 shadow-sm dark:border-slate-800">
+        <summary className="cursor-pointer list-none">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Order Source Diagnostics</p>
+              <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+                Source counts and transport health for troubleshooting.
+              </p>
+            </div>
+            <AdminStatusPill value={errors.length ? 'Needs review' : 'Healthy'} label={errors.length ? 'Needs review' : 'Healthy'} tone={errors.length ? 'warning' : 'native'} />
+          </div>
+        </summary>
+        <div className="mt-3 flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Order Source Diagnostics</p>
+            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Source Read Model</p>
             <p className="mt-0.5 text-xs font-medium text-muted-foreground">
-              Read-only counts from the Customer App, native operational mirror, Hub bridge, and delivery fallback.
+              Read-only counts from the Customer App, native operational mirror, source bridge, and delivery fallback.
             </p>
           </div>
           <AdminStatusPill value={errors.length ? 'Needs review' : 'Read-only'} label={errors.length ? 'Needs review' : 'Read-only'} tone={errors.length ? 'warning' : 'native'} />
@@ -530,6 +586,32 @@ function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliver
         <p className="mt-2 text-[10px] font-medium text-muted-foreground">
           This panel does not call repair, retry, provider, payment, notification, inventory, or fulfillment write paths.
         </p>
+      </details>
+    </section>
+  );
+}
+
+function AdminOrdersLoadStatus({ ordersData, ordersError, ordersQueryError }) {
+  const total = Number(ordersData?.order_count ?? ordersData?.total ?? 0);
+  const returned = Number(ordersData?.orders_returned ?? ordersData?.orders?.length ?? 0);
+  const windowed = ordersData?.compact_order_windowed === true;
+  if (!ordersError && !windowed) return null;
+
+  return (
+    <section className="px-4 mt-4">
+      <div className={`rounded-2xl border p-3 shadow-sm ${
+        ordersError
+          ? 'border-red-200 bg-red-50 text-red-950 dark:border-red-500/40 dark:bg-red-950/25 dark:text-red-100'
+          : 'border-cyan-200 bg-cyan-50 text-cyan-950 dark:border-cyan-500/40 dark:bg-cyan-950/25 dark:text-cyan-100'
+      }`}>
+        <p className="text-[10px] font-black uppercase tracking-wider">
+          {ordersError ? 'Order list needs attention' : 'Recent order window'}
+        </p>
+        <p className="mt-1 text-xs font-semibold">
+          {ordersError
+            ? (ordersQueryError?.message || 'The admin order list could not load. Use Delivery Queue and Production Queue while this is reviewed.')
+            : `Showing the newest ${returned} of ${total} operational rows so the page stays fast and parseable.`}
+        </p>
       </div>
     </section>
   );
@@ -539,11 +621,11 @@ function OperationalContextPanel({ order }) {
   const guidance = Array.isArray(order.admin_context_guidance) ? order.admin_context_guidance : [];
   return (
     <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
-      <SectionLabel
-        title="Merged Operational Context"
-        description="Same-order Customer App, native mirror/task, and Hub fallback visibility. Read-only; no sync or repair actions run here."
-        badge="Visibility"
-      />
+        <SectionLabel
+          title="Merged Operational Context"
+          description="Same-order Customer App, native mirror/task, and source fallback visibility. Read-only; no sync or repair actions run here."
+          badge="Visibility"
+        />
       <div className="flex flex-wrap gap-1.5">
         <ContextBadges badges={order.admin_context_badges} />
       </div>
@@ -562,8 +644,14 @@ function OperationalContextPanel({ order }) {
             <>
               <InfoRow label="Order ID" value={order.native_shopify_order_id} />
               <InfoRow label="Sync" value={formatStatusLabel(order.native_sync_status)} />
-              <InfoRow label="Production" value={formatStatusLabel(order.native_production_status)} />
-              <InfoRow label="Fulfillment" value={formatStatusLabel(order.native_fulfillment_status)} />
+              <InfoRow label="Production" value={formatStatusLabel(order.effective_production_status || order.native_production_status)} />
+              <InfoRow label="Fulfillment" value={formatStatusLabel(order.effective_fulfillment_status || order.native_fulfillment_status)} />
+              {order.native_status_stale_against_source && (
+                <InfoRow
+                  label="Native mirror"
+                  value={`Stale: ${(order.native_status_stale_fields || []).map(formatStatusLabel).join(', ')}`}
+                />
+              )}
               <InfoRow label="Task" value={order.has_native_task ? `${order.native_fulfillment_task_summary?.count || 0} native task(s)` : 'No native task'} />
             </>
           ) : (
@@ -571,16 +659,16 @@ function OperationalContextPanel({ order }) {
           )}
         </div>
         <div className="rounded-lg border border-slate-300 bg-slate-50 p-2 space-y-1 dark:border-slate-800 dark:bg-slate-950/30">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-200">Hub Bridge</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-200">Source Bridge</p>
           {order.is_hub_order ? (
             <>
-              <InfoRow label="Hub Order" value={order.hub_order_id} />
+              <InfoRow label="Source Order" value={order.hub_order_id} />
               <InfoRow label="Status" value={formatStatusLabel(order.hub_operational_status || order.status)} />
               <InfoRow label="Bridge" value={order.hub_sync_summary ? `${formatStatusLabel(order.hub_sync_summary.status)}${order.hub_sync_summary.action ? ` · ${formatStatusLabel(order.hub_sync_summary.action)}` : ''}` : 'Synced'} />
               <InfoRow label="Updated" value={formatDateTime(order.hub_sync_summary?.timestamp || order.hub_updated_date)} />
             </>
           ) : (
-            <p className="text-xs text-muted-foreground italic">No Hub order attached to this row.</p>
+            <p className="text-xs text-muted-foreground italic">No source order attached to this row.</p>
           )}
         </div>
       </div>
@@ -588,8 +676,8 @@ function OperationalContextPanel({ order }) {
         <div className="space-y-2">
           {guidance.map(item => (
             <div key={`${item.label}-${item.detail}`} className={`rounded-lg border p-2 ${guidanceToneClass(item.tone)}`}>
-              <p className="text-xs font-bold">{item.label}</p>
-              {item.detail && <p className="mt-0.5 text-[10px] font-medium opacity-90">{item.detail}</p>}
+              <p className="text-xs font-bold">{sourceDisplayText(item.label)}</p>
+              {item.detail && <p className="mt-0.5 text-[10px] font-medium opacity-90">{sourceDisplayText(item.detail)}</p>}
             </div>
           ))}
         </div>
@@ -616,8 +704,17 @@ function NativeOperationsPanel({ order }) {
       </div>
       <InfoRow label="Mirror ID" value={order.native_shopify_order_id} />
       <InfoRow label="Payment" value={formatStatusLabel(order.native_payment_status || order.payment_status)} />
-      <InfoRow label="Production" value={formatStatusLabel(order.native_production_status)} />
-      <InfoRow label="Fulfillment" value={formatStatusLabel(order.native_fulfillment_status)} />
+      <InfoRow label="Production" value={formatStatusLabel(order.effective_production_status || order.native_production_status)} />
+      <InfoRow label="Fulfillment" value={formatStatusLabel(order.effective_fulfillment_status || order.native_fulfillment_status)} />
+      {order.native_status_stale_against_source && (
+        <InfoRow
+          label="Raw Native"
+          value={[
+            order.native_production_status ? `Production ${formatStatusLabel(order.native_production_status)}` : null,
+            order.native_fulfillment_status ? `Fulfillment ${formatStatusLabel(order.native_fulfillment_status)}` : null,
+          ].filter(Boolean).join(' · ')}
+        />
+      )}
       <InfoRow label="Sync" value={formatStatusLabel(order.native_sync_status)} />
       <InfoRow label="Review" value={formatStatusLabel(order.native_review_status)} />
       <InfoRow label="Source" value={formatStatusLabel(order.native_source_type || order.native_source_channel || order.source_type || order.source_channel)} />
@@ -662,7 +759,7 @@ function NativeOperationsPanel({ order }) {
         </div>
       )}
       <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-        Native mirror remains parallel to the Hub bridge for May 30. Use Delivery Queue and Production views for operational actions.
+        Native mirror remains parallel to the source bridge while operational actions move through Delivery Queue and Production views.
       </p>
     </div>
   );
@@ -700,16 +797,16 @@ function HubOperationsPanel({ order, customerAppStatusLabel }) {
   return (
     <div className="bg-secondary/40 rounded-xl p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hub Operations</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Source Operations</p>
         <AdminStatusPill value="Read-only" label="Read-only" tone="hub" />
       </div>
       {hasHubOpsData ? (
         <>
-          <InfoRow label="Hub Order ID" value={order.hub_order_id} />
+          <InfoRow label="Source Order ID" value={order.hub_order_id} />
           <InfoRow label="Customer App Status" value={customerAppStatusLabel || formatStatusLabel(order.status)} />
-          <InfoRow label="Hub Operational Status" value={formatStatusLabel(order.hub_operational_status)} />
+          <InfoRow label="Source Operational Status" value={formatStatusLabel(order.hub_operational_status)} />
           <InfoRow label="Fulfillment" value={formatStatusLabel(order.hub_fulfillment_status)} />
-          <InfoRow label="Hub Bridge" value={order.hub_sync_summary ? `${formatStatusLabel(order.hub_sync_summary.status)}${order.hub_sync_summary.action ? ` · ${formatStatusLabel(order.hub_sync_summary.action)}` : ''}` : null} />
+          <InfoRow label="Source Bridge" value={order.hub_sync_summary ? `${formatStatusLabel(order.hub_sync_summary.status)}${order.hub_sync_summary.action ? ` · ${formatStatusLabel(order.hub_sync_summary.action)}` : ''}` : null} />
           <InfoRow label="Production Date" value={formatDateOnly(order.production_date)} />
           <InfoRow label="Delivery" value={formatDateOnly(order.assigned_delivery_date)} />
           <InfoRow label="Window" value={order.delivery_window_label} />
@@ -719,10 +816,10 @@ function HubOperationsPanel({ order, customerAppStatusLabel }) {
           <InfoRow label="Proof" value={proofLink} />
           <InfoRow label="Source" value={formatStatusLabel(order.source_channel)} />
           <InfoRow label="Subscription ID" value={order.stripe_subscription_id} />
-          <InfoRow label="Last Hub Update" value={formatDateTime(order.hub_updated_date)} />
+          <InfoRow label="Last Source Update" value={formatDateTime(order.hub_updated_date)} />
         </>
       ) : (
-        <p className="text-xs text-muted-foreground italic">No Hub operations data yet</p>
+        <p className="text-xs text-muted-foreground italic">No source operations data yet</p>
       )}
     </div>
   );
@@ -767,7 +864,7 @@ function FulfillmentTasksPanel({ order }) {
       </div>
 
       {!shouldFetchTasks ? (
-        <p className="text-xs text-muted-foreground italic">No Hub task identifiers available</p>
+        <p className="text-xs text-muted-foreground italic">No source task identifiers available</p>
       ) : isLoading ? (
         <p className="text-xs text-muted-foreground italic">Loading fulfillment tasks...</p>
       ) : isError ? (
@@ -843,18 +940,18 @@ function HubTimelinePanel({ order }) {
   return (
     <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hub Timeline</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Source Timeline</p>
         <AdminStatusPill value="Read-only" label="Read-only" tone="hub" />
       </div>
 
       {!shouldFetchTimeline ? (
-        <p className="text-xs text-muted-foreground italic">No Hub timeline identifiers available</p>
+        <p className="text-xs text-muted-foreground italic">No source timeline identifiers available</p>
       ) : isLoading ? (
-        <p className="text-xs text-muted-foreground italic">Loading Hub timeline...</p>
+        <p className="text-xs text-muted-foreground italic">Loading source timeline...</p>
       ) : isError ? (
-        <p className="text-xs text-destructive">Unable to load Hub timeline</p>
+        <p className="text-xs text-destructive">Unable to load source timeline</p>
       ) : events.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic">No Hub timeline events found</p>
+        <p className="text-xs text-muted-foreground italic">No source timeline events found</p>
       ) : (
         <div className="space-y-2">
           {events.map((event, index) => {
@@ -873,7 +970,7 @@ function HubTimelinePanel({ order }) {
             return (
               <div key={`${event.type}-${event.source}-${event.task_id || index}-${event.timestamp || event.date || index}`} className="rounded-lg border border-border/50 bg-background/60 p-2 space-y-1.5">
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-semibold text-foreground">{event.label || formatStatusLabel(event.type) || 'Hub Event'}</p>
+                  <p className="text-xs font-semibold text-foreground">{sourceDisplayText(event.label) || formatStatusLabel(event.type) || 'Source Event'}</p>
                   <span className="text-[10px] text-muted-foreground shrink-0">{eventWhen || 'Date pending'}</span>
                 </div>
                 <InfoRow label="Type" value={formatStatusLabel(event.type)} />
@@ -922,12 +1019,12 @@ function InternalHubNoteComposer({ order }) {
       if (result?.skipped && result?.reason === 'duplicate_request_id') {
         toast.info('Note already submitted');
       } else {
-        toast.success('Internal Hub note appended');
+        toast.success('Internal source note appended');
       }
       setNote('');
     },
     onError: () => {
-      toast.error('Unable to append internal Hub note');
+      toast.error('Unable to append internal source note');
     },
   });
 
@@ -945,17 +1042,17 @@ function InternalHubNoteComposer({ order }) {
     <form onSubmit={handleSubmit} className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Internal Hub Note</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Internal Source Note</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">Append-only · Admin-only · Not customer-visible.</p>
         </div>
         <div className="flex flex-col items-end gap-1 text-right">
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Append-only</span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 border border-cyan-200 leading-tight">Only Hub write available here</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 border border-cyan-200 leading-tight">Only source-note write available here</span>
         </div>
       </div>
 
       {!hasIdentifiers ? (
-        <p className="text-xs text-muted-foreground italic">No Hub note identifiers available</p>
+        <p className="text-xs text-muted-foreground italic">No source note identifiers available</p>
       ) : (
         <>
           <textarea
@@ -984,13 +1081,10 @@ function InternalHubNoteComposer({ order }) {
   );
 }
 
-function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
-  const [expanded, setExpanded] = useState(false);
+function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocused }) {
+  const [expanded, setExpanded] = useState(forceExpanded);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
-  const currentIndex = stages.findIndex(s => s.key === order.status);
-  const nextStage = stages[currentIndex + 1];
-  const prevStage = stages[currentIndex - 1];
-  const isComplete = !nextStage;
+  const currentIndex = Math.max(0, stages.findIndex(s => s.key === normalizeOrderStage(order.status)));
 
   const deliveryDateStr = order.estimated_delivery_date
     ? format(parseLocalDate(order.estimated_delivery_date), 'MMM d, yyyy')
@@ -1003,10 +1097,20 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
     : null;
   const customerAppStatusLabel = stages.find(s => s.key === order.status)?.label || formatStatusLabel(order.status);
 
+  useEffect(() => {
+    if (forceExpanded) setExpanded(true);
+  }, [forceExpanded]);
+
+  const toggleExpanded = () => {
+    const nextExpanded = !expanded;
+    setExpanded(nextExpanded);
+    if (!nextExpanded && forceExpanded) onCollapseFocused?.();
+  };
+
   return (
-    <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+    <div id={`admin-order-card-${orderKey(order)}`} className="bg-card rounded-2xl border border-border/50 overflow-hidden">
       {/* Collapsed header — always shows complete at-a-glance info */}
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-start gap-3 p-4 text-left">
+      <button onClick={toggleExpanded} className="w-full flex items-start gap-3 p-4 text-left">
         <div className="flex-1 min-w-0 space-y-1">
           {/* Row 1: order # + status badges */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -1017,7 +1121,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               order.has_customer_app_order ? 'Customer App Order' : null,
               order.has_native_order || order.is_native_order ? 'Native Ops Mirror' : null,
               order.has_native_task ? 'Native Task' : null,
-              order.is_hub_order ? 'Hub Synced' : null,
+              order.is_hub_order ? 'Source Synced' : null,
             ].filter(Boolean)} />
           </div>
           {/* Row 2: customer name (always shown if available) */}
@@ -1029,7 +1133,10 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
           {/* Row 4: delivery date + items summary */}
           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
             {deliveryDateStr && (
-              <p className="text-xs text-primary font-medium">📅 {deliveryDateStr}</p>
+              <p className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+                <CalendarDays className="h-3 w-3" />
+                {deliveryDateStr}
+              </p>
             )}
             {!deliveryDateStr && orderedDateStr && (
               <p className="text-xs text-muted-foreground">Ordered {orderedDateStr}</p>
@@ -1072,33 +1179,22 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                 {orderedDateStr && <InfoRow label="Ordered" value={orderedDateStr} />}
               </div>
 
-              {/* Items block */}
-              <div className="bg-secondary/40 rounded-xl p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Items</p>
-                <div className="space-y-1">
-                  {order.items?.length > 0 ? order.items.map((item, i) => (
-                    <div key={i} className="flex justify-between text-xs">
-                      <span className="text-foreground">{item.title} × {item.quantity}</span>
-                      {item.price > 0 && <span className="font-medium text-foreground">${(item.price * item.quantity).toFixed(2)}</span>}
-                    </div>
-                  )) : (
-                    <p className="text-xs text-muted-foreground italic">No items listed</p>
-                  )}
+              <PricingBreakdownPanel order={order} />
+
+              <DeliveryRateContextPanel order={order} />
+
+              {order.notes && (
+                <div className="rounded-xl border border-border/60 bg-background/70 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Internal Notes</p>
+                  <p className="text-xs font-medium text-foreground">{order.notes}</p>
                 </div>
-                {order.notes && (
-                  <p className="text-[10px] text-primary mt-2 pt-2 border-t border-border/40">{order.notes}</p>
-                )}
-                <div className="flex justify-between text-xs font-semibold mt-2 pt-2 border-t border-border/40">
-                  <span>Total</span>
-                  <span>${(order.total || 0).toFixed(2)}</span>
-                </div>
-              </div>
+              )}
 
               {order.is_hub_order && (
                 <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
                   <SectionLabel
-                    title="Hub Read-Only Context"
-                    description="View-only operational data from Hub."
+                    title="Source Read-Only Context"
+                    description="View-only operational data from the source bridge."
                     badge="Read-only"
                   />
                   <div className="space-y-2">
@@ -1113,7 +1209,7 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                 <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
                   <SectionLabel
                     title="Native Customer App Context"
-                    description="Operational mirror/task context created in Customer App for May 30 launch processing."
+                    description="Operational mirror/task context created in the Customer App backend for production, fulfillment, and delivery visibility."
                     badge="Parallel"
                   />
                   <NativeOperationsPanel order={order} />
@@ -1123,10 +1219,10 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
               <InternalHubNoteComposer order={order} />
 
               <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
-                <SectionLabel
-                  title="Customer App Order Controls"
-                  description="Order workflow buttons are paused for the May 30 launch freeze. Use the dedicated Operations, Production, and Delivery Queue views for operational actions."
-                  badge="Launch freeze"
+                  <SectionLabel
+                  title="Operational Workflow"
+                  description="Review order context here, then use the live queues for production and fulfillment changes."
+                  badge="Queue-based"
                 />
                 <AdminStatusLegend />
 
@@ -1141,38 +1237,28 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
                   <p className="text-xs text-muted-foreground mt-1">{stages[currentIndex]?.label}</p>
                 </div>
 
-                {/* Action buttons */}
-                {ORDER_WORKFLOW_CONTROLS_FROZEN && (
-                  <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
-                    Generic order status buttons are disabled during launch hardening to avoid accidental customer-facing status changes. Operational fulfillment actions remain available in Delivery Queue.
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  {prevStage && (
-                    <button
-                      onClick={() => onGoBack(order, prevStage)}
-                      disabled={ORDER_WORKFLOW_CONTROLS_FROZEN || isAdvancing}
-                      className="flex-1 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                    >
-                      ← Back
-                    </button>
-                  )}
-                  {!isComplete ? (
-                    <button
-                      onClick={() => onAdvance(order, nextStage)}
-                      disabled={ORDER_WORKFLOW_CONTROLS_FROZEN || isAdvancing}
-                      className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-                    >
-                      {isAdvancing ? 'Updating...' : `→ ${nextStage.label}`}
-                    </button>
-                  ) : (
-                    <div className="flex-1 py-3 bg-green-50 text-green-700 rounded-xl text-sm font-semibold text-center border border-green-200">
-                      ✓ Complete
-                    </div>
-                  )}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <Link
+                    to="/admin/production-queue"
+                    className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground hover:border-primary/60"
+                  >
+                    Production Queue
+                  </Link>
+                  <Link
+                    to={order.fulfillment_type === 'pickup' ? '/admin/pos-orders' : '/admin/delivery-queue'}
+                    className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground hover:border-primary/60"
+                  >
+                    {order.fulfillment_type === 'pickup' ? 'POS / Pickup Orders' : 'Delivery Queue'}
+                  </Link>
+                  <Link
+                    to={order.fulfillment_type === 'pickup' ? '/admin/orders' : '/admin/route-ops'}
+                    className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground hover:border-primary/60"
+                  >
+                    {order.fulfillment_type === 'pickup' ? 'Order Review' : 'Route Ops'}
+                  </Link>
                 </div>
                 {order.is_hub_order && (
-                  <p className="text-[10px] text-muted-foreground text-center">Status workflow controls are locked for launch. Use the dedicated operational queues for approved actions.</p>
+                  <p className="text-[10px] text-muted-foreground text-center">Source-backed order context stays readable here; lifecycle changes stay tied to the matching production or delivery record.</p>
                 )}
               </section>
             </div>
@@ -1186,10 +1272,10 @@ function OrderCard({ order, onAdvance, onGoBack, isAdvancing, customerName }) {
 export default function AdminOrders() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const isPageVisible = usePageVisibility();
   const [filter, setFilter] = useState('active');
-  const [advancingId, setAdvancingId] = useState(null);
-  const [showZone3, setShowZone3] = useState(false);
+  const [focusedOrderKey, setFocusedOrderKey] = useState(null);
 
   const [search, setSearch] = useState('');
 
@@ -1210,8 +1296,10 @@ export default function AdminOrders() {
       }
       return result;
     },
-    enabled: user?.role === 'admin',
-    refetchInterval: 30000,
+    enabled: isAdminUser(user) && isPageVisible,
+    refetchInterval: isPageVisible ? 30000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
   const {
@@ -1224,8 +1312,10 @@ export default function AdminOrders() {
       });
       return unwrapFunctionData(res, {});
     },
-    enabled: user?.role === 'admin',
-    refetchInterval: 30000,
+    enabled: isAdminUser(user) && isPageVisible,
+    refetchInterval: isPageVisible ? 30000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
   const primaryOrders = ordersData.orders || [];
@@ -1258,8 +1348,10 @@ export default function AdminOrders() {
       );
       return { summaries };
     },
-    enabled: user?.role === 'admin',
-    refetchInterval: 30000,
+    enabled: isAdminUser(user) && isPageVisible,
+    refetchInterval: isPageVisible ? 30000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
   const deliveryFallbackOrders = useMemo(() => {
@@ -1291,6 +1383,12 @@ export default function AdminOrders() {
     return Array.from(merged.values());
   }, [primaryOrders, deliveryFallbackOrders]);
   const isLoading = ordersLoading || (primaryOrders.length === 0 && deliveryFallbackLoading);
+  const totalOrderCount = Number(ordersData.order_count ?? ordersData.total ?? orders.length);
+  const returnedOrderCount = Number(ordersData.orders_returned ?? primaryOrders.length);
+  const orderListWindowed = ordersData.compact_order_windowed === true;
+  const headerSubtitle = orderListWindowed
+    ? `${returnedOrderCount} recent of ${totalOrderCount} orders`
+    : `${orders.length} total orders`;
 
   // Build email -> name map from the admin orders wrapper payload.
   // This avoids a browser-side UserProfile.list on the operational order page.
@@ -1319,6 +1417,15 @@ export default function AdminOrders() {
     o.status !== 'cancelled'
   );
 
+  const orderSourceDiagnosticErrors = adminOrderSourceDiagnosticErrors({
+    ordersData,
+    ordersError,
+    ordersQueryError,
+    deliveryFallbackError,
+    deliveryFallbackQueryError,
+  });
+  const showOrderSourceDiagnostics = orderSourceDiagnosticErrors.length > 0;
+
   const statusFiltered = filter === 'active'
     ? operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status))
     : filter === 'completed'
@@ -1339,46 +1446,44 @@ export default function AdminOrders() {
       })
     : statusFiltered;
 
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ order, stage }) => {
-      return {
-        skipped: true,
-        reason: ORDER_WORKFLOW_CONTROLS_FROZEN
-          ? 'may30_order_workflow_controls_frozen'
-          : 'admin_order_workflow_requires_dedicated_backend_command',
-        order_number: order.order_number,
-        requested_status: stage.key,
-      };
-    },
-    onSuccess: (result, { stage, direction }) => {
-      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
-      if (result?.skipped) {
-        toast.info('Order workflow controls are paused for the May 30 launch freeze.');
-        setAdvancingId(null);
-        return;
-      }
-      toast.success(direction === 'back' ? `Reverted to "${stage.label}"` : `Advanced to "${stage.label}"`);
-      setAdvancingId(null);
-    },
-    onError: () => {
-      toast.error('Failed to update status');
-      setAdvancingId(null);
-    },
-  });
+  const queryOrderSearch = (
+    searchParams.get('order') ||
+    searchParams.get('email') ||
+    searchParams.get('q') ||
+    ''
+  ).trim();
 
+  useEffect(() => {
+    if (!queryOrderSearch || isLoading || orders.length === 0) return;
 
+    const lookup = queryOrderSearch.toLowerCase();
+    const match = orders.find(order => {
+      const candidates = [
+        order.order_number,
+        order.id,
+        order.hub_order_id,
+        order.customer_email,
+        order.hub_customer_email,
+      ];
+      return candidates.some(value => (value || '').toString().toLowerCase() === lookup);
+    });
 
-  const handleAdvance = (order, nextStage) => {
-    setAdvancingId(order.id);
-    updateStatusMutation.mutate({ order, stage: nextStage, direction: 'forward' });
-  };
+    setSearch(current => current === queryOrderSearch ? current : queryOrderSearch);
+    if (match) {
+      const nextFilter = isAbandonedOrUnpaid(match)
+        ? 'pending'
+        : ['delivered', 'picked_up'].includes(match.status)
+          ? 'completed'
+          : 'active';
+      setFilter(current => current === nextFilter ? current : nextFilter);
+      setFocusedOrderKey(orderKey(match));
+      window.setTimeout(() => {
+        document.getElementById('admin-orders-detail-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+    }
+  }, [isLoading, orders, queryOrderSearch]);
 
-  const handleGoBack = (order, prevStage) => {
-    setAdvancingId(order.id);
-    updateStatusMutation.mutate({ order, stage: prevStage, direction: 'back' });
-  };
-
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Access denied. Admins only.</p>
@@ -1387,46 +1492,35 @@ export default function AdminOrders() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Order Management"
-        subtitle={`${orders.length} total orders`}
-        badge="Hub + Native"
+        subtitle={headerSubtitle}
+        badge="Source + Native"
         onBack={() => navigate('/admin/operations')}
       />
 
-      <LiveCustomerContextPanel
-        orders={operationalOrders}
-        isLoading={isLoading}
-        nameMap={nameMap}
+      <AdminOrdersLoadStatus
+        ordersData={ordersData}
+        ordersError={ordersError}
+        ordersQueryError={ordersQueryError}
       />
 
       {adminOrderLifecycleReadModel && (
         <AdminOrderLifecycleReadModelPanel model={adminOrderLifecycleReadModel} />
       )}
 
-      <AdminOrderSourceDiagnostics
-        ordersData={ordersData}
-        deliveryFallbackData={deliveryFallbackData}
-        deliveryFallbackOrders={deliveryFallbackOrders}
-        ordersError={ordersError}
-        ordersQueryError={ordersQueryError}
-        deliveryFallbackError={deliveryFallbackError}
-        deliveryFallbackQueryError={deliveryFallbackQueryError}
-      />
-
-      <div className="px-4 mt-4">
-        <May30ReadinessPanel
-          title="One-time order operational path"
-          description="Use this page to confirm future paid orders reached operations cleanly before moving to production or delivery queues."
-          items={orderOpsReadinessItems}
-          actions={[
-            { label: 'Production Queue', to: '/admin/production-queue' },
-            { label: 'Delivery Queue', to: '/admin/delivery-queue' },
-            { label: 'Review / Sync Health', to: '/admin/sync-health' },
-          ]}
+      {showOrderSourceDiagnostics && (
+        <AdminOrderSourceDiagnostics
+          ordersData={ordersData}
+          deliveryFallbackData={deliveryFallbackData}
+          deliveryFallbackOrders={deliveryFallbackOrders}
+          ordersError={ordersError}
+          ordersQueryError={ordersQueryError}
+          deliveryFallbackError={deliveryFallbackError}
+          deliveryFallbackQueryError={deliveryFallbackQueryError}
         />
-      </div>
+      )}
 
       {/* Search */}
       <div className="px-4 mt-4 mb-3">
@@ -1450,56 +1544,44 @@ export default function AdminOrders() {
         ].map(tab => (
           <button
             key={tab.key}
-            onClick={() => { setFilter(tab.key); setShowZone3(false); }}
+            onClick={() => setFilter(tab.key)}
             className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors shrink-0 ${
-              filter === tab.key && !showZone3 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
+              filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
             }`}
           >
             {tab.label}
           </button>
         ))}
-        <button
-          onClick={() => setShowZone3(!showZone3)}
-          className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors shrink-0 ${
-            showZone3 ? 'bg-cyan-600 text-white' : 'bg-cyan-100 text-cyan-800'
-          }`}
+        <Link
+          to="/admin/route-ops"
+          className="shrink-0 rounded-full border border-cyan-300 bg-cyan-50 px-4 py-1.5 text-xs font-semibold text-cyan-900 transition-colors hover:border-cyan-500 dark:border-cyan-800/70 dark:bg-cyan-950/40 dark:text-cyan-100"
         >
-          🗺️ Route Review
-        </button>
+          Route Ops
+        </Link>
       </div>
 
-      {/* Zone 3 Route Review Panel */}
-      {showZone3 && (
-        <div className="px-4 mb-4">
-          <Zone3ReviewPanel />
-        </div>
-      )}
-
       {/* Orders List */}
-      {!showZone3 && (
-        <div className="px-4 space-y-3">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-muted-foreground text-sm">{search ? 'No orders match your search' : `No ${filter} orders`}</p>
-            </div>
-          ) : (
-            filtered.map(order => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                onAdvance={handleAdvance}
-                onGoBack={handleGoBack}
-                isAdvancing={advancingId === order.id}
-                customerName={nameMap[order.customer_email] || order.customer_name || null}
-              />
-            ))
-          )}
-        </div>
-      )}
+      <div id="admin-orders-detail-list" className="px-4 space-y-3 scroll-mt-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-muted-foreground text-sm">{search ? 'No orders match your search' : `No ${filter} orders`}</p>
+          </div>
+        ) : (
+          filtered.map(order => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              customerName={nameMap[order.customer_email] || order.customer_name || null}
+              forceExpanded={focusedOrderKey === orderKey(order)}
+              onCollapseFocused={() => setFocusedOrderKey(null)}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }

@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
           skipped: true,
           mode: 'run_sync',
           reason: 'out_for_delivery_notification_run_sync_disabled',
-          message: 'Out-for-delivery notification run_sync test is disabled for May 30 launch freeze.',
+          message: 'Out-for-delivery notification run_sync test is disabled by the current controlled-sync gate.',
         });
       }
 

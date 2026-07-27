@@ -12,6 +12,9 @@ const G48E_RUNTIME_CONTRACT_VERSION = 'g48e_runtime_contract_v1';
 const G48E_COMPACT_READ_MODEL_CONTRACT = 'g48e_compact_read_model_v1';
 const ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE = 'ADMIN_ORDER_LIST_COMPACT';
 const ADMIN_ORDER_LIST_COMPACT_CONTRACT = 'g48e_admin_order_list_compact_v1';
+const ADMIN_ORDER_LIST_COMPACT_MAX_ROWS = 15;
+const ADMIN_ORDER_LIST_COMPACT_MAX_ITEMS_PER_ROW = 6;
+const ADMIN_ORDER_LIST_COMPACT_MAX_CHARS = 180;
 
 function normalizeOrderNum(num) {
   return (num || '').toString().replace(/^#/, '').trim().toLowerCase();
@@ -127,12 +130,107 @@ function isAdminOrderListCompactRequest(body) {
 
 function compactLineItem(item = {}) {
   const quantity = Number(item.quantity || item.qty || 1);
-  const title = item.title || item.name || item.product_name || item.variant_title || 'Item';
+  const title = compactString(item.title || item.name || item.product_name || item.variant_title || 'Item', 96);
   const price = Number(item.price || item.unit_price || 0);
   return {
     title,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     ...(Number.isFinite(price) && price > 0 ? { price } : {}),
+  };
+}
+
+function compactNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function firstPresent(...values) {
+  return values.find(value => value !== undefined && value !== null && value !== '') ?? null;
+}
+
+function compactString(value, maxLength = ADMIN_ORDER_LIST_COMPACT_MAX_CHARS) {
+  if (value === null || value === undefined) return null;
+  const text = value.toString().trim();
+  if (!text) return null;
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function compactStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => compactString(item, 64)).filter(Boolean).slice(0, 6);
+}
+
+function roundCurrency(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.round((number + Number.EPSILON) * 100) / 100;
+}
+
+function compactItemsSubtotal(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  let subtotal = 0;
+  for (const item of items) {
+    const price = compactNumber(item?.price);
+    if (price === null) return null;
+    const quantity = compactNumber(item?.quantity) || 1;
+    subtotal += price * quantity;
+  }
+  return roundCurrency(subtotal);
+}
+
+function inferCompactDeliveryFeeFromLineItems(order = {}, { total, subtotal, itemSubtotal, tax, discounts } = {}) {
+  const recordedFee = compactNumber(firstPresent(order.delivery_fee, order.approved_delivery_fee, order.delivery_zone_fee));
+  if (recordedFee !== null) return recordedFee;
+
+  const method = normalizeLower(firstPresent(order.fulfillment_type, order.fulfillment_method, order.customer_app_fulfillment_type));
+  if (method && method !== 'delivery') return null;
+
+  const comparableSubtotal = subtotal ?? itemSubtotal;
+  if (total === null || comparableSubtotal === null) return null;
+
+  const inferred = total - comparableSubtotal - (tax || 0) + (discounts || 0);
+  return inferred > 0.009 ? roundCurrency(inferred) : null;
+}
+
+function buildCompactPricingFromLineItems(order = {}, items = []) {
+  const total = compactNumber(order.total);
+  const itemSubtotal = compactItemsSubtotal(items);
+  const recordedSubtotal = compactNumber(order.subtotal);
+  const subtotal = recordedSubtotal ?? itemSubtotal;
+  const tax = compactNumber(order.total_tax);
+  const discounts = compactNumber(order.total_discounts);
+  const deliveryFee = inferCompactDeliveryFeeFromLineItems(order, {
+    total,
+    subtotal,
+    itemSubtotal,
+    tax,
+    discounts,
+  });
+
+  return {
+    total: total ?? 0,
+    subtotal,
+    delivery_fee: deliveryFee,
+    total_tax: tax,
+    total_discounts: discounts,
+    inferred_from_line_items: recordedSubtotal === null || compactNumber(order.delivery_fee) === null,
+  };
+}
+
+function compactDeliveryRateContext(order = {}) {
+  return {
+    fulfillment_method: compactString(firstPresent(order.fulfillment_method, order.fulfillment_type, order.customer_app_fulfillment_type, order.source_channel), 64),
+    delivery_fee: compactNumber(firstPresent(order.delivery_fee, order.approved_delivery_fee, order.delivery_zone_fee)),
+    delivery_zone_key: compactString(firstPresent(order.delivery_zone_key, order.delivery_zone_id), 64),
+    delivery_zone_name: compactString(firstPresent(order.delivery_zone_name), 96),
+    delivery_zone_type: compactString(firstPresent(order.delivery_zone_type, order.zone_type), 64),
+    minimum_order: compactNumber(firstPresent(order.minimum_order, order.delivery_zone_minimum)),
+    distance_miles: compactNumber(firstPresent(order.distance_miles, order.estimated_distance_miles)),
+    drive_time_minutes: compactNumber(firstPresent(order.drive_time_minutes, order.estimated_drive_time_minutes)),
+    approval_status: compactString(firstPresent(order.approval_status, order.route_review_status), 64),
+    delivery_area: compactString(firstPresent(order.delivery_address), 160),
+    schedule_source: compactString(firstPresent(order.final_schedule_source, order.delivery_schedule_source, order.scheduling_reason, order.schedule_source), 96),
   };
 }
 
@@ -167,7 +265,7 @@ function compactLatestSyncLog(log = null) {
     action: log.action || null,
     source: log.source || null,
     event_type: log.event_type || null,
-    reason: log.reason || null,
+    reason: compactString(log.reason, 120),
     timestamp: log.timestamp || log.created_date || null,
   };
 }
@@ -177,8 +275,8 @@ function compactReviewSummary(summary = null) {
   return {
     status: summary.status || null,
     incident_type: summary.incident_type || null,
-    issue_description: summary.issue_description || null,
-    recommended_action: summary.recommended_action || null,
+    issue_description: compactString(summary.issue_description, 140),
+    recommended_action: compactString(summary.recommended_action, 140),
     last_seen_at: summary.last_seen_at || summary.updated_date || null,
   };
 }
@@ -192,8 +290,80 @@ function compactHubSyncSummary(summary = null) {
   };
 }
 
+function isTerminalOperationalStatus(value) {
+  return ['delivered', 'fulfilled', 'completed', 'complete', 'picked_up'].includes(normalizeLower(value).replace(/\s+/g, '_'));
+}
+
+function isStalePendingNativeStatus(value) {
+  return ['awaiting_production', 'scheduled', 'pending', 'unfulfilled', 'not_required'].includes(normalizeLower(value).replace(/\s+/g, '_'));
+}
+
+function taskSummaryHasTerminalStatus(taskSummary = {}) {
+  return Object.keys(taskSummary?.status_counts || {}).some(isTerminalOperationalStatus);
+}
+
+function mapKnownOperationalStatus(value) {
+  const normalized = normalizeLower(value);
+  return normalized ? mapHubStatus(normalized) : null;
+}
+
+function effectiveAdminOperationalStatuses(order = {}) {
+  const taskSummary = order.native_fulfillment_task_summary || {};
+  const taskTerminal = taskSummaryHasTerminalStatus(taskSummary);
+  const hubTerminal = isTerminalOperationalStatus(order.hub_operational_status) || isTerminalOperationalStatus(order.hub_fulfillment_status);
+  const customerTerminal = isTerminalOperationalStatus(order.customer_app_order_status) || isTerminalOperationalStatus(order.status);
+  const deliveredLike = hubTerminal || taskTerminal || customerTerminal || Boolean(order.delivered_at);
+  const sourceStatus = (
+    order.hub_operational_status ||
+    order.hub_fulfillment_status ||
+    (taskTerminal ? 'delivered' : null) ||
+    order.customer_app_order_status ||
+    order.status ||
+    null
+  );
+  const sourceFulfillment = (
+    order.hub_fulfillment_status ||
+    order.hub_operational_status ||
+    (taskTerminal ? 'delivered' : null) ||
+    order.native_fulfillment_status ||
+    null
+  );
+  const staleFields = [
+    deliveredLike && isStalePendingNativeStatus(order.native_production_status) ? 'native_production_status' : null,
+    deliveredLike && isStalePendingNativeStatus(order.native_fulfillment_status) ? 'native_fulfillment_status' : null,
+  ].filter(Boolean);
+
+  return {
+    effective_order_status: mapKnownOperationalStatus(sourceStatus) || (order.status || null),
+    effective_production_status: staleFields.includes('native_production_status')
+      ? mapKnownOperationalStatus(sourceStatus || sourceFulfillment || 'delivered')
+      : (order.native_production_status || mapKnownOperationalStatus(sourceStatus) || null),
+    effective_fulfillment_status: staleFields.includes('native_fulfillment_status')
+      ? mapKnownOperationalStatus(sourceFulfillment || sourceStatus || 'delivered')
+      : (order.native_fulfillment_status || mapKnownOperationalStatus(sourceFulfillment || sourceStatus) || null),
+    effective_delivery_status: deliveredLike
+      ? 'delivered'
+      : mapKnownOperationalStatus(sourceFulfillment || sourceStatus),
+    effective_status_source: order.is_hub_order
+      ? (taskTerminal ? 'hub_primary_with_native_task_context' : 'hub_primary')
+      : taskTerminal ? 'native_task' : order.has_customer_app_order ? 'customer_app_order' : 'native_mirror',
+    native_status_stale_against_source: staleFields.length > 0,
+    native_status_stale_fields: staleFields,
+  };
+}
+
+function attachEffectiveAdminOperationalStatuses(order = {}) {
+  return {
+    ...order,
+    ...effectiveAdminOperationalStatuses(order),
+  };
+}
+
 function compactAdminOrderRow(order = {}) {
-  const items = Array.isArray(order.items) ? order.items.slice(0, 12).map(compactLineItem) : [];
+  const effectiveStatuses = effectiveAdminOperationalStatuses(order);
+  const items = Array.isArray(order.items) ? order.items.slice(0, ADMIN_ORDER_LIST_COMPACT_MAX_ITEMS_PER_ROW).map(compactLineItem) : [];
+  const pricing = buildCompactPricingFromLineItems(order, items);
+  const deliveryRateContext = compactDeliveryRateContext(order);
   const taskSummary = compactTaskSummary(order.native_fulfillment_task_summary);
   const latestSyncLog = compactLatestSyncLog(order.native_latest_sync_log);
   const reviewSummary = compactReviewSummary(order.native_review_queue_summary);
@@ -204,26 +374,39 @@ function compactAdminOrderRow(order = {}) {
     order_number: order.order_number || null,
     created_date: order.created_date || null,
     status: order.status || null,
+    effective_order_status: effectiveStatuses.effective_order_status,
     payment_status: order.payment_status || order.financial_status || null,
     financial_status: order.financial_status || null,
     payment_captured: order.payment_captured === true,
     fulfillment_type: order.fulfillment_type || null,
     estimated_delivery_date: order.estimated_delivery_date || order.assigned_delivery_date || order.delivery_date || null,
     assigned_delivery_date: order.assigned_delivery_date || null,
+    selected_delivery_date: order.selected_delivery_date || null,
+    requested_delivery_date: order.requested_delivery_date || null,
     delivery_window_label: order.delivery_window_label || null,
-    total: Number.isFinite(Number(order.total)) ? Number(order.total) : 0,
-    order_type: order.order_type || null,
-    source_type: order.source_type || null,
-    source_channel: order.source_channel || null,
+    total: pricing.total,
+    subtotal: pricing.subtotal,
+    delivery_fee: pricing.delivery_fee,
+    total_tax: pricing.total_tax,
+    total_discounts: pricing.total_discounts,
+    discount_codes: compactStringArray(order.discount_codes),
+    delivery_rate_context: {
+      ...deliveryRateContext,
+      delivery_fee: deliveryRateContext.delivery_fee ?? pricing.delivery_fee,
+    },
+    pricing_fields_inferred_from_line_items: pricing.inferred_from_line_items,
+    order_type: compactString(order.order_type, 64),
+    source_type: compactString(order.source_type, 64),
+    source_channel: compactString(order.source_channel, 64),
     customer_email: order.customer_email || order.hub_customer_email || null,
-    customer_name: order.customer_name || order.full_name || order.shipping_name || order.billing_name || null,
-    full_name: order.full_name || null,
-    shipping_name: order.shipping_name || null,
-    billing_name: order.billing_name || null,
-    contact_phone: order.contact_phone || null,
-    delivery_address: order.delivery_address || null,
+    customer_name: compactString(order.customer_name || order.full_name || order.shipping_name || order.billing_name, 96),
+    full_name: compactString(order.full_name, 96),
+    shipping_name: compactString(order.shipping_name, 96),
+    billing_name: compactString(order.billing_name, 96),
+    contact_phone: compactString(order.contact_phone, 48),
+    delivery_address: compactString(order.delivery_address, 160),
     items,
-    notes: order.notes || null,
+    notes: compactString(order.notes, 180),
     is_test_order: order.is_test_order === true,
     do_not_recover: order.do_not_recover === true,
     is_abandoned_checkout: order.is_abandoned_checkout === true,
@@ -241,6 +424,12 @@ function compactAdminOrderRow(order = {}) {
     native_payment_status: order.native_payment_status || null,
     native_production_status: order.native_production_status || null,
     native_fulfillment_status: order.native_fulfillment_status || null,
+    effective_production_status: effectiveStatuses.effective_production_status,
+    effective_fulfillment_status: effectiveStatuses.effective_fulfillment_status,
+    effective_delivery_status: effectiveStatuses.effective_delivery_status,
+    effective_status_source: effectiveStatuses.effective_status_source,
+    native_status_stale_against_source: effectiveStatuses.native_status_stale_against_source,
+    native_status_stale_fields: effectiveStatuses.native_status_stale_fields,
     native_sync_status: order.native_sync_status || null,
     native_review_status: order.native_review_status || null,
     native_source_type: order.native_source_type || null,
@@ -262,17 +451,17 @@ function compactAdminOrderRow(order = {}) {
     ...(hubSyncSummary ? { hub_sync_summary: hubSyncSummary } : {}),
     production_date: order.production_date || null,
     delivered_at: order.delivered_at || null,
-    delivered_by: order.delivered_by || null,
-    delivery_drop_location: order.delivery_drop_location || null,
+    delivered_by: compactString(order.delivered_by, 96),
+    delivery_drop_location: compactString(order.delivery_drop_location, 120),
     delivery_photo_url: order.delivery_photo_url || null,
     approval_status: order.approval_status || null,
     sync_status: order.sync_status || null,
-    admin_context_badges: Array.isArray(order.admin_context_badges) ? order.admin_context_badges.slice(0, 12).filter(Boolean) : [],
+    admin_context_badges: Array.isArray(order.admin_context_badges) ? order.admin_context_badges.slice(0, 8).map(item => compactString(item, 72)).filter(Boolean) : [],
     admin_context_guidance: Array.isArray(order.admin_context_guidance)
-      ? order.admin_context_guidance.slice(0, 6).map(item => ({
-          label: item.label || null,
-          detail: item.detail || null,
-          tone: item.tone || null,
+      ? order.admin_context_guidance.slice(0, 3).map(item => ({
+          label: compactString(item.label, 80),
+          detail: compactString(item.detail, 140),
+          tone: compactString(item.tone, 40),
         }))
       : [],
   };
@@ -290,13 +479,20 @@ function buildAdminOrderListCompactResponse({ merged = [], localOrders = [], all
     fulfillment_tasks: fulfillmentTasks.length >= 500,
   };
   const anySourceTruncated = Object.values(sourceTruncated).some(Boolean);
+  const compactOrders = merged
+    .slice(0, ADMIN_ORDER_LIST_COMPACT_MAX_ROWS)
+    .map(compactAdminOrderRow);
+  const compactOrderWindowed = merged.length > compactOrders.length;
 
   return {
     success: true,
     response_mode: ADMIN_ORDER_LIST_COMPACT_RESPONSE_MODE,
     response_contract: ADMIN_ORDER_LIST_COMPACT_CONTRACT,
-    orders: merged.map(compactAdminOrderRow),
+    orders: compactOrders,
     order_count: merged.length,
+    orders_returned: compactOrders.length,
+    compact_order_limit: ADMIN_ORDER_LIST_COMPACT_MAX_ROWS,
+    compact_order_windowed: compactOrderWindowed,
     total: merged.length,
     source_counts: {
       local_orders: localOrders.length,
@@ -313,6 +509,7 @@ function buildAdminOrderListCompactResponse({ merged = [], localOrders = [], all
     duplicate_order_number_count: duplicateOrderNumbers,
     warnings: [
       anySourceTruncated ? 'source_truncated' : null,
+      compactOrderWindowed ? 'compact_order_windowed' : null,
       duplicateOrderNumbers > 0 ? 'duplicate_order_numbers_detected' : null,
     ].filter(Boolean),
     compact_response_contains_raw_legacy_payload: false,
@@ -752,9 +949,10 @@ function retainHubFallbackContextForNativePrimary(nativePrimaryRow, currentRow) 
     created_date: currentRow.created_date || nativePrimaryRow.created_date || null,
   };
 
-  withHubFallback.admin_context_guidance = buildOperationalContextGuidance(withHubFallback);
-  withHubFallback.admin_context_badges = buildAdminContextBadges(withHubFallback);
-  return withHubFallback;
+  const withEffectiveStatuses = attachEffectiveAdminOperationalStatuses(withHubFallback);
+  withEffectiveStatuses.admin_context_guidance = buildOperationalContextGuidance(withEffectiveStatuses);
+  withEffectiveStatuses.admin_context_badges = buildAdminContextBadges(withEffectiveStatuses);
+  return withEffectiveStatuses;
 }
 
 function adminPrimarySourceForOrder(order, evaluation) {
@@ -1106,6 +1304,8 @@ Deno.serve(async (req) => {
                   hub_fulfillment_status: f.fulfillment_status || order.fulfillment_status || null,
                   production_date: f.production_date || order.production_date || null,
                   assigned_delivery_date: f.delivery_date || f.assigned_delivery_date || order.assigned_delivery_date || null,
+                  selected_delivery_date: f.selected_delivery_date || f.delivery_date || order.selected_delivery_date || null,
+                  requested_delivery_date: f.requested_delivery_date || f.delivery_date || order.requested_delivery_date || null,
                   delivery_window_label: f.delivery_window_label || order.delivery_window_label || null,
                   delivered_at: f.delivered_at || null,
                   delivered_by: f.delivered_by || null,
@@ -1115,8 +1315,18 @@ Deno.serve(async (req) => {
                   stripe_subscription_id: order.stripe_subscription_id || null,
                   hub_updated_date: order.updated_date || null,
                   total: order.total ? parseFloat((order.total / fulfillments.length).toFixed(2)) : 0,
-                  subtotal: order.subtotal ? parseFloat((order.subtotal / fulfillments.length).toFixed(2)) : 0,
-                  delivery_fee: order.delivery_fee || 0,
+                  subtotal: order.subtotal === null || order.subtotal === undefined ? null : parseFloat((Number(order.subtotal) / fulfillments.length).toFixed(2)),
+                  delivery_fee: order.delivery_fee === null || order.delivery_fee === undefined ? null : order.delivery_fee,
+                  total_tax: order.total_tax === null || order.total_tax === undefined ? null : parseFloat((Number(order.total_tax) / fulfillments.length).toFixed(2)),
+                  total_discounts: order.total_discounts === null || order.total_discounts === undefined ? null : parseFloat((Number(order.total_discounts) / fulfillments.length).toFixed(2)),
+                  discount_codes: order.discount_codes || [],
+                  delivery_zone_key: order.delivery_zone_key || order.delivery_zone_id || null,
+                  delivery_zone_name: order.delivery_zone_name || null,
+                  delivery_zone_type: order.delivery_zone_type || null,
+                  minimum_order: order.minimum_order ?? null,
+                  distance_miles: order.distance_miles ?? null,
+                  drive_time_minutes: order.drive_time_minutes ?? null,
+                  approval_status: order.approval_status || null,
                   fulfillment_type: fulfillmentType,
                   delivery_address: fAddress,
                   contact_phone: fPhone,
@@ -1141,6 +1351,8 @@ Deno.serve(async (req) => {
                 hub_fulfillment_status: order.fulfillment_status || null,
                 production_date: order.production_date || null,
                 assigned_delivery_date: order.assigned_delivery_date || null,
+                selected_delivery_date: order.selected_delivery_date || null,
+                requested_delivery_date: order.requested_delivery_date || null,
                 delivery_window_label: order.delivery_window_label || null,
                 delivered_at: order.delivered_at || null,
                 delivered_by: order.delivered_by || null,
@@ -1150,8 +1362,18 @@ Deno.serve(async (req) => {
                 stripe_subscription_id: order.stripe_subscription_id || null,
                 hub_updated_date: order.updated_date || null,
                 total: order.total || 0,
-                subtotal: order.subtotal || 0,
-                delivery_fee: order.delivery_fee || 0,
+                subtotal: order.subtotal ?? null,
+                delivery_fee: order.delivery_fee ?? null,
+                total_tax: order.total_tax ?? null,
+                total_discounts: order.total_discounts ?? null,
+                discount_codes: order.discount_codes || [],
+                delivery_zone_key: order.delivery_zone_key || order.delivery_zone_id || null,
+                delivery_zone_name: order.delivery_zone_name || null,
+                delivery_zone_type: order.delivery_zone_type || null,
+                minimum_order: order.minimum_order ?? null,
+                distance_miles: order.distance_miles ?? null,
+                drive_time_minutes: order.drive_time_minutes ?? null,
+                approval_status: order.approval_status || null,
                 fulfillment_type: fulfillmentType,
                 delivery_address: resolvedAddress,
                 contact_phone: resolvedPhone,
@@ -1215,12 +1437,20 @@ Deno.serve(async (req) => {
             customer_name: order.customer_name || '',
             status: order.status,
             total: order.total ? order.total / tasksForOrder.length : 0,
-            subtotal: order.subtotal ? order.subtotal / tasksForOrder.length : 0,
-            delivery_fee: order.delivery_fee || 0,
+            subtotal: order.subtotal === null || order.subtotal === undefined ? null : order.subtotal / tasksForOrder.length,
+            delivery_fee: order.delivery_fee ?? null,
+            total_tax: order.total_tax === null || order.total_tax === undefined ? null : order.total_tax / tasksForOrder.length,
+            total_discounts: order.total_discounts === null || order.total_discounts === undefined ? null : order.total_discounts / tasksForOrder.length,
             fulfillment_type: order.fulfillment_type || 'delivery',
             delivery_address: order.delivery_address || '',
             contact_phone: order.contact_phone || '',
             estimated_delivery_date: task.delivery_date || order.estimated_delivery_date || null,
+            assigned_delivery_date: task.delivery_date || order.assigned_delivery_date || null,
+            selected_delivery_date: order.selected_delivery_date || null,
+            requested_delivery_date: order.requested_delivery_date || null,
+            delivery_window_label: task.delivery_window_label || order.delivery_window_label || null,
+            final_schedule_source: order.final_schedule_source || null,
+            scheduling_reason: order.scheduling_reason || null,
             created_date: order.created_date || null,
             items: task.items || order.items || [],
             notes: order.notes || '',
@@ -1771,6 +2001,8 @@ function mergeAdminOperationalContext({ order, nativeOrderIndexes, customerAppOr
     orderId: merged.hub_order_id || merged.customer_app_order_id,
   }) || null;
 
+  merged = attachEffectiveAdminOperationalStatuses(merged);
+
   merged.admin_context_guidance = buildOperationalContextGuidance(merged);
   merged.admin_context_badges = buildAdminContextBadges(merged);
 
@@ -1863,8 +2095,23 @@ function mapNativeShopifyOrderToAdminOrder(order, nativeContext = null) {
     order_type: order.order_type || null,
     order_lock_status: order.order_lock_status || null,
     total: Number(order.total_price || 0),
-    subtotal: Number(order.subtotal || 0),
-    delivery_fee: Number(order.delivery_fee || 0),
+    subtotal: compactNumber(order.subtotal),
+    total_tax: compactNumber(order.total_tax),
+    total_discounts: compactNumber(order.total_discounts),
+    discount_codes: Array.isArray(order.discount_codes) ? order.discount_codes : [],
+    delivery_fee: compactNumber(order.delivery_fee),
+    selected_delivery_date: order.selected_delivery_date || null,
+    requested_delivery_date: order.requested_delivery_date || null,
+    delivery_zone_key: order.delivery_zone_key || order.delivery_zone_id || null,
+    delivery_zone_name: order.delivery_zone_name || null,
+    delivery_zone_type: order.delivery_zone_type || null,
+    minimum_order: order.minimum_order ?? null,
+    distance_miles: order.distance_miles ?? null,
+    drive_time_minutes: order.drive_time_minutes ?? null,
+    approval_status: order.approval_status || null,
+    approved_delivery_fee: order.approved_delivery_fee ?? null,
+    final_schedule_source: order.final_schedule_source || null,
+    scheduling_reason: order.scheduling_reason || null,
     fulfillment_type: isPos ? 'pickup' : (fulfillmentMethod === 'pickup' ? 'pickup' : 'delivery'),
     delivery_address: order.delivery_address || [order.address_line1, order.address_city, order.address_state, order.address_postal_code].filter(Boolean).join(', '),
     contact_phone: order.customer_phone || '',

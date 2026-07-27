@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Mail, Phone, Calendar } from 'lucide-react';
@@ -20,11 +21,11 @@ export default function LoyaltyMembers() {
       const payload = res?.data || res;
       return Array.isArray(payload?.rows) ? payload.rows : [];
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
   });
 
   // Admin-only guard
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground">Access denied. Admin only.</p>

@@ -6,6 +6,7 @@ const VAPID_PUBLIC_KEY = import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY || '';
 const SERVICE_WORKER_PATH = '/push-sw.js';
 const NUVIRA_APP_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
 const EVENT_NATIVE_PUSH_TARGET_KEY = 'nuvira_may30_native_push_target_v1';
+let cachedVapidPublicKey = null;
 
 function isNativeApp() {
   return typeof window !== 'undefined' && Capacitor.isNativePlatform();
@@ -60,6 +61,25 @@ function urlBase64ToUint8Array(base64String) {
   }
 
   return outputArray;
+}
+
+function normalizeVapidPublicKey(value) {
+  return String(value || '').trim();
+}
+
+async function readWebPushVapidPublicKey() {
+  if (VAPID_PUBLIC_KEY) return VAPID_PUBLIC_KEY;
+  if (cachedVapidPublicKey !== null) return cachedVapidPublicKey;
+
+  try {
+    const response = await base44.functions.invoke('getAdminPushDiagnostics', {});
+    const data = response?.data || response || {};
+    cachedVapidPublicKey = normalizeVapidPublicKey(data.providers?.web_push_public_key);
+  } catch {
+    cachedVapidPublicKey = '';
+  }
+
+  return cachedVapidPublicKey;
 }
 
 function canUseEventNativePushFallback(reason) {
@@ -176,7 +196,7 @@ export async function getEventNativePushRequestPayload() {
   return readEventNativePushTarget();
 }
 
-export async function subscribeToEventPushNotifications() {
+export async function subscribeToEventPushNotifications(options = {}) {
   const support = getEventPushSupportStatus();
   if (!support.supported) {
     return { success: false, status: 'unsupported', reason: support.reason };
@@ -243,7 +263,8 @@ export async function subscribeToEventPushNotifications() {
     return { success: false, status: permission, reason: 'permission_not_granted' };
   }
 
-  if (!VAPID_PUBLIC_KEY) {
+  const vapidPublicKey = normalizeVapidPublicKey(options.vapidPublicKey) || await readWebPushVapidPublicKey();
+  if (!vapidPublicKey) {
     return { success: false, status: permission, reason: 'vapid_public_key_missing' };
   }
 
@@ -251,7 +272,7 @@ export async function subscribeToEventPushNotifications() {
   const existing = await registration.pushManager.getSubscription();
   const subscription = existing || await registration.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
   });
 
   const response = await base44.functions.invoke('registerPushSubscription', {

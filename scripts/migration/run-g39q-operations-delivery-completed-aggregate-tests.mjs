@@ -10,6 +10,29 @@ const repoRoot = path.resolve(__dirname, '../..');
 const functionPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts');
 const DATE = '2026-06-08';
 const OUTSIDE_DATE = '2026-06-09';
+const FIXED_NOW = '2026-06-16T12:00:00.000Z';
+
+class FixedDate extends Date {
+  constructor(...args) {
+    if (args.length === 0) {
+      super(FIXED_NOW);
+      return;
+    }
+    super(...args);
+  }
+
+  static now() {
+    return Date.parse(FIXED_NOW);
+  }
+
+  static parse(value) {
+    return Date.parse(value);
+  }
+
+  static UTC(...args) {
+    return Date.UTC(...args);
+  }
+}
 
 function loadHandler({ env = {}, hubData = hubResponse(), hubStatus = 200, fetchError = null } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
@@ -19,7 +42,7 @@ function loadHandler({ env = {}, hubData = hubResponse(), hubStatus = 200, fetch
     console,
     URL,
     URLSearchParams,
-    Date,
+    Date: FixedDate,
     Math,
     Number,
     String,

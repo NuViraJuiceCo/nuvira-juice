@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, Search, ShoppingBag, User, Star, ShieldCheck } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
+import { adminMobileNavItems, isAdminNavActive } from './adminNavItems';
 import { motion } from 'framer-motion';
 
 const navItems = [
@@ -20,17 +22,21 @@ export default function MobileNav() {
   const navigate = useNavigate();
   const { itemCount } = useCart();
   const { user } = useAuth();
-  const visibleNavItems = user?.role === 'admin' ? [...navItems, adminNavItem] : navItems;
+  const adminMode = isAdminUser(user) && location.pathname.startsWith('/admin');
+  const visibleNavItems = adminMode ? adminMobileNavItems : (isAdminUser(user) ? [...navItems, adminNavItem] : navItems);
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-nuvira shadow-[0_-10px_30px_rgba(6,42,32,0.08)]" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
         {visibleNavItems.map(({ path, icon: Icon, label }) => {
-          const isActive = location.pathname === path || 
-            (path === '/shop' && location.pathname.startsWith('/shop')) ||
-            (path === '/account' && location.pathname.startsWith('/account')) ||
-            (path === '/admin/operations' && location.pathname.startsWith('/admin')) ||
-            (path === '/rewards' && location.pathname === '/rewards');
+          const isActive = adminMode
+            ? isAdminNavActive(location.pathname, { path, label })
+            : location.pathname === path ||
+              (path === '/shop' && location.pathname.startsWith('/shop')) ||
+              (path === '/account' && location.pathname.startsWith('/account')) ||
+              (path === '/admin/operations' && location.pathname.startsWith('/admin')) ||
+              (path === '/rewards' && location.pathname === '/rewards');
+          const adminItem = adminMode || label === 'Admin';
 
           return (
             <button
@@ -51,8 +57,8 @@ export default function MobileNav() {
                 <Icon
                   className={`w-5 h-5 transition-colors ${
                     isActive
-                      ? label === 'Admin' ? 'text-emerald-400' : 'text-primary'
-                      : label === 'Admin' ? 'text-emerald-500' : 'text-muted-foreground'
+                      ? adminItem ? 'text-emerald-400' : 'text-primary'
+                      : adminItem ? 'text-emerald-500' : 'text-muted-foreground'
                   }`}
                   strokeWidth={isActive ? 2.5 : 1.5}
                 />
@@ -64,15 +70,15 @@ export default function MobileNav() {
               </div>
               <span className={`text-[10px] font-medium transition-colors ${
                 isActive
-                  ? label === 'Admin' ? 'text-emerald-400' : 'text-primary'
-                  : label === 'Admin' ? 'text-emerald-500' : 'text-muted-foreground'
+                  ? adminItem ? 'text-emerald-400' : 'text-primary'
+                  : adminItem ? 'text-emerald-500' : 'text-muted-foreground'
               }`}>
                 {label}
               </span>
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
-                  className={`absolute -top-px left-1/4 right-1/4 h-0.5 rounded-full ${label === 'Admin' ? 'bg-emerald-400' : 'bg-nuvira-gradient'}`}
+                  className={`absolute -top-px left-1/4 right-1/4 h-0.5 rounded-full ${adminItem ? 'bg-emerald-400' : 'bg-nuvira-gradient'}`}
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                 />
               )}

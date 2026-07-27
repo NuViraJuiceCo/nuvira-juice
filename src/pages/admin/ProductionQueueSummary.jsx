@@ -1,12 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Database, Lock, Package, Play, RefreshCw } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
-import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
+import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
+import { unwrapBase44Result } from '@/lib/base44-result';
+import { usePageVisibility } from '@/lib/usePageVisibility';
 
 function todayDate() {
   const today = new Date();
@@ -16,29 +20,12 @@ function todayDate() {
   return `${year}-${month}-${day}`;
 }
 
-const productionOpsReadinessItems = [
-  {
-    label: 'Lifecycle actions',
-    status: 'controlled',
-    detail: 'Hub and native rows expose preview-first Start, Complete, and Verify actions for exact eligible batches; native writes remain exact-batch gated.',
-  },
-  {
-    label: 'Ingredient correction',
-    status: 'controlled',
-    detail: 'Usage correction previews recipe rows first and does not deduct inventory or create purchase orders.',
-  },
-  {
-    label: 'Fulfillment packing',
-    status: 'controlled',
-    detail: 'Post-verify task packing is available through a guarded cascade preview; subscription/multi-order cascades stay blocked.',
-  },
-  {
-    label: 'Inventory deduction',
-    status: 'watch',
-    detail: 'Deduction remains separate and gated; make-to-order shortfall is procurement context, not automatic stock mutation.',
-  },
-];
-const MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN = true;
+function currentTimeValue() {
+  const now = new Date();
+  return `${now.getHours()}`.padStart(2, '0') + ':' + `${now.getMinutes()}`.padStart(2, '0');
+}
+
+const LIVE_INVENTORY_DEDUCTION_REQUIRES_EXACT_APPROVAL = true;
 
 function addDays(dateStr, days) {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -68,6 +55,25 @@ function formatDate(value) {
   }
 }
 
+function productionQueueDatePresets(today) {
+  return [
+    {
+      id: 'today',
+      label: 'Today + 14',
+      dateFrom: today,
+      dateTo: addDays(today, 14),
+      tab: 'today',
+    },
+    {
+      id: 'last31',
+      label: 'Last 31 Days',
+      dateFrom: addDays(today, -30),
+      dateTo: today,
+      tab: 'history',
+    },
+  ];
+}
+
 function formatDateTime(value) {
   if (!value) return null;
   try {
@@ -86,6 +92,12 @@ function formatLabel(value) {
     .join(' ');
 }
 
+function formatSourceWarning(value) {
+  return formatLabel(value)
+    .replace(/\bHub\b/g, 'Source')
+    .replace(/\bhub\b/g, 'source');
+}
+
 function sourceTypeSummary(sourceTypeCounts) {
   const entries = Object.entries(sourceTypeCounts || {});
   if (entries.length === 0) return 'No source mix';
@@ -100,7 +112,7 @@ function isNativeBatch(batch) {
 
 function batchSourceLabel(batch) {
   if (batch?.source_label) return batch.source_label;
-  return isNativeBatch(batch) ? 'Native Customer App' : 'Hub';
+  return isNativeBatch(batch) ? 'Native Customer App' : 'Source';
 }
 
 function compactOrderNumbers(orderNumbers) {
@@ -133,6 +145,82 @@ function requestIdFor(prefix, batch) {
   const fallback = Math.random().toString(36).slice(2);
   const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
   return `${prefix}_${batch.id || batch.batch_id || 'batch'}_${Date.now()}_${randomId}`;
+}
+
+function splitReferenceList(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item || '').trim()).filter(Boolean);
+  }
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function uniqueReferenceList(values) {
+  const seen = new Set();
+  return values
+    .map(value => String(value || '').trim())
+    .filter(Boolean)
+    .filter(value => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function batchComplianceLinkFields(batch) {
+  const batchId = String(batch?.batch_id || '').trim();
+  const sourceBatchId = String(batch?.id || '').trim();
+  return {
+    ...(batchId ? { batch_id: batchId, related_batch_ids: [batchId] } : {}),
+    ...(sourceBatchId ? { source_production_batch_id: sourceBatchId, related_source_production_batch_ids: [sourceBatchId] } : {}),
+    is_test_record: batch?.is_test_batch === true,
+  };
+}
+
+function checklistBatchLinkFields(existingChecklist, batch) {
+  const batchId = String(batch?.batch_id || '').trim();
+  const sourceBatchId = String(batch?.id || '').trim();
+  const relatedBatchIds = uniqueReferenceList([
+    ...splitReferenceList(existingChecklist?.related_batch_ids),
+    ...splitReferenceList(existingChecklist?.batches_logged),
+    batchId,
+  ]);
+  const relatedSourceBatchIds = uniqueReferenceList([
+    ...splitReferenceList(existingChecklist?.related_source_production_batch_ids),
+    existingChecklist?.source_production_batch_id,
+    sourceBatchId,
+  ]);
+
+  return {
+    ...(batchId ? { batch_id: batchId } : {}),
+    ...(sourceBatchId ? { source_production_batch_id: sourceBatchId } : {}),
+    ...(relatedBatchIds.length > 0 ? { related_batch_ids: relatedBatchIds, batches_logged: relatedBatchIds.join(', ') } : {}),
+    ...(relatedSourceBatchIds.length > 0 ? { related_source_production_batch_ids: relatedSourceBatchIds } : {}),
+    is_test_record: batch?.is_test_batch === true,
+  };
+}
+
+function checklistMatchesBatchMode(checklist, batch, checklistDate, staffMember) {
+  if (checklist?.checklist_date !== checklistDate || checklist?.staff_member !== staffMember) return false;
+  const testBatch = batch?.is_test_batch === true;
+  if ((checklist?.is_test_record === true) !== testBatch) return false;
+  if (!testBatch) return true;
+
+  const batchId = String(batch?.batch_id || '').trim();
+  const sourceBatchId = String(batch?.id || '').trim();
+  const batchRefs = new Set([
+    checklist?.batch_id,
+    ...splitReferenceList(checklist?.related_batch_ids),
+    ...splitReferenceList(checklist?.batches_logged),
+  ].map(value => String(value || '').trim()).filter(Boolean));
+  const sourceRefs = new Set([
+    checklist?.source_production_batch_id,
+    ...splitReferenceList(checklist?.related_source_production_batch_ids),
+  ].map(value => String(value || '').trim()).filter(Boolean));
+  return (batchId && batchRefs.has(batchId)) || (sourceBatchId && sourceRefs.has(sourceBatchId));
 }
 
 function formatNumber(value) {
@@ -175,14 +263,14 @@ function PreviewResult({ preview }) {
         </div>
       </div>
 
-      <p className={`text-xs ${preview.live_allowed ? 'text-green-700' : 'text-cyan-700'}`}>
+      <p className={`text-xs ${preview.live_allowed ? 'text-green-700 dark:text-green-300' : 'text-cyan-700 dark:text-cyan-300'}`}>
         {previewStatusText(preview)}
       </p>
 
       {(blockers.length > 0 || warnings.length > 0) && (
         <div className="space-y-1">
           {blockers.map(blocker => (
-            <p key={`blocker-${blocker}`} className="text-xs text-cyan-800">Blocker: {formatLabel(blocker)}</p>
+            <p key={`blocker-${blocker}`} className="text-xs text-cyan-800 dark:text-cyan-200">Blocker: {formatLabel(blocker)}</p>
           ))}
           {warnings.map(warning => (
             <p key={`warning-${warning}`} className="text-xs text-muted-foreground">Warning: {formatLabel(warning)}</p>
@@ -192,7 +280,7 @@ function PreviewResult({ preview }) {
 
       {projectedWrites.length > 0 && (
         <p className="text-[10px] text-muted-foreground">
-          Writes if approved: {projectedWrites.map(formatLabel).join(', ')}
+          Checked fields: {projectedWrites.map(formatLabel).join(', ')}
         </p>
       )}
     </div>
@@ -200,10 +288,26 @@ function PreviewResult({ preview }) {
 }
 
 function ProductionLifecyclePanel({ batch, onActionSuccess }) {
+  const queryClient = useQueryClient();
   const [activeAction, setActiveAction] = useState(null);
   const [preview, setPreview] = useState(null);
   const [message, setMessage] = useState(null);
   const [pending, setPending] = useState(null);
+  const [preStartSaving, setPreStartSaving] = useState(false);
+  const [preStartSaved, setPreStartSaved] = useState(false);
+  const [preStartForm, setPreStartForm] = useState({
+    log_date: batch.production_date || todayDate(),
+    log_time: currentTimeValue(),
+    staff_member: '',
+    shift: 'Morning',
+    area: 'Prep Area',
+    sanitizer_type: 'Bleach Solution',
+    sanitizer_level: 'Adequate',
+    verified_by: '',
+    location: 'Cold Room 1',
+    temperature: '',
+    notes: '',
+  });
   const [completeForm, setCompleteForm] = useState({
     actual_units: batch.actual_units || batch.planned_units || '',
     pH_result: '',
@@ -225,6 +329,132 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
     setActiveAction(action);
     setPreview(null);
     setMessage(null);
+  }
+
+  function updatePreStart(field, value) {
+    setPreStartSaved(false);
+    setPreStartForm(form => ({ ...form, [field]: value }));
+  }
+
+  async function findExistingDailyChecklist() {
+    try {
+      const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {
+        test_record_mode: batch.is_test_batch === true ? 'only' : 'exclude',
+      });
+      const result = unwrapBase44Result(res);
+      const records = result?.native?.records || result?.native_compliance?.records || result?.records || {};
+      const checklists = Array.isArray(records.daily_checklists) ? records.daily_checklists : [];
+      const match = checklists.find(checklist => checklistMatchesBatchMode(
+        checklist,
+        batch,
+        preStartForm.log_date,
+        preStartForm.staff_member,
+      ));
+      return match || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function savePreStartCompliance() {
+    const temp = Number(preStartForm.temperature);
+    if (!preStartForm.staff_member.trim()) {
+      setMessage({ type: 'error', text: 'Select or enter the staff member before saving pre-start compliance.' });
+      return;
+    }
+    if (!Number.isFinite(temp)) {
+      setMessage({ type: 'error', text: 'Enter the current cold storage temperature before saving pre-start compliance.' });
+      return;
+    }
+
+    setPreStartSaving(true);
+    setMessage(null);
+
+    try {
+      const existingChecklist = await findExistingDailyChecklist();
+      const batchLink = batchComplianceLinkFields(batch);
+      const common = {
+        log_date: preStartForm.log_date,
+        log_time: preStartForm.log_time,
+        staff_member: preStartForm.staff_member,
+        notes: preStartForm.notes,
+        ...batchLink,
+      };
+      const checklistData = {
+        checklist_date: preStartForm.log_date,
+        staff_member: preStartForm.staff_member,
+        ...checklistBatchLinkFields(existingChecklist, batch),
+        shift: preStartForm.shift,
+        morning_fridge_temp_logged: true,
+        morning_fridge_time: preStartForm.log_time,
+        sanitizer_levels_checked: true,
+        sanitizer_check_time: preStartForm.log_time,
+        equipment_sanitized: true,
+        sanitization_time: preStartForm.log_time,
+        work_areas_cleaned: true,
+        cleaning_time: preStartForm.log_time,
+        batch_logs_completed: false,
+        ccp_logs_completed: false,
+        issues_reported: preStartForm.notes,
+        overall_status: 'Pre-Production Complete',
+        completed_at: new Date().toISOString(),
+      };
+
+      const saves = [
+        base44.functions.invoke('saveAdminComplianceRecord', {
+          record_type: 'sanitation',
+          data: {
+            ...common,
+            area: preStartForm.area,
+            sanitizer_type: preStartForm.sanitizer_type,
+            sanitizer_level: preStartForm.sanitizer_level,
+            cleaned: true,
+            sanitized: true,
+            verified_by: preStartForm.verified_by,
+          },
+        }),
+        base44.functions.invoke('saveAdminComplianceRecord', {
+          record_type: 'temperature',
+          data: {
+            ...common,
+            location: preStartForm.location,
+            temperature: temp,
+            min_range: 35,
+            max_range: 40,
+            unit: 'F',
+            shift: preStartForm.shift,
+            production_date: preStartForm.log_date,
+          },
+        }),
+        base44.functions.invoke('saveAdminComplianceRecord', {
+          record_type: 'daily_checklist',
+          existing_id: existingChecklist?.id,
+          data: checklistData,
+        }),
+      ];
+
+      const results = await Promise.all(saves);
+      const failed = results.find(res => {
+        const result = unwrapBase44Result(res);
+        return result?.success === false || result?.error;
+      });
+      if (failed) {
+        const result = failed?.data || failed;
+        throw new Error(result?.error || 'pre_start_compliance_save_failed');
+      }
+
+      setPreStartSaved(true);
+      setMessage({ type: 'success', text: 'Pre-start sanitation, daily checklist, and temperature records saved.' });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin-production-queue-summary'] }),
+      ]);
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to save pre-start compliance records.' });
+    } finally {
+      setPreStartSaving(false);
+    }
   }
 
   function basePayload(prefix) {
@@ -270,7 +500,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
         : basePayload(`preview_${action}`);
 
       const res = await base44.functions.invoke(functionName, payload);
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error && result?.success !== true) throw new Error(result.error);
       setPreview(result);
       setActiveAction(action);
@@ -287,8 +517,12 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
 
   async function runLive(action) {
     if (!preview?.live_allowed) return;
+    if (action === 'start' && !preStartSaved) {
+      setMessage({ type: 'error', text: 'Save pre-start compliance before running Start for this batch.' });
+      return;
+    }
     const label = formatLabel(action);
-    if (!window.confirm(`${label} ${batch.batch_id || batch.product_name}? This runs the approved Hub-backed production command for this exact batch.`)) {
+    if (!window.confirm(`${label} ${batch.batch_id || batch.product_name}? This runs the approved source-backed production command for this exact batch.`)) {
       return;
     }
 
@@ -309,7 +543,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
           };
 
       const res = await base44.functions.invoke(functionName, payload);
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error(result?.error || `${action}_failed`);
       setMessage({
         type: result.skipped ? 'warn' : 'success',
@@ -319,7 +553,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
       setActiveAction(null);
       await onActionSuccess?.();
     } catch (error) {
-      setMessage({ type: 'error', text: error?.message || `Unable to run ${action}. Hub gates may still be closed.` });
+      setMessage({ type: 'error', text: error?.message || `Unable to run ${action}. Source gates may still be closed.` });
     } finally {
       setPending(null);
     }
@@ -340,7 +574,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Production Lifecycle</p>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1">
-            Preview-first Hub-backed actions. Live commands run only when the exact batch preview allows them.
+            Start, Complete, and Verify are the working batch steps. Each action checks exact batch permissions before saving.
           </p>
         </div>
       </div>
@@ -363,6 +597,153 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
           </button>
         ))}
       </div>
+
+      {activeAction === 'start' && (
+        <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-primary font-semibold">Pre-start compliance</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Save pre-op sanitation, the daily checklist, and the cold storage temperature before starting this batch. CCP is not required here.
+              </p>
+            </div>
+            <AdminStatusPill label={preStartSaved ? 'Saved' : 'Needs save'} tone={preStartSaved ? 'native' : 'warning'} />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Production date</span>
+              <input
+                type="date"
+                value={preStartForm.log_date}
+                onChange={event => updatePreStart('log_date', event.target.value)}
+                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Time</span>
+              <input
+                type="time"
+                value={preStartForm.log_time}
+                onChange={event => updatePreStart('log_time', event.target.value)}
+                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
+              />
+            </label>
+            <div className="sm:col-span-2">
+              <StaffMemberPicker
+                label="Production staff"
+                value={preStartForm.staff_member}
+                onChange={value => updatePreStart('staff_member', value)}
+                helperText="Select from team members or type another staff name."
+              />
+            </div>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Area</span>
+              <select
+                value={preStartForm.area}
+                onChange={event => updatePreStart('area', event.target.value)}
+                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
+              >
+                <option>Prep Area</option>
+                <option>Production Floor</option>
+                <option>Packing Area</option>
+                <option>Cold Storage</option>
+                <option>Equipment</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sanitizer</span>
+              <select
+                value={preStartForm.sanitizer_type}
+                onChange={event => updatePreStart('sanitizer_type', event.target.value)}
+                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
+              >
+                <option>Bleach Solution</option>
+                <option>Quaternary Ammonium</option>
+                <option>Iodine</option>
+                <option>Alcohol 70%</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sanitizer level</span>
+              <select
+                value={preStartForm.sanitizer_level}
+                onChange={event => updatePreStart('sanitizer_level', event.target.value)}
+                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
+              >
+                <option>Adequate</option>
+                <option>Optimal</option>
+                <option>Low</option>
+              </select>
+            </label>
+            <StaffMemberPicker
+              label="Verified by"
+              value={preStartForm.verified_by}
+              onChange={value => updatePreStart('verified_by', value)}
+              placeholder="Optional verifier"
+              helperText="Optional manager or supervisor verification."
+            />
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cold storage</span>
+              <select
+                value={preStartForm.location}
+                onChange={event => updatePreStart('location', event.target.value)}
+                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
+              >
+                <option>Cold Room 1</option>
+                <option>Cold Room 2</option>
+                <option>Walk-in Cooler</option>
+                <option>Freezer</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Temperature F</span>
+              <input
+                type="number"
+                step="0.1"
+                value={preStartForm.temperature}
+                onChange={event => updatePreStart('temperature', event.target.value)}
+                placeholder="37.0"
+                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
+              />
+            </label>
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Notes</span>
+              <textarea
+                value={preStartForm.notes}
+                onChange={event => updatePreStart('notes', event.target.value)}
+                rows={2}
+                placeholder="Any issues or observations"
+                className="w-full rounded-lg border border-border bg-card px-2 py-2 text-xs resize-none"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <div className="rounded-lg border border-border/60 bg-card p-2">
+              <p className="font-semibold text-foreground">Pre-op sanitation</p>
+              <p className="text-muted-foreground mt-0.5">Area cleaned and sanitized.</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-card p-2">
+              <p className="font-semibold text-foreground">Daily checklist</p>
+              <p className="text-muted-foreground mt-0.5">Pre-production items marked complete.</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-card p-2">
+              <p className="font-semibold text-foreground">Temperature log</p>
+              <p className="text-muted-foreground mt-0.5">Cold storage range recorded.</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={savePreStartCompliance}
+            disabled={preStartSaving}
+            className="w-full h-10 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
+          >
+            {preStartSaving ? 'Saving Pre-start Records...' : 'Save Pre-start Compliance'}
+          </button>
+        </div>
+      )}
 
       {activeAction === 'complete' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -409,15 +790,15 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
               <option value="failed">Failed</option>
             </select>
           </label>
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Staff On Duty</span>
-            <input
+          <div className="sm:col-span-2">
+            <StaffMemberPicker
+              label="Staff on duty"
               value={completeForm.staff_on_duty}
-              onChange={event => setCompleteForm(form => ({ ...form, staff_on_duty: event.target.value }))}
-              placeholder="Comma-separated names"
-              className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
+              onChange={value => setCompleteForm(form => ({ ...form, staff_on_duty: value }))}
+              multiple
+              helperText="Tap names to build the staff list, or type another name if needed."
             />
-          </label>
+          </div>
           <label className="space-y-1 sm:col-span-2">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Notes</span>
             <textarea
@@ -450,8 +831,8 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-cyan-700'
-              : 'text-green-700'
+              ? 'text-cyan-700 dark:text-cyan-300'
+              : 'text-green-700 dark:text-green-300'
         }`}>
           {message.text}
         </p>
@@ -470,10 +851,14 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
           <button
             type="button"
             onClick={() => runLive(activeAction)}
-            disabled={!preview?.live_allowed || Boolean(pending)}
+            disabled={!preview?.live_allowed || Boolean(pending) || (activeAction === 'start' && !preStartSaved)}
             className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
           >
-            {pending === `live_${activeAction}` ? 'Running...' : `Run ${formatLabel(activeAction)}`}
+            {pending === `live_${activeAction}`
+              ? 'Running...'
+              : activeAction === 'start' && !preStartSaved
+                ? 'Save Pre-start Compliance First'
+                : `Run ${formatLabel(activeAction)}`}
           </button>
         </div>
       )}
@@ -500,7 +885,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
         expected_status: batch.status,
         request_id: requestIdFor('inventory_preview', batch),
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error && result?.success !== true) throw new Error(result.error);
       setPreview(result);
       setMessage({
@@ -518,7 +903,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
 
   async function deductInventory() {
     if (!preview?.live_allowed) return;
-    if (!window.confirm(`Deduct inventory for ${batch.batch_id || batch.product_name}? This updates Hub inventory stock and cannot be previewed again as a new deduction.`)) {
+    if (!window.confirm(`Deduct inventory for ${batch.batch_id || batch.product_name}? This updates source inventory stock and cannot be previewed again as a new deduction.`)) {
       return;
     }
 
@@ -533,7 +918,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
         request_id: requestIdFor('inventory_deduct', batch),
         reason: 'Admin Production Queue inventory deduction.',
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error(result?.error || 'deduction_failed');
       setMessage({
         type: result.skipped ? 'warn' : 'success',
@@ -542,7 +927,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
       setPreview(null);
       await onDeductionSuccess?.();
     } catch {
-      setMessage({ type: 'error', text: 'Unable to deduct inventory. Hub gates may still be closed.' });
+      setMessage({ type: 'error', text: 'Unable to deduct inventory. Source gates may still be closed.' });
     } finally {
       setDeductPending(false);
     }
@@ -561,7 +946,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Inventory Deduction</p>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1">
-            Preview-only during May 30 launch mode. No stock deduction, purchase orders, or Customer App records are updated here.
+            Preview-only until an exact inventory deduction is approved. No stock deduction, purchase orders, or Customer App records are updated here.
           </p>
         </div>
         <button
@@ -579,8 +964,8 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-cyan-700'
-              : 'text-green-700'
+              ? 'text-cyan-700 dark:text-cyan-300'
+              : 'text-green-700 dark:text-green-300'
         }`}>
           {message.text}
         </p>
@@ -606,7 +991,7 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
+                <div key={`blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800 dark:text-cyan-200">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>{formatLabel(blocker)}</span>
                 </div>
@@ -653,24 +1038,24 @@ function InventoryDeductionPanel({ batch, onDeductionSuccess }) {
             <button
               type="button"
               onClick={deductInventory}
-              disabled={MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN || deductPending}
+              disabled={LIVE_INVENTORY_DEDUCTION_REQUIRES_EXACT_APPROVAL || deductPending}
               className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
             >
-              {MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN ? 'Deduction Frozen' : deductPending ? 'Deducting...' : 'Deduct Inventory'}
+              {LIVE_INVENTORY_DEDUCTION_REQUIRES_EXACT_APPROVAL ? 'Deduction Requires Approval' : deductPending ? 'Deducting...' : 'Deduct Inventory'}
             </button>
           )}
 
-          {preview.live_allowed && MAY30_INVENTORY_DEDUCTION_ACTION_FROZEN && (
-            <div className="flex items-start gap-2 text-xs text-cyan-800">
+          {preview.live_allowed && LIVE_INVENTORY_DEDUCTION_REQUIRES_EXACT_APPROVAL && (
+            <div className="flex items-start gap-2 text-xs text-cyan-800 dark:text-cyan-200">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>Preview passed, but live inventory deduction stays frozen for May 30 operations. Use this as procurement context only.</span>
+              <span>Preview passed, but live inventory deduction is still disabled until an exact deduction run is approved. Use this as procurement context only.</span>
             </div>
           )}
 
           {!preview.live_allowed && (
             <div className="flex items-start gap-2 text-xs text-muted-foreground">
               <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>Live deduction remains gated until the Hub preview allows this exact batch.</span>
+              <span>Live deduction remains gated until the source preview allows this exact batch.</span>
             </div>
           )}
         </div>
@@ -696,7 +1081,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
         expected_status: batch.status,
         request_id: requestIdFor('ingredient_usage_preview', batch),
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error && result?.success !== true) throw new Error(result.error);
       setPreview(result);
       setMessage({
@@ -729,7 +1114,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
         request_id: requestIdFor('ingredient_usage_correct', batch),
         reason: 'Admin Production Queue ingredient usage correction.',
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error(result?.error || 'ingredient_usage_correction_failed');
       setMessage({
         type: result.skipped ? 'warn' : 'success',
@@ -738,7 +1123,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
       setPreview(null);
       await onCorrectionSuccess?.();
     } catch (error) {
-      setMessage({ type: 'error', text: error?.message || 'Unable to correct ingredient usage. Hub gates may still be closed.' });
+      setMessage({ type: 'error', text: error?.message || 'Unable to correct ingredient usage. Source gates may still be closed.' });
     } finally {
       setCorrectionPending(false);
     }
@@ -776,8 +1161,8 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-cyan-700'
-              : 'text-green-700'
+              ? 'text-cyan-700 dark:text-cyan-300'
+              : 'text-green-700 dark:text-green-300'
         }`}>
           {message.text}
         </p>
@@ -803,7 +1188,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
           {(correctionBlockers.length > 0 || deductionBlockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {correctionBlockers.map(blocker => (
-                <div key={`correction-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
+                <div key={`correction-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800 dark:text-cyan-200">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Correction blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -847,7 +1232,7 @@ function IngredientUsageCorrectionPanel({ batch, onCorrectionSuccess }) {
                           label={row.usage_row_ready ? 'Ready' : 'Blocked'}
                         />
                         {row.procurement_needed && (
-                          <p className="text-[10px] text-cyan-700">Procurement needed</p>
+                          <p className="text-[10px] text-cyan-700 dark:text-cyan-300">Procurement needed</p>
                         )}
                       </div>
                     </div>
@@ -897,7 +1282,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
         expected_status: batch.status,
         request_id: requestIdFor('verify_cascade_preview', batch),
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error && result?.success !== true) throw new Error(result.error);
       setPreview(result);
       setMessage({
@@ -934,7 +1319,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
         request_id: requestIdFor('pack_tasks', batch),
         reason: 'Admin Production Queue post-verify task pack.',
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error(result?.error || 'pack_tasks_failed');
       setMessage({
         type: result.skipped ? 'warn' : 'success',
@@ -943,7 +1328,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
       setPreview(null);
       await onCascadeSuccess?.();
     } catch (error) {
-      setMessage({ type: 'error', text: error?.message || 'Unable to pack fulfillment tasks. Hub gates may still be closed.' });
+      setMessage({ type: 'error', text: error?.message || 'Unable to pack fulfillment tasks. Source gates may still be closed.' });
     } finally {
       setActionPending(null);
     }
@@ -953,7 +1338,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
     const eligibleOrders = (preview?.order_update_summaries || []).filter(row => row?.will_update && row?.order_id);
     const order = eligibleOrders[0];
     if (!preview?.bottled_order_cascade_allowed || eligibleOrders.length !== 1 || !order) return;
-    if (!window.confirm(`Mark order ${order.order_number || order.order_id} bottled for ${batch.batch_id || batch.product_name}? Customer App sync and notifications remain deferred by the Hub command.`)) {
+    if (!window.confirm(`Mark order ${order.order_number || order.order_id} bottled for ${batch.batch_id || batch.product_name}? Customer App sync and notifications remain deferred by the source command.`)) {
       return;
     }
 
@@ -970,7 +1355,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
         request_id: requestIdFor('bottle_order', batch),
         reason: 'Admin Production Queue post-verify order bottled cascade.',
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error(result?.error || 'bottle_order_failed');
       setMessage({
         type: result.skipped ? 'warn' : 'success',
@@ -979,7 +1364,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
       setPreview(null);
       await onCascadeSuccess?.();
     } catch (error) {
-      setMessage({ type: 'error', text: error?.message || 'Unable to bottle order. Hub gates may still be closed.' });
+      setMessage({ type: 'error', text: error?.message || 'Unable to bottle order. Source gates may still be closed.' });
     } finally {
       setActionPending(null);
     }
@@ -1020,8 +1405,8 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-cyan-700'
-              : 'text-green-700'
+              ? 'text-cyan-700 dark:text-cyan-300'
+              : 'text-green-700 dark:text-green-300'
         }`}>
           {message.text}
         </p>
@@ -1047,7 +1432,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`cascade-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
+                <div key={`cascade-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800 dark:text-cyan-200">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -1110,7 +1495,7 @@ function PostVerifyCascadesPanel({ batch, onCascadeSuccess }) {
           </div>
 
           {preview.bottled_order_cascade_allowed && eligibleOrders.length !== 1 && (
-            <p className="text-[10px] text-cyan-700">
+            <p className="text-[10px] text-cyan-700 dark:text-cyan-300">
               Bottled cascade requires exactly one eligible non-subscription order from this page. Use a narrower, approved command for multi-order cases.
             </p>
           )}
@@ -1143,14 +1528,14 @@ function groupByProductionDate(items) {
 
 function NativeBatchReadOnlyNotice() {
   return (
-    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 dark:border-sky-900/60 dark:bg-sky-950/30">
       <div className="flex items-start gap-2">
-        <Database className="w-4 h-4 text-sky-700 mt-0.5 shrink-0" />
+        <Database className="w-4 h-4 text-sky-700 mt-0.5 shrink-0 dark:text-sky-300" />
         <div className="min-w-0">
-          <p className="text-xs font-semibold text-sky-900">Native Customer App batch</p>
-          <p className="text-xs text-sky-800 mt-1">
-            This row uses native Customer App lifecycle controls when exact batch gates are open. Ingredient correction,
-            post-verify cascade, and inventory controls stay separated until their native write paths are explicitly approved.
+          <p className="text-xs font-semibold text-sky-900 dark:text-sky-100">Native Customer App batch</p>
+          <p className="text-xs text-sky-800 mt-1 dark:text-sky-200/80">
+            This row can be worked directly in the Customer App backend. Ingredient correction,
+            post-verify packing, and inventory deduction stay separated so each operational write remains traceable.
           </p>
         </div>
       </div>
@@ -1158,12 +1543,291 @@ function NativeBatchReadOnlyNotice() {
   );
 }
 
+function NativePreStartCompliancePanel({ batch, onSavedChange }) {
+  const queryClient = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [form, setForm] = useState({
+    log_date: batch.production_date || todayDate(),
+    log_time: currentTimeValue(),
+    staff_member: '',
+    shift: 'Morning',
+    area: 'Prep Area',
+    sanitizer_type: 'Bleach Solution',
+    sanitizer_level: 'Adequate',
+    verified_by: '',
+    location: 'Cold Room 1',
+    temperature: '',
+    notes: '',
+  });
+
+  function update(field, value) {
+    setSaved(false);
+    onSavedChange?.(false);
+    setForm(prev => ({ ...prev, [field]: value }));
+  }
+
+  async function findExistingChecklist() {
+    try {
+      const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {
+        test_record_mode: batch.is_test_batch === true ? 'only' : 'exclude',
+      });
+      const result = unwrapBase44Result(res);
+      const records = result?.native?.records || result?.native_compliance?.records || result?.records || {};
+      const checklists = Array.isArray(records.daily_checklists) ? records.daily_checklists : [];
+      return checklists.find(checklist => checklistMatchesBatchMode(
+        checklist,
+        batch,
+        form.log_date,
+        form.staff_member,
+      )) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveRecords() {
+    const temp = Number(form.temperature);
+    if (!form.staff_member.trim()) {
+      setMessage({ type: 'error', text: 'Select or enter the staff member before saving pre-start compliance.' });
+      return;
+    }
+    if (!Number.isFinite(temp)) {
+      setMessage({ type: 'error', text: 'Enter the current cold storage temperature before saving pre-start compliance.' });
+      return;
+    }
+
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const existingChecklist = await findExistingChecklist();
+      const batchLink = batchComplianceLinkFields(batch);
+      const common = {
+        log_date: form.log_date,
+        log_time: form.log_time,
+        staff_member: form.staff_member,
+        notes: form.notes,
+        ...batchLink,
+      };
+      const responses = await Promise.all([
+        base44.functions.invoke('saveAdminComplianceRecord', {
+          record_type: 'sanitation',
+          data: {
+            ...common,
+            area: form.area,
+            sanitizer_type: form.sanitizer_type,
+            sanitizer_level: form.sanitizer_level,
+            cleaned: true,
+            sanitized: true,
+            verified_by: form.verified_by,
+          },
+        }),
+        base44.functions.invoke('saveAdminComplianceRecord', {
+          record_type: 'temperature',
+          data: {
+            ...common,
+            location: form.location,
+            temperature: temp,
+            min_range: 35,
+            max_range: 40,
+            unit: 'F',
+            shift: form.shift,
+            production_date: form.log_date,
+          },
+        }),
+        base44.functions.invoke('saveAdminComplianceRecord', {
+          record_type: 'daily_checklist',
+          existing_id: existingChecklist?.id,
+          data: {
+            checklist_date: form.log_date,
+            staff_member: form.staff_member,
+            ...checklistBatchLinkFields(existingChecklist, batch),
+            shift: form.shift,
+            morning_fridge_temp_logged: true,
+            morning_fridge_time: form.log_time,
+            sanitizer_levels_checked: true,
+            sanitizer_check_time: form.log_time,
+            equipment_sanitized: true,
+            sanitization_time: form.log_time,
+            work_areas_cleaned: true,
+            cleaning_time: form.log_time,
+            batch_logs_completed: false,
+            ccp_logs_completed: false,
+            issues_reported: form.notes,
+            overall_status: 'Pre-Production Complete',
+            completed_at: new Date().toISOString(),
+          },
+        }),
+      ]);
+
+      const failed = responses.find(response => {
+        const result = unwrapBase44Result(response);
+        return result?.success === false || result?.error;
+      });
+      if (failed) {
+        const result = failed?.data || failed;
+        throw new Error(result?.error || 'pre_start_compliance_save_failed');
+      }
+
+      setSaved(true);
+      onSavedChange?.(true);
+      setMessage({ type: 'success', text: 'Pre-start sanitation, daily checklist, and temperature records saved.' });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin-production-queue-summary'] }),
+      ]);
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.message || 'Unable to save pre-start compliance records.' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-primary font-semibold">Pre-start compliance</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Save pre-op sanitation, the daily checklist, and the cold storage temperature before starting this native batch. CCP is not required here.
+          </p>
+        </div>
+        <AdminStatusPill label={saved ? 'Saved' : 'Needs save'} tone={saved ? 'native' : 'warning'} />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Production date</span>
+          <input type="date" value={form.log_date} onChange={event => update('log_date', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs" />
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Time</span>
+          <input type="time" value={form.log_time} onChange={event => update('log_time', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs" />
+        </label>
+        <div className="sm:col-span-2">
+          <StaffMemberPicker
+            label="Production staff"
+            value={form.staff_member}
+            onChange={value => update('staff_member', value)}
+            helperText="Select from team members or type another staff name."
+          />
+        </div>
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Area</span>
+          <select value={form.area} onChange={event => update('area', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs">
+            <option>Prep Area</option>
+            <option>Production Floor</option>
+            <option>Packing Area</option>
+            <option>Cold Storage</option>
+            <option>Equipment</option>
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cold storage</span>
+          <select value={form.location} onChange={event => update('location', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs">
+            <option>Cold Room 1</option>
+            <option>Cold Room 2</option>
+            <option>Walk-in Cooler</option>
+            <option>Freezer</option>
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Temperature F</span>
+          <input type="number" step="0.1" value={form.temperature} onChange={event => update('temperature', event.target.value)} placeholder="37.0" className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs" />
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sanitizer</span>
+          <select value={form.sanitizer_type} onChange={event => update('sanitizer_type', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs">
+            <option>Bleach Solution</option>
+            <option>Quaternary Ammonium</option>
+            <option>Iodine</option>
+            <option>Alcohol 70%</option>
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sanitizer level</span>
+          <select value={form.sanitizer_level} onChange={event => update('sanitizer_level', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs">
+            <option>Adequate</option>
+            <option>Optimal</option>
+            <option>Low</option>
+          </select>
+        </label>
+        <div className="sm:col-span-2">
+          <StaffMemberPicker
+            label="Verified by"
+            value={form.verified_by}
+            onChange={value => update('verified_by', value)}
+            placeholder="Optional verifier"
+            helperText="Optional manager or supervisor verification."
+          />
+        </div>
+        <label className="space-y-1 sm:col-span-2">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Notes</span>
+          <textarea value={form.notes} onChange={event => update('notes', event.target.value)} rows={2} placeholder="Any issues or observations" className="w-full rounded-lg border border-border bg-card px-2 py-2 text-xs resize-none" />
+        </label>
+      </div>
+
+      {message && (
+        <p className={`text-xs ${message.type === 'error' ? 'text-destructive' : message.type === 'success' ? 'text-green-700 dark:text-green-300' : 'text-cyan-700 dark:text-cyan-300'}`}>
+          {message.text}
+        </p>
+      )}
+
+      <button type="button" onClick={saveRecords} disabled={saving} className="w-full h-10 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60">
+        {saving ? 'Saving Pre-start Records...' : 'Save Pre-start Compliance'}
+      </button>
+    </div>
+  );
+}
+
+function nativePreviewReadyForAction(preview, action) {
+  if (!preview) return false;
+  if (preview.action === action && preview.lifecycle_ready === true) return true;
+
+  if (action === 'start') {
+    return Number(preview.start_preview?.ready_count || 0) > 0 &&
+      Number(preview.start_preview?.blocked_count || 0) === 0;
+  }
+  if (action === 'complete') {
+    return preview.completion_preview_ready === true ||
+      Number(preview.complete_ready_count || preview.complete_preview?.ready_count || 0) > 0;
+  }
+  if (action === 'verify') {
+    return preview.verification_preview_ready === true ||
+      Number(preview.verify_ready_count || preview.verify_preview?.ready_count || 0) > 0;
+  }
+  return false;
+}
+
+function nativePreviewWriteAvailable(preview, action) {
+  if (!preview || preview.action !== action) return false;
+  return preview.native_write_allowed === true || preview.live_command_available === true;
+}
+
+function nativePreviewGateBlockers(preview) {
+  return Array.isArray(preview?.live_command_blockers) ? preview.live_command_blockers : [];
+}
+
+function nativePreviewProjectedWrites(preview, action) {
+  if (Array.isArray(preview?.projected_writes) && preview.projected_writes.length > 0) {
+    return preview.projected_writes;
+  }
+  const actionPreview = preview?.[`${action}_preview`];
+  return Array.isArray(actionPreview?.expected_writes_if_later_approved)
+    ? actionPreview.expected_writes_if_later_approved
+    : [];
+}
+
 function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
-  const [activeAction, setActiveAction] = useState('start');
+  const [activeAction, setActiveAction] = useState(null);
   const [preview, setPreview] = useState(null);
   const [pending, setPending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [message, setMessage] = useState(null);
+  const [preStartComplianceSaved, setPreStartComplianceSaved] = useState(false);
   const [completeForm, setCompleteForm] = useState({
     actual_units: batch.actual_units || batch.planned_units || '',
     pH_result: batch.pH_result || '',
@@ -1177,6 +1841,10 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     use_by_date: batch.use_by_date || '',
     verification_notes: '',
   });
+
+  useEffect(() => {
+    if (activeAction !== 'start') setPreStartComplianceSaved(false);
+  }, [activeAction]);
 
   function baseNativePayload(action, prefix) {
     return {
@@ -1238,13 +1906,17 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
         ...(action === 'complete' ? nativeCompletionFields() : {}),
         ...(action === 'verify' ? nativeVerificationFields() : {}),
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error && result?.success !== true) throw new Error(result.error);
+      const actionReady = nativePreviewReadyForAction(result, action);
+      const writeAvailable = nativePreviewWriteAvailable(result, action);
       setPreview(result);
       setMessage({
-        type: result.lifecycle_ready ? 'success' : 'warn',
-        text: result.lifecycle_ready
-          ? `${formatLabel(action)} readiness preview passed. Native execution remains exact-gated.`
+        type: actionReady && writeAvailable ? 'success' : 'warn',
+        text: actionReady
+          ? writeAvailable
+            ? `${formatLabel(action)} readiness preview passed and the exact native gate is open.`
+            : `${formatLabel(action)} readiness preview passed. Native execution is still blocked by the exact write gate.`
           : `${formatLabel(action)} has preview blockers or warnings.`,
       });
     } catch (error) {
@@ -1259,16 +1931,30 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
       setMessage({ type: 'error', text: 'A native ProductionBatch id or batch id is required before execution.' });
       return;
     }
-    if (preview?.action !== action || !preview?.lifecycle_ready) {
+    if (!nativePreviewReadyForAction(preview, action)) {
       setMessage({ type: 'error', text: 'Run a passing preview for this action before executing it.' });
+      return;
+    }
+    if (!nativePreviewWriteAvailable(preview, action)) {
+      const gateBlockers = nativePreviewGateBlockers(preview).map(formatLabel).join(', ');
+      setMessage({
+        type: 'error',
+        text: gateBlockers
+          ? `Native ${formatLabel(action)} is ready but the exact write gate is closed: ${gateBlockers}.`
+          : `Native ${formatLabel(action)} is ready but the exact write gate is closed.`,
+      });
+      return;
+    }
+    if (action === 'start' && !preStartComplianceSaved) {
+      setMessage({ type: 'error', text: 'Save pre-start compliance before saving Start for this native batch.' });
       return;
     }
 
     const label = formatLabel(action);
     const warning = action === 'verify'
-      ? 'This may create one native BatchComplianceLog and link it to this exact ProductionBatch. It will not deduct inventory, update orders, update tasks, send notifications, or call providers.'
-      : 'This updates only the exact native ProductionBatch lifecycle fields plus CommandLog. It will not deduct inventory, update orders, update tasks, send notifications, or call providers.';
-    if (!window.confirm(`Run native ${label} for ${batch.batch_id || batch.product_name}? ${warning}`)) {
+      ? 'This may create one batch compliance log and link it to this exact ProductionBatch. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.'
+      : 'This updates this exact ProductionBatch lifecycle record and audit log. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.';
+    if (!window.confirm(`Save ${label} for ${batch.batch_id || batch.product_name}? ${warning}`)) {
       return;
     }
 
@@ -1277,7 +1963,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
 
     try {
       const res = await base44.functions.invoke('executeNativeProductionBatchLifecycle', executionPayload(action));
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error(result?.error || result?.error_code || `native_${action}_failed`);
       setMessage({
         type: result.skipped ? 'warn' : 'success',
@@ -1294,11 +1980,18 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
 
   const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
   const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
-  const projectedWrites = Array.isArray(preview?.projected_writes) ? preview.projected_writes : [];
+  const projectedWrites = nativePreviewProjectedWrites(preview, activeAction);
+  const actionReady = nativePreviewReadyForAction(preview, activeAction);
+  const writeAvailable = nativePreviewWriteAvailable(preview, activeAction);
+  const gateBlockers = nativePreviewGateBlockers(preview);
   const actions = [
-    { key: 'start', label: 'Start' },
-    { key: 'complete', label: 'Complete' },
-    { key: 'verify', label: 'Verify' },
+    {
+      key: 'start',
+      label: 'Start',
+      enabled: !batch.is_locked && !isInProgressStatus(batch.status) && !isNeedsVerificationStatus(batch.status) && !isDoneStatus(batch.status),
+    },
+    { key: 'complete', label: 'Complete', enabled: isInProgressStatus(batch.status) },
+    { key: 'verify', label: 'Verify', enabled: isNeedsVerificationStatus(batch.status) },
   ];
 
   return (
@@ -1307,10 +2000,10 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <ClipboardCheck className="w-4 h-4 text-primary" />
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Lifecycle Preview</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Batch Workflow</p>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1">
-            Dry-run only. This checks native readiness without creating logs, compliance records, inventory changes, or batch updates.
+            Start captures pre-start compliance. Complete records final output. Verify records quality/staff checks.
           </p>
         </div>
       </div>
@@ -1320,7 +2013,8 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           <button
             key={action.key}
             type="button"
-            disabled={pending || actionPending || (!batch.id && !batch.batch_id)}
+            data-testid={`native-lifecycle-${action.key}-${batch.batch_id || batch.id || 'unknown'}`}
+            disabled={!action.enabled || pending || actionPending || (!batch.id && !batch.batch_id)}
             onClick={() => runPreview(action.key)}
             className={`h-9 rounded-lg border px-2 text-xs font-semibold ${
               activeAction === action.key
@@ -1332,6 +2026,28 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           </button>
         ))}
       </div>
+
+      {!activeAction && isDoneStatus(batch.status) && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+          <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-100">Lifecycle complete.</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-emerald-800 dark:text-emerald-200">
+            This verified batch is audit-only. Start, Complete, and Verify are closed.
+          </p>
+        </div>
+      )}
+
+      {!activeAction && !isDoneStatus(batch.status) && (
+        <div className="rounded-lg border border-border/50 bg-card/70 p-3">
+          <p className="text-xs font-semibold text-foreground">Choose the next batch step.</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            Start opens pre-start sanitation, daily checklist, and temperature capture for this exact batch. Complete and Verify stay separated for clean records and traceability.
+          </p>
+        </div>
+      )}
+
+      {activeAction === 'start' && (
+        <NativePreStartCompliancePanel batch={batch} onSavedChange={setPreStartComplianceSaved} />
+      )}
 
       {(activeAction === 'complete' || activeAction === 'verify') && (
         <div className="rounded-lg border border-border/50 bg-card/70 p-3 space-y-3">
@@ -1415,15 +2131,13 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
                     className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
                   />
                 </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Staff on duty</span>
-                  <input
-                    value={completeForm.staff_on_duty}
-                    onChange={event => setCompleteForm(prev => ({ ...prev, staff_on_duty: event.target.value }))}
-                    placeholder="Name, name"
-                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
-                  />
-                </label>
+                <StaffMemberPicker
+                  label="Staff on duty"
+                  value={completeForm.staff_on_duty}
+                  onChange={value => setCompleteForm(prev => ({ ...prev, staff_on_duty: value }))}
+                  multiple
+                  helperText="Tap names to build the staff list, or type another name if needed."
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label className="space-y-1">
@@ -1468,8 +2182,8 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           message.type === 'error'
             ? 'text-destructive'
             : message.type === 'warn'
-              ? 'text-cyan-700'
-              : 'text-green-700'
+              ? 'text-cyan-700 dark:text-cyan-300'
+              : 'text-green-700 dark:text-green-300'
         }`}>
           {message.text}
         </p>
@@ -1480,22 +2194,22 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg bg-card p-2">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ready</p>
-              <p className="text-sm font-bold">{preview.lifecycle_ready ? 'Yes' : 'No'}</p>
+              <p className="text-sm font-bold">{actionReady ? 'Yes' : 'No'}</p>
             </div>
             <div className="rounded-lg bg-card p-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Write</p>
-              <p className="text-sm font-bold">{preview.native_write_allowed ? 'Yes' : 'No'}</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Execution Gate</p>
+              <p className="text-sm font-bold">{writeAvailable ? 'Open' : actionReady ? 'Closed' : 'No'}</p>
             </div>
             <div className="rounded-lg bg-card p-2">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Action</p>
-              <p className="text-sm font-bold">{formatLabel(preview.action)}</p>
+              <p className="text-sm font-bold">{formatLabel(preview.action || activeAction)}</p>
             </div>
           </div>
 
           {(blockers.length > 0 || warnings.length > 0) && (
             <div className="space-y-1">
               {blockers.map(blocker => (
-                <div key={`native-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
+                <div key={`native-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800 dark:text-cyan-200">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <span>Blocker: {formatLabel(blocker)}</span>
                 </div>
@@ -1509,24 +2223,43 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
             </div>
           )}
 
+          {gateBlockers.length > 0 && (
+            <div className="space-y-1">
+              {gateBlockers.map(blocker => (
+                <div key={`native-gate-${blocker}`} className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Write gate: {formatLabel(blocker)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {projectedWrites.length > 0 && (
             <p className="text-[10px] text-muted-foreground">
-              Would write if exact native gates are open: {projectedWrites.map(formatLabel).join(', ')}
+              Checked fields: {projectedWrites.map(formatLabel).join(', ')}
             </p>
           )}
 
           <button
             type="button"
-            disabled={actionPending || pending || preview?.action !== activeAction || !preview?.lifecycle_ready}
+            disabled={actionPending || pending || !actionReady || !writeAvailable || (activeAction === 'start' && !preStartComplianceSaved)}
             onClick={() => runNative(activeAction)}
             className="w-full h-10 rounded-lg bg-nuvira-gradient text-white text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {actionPending ? `Running Native ${formatLabel(activeAction)}...` : `Run Native ${formatLabel(activeAction)}`}
+            {actionPending
+              ? `Saving ${formatLabel(activeAction)}...`
+              : activeAction === 'start' && !preStartComplianceSaved
+                ? 'Save Pre-start Compliance First'
+                : writeAvailable
+                ? `Save ${formatLabel(activeAction)}`
+                : actionReady
+                  ? `Write Gate Closed for ${formatLabel(activeAction)}`
+                  : `Save ${formatLabel(activeAction)}`}
           </button>
 
           <div className="flex items-start gap-2 text-xs text-muted-foreground">
             <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <span>Native execution is default-off and requires exact batch, action, admin, and feature-flag gates.</span>
+            <span>If a gate blocks this action, use the blockers above as diagnostics before retrying.</span>
           </div>
         </div>
       )}
@@ -1543,7 +2276,10 @@ function BatchCard({ batch, onActionSuccess }) {
       : 'border-l-primary';
 
   return (
-    <div className={`rounded-xl border border-border/50 border-l-4 ${categoryAccent} bg-card p-4 space-y-3`}>
+    <div
+      className={`rounded-xl border border-border/50 border-l-4 ${categoryAccent} bg-card p-4 space-y-3`}
+      data-testid={`production-batch-card-${batch.batch_id || batch.id || 'unknown'}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-heading text-lg font-bold text-foreground mt-0.5">{batch.product_name || 'Unnamed product'}</h2>
@@ -1551,9 +2287,12 @@ function BatchCard({ batch, onActionSuccess }) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <AdminStatusPill
-            value={nativeBatch ? 'native' : 'hub'}
+            value={nativeBatch ? 'native' : 'source'}
             label={batchSourceLabel(batch)}
           />
+          {batch.is_test_batch === true && (
+            <AdminStatusPill value="warning" label="Internal Test" tone="warning" />
+          )}
           {batch.is_locked && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground border border-border/60">
               <Lock className="w-3 h-3" />
@@ -1596,7 +2335,7 @@ function BatchCard({ batch, onActionSuccess }) {
 
       {batch.updated_date && (
         <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-          Last {nativeBatch ? 'native' : 'Hub'} update: {formatDateTime(batch.updated_date)}
+          Last {nativeBatch ? 'native' : 'source'} update: {formatDateTime(batch.updated_date)}
         </p>
       )}
 
@@ -1651,7 +2390,7 @@ function ProductionDateSection({ date, batches, today, onActionSuccess }) {
             </p>
           </div>
           <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-card/70 border border-border text-muted-foreground">
-            {nativeCount > 0 ? `Hub ${hubCount} · Native ${nativeCount}` : 'Hub Production'}
+            {nativeCount > 0 ? `Source ${hubCount} · Native ${nativeCount}` : 'Source Production'}
           </span>
         </div>
       </div>
@@ -1701,7 +2440,9 @@ function ProductionDemandHandoffPanel({ planningData, queueNeededUnits, isLoadin
   const summary = planningData?.summary || {};
   const nativeOverlay = planningData?.native_overlay || {};
   const plannedUnits = Number(summary.planned_units || 0);
+  const queuedUnits = Number(queueNeededUnits || 0);
   const unbatchedUnits = Math.max(0, plannedUnits - Number(queueNeededUnits || 0));
+  const queueOnlyUnits = Math.max(0, queuedUnits - plannedUnits);
   const groups = planningProductGroups(planningData).slice(0, 8);
   const missingMasterDataCount = [
     nativeOverlay.missing_recipe_count,
@@ -1724,9 +2465,9 @@ function ProductionDemandHandoffPanel({ planningData, queueNeededUnits, isLoadin
 
   if (isError) {
     return (
-      <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
-        <p className="text-sm font-semibold text-cyan-900">Production planning handoff unavailable</p>
-        <p className="text-xs text-cyan-800 mt-1">{error?.message || 'Open Production Planning for demand details.'}</p>
+      <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-900/60 dark:bg-cyan-950/30">
+        <p className="text-sm font-semibold text-cyan-900 dark:text-cyan-100">Production planning handoff unavailable</p>
+        <p className="text-xs text-cyan-800 mt-1 dark:text-cyan-200/80">{error?.message || 'Open Production Planning for demand details.'}</p>
       </div>
     );
   }
@@ -1734,55 +2475,74 @@ function ProductionDemandHandoffPanel({ planningData, queueNeededUnits, isLoadin
   if (plannedUnits <= 0 && groups.length === 0) return null;
 
   return (
-    <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-3">
+    <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-3 dark:border-cyan-900/50 dark:bg-card/90">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-800">Planning demand handoff</p>
-          <h2 className="text-sm font-bold text-blue-950">Demand exists before a production batch is scheduled</h2>
-          <p className="text-xs text-blue-900/80 mt-1">
-            Read-only Production Planning demand for this queue range. Create or update batches through approved production workflows only.
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-800 dark:text-cyan-300">Demand and event-stock handoff</p>
+          <h2 className="text-sm font-bold text-blue-950 dark:text-foreground">
+            {queueOnlyUnits > 0
+              ? 'Queue includes event/manual stock'
+              : unbatchedUnits > 0
+                ? 'Demand exists before a production batch is scheduled'
+                : 'Demand is covered by scheduled batches'}
+          </h2>
+          <p className="text-xs text-blue-900/80 mt-1 dark:text-muted-foreground">
+            Customer-order demand is read-only here. Event/manual stock appears in the queue after approved batch creation.
           </p>
         </div>
-        <AdminStatusPill label={unbatchedUnits > 0 ? 'Unbatched demand' : 'Covered by queue'} tone={unbatchedUnits > 0 ? 'warning' : 'native'} />
+        <AdminStatusPill
+          label={unbatchedUnits > 0 ? 'Unbatched demand' : queueOnlyUnits > 0 ? 'Event stock queued' : 'Covered by queue'}
+          tone={unbatchedUnits > 0 ? 'warning' : 'native'}
+        />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="rounded-lg bg-white/70 border border-blue-100 p-2">
-          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Planned Units</p>
-          <p className="text-lg font-black text-blue-950">{formatNumber(plannedUnits)}</p>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2 dark:border-border/70 dark:bg-background/70">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold dark:text-muted-foreground">Order Demand</p>
+          <p className="text-lg font-black text-blue-950 dark:text-foreground">{formatNumber(plannedUnits)}</p>
         </div>
-        <div className="rounded-lg bg-white/70 border border-blue-100 p-2">
-          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Unbatched</p>
-          <p className="text-lg font-black text-blue-950">{formatNumber(unbatchedUnits)}</p>
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2 dark:border-border/70 dark:bg-background/70">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold dark:text-muted-foreground">Queue Units</p>
+          <p className="text-lg font-black text-blue-950 dark:text-foreground">{formatNumber(queuedUnits)}</p>
         </div>
-        <div className="rounded-lg bg-white/70 border border-blue-100 p-2">
-          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Ingredients</p>
-          <p className="text-lg font-black text-blue-950">{formatNumber(summary.ingredient_count)}</p>
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2 dark:border-border/70 dark:bg-background/70">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold dark:text-muted-foreground">Unbatched</p>
+          <p className="text-lg font-black text-blue-950 dark:text-foreground">{formatNumber(unbatchedUnits)}</p>
         </div>
-        <div className="rounded-lg bg-white/70 border border-blue-100 p-2">
-          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold">Master Data Gaps</p>
-          <p className="text-lg font-black text-blue-950">{formatNumber(missingMasterDataCount)}</p>
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2 dark:border-border/70 dark:bg-background/70">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold dark:text-muted-foreground">Event Stock</p>
+          <p className="text-lg font-black text-blue-950 dark:text-foreground">{formatNumber(queueOnlyUnits)}</p>
+        </div>
+        <div className="rounded-lg bg-white/70 border border-blue-100 p-2 dark:border-border/70 dark:bg-background/70">
+          <p className="text-[10px] uppercase tracking-wider text-blue-800 font-semibold dark:text-muted-foreground">Master Data Gaps</p>
+          <p className="text-lg font-black text-blue-950 dark:text-foreground">{formatNumber(missingMasterDataCount)}</p>
         </div>
       </div>
 
       {Number(nativeOverlay.order_count || 0) > 0 && (
-        <p className="text-xs text-blue-900">
-          Native overlay: {formatNumber(nativeOverlay.order_count)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units)} units · {formatNumber(nativeOverlay.ingredient_count)} ingredient rows.
+        <p className="text-xs text-blue-900 dark:text-muted-foreground">
+          Customer-app order demand: {formatNumber(nativeOverlay.order_count)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units)} units · {formatNumber(nativeOverlay.ingredient_count)} ingredient rows.
+        </p>
+      )}
+
+      {queueOnlyUnits > 0 && (
+        <p className="text-xs text-blue-900 dark:text-muted-foreground">
+          Queue-only/event stock: {formatNumber(queueOnlyUnits)} unit{queueOnlyUnits === 1 ? '' : 's'} already scheduled outside customer-order demand.
         </p>
       )}
 
       {groups.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {groups.map(group => (
-            <div key={`${group.product_name}-${group.product_category}`} className="rounded-lg border border-blue-100 bg-white/70 p-3">
+            <div key={`${group.product_name}-${group.product_category}`} className="rounded-lg border border-blue-100 bg-white/70 p-3 dark:border-border/70 dark:bg-background/70">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-bold text-blue-950">{group.product_name}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-blue-700">{group.product_category || 'Product'}</p>
+                  <p className="text-sm font-bold text-blue-950 dark:text-foreground">{group.product_name}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-blue-700 dark:text-muted-foreground">{group.product_category || 'Product'}</p>
                 </div>
-                <p className="text-sm font-black text-blue-950">{formatNumber(group.planned_units)} units</p>
+                <p className="text-sm font-black text-blue-950 dark:text-foreground">{formatNumber(group.planned_units)} units</p>
               </div>
-              <p className="mt-2 text-[11px] text-blue-900">
+              <p className="mt-2 text-[11px] text-blue-900 dark:text-muted-foreground">
                 {formatNumber(group.source_order_count)} source order{Number(group.source_order_count) === 1 ? '' : 's'} · {group.production_dates.map(formatDate).join(', ')}
               </p>
             </div>
@@ -1791,10 +2551,10 @@ function ProductionDemandHandoffPanel({ planningData, queueNeededUnits, isLoadin
       )}
 
       <div className="flex flex-wrap gap-2">
-        <a href="/admin/production-planning" className="h-8 px-3 rounded-lg bg-blue-700 text-white text-xs font-semibold inline-flex items-center">
+        <a href="/admin/production-planning" className="h-8 px-3 rounded-lg bg-blue-700 text-white text-xs font-semibold inline-flex items-center dark:bg-primary dark:text-primary-foreground">
           Open Production Planning
         </a>
-        <a href="/admin/inventory-status" className="h-8 px-3 rounded-lg border border-blue-200 bg-white/80 text-blue-900 text-xs font-semibold inline-flex items-center">
+        <a href="/admin/inventory-status" className="h-8 px-3 rounded-lg border border-blue-200 bg-white/80 text-blue-900 text-xs font-semibold inline-flex items-center dark:border-border dark:bg-background/70 dark:text-foreground">
           Open Inventory Status
         </a>
       </div>
@@ -1805,31 +2565,67 @@ function ProductionDemandHandoffPanel({ planningData, queueNeededUnits, isLoadin
 export default function ProductionQueueSummary() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isPageVisible = usePageVisibility();
+  const [searchParams] = useSearchParams();
   const defaultFrom = useMemo(() => todayDate(), []);
   const defaultTo = useMemo(() => addDays(defaultFrom, 14), [defaultFrom]);
+  const datePresets = useMemo(() => productionQueueDatePresets(defaultFrom), [defaultFrom]);
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(defaultTo);
   const [tab, setTab] = useState('today');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [testBatchMode, setTestBatchMode] = useState('exclude');
+  const showInternalTestValidation = searchParams.get('internal_test_validation') === '1';
 
   const rangeDays = dateFrom && dateTo ? daysInclusive(dateFrom, dateTo) : null;
   const rangeInvalid = Boolean(!dateFrom || !dateTo || dateTo < dateFrom || rangeDays > 31);
+  const rangeIsPast = Boolean(dateTo && dateTo < defaultFrom);
+
+  useEffect(() => {
+    if (rangeIsPast && tab === 'today') {
+      setTab('history');
+    }
+  }, [rangeIsPast, tab]);
+
+  function setDateFromValue(value) {
+    setDateFrom(value);
+    if (dateTo && dateTo < defaultFrom && tab === 'today') {
+      setTab('history');
+    }
+  }
+
+  function setDateToValue(value) {
+    setDateTo(value);
+    if (value && value < defaultFrom && tab === 'today') {
+      setTab('history');
+    }
+  }
+
+  function applyDatePreset(preset) {
+    setDateFrom(preset.dateFrom);
+    setDateTo(preset.dateTo);
+    setTab(preset.tab);
+    setCategoryFilter('all');
+    setStatusFilter('all');
+  }
 
   const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
-    queryKey: ['admin-production-queue-summary', dateFrom, dateTo],
+    queryKey: ['admin-production-queue-summary', dateFrom, dateTo, testBatchMode],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminProductionQueueSummary', {
         date_from: dateFrom,
         date_to: dateTo,
         limit: 100,
+        test_batch_mode: testBatchMode,
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error) throw new Error(result.error);
       return result || { batches: [] };
     },
-    enabled: user?.role === 'admin' && !rangeInvalid,
+    enabled: isAdminUser(user) && isPageVisible && !rangeInvalid,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
   });
 
   const {
@@ -1845,12 +2641,13 @@ export default function ProductionQueueSummary() {
         date_from: dateFrom,
         date_to: dateTo,
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error) throw new Error(result.error);
       return result || { summary: {}, dates: [], ingredients: [] };
     },
-    enabled: user?.role === 'admin' && !rangeInvalid,
+    enabled: isAdminUser(user) && isPageVisible && !rangeInvalid,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
   });
 
   async function refreshProductionActionSummaries() {
@@ -1868,7 +2665,7 @@ export default function ProductionQueueSummary() {
     ]);
   }
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -1879,11 +2676,13 @@ export default function ProductionQueueSummary() {
   const allBatches = data?.batches || [];
   const categoryOptions = uniqueOptions(allBatches, 'product_category');
   const statusOptions = uniqueOptions(allBatches, 'status');
-  const filteredBatches = allBatches.filter(batch => {
+  const batchesMatchingFilters = allBatches.filter(batch => {
     if (categoryFilter !== 'all' && batch.product_category !== categoryFilter) return false;
     if (statusFilter !== 'all' && batch.status !== statusFilter) return false;
-    return getBatchTab(batch, defaultFrom) === tab;
+    return true;
   });
+  const filteredBatches = batchesMatchingFilters.filter(batch => getBatchTab(batch, defaultFrom) === tab);
+  const historyBatchesInRange = batchesMatchingFilters.filter(batch => getBatchTab(batch, defaultFrom) === 'history').length;
   const groupedBatches = groupByProductionDate(filteredBatches);
   const sortedDates = Object.keys(groupedBatches).sort((a, b) => {
     if (a === 'unscheduled') return 1;
@@ -1900,11 +2699,11 @@ export default function ProductionQueueSummary() {
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Production Queue"
-        subtitle="Hub production summary with gated inventory actions"
-        badge="Ops v1"
+        subtitle="Customer App production queue for daily batch work"
+        badge={testBatchMode === 'only' ? 'Internal Test View' : 'Ops v1'}
         badgeTone="warning"
       />
 
@@ -1920,7 +2719,7 @@ export default function ProductionQueueSummary() {
               <input
                 type="date"
                 value={dateFrom}
-                onChange={event => setDateFrom(event.target.value)}
+                onChange={event => setDateFromValue(event.target.value)}
                 className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </label>
@@ -1929,10 +2728,29 @@ export default function ProductionQueueSummary() {
               <input
                 type="date"
                 value={dateTo}
-                onChange={event => setDateTo(event.target.value)}
+                onChange={event => setDateToValue(event.target.value)}
                 className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {datePresets.map(preset => {
+              const isActive = dateFrom === preset.dateFrom && dateTo === preset.dateTo && tab === preset.tab;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => applyDatePreset(preset)}
+                  className={`h-8 rounded-lg border px-3 text-[11px] font-semibold transition-colors ${
+                    isActive
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
           </div>
           {rangeInvalid ? (
             <p className="text-xs text-destructive">Choose a valid production date range of 31 days or fewer.</p>
@@ -1942,11 +2760,40 @@ export default function ProductionQueueSummary() {
             </p>
           )}
           <p className="text-[10px] text-muted-foreground">
-            Hub and native Customer App data · Native rows are read-only in this queue. Inventory deduction is preview-first and remains blocked unless the Hub gates allow the exact batch.
+            Customer App and source-backed production data. Batch steps are guarded by exact-batch checks; inventory deduction stays separate.
           </p>
+          <details className="rounded-lg border border-border/60 bg-background/70 p-3">
+            <summary className="cursor-pointer text-xs font-semibold text-foreground">Need an older date?</summary>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Use the From/To fields above for retroactive production or compliance review. Historical one-off event shortcuts were removed from the primary workflow so this page stays focused on today, upcoming, and recent production.
+            </p>
+          </details>
+          {(showInternalTestValidation || testBatchMode === 'only') && (
+            <button
+              type="button"
+              onClick={() => {
+                setTestBatchMode(mode => mode === 'only' ? 'exclude' : 'only');
+                setCategoryFilter('all');
+                setStatusFilter('all');
+                setTab('today');
+              }}
+              className={`h-9 rounded-lg border px-3 text-xs font-semibold ${
+                testBatchMode === 'only'
+                  ? 'border-amber-500 bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100'
+                  : 'border-border bg-background text-muted-foreground'
+              }`}
+            >
+              {testBatchMode === 'only' ? 'Return to Operational Queue' : 'Open Internal Test Validation'}
+            </button>
+          )}
+          {testBatchMode === 'only' && (
+            <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+              Internal test batches only. These records are excluded from operational totals, production planning, procurement, inventory, delivery, and customer reporting.
+            </p>
+          )}
           {Array.isArray(data?.warnings) && data.warnings.length > 0 && (
-            <p className="text-[10px] text-cyan-700">
-              Data warning: {data.warnings.map(formatLabel).join(', ')}
+            <p className="text-[10px] text-cyan-700 dark:text-cyan-300">
+              Data warning: {data.warnings.map(formatSourceWarning).join(', ')}
             </p>
           )}
           <AdminStatusLegend />
@@ -1970,25 +2817,15 @@ export default function ProductionQueueSummary() {
           </div>
         </div>
 
-        <May30ReadinessPanel
-          title="Production operations"
-          description="Use this page when operations is ready to act on a planned batch. Every write remains preview-first and exact-batch gated."
-          items={productionOpsReadinessItems}
-          actions={[
-            { label: 'Production Planning', to: '/admin/production-planning' },
-            { label: 'Inventory Status', to: '/admin/inventory-status' },
-            { label: 'Compliance Ops', to: '/admin/compliance-ops' },
-            { label: 'Delivery Queue', to: '/admin/delivery-queue' },
-          ]}
-        />
-
-        <ProductionDemandHandoffPanel
-          planningData={planningData}
-          queueNeededUnits={totalNeeded}
-          isLoading={planningLoading}
-          isError={planningError}
-          error={planningQueryError}
-        />
+        {testBatchMode === 'exclude' && (
+          <ProductionDemandHandoffPanel
+            planningData={planningData}
+            queueNeededUnits={totalNeeded}
+            isLoading={planningLoading}
+            isError={planningError}
+            error={planningQueryError}
+          />
+        )}
 
         <div className="space-y-3">
           <div className="flex gap-0 border-b overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -2049,18 +2886,28 @@ export default function ProductionQueueSummary() {
           </div>
         ) : !rangeInvalid && allBatches.length === 0 ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
-            <p className="text-sm font-semibold text-foreground">No upcoming production scheduled</p>
-            <p className="text-xs text-muted-foreground mt-1">This date range has no Hub or native production batch rows yet. Check the planning handoff above for unbatched demand.</p>
+            <p className="text-sm font-semibold text-foreground">
+              {rangeIsPast ? 'No production batches in this selected range' : 'No upcoming production scheduled'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {rangeIsPast
+                ? 'History is scoped to the selected production date range. Use Last 31 Days or select the exact production date.'
+                : 'This date range has no Customer App or source-backed production batch rows yet. Check the planning handoff above for unbatched demand.'}
+            </p>
           </div>
         ) : !rangeInvalid && filteredBatches.length === 0 ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
             <p className="text-sm font-semibold text-foreground">No production batches match this view</p>
-            <p className="text-xs text-muted-foreground mt-1">Try another Hub production tab, category, or status filter.</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {historyBatchesInRange > 0 && tab !== 'history'
+                ? `This range has ${historyBatchesInRange} history batch${historyBatchesInRange === 1 ? '' : 'es'} after the current filters. Open History or clear filters.`
+                : 'History is scoped to the selected production date range. Use Last 31 Days or select the exact production date.'}
+            </p>
           </div>
         ) : !rangeInvalid ? (
           <div className="space-y-6">
             {data?.truncated && (
-              <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
+              <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200">
                 Results are capped at 100 batches. Narrow the date range for a complete view.
               </p>
             )}

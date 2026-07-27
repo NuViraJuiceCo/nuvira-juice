@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle, XCircle, Clock, RefreshCw, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 
 function StatusBadge({ value }) {
@@ -71,7 +72,7 @@ export default function LiveCheckoutMonitor() {
 
   useEffect(() => () => clearInterval(autoRefreshRef.current), []);
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return <div className="p-8 text-muted-foreground">Admin access required</div>;
   }
 
@@ -79,7 +80,7 @@ export default function LiveCheckoutMonitor() {
   const verdict = result?.verdict;
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Live Checkout Monitor"
         subtitle="Read-only. No repairs or manual sync during test window."
@@ -149,7 +150,7 @@ export default function LiveCheckoutMonitor() {
               <CheckRow label="Address complete" value={c.address_check} raw={c.address_complete} />
               <CheckRow label="Stripe IDs real" value={c.stripe_id_check} raw={!c.fake_ids_detected} />
               <CheckRow label="No duplicates" value={c.duplicate_check} raw={c.order_count_for_number === 1} />
-              <CheckRow label="Hub sync" value={c.hub_sync_check} raw={c.last_sync_status === 'success'} />
+              <CheckRow label="Source sync" value={c.hub_sync_check} raw={c.last_sync_status === 'success'} />
             </Section>
 
             {/* Order fields */}
@@ -194,7 +195,7 @@ export default function LiveCheckoutMonitor() {
                 ))}
             </Section>
 
-            {/* Hub sync logs */}
+            {/* Source sync logs */}
             <Section title="🔄 OrderSyncLog (all attempts)">
               {c.sync_logs?.length === 0
                 ? <p className="text-xs text-cyan-700 font-semibold">⚠️ No sync attempts logged yet</p>

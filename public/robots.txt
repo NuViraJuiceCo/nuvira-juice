@@ -4,10 +4,33 @@ Allow: /
 # Disallow private/admin/transactional routes
 Disallow: /admin/
 Disallow: /driver/
+Disallow: /driver
+Disallow: /driver-portal
+Disallow: /operations
+Disallow: /dashboard
+Disallow: /orders
+Disallow: /production
+Disallow: /production-planning
+Disallow: /prod-scheduler
+Disallow: /fulfillment
+Disallow: /compliance
+Disallow: /compliance-center
+Disallow: /compliance-logs
+Disallow: /inventory
+Disallow: /calendar
+Disallow: /resources
+Disallow: /loyalty-admin
+Disallow: /live-monitor
+Disallow: /alerts
+Disallow: /sync-health
+Disallow: /account
 Disallow: /account-setup
 Disallow: /checkout
+Disallow: /notifications
 Disallow: /order-confirmation/
 Disallow: /order-tracker/
+Disallow: /rewards
+Disallow: /return-reward
 
 # Static sitemap (regenerated on build)
-Sitemap: https://www.nuvirajuice.com/sitemap.xml
+Sitemap: https://nuvirajuice.com/sitemap.xml

@@ -62,7 +62,8 @@ function customerPushNotificationsEnabled() {
   return Deno.env.get('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS') === 'true';
 }
 
-function customerNotificationSubtypeAllowed(notificationSubtype: string) {
+function customerNotificationSubtypeAllowed(notificationSubtype: string, source: unknown = null) {
+  if (String(source || '') === 'notification_campaign') return true;
   if (MAY30_DEFAULT_ALLOWED_SUBTYPES.has(notificationSubtype)) return true;
   if (nonConfirmationNotificationsEnabled()) return true;
   return MAY30_DELIVERY_STATUS_SUBTYPES.has(notificationSubtype) && deliveryStatusNotificationsEnabled();
@@ -114,18 +115,19 @@ Deno.serve(async (req) => {
       order_id = null,
       deep_link = null,
       idempotency_key = null,
+      source = null,
     } = body;
 
     if (!customer_email || !title || !message) {
       return Response.json({ error: 'Missing required fields: customer_email, title, message' }, { status: 400 });
     }
 
-    if (!customerNotificationSubtypeAllowed(notification_subtype)) {
+    if (!customerNotificationSubtypeAllowed(notification_subtype, source)) {
       return Response.json({
         success: true,
         skipped: true,
         reason: 'non_confirmation_customer_notifications_disabled',
-        message: 'Non-confirmation customer notifications are disabled for the May 30 launch freeze.',
+        message: 'Non-confirmation customer notifications are disabled for this source.',
         notification_subtype,
         delivery_status_notifications_enabled: deliveryStatusNotificationsEnabled(),
       }, { status: 409 });

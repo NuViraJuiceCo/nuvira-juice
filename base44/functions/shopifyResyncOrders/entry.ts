@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
       success: true,
       skipped: true,
       reason: 'admin_shopify_resync_disabled',
-      message: 'Admin Shopify order resync is disabled for May 30 launch freeze.',
+      message: 'Admin Shopify order resync is disabled by the current controlled-sync gate.',
     }, { status: 409 });
   }
 
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         reason: 'exact_shopify_order_import_disabled',
-        message: 'Exact Shopify order import is disabled for May 30 launch freeze.',
+        message: 'Exact Shopify order import is disabled by the current exact-import gate.',
       }, { status: 409 });
     }
 
@@ -243,8 +243,8 @@ async function importExactShopifyOrder({ base44, token, storeUrl, identifier, ac
     fulfillment_task: result?.fulfillment_task || null,
     production_demand: result?.production_demand || null,
     message: result?.success === true
-      ? 'Exact Shopify order imported through May 30 native operations path.'
-      : 'Exact Shopify order fetched, but May 30 native operations path did not accept it.',
+      ? 'Exact Shopify order imported through the native operations mirror path.'
+      : 'Exact Shopify order fetched, but the native operations mirror path did not accept it.',
     error_code: result?.error_code || null,
     warnings: Array.isArray(result?.warnings) ? result.warnings.slice(0, 5) : [],
   }, { status: result?.success === true ? 200 : 409 });

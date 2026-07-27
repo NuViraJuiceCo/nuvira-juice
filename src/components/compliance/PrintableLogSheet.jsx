@@ -1,5 +1,6 @@
 import React from 'react';
 import moment from 'moment';
+import { AlertTriangle, Printer, X } from 'lucide-react';
 import { resolveIngredients } from '@/lib/batchIngredientResolver';
 
 const LOG_TITLES = {
@@ -62,19 +63,21 @@ export default function PrintableLogSheet({ log, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex flex-col items-center overflow-y-auto overscroll-contain bg-black/75 p-4">
       {/* Screen controls */}
-      <div className="print:hidden w-full max-w-2xl mb-3 flex items-center justify-between">
+      <div className="print:hidden mb-3 flex w-full max-w-2xl items-center justify-between gap-3">
         <div>
           <p className="text-white text-sm font-medium">Preview — Individual Record Export</p>
           <p className="text-white/60 text-xs">Only this selected log will be exported.</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">
-            ✕ Close
+        <div className="flex shrink-0 gap-2">
+          <button onClick={onClose} className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary">
+            <X className="h-4 w-4" />
+            Close
           </button>
-          <button onClick={handlePrint} className="px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-medium hover:bg-green-800">
-            🖨️ Export PDF / Print
+          <button onClick={handlePrint} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            <Printer className="h-4 w-4" />
+            Export PDF / Print
           </button>
         </div>
       </div>
@@ -82,7 +85,7 @@ export default function PrintableLogSheet({ log, onClose }) {
       {/* Printable sheet */}
       <div
         id="printable-log"
-        className="bg-white w-full max-w-2xl rounded-lg shadow-xl p-8 print:shadow-none print:rounded-none print:p-6 print:max-w-full"
+        className="w-full max-w-2xl rounded-lg bg-white p-8 text-gray-900 shadow-xl print:max-w-full print:rounded-none print:p-6 print:shadow-none"
         style={{ fontFamily: 'Arial, sans-serif' }}
       >
         {/* Branding Header */}
@@ -159,8 +162,9 @@ export default function PrintableLogSheet({ log, onClose }) {
                         )}
                       </>
                     ) : (
-                      <div className="p-2 bg-cyan-50 border border-cyan-200 rounded text-xs text-cyan-700">
-                        ⚠️ Formula not found — manual review required
+                      <div className="flex items-start gap-2 rounded border border-cyan-200 bg-cyan-50 p-2 text-xs text-cyan-700">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>Formula not found — manual review required</span>
                       </div>
                     )}
                   </Section>

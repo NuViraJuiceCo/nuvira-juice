@@ -2245,6 +2245,87 @@ function g33cMirror1ExistingSummary(row) {
   });
 }
 
+const G33C_PROGRAM_COMPOSITIONS = [
+  {
+    matcher: /hydration/i,
+    items: [
+      { title: 'OASIS', quantity: 9 },
+      { title: 'AURA', quantity: 3 },
+    ],
+  },
+  {
+    matcher: /radiance/i,
+    items: [
+      { title: 'AURA', quantity: 9 },
+      { title: 'OASIS', quantity: 3 },
+    ],
+  },
+  {
+    matcher: /reset/i,
+    items: [
+      { title: 'RE-NU', quantity: 9 },
+      { title: 'OASIS', quantity: 3 },
+    ],
+  },
+];
+
+function g33cOperationalQuantity(value, fallback = 1) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function g33cOperationalLineItems(items) {
+  if (!Array.isArray(items)) return [];
+  const expanded = [];
+
+  for (const item of items) {
+    const title = sanitizeText(item?.title || item?.name || item?.product_name || item?.product_title, 120);
+    const parentQuantity = g33cOperationalQuantity(item?.quantity || item?.qty, 1);
+    const explicitComposition = Array.isArray(item?.bundle_composition)
+      ? item.bundle_composition
+      : Array.isArray(item?.composition)
+        ? item.composition
+        : [];
+
+    if (explicitComposition.length > 0) {
+      for (const component of explicitComposition) {
+        const componentTitle = sanitizeText(component?.product_name || component?.title || component?.name || component?.flavor, 120);
+        const componentQuantity = g33cOperationalQuantity(component?.quantity || component?.qty, 0);
+        if (componentTitle && componentQuantity > 0) expanded.push({ title: componentTitle, quantity: componentQuantity * parentQuantity });
+      }
+      continue;
+    }
+
+    const programComposition = G33C_PROGRAM_COMPOSITIONS.find(program => program.matcher.test(title || ''));
+    if (programComposition) {
+      for (const component of programComposition.items) {
+        expanded.push({ title: component.title, quantity: component.quantity * parentQuantity });
+      }
+      continue;
+    }
+
+    if (title) expanded.push({ title, quantity: parentQuantity, price: safeNumber(item?.price, 0) });
+  }
+
+  const byTitle = new Map();
+  for (const item of expanded) {
+    const key = normalizeLower(item.title);
+    const current = byTitle.get(key) || { title: item.title, quantity: 0, price: item.price };
+    current.quantity += item.quantity;
+    byTitle.set(key, current);
+  }
+  return Array.from(byTitle.values());
+}
+
+function g33cOperationalItemsSummary(items) {
+  const operationalItems = g33cOperationalLineItems(items);
+  if (operationalItems.length === 0) return null;
+  return operationalItems
+    .slice(0, 8)
+    .map(item => `${g33cOperationalQuantity(item.quantity, 1)}x ${item.title}`)
+    .join(', ');
+}
+
 function g33cMirror1SafeOrderSummary(order) {
   return compactObject({
     id: sanitizeText(order?.id, 120),
@@ -2344,7 +2425,7 @@ function g33cMirror1BuildShopifyOrderPacket({ customerOrder, orderNumber, projec
 function g33cMirror1BuildTaskPacket({ customerOrder, orderNumber, projection, nativeOrder }) {
   const deliveryDate = g33cMirror1Date(customerOrder);
   const productionDate = g33cMirror1ProductionDate(customerOrder);
-  const lineItems = g33cMirror1LineItems(customerOrder).map(item => compactObject({
+  const lineItems = g33cOperationalLineItems(g33cMirror1LineItems(customerOrder)).map(item => compactObject({
     title: item.title,
     quantity: item.quantity,
     price: item.price,
@@ -2371,7 +2452,7 @@ function g33cMirror1BuildTaskPacket({ customerOrder, orderNumber, projection, na
     time_window: g33cMirror1Window(customerOrder),
     delivery_window_label: g33cMirror1Window(customerOrder),
     items: lineItems,
-    items_summary: `${lineItems.length} line item${lineItems.length === 1 ? '' : 's'}`,
+    items_summary: g33cTask1ItemsSummary(lineItems),
     line_item_count: lineItems.length,
     total_price: g33cMirror1Total(customerOrder),
     address_complete: hasCompleteDeliveryAddress(customerOrder),
@@ -2629,12 +2710,14 @@ async function g33cTask1NativeOrder(base44, lookup, orderNumber, customerOrderId
 }
 
 function g33cTask1ItemsSummary(items) {
+  const operationalSummary = g33cOperationalItemsSummary(items);
+  if (operationalSummary) return operationalSummary;
   const count = Array.isArray(items) ? items.length : 0;
   return `${count} line item${count === 1 ? '' : 's'}`;
 }
 
 function g33cTask1BuildPacket({ customerOrder, nativeOrder, orderNumber, projection }) {
-  const lineItems = g33cMirror1LineItems(customerOrder).map(item => compactObject({
+  const lineItems = g33cOperationalLineItems(g33cMirror1LineItems(customerOrder)).map(item => compactObject({
     title: item.title,
     quantity: item.quantity,
     price: item.price,

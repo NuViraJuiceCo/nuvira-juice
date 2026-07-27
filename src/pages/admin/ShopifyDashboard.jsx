@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isAdminUser } from '@/lib/admin-access';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { ArrowLeft, RefreshCw, Package, ShoppingCart, BarChart3, Settings, Bell, CheckCircle, AlertTriangle, XCircle, Zap } from 'lucide-react';
 import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import { usePageVisibility } from '@/lib/usePageVisibility';
 
 const NAV_TABS = [
   { key: 'orders', label: 'Orders', icon: ShoppingCart },
@@ -15,16 +17,18 @@ const NAV_TABS = [
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
-const SHOPIFY_WORKFLOW_ADVANCE_FROZEN = true;
-
 function useShopifyOpsSummary({ refetchInterval = 30000 } = {}) {
+  const isPageVisible = usePageVisibility();
   return useQuery({
     queryKey: ['admin-shopify-ops-summary'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminShopifyOpsSummary', {});
       return res.data || {};
     },
-    refetchInterval,
+    enabled: isPageVisible,
+    refetchInterval: isPageVisible ? refetchInterval : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -33,7 +37,7 @@ export default function ShopifyDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('orders');
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Access denied.</p></div>;
   }
 
@@ -41,8 +45,8 @@ export default function ShopifyDashboard() {
     <div className="min-h-screen bg-background">
       <AdminOpsHeader
         title="Shopify Integration"
-        subtitle="Operations Hub"
-        badge="Hub-backed"
+        subtitle="Source operations"
+        badge="Source-backed"
         onBack={() => navigate('/admin/operations')}
         actions={<Zap className="h-4 w-4 text-muted-foreground" />}
       />
@@ -132,7 +136,6 @@ const CHECKLIST_LABELS = {
 };
 
 function ShopifyOrdersTab() {
-  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('active');
   const [filterChannel, setFilterChannel] = useState('all');
@@ -140,36 +143,6 @@ function ShopifyOrdersTab() {
 
   const { data: shopifyOps = {}, isLoading } = useShopifyOpsSummary({ refetchInterval: 30000 });
   const orders = shopifyOps.orders || [];
-
-  const advanceMutation = useMutation({
-    mutationFn: async () => ({
-      skipped: SHOPIFY_WORKFLOW_ADVANCE_FROZEN,
-      reason: 'may30_shopify_workflow_frozen',
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] });
-    },
-  });
-
-  const checklistMutation = useMutation({
-    mutationFn: async () => ({
-      skipped: true,
-      reason: 'may30_shopify_dashboard_direct_writes_locked',
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] });
-    },
-  });
-
-  const notesMutation = useMutation({
-    mutationFn: async () => ({
-      skipped: true,
-      reason: 'may30_shopify_dashboard_direct_writes_locked',
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] });
-    },
-  });
 
   const ACTIVE_STATUSES = ['new', 'awaiting_production', 'in_production', 'bottled', 'labeled', 'qc_checked', 'packed', 'in_cold_storage', 'assigned_for_pickup', 'assigned_for_delivery'];
 
@@ -187,13 +160,7 @@ function ShopifyOrdersTab() {
   if (selectedOrder) {
     const order = orders.find(o => o.id === selectedOrder);
     if (order) {
-      return <OrderDetail
-        order={order}
-        onBack={() => setSelectedOrder(null)}
-        onAdvance={(id, status) => advanceMutation.mutate({ id, status })}
-        onChecklist={(id, checklist) => checklistMutation.mutate({ id, checklist })}
-        onSaveNotes={(id, notes) => notesMutation.mutate({ id, notes })}
-      />;
+      return <OrderDetail order={order} onBack={() => setSelectedOrder(null)} />;
     }
   }
 
@@ -265,18 +232,11 @@ function ShopifyOrdersTab() {
   );
 }
 
-function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
-  const [notes, setNotes] = useState(order.internal_notes || '');
-  const [notesEdited, setNotesEdited] = useState(false);
-  const [showFulfillConfirm, setShowFulfillConfirm] = useState(false);
+function OrderDetail({ order, onBack }) {
   const currentIdx = WORKFLOW_STEPS.findIndex(s => s.key === order.production_status);
   const nextStep = WORKFLOW_STEPS[currentIdx + 1];
   const checklist = order.workflow_checklist || {};
-
-  const toggleCheck = (key) => {
-    const updated = { ...checklist, [key]: !checklist[key] };
-    onChecklist(order.id, updated);
-  };
+  const orderLookup = order.shopify_order_number || order.name || order.id || '';
 
   return (
     <div>
@@ -348,83 +308,76 @@ function OrderDetail({ order, onBack, onAdvance, onChecklist, onSaveNotes }) {
       {/* Production Checklist */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Production Checklist</p>
-        <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800 mb-3">
-          Legacy Shopify checklist writes are locked for launch. Use Production Queue and Delivery Queue actions for controlled operational updates.
+        <div className="rounded-xl border border-border/60 bg-background px-3 py-2 text-xs text-muted-foreground mb-3">
+          Source checklist snapshot. Use the Customer App production and delivery queues for live operational updates.
         </div>
         <div className="grid grid-cols-2 gap-2">
           {Object.entries(CHECKLIST_LABELS).map(([key, label]) => (
-            <button
+            <div
               key={key}
-              onClick={() => toggleCheck(key)}
               className={`flex items-center gap-2 p-2.5 rounded-xl border text-left text-xs font-medium transition-colors ${
                 checklist[key] ? 'bg-green-50 border-green-300 text-green-800' : 'bg-muted/40 border-border text-muted-foreground'
               }`}
             >
               {checklist[key] ? <CheckCircle className="w-4 h-4 text-green-600 shrink-0" /> : <div className="w-4 h-4 rounded-full border-2 border-border shrink-0" />}
               {label}
-            </button>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Workflow Advance */}
+      {/* Workflow Handoff */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Production Status</p>
-        <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800 mb-3">
-          Legacy Shopify production-status buttons are paused for the May 30 launch freeze. Use Delivery Queue, Production Queue, and Hub-backed operations pages for controlled fulfillment and production actions.
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Workflow Handoff</p>
+        <div className="rounded-xl border border-border/60 bg-background px-3 py-2 text-xs text-muted-foreground mb-3">
+          Shopify is bridge visibility here. Continue live order, production, fulfillment, and delivery actions from the Customer App admin queues.
         </div>
         <div className="flex gap-1 mb-3">
           {WORKFLOW_STEPS.map((step, i) => (
             <div key={step.key} className={`h-1.5 flex-1 rounded-full ${i <= currentIdx ? 'bg-primary' : 'bg-border'}`} />
           ))}
         </div>
-        {nextStep && nextStep.key !== 'fulfilled' && (
-          <button
-            onClick={() => onAdvance(order.id, nextStep.key)}
-            disabled={SHOPIFY_WORKFLOW_ADVANCE_FROZEN}
-            className="w-full py-3 bg-nuvira-gradient text-white rounded-xl text-sm font-semibold active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100"
+        <p className="mb-3 text-xs text-muted-foreground">
+          Current source status: <span className="font-semibold text-foreground">{order.production_status?.replace(/_/g, ' ') || 'Not set'}</span>
+          {nextStep ? <> · Next expected source stage: <span className="font-semibold text-foreground">{nextStep.label}</span></> : null}
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Link
+            to={`/admin/orders?order=${encodeURIComponent(orderLookup)}`}
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-bold text-foreground hover:border-primary/60"
           >
-            → Mark as "{nextStep.label}"
-          </button>
-        )}
-        {nextStep?.key === 'fulfilled' && (
-          <>
-            {!showFulfillConfirm ? (
-              <button onClick={() => setShowFulfillConfirm(true)}
-                disabled={SHOPIFY_WORKFLOW_ADVANCE_FROZEN}
-                className="w-full py-3 bg-green-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50">
-                ✓ Mark as Fulfilled
-              </button>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-cyan-600 font-semibold text-center">This will mark the order complete. Continue?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setShowFulfillConfirm(false)} className="py-2 bg-secondary rounded-lg text-sm font-semibold">Cancel</button>
-                  <button onClick={() => { onAdvance(order.id, 'fulfilled'); setShowFulfillConfirm(false); }}
-                    className="py-2 bg-green-600 text-white rounded-lg text-sm font-semibold">Confirm</button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+            Order Details
+          </Link>
+          <Link
+            to="/admin/production-queue"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-bold text-foreground hover:border-primary/60"
+          >
+            Production Queue
+          </Link>
+          <Link
+            to={String(order.fulfillment_method || '').toLowerCase().includes('pickup') ? '/admin/pos-orders' : '/admin/delivery-queue'}
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-bold text-foreground hover:border-primary/60"
+          >
+            {String(order.fulfillment_method || '').toLowerCase().includes('pickup') ? 'POS / Pickup' : 'Delivery Queue'}
+          </Link>
+        </div>
         {!nextStep && <div className="text-center text-sm font-semibold text-green-700 bg-green-50 rounded-xl py-3 border border-green-200">✓ Order Complete</div>}
       </div>
 
       {/* Internal Notes */}
       <div className="bg-card rounded-2xl border border-border/50 p-4 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Internal Notes</p>
-        <textarea
-          value={notes}
-          onChange={e => { setNotes(e.target.value); setNotesEdited(true); }}
-          placeholder="Add prep notes, packing instructions, driver info..."
-          className="w-full text-sm bg-secondary/30 rounded-xl border border-border p-3 min-h-[80px] focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-        />
-        {notesEdited && (
-          <button onClick={() => { onSaveNotes(order.id, notes); setNotesEdited(false); }}
-            className="mt-2 w-full py-2 bg-nuvira-gradient text-white rounded-lg text-xs font-semibold">
-            Save Notes (Locked)
-          </button>
+        {order.internal_notes ? (
+          <p className="rounded-xl border border-border/60 bg-background p-3 text-xs text-foreground">{order.internal_notes}</p>
+        ) : (
+          <p className="rounded-xl border border-border/60 bg-background p-3 text-xs text-muted-foreground">No source notes recorded.</p>
         )}
+        <Link
+          to={`/admin/orders?order=${encodeURIComponent(orderLookup)}`}
+          className="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground hover:border-primary/60"
+        >
+          Open live order notes
+        </Link>
       </div>
     </div>
   );
@@ -448,7 +401,7 @@ function AlertsTab() {
   const alerts = shopifyOps.alerts || [];
 
   const markRead = (id) => {
-    console.warn('[ShopifyDashboard] Alert dismiss is locked during launch operations:', id);
+    console.warn('[ShopifyDashboard] Alert dismiss is controlled from the source alert workflow:', id);
     queryClient.invalidateQueries({ queryKey: ['admin-shopify-ops-summary'] });
   };
 
@@ -592,7 +545,7 @@ function SettingsTab() {
   const [resyncingProducts, setResyncingProducts] = useState(false);
   const [manualOrderId, setManualOrderId] = useState('');
   const [resyncResult, setResyncResult] = useState(null);
-  const adminResyncFrozen = true;
+  const adminResyncLocked = true;
 
   const { data: shopifyOps = {} } = useShopifyOpsSummary({ refetchInterval: 30000 });
   const syncLogs = shopifyOps.sync_logs || [];
@@ -603,8 +556,8 @@ function SettingsTab() {
     setResyncResult({
       success: false,
       skipped: true,
-      reason: 'may30_shopify_resync_locked',
-      message: 'Broad Shopify resync is locked during launch operations.',
+      reason: 'shopify_broad_resync_locked',
+      message: 'Broad Shopify resync is controlled here. Use exact approved recovery paths only.',
     });
     setResyncing(false);
   };
@@ -614,8 +567,8 @@ function SettingsTab() {
     setResyncResult({
       success: false,
       skipped: true,
-      reason: 'may30_shopify_product_resync_locked',
-      message: 'Shopify product resync is locked during launch operations.',
+      reason: 'shopify_product_resync_locked',
+      message: 'Shopify product resync is controlled here. Use exact approved product update paths only.',
     });
     setResyncingProducts(false);
   };
@@ -626,7 +579,7 @@ function SettingsTab() {
     setResyncResult({
       success: false,
       skipped: true,
-      reason: 'may30_exact_shopify_import_locked',
+      reason: 'shopify_exact_import_locked',
       message: 'Exact Shopify import is locked here. Use the approved POS/order bridge path or a separately approved recovery command.',
       requested_identifier: manualOrderId.trim(),
     });
@@ -639,14 +592,14 @@ function SettingsTab() {
       <div className="bg-card rounded-2xl border border-border/50 p-4 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sync Actions</p>
         <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
-          Broad Shopify resync is frozen for May 30 launch. Exact order import is a gated fallback: it requires a server flag and an exact allowlisted Shopify order id, name, or number.
+          Broad Shopify resync remains disabled. Exact order import is a gated fallback: it requires a server flag and an exact allowlisted Shopify order id, name, or number.
         </div>
-        <button onClick={handleResyncOrders} disabled={adminResyncFrozen || resyncing}
+        <button onClick={handleResyncOrders} disabled={adminResyncLocked || resyncing}
           className="w-full flex items-center justify-center gap-2 py-2.5 bg-nuvira-gradient text-white rounded-xl text-sm font-semibold disabled:opacity-50">
           <RefreshCw className={`w-4 h-4 ${resyncing ? 'animate-spin' : ''}`} />
           {resyncing ? 'Syncing...' : 'Sync Recent Orders (50)'}
         </button>
-        <button onClick={handleResyncProducts} disabled={adminResyncFrozen || resyncingProducts}
+        <button onClick={handleResyncProducts} disabled={adminResyncLocked || resyncingProducts}
           className="w-full flex items-center justify-center gap-2 py-2.5 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold disabled:opacity-50">
           <RefreshCw className={`w-4 h-4 ${resyncingProducts ? 'animate-spin' : ''}`} />
           {resyncingProducts ? 'Syncing...' : 'Sync All Products'}
@@ -656,13 +609,13 @@ function SettingsTab() {
             placeholder="Exact order id, #name, or number"
             className="flex-1 h-9 px-3 rounded-lg border border-border bg-secondary/30 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          <button onClick={handleManualOrderSync} disabled={adminResyncFrozen || resyncing || !manualOrderId.trim()}
+          <button onClick={handleManualOrderSync} disabled={adminResyncLocked || resyncing || !manualOrderId.trim()}
             className="px-3 h-9 bg-nuvira-gradient text-white rounded-lg text-sm font-semibold disabled:opacity-50">
             Import Locked
           </button>
         </div>
         <p className="text-[10px] text-muted-foreground">
-          This does not enable bulk polling. Launch fallback imports are locked here and require a separately approved recovery command.
+          This does not enable bulk polling. Exact fallback imports are locked here and require a separately approved recovery command.
         </p>
         {resyncResult && (
           <div className={`rounded-xl p-3 text-xs ${resyncResult.success === false ? 'bg-cyan-50 border border-cyan-200' : 'bg-green-50 border border-green-200'}`}>

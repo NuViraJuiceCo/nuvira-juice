@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, ClipboardList, SprayCan, Thermometer } from 'lucide-react';
+import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
 export default function DailyChecklistForm({ nativeCompliance }) {
   const today = new Date().toISOString().split('T')[0];
@@ -59,9 +60,12 @@ export default function DailyChecklistForm({ nativeCompliance }) {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleStaffChange = (value) => {
+    handleChange('staff_member', value);
+    checkExistingChecklist(value);
+  };
+
   const calculateStatus = (data) => {
-    // Only pre-production items are required to mark checklist as Complete
-    // batch_logs_completed and ccp_logs_completed are post-production and optional at submit time
     const preProductionComplete =
       data.morning_fridge_temp_logged &&
       data.sanitizer_levels_checked &&
@@ -69,8 +73,8 @@ export default function DailyChecklistForm({ nativeCompliance }) {
       data.work_areas_cleaned;
 
     if (!preProductionComplete) return 'Incomplete';
-    const postProductionComplete = data.batch_logs_completed && data.ccp_logs_completed;
-    return postProductionComplete ? 'Complete' : 'Pre-Production Complete';
+    const endOfDayComplete = data.evening_fridge_temp_logged && data.batch_logs_completed;
+    return endOfDayComplete ? 'Complete' : 'Pre-Production Complete';
   };
 
   const handleSubmit = async (e) => {
@@ -110,29 +114,32 @@ export default function DailyChecklistForm({ nativeCompliance }) {
   ];
   const preProductionComplete = preProductionItems.every(Boolean);
 
-  const completedCount = [
+  const requiredCompletionItems = [
     formData.morning_fridge_temp_logged,
     formData.evening_fridge_temp_logged,
     formData.sanitizer_levels_checked,
     formData.equipment_sanitized,
     formData.work_areas_cleaned,
     formData.batch_logs_completed,
-    formData.ccp_logs_completed,
-  ].filter(Boolean).length;
+  ];
 
-  const totalItems = 7;
+  const completedCount = requiredCompletionItems.filter(Boolean).length;
+  const totalItems = requiredCompletionItems.length;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>📋 Daily Checklist — {formData.shift} Shift</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <ClipboardList className="h-5 w-5 text-primary" />
+          Daily Checklist - {formData.shift} Shift
+        </CardTitle>
         <p className="text-sm text-muted-foreground mt-2">
-          Progress: {completedCount}/{totalItems} items completed
+          Required progress: {completedCount}/{totalItems} items completed
         </p>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Date</label>
               <input
@@ -156,8 +163,17 @@ export default function DailyChecklistForm({ nativeCompliance }) {
             </div>
           </div>
 
+          <StaffMemberPicker
+            label="Staff member"
+            value={formData.staff_member}
+            onChange={handleStaffChange}
+          />
+
           <div className="space-y-4">
-            <h3 className="font-semibold">🌡️ Temperature Checks</h3>
+            <h3 className="flex items-center gap-2 font-semibold">
+              <Thermometer className="h-4 w-4 text-primary" />
+              Temperature Checks
+            </h3>
             <div className="flex items-center gap-3">
               <Checkbox
                 checked={formData.morning_fridge_temp_logged}
@@ -191,7 +207,10 @@ export default function DailyChecklistForm({ nativeCompliance }) {
           </div>
 
           <div className="space-y-4">
-            <h3 className="font-semibold">🧼 Sanitation</h3>
+            <h3 className="flex items-center gap-2 font-semibold">
+              <SprayCan className="h-4 w-4 text-primary" />
+              Sanitation
+            </h3>
             <div className="flex items-center gap-3">
               <Checkbox
                 checked={formData.sanitizer_levels_checked}
@@ -237,7 +256,10 @@ export default function DailyChecklistForm({ nativeCompliance }) {
           </div>
 
           <div className="space-y-4">
-            <h3 className="font-semibold">📊 Logs Completed</h3>
+            <h3 className="flex items-center gap-2 font-semibold">
+              <ClipboardList className="h-4 w-4 text-primary" />
+              Logs Completed
+            </h3>
             <div className="flex items-start gap-3">
               <Checkbox
                 checked={formData.batch_logs_completed}
@@ -262,12 +284,12 @@ export default function DailyChecklistForm({ nativeCompliance }) {
                 id="ccp_logs"
               />
               <div className="flex-1">
-                <label htmlFor="ccp_logs" className="text-sm cursor-pointer block">CCP logs completed</label>
+                <label htmlFor="ccp_logs" className="text-sm cursor-pointer block">CCP / corrective-action log completed <span className="text-muted-foreground text-xs">(only if needed)</span></label>
                 <input
                   type="text"
                   value={formData.ccp_notes}
                   onChange={(e) => handleChange('ccp_notes', e.target.value)}
-                  placeholder="CCP details or notes..."
+                  placeholder="Exception, failed pH, or corrective-action notes..."
                   className="w-full border rounded p-2 mt-1 text-sm bg-background text-foreground"
                 />
               </div>
@@ -286,9 +308,9 @@ export default function DailyChecklistForm({ nativeCompliance }) {
           </div>
 
           {!preProductionComplete && (
-            <div className="flex gap-2 p-3 bg-cyan-50 border border-cyan-200 rounded-md">
-              <AlertCircle className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-cyan-800">
+            <div className="flex gap-2 rounded-md border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-900/60 dark:bg-cyan-950/30">
+              <AlertCircle className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5 dark:text-cyan-300" />
+              <div className="text-sm text-cyan-800 dark:text-cyan-100">
                 <p className="font-semibold">Required Pre-Production Items Incomplete</p>
                 <p>Complete the temperature check, sanitizer check, equipment sanitation, and work area cleaning before submitting.</p>
               </div>
@@ -296,11 +318,11 @@ export default function DailyChecklistForm({ nativeCompliance }) {
           )}
 
           {preProductionComplete && completedCount < totalItems && (
-            <div className="flex gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-800">
+            <div className="flex gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900/60 dark:bg-blue-950/30">
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5 dark:text-blue-300" />
+              <div className="text-sm text-blue-800 dark:text-blue-100">
                 <p className="font-semibold">Pre-Production Ready</p>
-                <p>You can submit now. Batch logs and CCP logs can be updated after production completes. ({completedCount}/{totalItems} done)</p>
+                <p>You can submit now. PM fridge temp and batch logs can be completed after production. CCP/correction logs are only needed when an exception occurs. ({completedCount}/{totalItems} required items done)</p>
               </div>
             </div>
           )}
@@ -310,7 +332,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
             disabled={isSubmitting || !preProductionComplete}
             className="w-full"
           >
-            {isSubmitting ? 'Saving...' : `Submit Checklist (${completedCount}/${totalItems})`}
+            {isSubmitting ? 'Saving...' : `Submit Checklist (${completedCount}/${totalItems} required)`}
           </Button>
         </form>
       </CardContent>

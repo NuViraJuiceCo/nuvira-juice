@@ -13,6 +13,7 @@ import { CartProvider } from '@/lib/cartContext';
 import AppLayout from '@/components/layout/AppLayout';
 import SplashScreen from '@/components/SplashScreen';
 import ProductDetail from '@/pages/ProductDetail';
+import LocalSeoLanding from '@/pages/LocalSeoLanding';
 import ShopifyCartPermalink from '@/pages/ShopifyCartPermalink';
 import Checkout from '@/pages/Checkout';
 import OrderConfirmation from '@/pages/OrderConfirmation';
@@ -44,6 +45,7 @@ import ProductionPlanning from '@/pages/admin/ProductionPlanning';
 import Calendar from '@/pages/admin/Calendar';
 import SyncHealth from '@/pages/admin/SyncHealth';
 import DeliveryQueue from '@/pages/admin/DeliveryQueue';
+import RouteOps from '@/pages/admin/RouteOps';
 import InventoryStatus from '@/pages/admin/InventoryStatus';
 import OpsAlerts from '@/pages/admin/OpsAlerts';
 import Operations from '@/pages/admin/Operations';
@@ -56,9 +58,16 @@ import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
 import SyncStatus from '@/pages/admin/SyncStatus';
 import LiveCheckoutMonitor from '@/pages/admin/LiveCheckoutMonitor';
 import NotificationCampaigns from '@/pages/admin/NotificationCampaigns';
+import AdminEvents from '@/pages/admin/AdminEvents';
+import PurchaseOrders from '@/pages/admin/PurchaseOrders';
+import Suppliers from '@/pages/admin/Suppliers';
+import Reporting from '@/pages/admin/Reporting';
+import ReviewQueue from '@/pages/admin/ReviewQueue';
+import AuditTrail from '@/pages/admin/AuditTrail';
 import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
 import LowercaseRedirect from '@/components/LowercaseRedirect';
+import SeoHeadSanitizer from '@/components/SeoHeadSanitizer';
 import Home from '@/pages/Home';
 import Zone3ReviewSubmitted from '@/pages/Zone3ReviewSubmitted';
 import Shop from '@/pages/Shop';
@@ -91,6 +100,10 @@ const ProtectedRoute = ({ element, user }) => {
   }
   return element;
 };
+
+const AdminRedirect = ({ to, user }) => (
+  <ProtectedRoute element={<Navigate to={to} replace />} user={user} />
+);
 
 function hasSplashBeenShown() {
   if (typeof window === 'undefined') return false;
@@ -229,12 +242,14 @@ const AuthenticatedApp = () => {
     <CartProvider>
       <ScrollToTop />
       <LowercaseRedirect />
+      <SeoHeadSanitizer />
       {showSplash && <SplashScreen onDone={handleSplashDone} />}
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/shop" element={<Shop />} />
           <Route path="/shop/:id" element={<ProductDetail />} />
+          <Route path="/product/:slug" element={<ProductDetail />} />
           <Route path="/products/:handle" element={<ProductDetail />} />
           <Route path="/program/:key" element={<ProgramDetail />} />
           <Route path="/cart" element={<Cart />} />
@@ -259,19 +274,77 @@ const AuthenticatedApp = () => {
           <Route path="/contact" element={<Contact />} />
           <Route path="/partner" element={<Partner />} />
           <Route path="/book-event" element={<BookEvent />} />
+          <Route path="/cold-pressed-juice-delivery" element={<LocalSeoLanding pageKey="cold-pressed-juice-delivery" />} />
+          <Route path="/fresh-juice-delivery-st-louis" element={<LocalSeoLanding pageKey="fresh-juice-delivery-st-louis" />} />
+          <Route path="/cold-pressed-juice-wentzville" element={<LocalSeoLanding pageKey="cold-pressed-juice-wentzville" />} />
+          <Route path="/juice-cleanse-wentzville" element={<LocalSeoLanding pageKey="juice-cleanse-wentzville" />} />
+          <Route path="/all-natural-juice-wentzville" element={<LocalSeoLanding pageKey="all-natural-juice-wentzville" />} />
+          <Route path="/juice-catering-st-louis" element={<LocalSeoLanding pageKey="juice-catering-st-louis" />} />
+          <Route path="/cold-pressed-juice-ofallon-mo" element={<LocalSeoLanding pageKey="cold-pressed-juice-ofallon-mo" />} />
+          <Route path="/juice-delivery-st-charles-mo" element={<LocalSeoLanding pageKey="juice-delivery-st-charles-mo" />} />
+          <Route path="/juice-delivery-lake-saint-louis" element={<LocalSeoLanding pageKey="juice-delivery-lake-saint-louis" />} />
+          <Route path="/wellness-shots-wentzville" element={<LocalSeoLanding pageKey="wellness-shots-wentzville" />} />
+          <Route path="/corporate-juice-catering-st-louis" element={<LocalSeoLanding pageKey="corporate-juice-catering-st-louis" />} />
+          <Route path="/fresh-juice-for-events-st-louis" element={<LocalSeoLanding pageKey="fresh-juice-for-events-st-louis" />} />
+          <Route path="/operations" element={<AdminRedirect to="/admin/operations" user={user} />} />
+          <Route path="/dashboard" element={<AdminRedirect to="/admin/operations" user={user} />} />
+          <Route path="/orders" element={<AdminRedirect to="/admin/orders" user={user} />} />
+          <Route path="/production" element={<AdminRedirect to="/admin/production-queue" user={user} />} />
+          <Route path="/production-planning" element={<AdminRedirect to="/admin/production-planning" user={user} />} />
+          <Route path="/prod-scheduler" element={<AdminRedirect to="/admin/production-planning" user={user} />} />
+          <Route path="/fulfillment" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/driver" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/driver/*" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/driver-portal" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/driver-portal/*" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/compliance" element={<AdminRedirect to="/admin/compliance-ops" user={user} />} />
+          <Route path="/compliance-center" element={<AdminRedirect to="/admin/compliance-ops" user={user} />} />
+          <Route path="/compliance-logs" element={<AdminRedirect to="/admin/compliance-ops" user={user} />} />
+          <Route path="/inventory" element={<AdminRedirect to="/admin/inventory-status" user={user} />} />
+          <Route path="/calendar" element={<AdminRedirect to="/admin/calendar" user={user} />} />
+          <Route path="/events-admin" element={<AdminRedirect to="/admin/events" user={user} />} />
+          <Route path="/purchase-orders" element={<AdminRedirect to="/admin/purchase-orders" user={user} />} />
+          <Route path="/suppliers" element={<AdminRedirect to="/admin/suppliers" user={user} />} />
+          <Route path="/reporting" element={<AdminRedirect to="/admin/reporting" user={user} />} />
+          <Route path="/audit-logs" element={<AdminRedirect to="/admin/audit-trail" user={user} />} />
+          <Route path="/order-review-queue" element={<AdminRedirect to="/admin/review-queue" user={user} />} />
+          <Route path="/route-optimizer" element={<AdminRedirect to="/admin/route-ops" user={user} />} />
+          <Route path="/resources" element={<AdminRedirect to="/admin/resources" user={user} />} />
+          <Route path="/loyalty-admin" element={<AdminRedirect to="/admin/loyalty-members" user={user} />} />
+          <Route path="/live-monitor" element={<AdminRedirect to="/admin/live-monitor" user={user} />} />
+          <Route path="/alerts" element={<AdminRedirect to="/admin/ops-alerts" user={user} />} />
+          <Route path="/sync-health" element={<AdminRedirect to="/admin/sync-health" user={user} />} />
           <Route path="/admin/operations" element={<ProtectedRoute element={<Operations />} user={user} />} />
+          <Route path="/admin/dashboard" element={<AdminRedirect to="/admin/operations" user={user} />} />
           <Route path="/admin/orders" element={<ProtectedRoute element={<AdminOrders />} user={user} />} />
+          <Route path="/admin/production" element={<AdminRedirect to="/admin/production-queue" user={user} />} />
           <Route path="/admin/production-queue" element={<ProtectedRoute element={<ProductionQueueSummary />} user={user} />} />
+          <Route path="/admin/prod-scheduler" element={<AdminRedirect to="/admin/production-planning" user={user} />} />
           <Route path="/admin/production-planning" element={<ProtectedRoute element={<ProductionPlanning />} user={user} />} />
           <Route path="/admin/calendar" element={<ProtectedRoute element={<Calendar />} user={user} />} />
           <Route path="/admin/sync-health" element={<ProtectedRoute element={<SyncHealth />} user={user} />} />
+          <Route path="/admin/driver" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/admin/driver/*" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/admin/driver-portal" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/admin/driver-portal/*" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/admin/fulfillment" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/admin/delivery" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
+          <Route path="/admin/delivery/*" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
           <Route path="/admin/delivery-queue" element={<ProtectedRoute element={<DeliveryQueue />} user={user} />} />
+          <Route path="/admin/route-ops" element={<ProtectedRoute element={<RouteOps />} user={user} />} />
+          <Route path="/admin/route-optimizer" element={<AdminRedirect to="/admin/route-ops" user={user} />} />
+          <Route path="/admin/delivery-route-reviews" element={<AdminRedirect to="/admin/route-ops" user={user} />} />
+          <Route path="/admin/inventory" element={<AdminRedirect to="/admin/inventory-status" user={user} />} />
           <Route path="/admin/inventory-status" element={<ProtectedRoute element={<InventoryStatus />} user={user} />} />
+          <Route path="/admin/purchase-orders" element={<ProtectedRoute element={<PurchaseOrders />} user={user} />} />
+          <Route path="/admin/suppliers" element={<ProtectedRoute element={<Suppliers />} user={user} />} />
           <Route path="/admin/ops-alerts" element={<ProtectedRoute element={<OpsAlerts />} user={user} />} />
           <Route path="/admin/pos-orders" element={<ProtectedRoute element={<POSOrders />} user={user} />} />
           <Route path="/admin/resources" element={<ProtectedRoute element={<Resources />} user={user} />} />
           <Route path="/admin/compliance-ops" element={<ProtectedRoute element={<ComplianceOps />} user={user} />} />
           <Route path="/admin/compliance" element={<Navigate to="/admin/compliance-ops" replace />} />
+          <Route path="/admin/compliance-center" element={<AdminRedirect to="/admin/compliance-ops" user={user} />} />
+          <Route path="/admin/compliance-logs" element={<AdminRedirect to="/admin/compliance-ops" user={user} />} />
           <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
           <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
           <Route path="/admin/bag-returns" element={<ProtectedRoute element={<BagReturnAdmin />} user={user} />} />
@@ -279,6 +352,13 @@ const AuthenticatedApp = () => {
           <Route path="/admin/sync-status" element={<ProtectedRoute element={<SyncStatus />} user={user} />} />
           <Route path="/admin/live-monitor" element={<ProtectedRoute element={<LiveCheckoutMonitor />} user={user} />} />
           <Route path="/admin/notifications" element={<ProtectedRoute element={<NotificationCampaigns />} user={user} />} />
+          <Route path="/admin/events" element={<ProtectedRoute element={<AdminEvents />} user={user} />} />
+          <Route path="/admin/reporting" element={<ProtectedRoute element={<Reporting />} user={user} />} />
+          <Route path="/admin/review-queue" element={<ProtectedRoute element={<ReviewQueue />} user={user} />} />
+          <Route path="/admin/order-review-queue" element={<AdminRedirect to="/admin/review-queue" user={user} />} />
+          <Route path="/admin/refund-reconciliation" element={<AdminRedirect to="/admin/review-queue" user={user} />} />
+          <Route path="/admin/audit-trail" element={<ProtectedRoute element={<AuditTrail />} user={user} />} />
+          <Route path="/admin/audit-logs" element={<AdminRedirect to="/admin/audit-trail" user={user} />} />
           <Route path="/return-reward" element={<ProtectedRoute element={<ReturnReward />} user={user} />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
@@ -294,9 +374,6 @@ const AuthenticatedApp = () => {
         <Route path="/event/*" element={<Navigate to="/events" replace />} />
         <Route path="/inavii_ig_media" element={<Navigate to="/" replace />} />
         <Route path="/inavii_ig_media/*" element={<Navigate to="/" replace />} />
-        {/* Redirect old driver portal routes to home */}
-        <Route path="/driver" element={<Navigate to="/" replace />} />
-        <Route path="/driver/*" element={<Navigate to="/" replace />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </CartProvider>

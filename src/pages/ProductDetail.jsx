@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import SEO from '@/components/SEO';
 
 import { base44 } from '@/api/base44Client';
@@ -8,55 +8,42 @@ import { ArrowLeft, Minus, Plus, ShoppingBag, Leaf } from 'lucide-react';
 import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
+import { absoluteUrl, normalizeProductIdentifier, productLookupKeys, productPath } from '@/lib/seo-slugs';
+import { findPublicProductFallback } from '@/lib/public-products';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
-
-function normalizeProductLookup(value) {
-  return String(value || '')
-    .trim()
-    .replace(/^\/+|\/+$/g, '')
-    .toLowerCase();
-}
-
-function slugifyProductTitle(value) {
-  return normalizeProductLookup(value)
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function productLookupKeys(product) {
-  return [
-    product?.id,
-    product?.shopify_handle,
-    product?.handle,
-    product?.shopify_product_id,
-    product?.shopify_variant_id,
-    slugifyProductTitle(product?.title),
-  ]
-    .filter(Boolean)
-    .map(normalizeProductLookup);
-}
+import { BRAND_OG_IMAGE, brandImageUrl } from '@/lib/brandImages';
 
 export default function ProductDetail() {
-  const { id, handle } = useParams();
-  const routeIdentifier = decodeURIComponent(handle || id || window.location.pathname.split('/').pop() || '');
-  const normalizedRouteIdentifier = normalizeProductLookup(routeIdentifier);
+  const { id, slug, handle } = useParams();
+  const identifier = normalizeProductIdentifier(slug || handle || id || '');
   const navigate = useNavigate();
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
 
   const { data: product, isLoading } = useQuery({
-    queryKey: ['product', normalizedRouteIdentifier],
+    queryKey: ['product-detail', identifier],
     queryFn: async () => {
-      const directMatches = await base44.entities.Product.filter({ id: routeIdentifier });
-      if (directMatches[0]) return directMatches[0];
+      const fallbackProduct = findPublicProductFallback(identifier);
 
-      const products = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 200);
-      return products.find((candidate) => productLookupKeys(candidate).includes(normalizedRouteIdentifier));
+      try {
+        const availableProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 200);
+        const productByLookupKey = availableProducts.find(p => productLookupKeys(p).includes(identifier));
+        if (productByLookupKey) return productByLookupKey;
+
+        if (/^[a-f0-9]{24}$/.test(identifier)) {
+          const productsById = await base44.entities.Product.filter({ id: identifier });
+          if (productsById?.[0]) return productsById[0];
+        }
+
+        return fallbackProduct;
+      } catch (error) {
+        console.warn('[ProductDetail] Falling back to public product metadata for SEO route', identifier, error);
+        return fallbackProduct;
+      }
     },
-    enabled: !!normalizedRouteIdentifier,
+    enabled: !!identifier,
   });
 
   const { data: relatedProducts = [] } = useQuery({
@@ -66,6 +53,12 @@ export default function ProductDetail() {
   });
 
   const related = relatedProducts.filter(p => p.id !== product?.id).slice(0, 4);
+
+  useEffect(() => {
+    if ((id || handle) && product) {
+      navigate(productPath(product), { replace: true });
+    }
+  }, [handle, id, product, navigate]);
 
   const handleAddToCart = () => {
     if (!product) return;
@@ -98,22 +91,30 @@ export default function ProductDetail() {
   if (!product) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <SEO title="Product Not Found" description="This product could not be found." />
+        <SEO title="Product Not Found" description="This product could not be found." noindex />
         <p className="text-muted-foreground">Product not found</p>
       </div>
     );
   }
+
+  const isMerch = product.category === 'merch' || product.category === 'merchandise' || /tote|bag|merch/i.test(product.title || '');
+  const productDescriptor = isMerch ? 'NuVira merch' : 'Cold-pressed juice';
+  const certificationLabels = isMerch
+    ? ['Reusable', 'Insulated', 'Large Capacity']
+    : ['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'];
+  const detailUrl = absoluteUrl(productPath(product));
+  const productImage = product.image_url ? brandImageUrl(product.image_url) : BRAND_OG_IMAGE;
 
   const productStructuredData = {
     "@context": "https://schema.org",
     "@type": "Product",
     "name": product.title,
     "description": product.description || product.short_description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co.`,
-    "image": product.image_url || "https://media.base44.com/images/public/69d48d0c39891f7945481152/421b89061_generated_image.png",
+    "image": productImage,
     "brand": { "@type": "Brand", "name": "NuVira Juice Co." },
     "offers": {
       "@type": "Offer",
-      "url": `https://www.nuvirajuice.com/shop/${product.id}`,
+      "url": detailUrl,
       "priceCurrency": "USD",
       "price": product.price?.toFixed(2),
       "availability": product.is_available !== false ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
@@ -155,11 +156,12 @@ export default function ProductDetail() {
   return (
     <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 6.5rem)' }}>
       <SEO
-        title={`${product.title} — Cold-Pressed Juice | Wentzville, MO`}
-        description={product.short_description || product.description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`}
-        image={product.image_url}
+        title={`${product.title} | ${productDescriptor} | Wentzville, MO`}
+        description={product.short_description || product.description || `${product.title} from NuVira Juice Co. Available for local delivery and pickup in Wentzville, O'Fallon, and St. Louis, MO.`}
+        image={productImage}
         type="product"
-        keywords={`${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`}
+        keywords={`${product.title}, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`}
+        canonicalUrl={detailUrl}
         structuredData={productStructuredData}
       />
       {/* Desktop back button */}
@@ -219,8 +221,9 @@ export default function ProductDetail() {
 
             {/* Certifications */}
             <div className="mt-4 flex flex-wrap gap-2">
-              {['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'].map(cert => (
-                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">                  ✓ {cert}
+              {certificationLabels.map(cert => (
+                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-primary/8 text-primary border border-primary/20 rounded-full">
+                  ✓ {cert}
                 </span>
               ))}
             </div>
@@ -251,7 +254,7 @@ export default function ProductDetail() {
           </div>
         )}
         {product.ingredients && (
-          <div className="bg-nuvira-gradient-soft border border-nuvira rounded-xl p-3.5">
+          <div className="bg-secondary/40 rounded-xl p-3.5">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Leaf className="w-3.5 h-3.5 text-primary" />
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ingredients</h3>
@@ -261,14 +264,16 @@ export default function ProductDetail() {
         )}
 
         {/* Health Advisory */}
-        <div className="mt-4">
-          <HealthAdvisory variant="expanded" />
-        </div>
+        {!isMerch && (
+          <div className="mt-4">
+            <HealthAdvisory variant="expanded" />
+          </div>
+        )}
       </div>
 
       {/* Sticky Purchase Bar — fixed above bottom nav */}
       <div 
-        className="fixed left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border/50"
+        className="fixed left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border/50 md:left-60"
         style={{
           bottom: 'calc(4rem + env(safe-area-inset-bottom))',
           padding: '10px 16px',
@@ -297,7 +302,8 @@ export default function ProductDetail() {
           {/* Add to Cart Button */}
           <Button
             onClick={handleAddToCart}
-            className="flex-1 h-10 rounded-xl font-semibold text-sm nuvira-gradient-button"          >
+            className="flex-1 h-10 rounded-xl font-semibold text-sm"
+          >
             <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
             {`$${(product.price * quantity).toFixed(2)}`}
           </Button>

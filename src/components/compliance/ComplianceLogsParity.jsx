@@ -4,13 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Download, Filter, AlertCircle, CheckCircle2, Printer, BookOpen, ClipboardList } from 'lucide-react';
+import { Download, Filter, AlertCircle, CheckCircle2, Printer, BookOpen, ClipboardList, FileText, PackageCheck } from 'lucide-react';
 import UnifiedComplianceForm from '@/components/compliance/UnifiedComplianceForm';
 import PrintableLogSheet from '@/components/compliance/PrintableLogSheet';
 import MonthlyBinderExport from '@/components/compliance/MonthlyBinderExport';
 import BatchLogsGrouped from '@/components/compliance/BatchLogsGrouped';
 import ProductionAuditPacket from '@/components/compliance/ProductionAuditPacket';
+import { unwrapBase44Result } from '@/lib/base44-result';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 import moment from 'moment';
 
 export default function ComplianceLogsParity() {
@@ -31,11 +33,11 @@ export default function ComplianceLogsParity() {
         date_from: startDate,
         date_to: endDate,
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error) throw new Error(result.error);
       return result;
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
     staleTime: 60000,
   });
 
@@ -97,13 +99,19 @@ export default function ComplianceLogsParity() {
   };
 
   const LOG_TYPE_LABELS = {
-    temperature: '🌡️ Temperature',
-    pH: '🧪 pH',
-    CCP: '⚠️ CCP',
-    sanitation: '🧹 Sanitation',
-    corrective_action: '🔧 Corrective Action',
-    daily_checklist: '📋 Daily Checklist',
+    temperature: 'Temperature',
+    pH: 'pH',
+    CCP: 'CCP',
+    sanitation: 'Sanitation',
+    corrective_action: 'Corrective Action',
+    daily_checklist: 'Daily Checklist',
   };
+
+  const tabs = [
+    { key: 'audit', label: 'Audit Packets', Icon: ClipboardList },
+    { key: 'batch', label: 'Batch Logs', Icon: PackageCheck },
+    { key: 'other', label: 'Other Logs', Icon: FileText },
+  ];
 
   return (
     <div className="space-y-6">
@@ -129,22 +137,19 @@ export default function ComplianceLogsParity() {
       <UnifiedComplianceForm />
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b overflow-x-auto scrollbar-none">
-        {[
-          { key: 'audit', label: '🗂️ Audit Packets' },
-          { key: 'batch', label: '📦 Batch Logs' },
-          { key: 'other', label: '📋 Other Logs' },
-        ].map(tab => (
+      <div className="flex flex-wrap gap-1 border-b">
+        {tabs.map(({ key, label, Icon }) => (
           <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab.key
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            {tab.label}
+            <Icon className="h-4 w-4 shrink-0" />
+            {label}
           </button>
         ))}
       </div>

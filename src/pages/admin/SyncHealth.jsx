@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 
 const MAX_RANGE_DAYS = 31;
 const presetOptions = [
@@ -471,7 +472,7 @@ function NativeCutoverReadinessPreview({
               </p>
             </div>
             <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
-              <p className="text-xs font-bold text-foreground">May 30 native ops</p>
+              <p className="text-xs font-bold text-foreground">Native order ops</p>
               <div className="flex flex-wrap gap-2">
                 <StatusChip value={may30Ops.enabled ? 'Enabled' : 'Disabled'} />
                 <StatusChip value={may30Ops.secret_configured ? 'Secret configured' : 'Secret missing'} />
@@ -1989,7 +1990,7 @@ function NativeDeliveryWorkflowReadinessPreview({
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
             <StatCard label="Native Task" value={preview.native_task_present ? 'Present' : 'Missing'} tone={preview.native_task_present ? 'success' : 'warning'} />
             <StatCard label="Delivery Date" value={preview.delivery_date || 'Unknown'} />
-            <StatCard label="Hub Fallback" value={preview.hub_task_present ? 'Present' : 'Not found'} tone={preview.stale_hub_fallback_detected ? 'warning' : 'success'} />
+            <StatCard label="Source Fallback" value={preview.hub_task_present ? 'Present' : 'Not found'} tone={preview.stale_hub_fallback_detected ? 'warning' : 'success'} />
             <StatCard label="Out For Delivery" value={outPreview.out_for_delivery_ready ? 'Ready / Held' : 'Held'} tone={outPreview.out_for_delivery_ready ? 'success' : 'warning'} />
             <StatCard label="Delivered" value={deliveredPreview.delivered_ready ? 'Ready' : 'Held'} tone="warning" />
             <StatCard label="Blockers" value={formatNumber(blockers.length)} tone={blockers.length > 0 ? 'warning' : 'success'} />
@@ -3471,11 +3472,11 @@ export default function SyncHealth() {
       if (result?.error) throw new Error(result.error);
       return result || { summary: {}, directions: {}, error_categories: [], disabled_or_deprecated_tools: [] };
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
     staleTime: 60000,
   });
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -3974,7 +3975,7 @@ export default function SyncHealth() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Sync Health"
         subtitle="Read-only bridge health"
@@ -4086,8 +4087,8 @@ export default function SyncHealth() {
                 className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="all">All Sources</option>
-                <option value="customer_app_to_hub">Customer App to Hub</option>
-                <option value="hub_to_customer_app">Hub to Customer App</option>
+                <option value="customer_app_to_hub">Customer App to Source</option>
+                <option value="hub_to_customer_app">Source to Customer App</option>
               </select>
             </label>
             <label className="space-y-1">
@@ -4119,8 +4120,8 @@ export default function SyncHealth() {
 
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-foreground">Hub Sync Health view</p>
-            <p className="text-[10px] text-muted-foreground">Read-only bridge visibility. If Hub summary is unavailable, native Customer App review and sync context still loads below. Sync, retry, recover, replay, repair, export, and raw-log actions are not available here.</p>
+            <p className="text-xs font-semibold text-foreground">Source Sync Health view</p>
+            <p className="text-[10px] text-muted-foreground">Read-only bridge visibility. If the source summary is unavailable, native Customer App review and sync context still loads below. Sync, retry, recover, replay, repair, export, and raw-log actions are not available here.</p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
@@ -4265,8 +4266,8 @@ export default function SyncHealth() {
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             <span>
               {data.hub_error
-                ? `Hub sync health summary unavailable (${data.hub_error}); native Customer App issue context is still shown.`
-                : 'Hub sync health summary unavailable; native Customer App issue context is still shown.'}
+                ? `Source sync health summary unavailable (${data.hub_error}); native Customer App issue context is still shown.`
+                : 'Source sync health summary unavailable; native Customer App issue context is still shown.'}
             </span>
           </div>
         )}
@@ -4289,12 +4290,12 @@ export default function SyncHealth() {
         ) : !showError ? (
           <div className="space-y-4">
             <DirectionCard
-              title="Customer App to Hub"
+              title="Customer App to Source"
               description="Aggregate outbound bridge activity"
               direction={directions.customer_app_to_hub}
             />
             <DirectionCard
-              title="Hub to Customer App"
+              title="Source to Customer App"
               description="Aggregate inbound status bridge activity"
               direction={directions.hub_to_customer_app}
             />
@@ -4307,7 +4308,7 @@ export default function SyncHealth() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-start gap-2">
           <ShieldCheck className="w-4 h-4 text-primary mt-0.5 shrink-0" />
           <p className="text-[10px] text-muted-foreground leading-relaxed">
-            Browser requests stop at the Customer App wrapper. Hub credentials stay server-side.
+            Browser requests stop at the Customer App wrapper. Source credentials stay server-side.
           </p>
         </div>
       </div>

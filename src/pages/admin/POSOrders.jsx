@@ -5,7 +5,6 @@ import {
   CalendarDays,
   CheckCircle,
   MapPin,
-  Package,
   ReceiptText,
   RefreshCw,
   ShieldCheck,
@@ -13,39 +12,15 @@ import {
   UserRound,
 } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
-import May30ReadinessPanel from '@/components/admin/May30ReadinessPanel';
-import May30EventStockPlanPanel from '@/components/admin/May30EventStockPlanPanel';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 
 const MAX_RANGE_DAYS = 31;
 const presetOptions = [
   { value: 'today', label: 'Today' },
   { value: 'last_7_days', label: 'Last 7 Days' },
   { value: 'last_30_days', label: 'Last 30 Days' },
-];
-
-const posReadinessItems = [
-  {
-    label: 'Event source labeling',
-    status: 'ready',
-    detail: 'Cards label POS/event rows separately from app delivery orders and show Hub plus native mirror counts.',
-  },
-  {
-    label: 'No delivery blocker',
-    status: 'ready',
-    detail: 'POS rows are expected to stay fulfilled and outside delivery queues; delivery/task flags are surfaced as exceptions.',
-  },
-  {
-    label: 'Production impact',
-    status: 'watch',
-    detail: 'Event sales should not auto-create delivery production work. Any production flag is highlighted for immediate admin review.',
-  },
-  {
-    label: 'Fallback',
-    status: 'fallback',
-    detail: 'Official Shopify POS ingestion remains Hub-backed while Customer App visibility is proven.',
-  },
 ];
 
 function todayDate() {
@@ -112,6 +87,13 @@ function formatMoney(value) {
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString();
+}
+
+function displaySourceNoteSummary(value) {
+  if (!value) return value;
+  return value
+    .replace(/POS\/event order mirrored for May 30 operations/gi, 'POS/event order mirrored from legacy POS import')
+    .replace(/\bMay 30 operations\b/gi, 'legacy POS import');
 }
 
 function SummaryCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefreshing }) {
@@ -232,8 +214,8 @@ function OrderCard({ order }) {
 
       {order.internal_note_summary && (
         <div className="rounded-lg border border-border/50 bg-background p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Hub Note Summary</p>
-          <p className="text-xs text-foreground leading-relaxed">{order.internal_note_summary}</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Source Note Summary</p>
+          <p className="text-xs text-foreground leading-relaxed">{displaySourceNoteSummary(order.internal_note_summary)}</p>
         </div>
       )}
     </article>
@@ -248,6 +230,7 @@ export default function POSOrders() {
   const [dateTo, setDateTo] = useState(today);
   const [appliedDateFrom, setAppliedDateFrom] = useState(addDays(today, -6));
   const [appliedDateTo, setAppliedDateTo] = useState(today);
+  const [showProfilePreview, setShowProfilePreview] = useState(false);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const profilePreviewRange = useMemo(
@@ -267,7 +250,7 @@ export default function POSOrders() {
       if (result?.error) throw new Error(result.error);
       return result || { orders: [], summary: {} };
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
     staleTime: 30000,
   });
 
@@ -290,12 +273,15 @@ export default function POSOrders() {
       if (result?.error) throw new Error(result.error);
       return result || { candidates: [], blocked_orders: [] };
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user) && showProfilePreview,
     staleTime: 30000,
   });
 
   const orders = Array.isArray(data?.orders) ? data.orders : [];
   const summary = data?.summary || {};
+  const operationalFlagCount = Number(summary.requires_delivery || 0) +
+    Number(summary.requires_production || 0) +
+    Number(summary.requires_fulfillment_task || 0);
   const profileCandidates = Array.isArray(profilePreview?.candidates) ? profilePreview.candidates : [];
   const profileBlockedOrders = Array.isArray(profilePreview?.blocked_orders) ? profilePreview.blocked_orders : [];
   const profileCandidatePreview = profileCandidates
@@ -313,7 +299,7 @@ export default function POSOrders() {
     return presetOptions.find(option => option.value === preset)?.label || 'Last 7 Days';
   }, [appliedDateFrom, appliedDateTo, data?.date_from, data?.date_to, isCustom, preset]);
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -322,10 +308,10 @@ export default function POSOrders() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="POS / Event Orders"
-        subtitle="Read-only Hub-backed sales view"
+        subtitle="Read-only source-backed sales view"
         badge="Admin-only"
         badgeTone="native"
         actions={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
@@ -338,12 +324,12 @@ export default function POSOrders() {
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-foreground">Event Sales Snapshot</h2>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground border border-border/50">
-                  Hub + Native mirror
+                  Source + Native mirror
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">POS orders should stay paid, fulfilled, and out of production/delivery queues.</p>
               <p className="text-[10px] text-muted-foreground mt-1">
-                Hub rows: {data?.hub_count ?? 0} · Native Customer App rows: {data?.native_count ?? 0}
+                Source rows: {data?.hub_count ?? 0} · Native Customer App rows: {data?.native_count ?? 0}
               </p>
               <AdminStatusLegend className="mt-2" />
             </div>
@@ -432,7 +418,7 @@ export default function POSOrders() {
 
           {data?.truncated && (
             <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
-              Hub returned a bounded order list. Narrow the date range if you need exact row-level review.
+              Source returned a bounded order list. Narrow the date range if you need exact row-level review.
             </div>
           )}
 
@@ -440,153 +426,156 @@ export default function POSOrders() {
             <SummaryCard icon={Store} label="POS Orders" value={summary.total} isRefreshing={isFetching} />
             <SummaryCard icon={CheckCircle} label="Paid" value={summary.paid} tone="success" />
             <SummaryCard label="Fulfilled" value={summary.fulfilled} tone="success" />
-            <SummaryCard icon={Package} label="Prod Not Required" value={summary.production_not_required} />
-            <SummaryCard label="Delivery Flags" value={summary.requires_delivery} tone={summary.requires_delivery ? 'danger' : 'default'} />
-            <SummaryCard label="Production Flags" value={summary.requires_production} tone={summary.requires_production ? 'danger' : 'default'} />
-            <SummaryCard label="Task Flags" value={summary.requires_fulfillment_task} tone={summary.requires_fulfillment_task ? 'danger' : 'default'} />
-            <SummaryCard icon={ReceiptText} label="Shown" value={summary.shown ?? orders.length} />
+            <SummaryCard
+              icon={ReceiptText}
+              label="Ops Flags"
+              value={operationalFlagCount}
+              tone={operationalFlagCount ? 'danger' : 'default'}
+              sublabel={`D ${formatNumber(summary.requires_delivery)} · P ${formatNumber(summary.requires_production)} · T ${formatNumber(summary.requires_fulfillment_task)}`}
+            />
           </div>
         </section>
-
-        <May30ReadinessPanel
-          title="POS / event readiness"
-          description="Use this page during the event to verify POS orders are captured as event sales and not accidentally treated as delivery orders."
-          items={posReadinessItems}
-          actions={[
-            { label: 'Admin Orders', to: '/admin/orders' },
-            { label: 'Production Planning', to: '/admin/production-planning' },
-            { label: 'Review / Sync Health', to: '/admin/sync-health' },
-          ]}
-        />
-
-        <May30EventStockPlanPanel />
 
         <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
                 <UserRound className={`w-4 h-4 text-primary ${isProfilePreviewFetching ? 'animate-pulse' : ''}`} />
-                <h2 className="text-sm font-bold text-foreground">Customer profile readiness</h2>
+                <h2 className="text-sm font-bold text-foreground">Customer profile preview</h2>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Read-only preview of POS buyers who could receive starter profiles before they download the app.
+                Optional read-only review of POS buyers who could receive starter profiles before they download the app.
               </p>
               <p className="text-[10px] text-muted-foreground mt-1">
-                No profiles are created from this page. Customers still complete onboarding themselves.
+                Closed by default so POS order review stays focused. No profiles are created from this page.
               </p>
             </div>
             <div className="text-right">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Preview Range</p>
-              <p className="text-xs font-semibold text-foreground">
-                {formatDate(profilePreviewRange.date_from)} - {formatDate(profilePreviewRange.date_to)}
-              </p>
+              <button
+                type="button"
+                onClick={() => setShowProfilePreview(value => !value)}
+                className="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition-colors hover:bg-secondary"
+              >
+                {showProfilePreview ? 'Hide Preview' : 'Open Preview'}
+              </button>
             </div>
           </div>
 
-          {isProfilePreviewError && (
-            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
-              Profile candidate preview unavailable: {profilePreviewError?.message || 'Unknown error'}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-            <SummaryCard
-              icon={UserRound}
-              label="Starter Candidates"
-              value={profilePreview?.would_create_starter_profile_count || 0}
-              sublabel={starterCandidateSublabel}
-              tone={(profilePreview?.would_create_starter_profile_count || 0) > 0 ? 'success' : 'default'}
-              isRefreshing={isProfilePreviewLoading || isProfilePreviewFetching}
-            />
-            <SummaryCard label="Already Profiles" value={profilePreview?.already_profile_count || 0} />
-            <SummaryCard label="Blocked Candidates" value={profilePreview?.blocked_candidate_count || 0} tone={(profilePreview?.blocked_candidate_count || 0) > 0 ? 'warning' : 'default'} />
-            <SummaryCard label="Blocked Orders" value={profilePreview?.blocked_order_count || 0} tone={(profilePreview?.blocked_order_count || 0) > 0 ? 'warning' : 'default'} />
-          </div>
-
-          {profileCandidatePreview.length > 0 && (
-            <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Profile rows to review</p>
-              {profileCandidatePreview.map(candidate => (
-                <div
-                  key={`${candidate.customer_email}-${candidate.profile_status}`}
-                  className="flex items-start justify-between gap-3 border-t border-border/50 first:border-t-0 pt-2 first:pt-0"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-foreground truncate">
-                      {candidate.customer_name && candidate.starter_profile_mode !== 'email_only'
-                        ? candidate.customer_name
-                        : candidate.customer_email}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground truncate">{candidate.customer_email}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">
-                      Orders: {(candidate.order_numbers || []).join(', ') || 'none'}
-                    </p>
-                    {candidate.name_completion_required && (
-                      <p className="text-[10px] text-cyan-700 truncate">Name will be completed during onboarding.</p>
-                    )}
-                  </div>
-                  <AdminStatusPill
-                    label={candidate.would_create_starter_profile
-                      ? candidate.starter_profile_mode === 'email_only'
-                        ? 'email-only ready'
-                        : 'starter ready'
-                      : 'already profile'}
-                    tone={candidate.would_create_starter_profile ? 'success' : 'neutral'}
-                    size="sm"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {profileBlockedOrders.length > 0 && (
-            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 space-y-3">
+          {showProfilePreview && (
+            <div className="space-y-4 border-t border-border/50 pt-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-cyan-900 font-semibold">Needs email follow-up</p>
-                  <p className="text-xs text-cyan-800 mt-1">
-                    These POS orders cannot receive starter profiles because no usable customer email was captured.
-                  </p>
-                </div>
-                <AdminStatusPill label={`${profileBlockedOrders.length} orders`} tone="warning" size="sm" />
-              </div>
-              <div className="space-y-2">
-                {profileBlockedOrders.slice(0, 12).map((order, index) => (
-                  <div
-                    key={`${order.order_number || 'blocked'}-${index}`}
-                    className="flex items-start justify-between gap-3 border-t border-cyan-200 first:border-t-0 pt-2 first:pt-0"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-cyan-950 truncate">
-                        {order.order_number || 'POS order'}
-                        {order.customer_name ? ` · ${order.customer_name}` : ''}
-                      </p>
-                      <p className="text-[10px] text-cyan-800 truncate">
-                        {[order.customer_order_date ? formatDate(order.customer_order_date) : null, order.customer_email || null, order.source_record ? `source ${order.source_record}` : null]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <AdminStatusPill label={profileBlockerLabel(order.blocker)} tone="warning" size="sm" />
-                      {order.total_price !== null && order.total_price !== undefined && (
-                        <p className="text-[10px] text-cyan-800 mt-1">{formatMoney(order.total_price)}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {profileBlockedOrders.length > 12 && (
-                <p className="text-[10px] text-cyan-800">
-                  Showing 12 of {profileBlockedOrders.length}. Narrow the date range for focused review.
+                <p className="text-xs font-semibold text-muted-foreground">
+                  Preview range: {formatDate(profilePreviewRange.date_from)} - {formatDate(profilePreviewRange.date_to)}
                 </p>
-              )}
-            </div>
-          )}
+                {isProfilePreviewFetching && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}
+              </div>
 
-          {Array.isArray(profilePreview?.warnings) && profilePreview.warnings.length > 0 && (
-            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
-              Warnings: {profilePreview.warnings.join(', ')}
+              {isProfilePreviewError && (
+                <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
+                  Profile candidate preview unavailable: {profilePreviewError?.message || 'Unknown error'}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                <SummaryCard
+                  icon={UserRound}
+                  label="Starter Candidates"
+                  value={profilePreview?.would_create_starter_profile_count || 0}
+                  sublabel={starterCandidateSublabel}
+                  tone={(profilePreview?.would_create_starter_profile_count || 0) > 0 ? 'success' : 'default'}
+                  isRefreshing={isProfilePreviewLoading || isProfilePreviewFetching}
+                />
+                <SummaryCard label="Already Profiles" value={profilePreview?.already_profile_count || 0} />
+                <SummaryCard label="Blocked Candidates" value={profilePreview?.blocked_candidate_count || 0} tone={(profilePreview?.blocked_candidate_count || 0) > 0 ? 'warning' : 'default'} />
+                <SummaryCard label="Blocked Orders" value={profilePreview?.blocked_order_count || 0} tone={(profilePreview?.blocked_order_count || 0) > 0 ? 'warning' : 'default'} />
+              </div>
+
+              {profileCandidatePreview.length > 0 && (
+                <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Profile rows to review</p>
+                  {profileCandidatePreview.map(candidate => (
+                    <div
+                      key={`${candidate.customer_email}-${candidate.profile_status}`}
+                      className="flex items-start justify-between gap-3 border-t border-border/50 first:border-t-0 pt-2 first:pt-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">
+                          {candidate.customer_name && candidate.starter_profile_mode !== 'email_only'
+                            ? candidate.customer_name
+                            : candidate.customer_email}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate">{candidate.customer_email}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          Orders: {(candidate.order_numbers || []).join(', ') || 'none'}
+                        </p>
+                        {candidate.name_completion_required && (
+                          <p className="text-[10px] text-cyan-700 truncate">Name will be completed during onboarding.</p>
+                        )}
+                      </div>
+                      <AdminStatusPill
+                        label={candidate.would_create_starter_profile
+                          ? candidate.starter_profile_mode === 'email_only'
+                            ? 'email-only ready'
+                            : 'starter ready'
+                          : 'already profile'}
+                        tone={candidate.would_create_starter_profile ? 'success' : 'neutral'}
+                        size="sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {profileBlockedOrders.length > 0 && (
+                <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-cyan-900 font-semibold">Needs email follow-up</p>
+                      <p className="text-xs text-cyan-800 mt-1">
+                        These POS orders cannot receive starter profiles because no usable customer email was captured.
+                      </p>
+                    </div>
+                    <AdminStatusPill label={`${profileBlockedOrders.length} orders`} tone="warning" size="sm" />
+                  </div>
+                  <div className="space-y-2">
+                    {profileBlockedOrders.slice(0, 12).map((order, index) => (
+                      <div
+                        key={`${order.order_number || 'blocked'}-${index}`}
+                        className="flex items-start justify-between gap-3 border-t border-cyan-200 first:border-t-0 pt-2 first:pt-0"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-cyan-950 truncate">
+                            {order.order_number || 'POS order'}
+                            {order.customer_name ? ` · ${order.customer_name}` : ''}
+                          </p>
+                          <p className="text-[10px] text-cyan-800 truncate">
+                            {[order.customer_order_date ? formatDate(order.customer_order_date) : null, order.customer_email || null, order.source_record ? `source ${order.source_record}` : null]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <AdminStatusPill label={profileBlockerLabel(order.blocker)} tone="warning" size="sm" />
+                          {order.total_price !== null && order.total_price !== undefined && (
+                            <p className="text-[10px] text-cyan-800 mt-1">{formatMoney(order.total_price)}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {profileBlockedOrders.length > 12 && (
+                    <p className="text-[10px] text-cyan-800">
+                      Showing 12 of {profileBlockedOrders.length}. Narrow the date range for focused review.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {Array.isArray(profilePreview?.warnings) && profilePreview.warnings.length > 0 && (
+                <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
+                  Warnings: {profilePreview.warnings.join(', ')}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -595,7 +584,7 @@ export default function POSOrders() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-foreground">Orders</h2>
-              <p className="text-xs text-muted-foreground">{orders.length} Hub POS orders shown</p>
+              <p className="text-xs text-muted-foreground">{orders.length} source POS orders shown</p>
             </div>
             {isFetching && <RefreshCw className="w-4 h-4 text-primary animate-spin" />}
           </div>
@@ -610,7 +599,7 @@ export default function POSOrders() {
             <div className="rounded-xl border border-border/50 bg-card p-6 text-center">
               <Store className="w-7 h-7 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm font-semibold text-foreground">No POS orders found for this range.</p>
-              <p className="text-xs text-muted-foreground mt-1">Try Last 30 Days or confirm Shopify POS ingestion in Hub.</p>
+              <p className="text-xs text-muted-foreground mt-1">Try Last 30 Days or confirm Shopify POS ingestion in the source feed.</p>
             </div>
           ) : (
             <div className="space-y-3">

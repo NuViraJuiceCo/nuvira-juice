@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isAdminUser } from '@/lib/admin-access';
 
 function formatDateTime(value) {
   if (!value) return null;
@@ -86,7 +87,7 @@ function TeamCard({ member }) {
           <p className="text-xs font-semibold mt-1">{member.shift_label || 'Not set'}</p>
         </div>
         <div className="rounded-lg border border-border/50 bg-background p-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Last Hub update</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Last source update</p>
           <p className="text-xs font-semibold mt-1">{formatDateTime(member.updated_date) || '-'}</p>
         </div>
       </div>
@@ -105,7 +106,7 @@ function EquipmentTable({ equipment }) {
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
               <th className="hidden lg:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Last Service</th>
-              <th className="hidden xl:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Last Hub update</th>
+              <th className="hidden xl:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Last source update</th>
             </tr>
           </thead>
           <tbody>
@@ -144,7 +145,7 @@ function EquipmentCards({ equipment }) {
               <p className="text-xs font-semibold mt-1">{item.last_service_date || '-'}</p>
             </div>
             <div className="rounded-lg border border-border/50 bg-background p-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Last Hub update</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Last source update</p>
               <p className="text-xs font-semibold mt-1">{formatDateTime(item.updated_date) || '-'}</p>
             </div>
           </div>
@@ -175,7 +176,7 @@ export default function Resources() {
       if (result?.error) throw new Error(result.error);
       return result || { summary: {}, sections: { team: [], equipment: [] } };
     },
-    enabled: user?.role === 'admin',
+    enabled: isAdminUser(user),
     staleTime: 60000,
   });
 
@@ -188,7 +189,7 @@ export default function Resources() {
   const categories = useMemo(() => categoryOptions(team, equipment, categoryFilter), [categoryFilter, equipment, team]);
   const hasResults = team.length > 0 || equipment.length > 0;
 
-  if (user?.role !== 'admin') {
+  if (!isAdminUser(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted-foreground text-sm">Admin access required.</p>
@@ -197,10 +198,10 @@ export default function Resources() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Resources"
-        subtitle="Read-only Hub resources"
+        subtitle="Read-only source resources"
         badge="Read-only"
       />
 
@@ -263,12 +264,12 @@ export default function Resources() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">
-              {isNativeFallback ? 'Native Customer App resources fallback' : 'Hub Resources view'}
+              {isNativeFallback ? 'Native Customer App resources fallback' : 'Source Resources view'}
             </p>
             <p className="text-[10px] text-muted-foreground">
               {isNativeFallback
-                ? 'Read-only native team and equipment-like resource visibility while Hub resources are unavailable.'
-                : 'Read-only team and equipment visibility from Hub.'}
+                ? 'Read-only native team and equipment-like resource visibility while source resources are unavailable.'
+                : 'Read-only team and equipment visibility from source records.'}
             </p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
@@ -277,7 +278,7 @@ export default function Resources() {
         {warnings.length > 0 && (
           <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
             {warnings.includes('native_read_only_fallback')
-              ? 'Hub resources are unavailable. Showing native Customer App read-only resource context where available.'
+              ? 'Source resources are unavailable. Showing native Customer App read-only resource context where available.'
               : warnings.slice(0, 2).join(', ')}
           </p>
         )}
