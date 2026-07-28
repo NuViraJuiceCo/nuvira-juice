@@ -12,6 +12,7 @@ export const BRAND_IMAGES = {
   aboutProductSignage: '/images/brand/nuvira-about-product-signage.jpg',
   aboutCommunityService: '/images/brand/nuvira-about-community-service.jpg',
   aboutMarketWide: '/images/brand/nuvira-about-market-wide.jpg',
+  trioOutdoorEvent: '/images/brand/nuvira-trio-outdoor-event.jpg',
   toteBag: '/images/brand/nuvira-tote-bag.jpg',
   ogCooler: '/images/brand/nuvira-og-cooler.jpg',
 };
