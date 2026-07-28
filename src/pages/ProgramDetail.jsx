@@ -32,12 +32,12 @@ const PROGRAM_THEMES = {
   },
   hydration: {
     eyebrow: 'Hydration program',
-    accentClass: 'text-cyan-300',
-    borderClass: 'border-cyan-300/35',
-    panelClass: 'bg-cyan-300/10 border-cyan-300/25',
-    chipClass: 'bg-cyan-300/20 text-cyan-50 border-cyan-200/30',
-    statClass: 'bg-cyan-300/10 border-cyan-300/20',
-    overlay: 'from-cyan-950/95 via-black/62 to-black/28',
+    accentClass: 'text-red-300',
+    borderClass: 'border-red-300/35',
+    panelClass: 'bg-red-300/10 border-red-300/25',
+    chipClass: 'bg-red-300/20 text-red-50 border-red-200/30',
+    statClass: 'bg-red-300/10 border-red-300/20',
+    overlay: 'from-red-950/95 via-black/62 to-black/28',
   },
   reset: {
     eyebrow: 'Reset program',
