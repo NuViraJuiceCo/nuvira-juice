@@ -139,7 +139,10 @@ export default function Cart() {
   }
 
   return (
-    <div style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: 'calc(14rem + env(safe-area-inset-bottom))' }}>
+    <div
+      className="pb-[calc(22rem+env(safe-area-inset-bottom))] md:pb-[calc(14rem+env(safe-area-inset-bottom))]"
+      style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}
+    >
       {/* Header */}
       <div className="px-5 pb-4 border-b border-border/30">
         <h1 className="font-heading text-2xl font-bold mb-1">Your Cart</h1>
