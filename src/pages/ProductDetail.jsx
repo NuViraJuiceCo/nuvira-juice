@@ -3,7 +3,22 @@ import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Minus, Plus, ShoppingBag, Leaf } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  Droplets,
+  Leaf,
+  Minus,
+  Package,
+  Plus,
+  Recycle,
+  ShieldCheck,
+  ShoppingBag,
+  Snowflake,
+  Sparkles,
+  Truck,
+} from 'lucide-react';
 import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
@@ -26,6 +41,98 @@ function isMerchLikeProduct(product) {
     ['merch', 'merchandise', 'apparel', 'tote', 'bag', 'accessory', 'accessories'].includes(category) ||
     /\b(tote|bag|merch|shirt|hoodie|hat)\b/.test(title)
   );
+}
+
+function getCategoryLabel(product, isMerchProduct) {
+  const category = normalizeCategory(product?.category);
+  if (isMerchProduct) return 'NuVira merch';
+  if (category === 'bundle') return 'Signature bundle';
+  if (category === 'shot') return 'Wellness shot';
+  if (category === 'wellness_pack') return 'Wellness program';
+  return 'Cold-pressed juice';
+}
+
+function buildProductHighlights(product, isMerchProduct) {
+  const category = normalizeCategory(product?.category);
+  const title = String(product?.title || '');
+  const isBundle = category === 'bundle';
+  const isShot = category === 'shot';
+  const size = product?.size || (isBundle ? `${product?.bottle_count || 3} bottles` : null);
+
+  if (isMerchProduct) {
+    return [
+      { label: 'Reusable carry', value: 'Built for market days and juice runs', icon: Recycle },
+      { label: 'Insulated shopper', value: 'Keeps bottles easier to transport', icon: Package },
+      { label: 'Event ready', value: 'Pairs cleanly with NuVira orders', icon: ShoppingBag },
+    ];
+  }
+
+  if (isBundle || title.toLowerCase().includes('trio')) {
+    return [
+      { label: 'Full lineup', value: 'AURA, OASIS, and RE-NU together', icon: Sparkles },
+      { label: 'Fresh route', value: 'Made for local delivery or pickup', icon: Truck },
+      { label: 'Bottle count', value: size || '3 signature bottles', icon: Package },
+    ];
+  }
+
+  if (isShot) {
+    return [
+      { label: 'Focused boost', value: size || '2oz functional shot', icon: Droplets },
+      { label: 'Take chilled', value: 'Keep refrigerated until ready', icon: Snowflake },
+      { label: 'Small batch', value: 'Pressed close to your order', icon: Clock },
+    ];
+  }
+
+  return [
+    { label: 'Made fresh', value: 'Pressed close to your delivery', icon: Leaf },
+    { label: 'Keep chilled', value: 'Refrigerate and enjoy cold', icon: Snowflake },
+    { label: 'Local delivery', value: 'Wentzville and St. Louis area routes', icon: Truck },
+  ];
+}
+
+function splitIngredients(ingredients) {
+  return String(ingredients || '')
+    .split(',')
+    .map(item => item.trim().replace(/^and\s+/i, ''))
+    .filter(Boolean);
+}
+
+function inferBlendDetail(product, isMerchProduct) {
+  if (isMerchProduct) return null;
+
+  const title = String(product?.title || '');
+  const category = normalizeCategory(product?.category);
+  const description = String(product?.description || '');
+  const shortDescription = String(product?.short_description || '');
+
+  if (product?.ingredients) {
+    return {
+      label: 'Ingredients',
+      helper: 'No shortcuts, no filler.',
+      value: product.ingredients,
+      items: splitIngredients(product.ingredients),
+    };
+  }
+
+  if (category === 'bundle' || title.toLowerCase().includes('trio')) {
+    return {
+      label: 'Bundle includes',
+      helper: 'One of each signature bottle.',
+      value: 'AURA, OASIS, RE-NU',
+      items: ['AURA', 'OASIS', 'RE-NU'],
+    };
+  }
+
+  const withMatch = description.match(/\bwith\s+(.+?)(?:\.|$)/i);
+  const inferredValue = withMatch?.[1] || shortDescription || description;
+  if (!inferredValue) return null;
+
+  return {
+    label: 'Blend notes',
+    helper: 'Flavor and function at a glance.',
+    value: inferredValue,
+    items: splitIngredients(inferredValue),
+  };
 }
 
 export default function ProductDetail() {
@@ -111,10 +218,12 @@ export default function ProductDetail() {
 
   const isMerch = isMerchLikeProduct(product);
   const isMerchProduct = isMerch;
-  const productDescriptor = isMerchProduct ? 'NuVira merch' : 'Cold-pressed juice';
+  const productDescriptor = getCategoryLabel(product, isMerchProduct);
   const productBadges = isMerch
     ? ['Reusable', 'Insulated', 'Large Capacity']
     : ['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'];
+  const productHighlights = buildProductHighlights(product, isMerchProduct);
+  const blendDetail = inferBlendDetail(product, isMerchProduct);
   const detailUrl = absoluteUrl(productPath(product));
   const productImage = product.image_url ? brandImageUrl(product.image_url) : BRAND_OG_IMAGE;
   const seoTitle = `${product.title} | ${productDescriptor} | Wentzville, MO`;
@@ -176,7 +285,7 @@ export default function ProductDetail() {
   };
 
   return (
-    <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 11rem)' }}>
+    <div className="min-h-screen bg-background" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 11rem)' }}>
       <SEO
         title={seoTitle}
         description={seoDescription}
@@ -187,114 +296,191 @@ export default function ProductDetail() {
         structuredData={productStructuredData}
       />
 
-      <div className="hidden md:flex items-center gap-2 px-6 pt-5 pb-2">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <div className="hidden md:flex items-center gap-2 px-6 pt-5 pb-3">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
       </div>
 
-      <div className="md:flex md:gap-8 md:px-6 md:pb-24 md:items-start">
-        <div className="md:w-1/2 md:shrink-0">
+      <main className="md:px-6 md:pb-28">
+      <div className="md:grid md:grid-cols-[minmax(0,0.95fr)_minmax(340px,0.72fr)] md:gap-6 md:items-stretch">
+        <div className="md:min-h-[560px]">
           <div
-            className={`relative w-full md:aspect-square md:max-h-[60vh] md:rounded-2xl bg-secondary/50 overflow-hidden ${
-              isMerchProduct ? 'h-[44vh] min-h-[260px] max-h-[360px]' : 'aspect-square'
+            className={`relative w-full md:h-full md:min-h-[560px] md:rounded-[28px] md:border md:border-border/50 bg-secondary/50 overflow-hidden shadow-[0_24px_80px_rgba(4,29,21,0.22)] ${
+              isMerchProduct ? 'h-[44vh] min-h-[260px] max-h-[360px] md:max-h-none' : 'aspect-square md:aspect-auto'
             }`}
           >
             {product.image_url ? (
-              <img
-                src={product.image_url}
-                alt={product.title}
-                className={`w-full h-full ${isMerchProduct ? 'object-contain p-2 md:p-0' : 'object-cover'}`}
-              />
+              <>
+                {isMerchProduct && (
+                  <img
+                    src={product.image_url}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl"
+                  />
+                )}
+                <img
+                  src={product.image_url}
+                  alt={product.title}
+                  className={`relative h-full w-full ${isMerchProduct ? 'object-contain p-3 md:p-8' : 'object-cover'}`}
+                />
+              </>
             ) : (
               <div className="w-full h-full flex items-center justify-center text-7xl">{isMerchProduct ? '🛍️' : '🍊'}</div>
             )}
+            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/55 via-black/12 to-transparent pointer-events-none" />
             <button
               onClick={() => navigate(-1)}
-              className="md:hidden absolute left-4 w-9 h-9 bg-card/80 backdrop-blur-md rounded-full flex items-center justify-center"
+              className="md:hidden absolute left-4 w-10 h-10 bg-card/90 text-foreground backdrop-blur-md rounded-full flex items-center justify-center shadow-lg"
               style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
               aria-label="Go back"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
+            <div className="absolute left-4 right-4 bottom-4 flex items-center justify-end gap-3">
+              {product.size && (
+                <span className="shrink-0 rounded-full bg-black/55 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
+                  {product.size}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="md:w-1/2">
+        <div>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="px-4 pt-5 md:pt-2 md:px-0"
+            className="px-4 pt-5 md:px-0 md:pt-2 md:h-full md:flex md:flex-col md:justify-center"
           >
             {product.is_seasonal && (
-              <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-0.5 rounded-full mb-2">
+              <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-1 rounded-full mb-3">
                 Seasonal Drop
               </span>
             )}
-            <h1 className="font-heading text-2xl font-bold">{product.title}</h1>
+            <p className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-primary">
+              {productDescriptor}
+            </p>
+            <h1 className="font-heading text-4xl font-bold leading-[0.95] md:text-6xl">{product.title}</h1>
             {product.short_description && (
-              <p className="text-sm text-muted-foreground mt-1">{product.short_description}</p>
+              <p className="mt-3 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">{product.short_description}</p>
             )}
 
-            <div className="flex items-baseline gap-2 mt-2">
-              <span className="text-xl font-bold">${product.price?.toFixed(2)}</span>
+            <div className="mt-5 flex items-end gap-2">
+              <span className="text-3xl font-black tracking-tight">${product.price?.toFixed(2)}</span>
               {product.compare_at_price && (
                 <span className="text-sm text-muted-foreground line-through">${product.compare_at_price.toFixed(2)}</span>
               )}
               {product.size && (
-                <span className="text-xs text-muted-foreground ml-auto">{product.size}</span>
+                <span className="ml-auto rounded-full border border-border/60 px-3 py-1 text-xs font-semibold text-muted-foreground md:hidden">{product.size}</span>
               )}
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
               {productBadges.map(cert => (
-                <span key={cert} className="text-[10px] font-semibold px-2.5 py-1 bg-nuvira-gradient-soft text-primary border border-nuvira rounded-full">
-                  ✓ {cert}
+                <span key={cert} className="inline-flex items-center gap-1.5 rounded-full border border-nuvira bg-nuvira-gradient-soft px-3 py-1.5 text-[11px] font-black text-primary">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {cert}
                 </span>
               ))}
             </div>
 
-            {related.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">You might also like</h3>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 items-stretch">
-                  {related.map(p => (
-                    <div key={p.id} className="shrink-0 w-36">
-                      <ProductCard product={p} compact />
-                    </div>
-                  ))}
+            <div className="mt-6 grid gap-3 sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-3">
+              {productHighlights.map(({ label, value, icon: Icon }) => (
+                <div key={label} className="rounded-2xl border border-border/60 bg-card/70 p-3.5 shadow-sm">
+                  <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-nuvira-gradient text-white shadow-sm">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm font-black text-foreground">{label}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/10 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                  {isMerchProduct ? <ShoppingBag className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                </div>
+                <div>
+                  <p className="text-sm font-black text-foreground">
+                    {isMerchProduct ? 'Ready for daily carry' : 'Freshness handled by NuVira'}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {isMerchProduct
+                      ? 'Merch ships or travels with your NuVira order when available.'
+                      : 'Orders are planned around fresh production, cold storage, and local delivery timing.'}
+                  </p>
                 </div>
               </div>
-            )}
+            </div>
           </motion.div>
         </div>
       </div>
 
-      <div className="px-4 md:px-6 mt-6 pb-4">
+      <div className="mt-8 grid gap-4 px-4 pb-4 md:grid-cols-[minmax(0,0.68fr)_minmax(280px,0.32fr)] md:px-0 md:pb-0">
         {product.description && (
-          <div className="mb-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">About</h3>
-            <p className="text-sm text-foreground/80 leading-relaxed">{product.description}</p>
+          <div className="rounded-3xl border border-border/60 bg-card/70 p-5 md:p-6">
+            <p className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-primary">About</p>
+            <h2 className="font-heading text-2xl font-bold">
+              {isMerchProduct ? 'Built for the NuVira routine.' : 'Fresh, functional, and made to fit your day.'}
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-foreground/78 md:text-base">{product.description}</p>
           </div>
         )}
-        {product.ingredients && (
-          <div className="bg-secondary/40 rounded-xl p-3.5">
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Leaf className="w-3.5 h-3.5 text-primary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ingredients</h3>
+        {blendDetail && (
+          <div className="rounded-3xl border border-nuvira bg-nuvira-gradient-soft p-5 md:p-6">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <Leaf className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-primary">{blendDetail.label}</p>
+                <p className="text-xs text-muted-foreground">{blendDetail.helper}</p>
+              </div>
             </div>
-            <p className="text-xs text-foreground/70 leading-relaxed">{product.ingredients}</p>
+            {blendDetail.items.length > 1 ? (
+              <div className="flex flex-wrap gap-2">
+                {blendDetail.items.map(item => (
+                  <span key={item} className="rounded-full bg-background/70 px-3 py-1.5 text-xs font-semibold text-foreground/75">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed text-foreground/75">{blendDetail.value}</p>
+            )}
           </div>
         )}
 
         {!isMerch && (
           !isMerchProduct && (
-            <div className="mt-4">
+            <div className="md:col-span-2">
               <HealthAdvisory variant="expanded" />
             </div>
           )
         )}
       </div>
+
+      {related.length > 0 && (
+        <div className="mt-8 px-4 md:px-0">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary">Keep exploring</p>
+              <h2 className="font-heading text-xl font-bold">Pair it with</h2>
+            </div>
+          </div>
+          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 items-stretch md:grid md:grid-cols-4 md:overflow-visible">
+            {related.map(p => (
+              <div key={p.id} className="shrink-0 w-40 md:w-auto">
+                <ProductCard product={p} compact />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </main>
 
       <div
         className="fixed left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border/50 md:left-60"
