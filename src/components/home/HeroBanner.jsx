@@ -13,7 +13,13 @@ const DEFAULT_HERO_IMAGE = {
   object_position: '58% center',
 };
 
+const HIDDEN_HERO_TITLES = ['meet oasis'];
+
 const PRODUCT_HERO_IMAGE_MAP = {
+  'Trio': {
+    image_url: BRAND_IMAGES.trioOutdoorEvent,
+    object_position: '72% center',
+  },
   'Aura': {
     image_url: BRAND_IMAGES.bottlesCoolerWide,
     object_position: '48% center',
@@ -35,18 +41,26 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
     ?.replace(/^Delivered\s+/, '')
     ?.replace(/^Ready for pickup\s+/, 'Pickup ');
   const heroStats = [
-    ['Small batch', 'Pressed fresh'],
-    ['Local routes', 'STL area'],
-    ['Real produce', 'No shortcuts'],
+    ['Made to order', 'Pressed for your route'],
+    ['Signature trio', 'AURA + OASIS + RE-NU'],
+    ['Local delivery', compactDeliveryText || 'Wentzville + STL'],
   ];
 
-  const activeBanners = banners.length > 0 ? banners.map(banner => {
+  const visibleBanners = banners.filter((banner) => {
+    const title = banner.title?.trim().toLowerCase();
+    return !HIDDEN_HERO_TITLES.includes(title);
+  });
+
+  const activeBanners = visibleBanners.length > 0 ? visibleBanners.map(banner => {
     let image = DEFAULT_HERO_IMAGE.image_url;
     let objectPosition = DEFAULT_HERO_IMAGE.object_position;
 
     // Use curated product photography for active home banners when the CMS title
     // identifies a NuVira bottle line.
-    if (banner.title?.toLowerCase().includes('oasis')) {
+    if (banner.title?.toLowerCase().includes('trio')) {
+      image = PRODUCT_HERO_IMAGE_MAP.Trio.image_url;
+      objectPosition = PRODUCT_HERO_IMAGE_MAP.Trio.object_position;
+    } else if (banner.title?.toLowerCase().includes('oasis')) {
       image = PRODUCT_HERO_IMAGE_MAP.Oasis.image_url;
       objectPosition = PRODUCT_HERO_IMAGE_MAP.Oasis.object_position;
     } else if (banner.title?.toLowerCase().includes('re-nu')) {
