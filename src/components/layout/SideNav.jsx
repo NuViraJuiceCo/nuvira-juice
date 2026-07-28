@@ -4,6 +4,7 @@ import { ArrowLeft, Home, Search, ShoppingBag, User, Star, ShieldCheck } from 'l
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import { adminNavGroups, isAdminNavActive } from './adminNavItems';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
@@ -24,6 +25,7 @@ export default function SideNav() {
   const { user } = useAuth();
   const adminMode = isAdminUser(user) && location.pathname.startsWith('/admin');
   const visibleNavItems = isAdminUser(user) ? [...navItems, adminNavItem] : navItems;
+  const showWebsiteFooter = !isNativeAppRuntime();
 
   return (
     <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-nuvira min-h-screen fixed left-0 top-0 h-screen overflow-y-auto shadow-sm">
@@ -105,15 +107,17 @@ export default function SideNav() {
       )}
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-border space-y-1">
-        <div className="flex gap-3 mb-2">
-          <Link to="/about" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">About</Link>
-          <Link to="/contact" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
-          <Link to="/support" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
+      {showWebsiteFooter && (
+        <div className="px-6 py-4 border-t border-border space-y-1">
+          <div className="flex gap-3 mb-2">
+            <Link to="/about" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">About</Link>
+            <Link to="/contact" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
+            <Link to="/support" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
+          </div>
+          <p className="text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co.</p>
+          <p className="text-[10px] text-muted-foreground">Wentzville, MO</p>
         </div>
-        <p className="text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co.</p>
-        <p className="text-[10px] text-muted-foreground">Wentzville, MO</p>
-      </div>
+      )}
     </aside>
   );
 }

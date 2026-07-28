@@ -45,14 +45,35 @@ const TRIO_URL = "https://media.base44.com/images/public/69d48d0c39891f794548115
 const HARDCODED_EVENTS = [];
 
 const typeColors = {
-  'Pop-Up': 'bg-accent/20 text-accent-foreground',
-  'Community': 'bg-primary/10 text-primary',
-  'Drop': 'bg-secondary text-secondary-foreground',
-  'Festival': 'bg-purple-100 text-purple-700',
+  'Pop-Up': 'bg-orange-500/15 text-orange-700 dark:text-orange-200',
+  'Community': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200',
+  'Drop': 'bg-lime-500/18 text-lime-800 dark:text-lime-200',
+  'Festival': 'bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-200',
 };
 
 function asList(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function chicagoDateString(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function eventStartDateString(event = {}) {
+  const startDate = eventStructuredDateTimes(event).startDate || '';
+  const match = String(startDate || event.date || event.event_date || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+}
+
+function eventSortValue(event = {}) {
+  const startDate = eventStructuredDateTimes(event).startDate || event.date || event.event_date || '';
+  const date = new Date(startDate);
+  return Number.isNaN(date.getTime()) ? Number.MAX_SAFE_INTEGER : date.getTime();
 }
 
 export default function Events() {
@@ -68,7 +89,12 @@ export default function Events() {
   const events = [
     ...dbEventsList.map(e => ({ ...e, id: e.id })),
     ...hardcodedFiltered,
-  ];
+  ]
+    .filter(event => {
+      const date = eventStartDateString(event);
+      return !date || date >= chicagoDateString();
+    })
+    .sort((a, b) => eventSortValue(a) - eventSortValue(b));
 
   const eventSchema = buildEventSchema(events);
   const showEventCheckIn = isEventCheckInVisible();
@@ -88,10 +114,10 @@ export default function Events() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center px-2"
+          className="nuvira-citrus-panel rounded-2xl border p-5 text-center"
         >
           <h2 className="font-heading text-2xl font-bold mb-2">Find Your People.</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-sm leading-relaxed text-foreground/75">
             NuVira is more than a juice — it's a movement. Join us in St. Louis and beyond as we build a community around wellness, freshness, and intentional living.
           </p>
         </motion.div>
@@ -139,7 +165,15 @@ export default function Events() {
         <div className="space-y-4">
           <h3 className="font-heading text-lg font-semibold">Upcoming</h3>
           {events.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-6">No upcoming events at this time. Check back soon!</p>
+            <div className="nuvira-premium-card rounded-2xl p-5 text-center">
+              <p className="font-heading text-lg font-bold">Next dates are being finalized.</p>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                Public pop-ups and partner events will appear here as soon as they are active in the NuVira event calendar.
+              </p>
+              <Link to="/book-event" className="nuvira-gradient-button mt-4 inline-flex h-11 items-center justify-center rounded-xl px-5 text-sm font-bold">
+                Book NuVira for an Event
+              </Link>
+            </div>
           )}
           {events.map((event, i) => (
             <motion.div
@@ -147,7 +181,7 @@ export default function Events() {
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + i * 0.08 }}
-              className="bg-card border border-border/40 rounded-2xl overflow-hidden"
+              className="nuvira-premium-card rounded-2xl overflow-hidden"
             >
               <div className="h-36 overflow-hidden">
                 <img src={event.image_url} alt={event.title} className="w-full h-full object-cover" />
@@ -155,7 +189,7 @@ export default function Events() {
               <div className="p-4">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <h4 className="font-semibold text-sm leading-tight flex-1">{event.title}</h4>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${typeColors[event.type]}`}>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${typeColors[event.type] || 'bg-primary/10 text-primary'}`}>
                     {event.type}
                   </span>
                 </div>
@@ -173,7 +207,7 @@ export default function Events() {
                 {event.highlights && (
                   <div className="flex flex-wrap gap-1.5 mt-3">
                     {event.highlights.map(h => (
-                      <span key={h} className="text-[10px] font-semibold bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">{h}</span>
+                      <span key={h} className="text-[10px] font-semibold bg-primary/10 px-2 py-0.5 rounded-full text-primary">{h}</span>
                     ))}
                   </div>
                 )}
@@ -186,7 +220,7 @@ export default function Events() {
                   )}
                   {event.website_link && (
                     <a href={event.website_link} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs font-semibold text-primary px-3 py-2 rounded-xl border border-primary/30">
+                      className="flex items-center gap-1 text-xs font-semibold text-primary px-3 py-2 rounded-xl border border-primary/30 bg-card/70">
                       <ExternalLink className="w-3 h-3" />
                       Website
                     </a>
@@ -202,7 +236,7 @@ export default function Events() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-secondary/60 rounded-2xl p-5 text-center"
+          className="nuvira-citrus-panel rounded-2xl border p-5 text-center"
         >
           <p className="font-heading text-base font-semibold mb-2">Stay in the Loop</p>
           <p className="text-xs text-muted-foreground leading-relaxed">

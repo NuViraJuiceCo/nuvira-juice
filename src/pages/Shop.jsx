@@ -194,10 +194,10 @@ export default function Shop({ seoActive = true }) {
           <button
             key={cat.key}
             onClick={() => { setCategory(cat.key); setSearchParams({}); }}
-            className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+            className={`shrink-0 px-4 py-1.5 rounded-full border text-xs font-semibold transition-all ${
               category === cat.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-foreground/70 border border-border/60'
+                ? 'nuvira-filter-pill-active'
+                : 'nuvira-filter-pill text-foreground/75 hover:text-foreground'
             }`}
           >
             {cat.label}

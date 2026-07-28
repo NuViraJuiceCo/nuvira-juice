@@ -124,6 +124,41 @@
   border-color: rgba(61, 184, 74, 0.22);
   box-shadow: 0 12px 32px rgba(6, 42, 32, 0.08), 0 1px 2px rgba(6, 42, 32, 0.06);
 }
+.nuvira-vivid-hero {
+  background:
+    radial-gradient(circle at 18% 10%, rgba(200, 232, 106, 0.34) 0%, rgba(200, 232, 106, 0) 28%),
+    radial-gradient(circle at 86% 18%, rgba(61, 184, 74, 0.32) 0%, rgba(61, 184, 74, 0) 32%),
+    linear-gradient(135deg, #08291e 0%, #0f5b3d 52%, #27a844 100%);
+}
+.nuvira-vivid-panel {
+  background:
+    linear-gradient(135deg, rgba(200, 232, 106, 0.18) 0%, rgba(61, 184, 74, 0.08) 52%, rgba(230, 126, 34, 0.07) 100%),
+    hsl(var(--card));
+  border-color: rgba(61, 184, 74, 0.24);
+  box-shadow: 0 16px 36px rgba(6, 42, 32, 0.1);
+}
+.nuvira-citrus-panel {
+  background: linear-gradient(135deg, #fff7df 0%, #dff7bb 44%, #bff4ce 100%);
+  color: #123126;
+  border-color: rgba(61, 184, 74, 0.3);
+}
+.dark .nuvira-citrus-panel {
+  background: linear-gradient(135deg, rgba(255, 183, 77, 0.22) 0%, rgba(200, 232, 106, 0.15) 38%, rgba(61, 184, 74, 0.16) 100%);
+  color: hsl(var(--foreground));
+}
+.nuvira-filter-pill-active {
+  background: linear-gradient(135deg, #C8E86A 0%, #3DB84A 55%, #1A8C35 100%);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 8px 18px rgba(29, 140, 53, 0.18);
+}
+.nuvira-filter-pill {
+  background: linear-gradient(135deg, rgba(255,255,255,0.72) 0%, rgba(200,232,106,0.12) 100%);
+  border-color: rgba(61, 184, 74, 0.24);
+}
+.dark .nuvira-filter-pill {
+  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(200,232,106,0.08) 100%);
+}
 .nuvira-admin-header {
   background:
     linear-gradient(135deg, rgba(6, 42, 32, 0.98) 0%, rgba(11, 61, 46, 0.98) 42%, rgba(29, 140, 53, 0.92) 100%);

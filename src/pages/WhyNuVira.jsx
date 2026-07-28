@@ -34,7 +34,7 @@ const pageContent = {
   proof: [
     { value: 'Never heated', label: 'Hydraulic pressure helps preserve flavor and nutrients' },
     { value: 'No shortcuts', label: 'No concentrates, fillers, artificial colors, or added sugar' },
-    { value: 'Fresh by design', label: 'Produced in focused batches for orders, routes, and events' },
+    { value: 'Made to demand', label: 'Produced in focused batches for orders, routes, and events' },
   ],
 };
 
@@ -113,9 +113,9 @@ function BackLink({ tone = 'default' }) {
 
 function PrincipleCard({ icon: Icon, title, body }) {
   return (
-    <article className="rounded-lg border border-border/70 bg-card p-5 shadow-sm">
-      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
-        <Icon className="h-5 w-5 text-primary" />
+    <article className="nuvira-vivid-panel rounded-lg border p-5">
+      <div className="nuvira-icon-badge mb-4 flex h-11 w-11 items-center justify-center rounded-lg">
+        <Icon className="h-5 w-5" />
       </div>
       <h3 className="font-heading text-xl font-bold leading-tight">{title}</h3>
       <p className="mt-3 text-sm leading-7 text-muted-foreground">{body}</p>
@@ -127,10 +127,10 @@ function ProcessStep({ icon: Icon, title, body, index }) {
   return (
     <article className="grid gap-4 border-t border-white/12 py-6 md:grid-cols-[3rem_minmax(0,1fr)] md:gap-5">
       <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/15 bg-white/[0.06]">
-        <Icon className="h-5 w-5 text-primary" />
+        <Icon className="h-5 w-5 text-[#C8E86A]" />
       </div>
       <div>
-        <p className="text-xs font-bold uppercase text-primary">Step {index + 1}</p>
+        <p className="text-xs font-bold uppercase text-[#C8E86A]">Step {index + 1}</p>
         <h3 className="mt-2 font-heading text-2xl font-bold leading-tight text-white">{title}</h3>
         <p className="mt-3 text-sm leading-7 text-white/68 md:text-base">{body}</p>
       </div>
@@ -140,9 +140,9 @@ function ProcessStep({ icon: Icon, title, body, index }) {
 
 function StandardCard({ icon: Icon, title, body }) {
   return (
-    <article className="rounded-lg border border-border/70 bg-background p-4">
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-accent/25 bg-accent/15">
-        <Icon className="h-5 w-5 text-accent-foreground" />
+    <article className="nuvira-vivid-panel rounded-lg border p-4">
+      <div className="nuvira-icon-badge mb-3 flex h-10 w-10 items-center justify-center rounded-lg">
+        <Icon className="h-5 w-5" />
       </div>
       <h3 className="font-heading text-lg font-bold">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{body}</p>
@@ -163,7 +163,7 @@ export default function WhyNuVira() {
         <BackLink />
       </header>
 
-      <section className="bg-[#0d1511] text-white">
+      <section className="nuvira-vivid-hero text-white">
         <div className="mx-auto grid w-full max-w-7xl gap-9 px-5 py-8 md:px-8 md:py-14 lg:px-12">
           <div className="flex flex-col justify-between gap-8">
             <div>
@@ -171,7 +171,7 @@ export default function WhyNuVira() {
                 <BackLink tone="dark" />
               </div>
               <img src={LOGO_URL} alt="NuVira Juice Co." className="mt-5 h-10 w-auto md:mt-10 md:h-12" />
-              <p className="mt-7 text-sm font-semibold text-primary md:mt-10">{pageContent.hero.eyebrow}</p>
+              <p className="mt-7 text-sm font-bold text-[#C8E86A] md:mt-10">{pageContent.hero.eyebrow}</p>
               <h1 className="mt-3 max-w-4xl font-heading text-4xl font-bold leading-[1.05] sm:text-5xl lg:text-6xl">
                 {pageContent.hero.title}
               </h1>
@@ -182,7 +182,7 @@ export default function WhyNuVira() {
 
             <div className="grid gap-3 sm:grid-cols-3">
               {pageContent.proof.map((item) => (
-                <div key={item.value} className="rounded-lg border border-white/12 bg-white/[0.04] p-4">
+                <div key={item.value} className="rounded-lg border border-white/18 bg-white/[0.08] p-4 shadow-lg shadow-emerald-950/10 backdrop-blur">
                   <p className="font-heading text-xl font-bold text-white">{item.value}</p>
                   <p className="mt-1 text-xs leading-5 text-white/62">{item.label}</p>
                 </div>
@@ -210,7 +210,7 @@ export default function WhyNuVira() {
         </div>
       </section>
 
-      <section className="border-b border-border/70 bg-card/45">
+      <section className="border-b border-nuvira bg-nuvira-gradient-soft">
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] md:px-8 md:py-16 lg:px-12">
           <div>
             <p className="text-sm font-bold text-primary">What sets us apart</p>
@@ -241,10 +241,10 @@ export default function WhyNuVira() {
         </div>
       </section>
 
-      <section className="bg-[#111914]">
+      <section className="nuvira-vivid-hero">
         <div className="mx-auto grid max-w-7xl gap-10 px-5 py-10 md:px-8 md:py-16 lg:px-12 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div>
-            <p className="text-sm font-bold text-primary">From produce to your routine</p>
+            <p className="text-sm font-bold text-[#C8E86A]">From produce to your routine</p>
             <h2 className="mt-2 font-heading text-3xl font-bold leading-tight text-white md:text-5xl">
               Built for fresh local service, not distant shelf life.
             </h2>
@@ -285,11 +285,11 @@ export default function WhyNuVira() {
         </div>
       </section>
 
-      <section className="border-t border-border/70 bg-card/45">
+      <section className="border-t border-nuvira bg-nuvira-gradient-soft">
         <div className="mx-auto grid max-w-7xl gap-6 px-5 py-10 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-8 md:py-14 lg:px-12">
           <div>
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
-              <Sparkles className="h-5 w-5 text-primary" />
+            <div className="nuvira-icon-badge mb-4 flex h-11 w-11 items-center justify-center rounded-lg">
+              <Sparkles className="h-5 w-5" />
             </div>
             <h2 className="font-heading text-3xl font-bold leading-tight md:text-4xl">Taste the difference fresh makes.</h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
@@ -297,10 +297,10 @@ export default function WhyNuVira() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row md:flex-col lg:flex-row">
-            <Link to="/shop" className="inline-flex h-12 items-center justify-center rounded-lg bg-primary px-6 text-sm font-bold text-primary-foreground">
+            <Link to="/shop" className="nuvira-gradient-button inline-flex h-12 items-center justify-center rounded-lg px-6 text-sm font-bold">
               Shop Juices
             </Link>
-            <Link to="/our-story" className="inline-flex h-12 items-center justify-center rounded-lg border border-border bg-background px-6 text-sm font-bold text-foreground">
+            <Link to="/our-story" className="inline-flex h-12 items-center justify-center rounded-lg border border-nuvira bg-card/80 px-6 text-sm font-bold text-foreground">
               Our Story
             </Link>
           </div>
