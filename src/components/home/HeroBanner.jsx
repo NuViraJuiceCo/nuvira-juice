@@ -8,6 +8,11 @@ import { BRAND_IMAGES } from '@/lib/brandImages';
 
 // Product-focused hero photography. These are deployed with the app so the
 // homepage does not depend on older remote banner image crops.
+const DEFAULT_HERO_IMAGE = {
+  image_url: BRAND_IMAGES.bottlesCoolerWide,
+  object_position: '58% center',
+};
+
 const PRODUCT_HERO_IMAGE_MAP = {
   'Aura': {
     image_url: BRAND_IMAGES.bottlesCoolerWide,
@@ -36,8 +41,8 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
   ];
 
   const activeBanners = banners.length > 0 ? banners.map(banner => {
-    let image = banner.image_url;
-    let objectPosition = '58% center';
+    let image = DEFAULT_HERO_IMAGE.image_url;
+    let objectPosition = DEFAULT_HERO_IMAGE.object_position;
 
     // Use curated product photography for active home banners when the CMS title
     // identifies a NuVira bottle line.
@@ -57,8 +62,8 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
     {
       title: 'Cold-Pressed.\nNever Compromised.',
       subtitle: 'Real ingredients. Made fresh for you.',
-      image_url: BRAND_IMAGES.bottlesCoolerWide,
-      hero_object_position: '58% center',
+      image_url: DEFAULT_HERO_IMAGE.image_url,
+      hero_object_position: DEFAULT_HERO_IMAGE.object_position,
       link_to: '/shop',
     }
   ];
