@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ProductCard from '@/components/shop/ProductCard';
 import ProgramCards from '@/components/home/ProgramCards';
 import { absoluteUrl, productPath } from '@/lib/seo-slugs';
+import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 
 const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -36,7 +37,15 @@ export default function Shop({ seoActive = true }) {
 
   const { data: products = [], isLoading, refetch } = useQuery({
     queryKey: ['products'],
-    queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 100),
+    queryFn: async () => {
+      try {
+        const liveProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 100);
+        return liveProducts?.length ? liveProducts : PUBLIC_PRODUCT_FALLBACKS;
+      } catch (error) {
+        console.warn('[Shop] Falling back to public product catalog', error);
+        return PUBLIC_PRODUCT_FALLBACKS;
+      }
+    },
   });
 
   const { data: bundles = [] } = useQuery({
@@ -223,7 +232,7 @@ export default function Shop({ seoActive = true }) {
       {/* Product Grid */}
       <div className="px-5">
         {isLoading ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
             {[1,2,3,4].map(i => (
               <div key={i} className="bg-secondary/50 rounded-xl aspect-[3/4] animate-pulse" />
             ))}
@@ -240,7 +249,7 @@ export default function Shop({ seoActive = true }) {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
             <AnimatePresence>
               {filtered.map(product => (
                 <motion.div

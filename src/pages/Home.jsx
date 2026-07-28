@@ -17,6 +17,7 @@ import MerchTeaser from '@/components/home/MerchTeaser';
 import SustainabilityTeaser from '@/components/home/SustainabilityTeaser';
 import SubscriptionCard from '@/components/home/SubscriptionCard';
 import NotificationPrompt from '@/components/home/NotificationPrompt';
+import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 
 
 import ProgramCards from '@/components/home/ProgramCards';
@@ -44,7 +45,15 @@ export default function Home({ seoActive = true }) {
 
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
-    queryFn: () => base44.entities.Product.filter({ is_available: true }, 'sort_order', 50),
+    queryFn: async () => {
+      try {
+        const liveProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 50);
+        return liveProducts?.length ? liveProducts : PUBLIC_PRODUCT_FALLBACKS;
+      } catch (error) {
+        console.warn('[Home] Falling back to public product catalog', error);
+        return PUBLIC_PRODUCT_FALLBACKS;
+      }
+    },
   });
 
   const { data: schedules = [] } = useQuery({
