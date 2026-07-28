@@ -6,11 +6,21 @@ import { Button } from '@/components/ui/button';
 import { getDeliveryDisplayText } from '@/lib/deliveryUtils';
 import { BRAND_IMAGES } from '@/lib/brandImages';
 
-// Product image mapping for hero slides
-const PRODUCT_IMAGE_MAP = {
-  'Aura': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg',
-  'Oasis': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/d2cd55af2_DSC02471-Edit.jpg',
-  'Re-Nu': 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
+// Product-focused hero photography. These are deployed with the app so the
+// homepage does not depend on older remote banner image crops.
+const PRODUCT_HERO_IMAGE_MAP = {
+  'Aura': {
+    image_url: BRAND_IMAGES.bottlesCoolerWide,
+    object_position: '48% center',
+  },
+  'Oasis': {
+    image_url: BRAND_IMAGES.ogCooler,
+    object_position: '58% center',
+  },
+  'Re-Nu': {
+    image_url: BRAND_IMAGES.bottlesCoolerWide,
+    object_position: '54% center',
+  },
 };
 
 export default function HeroBanner({ banners = [], scheduleRules = [] }) {
@@ -26,24 +36,29 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
   ];
 
   const activeBanners = banners.length > 0 ? banners.map(banner => {
-    // CRITICAL: Force correct product images based on title — zero fallback to wrong images
     let image = banner.image_url;
-    
-    // Product-specific overrides (absolute priority)
+    let objectPosition = '58% center';
+
+    // Use curated product photography for active home banners when the CMS title
+    // identifies a NuVira bottle line.
     if (banner.title?.toLowerCase().includes('oasis')) {
-      image = PRODUCT_IMAGE_MAP.Oasis;
+      image = PRODUCT_HERO_IMAGE_MAP.Oasis.image_url;
+      objectPosition = PRODUCT_HERO_IMAGE_MAP.Oasis.object_position;
     } else if (banner.title?.toLowerCase().includes('re-nu')) {
-      image = PRODUCT_IMAGE_MAP['Re-Nu'];
+      image = PRODUCT_HERO_IMAGE_MAP['Re-Nu'].image_url;
+      objectPosition = PRODUCT_HERO_IMAGE_MAP['Re-Nu'].object_position;
     } else if (banner.title?.toLowerCase().includes('aura')) {
-      image = PRODUCT_IMAGE_MAP.Aura;
+      image = PRODUCT_HERO_IMAGE_MAP.Aura.image_url;
+      objectPosition = PRODUCT_HERO_IMAGE_MAP.Aura.object_position;
     }
     
-    return { ...banner, image_url: image };
+    return { ...banner, image_url: image, hero_object_position: objectPosition };
   }) : [
     {
       title: 'Cold-Pressed.\nNever Compromised.',
       subtitle: 'Real ingredients. Made fresh for you.',
       image_url: BRAND_IMAGES.bottlesCoolerWide,
+      hero_object_position: '58% center',
       link_to: '/shop',
     }
   ];
@@ -66,7 +81,8 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
         <img
           src={activeBanners[0].image_url}
           alt={activeBanners[0].title}
-          className="h-full w-full object-cover object-[58%_center] sm:object-center"
+          className="h-full w-full object-cover"
+          style={{ objectPosition: activeBanners[0].hero_object_position || '58% center' }}
           fetchPriority="high"
           decoding="sync"
           width="1600"
@@ -90,7 +106,8 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
             <img
               src={banner.image_url}
               alt={banner.title}
-              className="h-full w-full object-cover object-[58%_center] sm:object-center"
+              className="h-full w-full object-cover"
+              style={{ objectPosition: banner.hero_object_position || '58% center' }}
               decoding="async"
               width="1600"
               height="1000"
