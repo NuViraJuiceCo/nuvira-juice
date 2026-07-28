@@ -81,12 +81,21 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
       link_to: '/shop',
     }
   ];
+  const heroImageUrls = activeBanners.map(({ image_url }) => image_url).filter(Boolean).join('|');
 
   useEffect(() => {
     if (activeBanners.length <= 1) return;
     const t = setInterval(() => setCurrent(c => (c + 1) % activeBanners.length), 4500);
     return () => clearInterval(t);
   }, [activeBanners.length]);
+
+  useEffect(() => {
+    activeBanners.slice(1).forEach(({ image_url }) => {
+      if (!image_url) return;
+      const img = new Image();
+      img.src = image_url;
+    });
+  }, [heroImageUrls]);
 
   const banner = activeBanners[current];
 
