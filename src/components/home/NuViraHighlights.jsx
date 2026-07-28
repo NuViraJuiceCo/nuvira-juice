@@ -11,7 +11,7 @@ const HIGHLIGHTS = [
     subtitle: 'Small-batch juices made to order, never mass-produced.',
     icon: Leaf,
     color: '#0B3D2E',
-    accentColor: '#C9A24A',
+    accentColor: '#3DB84A',
   },
   {
     id: 'local',
@@ -19,7 +19,7 @@ const HIGHLIGHTS = [
     subtitle: 'Wentzville-made. Compostable bottles. Community-first.',
     icon: Truck,
     color: '#0B3D2E',
-    accentColor: '#C9A24A',
+    accentColor: '#1A8C35',
   },
   {
     id: 'wellness',
@@ -27,7 +27,7 @@ const HIGHLIGHTS = [
     subtitle: 'No added sugars, no fillers, no compromises.',
     icon: Sparkles,
     color: '#0B3D2E',
-    accentColor: '#C9A24A',
+    accentColor: '#C8E86A',
   },
   {
     id: 'rewards',
@@ -35,7 +35,7 @@ const HIGHLIGHTS = [
     subtitle: 'Rewards program. Referral bonuses. Birthday perks.',
     icon: Star,
     color: '#0B3D2E',
-    accentColor: '#C9A24A',
+    accentColor: '#E67E22',
   },
 ];
 
@@ -65,10 +65,7 @@ export default function NuViraHighlights() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.08 }}
-              className="w-[280px] rounded-2xl p-4 border border-border/50 shadow-sm"
-              style={{
-                background: `linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)`,
-              }}
+              className="nuvira-vivid-panel w-[280px] rounded-2xl border p-4"
             >
               {/* Icon badge */}
               <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: `${highlight.accentColor}20` }}>
@@ -93,16 +90,16 @@ export default function NuViraHighlights() {
             transition={{ delay: 0.32 }}
             className="rounded-2xl p-4 flex items-center justify-between border border-border/50 shadow-sm"
             style={{
-              background: `linear-gradient(135deg, rgba(201,162,74,0.12) 0%, rgba(201,162,74,0.06) 100%)`,
-              borderColor: 'rgba(201,162,74,0.3)',
+              background: `linear-gradient(135deg, rgba(200,232,106,0.18) 0%, rgba(61,184,74,0.12) 100%)`,
+              borderColor: 'rgba(61,184,74,0.3)',
             }}
           >
             <div>
               <p className="text-sm font-semibold">Loyalty Awaits</p>
               <p className="text-[10px] text-muted-foreground">Join our rewards program</p>
             </div>
-            <div className="flex items-center justify-center w-8 h-8 rounded-full" style={{ background: 'rgba(201,162,74,0.2)' }}>
-              <ArrowRight className="w-4 h-4" style={{ color: '#C9A24A' }} />
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/15">
+              <ArrowRight className="w-4 h-4 text-primary" />
             </div>
           </motion.div>
         </Link>

@@ -125,9 +125,9 @@ function BackLink({ tone = 'default' }) {
 
 function ValueCard({ icon: Icon, title, body }) {
   return (
-    <article className="rounded-lg border border-border/70 bg-card p-4 shadow-sm md:p-5">
-      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
-        <Icon className="h-5 w-5 text-primary" />
+    <article className="nuvira-vivid-panel rounded-lg border p-4 md:p-5">
+      <div className="nuvira-icon-badge mb-4 flex h-10 w-10 items-center justify-center rounded-lg">
+        <Icon className="h-5 w-5" />
       </div>
       <h3 className="font-heading text-lg font-semibold leading-tight">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{body}</p>
@@ -138,8 +138,8 @@ function ValueCard({ icon: Icon, title, body }) {
 function StoryBlock({ icon: Icon, kicker, title, body }) {
   return (
     <article className="grid gap-4 border-t border-border/70 py-6 md:grid-cols-[3rem_minmax(0,1fr)] md:gap-5">
-      <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-accent/30 bg-accent/15">
-        <Icon className="h-5 w-5 text-accent-foreground" />
+      <div className="nuvira-icon-badge flex h-11 w-11 items-center justify-center rounded-lg">
+        <Icon className="h-5 w-5" />
       </div>
       <div>
         <p className="text-xs font-bold uppercase text-primary">{kicker}</p>
@@ -159,7 +159,7 @@ function GalleryImage({ src, alt, caption, className = '' }) {
         className="h-[18rem] w-full object-cover transition duration-500 group-hover:scale-[1.02] md:h-full md:min-h-[17rem]"
         loading="lazy"
       />
-      <figcaption className="border-x border-b border-border/70 bg-card px-4 py-3 text-sm font-semibold text-foreground">
+      <figcaption className="border-x border-b border-nuvira bg-card px-4 py-3 text-sm font-semibold text-foreground">
         {caption}
       </figcaption>
     </figure>
@@ -179,7 +179,7 @@ export default function About() {
         <BackLink />
       </header>
 
-      <section className="bg-[#0d1511] text-white">
+      <section className="nuvira-vivid-hero text-white">
         <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-7 md:px-8 md:py-14 lg:px-12">
           <div className="flex flex-col justify-between gap-8">
             <div>
@@ -187,7 +187,7 @@ export default function About() {
                 <BackLink tone="dark" />
               </div>
               <img src={LOGO_URL} alt="NuVira Juice Co." className="mt-5 h-10 w-auto md:mt-10 md:h-12" />
-              <p className="mt-7 text-sm font-semibold text-primary md:mt-10">{aboutContent.hero.eyebrow}</p>
+              <p className="mt-7 text-sm font-bold text-[#C8E86A] md:mt-10">{aboutContent.hero.eyebrow}</p>
               <h1 className="mt-3 max-w-5xl font-heading text-4xl font-bold leading-[1.05] sm:text-5xl lg:text-6xl">
                 {aboutContent.hero.title}
               </h1>
@@ -198,7 +198,7 @@ export default function About() {
 
             <div className="grid gap-3 sm:grid-cols-3">
               {aboutContent.proof.map((item) => (
-                <div key={item.value} className="rounded-lg border border-white/12 bg-white/[0.04] p-4">
+                <div key={item.value} className="rounded-lg border border-white/18 bg-white/[0.08] p-4 shadow-lg shadow-emerald-950/10 backdrop-blur">
                   <p className="font-heading text-xl font-bold text-white">{item.value}</p>
                   <p className="mt-1 text-xs leading-5 text-white/62">{item.label}</p>
                 </div>
@@ -229,7 +229,7 @@ export default function About() {
         </div>
       </section>
 
-      <section className="border-b border-border/70 bg-card/45">
+      <section className="border-b border-nuvira bg-nuvira-gradient-soft">
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] md:px-8 md:py-16 lg:px-12">
           <div>
             <p className="text-sm font-bold text-primary">Our story</p>
@@ -242,10 +242,10 @@ export default function About() {
               {aboutContent.intro}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <Link to="/shop" className="inline-flex h-12 items-center justify-center rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground">
+              <Link to="/shop" className="nuvira-gradient-button inline-flex h-12 items-center justify-center rounded-lg px-5 text-sm font-bold">
                 Shop Juices
               </Link>
-              <Link to="/events" className="inline-flex h-12 items-center justify-center rounded-lg border border-border bg-background px-5 text-sm font-bold text-foreground">
+              <Link to="/events" className="inline-flex h-12 items-center justify-center rounded-lg border border-nuvira bg-card/80 px-5 text-sm font-bold text-foreground">
                 See Events
               </Link>
             </div>
@@ -270,7 +270,7 @@ export default function About() {
         </div>
       </section>
 
-      <section className="bg-[#111914]">
+      <section className="nuvira-vivid-hero">
         <div className="mx-auto grid max-w-7xl gap-4 px-5 py-10 md:grid-cols-12 md:px-8 md:py-16 lg:px-12">
           {gallery.map((image) => (
             <GalleryImage key={image.src} {...image} />
@@ -303,11 +303,11 @@ export default function About() {
         </div>
       </section>
 
-      <section className="border-t border-border/70 bg-card/45">
+      <section className="border-t border-nuvira bg-nuvira-gradient-soft">
         <div className="mx-auto grid max-w-7xl gap-6 px-5 py-10 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-8 md:py-14 lg:px-12">
           <div>
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
-              <CalendarHeart className="h-5 w-5 text-primary" />
+            <div className="nuvira-icon-badge mb-4 flex h-11 w-11 items-center justify-center rounded-lg">
+              <CalendarHeart className="h-5 w-5" />
             </div>
             <h2 className="font-heading text-3xl font-bold leading-tight md:text-4xl">Ready for your next fresh order?</h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
@@ -315,10 +315,10 @@ export default function About() {
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row md:flex-col lg:flex-row">
-            <Link to="/shop" className="inline-flex h-12 items-center justify-center rounded-lg bg-primary px-6 text-sm font-bold text-primary-foreground">
+            <Link to="/shop" className="nuvira-gradient-button inline-flex h-12 items-center justify-center rounded-lg px-6 text-sm font-bold">
               Shop the Collection
             </Link>
-            <Link to="/book-event" className="inline-flex h-12 items-center justify-center rounded-lg border border-border bg-background px-6 text-sm font-bold text-foreground">
+            <Link to="/book-event" className="inline-flex h-12 items-center justify-center rounded-lg border border-nuvira bg-card/80 px-6 text-sm font-bold text-foreground">
               Book an Event
             </Link>
           </div>
