@@ -19,7 +19,6 @@ const ALL_CATEGORIES = [
   { key: 'merch', label: 'Merch' },
   { key: 'wellness_pack', label: 'Wellness' },
   { key: 'seasonal', label: 'Seasonal' },
-  { key: 'merch', label: 'Merch' },
 ];
 
 export default function Shop({ seoActive = true }) {
