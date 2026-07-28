@@ -134,10 +134,10 @@ export default function Events() {
           <div className="absolute inset-0 flex items-center px-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <Users className="w-4 h-4 text-primary-foreground/80" />
-                <span className="text-primary-foreground/80 text-xs font-medium">STL Wellness Community</span>
+                <Users className="w-4 h-4 text-white/85 drop-shadow-sm" />
+                <span className="text-white/85 text-xs font-medium drop-shadow-sm">STL Wellness Community</span>
               </div>
-              <p className="font-heading text-xl font-bold text-primary-foreground">
+              <p className="font-heading text-xl font-bold text-white drop-shadow-sm">
                 Growing Together.
               </p>
             </div>
