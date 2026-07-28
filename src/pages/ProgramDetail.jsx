@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Zap } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, Package, Sparkles, Truck, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { useCart } from '@/lib/cartContext';
@@ -18,6 +19,40 @@ const PERKS = [
   'Structured for 3-day results',
   'Delivered to your door',
 ];
+
+const PROGRAM_THEMES = {
+  radiance: {
+    eyebrow: 'Glow program',
+    accentClass: 'text-orange-400',
+    borderClass: 'border-orange-400/35',
+    panelClass: 'bg-orange-400/10 border-orange-400/25',
+    chipClass: 'bg-orange-400/20 text-orange-100 border-orange-300/30',
+    statClass: 'bg-orange-400/10 border-orange-400/20',
+    overlay: 'from-orange-950/95 via-black/62 to-black/28',
+  },
+  hydration: {
+    eyebrow: 'Hydration program',
+    accentClass: 'text-cyan-300',
+    borderClass: 'border-cyan-300/35',
+    panelClass: 'bg-cyan-300/10 border-cyan-300/25',
+    chipClass: 'bg-cyan-300/20 text-cyan-50 border-cyan-200/30',
+    statClass: 'bg-cyan-300/10 border-cyan-300/20',
+    overlay: 'from-cyan-950/95 via-black/62 to-black/28',
+  },
+  reset: {
+    eyebrow: 'Reset program',
+    accentClass: 'text-emerald-300',
+    borderClass: 'border-emerald-300/35',
+    panelClass: 'bg-emerald-300/10 border-emerald-300/25',
+    chipClass: 'bg-emerald-300/20 text-emerald-50 border-emerald-200/30',
+    statClass: 'bg-emerald-300/10 border-emerald-300/20',
+    overlay: 'from-emerald-950/95 via-black/62 to-black/28',
+  },
+};
+
+function getProgramTheme(program) {
+  return PROGRAM_THEMES[program?.key] || PROGRAM_THEMES.hydration;
+}
 
 export default function ProgramDetail() {
   const { key } = useParams();
@@ -131,9 +166,39 @@ export default function ProgramDetail() {
     navigate('/cart');
   };
 
+  const theme = getProgramTheme(program);
+
+  const purchaseTray = (
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 px-4 md:left-60 md:bottom-4 md:px-6">
+      <div className="pointer-events-auto mx-auto max-w-3xl rounded-2xl border border-border/60 bg-card/95 p-2.5 shadow-[0_18px_44px_rgba(4,29,21,0.24)] backdrop-blur-xl">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 shrink-0 basis-[116px] sm:basis-auto sm:min-w-[170px]">
+            <p className="truncate text-[10px] font-black uppercase tracking-[0.13em] text-muted-foreground sm:text-xs sm:tracking-[0.16em]">
+              {program.name} Program
+            </p>
+            <p className="truncate text-sm font-semibold text-foreground">
+              ${total.toFixed(2)}
+              {selectedShots.length > 0 && (
+                <span className="ml-1 text-xs font-medium text-muted-foreground sm:ml-2">
+                  + {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''}
+                </span>
+              )}
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={handleStartProgram}
+            className="nuvira-gradient-button h-11 min-w-0 flex-1 rounded-xl px-3 text-sm font-bold sm:min-w-[260px] sm:px-5"
+          >
+            Start My 3-Day Program
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+12rem)] md:pb-32">
       <SEO
         title={`${programTitle} | Cold-Pressed Juice Program`}
         description={programDescription}
@@ -143,224 +208,182 @@ export default function ProgramDetail() {
         canonicalPath={`/program/${program.key}`}
         structuredData={programStructuredData}
       />
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
+      <div
+        className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3 md:px-6"
+        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+      >
         <button
+          type="button"
           onClick={() => navigate(-1)}
           className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors"
+          aria-label="Go back"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <span className="font-heading text-base font-semibold">{program.name} Program</span>
       </div>
 
-      <div className="px-4 pt-6 pb-[140px] md:pb-[100px]">
-        {/* Hero */}
+      <main className="mx-auto w-full max-w-[1360px] px-4 pt-5 md:px-8 xl:px-6">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl p-6 mb-6 relative overflow-hidden"
-          style={{
-            background: program.gradientBg,
-            border: `1.5px solid ${program.borderColor}`,
-            boxShadow: `0 12px 40px ${program.shadowColor}, 0 2px 8px rgba(0,0,0,0.07)`,
-          }}
+          className={`relative mb-5 overflow-hidden rounded-3xl border ${theme.borderClass} min-h-[420px] shadow-[0_24px_80px_rgba(4,29,21,0.24)] md:min-h-[470px] xl:min-h-[560px]`}
         >
-          {/* Subtle radial highlight */}
-          <div className="absolute top-0 right-0 w-40 h-40 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${program.dotColor}22 0%, transparent 70%)` }} />
-          <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl mb-4 relative z-10"
-            style={{ background: program.chipBg, border: `1.5px solid ${program.chipBorder}` }}
-          >
-            {program.emoji}
-          </div>
-          <h1 className="font-heading text-3xl font-bold mb-1 relative z-10" style={{ color: 'rgba(0,0,0,0.85)' }}>{program.name}</h1>
-          <p className="text-sm font-semibold mb-3 relative z-10" style={{ color: program.accentColor }}>{program.tagline}</p>
-          <p className="text-sm leading-relaxed relative z-10" style={{ color: 'rgba(0,0,0,0.68)' }}>{program.description}</p>
-        </motion.div>
-
-        {/* Program Details */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.07 }}
-          className="bg-card border border-border/50 rounded-2xl p-5 mb-4"
-        >
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">What's Included</p>
-
-          <div className="flex gap-4 mb-5">
-            <div className="flex-1 bg-secondary/50 rounded-xl p-3 text-center">
-              <p className="font-heading text-2xl font-bold">{program.days}</p>
-              <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Days</p>
-            </div>
-            <div className="flex-1 bg-secondary/50 rounded-xl p-3 text-center">
-              <p className="font-heading text-2xl font-bold">{program.bottles}</p>
-              <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Bottles</p>
-            </div>
-            <div className="flex-1 bg-secondary/50 rounded-xl p-3 text-center">
-              <p className="font-heading text-2xl font-bold">${(basePrice / program.bottles).toFixed(0)}</p>
-              <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Per Bottle</p>
-            </div>
-          </div>
-
-          {/* Composition */}
-          <div
-            className="flex items-center gap-2.5 p-3 rounded-xl"
-            style={{
-              background: program.gradientBg,
-              border: `1.5px solid ${program.borderColor}`,
-              boxShadow: `0 3px 12px ${program.shadowColor}`,
-            }}
-          >
-            <span
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
-              style={{ background: program.chipBg, border: `1px solid ${program.chipBorder}` }}
-            >
-              {program.emoji}
+          {program.image && (
+            <img
+              src={program.image}
+              alt={`${program.name} program`}
+              className={`absolute inset-0 h-full w-full object-cover ${program.imagePosition || 'object-center'}`}
+            />
+          )}
+          <div className={`absolute inset-0 bg-gradient-to-t ${theme.overlay}`} />
+          <div className="absolute inset-x-0 bottom-0 p-5 md:p-8 xl:p-10">
+            <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] ${theme.chipClass}`}>
+              <Sparkles className="h-3.5 w-3.5" />
+              {theme.eyebrow}
             </span>
-            <div>
-              <p className="text-xs font-bold" style={{ color: program.accentColor }}>{program.name} Formula</p>
-              <p className="text-sm font-semibold" style={{ color: 'rgba(0,0,0,0.75)' }}>{program.composition}</p>
-            </div>
-          </div>
-
-          {/* Perks */}
-          <div className="mt-4 space-y-2">
-            {PERKS.map(perk => (
-              <div key={perk} className="flex items-center gap-2.5">
-                <Check className="w-3.5 h-3.5 text-primary shrink-0" />
-                <p className="text-xs text-foreground/70">{perk}</p>
-              </div>
-            ))}
+            <h1 className="mt-4 max-w-3xl font-heading text-5xl font-bold leading-[0.9] text-white drop-shadow-[0_2px_18px_rgba(0,0,0,0.42)] md:text-6xl xl:text-7xl">
+              {program.name}
+            </h1>
+            <p className="mt-3 max-w-2xl text-lg font-semibold text-white/90 drop-shadow-[0_1px_12px_rgba(0,0,0,0.5)] md:text-xl">
+              {program.tagline}
+            </p>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 drop-shadow-[0_1px_10px_rgba(0,0,0,0.5)] md:text-base">
+              {program.description}
+            </p>
           </div>
         </motion.div>
 
-        {/* Consumption Schedule */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <ConsumptionSchedule
-            programKey={program.key}
-            shotName={selectedShots.length > 0 ? shots.find(s => s.id === selectedShots[0])?.title : null}
-          />
-        </motion.div>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.64fr)_minmax(320px,0.36fr)]">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.07 }}
+            className="rounded-3xl border border-border/60 bg-card/70 p-5 md:p-6"
+          >
+            <p className="mb-4 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">What's Included</p>
 
-        {/* Shots Add-On */}
-         <motion.div
-           initial={{ opacity: 0, y: 12 }}
-           animate={{ opacity: 1, y: 0 }}
-           transition={{ delay: 0.12 }}
-           className="mb-6"
-         >
-           <div className="nuvira-premium-card rounded-2xl p-4">
-             <div className="flex items-center gap-2 mb-1">
-               <Zap className="w-4 h-4 text-primary" />
-               <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
-               <span className="text-[10px] text-muted-foreground ml-auto">${shots[0]?.price || 6} each</span>
-             </div>
-             <p className="text-[11px] text-muted-foreground mb-3">Pick up to 3 shots — one per day of your program</p>
-             <div className="space-y-2">
-               {shots.map(shot => {
-                 const isSelected = selectedShots.includes(shot.id);
-                 const atMax = selectedShots.length >= 3 && !isSelected;
-                 return (
-                   <button
-                     key={shot.id}
-                     disabled={atMax}
-                     onClick={() => setSelectedShots(prev =>
-                       isSelected ? prev.filter(id => id !== shot.id) : [...prev, shot.id]
-                     )}
-                     className={`w-full text-left flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition-all ${
-                       isSelected ? 'border-primary bg-nuvira-gradient-soft' : atMax ? 'border-border/30 opacity-40' : 'border-border/50 bg-background'
-                     }`}
-                   >
-                     {shot.image_url ? (
-                       <img src={shot.image_url} alt={shot.title} className="w-8 h-8 rounded-lg object-cover shrink-0" />
-                     ) : (
-                       <span className="text-base shrink-0">🍊</span>
-                     )}
-                     <div className="flex-1 min-w-0">
-                       <p className="text-xs font-semibold">{shot.title}</p>
-                       <p className="text-[10px] text-muted-foreground">{shot.short_description}</p>
-                     </div>
-                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-primary bg-nuvira-gradient' : 'border-border'}`}>
-                       {isSelected && <Check className="w-3 h-3 text-white" />}
-                     </div>
-                   </button>
-                 );
-               })}
-             </div>
-             {selectedShots.length > 0 && (
-               <p className="text-[11px] text-primary font-medium mt-3">
-                 ✓ {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''} added (+${(selectedShots.reduce((sum, id) => sum + (shots.find(s => s.id === id)?.price || 0), 0)).toFixed(2)})
-               </p>
-             )}
-           </div>
-         </motion.div>
-      </div>
-
-      {/* Bottom Sticky Purchase Tray — Premium Anchored Footer */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-primary/15 md:left-60" style={{ paddingBottom: `max(0.75rem, env(safe-area-inset-bottom))` }}>
-        <div className="bg-gradient-to-b from-card to-card/95 backdrop-blur-sm">
-          <div className="px-4 py-3 md:px-6 md:py-3.5">
-            {/* Mobile: Two-row compact layout */}
-            <div className="md:hidden">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    {program.name}
-                  </p>
-                  {selectedShots.length > 0 && (
-                    <p className="text-[10px] text-muted-foreground">
-                      + {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''}
-                    </p>
-                  )}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Days', value: program.days, icon: CalendarDays },
+                { label: 'Bottles', value: program.bottles, icon: Package },
+                { label: 'Per Bottle', value: `$${(basePrice / program.bottles).toFixed(0)}`, icon: Truck },
+              ].map(({ label, value, icon: Icon }) => (
+                <div key={label} className={`rounded-2xl border p-3 ${theme.statClass}`}>
+                  <Icon className={`mb-2 h-4 w-4 ${theme.accentClass}`} />
+                  <p className="font-heading text-2xl font-bold text-foreground">{value}</p>
+                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
                 </div>
-                <div className="text-right">
-                  <p className="font-heading text-2xl font-bold text-foreground">${total}</p>
-                </div>
-              </div>
-              <Button
-                onClick={handleStartProgram}
-                className="w-full h-11 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
-              >
-                Start My 3-Day Program
-              </Button>
+              ))}
             </div>
 
-            {/* Desktop: Single-row professional layout */}
-            <div className="hidden md:flex items-center justify-between max-w-4xl mx-auto">
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  {program.name} Program
-                </p>
-                {selectedShots.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    + {selectedShots.length} wellness shot{selectedShots.length > 1 ? 's' : ''}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-6">
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground mb-0.5">Total</p>
-                  <p className="font-heading text-2xl font-bold text-foreground">${total}</p>
-                </div>
-                <Button
-                  onClick={handleStartProgram}
-                  className="h-11 px-8 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
-                  style={{ minWidth: '280px' }}
-                >
-                  Start My 3-Day Program
-                </Button>
-              </div>
+            <div className={`mt-4 rounded-2xl border p-4 ${theme.panelClass}`}>
+              <p className={`text-xs font-black uppercase tracking-[0.16em] ${theme.accentClass}`}>{program.name} Formula</p>
+              <p className="mt-1 font-heading text-2xl font-bold text-foreground">{program.composition}</p>
             </div>
-          </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {PERKS.map(perk => (
+                <div key={perk} className="flex items-center gap-2.5 rounded-xl bg-secondary/35 px-3 py-2.5">
+                  <Check className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <p className="text-xs font-semibold text-foreground/75">{perk}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.09 }}
+            className={`rounded-3xl border p-5 md:p-6 ${theme.panelClass}`}
+          >
+            <p className={`text-xs font-black uppercase tracking-[0.18em] ${theme.accentClass}`}>How it works</p>
+            <h2 className="mt-2 font-heading text-2xl font-bold text-foreground">Three days, planned for you.</h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              Each program keeps the bottle mix fixed so production, delivery, and your daily rhythm stay clear.
+            </p>
+            <div className="mt-5 space-y-3">
+              {['Follow the daily guide', 'Keep bottles chilled', 'Add optional AM shots'].map((item, index) => (
+                <div key={item} className="flex items-center gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-black text-primary-foreground">
+                    {index + 1}
+                  </span>
+                  <p className="text-sm font-semibold text-foreground/80">{item}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
         </div>
-      </div>
 
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.55fr)_minmax(340px,0.45fr)]">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <ConsumptionSchedule
+              programKey={program.key}
+              shotName={selectedShots.length > 0 ? shots.find(s => s.id === selectedShots[0])?.title : null}
+            />
+          </motion.div>
 
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12 }}
+            className="mb-6"
+          >
+            <div className="nuvira-premium-card rounded-3xl p-4 md:p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <Zap className="w-4 h-4 text-primary" />
+                <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
+                <span className="text-[10px] text-muted-foreground ml-auto">${shots[0]?.price || 6} each</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mb-3">Pick up to 3 shots — one per day of your program</p>
+              <div className="space-y-2">
+                {shots.map(shot => {
+                  const isSelected = selectedShots.includes(shot.id);
+                  const atMax = selectedShots.length >= 3 && !isSelected;
+                  return (
+                    <button
+                      key={shot.id}
+                      type="button"
+                      disabled={atMax}
+                      onClick={() => setSelectedShots(prev =>
+                        isSelected ? prev.filter(id => id !== shot.id) : [...prev, shot.id]
+                      )}
+                      className={`w-full text-left flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition-all ${
+                        isSelected ? 'border-primary bg-nuvira-gradient-soft' : atMax ? 'border-border/30 opacity-40' : 'border-border/50 bg-background'
+                      }`}
+                    >
+                      {shot.image_url ? (
+                        <img src={shot.image_url} alt={shot.title} className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                      ) : (
+                        <span className="text-base shrink-0">🍊</span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold">{shot.title}</p>
+                        <p className="text-[10px] text-muted-foreground">{shot.short_description}</p>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-primary bg-nuvira-gradient' : 'border-border'}`}>
+                        {isSelected && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedShots.length > 0 && (
+                <p className="text-[11px] text-primary font-medium mt-3">
+                  ✓ {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''} added (+${(selectedShots.reduce((sum, id) => sum + (shots.find(s => s.id === id)?.price || 0), 0)).toFixed(2)})
+                </p>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      </main>
+
+      {typeof document !== 'undefined' ? createPortal(purchaseTray, document.body) : purchaseTray}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
@@ -284,8 +285,44 @@ export default function ProductDetail() {
     }] : undefined,
   };
 
+  const purchaseBar = (
+    <div
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 px-4 md:left-60 md:bottom-4 md:px-6"
+    >
+      <div className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 rounded-2xl border border-border/60 bg-card/95 p-2.5 shadow-[0_18px_44px_rgba(4,29,21,0.24)] backdrop-blur-xl">
+        <div className="flex shrink-0 items-center gap-2.5 rounded-xl bg-secondary px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setQuantity(Math.max(1, quantity - 1))}
+            className="active:scale-90 transition-transform hover:opacity-60"
+            aria-label="Decrease quantity"
+          >
+            <Minus className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-xs font-semibold w-6 text-center">{quantity}</span>
+          <button
+            type="button"
+            onClick={() => setQuantity(quantity + 1)}
+            className="active:scale-90 transition-transform hover:opacity-60"
+            aria-label="Increase quantity"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <Button
+          type="button"
+          onClick={handleAddToCart}
+          className="nuvira-gradient-button flex-1 h-10 rounded-xl font-semibold text-sm inline-flex items-center justify-center"
+        >
+          <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
+          {`$${((product.price || 0) * quantity).toFixed(2)}`}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-background" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 11rem)' }}>
+    <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+11rem)] md:pb-32">
       <SEO
         title={seoTitle}
         description={seoDescription}
@@ -302,12 +339,14 @@ export default function ProductDetail() {
         </button>
       </div>
 
-      <main className="md:px-6 md:pb-28">
-      <div className="md:grid md:grid-cols-[minmax(0,0.95fr)_minmax(340px,0.72fr)] md:gap-6 md:items-stretch">
-        <div className="md:min-h-[560px]">
+      <main className="mx-auto w-full max-w-[1360px] md:px-6 md:pb-28">
+      <div className="xl:grid xl:grid-cols-[minmax(0,0.92fr)_minmax(340px,0.68fr)] xl:gap-6 xl:items-stretch">
+        <div className="md:px-4 xl:min-h-[460px] xl:px-0">
           <div
-            className={`relative w-full md:h-full md:min-h-[560px] md:rounded-[28px] md:border md:border-border/50 bg-secondary/50 overflow-hidden shadow-[0_24px_80px_rgba(4,29,21,0.22)] ${
-              isMerchProduct ? 'h-[44vh] min-h-[260px] max-h-[360px] md:max-h-none' : 'aspect-square md:aspect-auto'
+            className={`relative w-full overflow-hidden bg-secondary/50 shadow-[0_24px_80px_rgba(4,29,21,0.22)] md:rounded-[28px] md:border md:border-border/50 xl:h-[min(64vh,620px)] xl:min-h-[460px] ${
+              isMerchProduct
+                ? 'h-[44vh] min-h-[260px] max-h-[390px] sm:max-h-[430px] xl:max-h-[620px]'
+                : 'h-[52vh] min-h-[330px] max-h-[470px] sm:h-[50vh] sm:max-h-[520px]'
             }`}
           >
             {product.image_url ? (
@@ -352,7 +391,7 @@ export default function ProductDetail() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="px-4 pt-5 md:px-0 md:pt-2 md:h-full md:flex md:flex-col md:justify-center"
+            className="px-4 pt-5 md:px-8 xl:h-full xl:px-0 xl:pt-2 xl:flex xl:flex-col xl:justify-center"
           >
             {product.is_seasonal && (
               <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-1 rounded-full mb-3">
@@ -362,7 +401,7 @@ export default function ProductDetail() {
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-primary">
               {productDescriptor}
             </p>
-            <h1 className="font-heading text-4xl font-bold leading-[0.95] md:text-6xl">{product.title}</h1>
+            <h1 className="font-heading text-4xl font-bold leading-[0.95] sm:text-5xl xl:text-6xl">{product.title}</h1>
             {product.short_description && (
               <p className="mt-3 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">{product.short_description}</p>
             )}
@@ -386,7 +425,7 @@ export default function ProductDetail() {
               ))}
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-3">
+            <div className="mt-6 grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
               {productHighlights.map(({ label, value, icon: Icon }) => (
                 <div key={label} className="rounded-2xl border border-border/60 bg-card/70 p-3.5 shadow-sm">
                   <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-nuvira-gradient text-white shadow-sm">
@@ -419,7 +458,7 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      <div className="mt-8 grid gap-4 px-4 pb-4 md:grid-cols-[minmax(0,0.68fr)_minmax(280px,0.32fr)] md:px-0 md:pb-0">
+      <div className="mt-8 grid gap-4 px-4 pb-4 md:px-8 md:pb-0 xl:grid-cols-[minmax(0,0.68fr)_minmax(280px,0.32fr)] xl:px-0">
         {product.description && (
           <div className="rounded-3xl border border-border/60 bg-card/70 p-5 md:p-6">
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-primary">About</p>
@@ -456,7 +495,7 @@ export default function ProductDetail() {
 
         {!isMerch && (
           !isMerchProduct && (
-            <div className="md:col-span-2">
+            <div className="xl:col-span-2">
               <HealthAdvisory variant="expanded" />
             </div>
           )
@@ -464,14 +503,14 @@ export default function ProductDetail() {
       </div>
 
       {related.length > 0 && (
-        <div className="mt-8 px-4 md:px-0">
+        <div className="mt-8 px-4 md:px-8 xl:px-0">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary">Keep exploring</p>
               <h2 className="font-heading text-xl font-bold">Pair it with</h2>
             </div>
           </div>
-          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 items-stretch md:grid md:grid-cols-4 md:overflow-visible">
+          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 items-stretch xl:grid xl:grid-cols-4 xl:overflow-visible">
             {related.map(p => (
               <div key={p.id} className="shrink-0 w-40 md:w-auto">
                 <ProductCard product={p} compact />
@@ -482,42 +521,7 @@ export default function ProductDetail() {
       )}
       </main>
 
-      <div
-        className="fixed left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-border/50 md:left-60"
-        style={{
-          bottom: 'calc(4rem + env(safe-area-inset-bottom))',
-          padding: '10px 16px',
-          paddingBottom: '10px',
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2.5 bg-secondary rounded-xl px-3 py-2.5 shrink-0">
-            <button
-              onClick={() => setQuantity(Math.max(1, quantity - 1))}
-              className="active:scale-90 transition-transform hover:opacity-60"
-              aria-label="Decrease quantity"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-xs font-semibold w-6 text-center">{quantity}</span>
-            <button
-              onClick={() => setQuantity(quantity + 1)}
-              className="active:scale-90 transition-transform hover:opacity-60"
-              aria-label="Increase quantity"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <Button
-            type="button"
-            onClick={handleAddToCart}
-            className="nuvira-gradient-button flex-1 h-10 rounded-xl font-semibold text-sm inline-flex items-center justify-center"
-          >
-            <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
-            {`$${((product.price || 0) * quantity).toFixed(2)}`}
-          </Button>
-        </div>
-      </div>
+      {typeof document !== 'undefined' ? createPortal(purchaseBar, document.body) : purchaseBar}
     </div>
   );
 }
