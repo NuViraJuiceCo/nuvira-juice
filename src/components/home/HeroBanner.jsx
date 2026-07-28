@@ -9,7 +9,7 @@ import { BRAND_IMAGES } from '@/lib/brandImages';
 // Product-focused hero photography. These are deployed with the app so the
 // homepage does not depend on older remote banner image crops.
 const DEFAULT_HERO_IMAGE = {
-  image_url: BRAND_IMAGES.bottlesCoolerWide,
+  image_url: BRAND_IMAGES.aboutBottleCooler,
   object_position: '58% center',
 };
 
