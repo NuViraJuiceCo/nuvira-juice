@@ -26,6 +26,7 @@
     "@base44/sdk": "^0.8.41",
     "@base44/vite-plugin": "^1.0.30",
     "@capacitor-firebase/messaging": "^8.2.0",
+    "@capacitor/android": "8.3.4",
     "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",

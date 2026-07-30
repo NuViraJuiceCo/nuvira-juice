@@ -50,6 +50,7 @@ const harnesses = [
   'scripts/migration/run-g54-whole-app-readiness-audit-tests.mjs',
   'scripts/migration/run-g55-backend-live-use-readiness-tests.mjs',
   'scripts/migration/run-g59-google-play-mobile-readiness-tests.mjs',
+  'scripts/migration/run-g60-android-play-store-readiness-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

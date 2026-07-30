@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NuVira Juice</string>
+    <string name="title_activity_main">NuVira Juice</string>
+    <string name="package_name">com.base69d48d0c39891f7945481152.app</string>
+    <string name="custom_url_scheme">nuvira</string>
+</resources>
