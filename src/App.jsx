@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster as AppToaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
@@ -12,72 +12,74 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { CartProvider } from '@/lib/cartContext';
 import AppLayout from '@/components/layout/AppLayout';
 import SplashScreen from '@/components/SplashScreen';
-import ProductDetail from '@/pages/ProductDetail';
-import LocalSeoLanding from '@/pages/LocalSeoLanding';
-import ShopifyCartPermalink from '@/pages/ShopifyCartPermalink';
-import Checkout from '@/pages/Checkout';
-import OrderConfirmation from '@/pages/OrderConfirmation';
-import OrderIncomplete from '@/pages/OrderIncomplete';
-import OrderTracker from '@/pages/OrderTracker';
-import Account from '@/pages/Account';
-import OrderHistory from '@/pages/OrderHistory';
-import Notifications from '@/pages/Notifications';
-import Support from '@/pages/Support';
-import AccountSettings from '@/pages/AccountSettings';
-import SubscriptionManagement from '@/pages/SubscriptionManagement';
-import About from '@/pages/About';
-import WhyNuVira from '@/pages/WhyNuVira';
-import Events from '@/pages/Events';
-import EventMay30 from '@/pages/EventMay30';
-import Merch from '@/pages/Merch';
-import Subscribe from '@/pages/Subscribe';
-import Referral from '@/pages/Referral';
-import Rewards from '@/pages/Rewards';
-import Legal from '@/pages/Legal';
-import Connect from '@/pages/Connect';
-import Contact from '@/pages/Contact';
-import Partner from '@/pages/Partner';
-import BookEvent from '@/pages/BookEvent';
-import AdminOrders from '@/pages/AdminOrders';
-import ShopifyDashboard from '@/pages/admin/ShopifyDashboard';
-import ProductionQueueSummary from '@/pages/admin/ProductionQueueSummary';
-import ProductionPlanning from '@/pages/admin/ProductionPlanning';
-import Calendar from '@/pages/admin/Calendar';
-import SyncHealth from '@/pages/admin/SyncHealth';
-import DeliveryQueue from '@/pages/admin/DeliveryQueue';
-import RouteOps from '@/pages/admin/RouteOps';
-import InventoryStatus from '@/pages/admin/InventoryStatus';
-import OpsAlerts from '@/pages/admin/OpsAlerts';
-import Operations from '@/pages/admin/Operations';
-import POSOrders from '@/pages/admin/POSOrders';
-import Resources from '@/pages/admin/Resources';
-import ComplianceOps from '@/pages/admin/ComplianceOps';
-import AdminProducts from '@/pages/admin/AdminProducts';
-import EventCatalogSetup from '@/pages/admin/EventCatalogSetup';
-import BagReturnAdmin from '@/pages/admin/BagReturnAdmin';
-import LoyaltyMembers from '@/pages/admin/LoyaltyMembers';
-import SyncStatus from '@/pages/admin/SyncStatus';
-import LiveCheckoutMonitor from '@/pages/admin/LiveCheckoutMonitor';
-import NotificationCampaigns from '@/pages/admin/NotificationCampaigns';
-import AdminEvents from '@/pages/admin/AdminEvents';
-import PurchaseOrders from '@/pages/admin/PurchaseOrders';
-import Suppliers from '@/pages/admin/Suppliers';
-import Reporting from '@/pages/admin/Reporting';
-import ReviewQueue from '@/pages/admin/ReviewQueue';
-import AuditTrail from '@/pages/admin/AuditTrail';
-import ReturnReward from '@/pages/ReturnReward';
 import ScrollToTop from '@/components/ScrollToTop';
 import LowercaseRedirect from '@/components/LowercaseRedirect';
 import SeoHeadSanitizer from '@/components/SeoHeadSanitizer';
-import Home from '@/pages/Home';
-import Zone3ReviewSubmitted from '@/pages/Zone3ReviewSubmitted';
-import Shop from '@/pages/Shop';
-import Cart from '@/pages/Cart';
-import ProgramDetail from '@/pages/ProgramDetail';
-import AccountSetup from '@/pages/AccountSetup';
-import NativeLogin from '@/pages/NativeLogin';
 import { base44 } from '@/api/base44Client';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
+
+const ProductDetail = React.lazy(() => import('@/pages/ProductDetail'));
+const LocalSeoLanding = React.lazy(() => import('@/pages/LocalSeoLanding'));
+const ShopifyCartPermalink = React.lazy(() => import('@/pages/ShopifyCartPermalink'));
+const Checkout = React.lazy(() => import('@/pages/Checkout'));
+const OrderConfirmation = React.lazy(() => import('@/pages/OrderConfirmation'));
+const OrderIncomplete = React.lazy(() => import('@/pages/OrderIncomplete'));
+const OrderTracker = React.lazy(() => import('@/pages/OrderTracker'));
+const Account = React.lazy(() => import('@/pages/Account'));
+const OrderHistory = React.lazy(() => import('@/pages/OrderHistory'));
+const Notifications = React.lazy(() => import('@/pages/Notifications'));
+const Support = React.lazy(() => import('@/pages/Support'));
+const AccountSettings = React.lazy(() => import('@/pages/AccountSettings'));
+const DeleteAccount = React.lazy(() => import('@/pages/DeleteAccount'));
+const SubscriptionManagement = React.lazy(() => import('@/pages/SubscriptionManagement'));
+const About = React.lazy(() => import('@/pages/About'));
+const WhyNuVira = React.lazy(() => import('@/pages/WhyNuVira'));
+const Events = React.lazy(() => import('@/pages/Events'));
+const EventMay30 = React.lazy(() => import('@/pages/EventMay30'));
+const Merch = React.lazy(() => import('@/pages/Merch'));
+const Subscribe = React.lazy(() => import('@/pages/Subscribe'));
+const Referral = React.lazy(() => import('@/pages/Referral'));
+const Rewards = React.lazy(() => import('@/pages/Rewards'));
+const Legal = React.lazy(() => import('@/pages/Legal'));
+const Connect = React.lazy(() => import('@/pages/Connect'));
+const Contact = React.lazy(() => import('@/pages/Contact'));
+const Partner = React.lazy(() => import('@/pages/Partner'));
+const BookEvent = React.lazy(() => import('@/pages/BookEvent'));
+const AdminOrders = React.lazy(() => import('@/pages/AdminOrders'));
+const ShopifyDashboard = React.lazy(() => import('@/pages/admin/ShopifyDashboard'));
+const ProductionQueueSummary = React.lazy(() => import('@/pages/admin/ProductionQueueSummary'));
+const ProductionPlanning = React.lazy(() => import('@/pages/admin/ProductionPlanning'));
+const Calendar = React.lazy(() => import('@/pages/admin/Calendar'));
+const SyncHealth = React.lazy(() => import('@/pages/admin/SyncHealth'));
+const DeliveryQueue = React.lazy(() => import('@/pages/admin/DeliveryQueue'));
+const RouteOps = React.lazy(() => import('@/pages/admin/RouteOps'));
+const InventoryStatus = React.lazy(() => import('@/pages/admin/InventoryStatus'));
+const OpsAlerts = React.lazy(() => import('@/pages/admin/OpsAlerts'));
+const Operations = React.lazy(() => import('@/pages/admin/Operations'));
+const POSOrders = React.lazy(() => import('@/pages/admin/POSOrders'));
+const Resources = React.lazy(() => import('@/pages/admin/Resources'));
+const ComplianceOps = React.lazy(() => import('@/pages/admin/ComplianceOps'));
+const AdminProducts = React.lazy(() => import('@/pages/admin/AdminProducts'));
+const EventCatalogSetup = React.lazy(() => import('@/pages/admin/EventCatalogSetup'));
+const BagReturnAdmin = React.lazy(() => import('@/pages/admin/BagReturnAdmin'));
+const LoyaltyMembers = React.lazy(() => import('@/pages/admin/LoyaltyMembers'));
+const SyncStatus = React.lazy(() => import('@/pages/admin/SyncStatus'));
+const LiveCheckoutMonitor = React.lazy(() => import('@/pages/admin/LiveCheckoutMonitor'));
+const NotificationCampaigns = React.lazy(() => import('@/pages/admin/NotificationCampaigns'));
+const AdminEvents = React.lazy(() => import('@/pages/admin/AdminEvents'));
+const PurchaseOrders = React.lazy(() => import('@/pages/admin/PurchaseOrders'));
+const Suppliers = React.lazy(() => import('@/pages/admin/Suppliers'));
+const Reporting = React.lazy(() => import('@/pages/admin/Reporting'));
+const ReviewQueue = React.lazy(() => import('@/pages/admin/ReviewQueue'));
+const AuditTrail = React.lazy(() => import('@/pages/admin/AuditTrail'));
+const ReturnReward = React.lazy(() => import('@/pages/ReturnReward'));
+const Home = React.lazy(() => import('@/pages/Home'));
+const Zone3ReviewSubmitted = React.lazy(() => import('@/pages/Zone3ReviewSubmitted'));
+const Shop = React.lazy(() => import('@/pages/Shop'));
+const Cart = React.lazy(() => import('@/pages/Cart'));
+const ProgramDetail = React.lazy(() => import('@/pages/ProgramDetail'));
+const AccountSetup = React.lazy(() => import('@/pages/AccountSetup'));
+const NativeLogin = React.lazy(() => import('@/pages/NativeLogin'));
 
 // Protected route wrapper—redirect to login if not authenticated
 const getLoginReturnRoute = () => {
@@ -105,6 +107,35 @@ const ProtectedRoute = ({ element, user }) => {
 const AdminRedirect = ({ to, user }) => (
   <ProtectedRoute element={<Navigate to={to} replace />} user={user} />
 );
+
+function AppRouteFallback() {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-background px-6">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+        <p className="text-sm font-medium text-muted-foreground">Loading NuVira...</p>
+      </div>
+    </div>
+  );
+}
+
+function BootstrapRecovery({ title, message, onRetry }) {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-background px-6" role="alert" aria-live="polite">
+      <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-5 text-center shadow-sm">
+        <h1 className="font-heading text-xl font-bold text-foreground">{title}</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="nuvira-gradient-button mt-5 h-11 w-full rounded-2xl text-sm font-semibold"
+        >
+          Try Again
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function hasSplashBeenShown() {
   if (typeof window === 'undefined') return false;
@@ -183,6 +214,7 @@ const AuthenticatedApp = () => {
     (profileMissing || profileLoadedAndIncomplete)
   );
   const shouldRouteToLogin = Boolean(authError?.type === 'auth_required' && !isResetSignInRoute);
+  const isProtectedStartupRoute = /^\/(account|admin|notifications|rewards|return-reward|event\/may30)(\/|$)/.test(location.pathname);
 
   React.useEffect(() => {
     if (!shouldRouteToLogin) {
@@ -198,9 +230,32 @@ const AuthenticatedApp = () => {
   // Show loading spinner while checking app public settings, auth, or profile
   if (isLoadingPublicSettings || (!isResetSignInRoute && isLoadingAuth) || profileRequestPending) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      <div className="fixed inset-0 flex items-center justify-center bg-background px-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+          <p className="text-sm font-medium text-muted-foreground">Loading your NuVira session...</p>
+        </div>
       </div>
+    );
+  }
+
+  if (isProtectedStartupRoute && !user && !isResetSignInRoute && authError?.type === 'bootstrap_timeout') {
+    return (
+      <BootstrapRecovery
+        title="Sign-in check timed out"
+        message="NuVira could not confirm your session quickly enough. Retry once your connection is stable."
+        onRetry={() => checkAppState()}
+      />
+    );
+  }
+
+  if (isProtectedStartupRoute && !user && !isResetSignInRoute && authError?.type === 'bootstrap_error') {
+    return (
+      <BootstrapRecovery
+        title="We could not verify your session"
+        message="The app stayed open safely. Try again before accessing account or admin tools."
+        onRetry={() => checkAppState()}
+      />
     );
   }
 
@@ -245,6 +300,7 @@ const AuthenticatedApp = () => {
       <LowercaseRedirect />
       <SeoHeadSanitizer />
       {showSplash && <SplashScreen onDone={handleSplashDone} />}
+      <Suspense fallback={<AppRouteFallback />}>
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
@@ -259,6 +315,7 @@ const AuthenticatedApp = () => {
           <Route path="/account" element={<ProtectedRoute element={<Account />} user={user} />} />
           <Route path="/account/orders" element={<ProtectedRoute element={<OrderHistory />} user={user} />} />
           <Route path="/account/settings" element={<ProtectedRoute element={<AccountSettings />} user={user} />} />
+          <Route path="/delete-account" element={<DeleteAccount />} />
           <Route path="/account/subscriptions" element={<ProtectedRoute element={<SubscriptionManagement />} user={user} />} />
           <Route path="/support" element={<Support />} />
           <Route path="/our-story" element={<About />} />
@@ -378,6 +435,7 @@ const AuthenticatedApp = () => {
         <Route path="/inavii_ig_media/*" element={<Navigate to="/" replace />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
+      </Suspense>
     </CartProvider>
   );
 };

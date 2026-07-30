@@ -6,6 +6,7 @@ import MobilePageHeader from '@/components/layout/MobilePageHeader';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import SEO from '@/components/SEO';
+import PullToRefresh from '@/components/PullToRefresh';
 import { isEventCheckInVisible } from '@/lib/eventCheckIn';
 import { eventStructuredDateTimes, resolveEventTimeSemantics } from '@/lib/eventTimeSemantics';
 
@@ -77,7 +78,7 @@ function eventSortValue(event = {}) {
 }
 
 export default function Events() {
-  const { data: dbEvents = [] } = useQuery({
+  const { data: dbEvents = [], refetch } = useQuery({
     queryKey: ['events'],
     queryFn: () => base44.entities.Event.filter({ is_active: true }, 'date', 50),
   });
@@ -100,6 +101,7 @@ export default function Events() {
   const showEventCheckIn = isEventCheckInVisible();
 
   return (
+    <PullToRefresh onRefresh={refetch}>
     <div className="min-h-screen bg-background">
       <SEO
         title="Events & Community"
@@ -245,5 +247,6 @@ export default function Events() {
         </motion.div>
       </div>
     </div>
+    </PullToRefresh>
   );
 }

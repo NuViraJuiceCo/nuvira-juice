@@ -36,6 +36,17 @@ function activeAssets(indexHtml) {
   for (const match of indexHtml.matchAll(/(?:src|href)=["']\/?(assets\/[^"']+\.(?:js|css))["']/g)) assets.add(match[1]);
   return [...assets].sort();
 }
+function allAssetFiles(rootRelativePath) {
+  const assetsDir = path.join(repoRoot, rootRelativePath, 'assets');
+  if (!fs.existsSync(assetsDir)) return [];
+  return fs.readdirSync(assetsDir)
+    .filter((file) => fs.statSync(path.join(assetsDir, file)).isFile())
+    .map((file) => `assets/${file}`)
+    .sort();
+}
+function textAssetFiles(assets) {
+  return assets.filter((asset) => /\.(?:js|css)$/i.test(asset));
+}
 function sizes(relativePath) {
   const buffer = fs.readFileSync(path.join(repoRoot, relativePath));
   return { raw_bytes: buffer.length, gzip_bytes: zlib.gzipSync(buffer).length, brotli_bytes: zlib.brotliCompressSync(buffer).length };
@@ -86,6 +97,9 @@ const nativeAssets = activeAssets(nativeIndex);
 if (!webAssets.length) fail('No active Web entry assets found in dist/index.html');
 if (!nativeAssets.length) fail('No active native entry assets found in ios/App/App/public/index.html');
 if (JSON.stringify(webAssets) !== JSON.stringify(nativeAssets)) fail('Web and native active asset references differ', { webAssets, nativeAssets });
+const allWebAssets = allAssetFiles('dist');
+const allNativeAssets = allAssetFiles('ios/App/App/public');
+if (JSON.stringify(allWebAssets) !== JSON.stringify(allNativeAssets)) fail('Web and native asset file sets differ', { allWebAssets, allNativeAssets });
 const assetResults = [];
 for (const asset of webAssets) {
   const webPath = `dist/${asset}`;
@@ -96,7 +110,17 @@ for (const asset of webAssets) {
   if (webHash !== nativeHash) fail('Web/native active asset hash mismatch', { asset, webHash, nativeHash });
   assetResults.push({ asset, sha256: webHash, ...sizes(webPath) });
 }
-const combinedNativeText = [nativeIndex, ...webAssets.map((asset) => read(`ios/App/App/public/${asset}`))].join('\n');
+for (const asset of allWebAssets) {
+  const webPath = `dist/${asset}`;
+  const nativePath = `ios/App/App/public/${asset}`;
+  const webHash = hashFile(webPath);
+  const nativeHash = hashFile(nativePath);
+  if (webHash !== nativeHash) fail('Web/native asset hash mismatch', { asset, webHash, nativeHash });
+}
+const combinedNativeText = [
+  nativeIndex,
+  ...textAssetFiles(allNativeAssets).map((asset) => read(`ios/App/App/public/${asset}`)),
+].join('\n');
 const requiredMarkers = ['PAYMENT_ATTEMPT_STATE_UNKNOWN','Still checking your checkout','We couldn','NuVira hit a loading issue','Try Again','Return Home','Reset Sign-In','reset_sign_in','logout_request_timeout'];
 const forbiddenMarkers = ["window.location.replace('/account-setup')",'scheduleAutomaticRecovery','MAX_IMMEDIATE_RECOVERY_ATTEMPTS','native_reopen','clearNativeBootstrapState'];
 const missingRequiredMarkers = requiredMarkers.filter((marker) => !combinedNativeText.includes(marker));
@@ -114,6 +138,7 @@ const result = {
   web_index_hash: hashFile('dist/index.html'),
   native_index_hash: hashFile('ios/App/App/public/index.html'),
   active_assets: assetResults,
+  total_asset_file_count: allWebAssets.length,
   bundle_size: budgetEvidence,
   required_markers_present: requiredMarkers,
   forbidden_markers_absent: forbiddenMarkers,

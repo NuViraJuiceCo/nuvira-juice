@@ -1,0 +1,97 @@
+{
+  "name": "AccountDeletionRequest",
+  "type": "object",
+  "properties": {
+    "requestor_email": {
+      "type": "string",
+      "description": "Authenticated user email that requested account deletion"
+    },
+    "identity_emails": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "description": "Normalized app identity emails considered for app-owned data removal"
+    },
+    "requested_at": {
+      "type": "string",
+      "description": "ISO timestamp when deletion was requested"
+    },
+    "completed_at": {
+      "type": "string",
+      "description": "ISO timestamp when deletion processing completed"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "default": "processing"
+    },
+    "source": {
+      "type": "string",
+      "description": "Request source such as account_settings or delete_account_page"
+    },
+    "deleted_counts": {
+      "type": "object",
+      "default": {},
+      "description": "Counts of app-owned records deleted by entity"
+    },
+    "retained_record_categories": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "description": "Record categories retained for legal, tax, payment, fulfillment, delivery, sync, audit, or food-safety reasons"
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "Sanitized failure reason when processing fails"
+    }
+  },
+  "required": [
+    "requestor_email",
+    "requested_at",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.requestor_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "data.requestor_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
