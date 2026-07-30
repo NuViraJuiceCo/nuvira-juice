@@ -23,6 +23,7 @@ import { AnimatePresence } from 'framer-motion';
 import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 import Zone3RouteReviewPanel from '@/components/checkout/Zone3RouteReviewPanel';
 import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
+import { resolveCheckoutCode } from '@/lib/checkoutPromotions';
 
 const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
 
@@ -134,8 +135,8 @@ function CheckoutFlow() {
   const [showOutOfArea, setShowOutOfArea] = useState(false);
   const [bagReturn, setBagReturn] = useState({ smallBags: 0, toteBags: 0 });
   const [useCredits, setUseCredits] = useState(false);
-  const [referralCode, setReferralCode] = useState('');
-  const [referralApplied, setReferralApplied] = useState(false);
+  const [discountCodeInput, setDiscountCodeInput] = useState('');
+  const [appliedDiscountCode, setAppliedDiscountCode] = useState(null);
   const [addressValidated, setAddressValidated] = useState(false);
   const [validatingAddress, setValidatingAddress] = useState(false);
   const [deliveryZone, setDeliveryZone] = useState(null);
@@ -154,8 +155,10 @@ function CheckoutFlow() {
   const checkoutAttemptInFlightRef = useRef(false);
   const checkoutStartLockedRef = useRef(false);
   const checkoutWatchdogRef = useRef(null);
-  const REFERRAL_DISCOUNT = 5.00;
-  const referralDiscount = referralApplied ? REFERRAL_DISCOUNT : 0;
+  const checkoutCode = appliedDiscountCode
+    ? resolveCheckoutCode(appliedDiscountCode, subtotal)
+    : null;
+  const referralDiscount = checkoutCode?.type === 'referral' ? checkoutCode.amount : 0;
 
   const activeReward = React.useMemo(() => {
     if (!user?.email) return null;
@@ -335,7 +338,15 @@ function CheckoutFlow() {
   const subDiscountAmt = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
   const availableCredits = userCreditsData?.balance || 0;
   const creditsDiscount = useCredits ? Math.min(availableCredits, subtotal) : 0;
-  const total = Math.max(0, subtotal - pointsDiscount - rewardDiscountAmt - subDiscountAmt - creditsDiscount - referralDiscount + deliveryFee);
+  const merchandiseTotalBeforePromotion = Math.max(
+    0,
+    subtotal - pointsDiscount - rewardDiscountAmt - subDiscountAmt - creditsDiscount - referralDiscount
+  );
+  const promotionDiscount = checkoutCode?.type === 'promotion'
+    ? Math.min(checkoutCode.amount, merchandiseTotalBeforePromotion)
+    : 0;
+  const totalBeforePromotion = merchandiseTotalBeforePromotion + deliveryFee;
+  const total = Math.max(0, merchandiseTotalBeforePromotion - promotionDiscount) + deliveryFee;
 
   // Last order bottle count for smart bag suggestion
   const lastOrderItems = lastOrderData[0]?.items || [];
@@ -576,7 +587,10 @@ function CheckoutFlow() {
         items,
         subtotal,
         delivery_fee: deliveryFee,
-        total,
+        // The backend applies public promotion codes itself. Sending the
+        // pre-promotion total prevents a client-calculated code discount from
+        // being trusted or subtracted twice.
+        total: totalBeforePromotion,
         fulfillment_type: fulfillmentType,
         delivery_address: addrString,
         // Structured address fields (required by Hub)
@@ -602,7 +616,8 @@ function CheckoutFlow() {
         points_used: pointsUsed,
         credits_discount: creditsDiscount,
         referral_discount: referralDiscount,
-        referral_code: referralApplied ? referralCode : null,
+        referral_code: checkoutCode?.type === 'referral' ? checkoutCode.code : null,
+        promotion_code: checkoutCode?.type === 'promotion' ? checkoutCode.code : null,
         active_reward: activeReward || null,
         reward_discount: rewardDiscountAmt,
         // Zone eligibility snapshot
@@ -827,38 +842,59 @@ function CheckoutFlow() {
         </div>
       )}
 
-      {/* Referral Code */}
+      {/* Discount Code */}
       <div className="mx-4 mb-5">
         <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
-          Referral Code
+          Discount Code
         </Label>
         <div className="flex gap-2">
           <Input
-            value={referralCode}
-            onChange={e => { setReferralCode(e.target.value.trim()); setReferralApplied(false); }}
-            placeholder="Enter code (e.g. NuVira26)"
+            value={discountCodeInput}
+            onChange={e => {
+              setDiscountCodeInput(e.target.value);
+              setAppliedDiscountCode(null);
+            }}
+            placeholder="Enter discount code"
             className="rounded-xl h-11 flex-1"
-            disabled={referralApplied}
+            disabled={Boolean(appliedDiscountCode)}
+            autoCapitalize="characters"
+            autoCorrect="off"
           />
           <Button
             type="button"
             variant="outline"
             className="rounded-xl h-11 px-4 shrink-0"
-            disabled={referralApplied || !referralCode}
+            disabled={!appliedDiscountCode && !discountCodeInput.trim()}
             onClick={() => {
-              if (referralCode.toLowerCase() === 'nuvira26') {
-                setReferralApplied(true);
-                toast.success('Referral code applied! $5 off your order 🎉');
-              } else {
-                toast.error('Invalid referral code');
+              if (appliedDiscountCode) {
+                setAppliedDiscountCode(null);
+                setDiscountCodeInput('');
+                toast.success('Discount code removed');
+                return;
               }
+              const resolvedCode = resolveCheckoutCode(discountCodeInput, subtotal);
+              if (!resolvedCode) {
+                toast.error('Invalid discount code');
+                return;
+              }
+              setDiscountCodeInput(resolvedCode.code);
+              setAppliedDiscountCode(resolvedCode.code);
+              toast.success(
+                resolvedCode.type === 'promotion'
+                  ? 'BRClub applied: 10% off merchandise'
+                  : 'Referral code applied: $5 off your order'
+              );
             }}
           >
-            {referralApplied ? '✓ Applied' : 'Apply'}
+            {appliedDiscountCode ? 'Remove' : 'Apply'}
           </Button>
         </div>
-        {referralApplied && (
-          <p className="text-xs text-primary font-medium mt-1.5">✓ $5 referral discount applied</p>
+        {checkoutCode && (
+          <p className="text-xs text-primary font-medium mt-1.5">
+            {checkoutCode.type === 'promotion'
+              ? `BRClub applied: 10% off merchandise (-$${promotionDiscount.toFixed(2)})`
+              : `$5 referral discount applied`}
+          </p>
         )}
       </div>
 
@@ -977,6 +1013,11 @@ function CheckoutFlow() {
           {referralDiscount > 0 && (
             <div className="flex justify-between text-xs text-primary mb-1 font-medium">
               <span>Referral Code (NuVira26)</span><span>-${referralDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {promotionDiscount > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>BRClub (10% off)</span><span>-${promotionDiscount.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between text-xs text-muted-foreground mb-1">

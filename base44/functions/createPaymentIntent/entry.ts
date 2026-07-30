@@ -4,6 +4,34 @@ import Stripe from 'npm:stripe@14.21.0';
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
+const BRCLUB_CODE = 'BRCLUB';
+const BRCLUB_DISCOUNT_PERCENT = 10;
+
+function normalizePromotionCode(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function resolvePromotion(code, subtotal) {
+  const normalizedCode = normalizePromotionCode(code);
+  if (!normalizedCode) {
+    return { code: null, percent: 0, amount: 0 };
+  }
+
+  if (normalizedCode !== BRCLUB_CODE) {
+    return null;
+  }
+
+  const merchandiseSubtotal = Number(subtotal);
+  if (!Number.isFinite(merchandiseSubtotal) || merchandiseSubtotal < 0) {
+    return null;
+  }
+
+  return {
+    code: normalizedCode,
+    percent: BRCLUB_DISCOUNT_PERCENT,
+    amount: Math.round(merchandiseSubtotal * BRCLUB_DISCOUNT_PERCENT) / 100,
+  };
+}
 
 async function authorizeCheckoutCustomer(base44, customerEmail) {
   const user = await base44.auth.me().catch(() => null);
@@ -234,6 +262,7 @@ Deno.serve(async (req) => {
       points_discount, points_used,
       active_reward, reward_discount, credits_discount,
       referral_discount, referral_code,
+      promotion_code,
       selected_schedule_option_id, selected_schedule_option,
       selected_delivery_date, assigned_delivery_date, production_date,
       delivery_window_label, delivery_window_start, delivery_window_end,
@@ -245,6 +274,15 @@ Deno.serve(async (req) => {
     } = await req.json();
     const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
     if (unauthorized) return unauthorized;
+
+    const promotion = resolvePromotion(promotion_code, subtotal);
+    if (!promotion) {
+      return Response.json({
+        ok: false,
+        error_code: 'INVALID_PROMOTION_CODE',
+        error: 'This discount code is not valid.',
+      }, { status: 400 });
+    }
 
     // ── SERVER-SIDE ELIGIBILITY GUARD ────────────────────────────────────────
     // Always re-validate delivery eligibility on the backend before creating a PI.
@@ -318,7 +356,25 @@ Deno.serve(async (req) => {
 
     const effectiveDeliveryFee = subFreeDelivery ? 0 : (delivery_fee || 0);
     const subDiscountAmt       = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
-    const effectiveTotal       = Math.max(0, total - (delivery_fee - effectiveDeliveryFee) - subDiscountAmt);
+    const promotionDiscountAmt = promotion.amount;
+    const merchandiseTotalBeforePromotion = Math.max(0, Number(total) - Number(delivery_fee || 0));
+    const appliedPromotionDiscountAmt = Math.min(promotionDiscountAmt, merchandiseTotalBeforePromotion);
+    const totalDiscountAmount  = Math.min(Number(subtotal), Math.round((
+      Number(points_discount || 0) +
+      Number(reward_discount || 0) +
+      Number(credits_discount || 0) +
+      Number(referral_discount || 0) +
+      subDiscountAmt +
+      appliedPromotionDiscountAmt
+    ) * 100) / 100);
+    const discountCodes = [
+      referral_discount > 0 && referral_code ? String(referral_code).trim().toUpperCase() : null,
+      promotion.code,
+    ].filter(Boolean);
+    const effectiveTotal = Math.max(
+      0,
+      merchandiseTotalBeforePromotion - appliedPromotionDiscountAmt
+    ) + effectiveDeliveryFee;
 
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
 
@@ -434,6 +490,11 @@ Deno.serve(async (req) => {
       distance_confidence:      eligibility?.distance_confidence || '',
       zone_origin_address:      "619 N Main St, O'Fallon, MO 63366",
       eligibility_reason_code:  eligibility?.reason_code     || '',
+      promotion_code:           promotion.code || '',
+      promotion_discount_percent: String(promotion.percent || 0),
+      promotion_discount_amount:  appliedPromotionDiscountAmt.toFixed(2),
+      total_discount_amount:      totalDiscountAmount.toFixed(2),
+      discount_codes:             discountCodes.join(','),
     };
 
     // effectiveTotal already includes all discounts from the frontend (points, credits, referral, reward, sub discount).
@@ -487,6 +548,9 @@ Deno.serve(async (req) => {
             subFreeDelivery,
             subDiscountPct,
             subDiscountAmt,
+            promotionCode:      promotion.code,
+            promotionDiscountPercent: promotion.percent,
+            promotionDiscountAmount: appliedPromotionDiscountAmt,
             idempotent_replay:    true,
             confirmedDeliverySchedule: {
               delivery_date:         deliveryDate,
@@ -546,6 +610,11 @@ Deno.serve(async (req) => {
         payment_captured:         false,
         stripe_payment_intent_id: paymentIntent.id,
         referral_code:            (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
+        promotion_code:           promotion.code,
+        promotion_discount_percent: promotion.percent,
+        promotion_discount_amount: appliedPromotionDiscountAmt,
+        total_discounts:          totalDiscountAmount,
+        discount_codes:           discountCodes,
         is_preorder:              false,
         // Zone eligibility fields
         ...(eligibility ? {
@@ -597,6 +666,11 @@ Deno.serve(async (req) => {
           schedule_timezone:         canonicalSchedule.scheduleTimezone,
           is_preorder:               false,
           referral_code:             (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
+          promotion_code:            promotion.code,
+          promotion_discount_percent: promotion.percent,
+          promotion_discount_amount: appliedPromotionDiscountAmt,
+          total_discounts:           totalDiscountAmount,
+          discount_codes:            discountCodes,
           points_used:               points_used    || 0,
           points_discount:           points_discount|| 0,
           active_reward:             active_reward  || null,
@@ -619,6 +693,11 @@ Deno.serve(async (req) => {
       subFreeDelivery,
       subDiscountPct,
       subDiscountAmt,
+      promotionCode:      promotion.code,
+      promotionDiscountPercent: promotion.percent,
+      promotionDiscountAmount: appliedPromotionDiscountAmt,
+      totalDiscountAmount,
+      discountCodes,
       confirmedDeliverySchedule: {
         delivery_date: deliveryDate,
         production_date: resolvedProdDate,

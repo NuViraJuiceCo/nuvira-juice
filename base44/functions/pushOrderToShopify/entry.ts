@@ -28,6 +28,13 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Order not found' }, { status: 404 });
   }
   const order = orders[0];
+  const totalDiscountAmount = Math.max(
+    0,
+    Number(order.total_discounts || order.promotion_discount_amount || 0)
+  );
+  const discountDescription = order.promotion_code
+    ? `${order.promotion_code} promotion`
+    : 'NuVira order discount';
 
   const storeHost = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '');
 
@@ -45,12 +52,12 @@ Deno.serve(async (req) => {
         address1: order.delivery_address,
       } : undefined,
       tags: 'base44-app',
-      applied_discount: order.delivery_fee > 0 ? undefined : {
-        description: 'Free Delivery',
+      applied_discount: totalDiscountAmount > 0 ? {
+        description: discountDescription,
         value_type: 'fixed_amount',
-        value: '0',
-        amount: '0',
-      },
+        value: totalDiscountAmount.toFixed(2),
+        amount: totalDiscountAmount.toFixed(2),
+      } : undefined,
     }
   };
 

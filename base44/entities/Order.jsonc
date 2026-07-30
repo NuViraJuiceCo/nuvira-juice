@@ -172,6 +172,32 @@
       "type": "string",
       "description": "Referral code used on this order"
     },
+    "promotion_code": {
+      "type": "string",
+      "description": "Public promotion code applied to this order"
+    },
+    "promotion_discount_percent": {
+      "type": "number",
+      "default": 0,
+      "description": "Server-authorized percentage discount applied to merchandise"
+    },
+    "promotion_discount_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "Server-calculated promotion discount amount in USD"
+    },
+    "total_discounts": {
+      "type": "number",
+      "default": 0,
+      "description": "Total of all checkout discounts applied to this order in USD"
+    },
+    "discount_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Normalized discount and referral codes applied to this order"
+    },
     "delivery_photo_url": {
       "type": "string",
       "description": "Proof of delivery photo taken by driver"
