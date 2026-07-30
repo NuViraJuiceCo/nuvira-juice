@@ -1,6 +1,6 @@
 {
   "description": "Release range input for native release manifest included_prs derivation. Update previous_released_commit after each approved native release.",
-  "previous_released_commit": "5998e9c7a820759c27839b3efa37aa090a81aede",
+  "previous_released_commit": "e1dcdc5f2adcc788251c0f1dbd33fe3e932397aa",
   "included_prs_policy": "derive_from_merge_history_or_fail_when_merge_commits_are_unrepresented",
   "allow_empty_included_prs_when_no_merge_commits": true
 }
