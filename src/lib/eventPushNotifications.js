@@ -4,7 +4,8 @@ import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY || '';
 const SERVICE_WORKER_PATH = '/push-sw.js';
-const NUVIRA_APP_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
+const NUVIRA_IOS_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
+const NUVIRA_ANDROID_APP_ID = 'com.nuvirajuice.app';
 const EVENT_NATIVE_PUSH_TARGET_KEY = 'nuvira_may30_native_push_target_v1';
 let cachedVapidPublicKey = null;
 
@@ -20,6 +21,12 @@ function normalizeNativePermission(value) {
 
 function isIosNativeApp() {
   return isNativeApp() && Capacitor.getPlatform() === 'ios';
+}
+
+function nativeAppIdentifier() {
+  return Capacitor.getPlatform() === 'android'
+    ? NUVIRA_ANDROID_APP_ID
+    : NUVIRA_IOS_BUNDLE_ID;
 }
 
 async function waitForApnsToken(timeoutMs = 5000) {
@@ -101,7 +108,7 @@ function eventNativePushPayload({ status, tokenResult, apnsToken }) {
     fcm_token: fcmToken,
     apns_token: nativeApnsToken,
     apns_environment: 'unknown',
-    app_bundle_id: NUVIRA_APP_BUNDLE_ID,
+    app_bundle_id: nativeAppIdentifier(),
     permission: status,
     device_platform: Capacitor.getPlatform(),
     platform: Capacitor.getPlatform(),

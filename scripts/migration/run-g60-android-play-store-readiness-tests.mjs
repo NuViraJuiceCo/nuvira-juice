@@ -9,6 +9,8 @@ const appGradle = fs.readFileSync('android/app/build.gradle', 'utf8');
 const manifest = fs.readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8');
 const strings = fs.readFileSync('android/app/src/main/res/values/strings.xml', 'utf8');
 const styles = fs.readFileSync('android/app/src/main/res/values/styles.xml', 'utf8');
+const googleServices = JSON.parse(fs.readFileSync('android/app/google-services.json', 'utf8'));
+const pushSource = fs.readFileSync('src/lib/eventPushNotifications.js', 'utf8');
 const rootGitignore = fs.readFileSync('.gitignore', 'utf8');
 const androidGitignore = fs.readFileSync('android/.gitignore', 'utf8');
 
@@ -23,11 +25,13 @@ test('1. Capacitor Android dependency is pinned to the active Capacitor major/mi
   assert.equal(packageJson.dependencies['@capacitor/cli'], '^8.3.4');
 });
 
-test('2. Android package identity follows the existing shared Capacitor app ID.', () => {
+test('2. Android uses its branded Play identity without changing the shared iOS Capacitor identity.', () => {
   assert.equal(capacitorConfig.appId, 'com.base69d48d0c39891f7945481152.app');
-  assert.match(appGradle, /namespace = "com\.base69d48d0c39891f7945481152\.app"/);
-  assert.match(appGradle, /applicationId "com\.base69d48d0c39891f7945481152\.app"/);
-  assert.match(strings, /<string name="package_name">com\.base69d48d0c39891f7945481152\.app<\/string>/);
+  assert.match(appGradle, /namespace = "com\.nuvirajuice\.app"/);
+  assert.match(appGradle, /applicationId "com\.nuvirajuice\.app"/);
+  assert.match(strings, /<string name="package_name">com\.nuvirajuice\.app<\/string>/);
+  assert.match(pushSource, /const NUVIRA_IOS_BUNDLE_ID = 'com\.base69d48d0c39891f7945481152\.app'/);
+  assert.match(pushSource, /const NUVIRA_ANDROID_APP_ID = 'com\.nuvirajuice\.app'/);
 });
 
 test('3. Play release metadata matches the current native release line.', () => {
@@ -84,8 +88,12 @@ test('9. Android splash and launcher branding resources are present.', () => {
   assert.match(styles, /windowSplashScreenAnimatedIcon/);
 });
 
-test('10. Google services configuration is not accidentally committed.', () => {
-  assert.ok(!fs.existsSync('android/app/google-services.json'), 'android/app/google-services.json must be added intentionally only after Firebase Android app registration');
+test('10. Google services configuration matches the registered Android app.', () => {
+  assert.equal(googleServices.project_info?.project_id, 'nuvira-juice');
+  assert.deepEqual(
+    googleServices.client?.map(client => client?.client_info?.android_client_info?.package_name),
+    ['com.nuvirajuice.app'],
+  );
 });
 
 for (const item of tests) {

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "532381551921",
+    "project_id": "nuvira-juice",
+    "storage_bucket": "nuvira-juice.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:532381551921:android:517e829c37efad2b42f410",
+        "android_client_info": {
+          "package_name": "com.nuvirajuice.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDsQcZld60qCQXvZQXBdkU4qZ9YB-n71v0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
