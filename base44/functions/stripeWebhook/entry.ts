@@ -1466,6 +1466,11 @@ Deno.serve(async (req) => {
           financial_status: 'paid',
           payment_captured: true,
           stripe_payment_intent_id: pi.id,
+          promotion_code: meta.promotion_code || null,
+          promotion_discount_percent: Number(meta.promotion_discount_percent || 0),
+          promotion_discount_amount: Number(meta.promotion_discount_amount || 0),
+          total_discounts: Number(meta.total_discount_amount || 0),
+          discount_codes: String(meta.discount_codes || '').split(',').filter(Boolean),
           is_preorder:      false,
           status_history: [
             { status: 'order_received', timestamp: new Date().toISOString(), message: 'Order received.' },
