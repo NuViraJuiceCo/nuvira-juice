@@ -1,4 +1,4 @@
-package com.base69d48d0c39891f7945481152.app;
+package com.nuvirajuice.app;
 
 import static org.junit.Assert.assertEquals;
 
