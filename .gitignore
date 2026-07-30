@@ -32,3 +32,8 @@ release-evidence
 .env
 .vite
 base44/.app.jsonc
+
+# Android release signing material must stay local.
+android/keystore.properties
+android/*.jks
+android/*.keystore
