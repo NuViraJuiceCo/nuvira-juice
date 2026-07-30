@@ -13,12 +13,13 @@ import NotificationPreferencesPanel from '@/components/NotificationPreferencesPa
 
 export default function AccountSettings() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', address: '', birthday: '' });
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const setField = (field, val) => setForm(prev => ({ ...prev, [field]: val }));
 
@@ -55,7 +56,8 @@ export default function AccountSettings() {
       }
       await base44.functions.invoke('syncUserToHub', { email: user?.email, first_name: firstName, last_name: lastName, phone, address: addrString, birthday });
       setSaveSuccess(true);
-      setTimeout(() => { setSaveSuccess(false); window.location.reload(); }, 1500);
+      await refreshUser();
+      setTimeout(() => { setSaveSuccess(false); }, 1500);
     } catch (err) {
       console.error('Save error:', err);
       toast.error('Failed to save settings');
@@ -63,6 +65,32 @@ export default function AccountSettings() {
       setIsSaving(false);
     }
   }
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirm !== 'DELETE' || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const response = await base44.functions.invoke('requestAccountDeletion', {
+        confirm: 'DELETE',
+        source: 'account_settings',
+      });
+
+      if (!response?.data?.success) {
+        throw new Error(response?.data?.error || 'Account deletion failed');
+      }
+
+      setShowDeleteDialog(false);
+      setDeleteConfirm('');
+      toast.success('Your account deletion request has been completed.');
+      await logout(false);
+      navigate('/', { replace: true });
+    } catch (error) {
+      console.error('Delete account error:', error);
+      toast.error('Unable to delete account right now. Please try again or contact NuVira support.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="pb-4" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -156,7 +184,9 @@ export default function AccountSettings() {
           <DialogHeader>
             <DialogTitle>Delete Account</DialogTitle>
             <DialogDescription>
-              This action is permanent and cannot be undone. All your data, orders, and points will be removed.
+              This permanently removes your NuVira app profile, notification preferences, saved device tokens,
+              loyalty profile, and rewards records. NuVira may retain order, payment, refund, tax, fulfillment,
+              delivery, sync, and food-safety records when required for business, legal, or compliance reasons.
               Type <strong>DELETE</strong> to confirm.
             </DialogDescription>
           </DialogHeader>
@@ -170,18 +200,10 @@ export default function AccountSettings() {
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
             <Button
               variant="destructive"
-              disabled={deleteConfirm !== 'DELETE'}
-              onClick={async () => {
-                await base44.integrations.Core.SendEmail({
-                  to: 'info@nuvirajuice.com',
-                  subject: 'Account Deletion Request',
-                  body: `User ${user?.email} (${form.firstName} ${form.lastName}) has requested account deletion.`,
-                });
-                setShowDeleteDialog(false);
-                toast.success('Deletion request submitted. We will process it within 48 hours.');
-              }}
+              disabled={deleteConfirm !== 'DELETE' || isDeleting}
+              onClick={handleDeleteAccount}
             >
-              Confirm Delete
+              {isDeleting ? 'Deleting...' : 'Confirm Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

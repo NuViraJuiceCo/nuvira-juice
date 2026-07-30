@@ -17,14 +17,18 @@ const AuthContext = createContext();
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 4500;
 const AUTH_EXPLICIT_TIMEOUT_MS = 10000;
 
-function timeoutAfter(ms, code) {
-  return new Promise((_, reject) => {
-    globalThis.setTimeout(() => {
-      const error = new Error(code);
-      error.code = code;
-      reject(error);
-    }, ms);
-  });
+export const AUTH_BOOTSTRAP_STATES = {
+  loading: 'loading',
+  authenticated: 'authenticated',
+  unauthenticated: 'unauthenticated',
+  timeout: 'timeout',
+  error: 'error',
+};
+
+function createAuthTimeoutError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
 }
 
 async function readCurrentUserWithTimeout(timeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS) {
@@ -32,10 +36,40 @@ async function readCurrentUserWithTimeout(timeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS)
     return base44.auth.me();
   }
 
-  return Promise.race([
-    base44.auth.me(),
-    timeoutAfter(timeoutMs, 'auth_bootstrap_timeout'),
-  ]);
+  let timeoutId;
+  try {
+    return await Promise.race([
+      base44.auth.me(),
+      new Promise((_, reject) => {
+        timeoutId = globalThis.setTimeout(() => {
+          reject(createAuthTimeoutError('auth_bootstrap_timeout'));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
+}
+
+function isExpectedUnauthenticatedError(error) {
+  const status = error?.status || error?.response?.status;
+  if (status === 401 || status === 403) return true;
+
+  const message = String(error?.message || error || '').toLowerCase();
+  return (
+    message.includes('unauthorized') ||
+    message.includes('not authenticated') ||
+    message.includes('authentication required') ||
+    message.includes('401') ||
+    message.includes('403')
+  );
+}
+
+function getSafeReturnPath() {
+  if (typeof window === 'undefined') return '/';
+  return `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
 }
 
 export const AuthProvider = ({ children }) => {
@@ -43,6 +77,7 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
+  const [bootstrapState, setBootstrapState] = useState(AUTH_BOOTSTRAP_STATES.loading);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
@@ -52,15 +87,32 @@ export const AuthProvider = ({ children }) => {
       consumeBase44AuthFromUrl();
       setIsLoadingAuth(true);
       setAuthError(null);
+      setBootstrapState(AUTH_BOOTSTRAP_STATES.loading);
       const currentUser = await readCurrentUserWithTimeout(timeoutMs);
       setUser(currentUser);
-      setIsAuthenticated(true);
+      setIsAuthenticated(Boolean(currentUser));
       setAuthChecked(true);
       setIsLoadingAuth(false);
+      setBootstrapState(currentUser ? AUTH_BOOTSTRAP_STATES.authenticated : AUTH_BOOTSTRAP_STATES.unauthenticated);
       return currentUser;
     } catch (error) {
       if (error?.code === 'auth_bootstrap_timeout') {
         console.warn('[AuthContext] Auth bootstrap timed out; continuing as public session.');
+        setAuthError({
+          type: 'bootstrap_timeout',
+          message: 'NuVira could not confirm your sign-in before the app startup timeout.',
+        });
+        setBootstrapState(AUTH_BOOTSTRAP_STATES.timeout);
+      } else if (isExpectedUnauthenticatedError(error)) {
+        setAuthError(null);
+        setBootstrapState(AUTH_BOOTSTRAP_STATES.unauthenticated);
+      } else {
+        console.warn('[AuthContext] Auth bootstrap failed', error?.message || 'unknown_error');
+        setAuthError({
+          type: 'bootstrap_error',
+          message: 'NuVira could not verify your sign-in state.',
+        });
+        setBootstrapState(AUTH_BOOTSTRAP_STATES.error);
       }
       // For public apps, 401 is expected when user isn't logged in — don't treat as error.
       setUser(null);
@@ -91,6 +143,11 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingPublicSettings(false);
       setIsLoadingAuth(false);
       setAuthChecked(true);
+      setBootstrapState(AUTH_BOOTSTRAP_STATES.error);
+      setAuthError({
+        type: 'bootstrap_error',
+        message: 'NuVira could not finish startup.',
+      });
       return null;
     }
   }, [checkUserAuth]);
@@ -191,15 +248,28 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const navigateToLogin = () => {
-    redirectToLogin(`${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`);
+  const navigateToLogin = (returnRoute = getSafeReturnPath()) => {
+    redirectToLogin(returnRoute);
   };
 
   const refreshUser = async () => {
-    const currentUser = await readCurrentUserWithTimeout(AUTH_EXPLICIT_TIMEOUT_MS);
-    setUser(currentUser);
-    setIsAuthenticated(Boolean(currentUser));
-    setAuthChecked(true);
+    try {
+      setAuthError(null);
+      const currentUser = await readCurrentUserWithTimeout(AUTH_EXPLICIT_TIMEOUT_MS);
+      setUser(currentUser);
+      setIsAuthenticated(Boolean(currentUser));
+      setAuthChecked(true);
+      setBootstrapState(currentUser ? AUTH_BOOTSTRAP_STATES.authenticated : AUTH_BOOTSTRAP_STATES.unauthenticated);
+      return currentUser;
+    } catch (error) {
+      setAuthChecked(true);
+      setBootstrapState(error?.code === 'auth_bootstrap_timeout' ? AUTH_BOOTSTRAP_STATES.timeout : AUTH_BOOTSTRAP_STATES.error);
+      setAuthError({
+        type: error?.code === 'auth_bootstrap_timeout' ? 'bootstrap_timeout' : 'bootstrap_error',
+        message: 'NuVira could not refresh your sign-in state.',
+      });
+      throw error;
+    }
   };
 
   return (
@@ -208,6 +278,7 @@ export const AuthProvider = ({ children }) => {
       isAuthenticated, 
       isLoadingAuth,
       authChecked,
+      bootstrapState,
       isLoadingPublicSettings,
       authError,
       appPublicSettings,
