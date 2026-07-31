@@ -23,6 +23,7 @@ function resolveCustomerIdentity({
   checkoutLastName,
   checkoutCustomerName,
   profile,
+  authUser,
 }) {
   const requestedFirstName = normalizeNamePart(checkoutFirstName);
   const requestedLastName = normalizeNamePart(checkoutLastName);
@@ -41,6 +42,16 @@ function resolveCustomerIdentity({
       firstName: profileFirstName,
       lastName: profileLastName,
       source: 'profile_structured',
+    };
+  }
+
+  const authFirstName = normalizeNamePart(authUser?.first_name);
+  const authLastName = normalizeNamePart(authUser?.last_name);
+  if (authFirstName && authLastName) {
+    return {
+      firstName: authFirstName,
+      lastName: authLastName,
+      source: 'auth_structured',
     };
   }
 
@@ -127,6 +138,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const unauthorized = await authorizeCheckoutCustomer(base44, body.customer_email);
     if (unauthorized) return unauthorized;
+    const authenticatedUser = await base44.auth.me().catch(() => null);
 
     // Normalize input keys — accept both frontend contract and legacy/test variants
     const items = body.items ?? body.cart_items ?? [];
@@ -201,6 +213,7 @@ Deno.serve(async (req) => {
       checkoutLastName: inputCustomerLastName,
       checkoutCustomerName: inputCustomerName,
       profile: customerProfile,
+      authUser: authenticatedUser,
     });
     if (!customerIdentity) {
       return Response.json({

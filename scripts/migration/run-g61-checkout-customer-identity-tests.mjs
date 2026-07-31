@@ -71,6 +71,8 @@ for (const source of [createPaymentIntent, createZone3AuthorizationIntent]) {
   assert.match(source, /customer_last_name:/, 'Payment metadata must include customer last name');
   assert.match(source, /customer_name_source:/, 'Payment metadata must record the name source');
   assert.match(source, /shipping:\s*/, 'Stripe PaymentIntents must retain delivery identity');
+  assert.match(source, /source:\s*'auth_structured'/, 'Current native builds must fall back to authenticated structured names');
+  assert.match(source, /authUser:\s*authenticatedUser/, 'Server identity resolution must receive the authenticated account');
 }
 
 assert.match(embeddedPayment, /billing_details:\s*\{[\s\S]*name:\s*customerName/);

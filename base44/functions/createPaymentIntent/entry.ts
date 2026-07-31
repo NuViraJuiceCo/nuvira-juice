@@ -53,6 +53,7 @@ function resolveCustomerIdentity({
   checkoutLastName,
   checkoutCustomerName,
   profile,
+  authUser,
 }) {
   const requestedFirstName = normalizeNamePart(checkoutFirstName);
   const requestedLastName = normalizeNamePart(checkoutLastName);
@@ -71,6 +72,16 @@ function resolveCustomerIdentity({
       firstName: profileFirstName,
       lastName: profileLastName,
       source: 'profile_structured',
+    };
+  }
+
+  const authFirstName = normalizeNamePart(authUser?.first_name);
+  const authLastName = normalizeNamePart(authUser?.last_name);
+  if (authFirstName && authLastName) {
+    return {
+      firstName: authFirstName,
+      lastName: authLastName,
+      source: 'auth_structured',
     };
   }
 
@@ -322,6 +333,7 @@ Deno.serve(async (req) => {
     } = await req.json();
     const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
     if (unauthorized) return unauthorized;
+    const authenticatedUser = await base44.auth.me().catch(() => null);
 
     const normalizedPhone = String(contact_phone || '').trim();
     const normalizedAddress = {
@@ -423,6 +435,7 @@ Deno.serve(async (req) => {
       checkoutLastName,
       checkoutCustomerName,
       profile: customerProfile,
+      authUser: authenticatedUser,
     });
     if (!customerIdentity) {
       return Response.json({
