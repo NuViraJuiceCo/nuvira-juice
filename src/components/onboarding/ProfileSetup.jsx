@@ -17,6 +17,7 @@ export default function ProfileSetup({ onComplete }) {
   const [done, setDone] = useState(false);
   const [show, setShow] = useState(false);
   const [nameFromAuth, setNameFromAuth] = useState(false);
+  const [profileId, setProfileId] = useState(null);
 
   useEffect(() => {
     if (!user?.email) {
@@ -25,16 +26,17 @@ export default function ProfileSetup({ onComplete }) {
     }
     base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
       const profile = profiles[0];
-      if (profile) {
+      if (profile?.first_name && profile?.last_name) {
         onComplete(false);
         return;
       }
-      const authFirstName = user.first_name || '';
-      const authLastName = user.last_name || '';
+      setProfileId(profile?.id || null);
+      const authFirstName = profile?.first_name || user.first_name || '';
+      const authLastName = profile?.last_name || user.last_name || '';
       setFirstName(authFirstName);
       setLastName(authLastName);
       // Pre-fill with auth email as a starting point
-      setContactEmail(user.email || '');
+      setContactEmail(profile?.contact_email || user.email || '');
 
       if (authFirstName && authLastName) {
         // Name provided — skip to email step
@@ -62,15 +64,21 @@ export default function ProfileSetup({ onComplete }) {
     if (!canSubmitEmail) return;
     setSaving(true);
 
+    const profileData = {
+      customer_email: user.email,
+      contact_email: contactEmail.trim(),
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+    };
+    if (profileId) {
+      await base44.entities.UserProfile.update(profileId, profileData);
+    } else {
+      await base44.entities.UserProfile.create(profileData);
+    }
+
     await base44.auth.updateMe({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
-    });
-
-    // Create profile with the confirmed contact email
-    await base44.entities.UserProfile.create({
-      customer_email: user.email,
-      contact_email: contactEmail.trim(),
     });
 
     setSaving(false);

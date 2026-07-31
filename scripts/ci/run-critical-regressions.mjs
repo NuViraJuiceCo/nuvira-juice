@@ -52,6 +52,7 @@ const harnesses = [
   'scripts/migration/run-g59-google-play-mobile-readiness-tests.mjs',
   'scripts/migration/run-g60-android-play-store-readiness-tests.mjs',
   'scripts/migration/run-brclub-discount-tests.mjs',
+  'scripts/migration/run-g61-checkout-customer-identity-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

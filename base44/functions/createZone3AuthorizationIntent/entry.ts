@@ -3,6 +3,52 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+function normalizeNamePart(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function splitHumanFullName(value) {
+  const normalized = normalizeNamePart(value);
+  if (!normalized || normalized.includes('@')) return null;
+  const parts = normalized.split(' ').filter(Boolean);
+  if (parts.length < 2) return null;
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
+function resolveCustomerIdentity({
+  checkoutFirstName,
+  checkoutLastName,
+  checkoutCustomerName,
+  profile,
+}) {
+  const requestedFirstName = normalizeNamePart(checkoutFirstName);
+  const requestedLastName = normalizeNamePart(checkoutLastName);
+  if (requestedFirstName && requestedLastName) {
+    return {
+      firstName: requestedFirstName,
+      lastName: requestedLastName,
+      source: 'checkout_structured',
+    };
+  }
+
+  const profileFirstName = normalizeNamePart(profile?.first_name);
+  const profileLastName = normalizeNamePart(profile?.last_name);
+  if (profileFirstName && profileLastName) {
+    return {
+      firstName: profileFirstName,
+      lastName: profileLastName,
+      source: 'profile_structured',
+    };
+  }
+
+  const split = splitHumanFullName(checkoutCustomerName);
+  if (split) return { ...split, source: 'checkout_full_name' };
+  return null;
+}
+
 async function authorizeCheckoutCustomer(base44, customerEmail) {
   const user = await base44.auth.me().catch(() => null);
   const requested = String(customerEmail || '').trim().toLowerCase();
@@ -34,7 +80,8 @@ async function canUseTestDistanceOverride(base44, req) {
   return user?.role === 'admin';
 }
 
-async function getEligibility(address, subtotal, { base44, req, testDistanceMiles } = {}) {
+async function getEligibility(address, subtotal, context: any = {}) {
+  const { base44, req, testDistanceMiles } = context;
   let distanceMiles = null;
   let driveTimeMinutes = null;
   let distanceConfidence = 'driving';
@@ -95,23 +142,80 @@ Deno.serve(async (req) => {
     const contact_phone = body.contact_phone ?? body.customer_phone ?? body.phone ?? '';
     const customer_email = body.customer_email ?? '';
     const inputCustomerName = body.customer_name ?? '';
+    const inputCustomerFirstName = body.customer_first_name ?? '';
+    const inputCustomerLastName = body.customer_last_name ?? '';
     const customer_acknowledged_hold = body.customer_acknowledged_hold ?? false;
     const testDistanceMiles = body._test_distance_miles;
+
+    const normalizedPhone = String(contact_phone || '').trim();
+    const normalizedAddress = {
+      line1: String(address_line1 || '').trim(),
+      line2: String(address_line2 || '').trim(),
+      city: String(address_city || '').trim(),
+      state: String(address_state || '').trim(),
+      postalCode: String(address_postal_code || '').trim(),
+    };
+    const invalidItem = !Array.isArray(items) || items.length === 0 || items.some((item) => (
+      !String(item?.title || '').trim() ||
+      !Number.isFinite(Number(item?.price)) ||
+      Number(item?.price) < 0 ||
+      !Number.isInteger(Number(item?.quantity)) ||
+      Number(item?.quantity) < 1
+    ));
+    if (invalidItem) {
+      return Response.json({
+        error: 'Your cart contains an invalid item. Please review it and try again.',
+        error_code: 'INVALID_ORDER_ITEMS',
+      }, { status: 400 });
+    }
+    if (normalizedPhone.replace(/\D/g, '').length < 10) {
+      return Response.json({
+        error: 'A valid phone number is required for fulfillment.',
+        error_code: 'CUSTOMER_PHONE_REQUIRED',
+      }, { status: 400 });
+    }
+    if (
+      !normalizedAddress.line1 ||
+      !normalizedAddress.city ||
+      !normalizedAddress.state ||
+      !normalizedAddress.postalCode
+    ) {
+      return Response.json({
+        error: 'A complete delivery address is required.',
+        error_code: 'DELIVERY_ADDRESS_REQUIRED',
+      }, { status: 400 });
+    }
 
     // Require customer acknowledgment
     if (!customer_acknowledged_hold) {
       return Response.json({ error: 'Customer must acknowledge the authorization hold before proceeding.' }, { status: 400 });
     }
 
-    // Resolve customer name
-    let customer_name = (inputCustomerName || '').trim();
-    if (!customer_name && customer_email) {
+    let customerProfile = null;
+    if (customer_email) {
       const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email });
-      if (profiles[0]) customer_name = [profiles[0].first_name, profiles[0].last_name].filter(Boolean).join(' ');
+      customerProfile = profiles[0] || null;
     }
-    if (!customer_name) return Response.json({ error: 'Customer name is required.' }, { status: 400 });
+    const customerIdentity = resolveCustomerIdentity({
+      checkoutFirstName: inputCustomerFirstName,
+      checkoutLastName: inputCustomerLastName,
+      checkoutCustomerName: inputCustomerName,
+      profile: customerProfile,
+    });
+    if (!customerIdentity) {
+      return Response.json({
+        error: 'A first and last name are required for receipts and delivery.',
+        error_code: 'CUSTOMER_NAME_REQUIRED',
+      }, { status: 400 });
+    }
+    const customer_name = `${customerIdentity.firstName} ${customerIdentity.lastName}`;
 
-    const addrString = delivery_address || [address_line1, address_city, address_state, address_postal_code].filter(Boolean).join(', ');
+    const addrString = delivery_address || [
+      normalizedAddress.line1,
+      normalizedAddress.city,
+      normalizedAddress.state,
+      normalizedAddress.postalCode,
+    ].filter(Boolean).join(', ');
     if (!addrString || addrString.trim().length < 5) return Response.json({ error: 'Valid delivery address is required.' }, { status: 400 });
 
     // Validate Zone 3
@@ -157,13 +261,13 @@ Deno.serve(async (req) => {
       request_number: requestNumber,
       customer_name,
       customer_email: customer_email || '',
-      customer_phone: contact_phone || '',
+      customer_phone: normalizedPhone,
       delivery_address: addrString,
-      address_line1: address_line1 || '',
-      address_line2: address_line2 || '',
-      address_city: address_city || '',
-      address_state: address_state || '',
-      address_postal_code: address_postal_code || '',
+      address_line1: normalizedAddress.line1,
+      address_line2: normalizedAddress.line2,
+      address_city: normalizedAddress.city,
+      address_state: normalizedAddress.state,
+      address_postal_code: normalizedAddress.postalCode,
       address_country: 'US',
       cart_items: (items || []).map(i => ({ product_id: i.product_id, title: i.title, price: i.price, quantity: i.quantity })),
       cart_subtotal: subtotal || 0,
@@ -204,12 +308,15 @@ Deno.serve(async (req) => {
         order_type: 'one_time',
         customer_email: customer_email || '',
         customer_name,
-        customer_phone: contact_phone || '',
-        delivery_address_line1: address_line1 || '',
-        delivery_address_line2: address_line2 || '',
-        delivery_city: address_city || '',
-        delivery_state: address_state || '',
-        delivery_postal_code: address_postal_code || '',
+        customer_first_name: customerIdentity.firstName,
+        customer_last_name: customerIdentity.lastName,
+        customer_name_source: customerIdentity.source,
+        customer_phone: normalizedPhone,
+        delivery_address_line1: normalizedAddress.line1,
+        delivery_address_line2: normalizedAddress.line2,
+        delivery_city: normalizedAddress.city,
+        delivery_state: normalizedAddress.state,
+        delivery_postal_code: normalizedAddress.postalCode,
         delivery_zone_key: eligibility.zone_key,
         delivery_zone_type: eligibility.zone_type,
         estimated_distance_miles: String(eligibility.estimated_distance_miles || ''),
@@ -217,6 +324,18 @@ Deno.serve(async (req) => {
         cart_subtotal: String(subtotal || 0),
         effective_total: String(effectiveTotal),
         customer_acknowledged_hold: 'true',
+      },
+      shipping: {
+        name: customer_name,
+        phone: normalizedPhone,
+        address: {
+          line1: normalizedAddress.line1,
+          line2: normalizedAddress.line2 || undefined,
+          city: normalizedAddress.city,
+          state: normalizedAddress.state,
+          postal_code: normalizedAddress.postalCode,
+          country: 'US',
+        },
       },
     });
 

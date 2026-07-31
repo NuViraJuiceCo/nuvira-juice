@@ -47,6 +47,9 @@ export async function confirmNativeApplePayPayment({
   clientSecret,
   publishableKey,
   total,
+  customerName = '',
+  customerEmail = '',
+  customerPhone = '',
   merchantDisplayName = 'NuVira Juice Company',
 }) {
   return NativeApplePay.confirmPayment({
@@ -54,6 +57,9 @@ export async function confirmNativeApplePayPayment({
     paymentIntentId: paymentIntentIdFromClientSecret(clientSecret),
     publishableKey,
     total,
+    customerName,
+    customerEmail,
+    customerPhone,
     merchantIdentifier: DEFAULT_APPLE_PAY_MERCHANT_ID,
     merchantDisplayName,
   });

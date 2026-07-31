@@ -32,8 +32,8 @@ export default function AccountSettings() {
       const rawAddr = profile?.address || user?.address || '';
       const parts = rawAddr.split(',').map(s => s.trim());
       setForm({
-        firstName: user.first_name || '',
-        lastName: user.last_name || '',
+        firstName: profile?.first_name || user.first_name || '',
+        lastName: profile?.last_name || user.last_name || '',
         phone: profile?.phone || user?.phone || '',
         address: { street: parts[0] || '', city: parts[1] || '', state: parts[2] || '', zip: parts[3] || '' },
         birthday: profile?.birthday || user?.birthday || '',
@@ -43,18 +43,37 @@ export default function AccountSettings() {
 
   const handleSave = async () => {
     const { firstName, lastName, phone, address, birthday } = form;
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
+    if (!normalizedFirstName || !normalizedLastName) {
+      toast.error('First and last name are required');
+      return;
+    }
     setIsSaving(true);
     setSaveSuccess(false);
     try {
       const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
-      await base44.auth.updateMe({ first_name: firstName, last_name: lastName, phone, address: addrString, birthday });
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
       if (profiles.length > 0) {
-        await base44.entities.UserProfile.update(profiles[0].id, { phone, address: addrString, birthday });
+        await base44.entities.UserProfile.update(profiles[0].id, {
+          first_name: normalizedFirstName,
+          last_name: normalizedLastName,
+          phone,
+          address: addrString,
+          birthday,
+        });
       } else {
-        await base44.entities.UserProfile.create({ customer_email: user?.email, phone, address: addrString, birthday });
+        await base44.entities.UserProfile.create({
+          customer_email: user?.email,
+          first_name: normalizedFirstName,
+          last_name: normalizedLastName,
+          phone,
+          address: addrString,
+          birthday,
+        });
       }
-      await base44.functions.invoke('syncUserToHub', { email: user?.email, first_name: firstName, last_name: lastName, phone, address: addrString, birthday });
+      await base44.auth.updateMe({ first_name: normalizedFirstName, last_name: normalizedLastName, phone, address: addrString, birthday });
+      await base44.functions.invoke('syncUserToHub', { email: user?.email, first_name: normalizedFirstName, last_name: normalizedLastName, phone, address: addrString, birthday });
       setSaveSuccess(true);
       await refreshUser();
       setTimeout(() => { setSaveSuccess(false); }, 1500);
