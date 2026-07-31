@@ -60,6 +60,7 @@ const POSOrders = React.lazy(() => import('@/pages/admin/POSOrders'));
 const Resources = React.lazy(() => import('@/pages/admin/Resources'));
 const ComplianceOps = React.lazy(() => import('@/pages/admin/ComplianceOps'));
 const AdminProducts = React.lazy(() => import('@/pages/admin/AdminProducts'));
+const DiscountCodes = React.lazy(() => import('@/pages/admin/DiscountCodes'));
 const EventCatalogSetup = React.lazy(() => import('@/pages/admin/EventCatalogSetup'));
 const BagReturnAdmin = React.lazy(() => import('@/pages/admin/BagReturnAdmin'));
 const LoyaltyMembers = React.lazy(() => import('@/pages/admin/LoyaltyMembers'));
@@ -405,6 +406,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/compliance-logs" element={<AdminRedirect to="/admin/compliance-ops" user={user} />} />
           <Route path="/admin/shopify" element={<ProtectedRoute element={<ShopifyDashboard />} user={user} />} />
           <Route path="/admin/products" element={<ProtectedRoute element={<AdminProducts />} user={user} />} />
+          <Route path="/admin/discount-codes" element={<ProtectedRoute element={<DiscountCodes />} user={user} />} />
           <Route path="/admin/event-catalog-setup" element={<ProtectedRoute element={<EventCatalogSetup />} user={user} />} />
           <Route path="/admin/bag-returns" element={<ProtectedRoute element={<BagReturnAdmin />} user={user} />} />
           <Route path="/admin/loyalty-members" element={<ProtectedRoute element={<LoyaltyMembers />} user={user} />} />

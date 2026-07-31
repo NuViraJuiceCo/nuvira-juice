@@ -13,6 +13,8 @@ export default function Zone3RouteReviewPanel({
   zoneEligibility,
   items,
   subtotal,
+  discountEligibleSubtotal,
+  checkoutCode,
   address,
   phone,
   customerEmail,
@@ -32,7 +34,10 @@ export default function Zone3RouteReviewPanel({
   const [error, setError] = useState(null);
 
   const estimatedFee = zoneEligibility?.delivery_fee ?? 12.99;
-  const total = Math.round(((subtotal || 0) + estimatedFee) * 100) / 100;
+  const eligibleSubtotal = Number(discountEligibleSubtotal ?? subtotal ?? 0);
+  const accountSavings = Math.max(0, Number(subtotal || 0) - eligibleSubtotal);
+  const discountAmount = Math.min(eligibleSubtotal, Number(checkoutCode?.amount || 0));
+  const total = Math.round((Math.max(0, eligibleSubtotal - discountAmount) + estimatedFee) * 100) / 100;
 
   const handleAuthorize = async () => {
     setError(null);
@@ -42,6 +47,8 @@ export default function Zone3RouteReviewPanel({
       const res = await base44.functions.invoke('createZone3AuthorizationIntent', {
         items,
         subtotal,
+        discount_eligible_subtotal: eligibleSubtotal,
+        discount_code: checkoutCode?.code || null,
         delivery_fee: estimatedFee,
         total,
         delivery_address: addrString,
@@ -106,6 +113,12 @@ export default function Zone3RouteReviewPanel({
         {/* Estimated fee */}
         <div className="bg-white/60 dark:bg-black/20 rounded-lg p-2.5 text-xs">
           <div className="flex justify-between mb-1"><span className="text-cyan-800 dark:text-cyan-300">Subtotal</span><span className="font-medium">${(subtotal || 0).toFixed(2)}</span></div>
+          {accountSavings > 0 && (
+            <div className="flex justify-between mb-1 text-emerald-700 dark:text-emerald-300"><span>Account savings</span><span className="font-medium">-${accountSavings.toFixed(2)}</span></div>
+          )}
+          {discountAmount > 0 && (
+            <div className="flex justify-between mb-1 text-emerald-700 dark:text-emerald-300"><span>{checkoutCode?.label || 'Discount code'}</span><span className="font-medium">-${discountAmount.toFixed(2)}</span></div>
+          )}
           <div className="flex justify-between mb-1"><span className="text-cyan-800 dark:text-cyan-300">Est. Delivery Fee</span><span className="font-medium">${estimatedFee.toFixed(2)}</span></div>
           <div className="flex justify-between border-t border-cyan-200/60 pt-1 mt-1"><span className="font-semibold text-cyan-900 dark:text-cyan-200">Auth Hold Amount</span><span className="font-bold">${total.toFixed(2)}</span></div>
         </div>

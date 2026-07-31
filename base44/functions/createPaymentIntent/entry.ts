@@ -4,32 +4,77 @@ import Stripe from 'npm:stripe@14.21.0';
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
-const BRCLUB_CODE = 'BRCLUB';
-const BRCLUB_DISCOUNT_PERCENT = 10;
 
 function normalizePromotionCode(value) {
   return String(value || '').trim().toUpperCase();
 }
 
-function resolvePromotion(code, subtotal) {
+async function resolvePromotion(base44, code, eligibleSubtotal, now = new Date()) {
   const normalizedCode = normalizePromotionCode(code);
-  if (!normalizedCode) {
-    return { code: null, percent: 0, amount: 0 };
-  }
-
-  if (normalizedCode !== BRCLUB_CODE) {
-    return null;
-  }
-
-  const merchandiseSubtotal = Number(subtotal);
+  const merchandiseSubtotal = Number(eligibleSubtotal);
   if (!Number.isFinite(merchandiseSubtotal) || merchandiseSubtotal < 0) {
     return null;
   }
 
+  if (!normalizedCode) {
+    return {
+      code: null,
+      type: 'promotion',
+      label: null,
+      discount_type: 'percent',
+      percent: 0,
+      amount: 0,
+    };
+  }
+
+  const candidates = await base44.asServiceRole.entities.DiscountCode.filter(
+    { code: normalizedCode },
+    '-created_date',
+    5,
+  );
+  const activeCandidates = candidates.filter((candidate) => candidate.active === true);
+  if (activeCandidates.length !== 1) {
+    return null;
+  }
+
+  const discount = activeCandidates[0];
+  const startsAt = discount.starts_at ? new Date(discount.starts_at) : null;
+  const endsAt = discount.ends_at ? new Date(discount.ends_at) : null;
+  if ((startsAt && (!Number.isFinite(startsAt.getTime()) || now < startsAt)) ||
+      (endsAt && (!Number.isFinite(endsAt.getTime()) || now > endsAt))) {
+    return null;
+  }
+
+  const minimumSubtotal = Number(discount.minimum_subtotal || 0);
+  if (!Number.isFinite(minimumSubtotal) || merchandiseSubtotal < minimumSubtotal) {
+    return null;
+  }
+
+  const discountValue = Number(discount.discount_value);
+  if (!Number.isFinite(discountValue) || discountValue <= 0) {
+    return null;
+  }
+
+  const isFixed = discount.discount_type === 'fixed_amount';
+  if (!isFixed && discountValue > 100) {
+    return null;
+  }
+
+  const uncappedAmount = isFixed
+    ? discountValue
+    : Math.round(merchandiseSubtotal * discountValue) / 100;
+  const maximumDiscount = Number(discount.maximum_discount || 0);
+  const cappedAmount = maximumDiscount > 0
+    ? Math.min(uncappedAmount, maximumDiscount)
+    : uncappedAmount;
+
   return {
     code: normalizedCode,
-    percent: BRCLUB_DISCOUNT_PERCENT,
-    amount: Math.round(merchandiseSubtotal * BRCLUB_DISCOUNT_PERCENT) / 100,
+    type: discount.discount_kind === 'referral' ? 'referral' : 'promotion',
+    label: String(discount.display_name || `${normalizedCode} discount`).trim(),
+    discount_type: isFixed ? 'fixed_amount' : 'percent',
+    percent: isFixed ? 0 : discountValue,
+    amount: Math.min(merchandiseSubtotal, Math.round(cappedAmount * 100) / 100),
   };
 }
 
@@ -310,8 +355,10 @@ function optionConflictsWithSubmittedFields(option, selectedOption) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const requestBody = await req.json();
 
     const {
+      mode, discount_code, discount_contract_version, eligible_subtotal,
       items, subtotal, delivery_fee, total,
       fulfillment_type, delivery_address, contact_phone,
       customer_email, customer_name: checkoutCustomerName,
@@ -330,10 +377,32 @@ Deno.serve(async (req) => {
       zone_key: clientZoneKey,
       // Client-supplied idempotency key for duplicate-request protection
       checkout_idempotency_key,
-    } = await req.json();
+    } = requestBody;
+    const authenticatedUser = await base44.auth.me().catch(() => null);
+    if (!authenticatedUser?.email) {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+
+    if (mode === 'validate_discount_code') {
+      const discount = await resolvePromotion(base44, discount_code || promotion_code || referral_code, eligible_subtotal);
+      if (!discount?.code || discount.amount <= 0) {
+        return Response.json({
+          ok: false,
+          error_code: 'INVALID_DISCOUNT_CODE',
+          error: 'This discount code is not valid for the current order.',
+        }, { status: 400 });
+      }
+      return Response.json({
+        ok: true,
+        discount: {
+          ...discount,
+          eligible_subtotal: Math.round(Number(eligible_subtotal) * 100) / 100,
+        },
+      });
+    }
+
     const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
     if (unauthorized) return unauthorized;
-    const authenticatedUser = await base44.auth.me().catch(() => null);
 
     const normalizedPhone = String(contact_phone || '').trim();
     const normalizedAddress = {
@@ -371,15 +440,6 @@ Deno.serve(async (req) => {
       return Response.json({
         error: 'A complete delivery address is required.',
         error_code: 'DELIVERY_ADDRESS_REQUIRED',
-      }, { status: 400 });
-    }
-
-    const promotion = resolvePromotion(promotion_code, subtotal);
-    if (!promotion) {
-      return Response.json({
-        ok: false,
-        error_code: 'INVALID_PROMOTION_CODE',
-        error: 'This discount code is not valid.',
       }, { status: 400 });
     }
 
@@ -462,24 +522,44 @@ Deno.serve(async (req) => {
 
     const effectiveDeliveryFee = subFreeDelivery ? 0 : (delivery_fee || 0);
     const subDiscountAmt       = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
-    const promotionDiscountAmt = promotion.amount;
-    const merchandiseTotalBeforePromotion = Math.max(0, Number(total) - Number(delivery_fee || 0));
+    const usesServerManagedDiscountContract = Number(discount_contract_version || 0) >= 2;
+    const legacyReferralAdjustment = !usesServerManagedDiscountContract && !discount_code && referral_code
+      ? Number(referral_discount || 0)
+      : 0;
+    const merchandiseTotalBeforePromotion = Math.max(
+      0,
+      Number(total) - Number(delivery_fee || 0) + legacyReferralAdjustment,
+    );
+    const submittedDiscountCode = discount_code || promotion_code || referral_code;
+    const promotion = await resolvePromotion(base44, submittedDiscountCode, merchandiseTotalBeforePromotion);
+    if (!promotion) {
+      return Response.json({
+        ok: false,
+        error_code: 'INVALID_DISCOUNT_CODE',
+        error: 'This discount code is not valid for the current order.',
+      }, { status: 400 });
+    }
+    const promotionDiscountAmt = promotion.type === 'promotion' ? promotion.amount : 0;
     const appliedPromotionDiscountAmt = Math.min(promotionDiscountAmt, merchandiseTotalBeforePromotion);
+    const appliedReferralDiscountAmt = promotion.type === 'referral'
+      ? Math.min(promotion.amount, merchandiseTotalBeforePromotion)
+      : 0;
+    const appliedCheckoutCodeDiscount = appliedPromotionDiscountAmt + appliedReferralDiscountAmt;
+    const appliedPromotionCode = promotion.type === 'promotion' ? promotion.code : null;
+    const appliedReferralCode = promotion.type === 'referral' ? promotion.code : null;
     const totalDiscountAmount  = Math.min(Number(subtotal), Math.round((
       Number(points_discount || 0) +
       Number(reward_discount || 0) +
       Number(credits_discount || 0) +
-      Number(referral_discount || 0) +
       subDiscountAmt +
-      appliedPromotionDiscountAmt
+      appliedCheckoutCodeDiscount
     ) * 100) / 100);
     const discountCodes = [
-      referral_discount > 0 && referral_code ? String(referral_code).trim().toUpperCase() : null,
       promotion.code,
     ].filter(Boolean);
     const effectiveTotal = Math.max(
       0,
-      merchandiseTotalBeforePromotion - appliedPromotionDiscountAmt
+      merchandiseTotalBeforePromotion - appliedCheckoutCodeDiscount
     ) + effectiveDeliveryFee;
 
     const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
@@ -599,15 +679,17 @@ Deno.serve(async (req) => {
       distance_confidence:      eligibility?.distance_confidence || '',
       zone_origin_address:      "619 N Main St, O'Fallon, MO 63366",
       eligibility_reason_code:  eligibility?.reason_code     || '',
-      promotion_code:           promotion.code || '',
+      referral_code:            appliedReferralCode || '',
+      referral_discount_amount: appliedReferralDiscountAmt.toFixed(2),
+      promotion_code:           appliedPromotionCode || '',
       promotion_discount_percent: String(promotion.percent || 0),
       promotion_discount_amount:  appliedPromotionDiscountAmt.toFixed(2),
       total_discount_amount:      totalDiscountAmount.toFixed(2),
       discount_codes:             discountCodes.join(','),
     };
 
-    // effectiveTotal already includes all discounts from the frontend (points, credits, referral, reward, sub discount).
-    // Do NOT subtract again here — that would double-count.
+    // Account discounts are represented in the pre-code total. The checkout
+    // code is resolved and subtracted exactly once on the server above.
     const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 
     // Build Stripe idempotency key from the client-supplied checkout key (if present).
@@ -674,7 +756,11 @@ Deno.serve(async (req) => {
             subFreeDelivery,
             subDiscountPct,
             subDiscountAmt,
-            promotionCode:      promotion.code,
+            discountCode:       promotion.code,
+            discountType:       promotion.type,
+            discountLabel:      promotion.label,
+            discountAmount:     appliedCheckoutCodeDiscount,
+            promotionCode:      appliedPromotionCode,
             promotionDiscountPercent: promotion.percent,
             promotionDiscountAmount: appliedPromotionDiscountAmt,
             idempotent_replay:    true,
@@ -735,8 +821,8 @@ Deno.serve(async (req) => {
         financial_status:         'pending',
         payment_captured:         false,
         stripe_payment_intent_id: paymentIntent.id,
-        referral_code:            (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
-        promotion_code:           promotion.code,
+        referral_code:            appliedReferralCode,
+        promotion_code:           appliedPromotionCode,
         promotion_discount_percent: promotion.percent,
         promotion_discount_amount: appliedPromotionDiscountAmt,
         total_discounts:          totalDiscountAmount,
@@ -800,8 +886,9 @@ Deno.serve(async (req) => {
           cutoff_window_label:       canonicalSchedule.cutoffWindowLabel || '',
           schedule_timezone:         canonicalSchedule.scheduleTimezone,
           is_preorder:               false,
-          referral_code:             (referral_discount > 0 && referral_code) ? referral_code.toUpperCase() : null,
-          promotion_code:            promotion.code,
+          referral_code:             appliedReferralCode,
+          referral_discount:         appliedReferralDiscountAmt,
+          promotion_code:            appliedPromotionCode,
           promotion_discount_percent: promotion.percent,
           promotion_discount_amount: appliedPromotionDiscountAmt,
           total_discounts:           totalDiscountAmount,
@@ -828,7 +915,11 @@ Deno.serve(async (req) => {
       subFreeDelivery,
       subDiscountPct,
       subDiscountAmt,
-      promotionCode:      promotion.code,
+      discountCode:       promotion.code,
+      discountType:       promotion.type,
+      discountLabel:      promotion.label,
+      discountAmount:     appliedCheckoutCodeDiscount,
+      promotionCode:      appliedPromotionCode,
       promotionDiscountPercent: promotion.percent,
       promotionDiscountAmount: appliedPromotionDiscountAmt,
       totalDiscountAmount,

@@ -106,7 +106,10 @@ Deno.serve(async (req) => {
 
     // Determine capture amount
     const captureDeliveryFee = approved_delivery_fee != null ? approved_delivery_fee : (dar.estimated_delivery_fee || 0);
-    const captureTotal = Math.max(0, Math.round(((dar.cart_subtotal || 0) + captureDeliveryFee) * 100) / 100);
+    const discountEligibleSubtotal = Number(dar.discount_eligible_subtotal ?? dar.cart_subtotal ?? 0);
+    const discountAmount = Math.min(discountEligibleSubtotal, Number(dar.discount_amount || 0));
+    const captureMerchandiseTotal = Math.max(0, discountEligibleSubtotal - discountAmount);
+    const captureTotal = Math.max(0, Math.round((captureMerchandiseTotal + captureDeliveryFee) * 100) / 100);
     const captureAmountCents = Math.max(50, Math.round(captureTotal * 100));
 
     // Route review final schedule is assigned at approval time, before capture/order creation.
@@ -158,6 +161,12 @@ Deno.serve(async (req) => {
       subtotal: dar.cart_subtotal || 0,
       delivery_fee: captureDeliveryFee,
       total: captureTotal,
+      referral_code: dar.discount_kind === 'referral' ? dar.discount_code || null : null,
+      promotion_code: dar.discount_kind === 'promotion' ? dar.discount_code || null : null,
+      promotion_discount_percent: dar.discount_kind === 'promotion' ? Number(dar.discount_percent || 0) : 0,
+      promotion_discount_amount: dar.discount_kind === 'promotion' ? discountAmount : 0,
+      total_discounts: Math.max(0, Math.round((Number(dar.cart_subtotal || 0) - captureMerchandiseTotal) * 100) / 100),
+      discount_codes: dar.discount_code ? [dar.discount_code] : [],
       fulfillment_type: 'delivery',
       delivery_address: resolvedDeliveryAddress,
       address_line1: dar.address_line1 || '',
@@ -185,7 +194,7 @@ Deno.serve(async (req) => {
       final_schedule_source: 'route_review_approval',
       schedule_timezone: canonicalSchedule.scheduleTimezone,
       cutoff_window_label: canonicalSchedule.cutoffWindowLabel || 'route_review_approval',
-      notes: `Zone 3 Route Review approved. Admin: ${user.email}. Reason: ${admin_decision_reason}. Distance: ${dar.estimated_distance_miles} miles.`,
+      notes: `Zone 3 Route Review approved. Admin: ${user.email}. Reason: ${admin_decision_reason}. Distance: ${dar.estimated_distance_miles} miles.${dar.discount_code ? ` Discount: ${dar.discount_code} (-$${discountAmount.toFixed(2)}).` : ''}`,
       status_history: [
         { status: 'order_received', timestamp: new Date().toISOString(), message: 'Zone 3 route review approved by NuVira admin.' },
         { status: 'scheduled_for_juicing', timestamp: new Date().toISOString(), message: 'Payment captured — order scheduled for juicing.' },
