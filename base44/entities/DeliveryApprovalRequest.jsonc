@@ -58,6 +58,31 @@
       "type": "number",
       "description": "Cart subtotal in dollars at time of request"
     },
+    "discount_eligible_subtotal": {
+      "type": "number",
+      "description": "Merchandise total after account discounts and before the entered checkout code"
+    },
+    "discount_code": {
+      "type": "string",
+      "description": "Server-validated checkout code"
+    },
+    "discount_kind": {
+      "type": "string",
+      "enum": [
+        "promotion",
+        "referral"
+      ]
+    },
+    "discount_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "Server-calculated checkout code discount in USD"
+    },
+    "discount_percent": {
+      "type": "number",
+      "default": 0,
+      "description": "Server-authorized percentage when the code uses percentage pricing"
+    },
     "estimated_delivery_fee": {
       "type": "number",
       "description": "Delivery fee for the assigned zone"

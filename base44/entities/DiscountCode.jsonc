@@ -1,0 +1,89 @@
+{
+  "name": "DiscountCode",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "Uppercase customer-entered code"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Customer-facing discount name"
+    },
+    "discount_kind": {
+      "type": "string",
+      "enum": [
+        "promotion",
+        "referral"
+      ],
+      "default": "promotion"
+    },
+    "discount_type": {
+      "type": "string",
+      "enum": [
+        "percent",
+        "fixed_amount"
+      ],
+      "default": "percent"
+    },
+    "discount_value": {
+      "type": "number",
+      "description": "Percentage points or fixed USD amount"
+    },
+    "minimum_subtotal": {
+      "type": "number",
+      "default": 0,
+      "description": "Minimum eligible merchandise subtotal before this code"
+    },
+    "maximum_discount": {
+      "type": "number",
+      "description": "Optional maximum USD discount for percentage codes"
+    },
+    "starts_at": {
+      "type": "string",
+      "description": "Optional ISO activation timestamp"
+    },
+    "ends_at": {
+      "type": "string",
+      "description": "Optional ISO expiration timestamp"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "internal_notes": {
+      "type": "string",
+      "maxLength": 1000
+    }
+  },
+  "required": [
+    "code",
+    "display_name",
+    "discount_kind",
+    "discount_type",
+    "discount_value",
+    "active"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

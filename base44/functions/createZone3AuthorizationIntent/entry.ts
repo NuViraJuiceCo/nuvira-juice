@@ -3,6 +3,58 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+function normalizeDiscountCode(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+async function resolveDiscount(base44, code, eligibleSubtotal, now = new Date()) {
+  const normalizedCode = normalizeDiscountCode(code);
+  const subtotal = Number(eligibleSubtotal);
+  if (!Number.isFinite(subtotal) || subtotal < 0) return null;
+
+  if (!normalizedCode) {
+    return { code: null, type: 'promotion', label: null, percent: 0, amount: 0 };
+  }
+
+  const candidates = await base44.asServiceRole.entities.DiscountCode.filter(
+    { code: normalizedCode },
+    '-created_date',
+    5,
+  );
+  const activeCandidates = candidates.filter((candidate) => candidate.active === true);
+  if (activeCandidates.length !== 1) return null;
+
+  const discount = activeCandidates[0];
+  const startsAt = discount.starts_at ? new Date(discount.starts_at) : null;
+  const endsAt = discount.ends_at ? new Date(discount.ends_at) : null;
+  if ((startsAt && (!Number.isFinite(startsAt.getTime()) || now < startsAt)) ||
+      (endsAt && (!Number.isFinite(endsAt.getTime()) || now > endsAt))) {
+    return null;
+  }
+
+  const minimumSubtotal = Number(discount.minimum_subtotal || 0);
+  const value = Number(discount.discount_value);
+  if (!Number.isFinite(minimumSubtotal) || subtotal < minimumSubtotal ||
+      !Number.isFinite(value) || value <= 0 ||
+      (discount.discount_type !== 'fixed_amount' && value > 100)) {
+    return null;
+  }
+
+  const uncappedAmount = discount.discount_type === 'fixed_amount'
+    ? value
+    : Math.round(subtotal * value) / 100;
+  const maximumDiscount = Number(discount.maximum_discount || 0);
+  const amount = maximumDiscount > 0 ? Math.min(uncappedAmount, maximumDiscount) : uncappedAmount;
+
+  return {
+    code: normalizedCode,
+    type: discount.discount_kind === 'referral' ? 'referral' : 'promotion',
+    label: String(discount.display_name || `${normalizedCode} discount`).trim(),
+    percent: discount.discount_type === 'fixed_amount' ? 0 : value,
+    amount: Math.min(subtotal, Math.round(amount * 100) / 100),
+  };
+}
+
 function normalizeNamePart(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
@@ -158,6 +210,15 @@ Deno.serve(async (req) => {
     const inputCustomerLastName = body.customer_last_name ?? '';
     const customer_acknowledged_hold = body.customer_acknowledged_hold ?? false;
     const testDistanceMiles = body._test_distance_miles;
+    const discountCode = body.discount_code ?? body.promotion_code ?? body.referral_code ?? null;
+    const discountEligibleSubtotal = Number(body.discount_eligible_subtotal ?? subtotal);
+    if (!Number.isFinite(discountEligibleSubtotal) ||
+        Math.abs(discountEligibleSubtotal - Number(subtotal || 0)) > 0.01) {
+      return Response.json({
+        error: 'The route-review checkout total could not be verified.',
+        error_code: 'INVALID_DISCOUNT_SUBTOTAL',
+      }, { status: 400 });
+    }
 
     const normalizedPhone = String(contact_phone || '').trim();
     const normalizedAddress = {
@@ -201,6 +262,14 @@ Deno.serve(async (req) => {
     // Require customer acknowledgment
     if (!customer_acknowledged_hold) {
       return Response.json({ error: 'Customer must acknowledge the authorization hold before proceeding.' }, { status: 400 });
+    }
+
+    const discount = await resolveDiscount(base44, discountCode, discountEligibleSubtotal);
+    if (!discount) {
+      return Response.json({
+        error: 'This discount code is not valid for the current order.',
+        error_code: 'INVALID_DISCOUNT_CODE',
+      }, { status: 400 });
     }
 
     let customerProfile = null;
@@ -263,7 +332,8 @@ Deno.serve(async (req) => {
     }
 
     const estimatedDeliveryFee = eligibility.delivery_fee || (delivery_fee || 0);
-    const effectiveTotal = Math.max(0, Math.round(((subtotal || 0) + estimatedDeliveryFee) * 100) / 100);
+    const discountedMerchandiseTotal = Math.max(0, discountEligibleSubtotal - discount.amount);
+    const effectiveTotal = Math.max(0, Math.round((discountedMerchandiseTotal + estimatedDeliveryFee) * 100) / 100);
     const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 
     // Generate request number
@@ -284,6 +354,13 @@ Deno.serve(async (req) => {
       address_country: 'US',
       cart_items: (items || []).map(i => ({ product_id: i.product_id, title: i.title, price: i.price, quantity: i.quantity })),
       cart_subtotal: subtotal || 0,
+      discount_eligible_subtotal: discountEligibleSubtotal,
+      discount_amount: discount.amount,
+      discount_percent: discount.percent,
+      ...(discount.code ? {
+        discount_code: discount.code,
+        discount_kind: discount.type,
+      } : {}),
       estimated_delivery_fee: estimatedDeliveryFee,
       estimated_total: effectiveTotal,
       estimated_distance_miles: eligibility.estimated_distance_miles,
@@ -297,7 +374,7 @@ Deno.serve(async (req) => {
         action: 'authorization_initiated',
         performed_by: customer_email || 'customer',
         timestamp: new Date().toISOString(),
-        note: `Zone 3 route review initiated. Distance: ${eligibility.estimated_distance_miles} miles. Zone: ${eligibility.zone_key}.`,
+        note: `Zone 3 route review initiated. Distance: ${eligibility.estimated_distance_miles} miles. Zone: ${eligibility.zone_key}.${discount.code ? ` Discount: ${discount.code} (-$${discount.amount.toFixed(2)}).` : ''}`,
       }],
     });
 
@@ -335,6 +412,10 @@ Deno.serve(async (req) => {
         estimated_distance_miles: String(eligibility.estimated_distance_miles || ''),
         estimated_delivery_fee: String(estimatedDeliveryFee),
         cart_subtotal: String(subtotal || 0),
+        discount_eligible_subtotal: String(discountEligibleSubtotal),
+        discount_code: discount.code || '',
+        discount_kind: discount.code ? discount.type : '',
+        discount_amount: discount.amount.toFixed(2),
         effective_total: String(effectiveTotal),
         customer_acknowledged_hold: 'true',
       },
@@ -372,6 +453,9 @@ Deno.serve(async (req) => {
       zoneKey: eligibility.zone_key,
       zoneName: eligibility.zone_name,
       distanceMiles: eligibility.estimated_distance_miles,
+      discountCode: discount.code,
+      discountLabel: discount.label,
+      discountAmount: discount.amount,
     });
 
   } catch (error) {

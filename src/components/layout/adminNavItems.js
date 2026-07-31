@@ -1,5 +1,6 @@
 import {
   Activity,
+  BadgePercent,
   BarChart3,
   Bell,
   CalendarDays,
@@ -36,6 +37,7 @@ export const adminNavGroups = [
       { path: '/admin/shopify', icon: ShoppingCart, label: 'Shopify' },
       { path: '/admin/live-monitor', icon: Activity, label: 'Live Monitor' },
       { path: '/admin/bag-returns', icon: ShoppingBag, label: 'Bag Returns' },
+      { path: '/admin/discount-codes', icon: BadgePercent, label: 'Discount Codes' },
     ],
   },
   {
