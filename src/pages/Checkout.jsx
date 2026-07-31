@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import SEO from '@/components/SEO';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import ApplePayMountDiagnostic from '@/components/checkout/ApplePayMountDiagnostic';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 import Zone3RouteReviewPanel from '@/components/checkout/Zone3RouteReviewPanel';
 import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { resolveCheckoutCode } from '@/lib/checkoutPromotions';
+import { buildCustomerName, normalizeNamePart, resolveCustomerIdentity } from '@/lib/customerIdentity';
 
 const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
 
@@ -118,6 +119,8 @@ function CheckoutFlow() {
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
   const fulfillmentType = 'delivery';
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
   const [phone, setPhone] = useState('');
   const [prefilled, setPrefilled] = useState(false);
@@ -165,7 +168,7 @@ function CheckoutFlow() {
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
   }, [user?.email]);
 
-  const { data: userProfile } = useQuery({
+  const { data: userProfile, isFetched: userProfileFetched } = useQuery({
     queryKey: ['user-profile-checkout', user?.email],
     queryFn: async () => {
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
@@ -177,7 +180,10 @@ function CheckoutFlow() {
   // Pre-populate fields from saved profile once
   React.useEffect(() => {
     if (prefilled || !user) return;
-    if (!userProfile) return;
+    if (!userProfileFetched) return;
+    const identity = resolveCustomerIdentity({ profile: userProfile, user });
+    setFirstName(identity.firstName);
+    setLastName(identity.lastName);
     if (userProfile?.phone) setPhone(userProfile.phone);
     if (userProfile?.address) {
       const parts = userProfile.address.split(',').map(s => s.trim());
@@ -185,7 +191,7 @@ function CheckoutFlow() {
     }
     if (userProfile?.sms_consent) setSmsConsent(true);
     setPrefilled(true);
-  }, [userProfile, user, prefilled]);
+  }, [userProfile, user, prefilled, userProfileFetched]);
 
   // Validate address in real-time for delivery orders
   const addressDebounceRef = React.useRef(null);
@@ -457,17 +463,12 @@ function CheckoutFlow() {
       return;
     }
 
-    // Resolve customer_name with fallback priority
-    // 1. User's full_name from auth
-    // 2. Profile first_name + last_name
-    // 3. If still missing, block checkout
-    const resolvedName = (user?.full_name || '').trim() ||
-      ((userProfile?.first_name || '') + ' ' + (userProfile?.last_name || '')).trim() ||
-      '';
+    const normalizedFirstName = normalizeNamePart(firstName);
+    const normalizedLastName = normalizeNamePart(lastName);
+    const resolvedName = buildCustomerName(normalizedFirstName, normalizedLastName);
 
-    if (!resolvedName) {
-      toast.error('Please complete your profile with your full name before placing an order');
-      navigate('/account-setup');
+    if (!normalizedFirstName || !normalizedLastName) {
+      toast.error('Please enter the first and last name for this order');
       return;
     }
 
@@ -522,6 +523,8 @@ function CheckoutFlow() {
       if (user?.email) {
         setCheckoutStartStage(CHECKOUT_START_STAGES.SAVING_PROFILE);
         const profileData = {
+          first_name: normalizedFirstName,
+          last_name: normalizedLastName,
           phone: phone.trim(),
           address: addrString,
           sms_consent: smsConsent,
@@ -612,6 +615,8 @@ function CheckoutFlow() {
         delivery_schedule_source: selectedDeliveryOption ? 'customer_selected' : 'system_default',
         customer_email: user?.email || null,
         customer_name: resolvedName,
+        customer_first_name: normalizedFirstName,
+        customer_last_name: normalizedLastName,
         points_discount: pointsDiscount,
         points_used: pointsUsed,
         credits_discount: creditsDiscount,
@@ -675,8 +680,7 @@ function CheckoutFlow() {
   };
 
   if (items.length === 0) {
-    navigate('/cart');
-    return null;
+    return <Navigate to="/cart" replace />;
   }
 
   // Block checkout if not logged in
@@ -902,6 +906,27 @@ function CheckoutFlow() {
       <div className="px-4 space-y-4 mb-5">
         <div>
           <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+            Name For This Order
+          </Label>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              value={firstName}
+              onChange={e => setFirstName(e.target.value)}
+              placeholder="First name"
+              autoComplete="given-name"
+              className="rounded-xl h-11"
+            />
+            <Input
+              value={lastName}
+              onChange={e => setLastName(e.target.value)}
+              placeholder="Last name"
+              autoComplete="family-name"
+              className="rounded-xl h-11"
+            />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
             Phone Number
           </Label>
           <Input
@@ -1039,7 +1064,9 @@ function CheckoutFlow() {
           address={address}
           phone={phone}
           customerEmail={user?.email}
-          customerName={(user?.full_name || '').trim() || ((userProfile?.first_name || '') + ' ' + (userProfile?.last_name || '')).trim()}
+          customerName={buildCustomerName(firstName, lastName)}
+          customerFirstName={normalizeNamePart(firstName)}
+          customerLastName={normalizeNamePart(lastName)}
           onSuccess={({ requestNumber, darId, paymentIntentId, total: holdTotal }) => {
             navigate('/zone3-review-submitted', {
               state: { requestNumber, darId, paymentIntentId, total: holdTotal, address: [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ') },
@@ -1073,6 +1100,9 @@ function CheckoutFlow() {
             clientSecret={clientSecret}
             publishableKey={publishableKey}
             total={paymentTotal}
+            customerName={buildCustomerName(firstName, lastName)}
+            customerEmail={user?.email || ''}
+            customerPhone={phone.trim()}
             isSubmitting={isSubmitting}
             setIsSubmitting={setIsSubmitting} showWalletDiagnostics={(isAdminUser(user)) && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('wallet_diagnostics') === '1'}
             onSuccess={(paymentIntentId) => {

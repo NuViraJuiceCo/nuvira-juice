@@ -17,6 +17,8 @@ export default function Zone3RouteReviewPanel({
   phone,
   customerEmail,
   customerName,
+  customerFirstName,
+  customerLastName,
   onSuccess,
   onCancel,
 }) {
@@ -51,6 +53,8 @@ export default function Zone3RouteReviewPanel({
         contact_phone: phone || '',
         customer_email: customerEmail || '',
         customer_name: customerName || '',
+        customer_first_name: customerFirstName || '',
+        customer_last_name: customerLastName || '',
         customer_acknowledged_hold: true,
       });
 
@@ -142,6 +146,9 @@ export default function Zone3RouteReviewPanel({
             clientSecret={clientSecret}
             publishableKey={publishableKey}
             total={effectiveTotal}
+            customerName={customerName}
+            customerEmail={customerEmail}
+            customerPhone={phone}
             isSubmitting={isSubmitting}
             setIsSubmitting={setIsSubmitting}
             confirmLabel={`Authorize Hold · $${effectiveTotal.toFixed(2)}`}

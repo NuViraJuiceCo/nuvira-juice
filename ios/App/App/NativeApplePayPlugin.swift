@@ -1,4 +1,5 @@
 import Capacitor
+import Contacts
 import Foundation
 import PassKit
 import StripeApplePay
@@ -80,6 +81,7 @@ public class NativeApplePayPlugin: CAPPlugin, CAPBridgedPlugin, ApplePayContextD
             )
             request.supportedNetworks = self.supportedNetworks()
             request.merchantCapabilities = [.capability3DS, .capabilityCredit, .capabilityDebit]
+            request.billingContact = self.customerContact(from: call)
             request.paymentSummaryItems = [
                 PKPaymentSummaryItem(
                     label: call.getString("merchantDisplayName") ?? "NuVira Juice Company",
@@ -146,6 +148,31 @@ public class NativeApplePayPlugin: CAPPlugin, CAPBridgedPlugin, ApplePayContextD
 
     private func paymentIntentId(from clientSecret: String) -> String? {
         return clientSecret.components(separatedBy: "_secret_").first
+    }
+
+    private func customerContact(from call: CAPPluginCall) -> PKContact? {
+        let name = call.getString("customerName")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let email = call.getString("customerEmail")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let phone = call.getString("customerPhone")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty || !email.isEmpty || !phone.isEmpty else {
+            return nil
+        }
+
+        let contact = PKContact()
+        if !name.isEmpty {
+            let components = name.split(separator: " ", maxSplits: 1).map(String.init)
+            var personName = PersonNameComponents()
+            personName.givenName = components.first
+            personName.familyName = components.count > 1 ? components[1] : nil
+            contact.name = personName
+        }
+        if !email.isEmpty {
+            contact.emailAddress = email
+        }
+        if !phone.isEmpty {
+            contact.phoneNumber = CNPhoneNumber(stringValue: phone)
+        }
+        return contact
     }
 
     private func rejectPendingCall(_ message: String, code: String) {

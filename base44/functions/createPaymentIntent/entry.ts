@@ -33,6 +33,52 @@ function resolvePromotion(code, subtotal) {
   };
 }
 
+function normalizeNamePart(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function splitHumanFullName(value) {
+  const normalized = normalizeNamePart(value);
+  if (!normalized || normalized.includes('@')) return null;
+  const parts = normalized.split(' ').filter(Boolean);
+  if (parts.length < 2) return null;
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
+function resolveCustomerIdentity({
+  checkoutFirstName,
+  checkoutLastName,
+  checkoutCustomerName,
+  profile,
+}) {
+  const requestedFirstName = normalizeNamePart(checkoutFirstName);
+  const requestedLastName = normalizeNamePart(checkoutLastName);
+  if (requestedFirstName && requestedLastName) {
+    return {
+      firstName: requestedFirstName,
+      lastName: requestedLastName,
+      source: 'checkout_structured',
+    };
+  }
+
+  const profileFirstName = normalizeNamePart(profile?.first_name);
+  const profileLastName = normalizeNamePart(profile?.last_name);
+  if (profileFirstName && profileLastName) {
+    return {
+      firstName: profileFirstName,
+      lastName: profileLastName,
+      source: 'profile_structured',
+    };
+  }
+
+  const split = splitHumanFullName(checkoutCustomerName);
+  if (split) return { ...split, source: 'checkout_full_name' };
+  return null;
+}
+
 async function authorizeCheckoutCustomer(base44, customerEmail) {
   const user = await base44.auth.me().catch(() => null);
   const requested = String(customerEmail || '').trim().toLowerCase();
@@ -258,6 +304,8 @@ Deno.serve(async (req) => {
       items, subtotal, delivery_fee, total,
       fulfillment_type, delivery_address, contact_phone,
       customer_email, customer_name: checkoutCustomerName,
+      customer_first_name: checkoutFirstName,
+      customer_last_name: checkoutLastName,
       address_line1, address_line2, address_city, address_state, address_postal_code,
       points_discount, points_used,
       active_reward, reward_discount, credits_discount,
@@ -275,6 +323,45 @@ Deno.serve(async (req) => {
     const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
     if (unauthorized) return unauthorized;
 
+    const normalizedPhone = String(contact_phone || '').trim();
+    const normalizedAddress = {
+      line1: String(address_line1 || '').trim(),
+      line2: String(address_line2 || '').trim(),
+      city: String(address_city || '').trim(),
+      state: String(address_state || '').trim(),
+      postalCode: String(address_postal_code || '').trim(),
+    };
+    const invalidItem = !Array.isArray(items) || items.length === 0 || items.some((item) => (
+      !String(item?.title || '').trim() ||
+      !Number.isFinite(Number(item?.price)) ||
+      Number(item?.price) < 0 ||
+      !Number.isInteger(Number(item?.quantity)) ||
+      Number(item?.quantity) < 1
+    ));
+    if (invalidItem) {
+      return Response.json({
+        error: 'Your cart contains an invalid item. Please review it and try again.',
+        error_code: 'INVALID_ORDER_ITEMS',
+      }, { status: 400 });
+    }
+    if (normalizedPhone.replace(/\D/g, '').length < 10) {
+      return Response.json({
+        error: 'A valid phone number is required for fulfillment.',
+        error_code: 'CUSTOMER_PHONE_REQUIRED',
+      }, { status: 400 });
+    }
+    if ((fulfillment_type || 'delivery') === 'delivery' && (
+      !normalizedAddress.line1 ||
+      !normalizedAddress.city ||
+      !normalizedAddress.state ||
+      !normalizedAddress.postalCode
+    )) {
+      return Response.json({
+        error: 'A complete delivery address is required.',
+        error_code: 'DELIVERY_ADDRESS_REQUIRED',
+      }, { status: 400 });
+    }
+
     const promotion = resolvePromotion(promotion_code, subtotal);
     if (!promotion) {
       return Response.json({
@@ -289,7 +376,7 @@ Deno.serve(async (req) => {
     let validatedEligibility = null;
     if (fulfillment_type === 'delivery') {
       const addrForCheck = delivery_address ||
-        [address_line1, address_city, address_state, address_postal_code].filter(Boolean).join(', ');
+        [normalizedAddress.line1, normalizedAddress.city, normalizedAddress.state, normalizedAddress.postalCode].filter(Boolean).join(', ');
       try {
         validatedEligibility = await getDeliveryEligibility(addrForCheck, subtotal || 0, 'one_time');
       } catch (eligErr) {
@@ -321,23 +408,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Resolve customer name
-    let customer_name = checkoutCustomerName?.trim() || '';
-    if (!customer_name && customer_email) {
+    let customerProfile = null;
+    if (customer_email) {
       try {
         const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email });
-        if (profiles[0]) {
-          const { first_name, last_name } = profiles[0];
-          customer_name = [first_name, last_name].filter(Boolean).join(' ');
-        }
+        customerProfile = profiles[0] || null;
       } catch (err) {
         console.warn(`[PI] Failed to fetch UserProfile for ${customer_email}: ${err.message}`);
       }
     }
 
-    if (!customer_name?.trim()) {
-      return Response.json({ error: 'Customer name is required. Please complete your profile.' }, { status: 400 });
+    const customerIdentity = resolveCustomerIdentity({
+      checkoutFirstName,
+      checkoutLastName,
+      checkoutCustomerName,
+      profile: customerProfile,
+    });
+    if (!customerIdentity) {
+      return Response.json({
+        error: 'A first and last name are required for receipts and delivery.',
+        error_code: 'CUSTOMER_NAME_REQUIRED',
+      }, { status: 400 });
     }
+    const customer_name = `${customerIdentity.firstName} ${customerIdentity.lastName}`;
 
     // Subscription perks
     let subFreeDelivery = false;
@@ -460,13 +553,16 @@ Deno.serve(async (req) => {
       is_preorder:              'false',
       customer_email:           customer_email || '',
       customer_name:            customer_name  || '',
-      customer_phone:           contact_phone  || '',
+      customer_first_name:      customerIdentity.firstName,
+      customer_last_name:       customerIdentity.lastName,
+      customer_name_source:     customerIdentity.source,
+      customer_phone:           normalizedPhone,
       delivery_method:          fulfillment_type || 'delivery',
-      delivery_address_line1:   address_line1  || '',
-      delivery_address_line2:   address_line2  || '',
-      delivery_city:            address_city   || '',
-      delivery_state:           address_state  || '',
-      delivery_postal_code:     address_postal_code || '',
+      delivery_address_line1:   normalizedAddress.line1,
+      delivery_address_line2:   normalizedAddress.line2,
+      delivery_city:            normalizedAddress.city,
+      delivery_state:           normalizedAddress.state,
+      delivery_postal_code:     normalizedAddress.postalCode,
       requested_delivery_date:  deliveryDate,
       selected_delivery_date:   deliveryDate,
       production_date:          resolvedProdDate,
@@ -518,6 +614,18 @@ Deno.serve(async (req) => {
         payment_method_types: ['card'],
         metadata: intentMetadata,
         receipt_email: customer_email || undefined,
+        shipping: fulfillment_type === 'delivery' ? {
+          name: customer_name,
+          phone: normalizedPhone,
+          address: {
+            line1: normalizedAddress.line1,
+            line2: normalizedAddress.line2 || undefined,
+            city: normalizedAddress.city,
+            state: normalizedAddress.state,
+            postal_code: normalizedAddress.postalCode,
+            country: 'US',
+          },
+        } : undefined,
         description: `NuVira Order ${orderNumber}`,
       },
       stripeIdempotencyKey ? { idempotencyKey: stripeIdempotencyKey } : {}
@@ -526,7 +634,12 @@ Deno.serve(async (req) => {
     console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: automatic_payment_methods=enabled, allow_redirects=never. amount=${amountCents}¢, customer=${customer_email}`);
 
     // Pre-create a pending Order so webhook finalize is simple and idempotent
-    const resolvedDeliveryAddress = delivery_address || [address_line1, address_city, address_state, address_postal_code].filter(Boolean).join(', ');
+    const resolvedDeliveryAddress = delivery_address || [
+      normalizedAddress.line1,
+      normalizedAddress.city,
+      normalizedAddress.state,
+      normalizedAddress.postalCode,
+    ].filter(Boolean).join(', ');
 
     try {
       // Deduplication guard: if a retry call hit Stripe idempotency and returned the same PI,
@@ -582,13 +695,13 @@ Deno.serve(async (req) => {
         total:                    effectiveTotal,
         fulfillment_type:         fulfillment_type || 'delivery',
         delivery_address:         resolvedDeliveryAddress,
-        address_line1:            address_line1  || '',
-        address_line2:            address_line2  || '',
-        address_city:             address_city   || '',
-        address_state:            address_state  || '',
-        address_postal_code:      address_postal_code || '',
+        address_line1:            normalizedAddress.line1,
+        address_line2:            normalizedAddress.line2,
+        address_city:             normalizedAddress.city,
+        address_state:            normalizedAddress.state,
+        address_postal_code:      normalizedAddress.postalCode,
         address_country:          'US',
-        contact_phone:            contact_phone  || '',
+        contact_phone:            normalizedPhone,
         estimated_delivery_date:  deliveryDate,
         assigned_delivery_date:   deliveryDate,
         assigned_production_day:  resolvedProdDate,
@@ -639,16 +752,25 @@ Deno.serve(async (req) => {
         order_number:      orderNumber,
         customer_email:    customer_email || '',
         checkout_data: {
-          order_number: orderNumber, customer_email, customer_name,
+          order_number: orderNumber,
+          customer_email,
+          customer_name,
+          customer_first_name: customerIdentity.firstName,
+          customer_last_name: customerIdentity.lastName,
+          customer_name_source: customerIdentity.source,
           checkout_idempotency_key: checkout_idempotency_key || null,
-          address_line1, address_line2, address_city, address_state, address_postal_code,
+          address_line1: normalizedAddress.line1,
+          address_line2: normalizedAddress.line2,
+          address_city: normalizedAddress.city,
+          address_state: normalizedAddress.state,
+          address_postal_code: normalizedAddress.postalCode,
           address_country: 'US',
           items, subtotal,
           delivery_fee:              effectiveDeliveryFee,
           total:                     effectiveTotal,
           fulfillment_type:          fulfillment_type || 'delivery',
           delivery_address:          resolvedDeliveryAddress,
-          contact_phone:             contact_phone    || '',
+          contact_phone:             normalizedPhone,
           estimated_delivery_date:   deliveryDate,
           assigned_delivery_date:    deliveryDate,
           assigned_production_day:   resolvedProdDate,

@@ -13,7 +13,21 @@ import {
 } from '@stripe/react-stripe-js';
 
 // Inner form — must be inside <Elements>
-function PaymentForm({ total, clientSecret, publishableKey, onSuccess, onError, isSubmitting, setIsSubmitting, onWalletStatus, confirmLabel, showWalletDiagnostics }) {
+function PaymentForm({
+  total,
+  clientSecret,
+  publishableKey,
+  customerName,
+  customerEmail,
+  customerPhone,
+  onSuccess,
+  onError,
+  isSubmitting,
+  setIsSubmitting,
+  onWalletStatus,
+  confirmLabel,
+  showWalletDiagnostics,
+}) {
   const stripe   = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
@@ -63,7 +77,16 @@ function PaymentForm({ total, clientSecret, publishableKey, onSuccess, onError, 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       clientSecret,
-      confirmParams: { return_url: window.location.origin + '/order-confirmation' },
+      confirmParams: {
+        return_url: window.location.origin + '/order-confirmation',
+        payment_method_data: {
+          billing_details: {
+            name: customerName || undefined,
+            email: customerEmail || undefined,
+            phone: customerPhone || undefined,
+          },
+        },
+      },
       redirect: 'if_required',
     });
 
@@ -89,7 +112,14 @@ function PaymentForm({ total, clientSecret, publishableKey, onSuccess, onError, 
 
     const cardElement = elements.getElement(CardNumberElement);
     const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: { card: cardElement },
+      payment_method: {
+        card: cardElement,
+        billing_details: {
+          name: customerName || undefined,
+          email: customerEmail || undefined,
+          phone: customerPhone || undefined,
+        },
+      },
     });
 
     if (error) {
@@ -114,6 +144,9 @@ function PaymentForm({ total, clientSecret, publishableKey, onSuccess, onError, 
         clientSecret,
         publishableKey,
         total,
+        customerName,
+        customerEmail,
+        customerPhone,
       });
 
       const resolvedPaymentIntentId = result?.paymentIntentId || paymentIntentIdFromClientSecret(clientSecret);
@@ -294,7 +327,20 @@ function PaymentForm({ total, clientSecret, publishableKey, onSuccess, onError, 
  *   isSubmitting: boolean
  *   setIsSubmitting: (v: boolean) => void
  */
-export default function EmbeddedPayment({ clientSecret, publishableKey, total, onSuccess, onError, isSubmitting, setIsSubmitting, confirmLabel = undefined, showWalletDiagnostics = false }) {
+export default function EmbeddedPayment({
+  clientSecret,
+  publishableKey,
+  total,
+  customerName = '',
+  customerEmail = '',
+  customerPhone = '',
+  onSuccess,
+  onError,
+  isSubmitting,
+  setIsSubmitting,
+  confirmLabel = undefined,
+  showWalletDiagnostics = false,
+}) {
   const stripePromise = useMemo(() => publishableKey ? loadStripe(publishableKey) : null, [publishableKey]);
   const [walletStatus, setWalletStatus] = useState(null); // { mounted: bool, methods: { applePay, googlePay, link, ... } }
 
@@ -350,6 +396,9 @@ export default function EmbeddedPayment({ clientSecret, publishableKey, total, o
           total={total}
           clientSecret={clientSecret}
           publishableKey={publishableKey}
+          customerName={customerName}
+          customerEmail={customerEmail}
+          customerPhone={customerPhone}
           onSuccess={onSuccess}
           onError={onError}
           isSubmitting={isSubmitting}
