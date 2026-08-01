@@ -1,5 +1,5 @@
 {
-  "originHash" : "534018d136b9a0a3d50fde0de2abc7ea4ce17a8ffd51a78a0fec53c130f705d1",
+  "originHash" : "2c809d88b5511e2c0bc142b8a28f69a4b6875ff2b90d4beeb9dbb78a333afb17",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -98,6 +98,15 @@
       "state" : {
         "revision" : "040d087ac2267d2ddd4cca36c757d1c6a05fdbfe",
         "version" : "101.0.0"
+      }
+    },
+    {
+      "identity" : "ionic-live-updates-releases",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ionic-team/ionic-live-updates-releases.git",
+      "state" : {
+        "revision" : "e577a3735249a62f5dedd79d21c06d71e28f6855",
+        "version" : "0.5.8"
       }
     },
     {
