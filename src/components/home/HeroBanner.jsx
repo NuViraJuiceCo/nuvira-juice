@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getDeliveryDisplayText } from '@/lib/deliveryUtils';
 import { BRAND_IMAGES } from '@/lib/brandImages';
 
 // Product-focused hero photography. These are deployed with the app so the
@@ -34,12 +33,8 @@ const PRODUCT_HERO_IMAGE_MAP = {
   },
 };
 
-export default function HeroBanner({ banners = [], scheduleRules = [] }) {
+export default function HeroBanner({ banners = [] }) {
   const [current, setCurrent] = useState(0);
-  const deliveryText = getDeliveryDisplayText(scheduleRules);
-  const compactDeliveryText = deliveryText
-    ?.replace(/^Delivered\s+/, '')
-    ?.replace(/^Ready for pickup\s+/, 'Pickup ');
   const heroStats = [
     ['Made to order', 'Pressed for your route'],
     ['Signature trio', 'AURA + OASIS + RE-NU'],
@@ -147,24 +142,11 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
       )}
 
       <div className="relative z-10 flex min-h-[clamp(500px,72svh,680px)] flex-col justify-between px-5 py-5 sm:px-7 md:px-10 md:py-8">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:text-[11px]">
             <Sparkles className="h-3.5 w-3.5 text-[#C8E86A]" />
             Fresh Drop
           </div>
-
-          {deliveryText && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 }}
-              className="hidden min-w-0 max-w-[46vw] items-center gap-1.5 rounded-full border border-white/15 bg-black/20 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur-md min-[360px]:flex sm:max-w-none"
-            >
-              <Zap className="h-3 w-3 shrink-0 fill-[#C8E86A] text-[#C8E86A]" />
-              <span className="truncate sm:hidden">{compactDeliveryText}</span>
-              <span className="hidden sm:inline">{deliveryText}</span>
-            </motion.div>
-          )}
         </div>
 
         <motion.div
