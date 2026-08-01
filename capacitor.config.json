@@ -3,6 +3,12 @@
   "appName": "NuVira Juice",
   "webDir": "dist",
   "plugins": {
+    "LiveUpdates": {
+      "appId": "044c03e1",
+      "channel": "Production",
+      "autoUpdateMethod": "background",
+      "maxVersions": 2
+    },
     "FirebaseMessaging": {
       "presentationOptions": ["alert", "badge", "sound"]
     }

@@ -54,6 +54,7 @@ const harnesses = [
   'scripts/migration/run-brclub-discount-tests.mjs',
   'scripts/migration/run-g61-checkout-customer-identity-tests.mjs',
   'scripts/migration/run-g62-website-only-seo-links-tests.mjs',
+  'scripts/migration/run-g63-capacitor-live-update-bootstrap-tests.mjs',
 ];
 
 function fail(message, extra = {}) {
