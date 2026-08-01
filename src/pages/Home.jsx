@@ -7,10 +7,8 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import HeroBanner from '@/components/home/HeroBanner';
-import { getProductionInfo } from '@/lib/deliveryUtils';
 import QuickReorder from '@/components/home/QuickReorder';
 import ProductRow from '@/components/home/ProductRow';
-import DeliveryBadge from '@/components/home/DeliveryBadge';
 import BrandSection from '@/components/home/BrandSection';
 import NuViraHighlights from '@/components/home/NuViraHighlights';
 import MerchTeaser from '@/components/home/MerchTeaser';
@@ -56,11 +54,6 @@ export default function Home({ seoActive = true }) {
     },
   });
 
-  const { data: schedules = [] } = useQuery({
-    queryKey: ['delivery-schedule'],
-    queryFn: () => base44.entities.DeliverySchedule.filter({ is_active: true }),
-  });
-
   const { data: banners = [] } = useQuery({
     queryKey: ['banners'],
     queryFn: () => base44.entities.Banner.filter({ is_active: true }, 'sort_order', 10),
@@ -86,9 +79,6 @@ export default function Home({ seoActive = true }) {
     enabled: !!user?.email,
   });
 
-  const scheduleRules = schedules[0]?.rules || [];
-  const productionInfo = getProductionInfo(scheduleRules);
-
   const { data: userProfile, refetch: refetchProfile } = useQuery({
     queryKey: ['user-profile', user?.email],
     queryFn: async () => {
@@ -110,10 +100,8 @@ export default function Home({ seoActive = true }) {
 
   // Pull refetch handles from the queries already registered above — no duplicate registration
   const { refetch: refetchProducts } = useQuery({ queryKey: ['products'] });
-  const { refetch: refetchSchedules } = useQuery({ queryKey: ['delivery-schedule'] });
-
   const handleRefresh = async () => {
-    await Promise.all([refetchProducts(), refetchSchedules()]);
+    await refetchProducts();
   };
 
   return (
@@ -156,7 +144,6 @@ export default function Home({ seoActive = true }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <DeliveryBadge scheduleRules={scheduleRules} />
           <Link to="/notifications" aria-label="View notifications" className="relative w-9 h-9 flex items-center justify-center rounded-full bg-muted shadow-sm">
             <Bell className="w-4 h-4 text-foreground" />
             {unreadCount > 0 && (
@@ -173,7 +160,7 @@ export default function Home({ seoActive = true }) {
         </div>
       </motion.div>
 
-      <HeroBanner banners={banners} scheduleRules={scheduleRules} heroHeadline="Build Your Routine" heroSubtext="Choose your goal. We'll handle the rest." />
+      <HeroBanner banners={banners} heroHeadline="Build Your Routine" heroSubtext="Choose your goal. We'll handle the rest." />
 
       {/* QuickReorder — immediately after hero for returning customers */}
       <QuickReorder lastOrder={lastOrder} />
