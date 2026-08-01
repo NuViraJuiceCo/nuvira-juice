@@ -43,7 +43,7 @@ export default function HeroBanner({ banners = [], scheduleRules = [] }) {
   const heroStats = [
     ['Made to order', 'Pressed for your route'],
     ['Signature trio', 'AURA + OASIS + RE-NU'],
-    ['Local delivery', compactDeliveryText || 'Wentzville + STL'],
+    ['Local routes', 'Wentzville + greater St. Louis'],
   ];
 
   const visibleBanners = banners.filter((banner) => {
