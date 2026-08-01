@@ -11,6 +11,7 @@ import ProductCard from '@/components/shop/ProductCard';
 import ProgramCards from '@/components/home/ProgramCards';
 import { absoluteUrl, productPath } from '@/lib/seo-slugs';
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -25,6 +26,7 @@ const ALL_CATEGORIES = [
 export default function Shop({ seoActive = true }) {
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
+  const showWebsiteSeoLinks = seoActive && !isNativeAppRuntime();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const filterParam = searchParams.get('filter');
@@ -266,8 +268,8 @@ export default function Shop({ seoActive = true }) {
         )}
       </div>
 
-      {seoActive && (
-        <section className="px-5 pt-8 pb-2">
+      {showWebsiteSeoLinks && (
+        <section className="hidden px-5 pt-8 pb-2 md:block">
           <div className="border-t border-border/35 pt-5">
             <h2 className="font-heading text-lg font-bold">Shop by Local Need</h2>
             <p className="text-sm text-muted-foreground mt-1">
