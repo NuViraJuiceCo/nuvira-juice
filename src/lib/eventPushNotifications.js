@@ -104,7 +104,10 @@ function eventNativePushPayload({ status, tokenResult, apnsToken }) {
   if (!fcmToken && !nativeApnsToken) return null;
 
   return {
-    token_type: nativeApnsToken ? 'apns' : 'fcm',
+    // FirebaseMessaging.getToken() is the cross-platform delivery token. Prefer
+    // it whenever it is available so iOS and Android use the same audited FCM
+    // transport, while retaining the APNs token as diagnostic/fallback metadata.
+    token_type: fcmToken ? 'fcm' : 'apns',
     fcm_token: fcmToken,
     apns_token: nativeApnsToken,
     apns_environment: 'unknown',
@@ -115,6 +118,16 @@ function eventNativePushPayload({ status, tokenResult, apnsToken }) {
     app_shell: 'capacitor',
     user_agent: navigator.userAgent || '',
   };
+}
+
+function clearEventNativePushTarget() {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(EVENT_NATIVE_PUSH_TARGET_KEY);
+  } catch {
+    // Local storage can be unavailable in early WKWebView startup.
+  }
 }
 
 function saveEventNativePushTarget(pushTarget) {
@@ -145,6 +158,66 @@ function readEventNativePushTarget() {
   return null;
 }
 
+function normalizeEventPushRoute(value) {
+  const route = String(value || '/notifications').trim();
+  if (!route.startsWith('/') || route.startsWith('//') || route.includes('\\')) {
+    return '/notifications';
+  }
+
+  try {
+    const parsed = new URL(route, 'https://app.nuvirajuice.com');
+    if (parsed.origin !== 'https://app.nuvirajuice.com') return '/notifications';
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return '/notifications';
+  }
+}
+
+function eventNativeNotificationData(event) {
+  const notification = event?.notification || {};
+  const data = notification?.data && typeof notification.data === 'object'
+    ? notification.data
+    : event?.data && typeof event.data === 'object'
+      ? event.data
+      : {};
+
+  return {
+    ...data,
+    notification_id: String(data.notification_id || '').trim(),
+    url: normalizeEventPushRoute(data.url),
+  };
+}
+
+async function markEventPushNotificationOpened(notificationId) {
+  if (!notificationId) return;
+  await base44.functions.invoke('getCustomerNotifications', {
+    mark_read_id: notificationId,
+  }).catch(() => {});
+}
+
+export async function installEventNativePushListeners({
+  onNotificationAction,
+  onNotificationReceived,
+} = {}) {
+  if (!isNativeApp()) return () => {};
+
+  const handles = await Promise.all([
+    FirebaseMessaging.addListener('notificationActionPerformed', async (event) => {
+      const data = eventNativeNotificationData(event);
+      await markEventPushNotificationOpened(data.notification_id);
+      onNotificationAction?.({ event, data, route: data.url });
+    }),
+    FirebaseMessaging.addListener('notificationReceived', (event) => {
+      const data = eventNativeNotificationData(event);
+      onNotificationReceived?.({ event, data, route: data.url });
+    }),
+  ]);
+
+  return async () => {
+    await Promise.all(handles.map((handle) => handle?.remove?.().catch(() => {})));
+  };
+}
+
 export function getEventPushSupportStatus() {
   if (typeof window === 'undefined') return { supported: false, reason: 'server' };
   if (isNativeApp()) return { supported: true, reason: null, mode: 'native_push' };
@@ -171,10 +244,9 @@ export async function getExistingEventPushSubscription() {
   if (isNativeApp()) {
     const permission = await FirebaseMessaging.checkPermissions();
     if (permission.receive !== 'granted') return null;
-    const tokenResult = await FirebaseMessaging.getToken().catch(() => null);
     const savedTarget = readEventNativePushTarget();
-    return tokenResult?.token || savedTarget
-      ? { token_type: savedTarget?.token_type || 'native_push', device_platform: Capacitor.getPlatform() }
+    return savedTarget
+      ? { token_type: savedTarget.token_type, device_platform: Capacitor.getPlatform() }
       : null;
   }
 
@@ -312,13 +384,25 @@ export async function subscribeToEventPushNotifications(options = {}) {
 
 export async function unsubscribeFromEventPushNotifications() {
   if (isNativeApp()) {
+    const savedTarget = readEventNativePushTarget();
     const tokenResult = await FirebaseMessaging.getToken().catch(() => null);
-    await base44.functions.invoke('unregisterPushSubscription', {
-      token_type: 'fcm',
-      fcm_token: tokenResult?.token || null,
-    });
+    const selector = savedTarget?.token_type === 'apns' && savedTarget.apns_token
+      ? { token_type: 'apns', apns_token: savedTarget.apns_token }
+      : savedTarget?.fcm_token || tokenResult?.token
+        ? { token_type: 'fcm', fcm_token: savedTarget?.fcm_token || tokenResult?.token }
+        : null;
+
+    let revoked = 0;
+    if (selector) {
+      const response = await base44.functions.invoke('unregisterPushSubscription', selector);
+      const data = response?.data || response || {};
+      if (data.error) throw new Error(data.error);
+      revoked = Number(data.revoked || 0);
+    }
+
     await FirebaseMessaging.deleteToken().catch(() => {});
-    return { success: true };
+    clearEventNativePushTarget();
+    return { success: true, revoked };
   }
 
   const existing = await getExistingEventPushSubscription();
