@@ -8,7 +8,7 @@ const RESOURCE_LIMITS = {
   zone3_reviews: 100,
 };
 
-async function readJsonBody(req) {
+async function readJsonBody(req: Request) {
   try {
     const body = await req.json();
     return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
@@ -87,15 +87,23 @@ function campaignRow(row: any) {
   };
 }
 
-function loyaltyMemberRow(row: any) {
+function emailKey(value: unknown): string {
+  return (value ?? '').toString().trim().toLowerCase();
+}
+
+function profileName(profile: any): string | null {
+  return text([profile?.first_name, profile?.last_name].map((part) => text(part, 80)).filter(Boolean).join(' '), 160);
+}
+
+function loyaltyMemberRow(row: any, profile: any = null, points: any = null) {
   return {
     id: row.id,
-    full_name: text(row.full_name, 160),
+    full_name: text(row.full_name, 160) || profileName(profile),
     email: text(row.email, 180),
-    phone: text(row.phone, 80),
+    phone: text(row.phone, 80) || text(profile?.phone, 80),
     created_date: dateValue(row.created_date),
     signup_date: dateValue(row.signup_date),
-    total_points: numberValue(row.total_points),
+    total_points: numberValue(points?.total_points ?? row.total_points),
     is_active: row.is_active !== false,
   };
 }
@@ -141,8 +149,30 @@ async function readRows(base44: any, resource: keyof typeof RESOURCE_LIMITS) {
       return (await base44.asServiceRole.entities.BagReturn.list('-created_date', RESOURCE_LIMITS[resource])).map(bagReturnRow);
     case 'notification_campaigns':
       return (await base44.asServiceRole.entities.NotificationCampaign.list('-created_date', RESOURCE_LIMITS[resource])).map(campaignRow);
-    case 'loyalty_members':
-      return (await base44.asServiceRole.entities.LoyaltyMember.filter({}, 'created_date', RESOURCE_LIMITS[resource])).map(loyaltyMemberRow);
+    case 'loyalty_members': {
+      const [members, profiles, pointsAccounts] = await Promise.all([
+        base44.asServiceRole.entities.LoyaltyMember.filter({}, 'created_date', RESOURCE_LIMITS[resource]),
+        base44.asServiceRole.entities.UserProfile.filter({}, '-created_date', RESOURCE_LIMITS[resource]),
+        base44.asServiceRole.entities.UserPoints.filter({}, '-created_date', RESOURCE_LIMITS[resource]),
+      ]);
+      const profilesByEmail = new Map<string, any>();
+      const pointsByEmail = new Map<string, any>();
+      for (const profile of profiles) {
+        const keys = [emailKey(profile?.customer_email), emailKey(profile?.contact_email)].filter(Boolean);
+        for (const key of keys) {
+          const current = profilesByEmail.get(key);
+          if (!current || (!profileName(current) && profileName(profile))) profilesByEmail.set(key, profile);
+        }
+      }
+      for (const points of pointsAccounts) {
+        const key = emailKey(points?.customer_email);
+        if (key && !pointsByEmail.has(key)) pointsByEmail.set(key, points);
+      }
+      return members.map((member: any) => {
+        const key = emailKey(member?.email);
+        return loyaltyMemberRow(member, profilesByEmail.get(key), pointsByEmail.get(key));
+      });
+    }
     case 'zone3_reviews':
       return (await base44.asServiceRole.entities.DeliveryApprovalRequest.list('-created_date', RESOURCE_LIMITS[resource])).map(zoneReviewRow);
     default:
