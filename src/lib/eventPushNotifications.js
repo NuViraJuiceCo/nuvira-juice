@@ -120,6 +120,23 @@ function eventNativePushPayload({ status, tokenResult, apnsToken }) {
   };
 }
 
+function nativePushRegistrationTargets(pushTarget) {
+  if (!pushTarget) return [];
+  const targets = [];
+  if (pushTarget.fcm_token) {
+    targets.push({ ...pushTarget, token_type: 'fcm' });
+  }
+  if (pushTarget.apns_token) {
+    targets.push({
+      ...pushTarget,
+      token_type: 'apns',
+      fcm_token: null,
+      apns_environment: 'production',
+    });
+  }
+  return targets;
+}
+
 function clearEventNativePushTarget() {
   if (typeof window === 'undefined') return;
 
@@ -303,37 +320,32 @@ export async function subscribeToEventPushNotifications(options = {}) {
 
     saveEventNativePushTarget(pushTarget);
 
-    const response = await base44.functions.invoke('registerPushSubscription', {
-      ...pushTarget,
-    });
-
-    const data = response?.data || response || {};
-    if (data.error) throw new Error(data.error);
-    if (data.success === false) {
-      const reason = data.reason || 'push_subscription_registration_unavailable';
-      if (canUseEventNativePushFallback(reason)) {
-        return {
-          success: true,
-          status,
-          reason,
-          mode: pushTarget.token_type === 'apns' ? 'native_apns_direct' : 'native_fcm_direct',
-          persistent_storage: false,
-        };
+    const registrations = await Promise.all(nativePushRegistrationTargets(pushTarget).map(async (target) => {
+      try {
+        const response = await base44.functions.invoke('registerPushSubscription', target);
+        const data = response?.data || response || {};
+        return { target, data, success: data.success !== false && !data.error };
+      } catch (error) {
+        return { target, data: { error: error.message }, success: false };
       }
-
-      return {
-        success: false,
-        status,
-        reason,
-        mode: 'native_push',
-      };
+    }));
+    const successful = registrations.filter((registration) => registration.success);
+    if (successful.length === 0) {
+      const reason = registrations[0]?.data?.reason || registrations[0]?.data?.error || 'push_subscription_registration_unavailable';
+      if (canUseEventNativePushFallback(reason)) {
+        return { success: true, status, reason, mode: 'native_push_direct', persistent_storage: false };
+      }
+      return { success: false, status, reason, mode: 'native_push' };
     }
 
     return {
       success: true,
       status,
-      mode: pushTarget.token_type === 'apns' ? 'native_apns' : 'native_fcm',
-      server: data,
+      mode: successful.some((registration) => registration.target.token_type === 'apns')
+        ? 'native_apns_with_fcm'
+        : 'native_fcm',
+      registered_token_types: successful.map((registration) => registration.target.token_type),
+      server: successful.map((registration) => registration.data),
     };
   }
 
@@ -386,18 +398,17 @@ export async function unsubscribeFromEventPushNotifications() {
   if (isNativeApp()) {
     const savedTarget = readEventNativePushTarget();
     const tokenResult = await FirebaseMessaging.getToken().catch(() => null);
-    const selector = savedTarget?.token_type === 'apns' && savedTarget.apns_token
-      ? { token_type: 'apns', apns_token: savedTarget.apns_token }
-      : savedTarget?.fcm_token || tokenResult?.token
-        ? { token_type: 'fcm', fcm_token: savedTarget?.fcm_token || tokenResult?.token }
-        : null;
+    const selectors = [];
+    const fcmToken = savedTarget?.fcm_token || tokenResult?.token;
+    if (fcmToken) selectors.push({ token_type: 'fcm', fcm_token: fcmToken });
+    if (savedTarget?.apns_token) selectors.push({ token_type: 'apns', apns_token: savedTarget.apns_token });
 
     let revoked = 0;
-    if (selector) {
+    for (const selector of selectors) {
       const response = await base44.functions.invoke('unregisterPushSubscription', selector);
       const data = response?.data || response || {};
       if (data.error) throw new Error(data.error);
-      revoked = Number(data.revoked || 0);
+      revoked += Number(data.revoked || 0);
     }
 
     await FirebaseMessaging.deleteToken().catch(() => {});

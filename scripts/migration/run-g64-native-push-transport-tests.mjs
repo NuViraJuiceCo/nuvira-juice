@@ -20,7 +20,12 @@ assert.match(registerPush, /const tokenType = resolveTokenType\(body, fcmToken, 
 
 assert.match(existingSubscriptionBody, /const savedTarget = readEventNativePushTarget\(\)/);
 assert.doesNotMatch(existingSubscriptionBody, /FirebaseMessaging\.getToken/);
-assert.match(unsubscribeBody, /savedTarget\?\.token_type === 'apns'/);
+assert.match(eventPush, /function nativePushRegistrationTargets\(pushTarget\)/);
+assert.match(eventPush, /token_type: 'apns'/);
+assert.match(eventPush, /apns_environment: 'production'/);
+assert.match(eventPush, /registered_token_types/);
+assert.match(unsubscribeBody, /selectors\.push\(\{ token_type: 'fcm'/);
+assert.match(unsubscribeBody, /selectors\.push\(\{ token_type: 'apns'/);
 assert.match(unsubscribeBody, /clearEventNativePushTarget\(\)/);
 
 assert.match(eventPush, /notificationActionPerformed/);
@@ -41,10 +46,11 @@ assert.doesNotMatch(registerPush, /ENABLE_BROAD_CUSTOMER_PUSH/);
 console.log(JSON.stringify({
   success: true,
   suite: 'g64-native-push-transport',
-  cases: 17,
+  cases: 22,
   fcm_primary: true,
   apns_fallback: true,
-  unsubscribe_matches_saved_transport: true,
+  ios_dual_transport_registration: true,
+  unsubscribe_revokes_all_saved_transports: true,
   tap_deep_link_and_read_tracking: true,
   broad_customer_sends_enabled: false,
   writes_performed: false,

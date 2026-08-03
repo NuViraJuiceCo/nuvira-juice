@@ -1,0 +1,18 @@
+{
+  "name": "previewAdminMay30POSProfileCandidates",
+  "entry": "entry.ts",
+  "automations": [
+    {
+      "name": "Refresh POS rewards claim from synchronized orders",
+      "description": "Creates or refreshes the matching claimable POS customer record without sending email or notifications.",
+      "function_args": null,
+      "is_active": true,
+      "type": "entity",
+      "entity_name": "ShopifyOrder",
+      "event_types": [
+        "create",
+        "update"
+      ]
+    }
+  ]
+}
