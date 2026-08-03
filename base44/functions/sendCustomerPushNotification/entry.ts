@@ -776,6 +776,24 @@ Deno.serve(async (req) => {
       const result = await sendFcmSubscriptions(base44, fcmSubscriptions, payload);
       if (result.skipped_reason) {
         skippedReasons.push(result.skipped_reason);
+
+        // iOS registrations retain the APNs token as fallback metadata. If FCM
+        // credentials are unavailable, preserve delivery through the already
+        // configured APNs provider without duplicating sends when FCM succeeds.
+        const apnsFallbackSubscriptions = fcmSubscriptions
+          .filter((record) => normalizeSingleLine(record.apns_token))
+          .map((record) => ({ ...record, token_type: 'apns' }));
+        if (apnsFallbackSubscriptions.length > 0) {
+          const fallbackResult = await sendApnsSubscriptions(base44, apnsFallbackSubscriptions, payload);
+          if (fallbackResult.skipped_reason) {
+            skippedReasons.push(fallbackResult.skipped_reason);
+          } else {
+            attempted = true;
+          }
+          sent += fallbackResult.sent;
+          failed += fallbackResult.failed;
+          revoked += fallbackResult.revoked;
+        }
       } else {
         attempted = true;
       }

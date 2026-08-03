@@ -4,7 +4,7 @@ import { Toaster as AppToaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
@@ -17,6 +17,7 @@ import LowercaseRedirect from '@/components/LowercaseRedirect';
 import SeoHeadSanitizer from '@/components/SeoHeadSanitizer';
 import { base44 } from '@/api/base44Client';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
+import { installEventNativePushListeners } from '@/lib/eventPushNotifications';
 
 const ProductDetail = React.lazy(() => import('@/pages/ProductDetail'));
 const LocalSeoLanding = React.lazy(() => import('@/pages/LocalSeoLanding'));
@@ -160,10 +161,34 @@ function markSplashShown() {
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, checkAppState } = useAuth();
+  const navigate = useNavigate();
   const [showSplash, setShowSplash] = React.useState(() => !hasSplashBeenShown());
   const hasRequestedAuthRedirectRef = React.useRef(false);
 
   const location = useLocation();
+
+  React.useEffect(() => {
+    let active = true;
+    let removeListeners = null;
+
+    installEventNativePushListeners({
+      onNotificationAction: ({ route }) => navigate(route),
+    }).then((remove) => {
+      if (active) {
+        removeListeners = remove;
+      } else {
+        remove();
+      }
+    }).catch((error) => {
+      console.warn('[App] Native push listeners unavailable', error);
+    });
+
+    return () => {
+      active = false;
+      removeListeners?.();
+    };
+  }, [navigate]);
+
   const isResetSignInRoute = React.useMemo(() => {
     if (location.pathname !== '/native-login') return false;
     const params = new URLSearchParams(location.search);

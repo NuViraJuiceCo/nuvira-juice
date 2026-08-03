@@ -23,6 +23,13 @@ function sanitizeApnsToken(value: unknown): string {
   return text.length >= 32 && text.length <= 512 ? text.toLowerCase() : '';
 }
 
+function resolveTokenType(body: Record<string, any>, fcmToken: string, apnsToken: string): 'fcm' | 'apns' | 'web_push' {
+  const requested = normalizeSingleLine(body.token_type).toLowerCase();
+  if (requested === 'fcm' && fcmToken) return 'fcm';
+  if (requested === 'apns' && apnsToken) return 'apns';
+  return fcmToken ? 'fcm' : apnsToken ? 'apns' : 'web_push';
+}
+
 function isMissingSchemaError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || '');
   return message.includes('Entity schema') && message.includes('not found');
@@ -113,7 +120,7 @@ Deno.serve(async (req) => {
     const subscription = body.subscription || {};
     const fcmToken = sanitizeToken(body.fcm_token);
     const apnsToken = sanitizeApnsToken(body.apns_token);
-    const tokenType = apnsToken ? 'apns' : fcmToken ? 'fcm' : 'web_push';
+    const tokenType = resolveTokenType(body, fcmToken, apnsToken);
     const endpoint = normalizeSingleLine(subscription.endpoint);
     const p256dh = normalizeSingleLine(subscription.keys?.p256dh);
     const auth = normalizeSingleLine(subscription.keys?.auth);
@@ -172,7 +179,7 @@ Deno.serve(async (req) => {
         const subscription = body.subscription || {};
         const fcmToken = sanitizeToken(body.fcm_token);
         const apnsToken = sanitizeApnsToken(body.apns_token);
-        const tokenType = apnsToken ? 'apns' : fcmToken ? 'fcm' : 'web_push';
+        const tokenType = resolveTokenType(body, fcmToken, apnsToken);
         const fallbackRecord = await upsertFallbackPushSubscription(base44, {
           customer_email: normalizeEmail(user?.email),
           token_type: tokenType,
