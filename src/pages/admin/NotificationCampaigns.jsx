@@ -191,6 +191,50 @@ export default function NotificationCampaigns() {
     enabled: isAdminUser(user),
   });
 
+  const {
+    data: journeyPreview,
+    isLoading: isJourneyLoading,
+    refetch: refreshJourneyPreview,
+  } = useQuery({
+    queryKey: ['customer-journey-automation-preview'],
+    queryFn: async () => unwrapBase44Data(
+      await base44.functions.invoke('sendNotificationCampaign', { action: 'preview' }),
+      {},
+    ),
+    enabled: isAdminUser(user),
+    staleTime: 0,
+    refetchInterval: 60000,
+  });
+
+  const {
+    data: transactionalPreview,
+    isLoading: isTransactionalLoading,
+    refetch: refreshTransactionalPreview,
+  } = useQuery({
+    queryKey: ['customer-transactional-communications-preview'],
+    queryFn: async () => unwrapBase44Data(
+      await base44.functions.invoke('sendOrderStatusNotification', { action: 'elevated_preview' }),
+      {},
+    ),
+    enabled: isAdminUser(user),
+    staleTime: 0,
+    refetchInterval: 60000,
+  });
+
+  const {
+    data: rewardsEmailPreview,
+    isLoading: isRewardsEmailLoading,
+    refetch: refreshRewardsEmailPreview,
+  } = useQuery({
+    queryKey: ['rewards-email-campaign-preview'],
+    queryFn: async () => unwrapBase44Data(
+      await base44.functions.invoke('sendNotificationCampaign', { action: 'preview_rewards_email_campaign' }),
+      {},
+    ),
+    enabled: isAdminUser(user),
+    staleTime: 0,
+  });
+
   const handleEnableAdminPush = async () => {
     setAdminPushStatus(prev => ({ ...prev, action: 'enable' }));
     try {
@@ -361,6 +405,76 @@ export default function NotificationCampaigns() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-sm">Customer Journey Automations</h2>
+                <p className="text-xs text-muted-foreground mt-1">Website activity, cart recovery, loyalty, reorder, win-back, and review milestones.</p>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-secondary text-muted-foreground shrink-0">
+              {journeyPreview?.policy?.customer_sends_enabled ? 'Live' : 'Sends locked'}
+            </span>
+          </div>
+          {isJourneyLoading ? (
+            <div className="h-24 mt-4 rounded-xl bg-secondary/40 animate-pulse" />
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Tracked events</p><p className="text-sm font-semibold">{journeyPreview?.summary?.journey_events || 0}</p></div>
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Open carts</p><p className="text-sm font-semibold">{journeyPreview?.summary?.active_or_checkout_carts || 0}</p></div>
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Converted</p><p className="text-sm font-semibold">{journeyPreview?.summary?.converted_carts || 0}</p></div>
+              </div>
+              <p className="mt-3 text-[11px] text-muted-foreground">Resend: {journeyPreview?.provider?.events?.length || 0}/9 events · {journeyPreview?.provider?.templates?.length || 0}/8 templates · {journeyPreview?.provider?.automations?.length || 0}/8 automations. Guardrails: consent, quiet hours, cooldowns, frequency limits, and active-service suppression.</p>
+              <UiButton type="button" variant="outline" onClick={() => refreshJourneyPreview()} className="w-full h-10 rounded-xl gap-2 mt-4"><RotateCw className="w-4 h-4" />Refresh journey status</UiButton>
+            </>
+          )}
+        </div>
+
+        <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><Smartphone className="w-5 h-5" /></div>
+              <div><h2 className="font-semibold text-sm">Order Email + Push Experience</h2><p className="text-xs text-muted-foreground mt-1">Coordinated transactional milestones with channel deduplication and quiet hours.</p></div>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-secondary text-muted-foreground shrink-0">{transactionalPreview?.readiness?.production_sends_enabled ? 'Live' : 'Sends locked'}</span>
+          </div>
+          {isTransactionalLoading ? <div className="h-24 mt-4 rounded-xl bg-secondary/40 animate-pulse" /> : (
+            <>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Milestones</p><p className="text-sm font-semibold">{transactionalPreview?.policy?.length || 0}</p></div>
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Email</p><p className="text-sm font-semibold">{transactionalPreview?.readiness?.email_enabled ? 'Ready' : 'Locked'}</p></div>
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Push</p><p className="text-sm font-semibold">{transactionalPreview?.readiness?.push_enabled ? 'Ready' : 'Locked'}</p></div>
+              </div>
+              <p className="mt-3 text-[11px] text-muted-foreground">Email: confirmations, receipts, exceptions, cancellations, refunds, and payment issues. Push only: scheduled for juicing and in production. Policy {transactionalPreview?.policy_version || 'not deployed'}.</p>
+              {transactionalPreview?.readiness?.blockers?.length > 0 && <p className="mt-2 text-[11px] text-muted-foreground">Activation holds: {transactionalPreview.readiness.blockers.map(formatStatusReason).join(' · ')}</p>}
+              <UiButton type="button" variant="outline" onClick={() => refreshTransactionalPreview()} className="w-full h-10 rounded-xl gap-2 mt-4"><RotateCw className="w-4 h-4" />Refresh order communication status</UiButton>
+            </>
+          )}
+        </div>
+
+        <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3"><div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><Send className="w-5 h-5" /></div><div><h2 className="font-semibold text-sm">POS Rewards Email</h2><p className="text-xs text-muted-foreground mt-1">Consent-frozen campaign with signed unsubscribe and exact audience gates.</p></div></div>
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-secondary text-muted-foreground shrink-0">{rewardsEmailPreview?.production_send_enabled ? 'Send armed' : 'Send locked'}</span>
+          </div>
+          {isRewardsEmailLoading ? <div className="h-20 mt-4 rounded-xl bg-secondary/40 animate-pulse" /> : (
+            <>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Eligible</p><p className="text-sm font-semibold">{rewardsEmailPreview?.summary?.eligible_count || 0}</p></div>
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Named</p><p className="text-sm font-semibold">{rewardsEmailPreview?.summary?.complete_name_count || 0}</p></div>
+                <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Draft</p><p className="text-sm font-semibold capitalize">{rewardsEmailPreview?.latest_campaign?.status || 'None'}</p></div>
+              </div>
+              <p className="mt-3 text-[11px] text-muted-foreground">Subject: <span className="font-semibold text-foreground">{rewardsEmailPreview?.subject || 'Your NuVira Rewards Are Ready'}</span><span className="block mt-1">Resend after-send tracking: {rewardsEmailPreview?.resend_webhook_registered ? 'ready' : 'registration pending'}. No send can occur while the production switch is locked.</span></p>
+              <UiButton type="button" variant="outline" onClick={() => refreshRewardsEmailPreview()} className="w-full h-10 rounded-xl gap-2 mt-4"><RotateCw className="w-4 h-4" />Refresh email status</UiButton>
+            </>
+          )}
+        </div>
+
+        <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                 <Smartphone className="w-5 h-5" />
               </div>
               <div>
@@ -486,9 +600,9 @@ export default function NotificationCampaigns() {
         <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6 flex items-start gap-3">
           <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-primary">Campaign sending active</p>
+            <p className="text-sm font-semibold text-primary">Controlled campaign tools</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Test campaigns send only to the logged-in admin. Broader audiences require confirmation and only target customers with the matching notification preference enabled.
+              Admin tests are available. Broader sends remain protected by consent, audience-size acknowledgement, backend locks, and customer notification preferences.
             </p>
           </div>
         </div>

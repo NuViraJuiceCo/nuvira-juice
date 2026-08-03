@@ -1,0 +1,38 @@
+{
+  "name": "POSCustomerClaim",
+  "type": "object",
+  "properties": {
+    "customer_email": { "type": "string" },
+    "first_name": { "type": "string" },
+    "last_name": { "type": "string" },
+    "phone": { "type": "string" },
+    "status": { "type": "string", "enum": ["unclaimed", "claimed", "suppressed", "invalid"], "default": "unclaimed" },
+    "source_order_ids": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "source_order_numbers": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "eligible_order_count": { "type": "number", "default": 0 },
+    "eligible_spend": { "type": "number", "default": 0 },
+    "pending_points": { "type": "number", "default": 0 },
+    "first_order_date": { "type": "string" },
+    "latest_order_date": { "type": "string" },
+    "import_key": { "type": "string" },
+    "imported_at": { "type": "string" },
+    "updated_from_source_at": { "type": "string" },
+    "claimed_at": { "type": "string" },
+    "claimed_by_email": { "type": "string" },
+    "operations_member_id": { "type": "string" },
+    "email_marketing_status": { "type": "string", "enum": ["subscribed", "unsubscribed", "unknown"], "default": "unknown" },
+    "sms_marketing_status": { "type": "string", "enum": ["subscribed", "unsubscribed", "unknown"], "default": "unknown" },
+    "consent_source": { "type": "string" },
+    "profile_completion_required": { "type": "boolean", "default": true },
+    "invitation_status": { "type": "string", "enum": ["not_sent", "sent", "failed", "suppressed"], "default": "not_sent" },
+    "invitation_sent_at": { "type": "string" },
+    "description": { "type": "string", "maxLength": 1000 }
+  },
+  "required": ["customer_email", "status", "import_key"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

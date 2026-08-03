@@ -1,0 +1,24 @@
+{
+  "name": "MarketingConsent",
+  "type": "object",
+  "properties": {
+    "customer_email": { "type": "string" },
+    "email_status": { "type": "string", "enum": ["subscribed", "unsubscribed", "unknown"], "default": "unknown" },
+    "sms_status": { "type": "string", "enum": ["subscribed", "unsubscribed", "unknown"], "default": "unknown" },
+    "email_consent_at": { "type": "string" },
+    "sms_consent_at": { "type": "string" },
+    "email_source": { "type": "string" },
+    "sms_source": { "type": "string" },
+    "promotional_email_eligible": { "type": "boolean", "default": false },
+    "promotional_sms_eligible": { "type": "boolean", "default": false },
+    "last_verified_at": { "type": "string" },
+    "description": { "type": "string", "maxLength": 1000 }
+  },
+  "required": ["customer_email"],
+  "rls": {
+    "create": { "$or": [{ "data.customer_email": "{{user.email}}" }, { "user_condition": { "role": "admin" } }] },
+    "read": { "$or": [{ "data.customer_email": "{{user.email}}" }, { "user_condition": { "role": "admin" } }] },
+    "update": { "$or": [{ "data.customer_email": "{{user.email}}" }, { "user_condition": { "role": "admin" } }] },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

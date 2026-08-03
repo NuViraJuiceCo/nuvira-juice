@@ -303,15 +303,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    const normalizedOrderKey = (order) => (order.order_number || order.id || '')
+      .toString()
+      .trim()
+      .replace(/^#/, '')
+      .toLowerCase();
     const mergedByOrderNumber = new Map();
     for (const order of hubOrders) {
-      const key = (order.order_number || order.id || '').toString().toLowerCase();
+      const key = normalizedOrderKey(order);
       if (key) mergedByOrderNumber.set(key, order);
     }
     for (const order of nativePosOrders) {
-      const key = (order.order_number || order.id || '').toString().toLowerCase();
+      const key = normalizedOrderKey(order);
       if (key && !mergedByOrderNumber.has(key)) mergedByOrderNumber.set(key, order);
     }
+    const mergedOrderCount = mergedByOrderNumber.size;
     const orders = Array.from(mergedByOrderNumber.values()).slice(0, limit);
     const summary = summarizeOrders(orders);
 
@@ -326,7 +332,7 @@ Deno.serve(async (req) => {
       hub_count: hubCount,
       native_count: nativePosOrders.length,
       count: orders.length,
-      truncated: hubTruncated || orders.length < hubOrders.length + nativePosOrders.length,
+      truncated: hubTruncated || mergedOrderCount > orders.length,
       orders,
     });
   } catch (error) {
