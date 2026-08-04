@@ -1,0 +1,68 @@
+{
+  "type": "object",
+  "name": "CustomerJourneyState",
+  "properties": {
+    "state_key": {
+      "type": "string",
+      "description": "SHA-256 key for the authenticated customer and app session"
+    },
+    "customer_email": { "type": "string" },
+    "session_id": { "type": "string" },
+    "source": {
+      "type": "string",
+      "enum": ["web", "ios", "android", "unknown"],
+      "default": "unknown"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "checkout_started", "abandoned", "recovered", "converted", "cleared"],
+      "default": "active"
+    },
+    "cart_fingerprint": { "type": "string" },
+    "cart_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "string" },
+          "title": { "type": "string" },
+          "quantity": { "type": "number" },
+          "price": { "type": "number" }
+        }
+      }
+    },
+    "item_count": { "type": "number", "default": 0 },
+    "cart_total": { "type": "number", "default": 0 },
+    "first_activity_at": { "type": "string" },
+    "last_activity_at": { "type": "string" },
+    "checkout_started_at": { "type": "string" },
+    "abandoned_at": { "type": "string" },
+    "converted_at": { "type": "string" },
+    "cleared_at": { "type": "string" },
+    "latest_path": { "type": "string" },
+    "marketing_eligible": { "type": "boolean", "default": false },
+    "consent_status": {
+      "type": "string",
+      "enum": ["subscribed", "unsubscribed", "unknown"],
+      "default": "unknown"
+    },
+    "abandoned_event_key": { "type": "string" },
+    "abandoned_event_status": {
+      "type": "string",
+      "enum": ["not_due", "disabled", "not_eligible", "accepted", "failed"],
+      "default": "not_due"
+    },
+    "abandoned_event_at": { "type": "string" },
+    "last_resend_event_at": { "type": "string" },
+    "converted_order_id": { "type": "string" },
+    "converted_order_number": { "type": "string" },
+    "last_error": { "type": "string", "maxLength": 500 }
+  },
+  "required": ["state_key", "customer_email", "session_id", "status"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

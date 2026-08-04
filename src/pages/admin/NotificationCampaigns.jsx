@@ -198,7 +198,7 @@ export default function NotificationCampaigns() {
   } = useQuery({
     queryKey: ['customer-journey-automation-preview'],
     queryFn: async () => unwrapBase44Data(
-      await base44.functions.invoke('sendNotificationCampaign', { action: 'preview' }),
+      await base44.functions.invoke('customerJourneyAutomation', { action: 'preview' }),
       {},
     ),
     enabled: isAdminUser(user),
@@ -228,7 +228,7 @@ export default function NotificationCampaigns() {
   } = useQuery({
     queryKey: ['rewards-email-campaign-preview'],
     queryFn: async () => unwrapBase44Data(
-      await base44.functions.invoke('sendNotificationCampaign', { action: 'preview_rewards_email_campaign' }),
+      await base44.functions.invoke('customerJourneyAutomation', { action: 'preview_rewards_email_campaign' }),
       {},
     ),
     enabled: isAdminUser(user),
@@ -425,7 +425,7 @@ export default function NotificationCampaigns() {
                 <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Open carts</p><p className="text-sm font-semibold">{journeyPreview?.summary?.active_or_checkout_carts || 0}</p></div>
                 <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Converted</p><p className="text-sm font-semibold">{journeyPreview?.summary?.converted_carts || 0}</p></div>
               </div>
-              <p className="mt-3 text-[11px] text-muted-foreground">Resend: {journeyPreview?.provider?.events?.length || 0}/9 events · {journeyPreview?.provider?.templates?.length || 0}/8 templates · {journeyPreview?.provider?.automations?.length || 0}/8 automations. Guardrails: consent, quiet hours, cooldowns, frequency limits, and active-service suppression.</p>
+              <p className="mt-3 text-[11px] text-muted-foreground">Resend: {journeyPreview?.provider?.events?.length || 0}/9 events · {journeyPreview?.provider?.templates?.length || 0}/8 templates · {journeyPreview?.provider?.automations?.length || 0}/8 automations. Guardrails: explicit consent, launch cutoff, idempotency, recipient caps, and a provider kill switch.</p>
               <UiButton type="button" variant="outline" onClick={() => refreshJourneyPreview()} className="w-full h-10 rounded-xl gap-2 mt-4"><RotateCw className="w-4 h-4" />Refresh journey status</UiButton>
             </>
           )}

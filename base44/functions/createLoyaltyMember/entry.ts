@@ -1,10 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-function normalizeEmail(value) {
+function normalizeEmail(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
-async function requireOwnerOrAdmin(base44, email) {
+async function requireOwnerOrAdmin(base44: any, email: unknown) {
   const user = await base44.auth.me().catch(() => null);
   if (!user) return { response: Response.json({ error: 'unauthorized' }, { status: 401 }) };
   const targetEmail = normalizeEmail(email);
@@ -26,8 +26,8 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const { email, first_name, last_name, phone, address, birthday, signup_date } = await req.json();
 
-    if (!email || !first_name || !last_name) {
-      return Response.json({ error: 'Email, first name, and last name are required' }, { status: 400 });
+    if (!email) {
+      return Response.json({ error: 'Email is required' }, { status: 400 });
     }
 
     const auth = await requireOwnerOrAdmin(base44, email);
@@ -41,7 +41,16 @@ Deno.serve(async (req) => {
     }
 
     const preorderBonus = 250;
-    const fullName = `${first_name} ${last_name}`;
+    const normalizedFirstName = String(first_name || '').trim();
+    const normalizedLastName = String(last_name || '').trim();
+    const fullName = `${normalizedFirstName} ${normalizedLastName}`.trim() || 'NuVira Member';
+    const bonusTimestamp = new Date().toISOString();
+    const bonusEntry = {
+      amount: preorderBonus,
+      type: 'bonus',
+      description: 'NuVira Rewards signup bonus',
+      timestamp: bonusTimestamp,
+    };
 
     // Step 1: Enroll in hub (source of truth)
     const hubApiUrl = Deno.env.get('HUB_API_URL');
@@ -64,17 +73,12 @@ Deno.serve(async (req) => {
             total_points: preorderBonus,
             lifetime_points: preorderBonus,
             redeemed_points: 0,
-            points_history: [{
-              amount: preorderBonus,
-              type: 'earned',
-              description: 'Pre-Order Launch Bonus — welcome to NuVira Rewards!',
-              timestamp: new Date().toISOString(),
-            }],
+            points_history: [bonusEntry],
           }),
         });
         console.log(`Enrolled in hub: ${email}`);
       } catch (hubErr) {
-        console.error('Hub enrollment failed:', hubErr.message);
+        console.error('Hub enrollment failed:', hubErr instanceof Error ? hubErr.message : String(hubErr));
         return Response.json({ error: 'Failed to enroll in loyalty program' }, { status: 500 });
       }
     }
@@ -82,10 +86,10 @@ Deno.serve(async (req) => {
     // Step 2: Create local LoyaltyMember cache
     const member = await base44.asServiceRole.entities.LoyaltyMember.create({
       email,
-      full_name: fullName,
-      phone: phone || null,
-      signup_date: signup_date || new Date().toISOString().split('T')[0],
-      is_active: true,
+      total_points: preorderBonus,
+      lifetime_points: preorderBonus,
+      redeemed_points: 0,
+      points_history: [bonusEntry],
     });
 
     // Step 3: Update/create UserProfile
@@ -93,6 +97,8 @@ Deno.serve(async (req) => {
     const profileData = {
       customer_email: email,
       contact_email: email,
+      ...(normalizedFirstName ? { first_name: normalizedFirstName } : {}),
+      ...(normalizedLastName ? { last_name: normalizedLastName } : {}),
       phone: phone || null,
       address: address || null,
       birthday: birthday || null,
@@ -113,18 +119,13 @@ Deno.serve(async (req) => {
         total_points: preorderBonus,
         lifetime_points: preorderBonus,
         redeemed_points: 0,
-        points_history: [{
-          amount: preorderBonus,
-          type: 'earned',
-          description: 'Pre-Order Launch Bonus — welcome to NuVira Rewards!',
-          timestamp: new Date().toISOString(),
-        }],
+        points_history: [bonusEntry],
       });
     }
 
     // Step 5: Send welcome email + notification (non-blocking)
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    if (resendApiKey) {
+    if (resendApiKey && Deno.env.get('ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL') === 'true') {
       fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -135,7 +136,7 @@ Deno.serve(async (req) => {
           from: 'nuvira@nuvirajuice.com',
           to: email,
           subject: '🎉 Welcome to NuVira!',
-          html: `<h2>Hi ${first_name},</h2><p>Welcome to NuVira Juice Co.! 🌿</p><p>You're enrolled in <strong>NuVira Rewards</strong> and earned <strong>250 bonus points</strong> just for joining!</p><h3>🎁 Rewards</h3><ul><li>500 pts → Free wellness shot</li><li>1,000 pts → Free delivery</li><li>2,500 pts → Free 32oz juice</li><li>5,000 pts → 6-pack bundle</li></ul><p><a href="https://www.nuvirajuice.com/rewards" style="background-color: #2d7c5e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Rewards</a></p><p>Cheers,<br/><strong>The NuVira Team</strong> 🍊</p>`,
+          html: `<h2>Hi ${normalizedFirstName || 'there'},</h2><p>Welcome to NuVira Juice Co.! 🌿</p><p>You're enrolled in <strong>NuVira Rewards</strong> and earned <strong>250 bonus points</strong> just for joining!</p><h3>🎁 Rewards</h3><ul><li>500 pts → Free wellness shot</li><li>1,000 pts → Free delivery</li><li>2,500 pts → Free 32oz juice</li><li>5,000 pts → 6-pack bundle</li></ul><p><a href="https://www.nuvirajuice.com/rewards" style="background-color: #2d7c5e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Rewards</a></p><p>Cheers,<br/><strong>The NuVira Team</strong> 🍊</p>`,
         }),
       }).catch(err => console.warn('Email failed:', err.message));
     }
@@ -159,6 +160,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('Enrollment error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 });

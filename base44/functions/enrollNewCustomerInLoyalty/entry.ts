@@ -22,12 +22,19 @@ Deno.serve(async (req) => {
       return Response.json({ success: true });
     }
 
+    const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail }, '-created_date', 5);
+    const profile = profiles[0] || {};
+    const orderName = String(data?.customer_name || data?.full_name || '').trim();
+    const orderNameParts = orderName.split(/\s+/).filter(Boolean);
+    const firstName = String(profile?.first_name || orderNameParts[0] || '').trim();
+    const lastName = String(profile?.last_name || orderNameParts.slice(1).join(' ') || '').trim();
+
     // Call centralized enrollment (single source of truth)
     const enrollRes = await base44.functions.invoke('createLoyaltyMember', {
       email: customerEmail,
-      first_name: data?.full_name?.split(' ')[0] || 'Customer',
-      last_name: data?.full_name?.split(' ').slice(1).join(' ') || '',
-      phone: data?.phone,
+      first_name: firstName,
+      last_name: lastName,
+      phone: data?.contact_phone || profile?.phone || null,
     });
 
     if (!enrollRes.data.success) {
@@ -38,6 +45,6 @@ Deno.serve(async (req) => {
     return Response.json({ success: true });
   } catch (error) {
     console.error('Enrollment automation error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 });
