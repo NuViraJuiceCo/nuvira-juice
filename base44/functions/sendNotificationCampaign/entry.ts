@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { handleCustomerJourneyRequest } from './customerJourneyAutomation.ts';
 
 /**
  * sendNotificationCampaign - admin-only function to send notifications to audience segments.
@@ -112,29 +111,6 @@ Deno.serve(async (req) => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
     }
-    // Base44 recurring automations do not expose custom payload arguments. Depending
-    // on the runner, the invocation can arrive as {}, { args: {} }, or a metadata-only
-    // platform envelope. Reserve envelopes with no campaign or journey intent for the
-    // gated evaluator; explicit campaign requests retain all existing validation.
-    // A campaign request must identify an actual campaign. Base44 scheduled
-    // automations can inject legacy confirmation defaults, so confirmation fields
-    // alone must never select the campaign sender.
-    const hasCampaignIntent = Boolean(normalizeSingleLine(body.campaign_id));
-    const hasJourneyIntent = Boolean(
-      body.action ||
-      body.event ||
-      body.data ||
-      (body.args && typeof body.args === 'object' && (
-        body.args.action || body.args.event || body.args.data
-      ))
-    );
-    const platformScheduledInvocation = !user && !body.event && !body.data;
-    const journeyBody = platformScheduledInvocation || (!hasCampaignIntent && !hasJourneyIntent)
-      ? { ...body, action: 'evaluate_scheduled' }
-      : body;
-    const journeyResponse = await handleCustomerJourneyRequest(base44, user, journeyBody);
-    if (journeyResponse) return journeyResponse;
-
     if (campaignSendsDisabled()) {
       return Response.json({
         error: 'notification_campaign_sends_disabled',
