@@ -93,11 +93,26 @@ Deno.serve(async (req) => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
     }
-    // Base44 recurring automations invoke functions with an empty JSON object and
-    // do not expose custom payload arguments. An empty object was already invalid
-    // for campaign sends, so reserve it for the gated journey evaluator schedule.
-    const journeyBody = Object.keys(body).length === 0
-      ? { action: 'evaluate_scheduled' }
+    // Base44 recurring automations do not expose custom payload arguments. Depending
+    // on the runner, the invocation can arrive as {}, { args: {} }, or a metadata-only
+    // platform envelope. Reserve envelopes with no campaign or journey intent for the
+    // gated evaluator; explicit campaign requests retain all existing validation.
+    const hasCampaignIntent = [
+      'campaign_id',
+      'confirm',
+      'broad_send_confirmation',
+      'max_recipient_ack',
+    ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
+    const hasJourneyIntent = Boolean(
+      body.action ||
+      body.event ||
+      body.data ||
+      (body.args && typeof body.args === 'object' && (
+        body.args.action || body.args.event || body.args.data
+      ))
+    );
+    const journeyBody = !hasCampaignIntent && !hasJourneyIntent
+      ? { ...body, action: 'evaluate_scheduled' }
       : body;
     const journeyResponse = await handleCustomerJourneyRequest(base44, user, journeyBody);
     if (journeyResponse) return journeyResponse;
