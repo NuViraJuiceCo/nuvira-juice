@@ -1,0 +1,29 @@
+{
+  "name": "customerJourneyAutomation",
+  "entry": "entry.ts",
+  "automations": [
+    {
+      "name": "Customer journey order conversion and delivery events",
+      "description": "Closes matching cart journeys and emits consent-aware purchase or delivered milestones from authoritative Order changes.",
+      "function_args": null,
+      "is_active": true,
+      "type": "entity",
+      "entity_name": "Order",
+      "event_types": ["create", "update"]
+    },
+    {
+      "name": "Customer journey consent evaluator every 15 minutes",
+      "description": "Marks idle carts abandoned and evaluates loyalty, reorder, subscription, win-back, and preference milestones with launch-cutoff and idempotency gates.",
+      "function_args": {
+        "action": "evaluate_scheduled"
+      },
+      "is_active": true,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "minutes",
+      "repeat_interval": 15,
+      "ends_type": "never"
+    }
+  ]
+}

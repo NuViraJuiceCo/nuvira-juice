@@ -116,8 +116,9 @@ function CheckoutFlow() {
     }
   }, []);
 
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal, clearCart, trackCheckoutStarted } = useCart();
   const { user } = useAuth();
+  const journeyCheckoutTrackedRef = useRef(false);
   const fulfillmentType = 'delivery';
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -160,6 +161,12 @@ function CheckoutFlow() {
   const checkoutStartLockedRef = useRef(false);
   const checkoutWatchdogRef = useRef(null);
   const checkoutCode = appliedDiscountCode;
+
+  React.useEffect(() => {
+    if (!user?.email || items.length === 0 || journeyCheckoutTrackedRef.current) return;
+    journeyCheckoutTrackedRef.current = true;
+    trackCheckoutStarted();
+  }, [items.length, trackCheckoutStarted, user?.email]);
 
   const activeReward = React.useMemo(() => {
     if (!user?.email) return null;

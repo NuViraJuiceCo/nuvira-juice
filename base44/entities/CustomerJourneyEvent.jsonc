@@ -1,0 +1,140 @@
+{
+  "type": "object",
+  "name": "CustomerJourneyEvent",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "Client or server generated idempotency key for this journey milestone"
+    },
+    "event_name": {
+      "type": "string",
+      "enum": [
+        "page_viewed",
+        "product_viewed",
+        "cart_updated",
+        "cart_viewed",
+        "cart_cleared",
+        "checkout_started",
+        "order_confirmation_viewed",
+        "push_notification_opened",
+        "loyalty_joined",
+        "cart_abandoned",
+        "purchase_completed",
+        "order_delivered",
+        "marketing_consent_updated",
+        "reorder_due",
+        "loyalty_reward_unlocked",
+        "subscription_recommended",
+        "customer_winback_due",
+        "marketing_sunset_due",
+        "marketing_sunset_suppressed",
+        "marketing_sunset_retained",
+        "service_issue_opened",
+        "service_issue_resolved"
+      ]
+    },
+    "event_at": {
+      "type": "string"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "state_key": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "web",
+        "ios",
+        "android",
+        "backend",
+        "pos",
+        "unknown"
+      ],
+      "default": "unknown"
+    },
+    "path": {
+      "type": "string"
+    },
+    "product_id": {
+      "type": "string"
+    },
+    "product_title": {
+      "type": "string"
+    },
+    "cart_fingerprint": {
+      "type": "string"
+    },
+    "item_count": {
+      "type": "number",
+      "default": 0
+    },
+    "cart_total": {
+      "type": "number",
+      "default": 0
+    },
+    "order_id": {
+      "type": "string"
+    },
+    "order_number": {
+      "type": "string"
+    },
+    "marketing_eligible": {
+      "type": "boolean",
+      "default": false
+    },
+    "consent_status": {
+      "type": "string",
+      "enum": [
+        "subscribed",
+        "unsubscribed",
+        "unknown"
+      ],
+      "default": "unknown"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Small allowlisted event details. Never stores addresses, phone numbers, payment data, or raw provider payloads."
+    },
+    "resend_event_name": {
+      "type": "string"
+    },
+    "resend_status": {
+      "type": "string",
+      "enum": [
+        "not_applicable",
+        "disabled",
+        "not_eligible",
+        "prepared",
+        "accepted",
+        "failed"
+      ],
+      "default": "not_applicable"
+    },
+    "resend_forwarded_at": {
+      "type": "string"
+    },
+    "provider_reference": {
+      "type": "string"
+    },
+    "error_message": {
+      "type": "string",
+      "maxLength": 500
+    }
+  },
+  "required": [
+    "event_id",
+    "event_name",
+    "event_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}
