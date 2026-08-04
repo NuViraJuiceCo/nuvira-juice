@@ -14,7 +14,7 @@ No function or automation was deleted during this audit. The correct next move i
 | Functions reported by Base44 | 249 | Live remote inventory on August 4, 2026 |
 | Source-only functions | 13 | Deployment rejects them at the function ceiling; they are not live runtime dependencies |
 | Remote-only functions | 0 | Every live function now has canonical source |
-| Functions with automation references | 22 | 24 total automation references |
+| Functions with automation references | 21 | 24 total automation references |
 
 The Base44 deploy sweep completes, but attempts to create the 13 source-only functions return `Maximum of 50 functions per app reached`. This is a real operational ceiling and not a reason to combine unrelated payment, order, or customer-data contracts.
 
@@ -38,13 +38,13 @@ The temporary May 30 or named-customer utilities are not the same thing as lifec
 
 ## Automation-attached functions
 
-These 22 functions have 24 automation references and cannot be deleted until their automation is detached or replaced:
+These 21 functions have 24 automation references and cannot be deleted until their automation is detached or replaced:
 
 - `auditCustomerAppLoyaltyAfterPhase2` (1)
 - `autoExpireZone3Authorizations` (1)
 - `cancelAbandonedCheckouts` (1)
 - `cancelIncompleteSubscriptions` (1)
-- `customerJourneyAutomation` (1)
+- `customerJourneyAutomation` (2)
 - `deleteProductFromShopify` (1)
 - `enrollNewCustomerInLoyalty` (1)
 - `googleMerchantFeed` (1)
@@ -53,7 +53,6 @@ These 22 functions have 24 automation references and cannot be deleted until the
 - `pushMerchToShopify` (1)
 - `pushProductToShopify` (1)
 - `retryFailedHubSyncs` (1)
-- `sendNotificationCampaign` (1)
 - `sendOrderStatusNotification` (2)
 - `sendUpcomingDeliveryNotifications` (1)
 - `shopifyPollFallback` (1)
