@@ -2,16 +2,16 @@
 
 ## Outcome
 
-The first verified cleanup is complete. Eight obsolete live functions were deleted after zero canonical callers, zero automation attachments, and zero preview/production invocations over the 30-day log window were confirmed. Thirteen source-only loyalty/import fragments were removed from the active tree because they were not deployed and caused broad deploys to emit slot-ceiling failures.
+The first two verified cleanup batches are complete. Twelve obsolete live functions were deleted after zero canonical callers, zero automation attachments, and zero preview/production invocations over the 30-day log window were confirmed. Thirteen source-only loyalty/import fragments were removed from the active tree because they were not deployed and caused broad deploys to emit slot-ceiling failures.
 
-Canonical source and the Base44 remote are now in exact parity at 241 functions: zero source-only functions and zero remote-only functions. The hard-coded eight-customer loyalty audit was replaced in place with a paginated, read-only aggregate integrity audit because the grandfathered app remains above Base44's current function-creation ceiling. Payment, webhook, order lifecycle, Hub, Shopify, push, current customer journeys, consent gates, idempotency controls, and lifecycle protections were preserved.
+Canonical source and the Base44 remote are now in exact parity at 237 functions: zero source-only functions and zero remote-only functions. The hard-coded eight-customer loyalty audit was replaced in place with a paginated, read-only aggregate integrity audit because the grandfathered app remains above Base44's current function-creation ceiling. Payment, webhook, order lifecycle, Hub, Shopify, push, current customer journeys, consent gates, idempotency controls, and lifecycle protections were preserved.
 
 ## Current inventory
 
 | Surface | Count | Finding |
 |---|---:|---|
-| Functions in canonical source | 241 | Active `entry.ts` functions after the verified cleanup |
-| Functions reported by Base44 | 241 | Live remote inventory after deletion verification on August 4, 2026 |
+| Functions in canonical source | 237 | Active `entry.ts` functions after the verified cleanup |
+| Functions reported by Base44 | 237 | Live remote inventory after deletion verification on August 4, 2026 |
 | Source-only functions | 0 | Broad deploy no longer attempts dead loyalty/import endpoints |
 | Remote-only functions | 0 | Every live function now has canonical source |
 | Functions with automation references | 21 | 24 total automation references |
@@ -79,11 +79,11 @@ These were the high-confidence historical or duplicate live functions. The first
 | `repairR2RefundedDuplicatesCA` | Historical fixed repair | **Deleted 2026-08-04** |
 | `repairR3HenrryCAHydration` | Named-customer repair command | **Deleted 2026-08-04** |
 | `repairR4SukhwantCAStructure` | Named-customer repair command | **Deleted 2026-08-04** |
-| `replaySubscriptionRefundDryRun` | Historical refund replay diagnostic | Retain audit evidence; verify no recent invocations |
-| `probeHubSubscriptionCancelled` | Historical Hub probe | Verify no runbook references |
-| `correctAdminOrderDeliverySchedule` | Superseded delivery correction command | Prove V2/current native correction coverage |
-| `correctAdminOrderDeliveryScheduleV2` | Historical correction command now superseded by native schedule correction | Prove current replacement coverage |
-| `monitorLiveCheckoutTest` | Launch/test monitor with no production caller | Verify no recent invocations |
+| `replaySubscriptionRefundDryRun` | Historical refund replay diagnostic | **Deleted 2026-08-04** |
+| `probeHubSubscriptionCancelled` | Historical Hub probe | **Deleted 2026-08-04** |
+| `correctAdminOrderDeliverySchedule` | Superseded delivery correction command | **Deleted 2026-08-04** |
+| `correctAdminOrderDeliveryScheduleV2` | Superseded by native schedule correction | **Deleted 2026-08-04** |
+| `monitorLiveCheckoutTest` | Active read-only admin checkout monitor | **Keep: `/admin/live-monitor` caller verified** |
 | `auditCustomerAppLoyaltyAfterPhase2` | Historical name, now generic implementation | **Keep until the slot ceiling permits a compatibility-safe rename** |
 
 ## Source-only cleanup
@@ -135,7 +135,7 @@ Hold them until Stripe, Resend, Base44 invocation, and webhook logs show a full 
 3. **Completed for the first batch:** verify zero canonical source callers, zero active automation references, and zero preview/production invocations over 30 days.
 4. **Completed:** run the cleanup-specific test, lint, production build, and all critical regression suites.
 5. **Completed:** delete only the proven batch from Base44 and source while preserving recovery in Git history.
-6. **Completed:** re-run the remote/source inventory and prove exact 241/241 parity.
+6. **Completed:** re-run the remote/source inventory and prove exact 237/237 parity.
 7. **Remaining:** observe payment-adjacent and operational recovery candidates for at least one complete order/subscription cycle before another deletion batch.
 
 ## Completed first batch
@@ -152,4 +152,15 @@ Deleted from Base44 and canonical source on August 4, 2026:
 
 `verifyCustomerFacingLoyaltyDisplay` was also deleted because it was a second hard-coded historical loyalty verifier with zero caller, automation, or 30-day invocation evidence and is superseded by the aggregate audit.
 
-This cleanup removed eight obsolete live functions and thirteen never-deployed source fragments without touching payments, webhook receivers, order status, production, loyalty calculation, push, Hub, Shopify, customer journeys, or lifecycle safeguards. Lint, production build, the G67 cleanup suite, and all 42 critical regression suites passed. Remaining candidates follow only after their listed prerequisite is satisfied.
+## Completed second batch
+
+Deleted from Base44 and canonical source on August 4, 2026 after the same 30-day, caller, and automation checks:
+
+1. `replaySubscriptionRefundDryRun`
+2. `probeHubSubscriptionCancelled`
+3. `correctAdminOrderDeliverySchedule`
+4. `correctAdminOrderDeliveryScheduleV2`
+
+The two schedule correctors are superseded by `executeNativeOrderScheduleCorrection`, which is the endpoint used by the active Delivery Queue. `monitorLiveCheckoutTest` remains live because `/admin/live-monitor` is an active caller.
+
+This cleanup removed twelve obsolete live functions and thirteen never-deployed source fragments without touching payments, webhook receivers, order status, production, loyalty calculation, push, Hub, Shopify, customer journeys, or lifecycle safeguards. Lint, production build, the G67 cleanup suite, and all 42 critical regression suites passed. Remaining candidates follow only after their listed prerequisite is satisfied.
