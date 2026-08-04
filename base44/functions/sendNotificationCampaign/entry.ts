@@ -93,7 +93,13 @@ Deno.serve(async (req) => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
     }
-    const journeyResponse = await handleCustomerJourneyRequest(base44, user, body);
+    // Base44 recurring automations invoke functions with an empty JSON object and
+    // do not expose custom payload arguments. An empty object was already invalid
+    // for campaign sends, so reserve it for the gated journey evaluator schedule.
+    const journeyBody = Object.keys(body).length === 0
+      ? { action: 'evaluate_scheduled' }
+      : body;
+    const journeyResponse = await handleCustomerJourneyRequest(base44, user, journeyBody);
     if (journeyResponse) return journeyResponse;
 
     if (campaignSendsDisabled()) {
