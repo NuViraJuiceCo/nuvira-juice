@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The Base44 function estate is oversized and contains historical one-off repair commands, an obsolete duplicate journey endpoint, an active customer-specific loyalty audit, and source for functions that are not deployed. It is also at the provider's function-slot ceiling.
+The Base44 function estate is oversized and contains historical one-off repair commands, an active customer-specific loyalty audit, and source for functions that are not deployed. It is also at the provider's function-slot ceiling. The formerly remote-only `customerJourneyAutomation` endpoint was repurposed during the communication rollout as the required, scheduler-only customer-journey runtime; it is no longer a retirement candidate.
 
 No function or automation was deleted during this audit. The correct next move is a disable-first retirement in small batches with exact caller, automation, webhook, and provider-log verification. Payment, webhook, order lifecycle, Hub, Shopify, push, and current customer-journey protections remain out of deletion scope.
 
@@ -10,11 +10,11 @@ No function or automation was deleted during this audit. The correct next move i
 
 | Surface | Count | Finding |
 |---|---:|---|
-| Function directories in source | 261 | Canonical `main` after PR #630 |
+| Function directories in source | 262 | Canonical `main` after the dedicated customer-journey runtime rollout |
 | Functions reported by Base44 | 249 | Live remote inventory on August 4, 2026 |
 | Source-only functions | 13 | Deployment rejects them at the function ceiling; they are not live runtime dependencies |
-| Remote-only functions | 1 | `customerJourneyAutomation`; its implementation now lives inside `sendNotificationCampaign` |
-| Functions with automation references | 21 | 24 total automation references |
+| Remote-only functions | 0 | Every live function now has canonical source |
+| Functions with automation references | 22 | 24 total automation references |
 
 The Base44 deploy sweep completes, but attempts to create the 13 source-only functions return `Maximum of 50 functions per app reached`. This is a real operational ceiling and not a reason to combine unrelated payment, order, or customer-data contracts.
 
@@ -26,7 +26,7 @@ The following families are required for the current system to flow. Functions in
 |---|---|
 | Checkout and payment | `createCheckoutSession`, `createPaymentIntent`, `createSubscriptionPaymentElementIntent`, `stripeCustomerPortal`, `stripeWebhook`, `shopifyWebhookReceiver`, `processManualRefund`, `adminCancelAndRefundSubscription`, `capturePreOrderPayments`, Zone 3 authorization/capture functions |
 | Order lifecycle and customer status | `sendOrderStatusNotification`, `sendOrderReceivedNotification`, `pollOrderStatusUpdates`, `notifyOrderProcessed`, `getCustomerOrderDetail`, `getCustomerOrdersWithHub`, native order status/update functions, delivery and fulfillment functions |
-| Communications | `sendNotificationCampaign`, `sendCustomerNotification`, `sendCustomerPushNotification`, `registerPushSubscription`, `unregisterPushSubscription`, `resendWebhook`, transactional order/SMS functions |
+| Communications | `customerJourneyAutomation`, `sendNotificationCampaign`, `sendCustomerNotification`, `sendCustomerPushNotification`, `registerPushSubscription`, `unregisterPushSubscription`, `resendWebhook`, transactional order/SMS functions |
 | Loyalty | `createLoyaltyMember`, `enrollNewCustomerInLoyalty`, `claimReward`, `getCustomerAccountDashboardData`, `verifyCustomerFacingLoyaltyDisplay`, live order-history and profile sources used to calculate points |
 | Hub and operations sync | `syncOrderToHub`, `syncShopifyOrderToHub`, `syncOrdersFromHub`, `syncHubDeliveryStatuses`, `retryFailedHubSyncs`, `hubSyncProxy`, `receiveSyncedEvent`, order/subscription/refund sync functions and their manual recovery functions |
 | Shopify and catalog | `shopifyWebhookReceiver`, `shopifyPollFallback`, product push/delete/resync functions, `googleMerchantFeed`, `syncProductsToGMC`, `resolveShopifyCartPermalink` |
@@ -38,12 +38,13 @@ The temporary May 30 or named-customer utilities are not the same thing as lifec
 
 ## Automation-attached functions
 
-These 21 functions have 24 automation references and cannot be deleted until their automation is detached or replaced:
+These 22 functions have 24 automation references and cannot be deleted until their automation is detached or replaced:
 
 - `auditCustomerAppLoyaltyAfterPhase2` (1)
 - `autoExpireZone3Authorizations` (1)
 - `cancelAbandonedCheckouts` (1)
 - `cancelIncompleteSubscriptions` (1)
+- `customerJourneyAutomation` (1)
 - `deleteProductFromShopify` (1)
 - `enrollNewCustomerInLoyalty` (1)
 - `googleMerchantFeed` (1)
@@ -52,7 +53,7 @@ These 21 functions have 24 automation references and cannot be deleted until the
 - `pushMerchToShopify` (1)
 - `pushProductToShopify` (1)
 - `retryFailedHubSyncs` (1)
-- `sendNotificationCampaign` (2)
+- `sendNotificationCampaign` (1)
 - `sendOrderStatusNotification` (2)
 - `sendUpcomingDeliveryNotifications` (1)
 - `shopifyPollFallback` (1)
@@ -72,7 +73,6 @@ These are high-confidence historical or duplicate live functions. They have no c
 
 | Function | Reason | Prerequisite |
 |---|---|---|
-| `customerJourneyAutomation` | Remote-only obsolete endpoint; journey logic is embedded in `sendNotificationCampaign` | Complete customer-journey sandbox proof and verify no recent invocations |
 | `auditAmarkSubscriptions` | Named-customer diagnostic | Verify no recent manual/provider use |
 | `auditLatestStripePaymentForAmark` | Named-customer payment diagnostic | Verify Stripe/operator logs first |
 | `canonicalizeAmarkSubscription` | Named-customer repair command | Verify the repair is closed |
@@ -148,13 +148,12 @@ Hold them until Stripe, Resend, Base44 invocation, and webhook logs show a full 
 
 After the communication sandbox passes, retire only:
 
-1. `customerJourneyAutomation`
-2. `auditAmarkSubscriptions`
-3. `auditLatestStripePaymentForAmark`
-4. `canonicalizeAmarkSubscription`
-5. `repairR1DeepaCAPatch`
-6. `repairR2RefundedDuplicatesCA`
-7. `repairR3HenrryCAHydration`
-8. `repairR4SukhwantCAStructure`
+1. `auditAmarkSubscriptions`
+2. `auditLatestStripePaymentForAmark`
+3. `canonicalizeAmarkSubscription`
+4. `repairR1DeepaCAPatch`
+5. `repairR2RefundedDuplicatesCA`
+6. `repairR3HenrryCAHydration`
+7. `repairR4SukhwantCAStructure`
 
-This batch removes a duplicate endpoint and seven clearly customer-specific utilities without touching payments, webhook receivers, order status, production, loyalty calculation, push, Hub, Shopify, or lifecycle safeguards. The remaining candidates should follow only after their listed prerequisite is satisfied.
+This batch removes seven clearly customer-specific utilities without touching payments, webhook receivers, order status, production, loyalty calculation, push, Hub, Shopify, customer journeys, or lifecycle safeguards. The remaining candidates should follow only after their listed prerequisite is satisfied.
