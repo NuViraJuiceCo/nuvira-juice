@@ -19,6 +19,15 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin' && user.role !== 'owner') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     if (Deno.env.get('ENABLE_INCOMPLETE_SUBSCRIPTION_CLEANUP') !== 'true') {
       return Response.json({
         success: true,
@@ -28,20 +37,6 @@ Deno.serve(async (req) => {
         reason: 'incomplete_subscription_cleanup_disabled',
         message: 'Incomplete subscription cleanup is disabled for May 30 launch freeze.',
       });
-    }
-
-    const base44 = createClientFromRequest(req);
-
-    // Allow scheduled (no auth) or admin-only manual invocations
-    let isScheduled = false;
-    try {
-      const user = await base44.auth.me();
-      if (user?.role !== 'admin') {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    } catch {
-      // No auth header — assume called by automation/scheduler
-      isScheduled = true;
     }
 
     const cutoffMs = 2 * 60 * 60 * 1000; // 2 hours — subscriptions incomplete for >2h get cancelled

@@ -10,6 +10,15 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
  */
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin' && user.role !== 'owner') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     if (Deno.env.get('ENABLE_ZONE3_AUTO_EXPIRE_AUTHORIZATIONS') !== 'true') {
       return Response.json({
         success: true,
@@ -19,12 +28,6 @@ Deno.serve(async (req) => {
         message: 'Zone 3 auto-expire authorization cleanup is disabled for May 30 launch freeze.',
       });
     }
-
-    const base44 = createClientFromRequest(req);
-
-    // Allow both admin-triggered and scheduled (no user) calls
-    const user = await base44.auth.me().catch(() => null);
-    if (user && user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
     const cutoffTime = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     console.log(`[Zone3 Expire] Checking for pending_review requests older than ${cutoffTime}`);
