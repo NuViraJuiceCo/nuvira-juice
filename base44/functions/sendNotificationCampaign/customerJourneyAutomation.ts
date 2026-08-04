@@ -491,19 +491,27 @@ async function orderPayload(base44: any, order: any) {
 }
 
 async function processOrderChange(base44: any, body: Record<string, any>) {
-  const order = body?.data || body?.order || {};
-  const oldOrder = body?.old_data || {};
+  const suppliedOrder = body?.data || body?.order || {};
   const eventType = normalizeSingleLine(body?.event?.type, 30).toLowerCase();
+  const orderId = normalizeSingleLine(body?.event?.entity_id || suppliedOrder?.id, 160);
+  if (!['create', 'update'].includes(eventType)) {
+    return Response.json({ success: true, skipped: true, reason: 'unsupported_order_event' });
+  }
+  if (!orderId) return Response.json({ success: true, skipped: true, reason: 'order_identity_missing' });
+
+  // Base44 entity automations do not carry an end-user session. Treat their payload
+  // only as a record pointer, then reload the authoritative Order before any write or
+  // provider decision. Stable event IDs make repeated or externally-triggered checks
+  // idempotent and prevent caller-supplied customer/order fields from being trusted.
+  const order = await base44.asServiceRole.entities.Order.get(orderId).catch(() => null);
+  if (!order) return Response.json({ success: true, skipped: true, reason: 'authoritative_order_not_found' });
   const email = normalizeEmail(order?.customer_email);
-  const orderId = normalizeSingleLine(body?.event?.entity_id || order?.id, 160);
-  if (!email || !orderId) return Response.json({ success: true, skipped: true, reason: 'order_identity_missing' });
+  if (!email) return Response.json({ success: true, skipped: true, reason: 'order_identity_missing' });
 
   const nowPaid = paidOrder(order);
-  const wasPaid = paidOrder(oldOrder);
   const nowDelivered = orderIsDelivered(order);
-  const wasDelivered = orderIsDelivered(oldOrder);
-  const shouldProcessPurchase = nowPaid && (eventType === 'create' || !wasPaid);
-  const shouldProcessDelivery = nowDelivered && (eventType === 'create' || !wasDelivered);
+  const shouldProcessPurchase = nowPaid;
+  const shouldProcessDelivery = nowDelivered;
   if (!shouldProcessPurchase && !shouldProcessDelivery) {
     return Response.json({ success: true, skipped: true, reason: 'no_authoritative_journey_transition' });
   }
@@ -850,6 +858,13 @@ export async function handleCustomerJourneyRequest(base44: any, caller: any, raw
     const entityAutomation = Boolean(body?.event && body?.data);
     if (!supportedAction && !entityAutomation) return null;
 
+    // Scheduled and entity automations run without a user session in Base44. Both
+    // paths are constrained to authoritative server-side reads, consent/policy gates,
+    // recipient caps and stable event IDs. All user-directed actions remain below the
+    // authentication and role checks.
+    if (action === 'evaluate_scheduled') return await evaluateJourneys(base44);
+    if (entityAutomation) return await processOrderChange(base44, body);
+
     if (!caller) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
     if (action === 'record_activity') return await recordActivity(base44, caller, body);
@@ -859,9 +874,8 @@ export async function handleCustomerJourneyRequest(base44: any, caller: any, raw
     }
     if (action === 'preview') return await preview(base44);
     if (action === 'preview_rewards_email_campaign') return await previewRewardsCampaign(base44);
-    if (action === 'evaluate_scheduled' || action === 'evaluate_now') return await evaluateJourneys(base44);
+    if (action === 'evaluate_now') return await evaluateJourneys(base44);
     if (action === 'sandbox_event') return await sandboxEvent(base44, caller, body);
-    if (entityAutomation) return await processOrderChange(base44, body);
     return Response.json({ error: 'unsupported_action' }, { status: 400 });
   } catch (error) {
     const message = errorMessage(error);
