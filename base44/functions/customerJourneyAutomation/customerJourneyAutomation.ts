@@ -185,6 +185,18 @@ function errorMessage(error: unknown): string {
   return normalizeSingleLine(error instanceof Error ? error.message : String(error || 'unknown'), 500);
 }
 
+function journeyStageError(stage: string, error: any): Error {
+  const status = Number(error?.response?.status || error?.status || 0) || null;
+  const code = normalizeSingleLine(
+    error?.response?.data?.error || error?.response?.data?.code || error?.code,
+    120,
+  );
+  const detail = [stage, status ? `status_${status}` : '', code, errorMessage(error)]
+    .filter(Boolean)
+    .join(':');
+  return new Error(detail);
+}
+
 function dateOrNull(value: unknown): Date | null {
   const date = new Date(String(value || ''));
   return Number.isFinite(date.getTime()) ? date : null;
@@ -607,10 +619,16 @@ async function evaluateJourneys(base44: any) {
     return true;
   };
 
-  const [activeStates, checkoutStates] = await Promise.all([
-    base44.asServiceRole.entities.CustomerJourneyState.filter({ status: 'active' }, '-last_activity_at', MAX_STATE_SCAN),
-    base44.asServiceRole.entities.CustomerJourneyState.filter({ status: 'checkout_started' }, '-last_activity_at', MAX_STATE_SCAN),
-  ]);
+  let activeStates: any[] = [];
+  let checkoutStates: any[] = [];
+  try {
+    [activeStates, checkoutStates] = await Promise.all([
+      base44.asServiceRole.entities.CustomerJourneyState.filter({ status: 'active' }, '-last_activity_at', MAX_STATE_SCAN),
+      base44.asServiceRole.entities.CustomerJourneyState.filter({ status: 'checkout_started' }, '-last_activity_at', MAX_STATE_SCAN),
+    ]);
+  } catch (error) {
+    throw journeyStageError('load_cart_states', error);
+  }
   for (const state of [...activeStates, ...checkoutStates]) {
     if (results.length >= maxEvents) break;
     const lastActivity = dateOrNull(state?.last_activity_at);
@@ -653,13 +671,22 @@ async function evaluateJourneys(base44: any) {
   }
 
   if (results.length < maxEvents) {
-    const [members, userPoints, tiers, orders, subscriptions] = await Promise.all([
-      base44.asServiceRole.entities.LoyaltyMember.list('-updated_date', MAX_LOYALTY_SCAN),
-      base44.asServiceRole.entities.UserPoints.list('-updated_date', MAX_LOYALTY_SCAN),
-      base44.asServiceRole.entities.RewardTier.filter({ is_active: true }, 'points_required', 100),
-      base44.asServiceRole.entities.Order.list('-created_date', MAX_ORDER_SCAN),
-      base44.asServiceRole.entities.Subscription.filter({ status: 'active' }, '-created_date', MAX_SUBSCRIPTION_SCAN),
-    ]);
+    let members: any[] = [];
+    let userPoints: any[] = [];
+    let tiers: any[] = [];
+    let orders: any[] = [];
+    let subscriptions: any[] = [];
+    try {
+      [members, userPoints, tiers, orders, subscriptions] = await Promise.all([
+        base44.asServiceRole.entities.LoyaltyMember.list('-updated_date', MAX_LOYALTY_SCAN),
+        base44.asServiceRole.entities.UserPoints.list('-updated_date', MAX_LOYALTY_SCAN),
+        base44.asServiceRole.entities.RewardTier.filter({ is_active: true }, 'points_required', 100),
+        base44.asServiceRole.entities.Order.list('-created_date', MAX_ORDER_SCAN),
+        base44.asServiceRole.entities.Subscription.filter({ status: 'active' }, '-created_date', MAX_SUBSCRIPTION_SCAN),
+      ]);
+    } catch (error) {
+      throw journeyStageError('load_loyalty_order_subscription_sources', error);
+    }
     const paidOrders = orders.filter(paidOrder);
     const ordersByEmail = new Map<string, any[]>();
     for (const order of paidOrders) {

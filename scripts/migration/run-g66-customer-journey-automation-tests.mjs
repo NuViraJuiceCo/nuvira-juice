@@ -66,6 +66,8 @@ assert.match(source, /normalizeSingleLine\(rawKey, 120\)\.toLowerCase\(\)/);
 assert.match(source, /\['undefined', 'null', 'nan'\]\.includes/);
 assert.match(source, /provider_payload_missing:/);
 assert.match(source, /provider_payload_type:/);
+assert.match(source, /journeyStageError\('load_cart_states'/);
+assert.match(source, /journeyStageError\('load_loyalty_order_subscription_sources'/);
 assert.match(source, /PROVIDER_REQUIRED_FIELDS/);
 assert.match(source, /PROVIDER_NUMBER_FIELDS/);
 assert.ok(source.includes("NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366"));
