@@ -130,7 +130,8 @@ Deno.serve(async (req) => {
         body.args.action || body.args.event || body.args.data
       ))
     );
-    const journeyBody = !hasCampaignIntent && !hasJourneyIntent
+    const platformScheduledInvocation = !user && !body.event && !body.data;
+    const journeyBody = platformScheduledInvocation || (!hasCampaignIntent && !hasJourneyIntent)
       ? { ...body, action: 'evaluate_scheduled' }
       : body;
     const journeyResponse = await handleCustomerJourneyRequest(base44, user, journeyBody);
