@@ -19,6 +19,9 @@ for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
 
 assert.match(campaignEntry, /req\.method !== 'POST'/);
 assert.match(campaignEntry, /auth\.me\(\)\.catch\(\(\) => null\)/);
+assert.match(campaignEntry, /const rawBody = await req\.text\(\)/);
+assert.match(campaignEntry, /if \(rawBody\.trim\(\)\)/);
+assert.match(campaignEntry, /let body: Record<string, any> = \{\}/);
 assert.match(source, /status:\s*401/);
 assert.match(source, /caller\.role !== 'admin'/);
 assert.match(source, /status:\s*403/);

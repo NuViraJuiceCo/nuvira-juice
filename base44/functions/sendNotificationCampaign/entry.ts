@@ -89,7 +89,15 @@ Deno.serve(async (req) => {
 
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    const body = await req.json().catch(() => null);
+    const rawBody = await req.text();
+    let body: Record<string, any> = {};
+    if (rawBody.trim()) {
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        return Response.json({ error: 'malformed_json' }, { status: 400 });
+      }
+    }
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
     }
