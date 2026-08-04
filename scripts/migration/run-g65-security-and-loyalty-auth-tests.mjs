@@ -30,6 +30,9 @@ for (const entity of adminOnlyEntities) {
 }
 
 const adminOnlyFunctions = [
+  'autoExpireZone3Authorizations',
+  'cancelAbandonedCheckouts',
+  'cancelIncompleteSubscriptions',
   'notifyOrderProcessed',
   'sendCustomerNotification',
   'sendCustomerPushNotification',
@@ -48,6 +51,25 @@ for (const functionName of adminOnlyFunctions) {
   assert.match(source, /caller\.role !== 'admin'|user\.role !== 'admin'/, `${functionName} must restrict provider or mutation access to admins`);
   assert.match(source, /status:\s*403/, `${functionName} must reject non-admin callers`);
 }
+
+const autoExpireZone3 = read('base44/functions/autoExpireZone3Authorizations/entry.ts');
+assert.match(autoExpireZone3, /if \(!user\)/);
+assert.ok(
+  autoExpireZone3.indexOf('if (!user)') < autoExpireZone3.indexOf('ENABLE_ZONE3_AUTO_EXPIRE_AUTHORIZATIONS'),
+  'Zone 3 expiration must authenticate before revealing or evaluating feature-gate state',
+);
+
+const cancelAbandoned = read('base44/functions/cancelAbandonedCheckouts/entry.ts');
+assert.doesNotMatch(cancelAbandoned, /body\?\.scheduled === true/);
+assert.doesNotMatch(cancelAbandoned, /if \(!isScheduled\)/);
+
+const cancelIncomplete = read('base44/functions/cancelIncompleteSubscriptions/entry.ts');
+assert.doesNotMatch(cancelIncomplete, /assume called by automation\/scheduler/i);
+assert.doesNotMatch(cancelIncomplete, /isScheduled = true/);
+assert.ok(
+  cancelIncomplete.indexOf('if (!user)') < cancelIncomplete.indexOf('ENABLE_INCOMPLETE_SUBSCRIPTION_CLEANUP'),
+  'Incomplete subscription cleanup must authenticate before feature-gate state',
+);
 
 const addressSuggest = read('base44/functions/addressSuggest/entry.ts');
 assert.match(addressSuggest, /createClientFromRequest\(req\)/);

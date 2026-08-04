@@ -28,19 +28,12 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-
-    // Allow scheduled (no user) or admin manual call
-    let isScheduled = false;
-    try {
-      const body = await req.clone().json();
-      isScheduled = body?.scheduled === true;
-    } catch {}
-
-    if (!isScheduled) {
-      const user = await base44.auth.me();
-      if (user?.role !== 'admin') {
-        return Response.json({ error: 'Admin only' }, { status: 403 });
-      }
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin' && user.role !== 'owner') {
+      return Response.json({ error: 'Admin only' }, { status: 403 });
     }
 
     const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30 min ago
