@@ -34,6 +34,18 @@ const EVENT_PROVIDER_NAMES: Record<string, string> = {
   marketing_sunset_due: 'nuvira.customer.marketing_sunset',
 };
 
+const PROVIDER_REQUIRED_FIELDS: Record<string, string[]> = {
+  cart_abandoned: ['customer_name', 'cart_summary', 'item_count', 'cart_total', 'recovery_url', 'mailing_address'],
+  purchase_completed: ['customer_name', 'order_number', 'mailing_address'],
+  order_delivered: ['customer_name', 'order_number', 'review_url', 'shop_url', 'mailing_address'],
+  loyalty_joined: ['customer_name', 'points', 'discount_code', 'rewards_url', 'mailing_address'],
+  reorder_due: ['customer_name', 'favorite_product', 'last_order_date', 'shop_url', 'mailing_address'],
+  loyalty_reward_unlocked: ['customer_name', 'points_balance', 'reward_title', 'points_required', 'rewards_url', 'mailing_address'],
+  subscription_recommended: ['customer_name', 'favorite_product', 'order_count', 'subscribe_url', 'mailing_address'],
+  customer_winback_due: ['customer_name', 'favorite_product', 'last_order_date', 'shop_url', 'mailing_address'],
+  marketing_sunset_due: ['customer_name', 'preferences_url', 'shop_url', 'mailing_address'],
+};
+
 const PROVIDER_TEMPLATES = [
   'NuVira Abandoned Cart Recovery',
   'NuVira Delivery Thank You and Google Review',
@@ -62,6 +74,39 @@ function normalizeSingleLine(value: unknown, maxLength = 300): string {
 
 function normalizeEmail(value: unknown): string {
   return normalizeSingleLine(value, 320).toLowerCase();
+}
+
+function providerPayload(eventName: string, payload: Record<string, unknown>): Record<string, string | number | boolean> {
+  const normalized: Record<string, string | number | boolean> = {};
+  for (const [rawKey, rawValue] of Object.entries(payload || {})) {
+    const key = normalizeSingleLine(rawKey, 120).toLowerCase();
+    if (!key) continue;
+    if (typeof rawValue === 'number') {
+      if (Number.isFinite(rawValue)) normalized[key] = rawValue;
+      continue;
+    }
+    if (typeof rawValue === 'boolean') {
+      normalized[key] = rawValue;
+      continue;
+    }
+    const value = normalizeSingleLine(rawValue, 2000);
+    if (!value || ['undefined', 'null', 'nan'].includes(value.toLowerCase())) continue;
+    normalized[key] = value;
+  }
+
+  normalized.customer_name ||= 'there';
+  normalized.mailing_address ||= MAILING_ADDRESS;
+  normalized.favorite_product ||= 'your favorite NuVira juices';
+  normalized.reward_title ||= 'your NuVira reward';
+
+  const missing = (PROVIDER_REQUIRED_FIELDS[eventName] || []).filter((field) => {
+    const value = normalized[field];
+    return value === undefined || value === null || value === '';
+  });
+  if (missing.length) {
+    throw new Error(`provider_payload_missing:${eventName}:${missing.join(',')}`);
+  }
+  return normalized;
 }
 
 function finiteNumber(value: unknown, fallback = 0): number {
@@ -240,6 +285,7 @@ async function existingJourneyEvent(base44: any, eventId: string): Promise<any |
 
 async function sendResendEvent(eventName: string, email: string, payload: Record<string, unknown>, eventId: string) {
   const apiKey = Deno.env.get('RESEND_AUTOMATION_API_KEY') || '';
+  const normalizedPayload = providerPayload(eventName, payload);
   const response = await fetch('https://api.resend.com/events/send', {
     method: 'POST',
     headers: {
@@ -248,7 +294,7 @@ async function sendResendEvent(eventName: string, email: string, payload: Record
       'User-Agent': 'NuViraCustomerJourney/1.0',
       'Idempotency-Key': eventId.slice(0, 256),
     },
-    body: JSON.stringify({ event: eventName, email, payload }),
+    body: JSON.stringify({ event: eventName, email, payload: normalizedPayload }),
   });
   const text = await response.text();
   let data: any = {};

@@ -97,12 +97,12 @@ Deno.serve(async (req) => {
     // on the runner, the invocation can arrive as {}, { args: {} }, or a metadata-only
     // platform envelope. Reserve envelopes with no campaign or journey intent for the
     // gated evaluator; explicit campaign requests retain all existing validation.
-    const hasCampaignIntent = [
-      'campaign_id',
-      'confirm',
-      'broad_send_confirmation',
-      'max_recipient_ack',
-    ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
+    const hasCampaignIntent = Boolean(
+      normalizeSingleLine(body.campaign_id) ||
+      body.confirm === true ||
+      normalizeSingleLine(body.broad_send_confirmation) ||
+      positiveInteger(body.max_recipient_ack)
+    );
     const hasJourneyIntent = Boolean(
       body.action ||
       body.event ||
