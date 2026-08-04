@@ -116,12 +116,10 @@ Deno.serve(async (req) => {
     // on the runner, the invocation can arrive as {}, { args: {} }, or a metadata-only
     // platform envelope. Reserve envelopes with no campaign or journey intent for the
     // gated evaluator; explicit campaign requests retain all existing validation.
-    const hasCampaignIntent = Boolean(
-      normalizeSingleLine(body.campaign_id) ||
-      body.confirm === true ||
-      normalizeSingleLine(body.broad_send_confirmation) ||
-      positiveInteger(body.max_recipient_ack)
-    );
+    // A campaign request must identify an actual campaign. Base44 scheduled
+    // automations can inject legacy confirmation defaults, so confirmation fields
+    // alone must never select the campaign sender.
+    const hasCampaignIntent = Boolean(normalizeSingleLine(body.campaign_id));
     const hasJourneyIntent = Boolean(
       body.action ||
       body.event ||
