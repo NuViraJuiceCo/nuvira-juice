@@ -215,6 +215,14 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
+    const caller = await base44.auth.me().catch(() => null);
+    if (!caller) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (caller.role !== 'admin' && caller.role !== 'owner') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     const bodyText = await req.text();
     let body: Record<string, any> = {};
     try {

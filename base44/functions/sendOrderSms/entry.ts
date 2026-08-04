@@ -38,6 +38,14 @@ async function findSentDeliveryLog(base44, idempotencyKey) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const caller = await base44.auth.me().catch(() => null);
+    if (!caller) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (caller.role !== 'admin' && caller.role !== 'owner') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     const { order_id, phone_number, order_number, items, total, estimated_delivery_date, assigned_delivery_date, delivery_window_label } = await req.json();
     const idempotencyKey = buildOrderConfirmationSmsKey(order_id, order_number);
 

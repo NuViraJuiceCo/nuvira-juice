@@ -35,6 +35,18 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
 Deno.serve(async (req) => {
   try {
+    const base44 = createClientFromRequest(req);
+
+    // Auth must be checked before feature gates so the public endpoint never
+    // discloses repair-tool state or accepts mutation-shaped requests.
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin' && user.role !== 'owner') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     if (Deno.env.get('ENABLE_LEGACY_REPAIR_TOOLS') !== 'true') {
       return Response.json({
         success: true,
@@ -42,14 +54,6 @@ Deno.serve(async (req) => {
         reason: 'legacy_repair_tools_disabled',
         message: 'Legacy repair tools are disabled for May 30 launch freeze.',
       });
-    }
-
-    const base44 = createClientFromRequest(req);
-
-    // Auth: admin only
-    const user = await base44.auth.me().catch(() => null);
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
     const {

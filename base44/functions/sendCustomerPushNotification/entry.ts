@@ -729,6 +729,14 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(req);
+    const caller = await base44.auth.me().catch(() => null);
+    if (!caller) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (caller.role !== 'admin' && caller.role !== 'owner') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     const body = await readJsonBody(req);
     if (!body) {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
