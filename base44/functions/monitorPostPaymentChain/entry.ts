@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 /**
  * monitorPostPaymentChain
  *
- * Passive read-only monitor. Checks the health of the post-payment automation chain
+ * Admin-only, read-only monitor. Checks the health of the post-payment automation chain
  * for recent orders and subscriptions (created in the last N minutes).
  * Does NOT modify any data. Safe to run on a schedule or manually.
  *
@@ -34,16 +34,18 @@ async function readJsonBody(req) {
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+
     const base44 = createClientFromRequest(req);
 
-    // Allow admin-only manual runs or scheduled (no auth)
-    try {
-      const user = await base44.auth.me();
-      if (user && user.role !== 'admin') {
-        return Response.json({ error: 'Admin only' }, { status: 403 });
-      }
-    } catch {
-      // Scheduled — no auth header, allow
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin' && user.role !== 'owner') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
     const parsedBody = await readJsonBody(req);
