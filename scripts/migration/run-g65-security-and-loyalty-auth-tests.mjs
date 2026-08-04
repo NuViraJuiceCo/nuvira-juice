@@ -92,12 +92,34 @@ assert.match(completeAccountSetup, /phone,\s*\n\s*address,/);
 assert.doesNotMatch(completeAccountSetup, /phone_number:\s*phone/);
 assert.match(completeAccountSetup, /customer_email:\s*authenticatedEmail/);
 
+const resendWebhook = read('base44/functions/resendWebhook/entry.ts');
+assert.match(resendWebhook, /req\.method !== 'POST'/);
+assert.match(resendWebhook, /await req\.text\(\)/);
+assert.doesNotMatch(resendWebhook, /req\.json\(\)/);
+assert.match(resendWebhook, /new Webhook\(webhookSecret\)\.verify/);
+assert.match(resendWebhook, /req\.headers\.get\('svix-id'\)/);
+assert.match(resendWebhook, /req\.headers\.get\('svix-timestamp'\)/);
+assert.match(resendWebhook, /req\.headers\.get\('svix-signature'\)/);
+assert.match(resendWebhook, /provider_message_id:\s*providerMessageId/);
+assert.match(resendWebhook, /resend_webhook_event_ids/);
+assert.doesNotMatch(resendWebhook, /rawBody[^\n]*metadata|payload:\s*event|raw_payload/);
+
+const deliveryLogSchema = JSON.parse(read('base44/entities/CustomerMessageDeliveryLog.jsonc'));
+assert.ok(deliveryLogSchema.properties.message_type.enum.includes('transactional_order'));
+for (const status of ['prepared', 'scheduled', 'sent', 'delivered', 'delivery_delayed', 'bounced', 'failed', 'suppressed', 'complained', 'skipped']) {
+  assert.ok(deliveryLogSchema.properties.status.enum.includes(status), `delivery log status must support ${status}`);
+}
+for (const field of ['delivered_at', 'delivery_delayed_at', 'bounced_at', 'failed_at', 'suppressed_at', 'complained_at', 'opened_at', 'clicked_at', 'last_provider_event', 'last_provider_event_at', 'last_webhook_id']) {
+  assert.equal(deliveryLogSchema.properties[field]?.type, 'string', `delivery log must define ${field}`);
+}
+
 console.log(JSON.stringify({
   ok: true,
   suite: 'g65-security-and-loyalty-auth',
   admin_only_entities: adminOnlyEntities.length,
   admin_only_functions: adminOnlyFunctions.length,
   authenticated_customer_functions: 3,
+  signed_public_webhooks: 1,
   writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));

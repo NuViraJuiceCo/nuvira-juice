@@ -20,6 +20,7 @@
       "enum": [
         "order_confirmation",
         "order_status",
+        "transactional_order",
         "subscription_upcoming_delivery",
         "refund",
         "zone3_approval",
@@ -52,8 +53,15 @@
     "status": {
       "type": "string",
       "enum": [
+        "prepared",
+        "scheduled",
         "sent",
+        "delivered",
+        "delivery_delayed",
+        "bounced",
         "failed",
+        "suppressed",
+        "complained",
         "skipped"
       ],
       "default": "sent"
@@ -63,6 +71,39 @@
       "maxLength": 1000
     },
     "sent_at": {
+      "type": "string"
+    },
+    "delivered_at": {
+      "type": "string"
+    },
+    "delivery_delayed_at": {
+      "type": "string"
+    },
+    "bounced_at": {
+      "type": "string"
+    },
+    "failed_at": {
+      "type": "string"
+    },
+    "suppressed_at": {
+      "type": "string"
+    },
+    "complained_at": {
+      "type": "string"
+    },
+    "opened_at": {
+      "type": "string"
+    },
+    "clicked_at": {
+      "type": "string"
+    },
+    "last_provider_event": {
+      "type": "string"
+    },
+    "last_provider_event_at": {
+      "type": "string"
+    },
+    "last_webhook_id": {
       "type": "string"
     },
     "metadata": {
