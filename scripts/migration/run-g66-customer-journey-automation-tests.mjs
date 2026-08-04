@@ -49,6 +49,7 @@ assert.match(source, /outside_test_recipient/);
 assert.match(source, /promotional_email_consent_missing/);
 assert.match(source, /rewards_credits_disabled|preferenceField/);
 assert.match(source, /Idempotency-Key/);
+assert.match(source, /https:\/\/api\.resend\.com\/events\/send/);
 assert.match(source, /existingJourneyEvent/);
 assert.match(source, /results\.length >= maxEvents/);
 assert.match(source, /send_test_customer_journey/);

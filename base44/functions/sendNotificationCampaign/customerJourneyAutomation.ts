@@ -240,7 +240,7 @@ async function existingJourneyEvent(base44: any, eventId: string): Promise<any |
 
 async function sendResendEvent(eventName: string, email: string, payload: Record<string, unknown>, eventId: string) {
   const apiKey = Deno.env.get('RESEND_AUTOMATION_API_KEY') || '';
-  const response = await fetch('https://api.resend.com/events', {
+  const response = await fetch('https://api.resend.com/events/send', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
