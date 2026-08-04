@@ -46,6 +46,13 @@ const PROVIDER_REQUIRED_FIELDS: Record<string, string[]> = {
   marketing_sunset_due: ['customer_name', 'preferences_url', 'shop_url', 'mailing_address'],
 };
 
+const PROVIDER_NUMBER_FIELDS: Record<string, string[]> = {
+  cart_abandoned: ['item_count', 'cart_total'],
+  loyalty_joined: ['points'],
+  loyalty_reward_unlocked: ['points_balance', 'points_required'],
+  subscription_recommended: ['order_count'],
+};
+
 const PROVIDER_TEMPLATES = [
   'NuVira Abandoned Cart Recovery',
   'NuVira Delivery Thank You and Google Review',
@@ -105,6 +112,13 @@ function providerPayload(eventName: string, payload: Record<string, unknown>): R
   });
   if (missing.length) {
     throw new Error(`provider_payload_missing:${eventName}:${missing.join(',')}`);
+  }
+  const invalidNumbers = (PROVIDER_NUMBER_FIELDS[eventName] || []).filter((field) => {
+    const value = normalized[field];
+    return typeof value !== 'number' || !Number.isFinite(value);
+  });
+  if (invalidNumbers.length) {
+    throw new Error(`provider_payload_type:${eventName}:${invalidNumbers.join(',')}`);
   }
   return normalized;
 }
@@ -612,7 +626,7 @@ async function evaluateJourneys(base44: any) {
         CUSTOMER_NAME: customerName(profile),
         CART_SUMMARY: cartSummary(safeItems(state.cart_items)),
         ITEM_COUNT: state.item_count,
-        CART_TOTAL: `$${finiteNumber(state.cart_total, 0).toFixed(2)}`,
+        CART_TOTAL: Number(finiteNumber(state.cart_total, 0).toFixed(2)),
         RECOVERY_URL: `${APP_URL}/cart`,
         MAILING_ADDRESS,
       },
@@ -808,7 +822,7 @@ async function sandboxEvent(base44: any, caller: any, body: Record<string, any>)
   const profile = await profileFor(base44, email);
   const payloads: Record<string, Record<string, any>> = {
     loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, DISCOUNT_CODE: 'NuViraSummer', REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },
-    cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x NuVira juice', ITEM_COUNT: 1, CART_TOTAL: '$12.00', RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
+    cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x NuVira juice', ITEM_COUNT: 1, CART_TOTAL: 12, RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
     order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || 'https://www.google.com/maps/search/?api=1&query=NuVira%20Juice%20Company%20Wentzville%20Missouri', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     purchase_completed: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', MAILING_ADDRESS },
     reorder_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'July 14, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
