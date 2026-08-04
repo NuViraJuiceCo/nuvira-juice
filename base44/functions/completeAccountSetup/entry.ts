@@ -1,5 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -18,13 +22,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    const authenticatedEmail = normalizeEmail(user.email);
+    const requestedEmail = normalizeEmail(email);
+    if (!authenticatedEmail || requestedEmail !== authenticatedEmail) {
+      return Response.json({ error: 'Cannot update another customer profile' }, { status: 403 });
+    }
+
+    const normalizedContactEmail = normalizeEmail(contact_email) || authenticatedEmail;
+
     // Sync name to User entity
-    console.log(`Syncing name to User entity for: ${email}`);
+    console.log(`Syncing name to User entity for: ${authenticatedEmail}`);
     try {
       await base44.auth.updateMe({
         first_name,
         last_name,
-        phone_number: phone,
+        phone,
         address,
         birthday,
       });
@@ -33,9 +45,9 @@ Deno.serve(async (req) => {
     }
 
     // Update or create user profile (check for existing first)
-    console.log(`Setting up user profile for: ${email}`);
+    console.log(`Setting up user profile for: ${authenticatedEmail}`);
     const existingProfiles = await base44.asServiceRole.entities.UserProfile.filter(
-      { customer_email: email }
+      { customer_email: authenticatedEmail }
     );
 
     if (existingProfiles.length > 0) {
@@ -43,7 +55,7 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.UserProfile.update(existingProfiles[0].id, {
         first_name,
         last_name,
-        contact_email: contact_email || email,
+        contact_email: normalizedContactEmail,
         phone,
         address,
         birthday,
@@ -52,10 +64,10 @@ Deno.serve(async (req) => {
     } else {
       // Create new profile only if one doesn't exist
       await base44.asServiceRole.entities.UserProfile.create({
-        customer_email: email,
+        customer_email: authenticatedEmail,
         first_name,
         last_name,
-        contact_email: contact_email || email,
+        contact_email: normalizedContactEmail,
         phone,
         address,
         birthday,
@@ -64,13 +76,13 @@ Deno.serve(async (req) => {
     }
 
     // Enroll in loyalty program via single source of truth
-    console.log(`Enrolling in loyalty program: ${email}`);
-    const existingMembers = await base44.asServiceRole.entities.LoyaltyMember.filter({ email });
+    console.log(`Enrolling in loyalty program: ${authenticatedEmail}`);
+    const existingMembers = await base44.asServiceRole.entities.LoyaltyMember.filter({ email: authenticatedEmail });
 
     if (existingMembers.length === 0) {
       // Call centralized enrollment function
       const enrollRes = await base44.functions.invoke('createLoyaltyMember', {
-        email,
+        email: authenticatedEmail,
         first_name,
         last_name,
         phone,
@@ -82,14 +94,14 @@ Deno.serve(async (req) => {
         console.warn(`Enrollment warning: ${enrollRes.data.error}`);
       }
     } else {
-      console.log(`Already enrolled: ${email}`);
+      console.log(`Already enrolled: ${authenticatedEmail}`);
     }
 
-    console.log(`Account setup completed for: ${email}`);
+    console.log(`Account setup completed for: ${authenticatedEmail}`);
 
     return Response.json({
       success: true,
-      email,
+      email: authenticatedEmail,
       message: 'Account setup complete and loyalty member activated',
     });
   } catch (error) {

@@ -56,6 +56,7 @@ const harnesses = [
   'scripts/migration/run-g62-website-only-seo-links-tests.mjs',
   'scripts/migration/run-g63-capacitor-live-update-bootstrap-tests.mjs',
   'scripts/migration/run-g64-native-push-transport-tests.mjs',
+  'scripts/migration/run-g65-security-and-loyalty-auth-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

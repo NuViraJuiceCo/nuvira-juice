@@ -46,6 +46,14 @@ function errorMessage(error: unknown): string {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const caller = await base44.auth.me().catch(() => null);
+    if (!caller) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (caller.role !== 'admin' && caller.role !== 'owner') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     const { order_id, order_number, customer_email, items, total, delivery_address } = await req.json() as OrderNotificationPayload;
 
     if (!RESEND_API_KEY) {
