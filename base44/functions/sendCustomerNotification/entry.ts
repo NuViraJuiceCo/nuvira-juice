@@ -10,7 +10,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * {
  *   customer_email: string,         // canonical or relay email — will be resolved
  *   type: string,                   // order_update | promotion | new_drop | general
- *   notification_subtype: string,   // order_confirmation | delivery_reminder | out_for_delivery | delivered | subscription_renewal | subscription_payment_success | subscription_payment_failed | promo | loyalty_credit | production_reminder
+ *   notification_subtype: string,   // order_confirmation | scheduled_for_juicing | in_production | ready_for_pickup | out_for_delivery | arriving_soon | delivered | schedule_changed | order_delayed | order_cancelled | order_refunded | order_payment_failed | subscription_renewal | promo | loyalty_credit
  *   title: string,
  *   message: string,
  *   order_id?: string,              // optional order reference
@@ -23,10 +23,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 // Map notification subtype → preference field
 const PREF_MAP: Record<string, string> = {
   order_confirmation:           'order_updates',
+  scheduled_for_juicing:        'production_reminders',
+  in_production:                'production_reminders',
   production_reminder:          'production_reminders',
   delivery_reminder:            'delivery_updates',
+  ready_for_pickup:             'delivery_updates',
   out_for_delivery:             'delivery_updates',
+  arriving_soon:                'delivery_updates',
   delivered:                    'delivery_updates',
+  schedule_changed:             'order_updates',
+  order_delayed:                'order_updates',
+  order_cancelled:              'order_updates',
+  order_refunded:               'order_updates',
+  order_payment_failed:         'order_updates',
   subscription_renewal:         'subscription_updates',
   subscription_payment_success: 'subscription_updates',
   subscription_payment_failed:  'subscription_updates',
@@ -39,7 +48,30 @@ const PREF_MAP: Record<string, string> = {
 const ALWAYS_SEND = new Set([
   'order_confirmation',
   'subscription_payment_failed',
+  'ready_for_pickup',
+  'out_for_delivery',
+  'arriving_soon',
   'delivered',
+  'schedule_changed',
+  'order_delayed',
+  'order_cancelled',
+  'order_refunded',
+  'order_payment_failed',
+]);
+
+const ELEVATED_TRANSACTIONAL_SUBTYPES = new Set([
+  'order_confirmation',
+  'scheduled_for_juicing',
+  'in_production',
+  'ready_for_pickup',
+  'out_for_delivery',
+  'arriving_soon',
+  'delivered',
+  'schedule_changed',
+  'order_delayed',
+  'order_cancelled',
+  'order_refunded',
+  'order_payment_failed',
 ]);
 
 const MAY30_DEFAULT_ALLOWED_SUBTYPES = new Set([
@@ -50,6 +82,8 @@ const MAY30_DELIVERY_STATUS_SUBTYPES = new Set([
   'out_for_delivery',
   'delivered',
 ]);
+
+const TRANSACTIONAL_TEST_RECIPIENT = 'info@nuvirajuice.com';
 
 function nonConfirmationNotificationsEnabled() {
   return Deno.env.get('ENABLE_NON_CONFIRMATION_CUSTOMER_NOTIFICATIONS') === 'true';
@@ -63,8 +97,38 @@ function customerPushNotificationsEnabled() {
   return Deno.env.get('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS') === 'true';
 }
 
-function customerNotificationSubtypeAllowed(notificationSubtype: string, source: unknown = null) {
+function transactionalMode(): 'disabled' | 'test' | 'production' {
+  const mode = String(Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_MODE') || '').trim().toLowerCase();
+  return mode === 'test' || mode === 'production' ? mode : 'disabled';
+}
+
+function elevatedTransactionalEnabled() {
+  return Deno.env.get('ENABLE_ELEVATED_TRANSACTIONAL_COMMUNICATIONS') === 'true'
+    && Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_KILL_SWITCH') === 'false'
+    && transactionalMode() !== 'disabled';
+}
+
+function internalTokenMatches(value: unknown) {
+  const expected = String(Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN') || '');
+  const supplied = String(value || '');
+  if (!expected || expected.length !== supplied.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    mismatch |= expected.charCodeAt(index) ^ supplied.charCodeAt(index);
+  }
+  return mismatch === 0;
+}
+
+function customerNotificationSubtypeAllowed(
+  notificationSubtype: string,
+  source: unknown = null,
+  _customerEmail: unknown = null,
+  _idempotencyKey: unknown = null,
+) {
   if (String(source || '') === 'notification_campaign') return Deno.env.get('DISABLE_NOTIFICATION_CAMPAIGN_SENDS') !== 'true';
+  if (String(source || '') === 'elevated_transactional') {
+    return elevatedTransactionalEnabled() && ELEVATED_TRANSACTIONAL_SUBTYPES.has(notificationSubtype);
+  }
   if (MAY30_DEFAULT_ALLOWED_SUBTYPES.has(notificationSubtype)) return true;
   if (nonConfirmationNotificationsEnabled()) return true;
   return MAY30_DELIVERY_STATUS_SUBTYPES.has(notificationSubtype) && deliveryStatusNotificationsEnabled();
@@ -115,15 +179,48 @@ Deno.serve(async (req) => {
       message,
       order_id = null,
       deep_link = null,
-      idempotency_key = null,
-      source = '',
+      idempotency_key: requested_idempotency_key = null,
+      delivery_key = null,
+      source: requested_source = '',
+      notification_source = '',
+      notification_origin = '',
+      internal_token: requested_internal_token = '',
+      transactional_proof = '',
+      push_priority = 'normal',
+      suppress_push = false,
     } = body;
+    const idempotency_key = requested_idempotency_key || delivery_key || null;
+    const internal_token = requested_internal_token || transactional_proof || '';
+    const validTransactionalToken = internalTokenMatches(internal_token);
+    const source = String(
+      requested_source
+      || notification_source
+      || notification_origin
+      || (validTransactionalToken ? 'elevated_transactional' : ''),
+    ).trim();
 
     if (!customer_email || !title || !message) {
       return Response.json({ error: 'Missing required fields: customer_email, title, message' }, { status: 400 });
     }
 
-    if (!customerNotificationSubtypeAllowed(notification_subtype, source)) {
+    if (source === 'elevated_transactional' && !validTransactionalToken) {
+      return Response.json({ error: 'invalid_transactional_internal_token' }, { status: 403 });
+    }
+
+    if (source === 'elevated_transactional'
+      && transactionalMode() === 'test'
+      && String(customer_email || '').trim().toLowerCase() !== TRANSACTIONAL_TEST_RECIPIENT) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'transactional_test_recipient_only',
+        test_recipient_only: TRANSACTIONAL_TEST_RECIPIENT,
+        push_attempted: false,
+        push_sent: false,
+      });
+    }
+
+    if (!customerNotificationSubtypeAllowed(notification_subtype, source, customer_email, idempotency_key)) {
       return Response.json({
         success: true,
         skipped: true,
@@ -131,6 +228,12 @@ Deno.serve(async (req) => {
         message: 'Non-confirmation customer notifications are disabled for this source.',
         notification_subtype,
         delivery_status_notifications_enabled: deliveryStatusNotificationsEnabled(),
+        transactional_mode: transactionalMode(),
+        elevated_transactional_enabled: elevatedTransactionalEnabled(),
+        requested_source_present: Boolean(requested_source),
+        notification_source_present: Boolean(notification_source),
+        internal_token_present: Boolean(internal_token),
+        internal_token_valid: validTransactionalToken,
       }, { status: 409 });
     }
 
@@ -165,7 +268,38 @@ Deno.serve(async (req) => {
       }, undefined, 1);
       if (existing[0]) {
         console.log(`[sendCustomerNotification] Duplicate detected (key=${idempotency_key}). Skipping.`);
-        return Response.json({ success: true, skipped: true, reason: 'duplicate_idempotency_key', existing_id: existing[0].id });
+        const retryPush = source === 'elevated_transactional'
+          && suppress_push !== true
+          && customerPushNotificationsEnabled()
+          ? await sendCustomerPush(base44, {
+            customer_email: existing[0].customer_email || customer_email,
+            notification_id: existing[0].id,
+            title: existing[0].title || title,
+            message: existing[0].message || message,
+            type: existing[0].type || type,
+            notification_subtype: existing[0].notification_subtype || notification_subtype,
+            order_id: existing[0].order_id || order_id || null,
+            deep_link: existing[0].deep_link || deep_link || '/notifications',
+            idempotency_key,
+            delivery_key: idempotency_key,
+            source,
+            notification_origin: source,
+            internal_token,
+            transactional_proof: internal_token,
+            push_priority: push_priority === 'high' ? 'high' : 'normal',
+          })
+          : null;
+        return Response.json({
+          success: true,
+          skipped: true,
+          reason: 'duplicate_idempotency_key',
+          existing_id: existing[0].id,
+          notification_id: existing[0].id,
+          push_attempted: Boolean(retryPush?.push_attempted),
+          push_sent: Boolean(retryPush?.push_sent),
+          push_skipped_reason: retryPush?.push_skipped_reason || null,
+          push_token_count: Number(retryPush?.token_count || 0),
+        });
       }
     }
 
@@ -204,7 +338,7 @@ Deno.serve(async (req) => {
     const created = await base44.asServiceRole.entities.Notification.create(notifPayload);
     console.log(`[sendCustomerNotification] ✅ Notification created: ${created.id} for ${maskEmail(canonicalEmail)} (type=${notification_subtype})`);
 
-    const push = customerPushNotificationsEnabled()
+    const push = customerPushNotificationsEnabled() && suppress_push !== true
       ? await sendCustomerPush(base44, {
         customer_email: canonicalEmail,
         notification_id: created.id,
@@ -215,12 +349,17 @@ Deno.serve(async (req) => {
         order_id: order_id || null,
         deep_link: deep_link || '/notifications',
         idempotency_key: idempotency_key || created.id,
+        delivery_key: idempotency_key || created.id,
         source,
+        notification_origin: source,
+        internal_token: source === 'elevated_transactional' ? internal_token : undefined,
+        transactional_proof: source === 'elevated_transactional' ? internal_token : undefined,
+        push_priority: push_priority === 'high' ? 'high' : 'normal',
       })
       : {
         push_attempted: false,
         push_sent: false,
-        push_skipped_reason: 'customer_push_disabled',
+        push_skipped_reason: suppress_push === true ? 'push_suppressed_by_channel_plan' : 'customer_push_disabled',
         token_count: 0,
       };
 

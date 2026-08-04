@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { handleElevatedTransactionalAction } from './elevatedTransactionalCommunications.ts';
 
 /**
  * sendOrderStatusNotification — triggered by order status changes to send in-app notifications.
@@ -8,7 +9,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Payload: { order_id, new_status, customer_email, order_number }
  */
 
-const STATUS_NOTIF_MAP = {
+const STATUS_NOTIF_MAP: Record<string, any> = {
   scheduled_for_juicing: {
     subtype: 'production_reminder',
     title: 'Juicing Time 🌿',
@@ -20,6 +21,12 @@ const STATUS_NOTIF_MAP = {
     title: "We're Juicing! 🍊",
     message: 'Your NuVira order is currently in production.',
     deep_link: '/account/orders',
+  },
+  delayed: {
+    subtype: 'order_delayed',
+    title: 'A Timing Update for Your Order',
+    message: 'Your NuVira order is taking a little longer than planned. Open the app for the latest timing.',
+    deep_link: null,
   },
   out_for_delivery: {
     subtype: 'out_for_delivery',
@@ -45,6 +52,51 @@ const STATUS_NOTIF_MAP = {
     message: 'Your NuVira order is ready for pickup!',
     deep_link: '/account/orders',
   },
+  cancelled: {
+    subtype: 'order_cancelled',
+    title: 'Your Order Was Cancelled',
+    message: 'Your NuVira order has been cancelled. Open the app for details or support.',
+    deep_link: '/account/orders',
+  },
+  canceled: {
+    subtype: 'order_cancelled',
+    title: 'Your Order Was Cancelled',
+    message: 'Your NuVira order has been cancelled. Open the app for details or support.',
+    deep_link: '/account/orders',
+  },
+  refunded: {
+    subtype: 'order_refunded',
+    title: 'Your Refund Was Processed',
+    message: 'Your NuVira refund has been processed. Your bank’s posting time may vary.',
+    deep_link: '/account/orders',
+  },
+  partially_refunded: {
+    subtype: 'order_refunded',
+    title: 'Your Refund Was Processed',
+    message: 'Your NuVira refund has been processed. Your bank’s posting time may vary.',
+    deep_link: '/account/orders',
+  },
+  payment_failed: {
+    subtype: 'order_payment_failed',
+    title: 'Payment Needs Attention',
+    message: 'We could not complete your payment. Open NuVira to review your order.',
+    deep_link: '/account/orders',
+  },
+};
+
+const ELEVATED_EVENT_MAP: Record<string, string> = {
+  scheduled_for_juicing: 'scheduled_for_juicing',
+  in_production: 'in_production',
+  ready_for_pickup: 'ready_for_pickup',
+  out_for_delivery: 'out_for_delivery',
+  arriving_soon: 'arriving_soon',
+  delivered: 'delivered',
+  delayed: 'delayed',
+  cancelled: 'cancelled',
+  canceled: 'cancelled',
+  refunded: 'refunded',
+  partially_refunded: 'refunded',
+  payment_failed: 'payment_failed',
 };
 
 const DELIVERY_STATUS_SUBTYPES = new Set([
@@ -54,6 +106,17 @@ const DELIVERY_STATUS_SUBTYPES = new Set([
 
 function envEnabled(name: string) {
   return Deno.env.get(name) === 'true';
+}
+
+function transactionalMode() {
+  const mode = String(Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_MODE') || '').trim().toLowerCase();
+  return mode === 'test' || mode === 'production' ? mode : 'disabled';
+}
+
+function elevatedTransactionalEnabled() {
+  return envEnabled('ENABLE_ELEVATED_TRANSACTIONAL_COMMUNICATIONS')
+    && Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_KILL_SWITCH') === 'false'
+    && transactionalMode() !== 'disabled';
 }
 
 function deliveryStatusNotificationsEnabled() {
@@ -153,37 +216,78 @@ Deno.serve(async (req) => {
 
     const base44 = createClientFromRequest(req);
     const bodyText = await req.text();
-    let body = {};
+    let body: Record<string, any> = {};
     try {
       body = bodyText ? JSON.parse(bodyText) : {};
     } catch {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
     }
 
+    const scheduledArgs = body?.args && typeof body.args === 'object' ? body.args : {};
+    const elevatedActionBody = scheduledArgs.action === 'elevated_scheduled_sweep'
+      ? {
+        ...scheduledArgs,
+        internal_token: Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN') || '',
+        source: 'base44_scheduled_automation',
+      }
+      : body;
+    const elevatedActionResponse = await handleElevatedTransactionalAction(base44, elevatedActionBody);
+    if (elevatedActionResponse) return elevatedActionResponse;
+
     // Support entity automation payload format: { event, data, old_data, changed_fields }
     // AND direct call format: { order_id, new_status, customer_email, order_number }
-    let order_id, new_status, customer_email, order_number;
+    let order_id, new_status, customer_email, order_number, source_event_id;
 
-    if (body.event?.type === 'update' && body.data) {
+    const entityUpdate = body.event?.type === 'update' && body.data;
+    if (entityUpdate) {
       // Entity automation
       order_id = body.event.entity_id || body.data.id;
       new_status = body.data.status;
       customer_email = body.data.customer_email;
       order_number = body.data.order_number;
+      source_event_id = body.event.id || body.data.updated_date || body.data.updated_at;
     } else {
       order_id = body.order_id;
       new_status = body.new_status;
       customer_email = body.customer_email;
       order_number = body.order_number;
+      source_event_id = body.event_id || body.status_changed_at || body.updated_at;
     }
 
     if (!order_id || !new_status) {
       return Response.json({ error: 'Missing order_id or new_status' }, { status: 400 });
     }
 
+    if (entityUpdate) {
+      const changedFields = Array.isArray(body.changed_fields) ? body.changed_fields.map(String) : [];
+      const priorStatus = String(body.old_data?.status || '').trim();
+      if ((changedFields.length > 0 && !changedFields.includes('status')) || (priorStatus && priorStatus === String(new_status))) {
+        return Response.json({ success: true, skipped: true, reason: 'order_status_unchanged' });
+      }
+    }
+
     const notifConfig = STATUS_NOTIF_MAP[new_status];
     if (!notifConfig) {
       return Response.json({ success: true, skipped: true, reason: `No notification configured for status: ${new_status}` });
+    }
+
+    if (elevatedTransactionalEnabled()) {
+      const event = ELEVATED_EVENT_MAP[new_status];
+      if (!event) {
+        return Response.json({ success: true, skipped: true, reason: `No elevated communication configured for status: ${new_status}` });
+      }
+      const elevatedResponse = await handleElevatedTransactionalAction(base44, {
+        action: 'elevated_deliver_event',
+        internal_token: Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN') || '',
+        order_id,
+        event,
+        event_id: source_event_id || `order_status:${order_id}:${event}`,
+        refund_amount: Number(body.refund_amount || 0),
+        delivery_date_label: body.delivery_date_label || body.assigned_delivery_date || null,
+        delivery_window_label: body.delivery_window_label || null,
+        source: 'sendOrderStatusNotification',
+      });
+      return elevatedResponse || Response.json({ error: 'elevated_transactional_handler_unavailable' }, { status: 500 });
     }
 
     const dryRun = body.dry_run === true || body.mode === 'dry_run';
@@ -289,7 +393,7 @@ Deno.serve(async (req) => {
     } else if (new_status === 'delivered') {
       try {
         // Fetch full order for email details
-        const orderRows = await base44.asServiceRole.entities.Order.filter({ id: order_id }, null, 1);
+        const orderRows = await base44.asServiceRole.entities.Order.filter({ id: order_id }, undefined, 1);
         const fullOrder = orderRows[0];
 
         if (fullOrder && email) {
@@ -298,7 +402,7 @@ Deno.serve(async (req) => {
             : new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
 
           const itemsHtml = (fullOrder.items || [])
-            .map(i => `<div class="row"><span class="label">${i.title} ×${i.quantity}</span><span class="value">$${((i.price || 0) * (i.quantity || 1)).toFixed(2)}</span></div>`)
+            .map((i: Record<string, any>) => `<div class="row"><span class="label">${i.title} ×${i.quantity}</span><span class="value">$${((i.price || 0) * (i.quantity || 1)).toFixed(2)}</span></div>`)
             .join('');
 
           // Proof/drop evidence is gated separately from delivered email status.
