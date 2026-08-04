@@ -24,6 +24,8 @@ assert.match(source, /caller\.role !== 'admin'/);
 assert.match(source, /status:\s*403/);
 assert.ok(source.indexOf("if (!caller)") < source.indexOf("action === 'record_activity'"));
 assert.match(campaignEntry, /handleCustomerJourneyRequest/);
+assert.match(campaignEntry, /Object\.keys\(body\)\.length === 0/);
+assert.match(campaignEntry, /action: 'evaluate_scheduled'/);
 assert.ok(campaignEntry.indexOf('handleCustomerJourneyRequest') < campaignEntry.indexOf('campaignSendsDisabled()'));
 
 assert.match(source, /const email = normalizeEmail\(caller\?\.email\)/);
