@@ -198,7 +198,7 @@ export default function NotificationCampaigns() {
   } = useQuery({
     queryKey: ['customer-journey-automation-preview'],
     queryFn: async () => unwrapBase44Data(
-      await base44.functions.invoke('customerJourneyAutomation', { action: 'preview' }),
+      await base44.functions.invoke('sendNotificationCampaign', { action: 'preview' }),
       {},
     ),
     enabled: isAdminUser(user),
@@ -228,7 +228,7 @@ export default function NotificationCampaigns() {
   } = useQuery({
     queryKey: ['rewards-email-campaign-preview'],
     queryFn: async () => unwrapBase44Data(
-      await base44.functions.invoke('customerJourneyAutomation', { action: 'preview_rewards_email_campaign' }),
+      await base44.functions.invoke('sendNotificationCampaign', { action: 'preview_rewards_email_campaign' }),
       {},
     ),
     enabled: isAdminUser(user),

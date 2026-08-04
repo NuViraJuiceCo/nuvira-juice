@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(path, 'utf8');
-const source = read('base44/functions/customerJourneyAutomation/entry.ts');
-const config = JSON.parse(read('base44/functions/customerJourneyAutomation/function.jsonc'));
+const source = read('base44/functions/sendNotificationCampaign/customerJourneyAutomation.ts');
+const campaignEntry = read('base44/functions/sendNotificationCampaign/entry.ts');
 const cart = read('src/lib/cartContext.jsx');
 const checkout = read('src/pages/Checkout.jsx');
 const campaigns = read('src/pages/admin/NotificationCampaigns.jsx');
@@ -17,12 +17,14 @@ for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
   }
 }
 
-assert.match(source, /req\.method !== 'POST'/);
-assert.match(source, /auth\.me\(\)\.catch\(\(\) => null\)/);
+assert.match(campaignEntry, /req\.method !== 'POST'/);
+assert.match(campaignEntry, /auth\.me\(\)\.catch\(\(\) => null\)/);
 assert.match(source, /status:\s*401/);
 assert.match(source, /caller\.role !== 'admin'/);
 assert.match(source, /status:\s*403/);
 assert.ok(source.indexOf("if (!caller)") < source.indexOf("action === 'record_activity'"));
+assert.match(campaignEntry, /handleCustomerJourneyRequest/);
+assert.ok(campaignEntry.indexOf('handleCustomerJourneyRequest') < campaignEntry.indexOf('campaignSendsDisabled()'));
 
 assert.match(source, /const email = normalizeEmail\(caller\?\.email\)/);
 assert.doesNotMatch(source, /recordActivity[\s\S]{0,1200}body\.customer_email/);
@@ -52,11 +54,10 @@ assert.match(source, /results\.length >= maxEvents/);
 assert.match(source, /send_test_customer_journey/);
 assert.match(source, /sandbox_requires_test_mode/);
 
-assert.equal(config.automations.length, 2);
-assert.ok(config.automations.some((automation) => automation.type === 'entity' && automation.entity_name === 'Order'));
-assert.ok(config.automations.some((automation) => automation.type === 'scheduled' && automation.repeat_interval === 15));
-assert.match(campaigns, /customerJourneyAutomation/);
-assert.doesNotMatch(campaigns, /sendNotificationCampaign', \{ action: 'preview/);
+assert.match(source, /action === 'evaluate_scheduled'/);
+assert.match(source, /body\?\.event && body\?\.data/);
+assert.match(campaigns, /sendNotificationCampaign', \{ action: 'preview/);
+assert.doesNotMatch(campaigns, /customerJourneyAutomation/);
 
 assert.match(loyalty, /ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL/);
 assert.match(loyalty, /total_points:\s*preorderBonus/);

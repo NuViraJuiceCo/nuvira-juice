@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { handleCustomerJourneyRequest } from './customerJourneyAutomation.ts';
 
 /**
  * sendNotificationCampaign - admin-only function to send notifications to audience segments.
@@ -86,6 +87,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'method_not_allowed' }, { status: 405 });
     }
 
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
+    const journeyResponse = await handleCustomerJourneyRequest(base44, user, body);
+    if (journeyResponse) return journeyResponse;
+
     if (campaignSendsDisabled()) {
       return Response.json({
         error: 'notification_campaign_sends_disabled',
@@ -93,15 +103,8 @@ Deno.serve(async (req) => {
       }, { status: 409 });
     }
 
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
     if (!user || user.role !== 'admin') {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
-    }
-
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return Response.json({ error: 'malformed_json' }, { status: 400 });
     }
     const {
       campaign_id,
