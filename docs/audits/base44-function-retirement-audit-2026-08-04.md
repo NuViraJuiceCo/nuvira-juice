@@ -2,21 +2,21 @@
 
 ## Outcome
 
-The Base44 function estate is oversized and contains historical one-off repair commands, an active customer-specific loyalty audit, and source for functions that are not deployed. It is also at the provider's function-slot ceiling. The formerly remote-only `customerJourneyAutomation` endpoint was repurposed during the communication rollout as the required, scheduler-only customer-journey runtime; it is no longer a retirement candidate.
+The first verified cleanup is complete. Eight obsolete live functions were deleted after zero canonical callers, zero automation attachments, and zero preview/production invocations over the 30-day log window were confirmed. Thirteen source-only loyalty/import fragments were removed from the active tree because they were not deployed and caused broad deploys to emit slot-ceiling failures.
 
-No function or automation was deleted during this audit. The correct next move is a disable-first retirement in small batches with exact caller, automation, webhook, and provider-log verification. Payment, webhook, order lifecycle, Hub, Shopify, push, and current customer-journey protections remain out of deletion scope.
+Canonical source and the Base44 remote are now in exact parity at 241 functions: zero source-only functions and zero remote-only functions. The hard-coded eight-customer loyalty audit was replaced in place with a paginated, read-only aggregate integrity audit because the grandfathered app remains above Base44's current function-creation ceiling. Payment, webhook, order lifecycle, Hub, Shopify, push, current customer journeys, consent gates, idempotency controls, and lifecycle protections were preserved.
 
 ## Current inventory
 
 | Surface | Count | Finding |
 |---|---:|---|
-| Function directories in source | 262 | Canonical `main` after the dedicated customer-journey runtime rollout |
-| Functions reported by Base44 | 249 | Live remote inventory on August 4, 2026 |
-| Source-only functions | 13 | Deployment rejects them at the function ceiling; they are not live runtime dependencies |
+| Functions in canonical source | 241 | Active `entry.ts` functions after the verified cleanup |
+| Functions reported by Base44 | 241 | Live remote inventory after deletion verification on August 4, 2026 |
+| Source-only functions | 0 | Broad deploy no longer attempts dead loyalty/import endpoints |
 | Remote-only functions | 0 | Every live function now has canonical source |
 | Functions with automation references | 21 | 24 total automation references |
 
-The Base44 deploy sweep completes, but attempts to create the 13 source-only functions return `Maximum of 50 functions per app reached`. This is a real operational ceiling and not a reason to combine unrelated payment, order, or customer-data contracts.
+The function-creation ceiling remains real, so the generic loyalty audit retains the historical endpoint name `auditCustomerAppLoyaltyAfterPhase2` for compatibility. Its implementation contains no named customers, fixed emails, fixed orders, or Apple-relay expectations.
 
 ## Required live capability map
 
@@ -62,33 +62,33 @@ These 21 functions have 24 automation references and cannot be deleted until the
 - `syncShopifyOrderToHub` (1)
 - `syncSubscriptionPlansToHub` (1)
 
-`auditCustomerAppLoyaltyAfterPhase2` is the one clearly incorrect active attachment. Its source audits a fixed historical set of eight people/orders, including Apple private-relay and Amar records, against hard-coded expectations. That is not a system health check. Replace it with an aggregate loyalty-integrity audit, prove the replacement, then detach and retire it.
+`auditCustomerAppLoyaltyAfterPhase2` now runs the replacement aggregate loyalty-integrity audit. The August 4 live verification reported `healthy: true`, zero critical exceptions, one informational legacy balance-cache mismatch, and three profiles whose phone number is unavailable from current profile/order sources. The function is read-only and reports `writes_performed: false`.
 
 `previewAdminMay30POSProfileCandidates` has a stale name, but its current implementation is the generic POS rewards-claim workflow. Rename it in a later compatibility-safe change; do not delete it by name.
 
 ## Phase 1 retirement candidates
 
-These are high-confidence historical or duplicate live functions. They have no current UI caller or required automation in the canonical source audit. Disable/invoke-block first, observe logs, and then delete in two or three small batches.
+These were the high-confidence historical or duplicate live functions. The first verified batch has been deleted; remaining rows stay staged until their prerequisites are independently proven.
 
 | Function | Reason | Prerequisite |
 |---|---|---|
-| `auditAmarkSubscriptions` | Named-customer diagnostic | Verify no recent manual/provider use |
-| `auditLatestStripePaymentForAmark` | Named-customer payment diagnostic | Verify Stripe/operator logs first |
-| `canonicalizeAmarkSubscription` | Named-customer repair command | Verify the repair is closed |
-| `repairR1DeepaCAPatch` | Named-customer repair command | Verify no pending repair case |
-| `repairR2RefundedDuplicatesCA` | Historical fixed repair | Verify no pending repair case |
-| `repairR3HenrryCAHydration` | Named-customer repair command | Verify no pending repair case |
-| `repairR4SukhwantCAStructure` | Named-customer repair command | Verify no pending repair case |
+| `auditAmarkSubscriptions` | Named-customer diagnostic | **Deleted 2026-08-04** |
+| `auditLatestStripePaymentForAmark` | Named-customer payment diagnostic | **Deleted 2026-08-04** |
+| `canonicalizeAmarkSubscription` | Named-customer repair command | **Deleted 2026-08-04** |
+| `repairR1DeepaCAPatch` | Named-customer repair command | **Deleted 2026-08-04** |
+| `repairR2RefundedDuplicatesCA` | Historical fixed repair | **Deleted 2026-08-04** |
+| `repairR3HenrryCAHydration` | Named-customer repair command | **Deleted 2026-08-04** |
+| `repairR4SukhwantCAStructure` | Named-customer repair command | **Deleted 2026-08-04** |
 | `replaySubscriptionRefundDryRun` | Historical refund replay diagnostic | Retain audit evidence; verify no recent invocations |
 | `probeHubSubscriptionCancelled` | Historical Hub probe | Verify no runbook references |
 | `correctAdminOrderDeliverySchedule` | Superseded delivery correction command | Prove V2/current native correction coverage |
 | `correctAdminOrderDeliveryScheduleV2` | Historical correction command now superseded by native schedule correction | Prove current replacement coverage |
 | `monitorLiveCheckoutTest` | Launch/test monitor with no production caller | Verify no recent invocations |
-| `auditCustomerAppLoyaltyAfterPhase2` | Hard-coded historical loyalty audit | Deploy a real aggregate loyalty audit and detach its automation first |
+| `auditCustomerAppLoyaltyAfterPhase2` | Historical name, now generic implementation | **Keep until the slot ceiling permits a compatibility-safe rename** |
 
 ## Source-only cleanup
 
-These functions exist in source but are not deployed. They cannot currently affect customers, but every broad deploy attempts them, produces slot errors, and obscures real deployment failures:
+These 13 functions existed in source but were not deployed. They were removed from the active tree on August 4, 2026; their implementation remains recoverable from Git history:
 
 - `applyStripeEventCleanup`
 - `deactivateLoyaltyMembers`
@@ -104,17 +104,13 @@ These functions exist in source but are not deployed. They cannot currently affe
 - `syncLoyaltyFromHub`
 - `syncLoyaltyToHub`
 
-Recommended treatment:
-
-1. Remove one-time commands (`applyStripeEventCleanup`, `executeCustomerAppLoyaltyImportPhase2`, `sendThankYouToLoyaltyMembers`) from active source after preserving their Git history.
-2. Do not deploy the nine fragmented loyalty sync functions as-is. First design one authoritative loyalty reconciliation boundary with idempotency, provenance, preview/apply separation, and a single direction of ownership.
-3. Search and repair any UI/function callers before source removal. A source-only function name may still reveal a broken caller even though the endpoint itself is absent.
+No live endpoint was deleted for these source-only names. No canonical UI, automation, or function caller referenced them. Any future loyalty reconciliation must be designed as one authoritative boundary with idempotency, provenance, preview/apply separation, and a single direction of ownership rather than restoring these fragments.
 
 ## Repair findings before retirement
 
 ### Missing delivery endpoint
 
-`src/components/program/SubscriptionUpsellModal.jsx` invokes `calculateDeliveryZone`, but there is no source or deployed function with that name. `validateDeliveryEligibility` is the supported endpoint. Refactor the modal to its response contract and test Zone 1, Zone 2, Zone 3 review, and ineligible addresses.
+`src/components/program/SubscriptionUpsellModal.jsx` was refactored from the nonexistent `calculateDeliveryZone` call to the supported `validateDeliveryEligibility` contract. Subscription eligibility now uses the server's `checkout_allowed`, `allowed_for_subscriptions`, zone, distance, fee, and customer-message fields; the old fixed 15-mile copy was removed. The site build and publish completed successfully.
 
 ### Legacy payment endpoints need provider proof
 
@@ -134,18 +130,17 @@ Hold them until Stripe, Resend, Base44 invocation, and webhook logs show a full 
 
 ## Retirement sequence
 
-1. Export the current remote function and automation inventory.
-2. Replace the hard-coded loyalty audit and repair the missing delivery endpoint.
-3. For each candidate, verify zero canonical source callers, zero active automation references, zero webhook/provider references, and zero recent invocations.
-4. Block or disable the smallest candidate batch without deleting source.
-5. Observe at least one complete business cycle; use 48 hours for diagnostics and at least one subscription/order cycle for payment-adjacent functions.
-6. Run checkout, POS ingestion, points accrual/redemption, order confirmation/status, Hub sync/retry, refund, subscription, push, and customer-account regressions.
-7. Delete only the proven batch from Base44 and source. Preserve recovery through Git rather than a second live duplicate endpoint.
-8. Re-run the remote/source inventory and confirm broad deploy output contains no unexpected function-slot failures.
+1. **Completed:** export the current remote function and automation inventory.
+2. **Completed:** replace the hard-coded loyalty audit and repair the missing delivery endpoint.
+3. **Completed for the first batch:** verify zero canonical source callers, zero active automation references, and zero preview/production invocations over 30 days.
+4. **Completed:** run the cleanup-specific test, lint, production build, and all critical regression suites.
+5. **Completed:** delete only the proven batch from Base44 and source while preserving recovery in Git history.
+6. **Completed:** re-run the remote/source inventory and prove exact 241/241 parity.
+7. **Remaining:** observe payment-adjacent and operational recovery candidates for at least one complete order/subscription cycle before another deletion batch.
 
-## Recommended first batch
+## Completed first batch
 
-After the communication sandbox passes, retire only:
+Deleted from Base44 and canonical source on August 4, 2026:
 
 1. `auditAmarkSubscriptions`
 2. `auditLatestStripePaymentForAmark`
@@ -155,4 +150,6 @@ After the communication sandbox passes, retire only:
 6. `repairR3HenrryCAHydration`
 7. `repairR4SukhwantCAStructure`
 
-This batch removes seven clearly customer-specific utilities without touching payments, webhook receivers, order status, production, loyalty calculation, push, Hub, Shopify, customer journeys, or lifecycle safeguards. The remaining candidates should follow only after their listed prerequisite is satisfied.
+`verifyCustomerFacingLoyaltyDisplay` was also deleted because it was a second hard-coded historical loyalty verifier with zero caller, automation, or 30-day invocation evidence and is superseded by the aggregate audit.
+
+This cleanup removed eight obsolete live functions and thirteen never-deployed source fragments without touching payments, webhook receivers, order status, production, loyalty calculation, push, Hub, Shopify, customer journeys, or lifecycle safeguards. Lint, production build, the G67 cleanup suite, and all 42 critical regression suites passed. Remaining candidates follow only after their listed prerequisite is satisfied.

@@ -258,10 +258,6 @@ Deno.serve(async (req) => {
       { name: 'repairLiveSubscriptionV2', role: 'repair', status: 'REPAIR_RETIRE_AFTER_STABLE', called_by: ['Admin only'], risk: 'One-time repair tool', can_create_order: false, can_create_sub: true, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'repairLiveSubscriptionFailure', role: 'repair', status: 'REPAIR_RETIRE_AFTER_STABLE', called_by: ['Admin only'], risk: 'One-time repair tool', can_create_order: false, can_create_sub: true, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'repairMissingSubscriptionForPaidInvoice', role: 'repair', status: 'REPAIR_KEEP_TEMPORARY', called_by: ['Admin only'], risk: 'Reconciliation tool', can_create_order: false, can_create_sub: true, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'repairR1DeepaCAPatch', role: 'repair', status: 'ONE_TIME_RETIRE', called_by: ['Admin - one time'], risk: 'One-time historical fix', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'repairR2RefundedDuplicatesCA', role: 'repair', status: 'ONE_TIME_RETIRE', called_by: ['Admin - one time'], risk: 'One-time historical fix', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'repairR3HenrryCAHydration', role: 'repair', status: 'ONE_TIME_RETIRE', called_by: ['Admin - one time'], risk: 'One-time historical fix', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'repairR4SukhwantCAStructure', role: 'repair', status: 'ONE_TIME_RETIRE', called_by: ['Admin - one time'], risk: 'One-time historical fix', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'repairFulfillmentTaskAssignedDeliveryDates', role: 'repair', status: 'REPAIR_KEEP_TEMPORARY', called_by: ['Admin only'], risk: 'Updates FulfillmentTask dates', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
 
       // Audit/debug
@@ -278,14 +274,11 @@ Deno.serve(async (req) => {
       { name: 'stabilizationDiagnostic', role: 'audit', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'monitorPostPaymentChain', role: 'audit', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'monitorLiveCheckoutTest', role: 'audit', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'monitorSubscriptionLoyalty', role: 'audit', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'listRecentPIs', role: 'audit', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only Stripe query', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'inspectPaymentIntent', role: 'audit', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only Stripe query', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'diagnosePiConfig', role: 'audit', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'refundFlowDiagnostic', role: 'audit', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only diagnostic', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'auditAmarkSubscriptions', role: 'audit', status: 'ONE_TIME_RETIRE', called_by: ['One-time customer audit'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'auditLatestStripePaymentForAmark', role: 'audit', status: 'ONE_TIME_RETIRE', called_by: ['One-time'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'auditCustomerAppLoyaltyAfterPhase2', role: 'audit', status: 'ONE_TIME_RETIRE', called_by: ['One-time loyalty audit'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
+      { name: 'auditCustomerAppLoyaltyAfterPhase2', role: 'audit', status: 'ACTIVE_REQUIRED', called_by: ['Scheduled loyalty integrity automation'], risk: 'Read-only aggregate integrity audit; historical endpoint name retained for slot compatibility', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'auditWindow3Orders', role: 'audit', status: 'LEGACY_OR_ADMIN', called_by: ['Admin'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
 
       // Identity resolver
@@ -295,13 +288,6 @@ Deno.serve(async (req) => {
       // Loyalty
       { name: 'enrollNewCustomerInLoyalty', role: 'loyalty', status: 'ACTIVE_REQUIRED', called_by: ['Account setup or first order'], risk: 'Creates LoyaltyMember', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
       { name: 'claimReward', role: 'loyalty', status: 'ACTIVE_REQUIRED', called_by: ['Rewards page'], risk: 'Deducts UserPoints, marks reward claimed', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'reconcileCustomerLoyalty', role: 'loyalty', status: 'ADMIN_TOOL', called_by: ['Admin'], risk: 'Updates loyalty points - check idempotency', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'executeCustomerAppLoyaltyImportPhase2', role: 'loyalty', status: 'ONE_TIME_RETIRE', called_by: ['One-time import'], risk: 'Bulk mutation - retire', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'verifyCustomerFacingLoyaltyDisplay', role: 'loyalty', status: 'KEEP_DEBUG', called_by: ['Admin'], risk: 'Read-only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'syncLoyaltyToHub', role: 'loyalty', status: 'ACTIVE_OR_ADMIN', called_by: ['Admin or automation'], risk: 'Syncs loyalty to Hub', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'syncLoyaltyFromHub', role: 'loyalty', status: 'ACTIVE_OR_ADMIN', called_by: ['Admin or automation'], risk: 'Pulls loyalty from Hub', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'receivePointsSync', role: 'loyalty', status: 'ACTIVE_OR_WEBHOOK', called_by: ['Hub push?'], risk: 'Mutates UserPoints from Hub events', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
-      { name: 'deactivateLoyaltyMembers', role: 'loyalty', status: 'ADMIN_TOOL', called_by: ['Admin'], risk: 'Bulk deactivation', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
 
       // Notifications
       { name: 'sendOrderReceivedNotification', role: 'notification', status: 'ACTIVE_REQUIRED', called_by: ['stripeWebhook'], risk: 'Email notification only', can_create_order: false, can_create_sub: false, uses_central_schedule: false, uses_identity_resolver: false },
@@ -390,7 +376,7 @@ Deno.serve(async (req) => {
     // ── 12. Recommended cleanup plan ─────────────────────────────────────
     const cleanupPlan = [
       { priority: 1, action: 'AUDIT NOW', items: ['Rewards.jsx — verify uses identity resolver for UserPoints query', 'CreditWallet.jsx — verify uses identity resolver for NuViraCredit query', 'getCustomerOrdersWithHub — update to accept multiple emails or call resolver internally'] },
-      { priority: 2, action: 'RETIRE AFTER 30 DAYS', items: ['repairR1DeepaCAPatch', 'repairR2RefundedDuplicatesCA', 'repairR3HenrryCAHydration', 'repairR4SukhwantCAStructure', 'auditAmarkSubscriptions', 'auditLatestStripePaymentForAmark', 'auditCustomerAppLoyaltyAfterPhase2', 'executeCustomerAppLoyaltyImportPhase2', 'canonicalizeAmarkSubscription'] },
+      { priority: 2, action: 'RETIRED 2026-08-04', items: ['repairR1DeepaCAPatch', 'repairR2RefundedDuplicatesCA', 'repairR3HenrryCAHydration', 'repairR4SukhwantCAStructure', 'auditAmarkSubscriptions', 'auditLatestStripePaymentForAmark', 'canonicalizeAmarkSubscription', 'verifyCustomerFacingLoyaltyDisplay'] },
       { priority: 3, action: 'VERIFY THEN RETIRE', items: ['createSubscriptionSession — confirm not called from any active page', 'createSubscriptionCheckoutHosted — confirm not called from any active page', 'createSubscriptionPaymentIntent — confirm superseded by PaymentElementIntent', 'createSubscriptionPaymentIntentV2 — confirm superseded', 'sendOrderConfirmation — confirm not duplicate of sendOrderReceivedNotification'] },
       { priority: 4, action: 'KEEP PERMANENTLY', items: ['stripeWebhook', 'syncOrderToHub', 'syncSubscriptionWithFulfillments', 'retryFailedHubSyncs', 'calculateNuViraFulfillmentSchedule', 'createPaymentIntent', 'createSubscriptionPaymentElementIntent', 'cancelSubscriptionFutureRenewal', 'pauseSubscription', 'stripeCustomerPortal'] },
       { priority: 5, action: 'NO TOUCH (production sensitive)', items: ['STRIPE_WEBHOOK_SECRET — do not rotate without coordinating canonical destination update', 'stripeWebhook URL — do not rename or redeploy without updating Stripe dashboard', 'cancelAbandonedCheckouts automation — confirm schedule and do not disable without replacement'] },
@@ -480,7 +466,7 @@ Deno.serve(async (req) => {
         '1. Audit Rewards.jsx and CreditWallet.jsx for identity resolver gaps (non-breaking fix)',
         '2. Confirm createSubscriptionSession / createSubscriptionCheckoutHosted are not called from any active page before retiring',
         '3. Confirm sendOrderConfirmation is not a duplicate of sendOrderReceivedNotification',
-        '4. After 30-day stability window, retire repairR1-R4 and one-time audit functions',
+        '4. The named-customer repairR1-R4 and one-time audit functions were retired on 2026-08-04 after zero callers, zero automations, and zero 30-day invocations were verified',
         '5. Do NOT change stripeWebhook, syncOrderToHub, syncSubscriptionWithFulfillments, or retryFailedHubSyncs without a full regression test',
         '6. Do NOT rotate STRIPE_WEBHOOK_SECRET without updating Stripe dashboard canonical destination simultaneously',
         '7. Do NOT disable any Stripe events in the canonical destination without verifying the handler still works for in-flight payments',
