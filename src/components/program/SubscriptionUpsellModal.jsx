@@ -26,12 +26,6 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     enabled: open,
   });
 
-  const { data: deliveryZones = [] } = useQuery({
-    queryKey: ['deliveryZones'],
-    queryFn: () => base44.entities.DeliveryZone.filter({ is_active: true }, 'max_miles'),
-    enabled: open,
-  });
-
   // Set default plan once data loads
   useEffect(() => {
     if (plans.length > 0 && !selectedPlanId) {
@@ -39,25 +33,30 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     }
   }, [plans]);
 
-  const calculateDistance = (addr) => {
+  const calculateDistance = (nextAddress) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setCalculatedZone(null);
     setCalculatedDistance(null);
     setShowOutOfArea(false);
-    if (!addr || !addr.trim() || addr.length < 5) return;
+    const addr = [nextAddress?.street, nextAddress?.city, nextAddress?.state, nextAddress?.zip]
+      .filter(Boolean)
+      .join(', ');
+    if (!addr.trim() || addr.length < 5) return;
     setCalculating(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await base44.functions.invoke('calculateDeliveryZone', { address: addr });
-        const d = res.data;
-        console.log('Distance calc result:', d);
-        setCalculatedDistance(d.distance);
-        if (d.zone) {
-          setCalculatedZone(d.zone);
-        } else {
-          console.log('Out of area detected, distance:', d.distance);
-          setCalculatedZone(null);
-        }
+        const res = await base44.functions.invoke('validateDeliveryEligibility', {
+          delivery_address: addr,
+          address_line1: nextAddress?.street || '',
+          address_city: nextAddress?.city || '',
+          address_state: nextAddress?.state || '',
+          address_postal_code: nextAddress?.zip || '',
+          cart_subtotal: Number(programTotal) || 0,
+          order_type: 'subscription',
+        });
+        const eligibility = res?.data || res;
+        setCalculatedDistance(eligibility?.estimated_distance_miles ?? null);
+        setCalculatedZone(eligibility || null);
       } catch (err) {
         console.error('Distance calc error:', err);
         setCalculatedDistance(null);
@@ -70,6 +69,9 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
   const addressString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
+  const subscriptionDeliveryEligible = Boolean(
+    calculatedZone?.checkout_allowed && calculatedZone?.allowed_for_subscriptions
+  );
 
   const handleSubscribe = async () => {
     if (!addressString.trim()) {
@@ -82,6 +84,10 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
     }
     if (!selectedPlanId) {
       toast.error('Please select a plan');
+      return;
+    }
+    if (!subscriptionDeliveryEligible) {
+      toast.error(calculatedZone?.customer_message || 'Subscription delivery is not available for this address');
       return;
     }
 
@@ -201,8 +207,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
                   value={address}
                   onChange={addr => {
                     setAddress(addr);
-                    const full = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
-                    calculateDistance(full);
+                    calculateDistance(addr);
                   }}
                   placeholder="123 Main St"
                   className="rounded-xl h-10"
@@ -210,7 +215,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
 
                 {/* Zone Result */}
                 <AnimatePresence>
-                  {calculatedZone && (
+                  {calculatedZone && subscriptionDeliveryEligible && (
                     <motion.div
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -218,16 +223,18 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
                     >
                       <MapPin className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
                       <div className="text-xs">
-                        <p className="text-muted-foreground">{calculatedDistance?.toFixed(1)} miles away</p>
-                        {(() => {
-                          const zoneIndex = parseInt(calculatedZone?.replace('zone', '')) - 1;
-                          const zone = deliveryZones[zoneIndex];
-                          return zone ? <p className="font-semibold text-primary">${zone.delivery_fee?.toFixed(2)} delivery fee</p> : null;
-                        })()}
+                        {calculatedDistance !== null && (
+                          <p className="text-muted-foreground">{calculatedDistance.toFixed(1)} miles away</p>
+                        )}
+                        <p className="font-semibold text-primary">
+                          {calculatedZone.delivery_fee == null
+                            ? calculatedZone.zone_tier_label
+                            : `$${Number(calculatedZone.delivery_fee).toFixed(2)} delivery fee`}
+                        </p>
                       </div>
                     </motion.div>
                   )}
-                  {!calculatedZone && calculatedDistance !== null && (
+                  {calculatedZone && !subscriptionDeliveryEligible && (
                     <motion.div
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -235,16 +242,20 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
                     >
                       <MapPin className="w-3.5 h-3.5 text-cyan-600 shrink-0 mt-0.5" />
                       <div className="text-xs">
-                        <p className="font-semibold text-cyan-900">Outside Delivery Area</p>
-                        <p className="text-cyan-700 mt-0.5">{calculatedDistance?.toFixed(1)} miles away — we deliver within 15 miles</p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-2 border-cyan-500/40 text-cyan-600 hover:bg-cyan-50 h-8"
-                          onClick={() => setShowOutOfArea(true)}
-                        >
-                          Join the Waitlist
-                        </Button>
+                        <p className="font-semibold text-cyan-900">
+                          {calculatedZone.zone_type === 'route_review' ? 'Route Review Required' : 'Delivery Not Yet Available'}
+                        </p>
+                        <p className="text-cyan-700 mt-0.5">{calculatedZone.customer_message}</p>
+                        {calculatedZone.zone_type === 'waitlist_only' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-2 border-cyan-500/40 text-cyan-600 hover:bg-cyan-50 h-8"
+                            onClick={() => setShowOutOfArea(true)}
+                          >
+                            Join the Waitlist
+                          </Button>
+                        )}
                       </div>
                     </motion.div>
                   )}
@@ -274,7 +285,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
               >
                 <Button
                   onClick={handleSubscribe}
-                  disabled={subscribing || !address.street.trim() || calculating || !calculatedZone}
+                  disabled={subscribing || !address.street.trim() || calculating || !subscriptionDeliveryEligible}
                   className="w-full h-11 rounded-xl font-semibold text-sm mb-2"
                 >
                   {subscribing ? 'Redirecting to payment...' : `Subscribe — $${selectedPlan?.base_price}${selectedPlan?.frequency === 'weekly' ? '/week' : '/month'}`}
