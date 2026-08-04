@@ -58,6 +58,10 @@ const retiredFunctions = [
   'repairR3HenrryCAHydration',
   'repairR4SukhwantCAStructure',
   'verifyCustomerFacingLoyaltyDisplay',
+  'replaySubscriptionRefundDryRun',
+  'probeHubSubscriptionCancelled',
+  'correctAdminOrderDeliverySchedule',
+  'correctAdminOrderDeliveryScheduleV2',
 ];
 for (const functionName of retiredFunctions) {
   assert.equal(exists(`base44/functions/${functionName}/entry.ts`), false, `${functionName} must remain retired`);
