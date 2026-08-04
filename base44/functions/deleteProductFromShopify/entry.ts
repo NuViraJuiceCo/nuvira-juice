@@ -6,6 +6,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 Deno.serve(async (req) => {
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+  }
+
+  const base44 = createClientFromRequest(req);
+  const caller = await base44.auth.me().catch(() => null);
+  if (!caller) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (caller.role !== 'admin' && caller.role !== 'owner') {
+    return Response.json({ error: 'Admin access required' }, { status: 403 });
+  }
+
   if (Deno.env.get('ENABLE_PRODUCT_SHOPIFY_DELETE_AUTOMATION') !== 'true') {
     return Response.json({
       success: true,
@@ -14,8 +27,6 @@ Deno.serve(async (req) => {
       message: 'Product Shopify delete automation is disabled for May 30 launch freeze.',
     });
   }
-
-  const base44 = createClientFromRequest(req);
 
   const SHOPIFY_API_TOKEN = Deno.env.get('SHOPIFY_API_TOKEN');
   const SHOPIFY_STORE_URL = Deno.env.get('SHOPIFY_STORE_URL');
