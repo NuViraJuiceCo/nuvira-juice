@@ -75,6 +75,10 @@ assert.match(source, /sandbox_requires_test_mode/);
 
 assert.match(source, /action === 'evaluate_scheduled'/);
 assert.match(source, /body\?\.event && body\?\.data/);
+assert.match(source, /asServiceRole\.entities\.Order\.get\(orderId\)/);
+assert.match(source, /authoritative_order_not_found/);
+assert.ok(source.indexOf("if (action === 'evaluate_scheduled')") < source.indexOf('if (!caller)'));
+assert.ok(source.indexOf('if (entityAutomation)') < source.indexOf('if (!caller)'));
 assert.match(campaigns, /sendNotificationCampaign', \{ action: 'preview/);
 assert.doesNotMatch(campaigns, /customerJourneyAutomation/);
 
