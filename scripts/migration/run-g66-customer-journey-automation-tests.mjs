@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(path, 'utf8');
-const source = read('base44/functions/sendNotificationCampaign/customerJourneyAutomation.ts');
+const source = read('base44/functions/customerJourneyAutomation/customerJourneyAutomation.ts');
 const campaignEntry = read('base44/functions/sendNotificationCampaign/entry.ts');
 const schedulerEntry = read('base44/functions/customerJourneyAutomation/entry.ts');
 const cart = read('src/lib/cartContext.jsx');
@@ -21,7 +21,8 @@ for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
 assert.match(campaignEntry, /req\.method !== 'POST'/);
 assert.match(schedulerEntry, /req\.method !== 'POST'/);
 assert.match(schedulerEntry, /action: 'evaluate_scheduled'/);
-assert.match(schedulerEntry, /asServiceRole\.functions\.invoke\('sendNotificationCampaign'/);
+assert.match(schedulerEntry, /handleCustomerJourneyRequest\(base44, caller, journeyBody\)/);
+assert.match(schedulerEntry, /unauthorized_scheduler_invocation/);
 assert.doesNotMatch(schedulerEntry, /campaign_id|broad_send_confirmation|max_recipient_ack/);
 assert.match(campaignEntry, /async function optionalAuthenticatedUser/);
 assert.match(campaignEntry, /try \{\s*return await base44\.auth\.me\(\);\s*\} catch/);
@@ -33,15 +34,7 @@ assert.match(source, /status:\s*401/);
 assert.match(source, /caller\.role !== 'admin'/);
 assert.match(source, /status:\s*403/);
 assert.ok(source.indexOf("if (!caller)") < source.indexOf("action === 'record_activity'"));
-assert.match(campaignEntry, /handleCustomerJourneyRequest/);
-assert.match(campaignEntry, /action: 'evaluate_scheduled'/);
-assert.match(campaignEntry, /const hasCampaignIntent = Boolean\(normalizeSingleLine\(body\.campaign_id\)\)/);
-assert.doesNotMatch(campaignEntry, /hasCampaignIntent[\s\S]{0,200}body\.confirm/);
-assert.match(campaignEntry, /const hasJourneyIntent = Boolean\(/);
-assert.match(campaignEntry, /const platformScheduledInvocation = !user && !body\.event && !body\.data/);
-assert.match(campaignEntry, /platformScheduledInvocation \|\| \(!hasCampaignIntent && !hasJourneyIntent\)/);
-assert.match(campaignEntry, /!hasCampaignIntent && !hasJourneyIntent/);
-assert.ok(campaignEntry.indexOf('handleCustomerJourneyRequest') < campaignEntry.indexOf('campaignSendsDisabled()'));
+assert.doesNotMatch(campaignEntry, /handleCustomerJourneyRequest|evaluate_scheduled|record_activity/);
 
 assert.match(source, /const email = normalizeEmail\(caller\?\.email\)/);
 assert.doesNotMatch(source, /recordActivity[\s\S]{0,1200}body\.customer_email/);
@@ -90,8 +83,8 @@ assert.match(source, /asServiceRole\.entities\.Order\.get\(orderId\)/);
 assert.match(source, /authoritative_order_not_found/);
 assert.ok(source.indexOf("if (action === 'evaluate_scheduled')") < source.indexOf('if (!caller)'));
 assert.ok(source.indexOf('if (entityAutomation)') < source.indexOf('if (!caller)'));
-assert.match(campaigns, /sendNotificationCampaign', \{ action: 'preview/);
-assert.doesNotMatch(campaigns, /customerJourneyAutomation/);
+assert.match(campaigns, /customerJourneyAutomation', \{ action: 'preview/);
+assert.match(campaigns, /sendNotificationCampaign/);
 
 assert.match(loyalty, /ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL/);
 assert.match(loyalty, /total_points:\s*preorderBonus/);
