@@ -34,6 +34,7 @@ const adminOnlyFunctions = [
   'cancelAbandonedCheckouts',
   'cancelIncompleteSubscriptions',
   'deleteProductFromShopify',
+  'monitorPostPaymentChain',
   'notifyOrderProcessed',
   'sendCustomerNotification',
   'sendCustomerPushNotification',
