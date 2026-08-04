@@ -18,7 +18,9 @@ for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
 }
 
 assert.match(campaignEntry, /req\.method !== 'POST'/);
-assert.match(campaignEntry, /auth\.me\(\)\.catch\(\(\) => null\)/);
+assert.match(campaignEntry, /async function optionalAuthenticatedUser/);
+assert.match(campaignEntry, /try \{\s*return await base44\.auth\.me\(\);\s*\} catch/);
+assert.match(campaignEntry, /const user = await optionalAuthenticatedUser\(base44\)/);
 assert.match(campaignEntry, /const rawBody = await req\.text\(\)/);
 assert.match(campaignEntry, /if \(rawBody\.trim\(\)\)/);
 assert.match(campaignEntry, /let body: Record<string, any> = \{\}/);

@@ -81,6 +81,17 @@ function broadSendConfirmationPhrase(audience: unknown): string {
   return `send_${normalizeSingleLine(audience)}${BROAD_SEND_CONFIRMATION_SUFFIX}`;
 }
 
+async function optionalAuthenticatedUser(base44: any): Promise<any | null> {
+  try {
+    return await base44.auth.me();
+  } catch {
+    // Base44 scheduled and entity automations do not include a user session. The
+    // downstream handler permits only the server-authoritative automation paths
+    // without a caller; every user-directed action still enforces auth and role.
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -88,7 +99,7 @@ Deno.serve(async (req) => {
     }
 
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me().catch(() => null);
+    const user = await optionalAuthenticatedUser(base44);
     const rawBody = await req.text();
     let body: Record<string, any> = {};
     if (rawBody.trim()) {
