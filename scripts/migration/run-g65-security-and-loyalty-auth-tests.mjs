@@ -33,6 +33,7 @@ const adminOnlyFunctions = [
   'autoExpireZone3Authorizations',
   'cancelAbandonedCheckouts',
   'cancelIncompleteSubscriptions',
+  'deleteProductFromShopify',
   'notifyOrderProcessed',
   'sendCustomerNotification',
   'sendCustomerPushNotification',

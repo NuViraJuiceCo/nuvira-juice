@@ -94,6 +94,17 @@ test('All static internal links and literal navigations resolve to declared app 
   assert.deepEqual(missing, []);
 });
 
+test('Customer authentication and OAuth consent pages are registered as app routes.', () => {
+  const expectedAuthRoutes = [
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
+    '/oauth-consent',
+  ];
+  assert.deepEqual(expectedAuthRoutes.filter(route => !literalRoutes.has(route)), []);
+});
+
 test('Admin sidebar and mobile admin nav items resolve to declared app routes.', () => {
   const adminNav = sourceByFile['src/components/layout/adminNavItems.js'];
   const navRoutes = [...adminNav.matchAll(/path:\s*'([^']+)'/g)].map(match => match[1]);
