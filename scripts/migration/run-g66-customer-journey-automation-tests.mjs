@@ -64,6 +64,8 @@ assert.match(source, /provider_payload_missing:/);
 assert.match(source, /provider_payload_type:/);
 assert.match(source, /PROVIDER_REQUIRED_FIELDS/);
 assert.match(source, /PROVIDER_NUMBER_FIELDS/);
+assert.ok(source.includes("NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366"));
+assert.doesNotMatch(source, /206 W\. Pine Creek Ct\./);
 assert.match(source, /CART_TOTAL:\s*Number\(finiteNumber\(state\.cart_total, 0\)\.toFixed\(2\)\)/);
 assert.match(source, /CART_TOTAL:\s*12,/);
 assert.match(source, /existingJourneyEvent/);

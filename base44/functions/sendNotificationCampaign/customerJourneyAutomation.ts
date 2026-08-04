@@ -8,7 +8,7 @@ type ConsentResult = {
 const POLICY_VERSION = 'g66-2026-08-04';
 const APP_URL = 'https://www.nuvirajuice.com';
 const MAILING_ADDRESS = normalizeSingleLine(Deno.env.get('NUVIRA_MAILING_ADDRESS'), 300)
-  || 'NuVira Juice Company, 206 W. Pine Creek Ct., Wentzville, MO 63385';
+  || "NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366";
 const MAX_STATE_SCAN = 250;
 const MAX_EVENT_SCAN = 500;
 const MAX_PROFILE_SCAN = 500;
