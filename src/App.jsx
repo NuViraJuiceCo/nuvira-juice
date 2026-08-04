@@ -82,6 +82,11 @@ const Cart = React.lazy(() => import('@/pages/Cart'));
 const ProgramDetail = React.lazy(() => import('@/pages/ProgramDetail'));
 const AccountSetup = React.lazy(() => import('@/pages/AccountSetup'));
 const NativeLogin = React.lazy(() => import('@/pages/NativeLogin'));
+const Login = React.lazy(() => import('@/pages/Login'));
+const Register = React.lazy(() => import('@/pages/Register'));
+const ForgotPassword = React.lazy(() => import('@/pages/ForgotPassword'));
+const ResetPassword = React.lazy(() => import('@/pages/ResetPassword'));
+const OAuthConsent = React.lazy(() => import('@/pages/OAuthConsent'));
 
 // Protected route wrapper—redirect to login if not authenticated
 const getLoginReturnRoute = () => {
@@ -453,6 +458,11 @@ const AuthenticatedApp = () => {
         <Route path="/order-incomplete" element={<OrderIncomplete />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
         <Route path="/native-login" element={<NativeLogin />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/oauth-consent" element={<OAuthConsent />} />
         <Route path="/account-setup" element={<AccountSetup />} />
         <Route path="/zone3-review-submitted" element={<Zone3ReviewSubmitted />} />
         {/* Redirect old/invalid routes to correct pages */}
