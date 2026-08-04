@@ -34,6 +34,8 @@ assert.match(campaignEntry, /const hasCampaignIntent = Boolean\(/);
 assert.match(campaignEntry, /body\.confirm === true/);
 assert.match(campaignEntry, /positiveInteger\(body\.max_recipient_ack\)/);
 assert.match(campaignEntry, /const hasJourneyIntent = Boolean\(/);
+assert.match(campaignEntry, /const platformScheduledInvocation = !user && !body\.event && !body\.data/);
+assert.match(campaignEntry, /platformScheduledInvocation \|\| \(!hasCampaignIntent && !hasJourneyIntent\)/);
 assert.match(campaignEntry, /!hasCampaignIntent && !hasJourneyIntent/);
 assert.ok(campaignEntry.indexOf('handleCustomerJourneyRequest') < campaignEntry.indexOf('campaignSendsDisabled()'));
 
