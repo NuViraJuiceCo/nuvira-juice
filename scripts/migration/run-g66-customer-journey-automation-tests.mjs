@@ -5,6 +5,7 @@ import fs from 'node:fs';
 const read = (path) => fs.readFileSync(path, 'utf8');
 const source = read('base44/functions/sendNotificationCampaign/customerJourneyAutomation.ts');
 const campaignEntry = read('base44/functions/sendNotificationCampaign/entry.ts');
+const schedulerEntry = read('base44/functions/customerJourneyAutomation/entry.ts');
 const cart = read('src/lib/cartContext.jsx');
 const checkout = read('src/pages/Checkout.jsx');
 const campaigns = read('src/pages/admin/NotificationCampaigns.jsx');
@@ -18,6 +19,9 @@ for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
 }
 
 assert.match(campaignEntry, /req\.method !== 'POST'/);
+assert.match(schedulerEntry, /req\.method !== 'POST'/);
+assert.match(schedulerEntry, /action: 'evaluate_scheduled'/);
+assert.doesNotMatch(schedulerEntry, /campaign_id|broad_send_confirmation|max_recipient_ack/);
 assert.match(campaignEntry, /async function optionalAuthenticatedUser/);
 assert.match(campaignEntry, /try \{\s*return await base44\.auth\.me\(\);\s*\} catch/);
 assert.match(campaignEntry, /const user = await optionalAuthenticatedUser\(base44\)/);
