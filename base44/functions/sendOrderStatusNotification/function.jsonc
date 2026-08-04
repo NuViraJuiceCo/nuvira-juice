@@ -1,0 +1,31 @@
+{
+  "name": "sendOrderStatusNotification",
+  "entry": "entry.ts",
+  "automations": [
+    {
+      "name": "Order Status Notification Trigger",
+      "description": "Fires sendOrderStatusNotification when an order status changes to a delivery milestone (out_for_delivery, delivered, arriving_soon, etc.)",
+      "function_args": null,
+      "is_active": true,
+      "type": "entity",
+      "entity_name": "Order",
+      "event_types": [
+        "update"
+      ]
+    },
+    {
+      "name": "Elevated Transactional Push Sweep",
+      "description": "Releases authorized order pushes after quiet hours or minimum-delay windows.",
+      "function_args": {
+        "action": "elevated_scheduled_sweep"
+      },
+      "is_active": false,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "minutes",
+      "repeat_interval": 15,
+      "ends_type": "never"
+    }
+  ]
+}

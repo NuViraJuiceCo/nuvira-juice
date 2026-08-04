@@ -19,6 +19,21 @@ const APNS_PRIMARY_ENVIRONMENT = (Deno.env.get('APNS_PRIMARY_ENVIRONMENT') || 'p
   ? 'sandbox'
   : 'production';
 const APNS_ALLOW_ENV_FALLBACK = Deno.env.get('APNS_ALLOW_ENV_FALLBACK') !== 'false';
+const TRANSACTIONAL_TEST_RECIPIENT = 'info@nuvirajuice.com';
+
+const ELEVATED_TRANSACTIONAL_PUSH_SUBTYPES = new Set([
+  'scheduled_for_juicing',
+  'in_production',
+  'ready_for_pickup',
+  'out_for_delivery',
+  'arriving_soon',
+  'delivered',
+  'schedule_changed',
+  'order_delayed',
+  'order_cancelled',
+  'order_refunded',
+  'order_payment_failed',
+]);
 
 type Base44Client = any;
 type PushSubscriptionRecord = Record<string, any>;
@@ -46,6 +61,30 @@ async function readJsonBody(req: Request): Promise<Record<string, any> | null> {
 
 function envFlag(name: string): boolean {
   return Deno.env.get(name) === 'true';
+}
+
+function transactionalMode(): 'disabled' | 'test' | 'production' {
+  const mode = String(Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_MODE') || '').trim().toLowerCase();
+  return mode === 'test' || mode === 'production' ? mode : 'disabled';
+}
+
+function elevatedTransactionalPushEnabled(): boolean {
+  return envFlag('ENABLE_ELEVATED_TRANSACTIONAL_COMMUNICATIONS')
+    && Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_KILL_SWITCH') === 'false'
+    && transactionalMode() !== 'disabled'
+    && envFlag('ENABLE_ELEVATED_TRANSACTIONAL_PUSH')
+    && envFlag('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS');
+}
+
+function transactionalInternalTokenMatches(value: unknown): boolean {
+  const expected = String(Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN') || '');
+  const supplied = String(value || '');
+  if (!expected || expected.length !== supplied.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    mismatch |= expected.charCodeAt(index) ^ supplied.charCodeAt(index);
+  }
+  return mismatch === 0;
 }
 
 function normalizeSingleLine(value: unknown): string {
@@ -371,7 +410,25 @@ function notificationCampaignSendsEnabled(): boolean {
   return Deno.env.get('DISABLE_NOTIFICATION_CAMPAIGN_SENDS') !== 'true';
 }
 
-function pushSubtypeEnabled(notificationSubtype: string, type: string, source = ''): { enabled: boolean; reason: string | null } {
+function pushSubtypeEnabled(
+  notificationSubtype: string,
+  type: string,
+  source: string,
+  customerEmail: string,
+  _idempotencyKey: string,
+): { enabled: boolean; reason: string | null } {
+  if (source === 'elevated_transactional') {
+    if (!elevatedTransactionalPushEnabled()) {
+      return { enabled: false, reason: 'elevated_transactional_push_disabled' };
+    }
+    if (transactionalMode() === 'test' && customerEmail !== TRANSACTIONAL_TEST_RECIPIENT) {
+      return { enabled: false, reason: 'transactional_test_recipient_only' };
+    }
+    return ELEVATED_TRANSACTIONAL_PUSH_SUBTYPES.has(notificationSubtype)
+      ? { enabled: true, reason: null }
+      : { enabled: false, reason: 'elevated_transactional_push_subtype_not_allowed' };
+  }
+
   if (notificationSubtype === 'admin_push_test') {
     return envFlag('ENABLE_ADMIN_PUSH_NOTIFICATIONS')
       ? { enabled: true, reason: null }
@@ -686,16 +743,25 @@ Deno.serve(async (req) => {
     const message = normalizeSingleLine(body.message);
     const notificationSubtype = normalizeSingleLine(body.notification_subtype || 'general');
     const type = normalizeSingleLine(body.type || 'general');
-    const source = normalizeSingleLine(body.source);
+    const source = normalizeSingleLine(body.source || body.notification_origin || '');
     const notificationId = normalizeSingleLine(body.notification_id);
-    const idempotencyKey = normalizeSingleLine(body.idempotency_key || notificationId || `${notificationSubtype}:${Date.now()}`);
+    const idempotencyKey = normalizeSingleLine(body.idempotency_key || body.delivery_key || notificationId || `${notificationSubtype}:${Date.now()}`);
     const deepLink = normalizeSingleLine(body.deep_link || '/notifications') || '/notifications';
 
     if (!notificationId || !title || !message) {
       return Response.json({ error: 'Missing required fields: notification_id, title, message' }, { status: 400 });
     }
 
-    const allowed = pushSubtypeEnabled(notificationSubtype, type, source);
+    const transactionalProof = body.internal_token || body.transactional_proof;
+    if (source === 'elevated_transactional' && !transactionalInternalTokenMatches(transactionalProof)) {
+      return Response.json({
+        error: 'invalid_transactional_internal_token',
+        push_attempted: false,
+        push_sent: false,
+      }, { status: 403 });
+    }
+
+    const allowed = pushSubtypeEnabled(notificationSubtype, type, source, customerEmail, idempotencyKey);
     if (!allowed.enabled) {
       return Response.json({
         success: true,

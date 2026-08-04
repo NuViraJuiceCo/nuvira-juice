@@ -1,0 +1,4 @@
+{
+  "name": "sendCustomerNotification",
+  "entry": "entry.ts"
+}
