@@ -1,5 +1,3 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-
 type JourneyMode = 'disabled' | 'test' | 'production';
 type ConsentResult = {
   eligible: boolean;
@@ -784,16 +782,15 @@ async function sandboxEvent(base44: any, caller: any, body: Record<string, any>)
   return Response.json({ success: result.forwarded === true, event_id: result?.event?.event_id, resend_status: result?.event?.resend_status, forwarded: result.forwarded === true, error: result.error || result?.event?.error_message || null });
 }
 
-Deno.serve(async (req) => {
+export async function handleCustomerJourneyRequest(base44: any, caller: any, raw: Record<string, any>): Promise<Response | null> {
   try {
-    if (req.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
-    const base44 = createClientFromRequest(req);
-    const caller = await base44.auth.me().catch(() => null);
-    if (!caller) return Response.json({ error: 'unauthorized' }, { status: 401 });
-    const raw = await req.json().catch(() => null);
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return Response.json({ error: 'malformed_json' }, { status: 400 });
     const body = raw?.args && typeof raw.args === 'object' ? { ...raw, ...raw.args } : raw;
     const action = normalizeSingleLine(body?.action, 80);
+    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event'].includes(action);
+    const entityAutomation = Boolean(body?.event && body?.data);
+    if (!supportedAction && !entityAutomation) return null;
+
+    if (!caller) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
     if (action === 'record_activity') return await recordActivity(base44, caller, body);
 
@@ -804,11 +801,11 @@ Deno.serve(async (req) => {
     if (action === 'preview_rewards_email_campaign') return await previewRewardsCampaign(base44);
     if (action === 'evaluate_scheduled' || action === 'evaluate_now') return await evaluateJourneys(base44);
     if (action === 'sandbox_event') return await sandboxEvent(base44, caller, body);
-    if (body?.event && body?.data) return await processOrderChange(base44, body);
+    if (entityAutomation) return await processOrderChange(base44, body);
     return Response.json({ error: 'unsupported_action' }, { status: 400 });
   } catch (error) {
     const message = errorMessage(error);
     console.error(`[customerJourneyAutomation] ${message}`);
     return Response.json({ error: 'customer_journey_error', message }, { status: 500 });
   }
-});
+}

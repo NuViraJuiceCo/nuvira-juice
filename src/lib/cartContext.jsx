@@ -37,7 +37,7 @@ function recordJourneyActivity(eventName, items) {
     quantity: item.quantity,
     price: item.price,
   })) : [];
-  base44.functions.invoke('customerJourneyAutomation', {
+  base44.functions.invoke('sendNotificationCampaign', {
     action: 'record_activity',
     event_name: eventName,
     event_id: journeyEventId(eventName),
