@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { handleCustomerJourneyRequest } from '../sendNotificationCampaign/customerJourneyAutomation.ts';
 
 /**
  * Dedicated recurring customer-journey evaluator.
@@ -16,11 +15,11 @@ Deno.serve(async (req) => {
 
   try {
     const base44 = createClientFromRequest(req);
-    const response = await handleCustomerJourneyRequest(base44, null, {
+    const result = await base44.asServiceRole.functions.invoke('sendNotificationCampaign', {
       action: 'evaluate_scheduled',
     });
-
-    return response || Response.json({ error: 'scheduler_unavailable' }, { status: 500 });
+    const data = result?.data || result || {};
+    return Response.json(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error || 'unknown');
     console.error(`[customerJourneyAutomation] ${message}`);

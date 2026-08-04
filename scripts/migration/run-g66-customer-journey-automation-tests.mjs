@@ -21,6 +21,7 @@ for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
 assert.match(campaignEntry, /req\.method !== 'POST'/);
 assert.match(schedulerEntry, /req\.method !== 'POST'/);
 assert.match(schedulerEntry, /action: 'evaluate_scheduled'/);
+assert.match(schedulerEntry, /asServiceRole\.functions\.invoke\('sendNotificationCampaign'/);
 assert.doesNotMatch(schedulerEntry, /campaign_id|broad_send_confirmation|max_recipient_ack/);
 assert.match(campaignEntry, /async function optionalAuthenticatedUser/);
 assert.match(campaignEntry, /try \{\s*return await base44\.auth\.me\(\);\s*\} catch/);
