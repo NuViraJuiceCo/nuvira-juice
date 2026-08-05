@@ -9,6 +9,77 @@ function normalizePromotionCode(value) {
   return String(value || '').trim().toUpperCase();
 }
 
+function normalizeCustomerEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function rowUsesDiscountCode(row, code) {
+  const normalizedCode = normalizePromotionCode(code);
+  if (!normalizedCode) return false;
+  if (normalizePromotionCode(row?.promotion_code) === normalizedCode) return true;
+  if (normalizePromotionCode(row?.discount_code) === normalizedCode) return true;
+  return (Array.isArray(row?.discount_codes) ? row.discount_codes : []).some((value) => (
+    normalizePromotionCode(value && typeof value === 'object' ? value.code : value) === normalizedCode
+  ));
+}
+
+function orderConsumesDiscount(row) {
+  if (row?.payment_captured === true) return true;
+  const paymentStates = [row?.payment_status, row?.financial_status]
+    .map((value) => String(value || '').trim().toLowerCase());
+  if (paymentStates.some((value) => ['paid', 'captured', 'partially_refunded', 'refunded'].includes(value))) return true;
+  return ['partially_refunded', 'fully_refunded'].includes(String(row?.refund_status || '').trim().toLowerCase());
+}
+
+async function customerHasConsumedDiscount(base44, customerEmail, code) {
+  const rawEmail = String(customerEmail || '').trim();
+  const normalizedEmail = normalizeCustomerEmail(rawEmail);
+  if (!normalizedEmail || !normalizePromotionCode(code)) return false;
+
+  const emailCandidates = [...new Set([rawEmail, normalizedEmail].filter(Boolean))];
+  const loadRows = async (entity) => {
+    const pages = await Promise.all(emailCandidates.map((email) => (
+      entity.filter({ customer_email: email }, '-created_date', 200)
+    )));
+    return pages.flatMap((rows) => Array.isArray(rows) ? rows : []);
+  };
+  const [nativeOrders, shopifyOrders, approvalRequests] = await Promise.all([
+    loadRows(base44.asServiceRole.entities.Order),
+    loadRows(base44.asServiceRole.entities.ShopifyOrder),
+    loadRows(base44.asServiceRole.entities.DeliveryApprovalRequest),
+  ]);
+
+  if ([...nativeOrders, ...shopifyOrders].some((row) => (
+    orderConsumesDiscount(row) && rowUsesDiscountCode(row, code)
+  ))) return true;
+
+  return approvalRequests.some((row) => (
+    rowUsesDiscountCode(row, code) && (
+      String(row?.status || '').trim().toLowerCase() === 'captured' ||
+      String(row?.stripe_authorization_status || '').trim().toLowerCase() === 'succeeded'
+    )
+  ));
+}
+
+async function oneTimeRedemptionBlock(base44, promotion, customerEmail) {
+  if (!promotion?.code || promotion.once_per_customer !== true) return null;
+  try {
+    if (!await customerHasConsumedDiscount(base44, customerEmail, promotion.code)) return null;
+    return Response.json({
+      ok: false,
+      error_code: 'DISCOUNT_ALREADY_REDEEMED',
+      error: 'This one-time welcome offer has already been used on your account.',
+    }, { status: 409 });
+  } catch (error) {
+    console.error(`[PI] One-time discount redemption check failed: ${error.message}`);
+    return Response.json({
+      ok: false,
+      error_code: 'DISCOUNT_REDEMPTION_CHECK_UNAVAILABLE',
+      error: 'We could not verify this one-time offer right now. Please try again in a few minutes.',
+    }, { status: 503 });
+  }
+}
+
 async function resolvePromotion(base44, code, eligibleSubtotal, now = new Date()) {
   const normalizedCode = normalizePromotionCode(code);
   const merchandiseSubtotal = Number(eligibleSubtotal);
@@ -24,6 +95,7 @@ async function resolvePromotion(base44, code, eligibleSubtotal, now = new Date()
       discount_type: 'percent',
       percent: 0,
       amount: 0,
+      once_per_customer: false,
     };
   }
 
@@ -75,6 +147,7 @@ async function resolvePromotion(base44, code, eligibleSubtotal, now = new Date()
     discount_type: isFixed ? 'fixed_amount' : 'percent',
     percent: isFixed ? 0 : discountValue,
     amount: Math.min(merchandiseSubtotal, Math.round(cappedAmount * 100) / 100),
+    once_per_customer: discount.once_per_customer === true,
   };
 }
 
@@ -392,6 +465,8 @@ Deno.serve(async (req) => {
           error: 'This discount code is not valid for the current order.',
         }, { status: 400 });
       }
+      const redemptionBlock = await oneTimeRedemptionBlock(base44, discount, authenticatedUser.email);
+      if (redemptionBlock) return redemptionBlock;
       return Response.json({
         ok: true,
         discount: {
@@ -539,6 +614,12 @@ Deno.serve(async (req) => {
         error: 'This discount code is not valid for the current order.',
       }, { status: 400 });
     }
+    const redemptionBlock = await oneTimeRedemptionBlock(
+      base44,
+      promotion,
+      customer_email || authenticatedUser.email,
+    );
+    if (redemptionBlock) return redemptionBlock;
     const promotionDiscountAmt = promotion.type === 'promotion' ? promotion.amount : 0;
     const appliedPromotionDiscountAmt = Math.min(promotionDiscountAmt, merchandiseTotalBeforePromotion);
     const appliedReferralDiscountAmt = promotion.type === 'referral'

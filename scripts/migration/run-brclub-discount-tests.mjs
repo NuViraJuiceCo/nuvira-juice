@@ -28,7 +28,7 @@ const resolverSource = paymentIntentSource
     paymentIntentSource.indexOf('function normalizePromotionCode'),
     paymentIntentSource.indexOf('function normalizeNamePart'),
   )
-  .concat('\nresult = { resolvePromotion };');
+  .concat('\nresult = { resolvePromotion, customerHasConsumedDiscount };');
 const resolverContext = { result: null };
 vm.runInNewContext(resolverSource, resolverContext);
 
@@ -39,6 +39,19 @@ function discountBackend(rows) {
         DiscountCode: {
           filter: async (query) => rows.filter((row) => row.code === query.code),
         },
+      },
+    },
+  };
+}
+
+function redemptionBackend({ orders = [], shopifyOrders = [], approvalRequests = [] } = {}) {
+  const filterForEmail = (rows, query) => rows.filter((row) => row.customer_email === query.customer_email);
+  return {
+    asServiceRole: {
+      entities: {
+        Order: { filter: async (query) => filterForEmail(orders, query) },
+        ShopifyOrder: { filter: async (query) => filterForEmail(shopifyOrders, query) },
+        DeliveryApprovalRequest: { filter: async (query) => filterForEmail(approvalRequests, query) },
       },
     },
   };
@@ -72,6 +85,7 @@ assert.deepEqual(
     discount_type: 'percent',
     percent: 10,
     amount: 15.2,
+    once_per_customer: false,
     eligible_subtotal: 151.99,
   }))),
   {
@@ -95,6 +109,7 @@ assert.deepEqual(
     discount_type: 'percent',
     percent: 10,
     amount: 15.2,
+    once_per_customer: false,
   },
 );
 assert.deepEqual(
@@ -106,6 +121,7 @@ assert.deepEqual(
     discount_type: 'fixed_amount',
     percent: 0,
     amount: 3,
+    once_per_customer: false,
   },
 );
 assert.equal(await resolverContext.result.resolvePromotion(discountBackend([{ ...activePercent, active: false }]), 'BRCLUB', 100), null);
@@ -118,6 +134,24 @@ assert.equal(
   (await resolverContext.result.resolvePromotion(discountBackend([{ ...activePercent, maximum_discount: 7 }]), 'BRCLUB', 100)).amount,
   7,
 );
+assert.equal(
+  (await resolverContext.result.resolvePromotion(discountBackend([{ ...activePercent, once_per_customer: true }]), 'BRCLUB', 100)).once_per_customer,
+  true,
+);
+
+assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend(), 'customer@example.com', 'NUVIRASUMMER'), false);
+assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend({
+  orders: [{ customer_email: 'customer@example.com', payment_status: 'pending', promotion_code: 'NUVIRASUMMER' }],
+}), 'customer@example.com', 'NUVIRASUMMER'), false);
+assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend({
+  orders: [{ customer_email: 'customer@example.com', payment_status: 'paid', promotion_code: 'NUVIRASUMMER' }],
+}), 'customer@example.com', 'NUVIRASUMMER'), true);
+assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend({
+  shopifyOrders: [{ customer_email: 'customer@example.com', financial_status: 'refunded', discount_codes: ['NUVIRASUMMER'] }],
+}), 'customer@example.com', 'NUVIRASUMMER'), true);
+assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend({
+  approvalRequests: [{ customer_email: 'customer@example.com', status: 'captured', discount_code: 'NUVIRASUMMER' }],
+}), 'customer@example.com', 'NUVIRASUMMER'), true);
 
 assert.match(checkoutSource, /mode:\s*'validate_discount_code'/);
 assert.match(checkoutSource, /discount_code:\s*checkoutCode\?\.code/);
@@ -136,6 +170,8 @@ assert.match(
   /appliedPromotionDiscountAmt = Math\.min\(promotionDiscountAmt, merchandiseTotalBeforePromotion\)/
 );
 assert.match(paymentIntentSource, /INVALID_DISCOUNT_CODE/);
+assert.match(paymentIntentSource, /DISCOUNT_ALREADY_REDEEMED/);
+assert.match(paymentIntentSource, /customerHasConsumedDiscount/);
 assert.match(paymentIntentSource, /promotion_discount_amount:\s*appliedPromotionDiscountAmt/);
 assert.match(paymentIntentSource, /total_discounts:\s*totalDiscountAmount/);
 assert.doesNotMatch(
@@ -149,16 +185,19 @@ assert.match(shopifyPushSource, /applied_discount:\s*totalDiscountAmount > 0/);
 assert.match(zone3Source, /entities\.DiscountCode\.filter/);
 assert.match(zone3Source, /discount_eligible_subtotal/);
 assert.match(zone3Source, /discount_amount:\s*discount\.amount/);
+assert.match(zone3Source, /DISCOUNT_ALREADY_REDEEMED/);
+assert.match(zone3Source, /customerHasConsumedDiscount/);
 assert.match(zone3ApprovalSource, /captureMerchandiseTotal/);
 assert.match(zone3ApprovalSource, /discount_codes:\s*dar\.discount_code/);
 assert.match(adminPageSource, /entities\.DiscountCode\.create/);
 assert.match(adminPageSource, /entities\.DiscountCode\.update/);
+assert.match(adminPageSource, /One use per customer/);
 assert.match(appSource, /\/admin\/discount-codes/);
 assert.match(adminNavSource, /\/admin\/discount-codes/);
 
 assert.equal(discountCodeSchema.rls.read.user_condition.role, 'admin');
 assert.equal(discountCodeSchema.rls.create.user_condition.role, 'admin');
-for (const field of ['code', 'display_name', 'discount_kind', 'discount_type', 'discount_value', 'active']) {
+for (const field of ['code', 'display_name', 'discount_kind', 'discount_type', 'discount_value', 'once_per_customer', 'active']) {
   assert.ok(discountCodeSchema.properties[field], `DiscountCode schema is missing ${field}`);
 }
 for (const field of ['discount_eligible_subtotal', 'discount_code', 'discount_kind', 'discount_amount', 'discount_percent']) {

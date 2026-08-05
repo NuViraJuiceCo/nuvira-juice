@@ -9,6 +9,7 @@ type ConsentResult = {
 
 const POLICY_VERSION = 'g66-2026-08-04';
 const APP_URL = 'https://www.nuvirajuice.com';
+const DEFAULT_GOOGLE_REVIEW_URL = 'https://www.google.com/search?q=nuvirajuiceco#lrd=0x6ba31dd76fc40465:0x251d9ffa6e774456,3,,,,';
 const MAILING_ADDRESS = normalizeSingleLine(Deno.env.get('NUVIRA_MAILING_ADDRESS'), 300)
   || "NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366";
 const MAX_STATE_SCAN = 250;
@@ -522,7 +523,7 @@ async function orderPayload(base44: any, order: any) {
     CUSTOMER_NAME: customerName(profile, order),
     ORDER_NUMBER: normalizeSingleLine(order?.order_number || order?.id, 160),
     REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000)
-      || 'https://g.page/nuvirajuiceco/review',
+      || DEFAULT_GOOGLE_REVIEW_URL,
     SHOP_URL: `${APP_URL}/shop`,
     MAILING_ADDRESS,
   };
@@ -748,7 +749,7 @@ async function evaluateJourneys(base44: any) {
         POINTS: finiteNumber(pointsRecord?.total_points, 0),
         DISCOUNT_CODE: 'NuViraSummer',
         REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000)
-          || 'https://g.page/nuvirajuiceco/review',
+          || DEFAULT_GOOGLE_REVIEW_URL,
         REWARDS_URL: `${APP_URL}/rewards`,
       }));
     }
@@ -895,9 +896,9 @@ async function sandboxEvent(base44: any, caller: any, body: Record<string, any>)
   if (!EVENT_PROVIDER_NAMES[eventName]) return Response.json({ error: 'unsupported_journey_event' }, { status: 400 });
   const profile = await profileFor(base44, email);
   const payloads: Record<string, Record<string, any>> = {
-    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, DISCOUNT_CODE: 'NuViraSummer', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || 'https://g.page/nuvirajuiceco/review', REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },
+    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, DISCOUNT_CODE: 'NuViraSummer', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },
     cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x NuVira juice', ITEM_COUNT: 1, CART_TOTAL: 12, RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
-    order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || 'https://g.page/nuvirajuiceco/review', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+    order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     purchase_completed: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', MAILING_ADDRESS },
     reorder_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'July 14, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     loyalty_reward_unlocked: { CUSTOMER_NAME: customerName(profile), POINTS_BALANCE: 500, REWARD_TITLE: 'Free wellness shot', POINTS_REQUIRED: 500, REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },

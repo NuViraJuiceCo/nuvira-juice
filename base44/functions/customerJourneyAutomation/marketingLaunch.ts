@@ -9,7 +9,7 @@ const DRAFT_CONFIRMATION = 'CREATE NUVIRA MARKETING DRAFT';
 const TEST_CONFIRMATION = 'SEND NUVIRA MARKETING PROOF';
 const HOLD_CONFIRMATION = 'HOLD NUVIRA MARKETING ORDER';
 const APP_URL = 'https://www.nuvirajuice.com';
-const FALLBACK_REVIEW_URL = 'https://g.page/nuvirajuiceco/review';
+const FALLBACK_REVIEW_URL = 'https://www.google.com/search?q=nuvirajuiceco#lrd=0x6ba31dd76fc40465:0x251d9ffa6e774456,3,,,,';
 const MAILING_ADDRESS = "NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366";
 
 type ContactRow = {

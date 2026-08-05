@@ -39,6 +39,11 @@
       "type": "number",
       "description": "Optional maximum USD discount for percentage codes"
     },
+    "once_per_customer": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, the code is rejected after the customer has a paid, captured, or refunded order using it"
+    },
     "starts_at": {
       "type": "string",
       "description": "Optional ISO activation timestamp"

@@ -20,6 +20,7 @@ const EMPTY_FORM = {
   discount_value: '10',
   minimum_subtotal: '0',
   maximum_discount: '',
+  once_per_customer: false,
   starts_at: '',
   ends_at: '',
   active: true,
@@ -98,6 +99,7 @@ export default function DiscountCodes() {
       discount_value: String(code.discount_value ?? ''),
       minimum_subtotal: String(code.minimum_subtotal ?? 0),
       maximum_discount: Number(code.maximum_discount || 0) > 0 ? String(code.maximum_discount) : '',
+      once_per_customer: code.once_per_customer === true,
       starts_at: toLocalInput(code.starts_at),
       ends_at: toLocalInput(code.ends_at),
       active: code.active === true,
@@ -147,6 +149,7 @@ export default function DiscountCodes() {
       discount_value: value,
       minimum_subtotal: minimum,
       maximum_discount: maximum,
+      once_per_customer: form.once_per_customer,
       starts_at: startsAt,
       ends_at: endsAt,
       active: form.active,
@@ -272,6 +275,14 @@ export default function DiscountCodes() {
               <Switch checked={form.active} onCheckedChange={(active) => setForm((prev) => ({ ...prev, active }))} />
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium text-foreground">One use per customer</p>
+                <p className="text-xs text-muted-foreground">Blocks the code after a successful purchase on that account.</p>
+              </div>
+              <Switch checked={form.once_per_customer} onCheckedChange={(once_per_customer) => setForm((prev) => ({ ...prev, once_per_customer }))} />
+            </div>
+
             <Button type="button" onClick={saveCode} disabled={saving} className="w-full">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingId ? <Save className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
               {editingId ? 'Save changes' : 'Create code'}
@@ -308,6 +319,7 @@ export default function DiscountCodes() {
                         <p className="mt-1 text-xs text-muted-foreground">
                           {discountValueLabel(code)} · {code.discount_kind === 'referral' ? 'Referral' : 'Promotion'}
                           {Number(code.minimum_subtotal || 0) > 0 ? ` · $${Number(code.minimum_subtotal).toFixed(2)} minimum` : ''}
+                          {code.once_per_customer ? ' · One use per customer' : ''}
                         </p>
                       </div>
                       {code.active ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" /> : <XCircle className="h-5 w-5 shrink-0 text-slate-500" />}
