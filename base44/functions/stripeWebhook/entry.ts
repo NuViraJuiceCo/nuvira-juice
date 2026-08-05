@@ -2187,6 +2187,9 @@ Deno.serve(async (req) => {
 
       const order = orders[0];
       const orderNumber = order.order_number;
+      const refundObjects = Array.isArray(charge.refunds?.data) ? charge.refunds.data : [];
+      const latestRefund = refundObjects.find((refund) => refund?.id && Number(refund?.amount || 0) > 0) || null;
+      const stripeRefundId = latestRefund?.id || charge.id;
 
       // IDEMPOTENCY: Check if already refunded
       if (order.payment_status === 'refunded' || order.status === 'refunded' || order.status === 'cancelled') {
@@ -2196,17 +2199,55 @@ Deno.serve(async (req) => {
 
       console.log(`[charge.refunded] Processing refund for Order ${orderNumber} (${order.id}), customer ${order.customer_email}`);
 
+      // Partial refunds must never terminalize the paid order or enter the full-refund
+      // Hub cascade. The order-adjustment workflow independently updates fulfillment
+      // demand; this branch records Stripe provider truth and remains idempotent.
+      if (!isFullRefund) {
+        if (order.refund_event_id === stripeEventId || order.stripe_refund_id === stripeRefundId) {
+          return Response.json({ received: true, action: 'partial_refund_already_recorded' });
+        }
+        const approvedCustomerAdjustment = latestRefund?.metadata?.operation === 'customer_order_adjustment_oasis_refund';
+        await base44.asServiceRole.entities.Order.update(order.id, {
+          refund_status: 'partially_refunded',
+          refund_type: 'partial',
+          refund_amount: refundAmount,
+          refund_currency: String(charge.currency || 'usd').toUpperCase(),
+          refunded_at: new Date().toISOString(),
+          refund_source: 'stripe_webhook',
+          refund_event_id: stripeEventId,
+          stripe_refund_id: stripeRefundId,
+          refund_reason: approvedCustomerAdjustment
+            ? 'Customer requested refund for the OASIS portion only.'
+            : 'Stripe partial refund received; operational review required.',
+          refund_review_required: !approvedCustomerAdjustment,
+          refund_review_status: approvedCustomerAdjustment ? 'resolved' : 'pending',
+          is_partial_refund: true,
+          sync_status: approvedCustomerAdjustment ? 'customer_adjustment_hub_pending' : 'partial_refund_review_required',
+          status_history: [...(order.status_history || []), {
+            status: order.status,
+            timestamp: new Date().toISOString(),
+            message: `Stripe partial refund recorded: $${refundAmount}. Order lifecycle remains active.`,
+          }],
+        });
+        await base44.asServiceRole.entities.OrderSyncLog.create({
+          order_number: orderNumber,
+          status: 'success',
+          hub_action: approvedCustomerAdjustment ? 'customer_adjustment_partial_refund_recorded' : 'partial_refund_review_required',
+          description: `Stripe partial refund recorded without terminalizing the paid order. event=${stripeEventId}`,
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          triggered_by: 'stripe_webhook',
+        }).catch(() => {});
+        return Response.json({
+          received: true,
+          action: approvedCustomerAdjustment ? 'customer_adjustment_partial_refund_recorded' : 'partial_refund_review_required',
+          refund_amount: refundAmount,
+        });
+      }
+
       // Determine refund type and action
       let newStatus = 'refunded';
       let action = 'full_refund_processed';
-      
-      if (!isFullRefund) {
-        // Partial refund policy: flag for manual review, do NOT auto-cancel
-        console.warn(`[charge.refunded] PARTIAL refund detected for ${orderNumber}. Flagging for manual review.`);
-        action = 'partial_refund_manual_review';
-        // For partial refunds, we still mark as refunded but operations should review
-        newStatus = 'refunded';
-      }
 
       // Update Customer App Order
       const statusHistory = [...(order.status_history || []), {
@@ -2221,9 +2262,9 @@ Deno.serve(async (req) => {
         financial_status: 'refunded',
         payment_captured: false,
         refunded_at: new Date().toISOString(),
-        refund_id: charge.id,
+        refund_id: stripeRefundId,
         refund_amount: refundAmount,
-        is_partial_refund: !isFullRefund,
+        is_partial_refund: false,
         sync_status: 'refund_pending_hub_sync',
         status_history: statusHistory,
       });
@@ -2363,6 +2404,36 @@ Deno.serve(async (req) => {
       if (orders.length > 0) {
         const order = orders[0];
         console.log(`[refund.updated] Order ${order.order_number} linked to refund ${refund.id}, status: ${refund.status}`);
+
+        const refundAmount = Number(refund.amount || 0) / 100;
+        const isKnownPartial = refund.metadata?.operation === 'customer_order_adjustment_oasis_refund'
+          || order.refund_type === 'partial'
+          || order.refund_status === 'partially_refunded'
+          || order.is_partial_refund === true
+          || (Number(order.total || 0) > 0 && refundAmount > 0 && refundAmount < Number(order.total));
+        if (refund.status === 'succeeded' && isKnownPartial) {
+          await base44.asServiceRole.entities.Order.update(order.id, {
+            refund_status: 'partially_refunded',
+            refund_type: 'partial',
+            refund_amount: Math.max(Number(order.refund_amount || 0), refundAmount),
+            refund_currency: String(refund.currency || order.refund_currency || 'usd').toUpperCase(),
+            refunded_at: new Date().toISOString(),
+            refund_source: 'stripe_webhook',
+            refund_event_id: event.id,
+            stripe_refund_id: refund.id,
+            refund_reason: refund.metadata?.operation === 'customer_order_adjustment_oasis_refund'
+              ? 'Customer requested refund for the OASIS portion only.'
+              : (order.refund_reason || 'Stripe partial refund received.'),
+            refund_review_required: refund.metadata?.operation === 'customer_order_adjustment_oasis_refund'
+              ? false
+              : order.refund_review_required !== false,
+            refund_review_status: refund.metadata?.operation === 'customer_order_adjustment_oasis_refund'
+              ? 'resolved'
+              : (order.refund_review_status || 'pending'),
+            is_partial_refund: true,
+          });
+          return Response.json({ received: true, action: 'partial_refund_status_recorded' });
+        }
         
         // REPAIR GUARD: If refund is 'succeeded' but order is NOT in terminal state, repair it now.
         // This catches cases where charge.refunded was missed but refund.updated arrives later.

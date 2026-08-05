@@ -4,6 +4,7 @@ import {
   CUSTOMER_ORDER_ADJUSTMENT_CHOICES,
   handleCustomerOrderAdjustmentRequest,
 } from '../../base44/functions/processManualRefund/customerOrderAdjustment.ts';
+import { readFile } from 'node:fs/promises';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -44,9 +45,14 @@ function fixture() {
       customer_name: 'Lee Burton',
       customer_email: 'lee@example.test',
       payment_status: 'paid',
+      financial_status: 'paid',
+      payment_captured: true,
       status: 'scheduled_for_juicing',
       assigned_delivery_date: '2026-08-05',
       production_date: '2026-08-04',
+      assigned_production_day: '2026-08-04',
+      stripe_payment_intent_id: 'pi_synthetic_lee',
+      total: 47.99,
       items: [
         { title: 'The NuVira Trio', quantity: 1, price: 36 },
         { title: 'Radiance Shot', quantity: 1, price: 6 },
@@ -61,6 +67,12 @@ function fixture() {
       requested_delivery_date: '2026-08-05',
       production_date: '2026-08-04',
       payment_status: 'paid',
+      production_status: 'awaiting_production',
+      fulfillment_mode: 'single_delivery',
+      line_items: [
+        { title: 'The NuVira Trio', quantity: 1, price: 36 },
+        { title: 'Radiance Shot', quantity: 1, price: 6 },
+      ],
     }]),
     FulfillmentTask: entityStore([{
       id: 'task_lee',
@@ -68,6 +80,17 @@ function fixture() {
       base44_order_id: 'order_lee',
       shopify_order_id: 'shopify_lee',
       order_number: 'NV-TEST-LEE',
+      customer_name: 'Lee Burton',
+      customer_email: 'lee@example.test',
+      fulfillment_number: 1,
+      delivery_date: '2026-08-05',
+      scheduled_date: '2026-08-05',
+      assigned_delivery_date: '2026-08-05',
+      production_date: '2026-08-04',
+      items: [
+        { title: 'The NuVira Trio', quantity: 1 },
+        { title: 'Radiance Shot', quantity: 1 },
+      ],
       status: 'pending',
       audit_trail: [],
     }]),
@@ -102,6 +125,9 @@ const EXPIRES = '2026-08-07T17:00:00.000Z';
 const ENV = {
   RESEND_API_KEY: 'synthetic_resend_key',
   TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN: 'synthetic_internal_token',
+  STRIPE_SECRET_KEY: 'sk_test_synthetic_only',
+  HUB_API_URL: 'https://hub.example.test',
+  CUSTOMER_APP_SYNC_SECRET: 'synthetic_hub_secret',
 };
 
 async function responseJson(response) {
@@ -124,6 +150,42 @@ function testFetch(calls, response = { ok: true, status: 200, json: async () => 
     assert.equal(url, 'https://api.resend.com/emails', 'unexpected external URL');
     calls.push({ url, init });
     return response;
+  };
+}
+
+function workflowFetch(emailCalls, hubCalls, options = {}) {
+  return async (url, init) => {
+    if (url === 'https://api.resend.com/emails') {
+      emailCalls.push({ url, init });
+      return options.emailResponse || { ok: true, status: 200, json: async () => ({ id: 'synthetic_email_1' }) };
+    }
+    if (url === 'https://hub.example.test/api/functions/receiveCustomerAppEvent') {
+      hubCalls.push({ url, init });
+      const request = JSON.parse(init.body);
+      if (typeof options.hubResponse === 'function') return options.hubResponse(request, hubCalls.length);
+      return options.hubResponse || {
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'success', action: request.event === 'order.adjustment_preflight' ? 'preflight_passed' : 'updated' }),
+      };
+    }
+    throw new Error(`unexpected external URL: ${url}`);
+  };
+}
+
+function stripeMock(options = {}) {
+  const calls = [];
+  return {
+    calls,
+    client: {
+      refunds: {
+        async create(payload, requestOptions) {
+          calls.push({ payload: clone(payload), requestOptions: clone(requestOptions) });
+          if (options.error) throw new Error('synthetic provider failure');
+          return options.result || { id: 're_synthetic_oasis', status: 'succeeded' };
+        },
+      },
+    },
   };
 }
 
@@ -187,8 +249,9 @@ async function run() {
   assert.equal(state.invocations.length, 1);
   assert.equal(state.invocations[0].payload.notification_subtype, 'order_delayed');
   assert.equal(state.invocations[0].payload.push_priority, 'high');
-  assert.equal(state.invocations[0].payload.title, 'Choose an update for order NV-TEST-LEE');
-  assert.match(state.invocations[0].payload.message, /full Friday production for one Saturday delivery/);
+  assert.equal(state.invocations[0].payload.title, 'A quick update for your NuVira order');
+  assert.equal(state.invocations[0].payload.message, 'Please choose what works best. For the freshest delivery, we recommend receiving your full order Saturday.');
+  assert.doesNotMatch(JSON.parse(emailCalls[0].init.body).html, /label delay|labels will arrive/i);
   assert.equal(state.stores.FulfillmentTask.rows[0].status, 'needs_review');
   assert.equal(state.stores.FulfillmentTask.rows[0].review_status, 'customer_choice_pending');
   assert.equal(state.stores.Order.rows[0].status, 'scheduled_for_juicing', 'prepare must not mutate order lifecycle');
@@ -208,7 +271,7 @@ async function run() {
   assert.equal(state.stores.OrderReviewQueue.rows.length, 1, 'prepare retry must reuse the request');
   assert.equal(emailCalls.length, 1, 'prepare retry must not resend email');
   assert.equal(state.stores.FulfillmentTask.rows[0].audit_trail.length, 1, 'prepare retry must not duplicate task audit events');
-  assertions += 24;
+  assertions += 25;
 
   const exactPreview = buildCustomerOrderAdjustmentCommunications({
     orderNumber: 'NV-TEST-LEE',
@@ -259,11 +322,14 @@ async function run() {
   for (const choice of Object.keys(CUSTOMER_ORDER_ADJUSTMENT_CHOICES)) {
     const choiceState = fixture();
     const calls = [];
+    const hubCalls = [];
+    const stripe = stripeMock();
+    const fetchImpl = workflowFetch(calls, hubCalls);
     await handleCustomerOrderAdjustmentRequest({
       base44: choiceState.base44,
       body: { ...prepareBody(), request_id: `choice-${choice}-20260804` },
       caller: { role: 'admin' },
-      fetchImpl: testFetch(calls),
+      fetchImpl,
       envGet: (name) => ENV[name] || '',
       now: NOW,
     });
@@ -271,32 +337,94 @@ async function run() {
     const response = await responseJson(await handleCustomerOrderAdjustmentRequest({
       base44: choiceState.base44,
       body: { action: 'submit_customer_order_adjustment', token: choiceToken, choice },
-      envGet: () => '',
+      fetchImpl,
+      envGet: (name) => ENV[name] || '',
+      stripeClient: stripe.client,
       now: NOW,
     }));
     assert.equal(response.status, 200);
     assert.equal(response.body.request.selected_choice, choice);
-    assert.match(choiceState.stores.FulfillmentTask.rows[0].review_reason, /Customer/);
-    assertions += 3;
+    assert.equal(response.body.request.request_state, 'completed');
+    assert.equal(choiceState.stores.OrderReviewQueue.rows[0].status, 'resolved');
+    assert.equal(hubCalls.length, 2);
+    const preflightRequest = JSON.parse(hubCalls[0].init.body);
+    const hubRequest = JSON.parse(hubCalls[1].init.body);
+    assert.equal(preflightRequest.event, 'order.adjustment_preflight');
+    assert.equal(hubRequest.event, 'order.adjustment_selected');
+    assert.equal(preflightRequest.data.choice, choice);
+    assert.equal(hubRequest.data.choice, choice);
+    assert.equal(hubCalls[0].init.headers.Authorization, `Bearer ${ENV.CUSTOMER_APP_SYNC_SECRET}`);
+    assert.equal(JSON.stringify(hubCalls).includes(ENV.CUSTOMER_APP_SYNC_SECRET), true, 'secret is confined to the authorization header');
+    assert.equal(JSON.stringify(preflightRequest).includes(ENV.CUSTOMER_APP_SYNC_SECRET), false);
+    assert.equal(JSON.stringify(hubRequest).includes(ENV.CUSTOMER_APP_SYNC_SECRET), false);
+
+    if (choice === 'full_order_saturday') {
+      assert.equal(choiceState.stores.Order.rows[0].production_date, '2026-08-07');
+      assert.equal(choiceState.stores.Order.rows[0].assigned_delivery_date, '2026-08-08');
+      assert.equal(choiceState.stores.ShopifyOrder.rows[0].fulfillments.length, 1);
+      assert.deepEqual(choiceState.stores.ShopifyOrder.rows[0].fulfillments[0].items.map((item) => item.title), ['Re-Nu', 'Aura', 'Oasis', 'Radiance Shot']);
+      assert.equal(choiceState.stores.FulfillmentTask.rows.length, 1);
+      assert.equal(stripe.calls.length, 0);
+    } else if (choice === 'oasis_saturday') {
+      assert.equal(choiceState.stores.Order.rows[0].production_date, '2026-08-04');
+      assert.equal(choiceState.stores.ShopifyOrder.rows[0].fulfillment_mode, 'multi_delivery');
+      assert.equal(choiceState.stores.ShopifyOrder.rows[0].fulfillments.length, 2);
+      assert.deepEqual(choiceState.stores.ShopifyOrder.rows[0].fulfillments[1].items.map((item) => item.title), ['Oasis']);
+      assert.equal(choiceState.stores.FulfillmentTask.rows.length, 2);
+      assert.deepEqual(choiceState.stores.FulfillmentTask.rows[1].items.map((item) => item.title), ['Oasis']);
+      assert.equal(stripe.calls.length, 0);
+    } else {
+      assert.equal(stripe.calls.length, 1);
+      assert.equal(stripe.calls[0].payload.amount, 1200);
+      assert.equal(stripe.calls[0].payload.payment_intent, 'pi_synthetic_lee');
+      assert.match(stripe.calls[0].requestOptions.idempotencyKey, /oasis-refund$/);
+      assert.equal(choiceState.stores.Order.rows[0].status, 'scheduled_for_juicing');
+      assert.equal(choiceState.stores.Order.rows[0].payment_status, 'paid');
+      assert.equal(choiceState.stores.Order.rows[0].refund_status, 'partially_refunded');
+      assert.equal(choiceState.stores.ShopifyOrder.rows[0].payment_status, 'paid');
+      assert.equal(choiceState.stores.ShopifyOrder.rows[0].refund_status, 'partially_refunded');
+      assert.equal(choiceState.stores.FulfillmentTask.rows.length, 1);
+      assert.equal(choiceState.stores.FulfillmentTask.rows[0].items.some((item) => item.title === 'Oasis'), false);
+    }
+
+    const replay = await responseJson(await handleCustomerOrderAdjustmentRequest({
+      base44: choiceState.base44,
+      body: { action: 'submit_customer_order_adjustment', token: choiceToken, choice },
+      fetchImpl,
+      envGet: (name) => ENV[name] || '',
+      stripeClient: stripe.client,
+      now: NOW,
+    }));
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.skipped, true);
+    assert.equal(hubCalls.length, 2, 'completed replay must not repeat Hub preflight or synchronization');
+    if (choice === 'oasis_refund') assert.equal(stripe.calls.length, 1, 'completed replay must not repeat Stripe refund');
+    assertions += choice === 'full_order_saturday' ? 22 : (choice === 'oasis_saturday' ? 23 : 28);
   }
 
+  const stateHubCalls = [];
+  const stateStripe = stripeMock();
   const selected = await responseJson(await handleCustomerOrderAdjustmentRequest({
     base44: state.base44,
     body: { action: 'submit_customer_order_adjustment', token, choice: 'full_order_saturday' },
-    envGet: () => '',
+    fetchImpl: workflowFetch(emailCalls, stateHubCalls),
+    envGet: (name) => ENV[name] || '',
+    stripeClient: stateStripe.client,
     now: NOW,
   }));
   assert.equal(selected.status, 200);
   assert.equal(selected.body.request.selected_choice, 'full_order_saturday');
-  assert.equal(state.stores.OrderReviewQueue.rows[0].status, 'reviewing');
-  assert.equal(state.stores.FulfillmentTask.rows[0].review_status, 'customer_choice_received');
-  assert.equal(state.stores.Order.rows[0].assigned_delivery_date, '2026-08-05', 'customer selection must not bypass operator schedule confirmation');
+  assert.equal(state.stores.OrderReviewQueue.rows[0].status, 'resolved');
+  assert.equal(state.stores.FulfillmentTask.rows[0].review_status, 'resolved');
+  assert.equal(state.stores.Order.rows[0].assigned_delivery_date, '2026-08-08');
   assertions += 5;
 
   const replay = await responseJson(await handleCustomerOrderAdjustmentRequest({
     base44: state.base44,
     body: { action: 'submit_customer_order_adjustment', token, choice: 'full_order_saturday' },
-    envGet: () => '',
+    fetchImpl: workflowFetch(emailCalls, stateHubCalls),
+    envGet: (name) => ENV[name] || '',
+    stripeClient: stateStripe.client,
     now: NOW,
   }));
   assert.equal(replay.status, 200);
@@ -307,7 +435,9 @@ async function run() {
   const conflicting = await responseJson(await handleCustomerOrderAdjustmentRequest({
     base44: state.base44,
     body: { action: 'submit_customer_order_adjustment', token, choice: 'oasis_refund' },
-    envGet: () => '',
+    fetchImpl: workflowFetch(emailCalls, stateHubCalls),
+    envGet: (name) => ENV[name] || '',
+    stripeClient: stateStripe.client,
     now: NOW,
   }));
   assert.equal(conflicting.status, 409);
@@ -354,12 +484,137 @@ async function run() {
     assertions += 4;
   }
 
+  {
+    const failedRefundState = fixture();
+    const emails = [];
+    const hubCalls = [];
+    const failedStripe = stripeMock({ error: true });
+    const fetchImpl = workflowFetch(emails, hubCalls);
+    await handleCustomerOrderAdjustmentRequest({
+      base44: failedRefundState.base44,
+      body: { ...prepareBody(), request_id: 'refund-provider-failure-20260804' },
+      caller: { role: 'admin' },
+      fetchImpl,
+      envGet: (name) => ENV[name] || '',
+      now: NOW,
+    });
+    const failedToken = tokenFromEmail(emails);
+    const failed = await responseJson(await handleCustomerOrderAdjustmentRequest({
+      base44: failedRefundState.base44,
+      body: { action: 'submit_customer_order_adjustment', token: failedToken, choice: 'oasis_refund' },
+      fetchImpl,
+      envGet: (name) => ENV[name] || '',
+      stripeClient: failedStripe.client,
+      now: NOW,
+    }));
+    assert.equal(failed.status, 502);
+    assert.equal(failed.body.retryable, true);
+    assert.equal(failedRefundState.stores.Order.rows[0].refund_status, undefined);
+    assert.equal(failedRefundState.stores.Order.rows[0].payment_status, 'paid');
+    assert.equal(hubCalls.length, 1, 'read-only Hub preflight must run before Stripe');
+    assert.equal(JSON.parse(hubCalls[0].init.body).event, 'order.adjustment_preflight');
+    assertions += 6;
+  }
+
+  {
+    const hubRetryState = fixture();
+    const emails = [];
+    const failedHubCalls = [];
+    const stripe = stripeMock();
+    const failedHubFetch = workflowFetch(emails, failedHubCalls, {
+      hubResponse: (request) => request.event === 'order.adjustment_preflight'
+        ? { ok: true, status: 200, json: async () => ({ status: 'success', action: 'preflight_passed' }) }
+        : { ok: false, status: 503, json: async () => ({ error: 'synthetic_hub_failure' }) },
+    });
+    await handleCustomerOrderAdjustmentRequest({
+      base44: hubRetryState.base44,
+      body: { ...prepareBody(), request_id: 'refund-hub-retry-20260804' },
+      caller: { role: 'admin' },
+      fetchImpl: failedHubFetch,
+      envGet: (name) => ENV[name] || '',
+      now: NOW,
+    });
+    const retryToken = tokenFromEmail(emails);
+    const pending = await responseJson(await handleCustomerOrderAdjustmentRequest({
+      base44: hubRetryState.base44,
+      body: { action: 'submit_customer_order_adjustment', token: retryToken, choice: 'oasis_refund' },
+      fetchImpl: failedHubFetch,
+      envGet: (name) => ENV[name] || '',
+      stripeClient: stripe.client,
+      now: NOW,
+    }));
+    assert.equal(pending.status, 503);
+    assert.equal(pending.body.retryable, true);
+    assert.equal(pending.body.request.request_state, 'hub_retry_required');
+    assert.equal(stripe.calls.length, 1);
+    assert.equal(hubRetryState.stores.Order.rows[0].refund_status, 'partially_refunded');
+
+    const successfulHubCalls = [];
+    const completed = await responseJson(await handleCustomerOrderAdjustmentRequest({
+      base44: hubRetryState.base44,
+      body: { action: 'submit_customer_order_adjustment', token: retryToken, choice: 'oasis_refund' },
+      fetchImpl: workflowFetch(emails, successfulHubCalls),
+      envGet: (name) => ENV[name] || '',
+      stripeClient: stripe.client,
+      now: new Date('2026-08-04T22:35:00.000Z'),
+    }));
+    assert.equal(completed.status, 200);
+    assert.equal(completed.body.request.request_state, 'completed');
+    assert.equal(stripe.calls.length, 1, 'Hub retry must reuse the successful Stripe refund');
+    assert.equal(successfulHubCalls.length, 2);
+    assert.equal(hubRetryState.stores.FulfillmentTask.rows[0].audit_trail.filter((row) => row.event === 'customer_order_adjustment_applied').length, 1);
+    assertions += 10;
+  }
+
+  {
+    const lockedState = fixture();
+    const emails = [];
+    const hubCalls = [];
+    const stripe = stripeMock();
+    const fetchImpl = workflowFetch(emails, hubCalls, {
+      hubResponse: { ok: false, status: 409, json: async () => ({ error: 'locked_production_batch_requires_operator' }) },
+    });
+    await handleCustomerOrderAdjustmentRequest({
+      base44: lockedState.base44,
+      body: { ...prepareBody(), request_id: 'locked-hub-preflight-20260804' },
+      caller: { role: 'admin' },
+      fetchImpl,
+      envGet: (name) => ENV[name] || '',
+      now: NOW,
+    });
+    const token = tokenFromEmail(emails);
+    const before = clone({
+      order: lockedState.stores.Order.rows[0],
+      operational: lockedState.stores.ShopifyOrder.rows[0],
+    });
+    const blocked = await responseJson(await handleCustomerOrderAdjustmentRequest({
+      base44: lockedState.base44,
+      body: { action: 'submit_customer_order_adjustment', token, choice: 'oasis_refund' },
+      fetchImpl,
+      envGet: (name) => ENV[name] || '',
+      stripeClient: stripe.client,
+      now: NOW,
+    }));
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.body.error, 'order_adjustment_no_longer_available');
+    assert.equal(stripe.calls.length, 0);
+    assert.equal(hubCalls.length, 1);
+    assert.deepEqual(lockedState.stores.Order.rows[0], before.order);
+    assert.deepEqual(lockedState.stores.ShopifyOrder.rows[0], before.operational);
+    assert.equal(lockedState.stores.OrderReviewQueue.rows[0].incoming_payload.selected_choice, null);
+    assertions += 7;
+  }
+
   assert.deepEqual(Object.keys(CUSTOMER_ORDER_ADJUSTMENT_CHOICES), [
     'full_order_saturday',
     'oasis_saturday',
     'oasis_refund',
   ]);
-  assertions += 1;
+  const orderOptionsSource = await readFile(new URL('../../src/pages/OrderOptions.jsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(orderOptionsSource, /label delay|labels will arrive/i);
+  assert.match(orderOptionsSource, /submitError\?\.response\?\.data\?\.request/);
+  assert.match(orderOptionsSource, /failureRequest\?\.selected_choice/);
+  assertions += 4;
 
   console.log(`customer order adjustment tests: ${assertions} assertions passed`);
   console.log('external network requests: 0 (all approved provider calls mocked)');

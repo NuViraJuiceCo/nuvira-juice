@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import Stripe from 'npm:stripe@14.21.0';
 import {
   CUSTOMER_ORDER_ADJUSTMENT_ACTIONS,
   handleCustomerOrderAdjustmentRequest,
@@ -38,7 +39,9 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me().catch(() => null);
     if (CUSTOMER_ORDER_ADJUSTMENT_ACTIONS.has(String(body.action || '').trim())) {
       try {
-        return await handleCustomerOrderAdjustmentRequest({ base44, body, caller: user });
+        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY') || '';
+        const stripeClient = stripeKey ? new Stripe(stripeKey, { apiVersion: '2023-10-16' }) : null;
+        return await handleCustomerOrderAdjustmentRequest({ base44, body, caller: user, stripeClient });
       } catch (error) {
         console.error('[processManualRefund] Customer order-adjustment request failed', error instanceof Error ? error.name : 'unknown_error');
         return Response.json({ error: 'customer_order_adjustment_failed' }, { status: 500 });

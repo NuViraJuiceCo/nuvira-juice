@@ -58,7 +58,9 @@ export default function OrderOptions() {
         if (!data?.success || !data.request) throw new Error(data?.error || 'request_unavailable');
         setRequest(data.request);
         if (data.request.selected_choice) setSelectedChoice(data.request.selected_choice);
-        setStatus(data.request.selected_choice ? 'complete' : 'ready');
+        setStatus(data.request.request_state === 'completed'
+          ? 'complete'
+          : (data.request.selected_choice ? 'retry' : 'ready'));
       } catch (loadError) {
         if (!active) return;
         setStatus('error');
@@ -83,10 +85,18 @@ export default function OrderOptions() {
       if (!data?.success || !data.request) throw new Error(data?.error || 'selection_failed');
       setRequest(data.request);
       setSelectedChoice(data.request.selected_choice);
-      setStatus('complete');
+      setStatus(data.request.request_state === 'completed' ? 'complete' : 'retry');
     } catch (submitError) {
-      setStatus('ready');
-      setError(parseError(submitError, 'Your choice was not saved. Please try again before closing this page.'));
+      const failureRequest = submitError?.response?.data?.request;
+      if (failureRequest?.selected_choice) {
+        setRequest(failureRequest);
+        setSelectedChoice(failureRequest.selected_choice);
+        setStatus('retry');
+        setError('Your choice is securely recorded, but the operational update did not finish. Please retry the same selection.');
+      } else {
+        setStatus(request?.selected_choice ? 'retry' : 'ready');
+        setError(parseError(submitError, 'Your choice was not saved. Please try again before closing this page.'));
+      }
     }
   }
 
@@ -128,7 +138,9 @@ export default function OrderOptions() {
               <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#526157] dark:text-white/65 sm:text-base">
                 {status === 'complete'
                   ? 'NuVira operations has received your selection. We will follow this choice when preparing and fulfilling your order.'
-                  : 'Our OASIS labels will arrive later this week. Nothing changes until you confirm one option below.'}
+                  : status === 'retry'
+                    ? 'Your choice is securely recorded, but one operational update still needs to finish. Use the button below to retry the same selection safely.'
+                    : 'To make sure every item meets our freshness and quality standards, OASIS needs a timing adjustment. Nothing changes until you confirm one option below.'}
               </p>
             </section>
 
@@ -174,6 +186,7 @@ export default function OrderOptions() {
                           value={choice.id}
                           checked={checked}
                           onChange={() => setSelectedChoice(choice.id)}
+                          disabled={status === 'retry' && selectedChoice !== choice.id}
                           className="sr-only"
                         />
                         <div className="flex items-start gap-3">
@@ -204,7 +217,7 @@ export default function OrderOptions() {
                   disabled={!selectedChoice || status === 'submitting'}
                   className="mt-5 flex h-12 w-full items-center justify-center rounded-lg bg-[#159947] px-5 text-sm font-bold text-white transition hover:bg-[#11813b] disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  {status === 'submitting' ? 'Confirming...' : 'Confirm my choice'}
+                  {status === 'submitting' ? 'Confirming...' : (status === 'retry' ? 'Finish my confirmed update' : 'Confirm my choice')}
                 </button>
                 <div className="mt-4 flex items-center justify-center gap-2 text-xs text-[#68746c] dark:text-white/50">
                   <ShieldCheck className="h-4 w-4" />
