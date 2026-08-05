@@ -4,6 +4,20 @@ import Stripe from 'npm:stripe@14.21.0';
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 
+function escapeHtml(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function money(value) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
+}
+
 function isStagingSafeMode() {
   return Deno.env.get('NUVIRA_STAGING_SAFE_MODE') === 'true';
 }
@@ -41,9 +55,8 @@ async function findSentDeliveryLog(base44, idempotencyKey) {
   try {
     const existingSentLogs = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
       idempotency_key: idempotencyKey,
-      status: 'sent',
-    }, '-created_date', 1);
-    return existingSentLogs[0] || null;
+    }, '-created_date', 5);
+    return existingSentLogs.find((row) => ['sent', 'delivered'].includes(row?.status)) || null;
   } catch (error) {
     console.warn(`[Zone3 Approve] Delivery log lookup failed: ${error.message}`);
     return null;
@@ -245,14 +258,15 @@ Deno.serve(async (req) => {
     }
 
     // Send approval email
-    const itemsSummary = (dar.cart_items || []).map(i => `${i.quantity}x ${i.title}`).join(', ') || '—';
-    const deliveryFormatted = scheduleResult.delivery_date
-      ? new Date(scheduleResult.delivery_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    const itemsSummary = (dar.cart_items || []).map(i => `${Math.max(1, Number(i?.quantity || 1))}x ${escapeHtml(i?.title || 'NuVira item')}`).join(', ') || '—';
+    const deliveryFormatted = canonicalSchedule.deliveryDate
+      ? new Date(`${canonicalSchedule.deliveryDate}T12:00:00`).toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
       : 'TBD';
     const approvalEmailHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial, sans-serif; color: #333; background: #f9f7f4; margin: 0; padding: 0; }
     .wrapper { max-width: 580px; margin: 40px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
@@ -278,23 +292,23 @@ Deno.serve(async (req) => {
       <p>Real. Living. Nutrition.</p>
     </div>
     <div class="body">
-      <p>Hi ${dar.customer_name || 'there'},</p>
+      <p>Hi ${escapeHtml(dar.customer_name || 'there')},</p>
       <p>Great news — your NuVira route review has been approved! Your order is confirmed and scheduled for juicing.</p>
       <div class="order-box">
-        <div class="row"><span class="label">Order Number</span><span class="value">${orderNumber}</span></div>
+        <div class="row"><span class="label">Order Number</span><span class="value">${escapeHtml(orderNumber)}</span></div>
         <div class="row"><span class="label">Items</span><span class="value">${itemsSummary}</span></div>
-        <div class="row"><span class="label">Delivery Address</span><span class="value">${resolvedDeliveryAddress}</span></div>
-        <div class="row"><span class="label">Delivery Fee</span><span class="value">$${captureDeliveryFee.toFixed(2)}</span></div>
-        <div class="row"><span class="label">Total Charged</span><span class="value">$${captureTotal.toFixed(2)}</span></div>
+        <div class="row"><span class="label">Delivery Address</span><span class="value">${escapeHtml(resolvedDeliveryAddress || 'Address on file')}</span></div>
+        <div class="row"><span class="label">Delivery Fee</span><span class="value">$${money(captureDeliveryFee)}</span></div>
+        <div class="row"><span class="label">Total Charged</span><span class="value">$${money(captureTotal)}</span></div>
       </div>
       <div class="delivery-banner">
         🚚 Scheduled Delivery
-        <strong>${deliveryFormatted}</strong>
+        <strong>${escapeHtml(deliveryFormatted)}</strong>
       </div>
       <p>We'll notify you when your order is on its way. Questions? Reply to this email or reach us at <a href="mailto:support@nuvirajuice.com" style="color:#2d6a4f;">support@nuvirajuice.com</a>.</p>
       <p style="margin-top:24px;">With love & greens,<br><strong>The NuVira Team 🌿</strong></p>
     </div>
-    <div class="footer">&copy; 2026 NuVira Juice Company · Wentzville, MO</div>
+    <div class="footer">&copy; 2026 NuVira Juice Company<br>619 N. Main St., O'Fallon, MO 63366</div>
   </div>
 </body>
 </html>`;

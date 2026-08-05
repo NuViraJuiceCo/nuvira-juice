@@ -38,6 +38,20 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || 'unknown');
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '').trim().replace(/\s+/g, ' ')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function money(value: unknown): string {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
+}
+
 /**
  * Sends order processed notification to operations@nuvirajuice.com
  * Triggered by: stripeWebhook after order is confirmed
@@ -65,7 +79,7 @@ Deno.serve(async (req) => {
     const itemsHtml = items?.map((item: OrderNotificationItem) => {
       const quantity = Number(item.quantity || 0);
       const price = Number(item.price || 0);
-      return `<tr><td style="padding: 8px;">${item.title}</td><td style="padding: 8px;">x${quantity}</td><td style="padding: 8px;">$${(price * quantity).toFixed(2)}</td></tr>`;
+      return `<tr><td style="padding: 8px;">${escapeHtml(item.title || 'NuVira item')}</td><td style="padding: 8px;">x${quantity}</td><td style="padding: 8px;">$${money(price * quantity)}</td></tr>`;
     }).join('') || '';
 
     const html = `
@@ -90,12 +104,12 @@ Deno.serve(async (req) => {
 <body>
   <div class="container">
     <div class="header">
-      <h1>Order #${order_number || order_id} Processed</h1>
+      <h1>Order #${escapeHtml(order_number || order_id || 'pending')} Processed</h1>
     </div>
     
     <div class="content">
-      <p><strong>Customer:</strong> ${customer_email}</p>
-      <p><strong>Delivery Address:</strong> ${delivery_address || 'N/A'}</p>
+      <p><strong>Customer:</strong> ${escapeHtml(customer_email || 'Not provided')}</p>
+      <p><strong>Delivery Address:</strong> ${escapeHtml(delivery_address || 'N/A')}</p>
       
       <div class="order-details">
         <h2>Order Summary</h2>
@@ -112,7 +126,7 @@ Deno.serve(async (req) => {
           </tbody>
         </table>
         <div class="total">
-          Total: $${total?.toFixed(2) || '0.00'}
+          Total: $${money(total)}
         </div>
       </div>
 

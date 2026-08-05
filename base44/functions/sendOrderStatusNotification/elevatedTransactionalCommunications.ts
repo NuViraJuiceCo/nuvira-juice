@@ -8,7 +8,7 @@ import {
 } from './orderCommunicationPolicy.js';
 import { buildOrderEmailHtml } from './orderEmailTemplate.js';
 
-const APP_ORIGIN = 'https://nuvirajuice.com';
+const APP_ORIGIN = 'https://www.nuvirajuice.com';
 const TIME_ZONE = 'America/Chicago';
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
 const TRANSACTIONAL_FROM = Deno.env.get('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <info@nuvirajuice.com>';

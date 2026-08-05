@@ -133,24 +133,10 @@ Deno.serve(async (req) => {
     const members = await base44.asServiceRole.entities.LoyaltyMember.filter({ email: customerEmail }, '-updated_date', 1);
     const member = members[0];
 
-    // Step 5: Send welcome email + notification (non-blocking)
-    const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    if (!loyaltyResult.idempotent && resendApiKey && Deno.env.get('ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL') === 'true') {
-      fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'nuvira@nuvirajuice.com',
-          to: customerEmail,
-          subject: '🎉 Welcome to NuVira!',
-          html: `<h2>Hi ${normalizedFirstName || 'there'},</h2><p>Welcome to NuVira Juice Co.! 🌿</p><p>You're enrolled in <strong>NuVira Rewards</strong> and earned <strong>250 bonus points</strong> just for joining!</p><h3>🎁 Rewards</h3><ul><li>500 pts → Free wellness shot</li><li>1,000 pts → Free delivery</li><li>2,500 pts → Free 32oz juice</li><li>5,000 pts → 6-pack bundle</li></ul><p><a href="https://www.nuvirajuice.com/rewards" style="background-color: #2d7c5e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Rewards</a></p><p>Cheers,<br/><strong>The NuVira Team</strong> 🍊</p>`,
-        }),
-      }).catch(err => console.warn('Email failed:', err.message));
-    }
-
+    // Step 5: Keep the in-app welcome notification local. The single canonical
+    // welcome email is emitted by customerJourneyAutomation after enrollment.
+    // Do not add a second direct-provider path here; it can duplicate messages
+    // and drift from the published Resend template.
     if (!loyaltyResult.idempotent) {
       base44.asServiceRole.entities.Notification.create({
         customer_email: customerEmail,

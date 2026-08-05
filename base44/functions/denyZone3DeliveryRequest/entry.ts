@@ -3,13 +3,21 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+function escapeHtml(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 async function findSentDeliveryLog(base44, idempotencyKey) {
   try {
     const existingSentLogs = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
       idempotency_key: idempotencyKey,
-      status: 'sent',
-    }, '-created_date', 1);
-    return existingSentLogs[0] || null;
+    }, '-created_date', 5);
+    return existingSentLogs.find((row) => ['sent', 'delivered'].includes(row?.status)) || null;
   } catch (error) {
     console.warn(`[Zone3 Deny] Delivery log lookup failed: ${error.message}`);
     return null;
@@ -135,6 +143,7 @@ Deno.serve(async (req) => {
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial, sans-serif; color: #333; background: #f9f7f4; margin: 0; padding: 0; }
     .wrapper { max-width: 580px; margin: 40px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
@@ -156,8 +165,8 @@ Deno.serve(async (req) => {
       <p>Real. Living. Nutrition.</p>
     </div>
     <div class="body">
-      <p>Hi ${dar.customer_name || 'there'},</p>
-      <p>Thank you for your interest in NuVira delivery to <strong>${resolvedAddress}</strong>.</p>
+      <p>Hi ${escapeHtml(dar.customer_name || 'there')},</p>
+      <p>Thank you for your interest in NuVira delivery to <strong>${escapeHtml(resolvedAddress || 'your area')}</strong>.</p>
       <p>Unfortunately, we're not able to offer delivery to your area at this time based on our current route schedule.</p>
       <div class="notice-box">
         <p>✅ <strong>No charge was made.</strong> The temporary authorization hold on your card has been fully released.</p>
@@ -170,7 +179,7 @@ Deno.serve(async (req) => {
       <p>Questions? Reply to this email or reach us at <a href="mailto:support@nuvirajuice.com" style="color:#2d6a4f;">support@nuvirajuice.com</a>.</p>
       <p style="margin-top:24px;">With love & greens,<br><strong>The NuVira Team 🌿</strong></p>
     </div>
-    <div class="footer">&copy; 2026 NuVira Juice Company · Wentzville, MO</div>
+    <div class="footer">&copy; 2026 NuVira Juice Company<br>619 N. Main St., O'Fallon, MO 63366</div>
   </div>
 </body>
 </html>`;

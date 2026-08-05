@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { buildOrderEmailHtml } from '../../base44/functions/sendOrderStatusNotification/orderEmailTemplate.js';
+import {
+  buildOrderCommunicationCopy,
+  orderCommunicationPolicySummary,
+} from '../../base44/functions/sendOrderStatusNotification/orderCommunicationPolicy.js';
 
 const read = (path) => fs.readFileSync(path, 'utf8');
 const source = read('base44/functions/customerJourneyAutomation/customerJourneyAutomation.ts');
@@ -13,7 +18,12 @@ const loyalty = read('base44/functions/createLoyaltyMember/entry.ts');
 const marketingLaunch = read('base44/functions/customerJourneyAutomation/marketingLaunch.ts');
 const orderConfirmation = read('base44/functions/sendOrderReceivedNotification/entry.ts');
 const transactionalCommunications = read('base44/functions/sendOrderStatusNotification/elevatedTransactionalCommunications.ts');
+const orderStatusEntry = read('base44/functions/sendOrderStatusNotification/entry.ts');
+const orderEmailTemplate = read('base44/functions/sendOrderStatusNotification/orderEmailTemplate.js');
 const stripeWebhook = read('base44/functions/stripeWebhook/entry.ts');
+const zone3Approval = read('base44/functions/approveZone3DeliveryRequest/entry.ts');
+const zone3Denial = read('base44/functions/denyZone3DeliveryRequest/entry.ts');
+const operationsEmail = read('base44/functions/notifyOrderProcessed/entry.ts');
 
 for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
   const schema = JSON.parse(read(`base44/entities/${entity}.jsonc`));
@@ -140,6 +150,47 @@ assert.match(orderConfirmation, /<strong>Status:<\/strong> Order confirmed/);
 assert.doesNotMatch(orderConfirmation, /Order Received — Scheduled for Juicing/);
 assert.doesNotMatch(orderConfirmation, /total\?\.toFixed/);
 assert.match(transactionalCommunications, /native-login\?return_to=/);
+assert.match(transactionalCommunications, /https:\/\/www\.nuvirajuice\.com/);
+assert.match(orderStatusEntry, /buildOrderCommunicationCopy\('delivered'/);
+assert.match(orderStatusEntry, /buildOrderEmailHtml/);
+assert.match(orderStatusEntry, /\['sent', 'delivered'\]\.includes/);
+assert.doesNotMatch(orderStatusEntry, /<p>Hi there,<\/p>/);
+assert.doesNotMatch(orderStatusEntry, /fullOrder\.total \|\| 0\)\.toFixed/);
+assert.ok(orderEmailTemplate.includes("NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366"));
+assert.doesNotMatch(orderEmailTemplate, /Wentzville, Missouri/);
+assert.match(orderConfirmation, /\['sent', 'delivered'\]\.includes/);
+for (const customerEmailSource of [zone3Approval, zone3Denial]) {
+  assert.match(customerEmailSource, /escapeHtml/);
+  assert.match(customerEmailSource, /\['sent', 'delivered'\]\.includes/);
+  assert.ok(customerEmailSource.includes("619 N. Main St., O'Fallon, MO 63366"));
+  assert.doesNotMatch(customerEmailSource, /Wentzville, MO/);
+  assert.match(customerEmailSource, /name="viewport"/);
+}
+assert.match(operationsEmail, /escapeHtml/);
+assert.match(operationsEmail, /function money/);
+assert.doesNotMatch(operationsEmail, /total\?\.toFixed/);
+
+const proofOrder = {
+  id: 'proof-order-id',
+  order_number: 'NV-PROOF-1001',
+  customer_name: '<script>alert(1)</script> Taylor',
+  customer_email: 'info@nuvirajuice.com',
+  items: [{ title: '<b>Oasis</b>', quantity: 2, price: '12.50' }],
+  total: '25.00',
+};
+for (const policy of orderCommunicationPolicySummary().filter((row) => row.email !== 'never')) {
+  const copy = buildOrderCommunicationCopy(policy.event, proofOrder);
+  const rendered = buildOrderEmailHtml({
+    copy,
+    order: proofOrder,
+    actionUrl: 'https://www.nuvirajuice.com/native-login?return_to=%2Forder-tracker%2FNV-PROOF-1001',
+  });
+  assert.doesNotMatch(rendered, /(?:undefined|null|NaN)/i, `${policy.event} rendered an invalid placeholder`);
+  assert.match(rendered, /619 N\. Main St\., O'Fallon, MO 63366/);
+  assert.match(rendered, /native-login\?return_to=/);
+  assert.doesNotMatch(rendered, /<script>/i);
+  assert.match(rendered, /&lt;script&gt;/);
+}
 assert.match(stripeWebhook, /customer_name:\s*resolvedCustomerName/);
 assert.match(source, /body\?\.event && body\?\.data/);
 assert.match(source, /asServiceRole\.entities\.Order\.get\(orderId\)/);
@@ -149,7 +200,8 @@ assert.ok(source.indexOf('if (entityAutomation)') < source.indexOf('if (!caller)
 assert.match(campaigns, /customerJourneyAutomation', \{ action: 'preview/);
 assert.match(campaigns, /sendNotificationCampaign/);
 
-assert.match(loyalty, /ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL/);
+assert.doesNotMatch(loyalty, /ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL/);
+assert.doesNotMatch(loyalty, /api\.resend\.com\/emails/);
 assert.match(loyalty, /total_points:\s*preorderBonus/);
 assert.match(loyalty, /points_history:\s*\[bonusEntry\]/);
 

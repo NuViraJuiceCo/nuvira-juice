@@ -48,9 +48,8 @@ async function findSentDeliveryLog(base44, idempotencyKey) {
   try {
     const existingSentLogs = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
       idempotency_key: idempotencyKey,
-      status: 'sent',
-    }, '-created_date', 1);
-    return existingSentLogs[0] || null;
+    }, '-created_date', 5);
+    return existingSentLogs.find((row) => ['sent', 'delivered'].includes(row?.status)) || null;
   } catch (error) {
     console.warn(`sendOrderReceivedNotification: delivery log lookup failed: ${error.message}`);
     return null;

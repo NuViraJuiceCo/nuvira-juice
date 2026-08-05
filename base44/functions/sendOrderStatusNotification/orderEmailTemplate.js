@@ -62,7 +62,7 @@ export function buildOrderEmailHtml({ copy, order, actionUrl, supportEmail = 'su
           <p style="margin:22px 0 0;font-size:14px;line-height:1.6;color:#405248;">Thank you for being part of NuVira Juice Company.</p>
         </td></tr>
         <tr><td style="border-top:1px solid #edf1ee;padding:20px 32px;text-align:center;color:#7a8980;font-size:11px;line-height:1.5;">
-          This is an order-related service message for order #${number}.<br>NuVira Juice Company · Wentzville, Missouri
+          This is an order-related service message for order #${number}.<br>NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366
         </td></tr>
       </table>
     </td></tr>
