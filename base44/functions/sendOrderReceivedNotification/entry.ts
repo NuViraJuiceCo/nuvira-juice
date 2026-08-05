@@ -1,6 +1,34 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+const APP_ORIGIN = 'https://www.nuvirajuice.com';
+
+function cleanText(value, max = 500) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
+}
+
+function escapeHtml(value) {
+  return cleanText(value, 4000)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function money(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
+}
+
+function customerFirstName(value) {
+  return cleanText(value, 160).split(/\s+/).filter(Boolean)[0] || 'there';
+}
+
+function orderTrackerUrl(orderNumber) {
+  const returnTo = `/order-tracker/${encodeURIComponent(cleanText(orderNumber, 120))}`;
+  return `${APP_ORIGIN}/native-login?return_to=${encodeURIComponent(returnTo)}`;
+}
 
 function buildOrderConfirmationEmailKey(orderId, orderNumber) {
   if (orderId) return `order_confirmation_email_${orderId}`;
@@ -45,8 +73,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { order_id, customer_email, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label, refund_notification } = await req.json();
+    const { order_id, customer_email, customer_name, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label, refund_notification } = await req.json();
     const idempotencyKey = buildOrderConfirmationEmailKey(order_id, order_number);
+    const safeOrderNumber = cleanText(order_number || order_id, 120) || 'your order';
 
     // Transactional policy: this function is only approved for order
     // confirmations. Refund/cancel notifications need a separately audited
@@ -84,17 +113,22 @@ Deno.serve(async (req) => {
     }
 
     // Format items list
-    const itemsHtml = items?.map(item => 
-      `<tr><td style="padding: 8px;">${item.title}</td><td style="padding: 8px;">x${item.quantity}</td><td style="padding: 8px;">$${(item.price * item.quantity).toFixed(2)}</td></tr>`
-    ).join('') || '';
+    const itemsHtml = (Array.isArray(items) ? items : []).slice(0, 40).map(item => {
+      const quantity = Math.max(1, Number(item?.quantity || 1));
+      const price = Number(item?.price || 0);
+      return `<tr><td style="padding: 8px;">${escapeHtml(item?.title || item?.name || 'NuVira item')}</td><td style="padding: 8px;">x${quantity}</td><td style="padding: 8px;">$${money(price * quantity)}</td></tr>`;
+    }).join('');
 
     // Format delivery date safely — prefer assigned_delivery_date, fall back to estimated_delivery_date
     const deliveryDateStr = assigned_delivery_date || estimated_delivery_date || null;
-    const windowLabel = delivery_window_label || '5 PM – 8 PM';
+    const windowLabel = cleanText(delivery_window_label, 120).replace(/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+/i, '') || '5 PM – 8 PM';
     let deliveryDateHtml = '';
     if (deliveryDateStr) {
       try {
-        const date = new Date(deliveryDateStr + 'T12:00:00');
+        const rawDeliveryDate = cleanText(deliveryDateStr, 120);
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDeliveryDate)
+          ? new Date(`${rawDeliveryDate}T12:00:00`)
+          : new Date(rawDeliveryDate);
         if (!isNaN(date.getTime())) {
           const formatted = new Intl.DateTimeFormat('en-US', {
             timeZone: 'America/Chicago',
@@ -114,11 +148,13 @@ Deno.serve(async (req) => {
       deliveryDateHtml = `<p><strong>Estimated Delivery:</strong> Delivery date pending confirmation.</p>`;
     }
 
+    const trackingUrl = orderTrackerUrl(safeOrderNumber);
     const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -135,20 +171,21 @@ Deno.serve(async (req) => {
   </style>
 </head>
 <body>
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your NuVira order is confirmed.</div>
   <div class="container">
     <div class="header">
       <h1>Order Confirmed!</h1>
     </div>
     
     <div class="content">
-      <p>Hi,</p>
+      <p>Hi ${escapeHtml(customerFirstName(customer_name))},</p>
       <p>Thanks for your order! We're excited to prepare your fresh juices.</p>
       
       <div class="order-details">
-        <h2>Order #${order_number || order_id}</h2>
-        <p><strong>Status:</strong> Order Received — Scheduled for Juicing</p>
+        <h2>Order #${escapeHtml(safeOrderNumber)}</h2>
+        <p><strong>Status:</strong> Order confirmed</p>
         ${deliveryDateHtml}
-        ${delivery_address ? `<p><strong>Delivery Address:</strong> ${delivery_address}</p>` : ''}
+        ${delivery_address ? `<p><strong>Delivery Address:</strong> ${escapeHtml(delivery_address)}</p>` : ''}
       </div>
 
       <h3>Order Summary</h3>
@@ -166,17 +203,18 @@ Deno.serve(async (req) => {
       </table>
 
       <div class="total">
-        Total: $${total?.toFixed(2) || '0.00'}
+        Total: $${money(total)}
       </div>
 
       <p>Track your order anytime in your account dashboard.</p>
+      <p style="text-align:center;"><a class="button" href="${escapeHtml(trackingUrl)}">View My Order</a></p>
       
-      <p>Questions? Reply to this email or contact support@nuvirajuice.com</p>
-      <p>Fresh. Living. Nutrition.<br>NuVira Juice Co.</p>
+      <p>Questions? Reply to this email or contact <a href="mailto:support@nuvirajuice.com">support@nuvirajuice.com</a>.</p>
+      <p>Real. Living. Nutrition.<br>NuVira Juice Co.</p>
     </div>
 
     <div class="footer">
-      <p>&copy; 2026 NuVira Juice Company. All rights reserved.</p>
+      <p>&copy; 2026 NuVira Juice Company. All rights reserved.<br>619 N. Main St., O'Fallon, MO 63366</p>
     </div>
   </div>
 </body>
@@ -192,7 +230,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: 'NuVira Juice Co <info@nuvirajuice.com>',
         to: customer_email,
-        subject: `Your Order #${order_number || order_id} is Confirmed!`,
+        subject: `Your Order #${safeOrderNumber} is Confirmed!`,
         html,
       }),
     });

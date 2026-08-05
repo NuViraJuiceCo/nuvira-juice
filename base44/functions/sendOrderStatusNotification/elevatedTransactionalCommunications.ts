@@ -279,7 +279,8 @@ async function sendTransactionalEmail(base44: any, order: AnyRecord, event: stri
     },
   });
   const orderNumber = order.order_number || order.id;
-  const actionUrl = `${APP_ORIGIN}/order-tracker/${encodeURIComponent(orderNumber)}`;
+  const returnTo = `/order-tracker/${encodeURIComponent(orderNumber)}`;
+  const actionUrl = `${APP_ORIGIN}/native-login?return_to=${encodeURIComponent(returnTo)}`;
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {

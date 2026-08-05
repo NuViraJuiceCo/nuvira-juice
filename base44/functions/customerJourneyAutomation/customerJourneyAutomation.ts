@@ -24,6 +24,7 @@ const DEFAULT_CART_IDLE_MINUTES = 60;
 const DEFAULT_REORDER_DAYS = 21;
 const DEFAULT_WINBACK_DAYS = 60;
 const DEFAULT_SUNSET_DAYS = 180;
+const DEFAULT_SUNSET_GRACE_DAYS = 14;
 
 const EVENT_PROVIDER_NAMES: Record<string, string> = {
   cart_abandoned: 'nuvira.cart.abandoned',
@@ -145,6 +146,17 @@ function boundedInteger(name: string, fallback: number, min: number, max: number
 
 function envEnabled(name: string): boolean {
   return String(Deno.env.get(name) || '').trim().toLowerCase() === 'true';
+}
+
+function protectedCustomerUrl(path: string): string {
+  return `${APP_URL}/native-login?return_to=${encodeURIComponent(path)}`;
+}
+
+function subscriptionRecommendationEnabled(): boolean {
+  // Subscription plans are intentionally unavailable in the customer app.
+  // Keep this journey closed by default so an external provider automation
+  // cannot promote a destination that is not ready for customers.
+  return envEnabled('ENABLE_SUBSCRIPTION_RECOMMENDATION_EMAILS');
 }
 
 function journeyMode(): JourneyMode {
@@ -334,6 +346,115 @@ async function profileFor(base44: any, email: string): Promise<any | null> {
 async function existingJourneyEvent(base44: any, eventId: string): Promise<any | null> {
   const rows = await base44.asServiceRole.entities.CustomerJourneyEvent.filter({ event_id: eventId }, '-created_date', 3);
   return rows[0] || null;
+}
+
+async function recordLocalJourneyOutcome(base44: any, input: Record<string, any>) {
+  const eventId = normalizeSingleLine(input.event_id, 300);
+  const eventName = normalizeSingleLine(input.event_name, 80);
+  const customerEmail = normalizeEmail(input.customer_email);
+  if (!eventId || !customerEmail || !['marketing_sunset_suppressed', 'marketing_sunset_retained'].includes(eventName)) {
+    throw new Error('invalid_local_journey_outcome');
+  }
+  const prior = await existingJourneyEvent(base44, eventId);
+  if (prior) return { event: prior, duplicate: true };
+  const event = await base44.asServiceRole.entities.CustomerJourneyEvent.create({
+    event_id: eventId,
+    event_name: eventName,
+    event_at: dateOrNull(input.event_at)?.toISOString() || isoNow(),
+    customer_email: customerEmail,
+    source: 'backend',
+    marketing_eligible: false,
+    consent_status: normalizeSingleLine(input.consent_status, 30) || 'unknown',
+    payload: input.payload || {},
+    resend_status: 'not_applicable',
+    error_message: null,
+  });
+  return { event, duplicate: false };
+}
+
+async function applyMarketingSunset(base44: any, {
+  email,
+  noticeEvent,
+  noticeAt,
+  suppressionAt,
+  graceDays,
+}: Record<string, any>) {
+  const normalized = normalizeEmail(email);
+  const [preferences, consents, activities] = await Promise.all([
+    base44.asServiceRole.entities.NotificationPreference.filter({ customer_email: normalized }, '-updated_date', 5),
+    base44.asServiceRole.entities.MarketingConsent.filter({ customer_email: normalized }, '-updated_date', 5),
+    base44.asServiceRole.entities.CustomerJourneyEvent.filter({ customer_email: normalized }, '-event_at', 100),
+  ]);
+  const preference = preferences[0] || null;
+  const consent = consents[0] || null;
+  const consentStatus = normalizeSingleLine(consent?.email_status, 30).toLowerCase();
+  const responseEventNames = new Set([
+    'page_viewed',
+    'product_viewed',
+    'cart_updated',
+    'cart_viewed',
+    'checkout_started',
+    'purchase_completed',
+    'loyalty_joined',
+    'marketing_consent_updated',
+  ]);
+  const responseAtCandidates = [
+    dateOrNull(preference?.updated_date || preference?.created_date),
+    dateOrNull(consent?.updated_date || consent?.created_date),
+    ...activities
+      .filter((row: any) => responseEventNames.has(normalizeSingleLine(row?.event_name, 80)))
+      .map((row: any) => dateOrNull(row?.event_at)),
+  ].filter((value): value is Date => Boolean(value));
+  const respondedAfterNotice = responseAtCandidates.some((value) => value.getTime() > noticeAt.getTime());
+  const outcomeBase = `marketing_sunset_outcome:${noticeEvent.id || noticeEvent.event_id}:${graceDays}`;
+
+  if (consentStatus === 'unsubscribed' || preference?.promotions === false) {
+    return await recordLocalJourneyOutcome(base44, {
+      event_id: `${outcomeBase}:suppressed`,
+      event_name: 'marketing_sunset_suppressed',
+      event_at: suppressionAt,
+      customer_email: normalized,
+      consent_status: consentStatus || 'unknown',
+      payload: {
+        reason: consentStatus === 'unsubscribed' ? 'marketing_consent_unsubscribed' : 'customer_preference_disabled',
+        grace_days: graceDays,
+        preference_updated: false,
+      },
+    });
+  }
+
+  if (respondedAfterNotice) {
+    return await recordLocalJourneyOutcome(base44, {
+      event_id: `${outcomeBase}:retained`,
+      event_name: 'marketing_sunset_retained',
+      event_at: suppressionAt,
+      customer_email: normalized,
+      consent_status: consentStatus || 'unknown',
+      payload: { reason: 'customer_activity_after_notice', grace_days: graceDays },
+    });
+  }
+
+  if (preference?.id) {
+    await base44.asServiceRole.entities.NotificationPreference.update(preference.id, { promotions: false });
+  } else {
+    await base44.asServiceRole.entities.NotificationPreference.create({
+      customer_email: normalized,
+      order_updates: true,
+      delivery_updates: true,
+      subscription_updates: true,
+      production_reminders: true,
+      promotions: false,
+      rewards_credits: true,
+    });
+  }
+  return await recordLocalJourneyOutcome(base44, {
+    event_id: `${outcomeBase}:suppressed`,
+    event_name: 'marketing_sunset_suppressed',
+    event_at: suppressionAt,
+    customer_email: normalized,
+    consent_status: consentStatus || 'unknown',
+    payload: { reason: 'inactivity_grace_period_elapsed', grace_days: graceDays, preference_updated: true },
+  });
 }
 
 async function sendResendEvent(eventName: string, providerEventName: string, email: string, payload: Record<string, unknown>, eventId: string) {
@@ -638,6 +759,7 @@ async function evaluateJourneys(base44: any) {
   const reorderDays = boundedInteger('CUSTOMER_JOURNEY_REORDER_DAYS', DEFAULT_REORDER_DAYS, 7, 90);
   const winbackDays = boundedInteger('CUSTOMER_JOURNEY_WINBACK_DAYS', DEFAULT_WINBACK_DAYS, 30, 365);
   const sunsetDays = boundedInteger('CUSTOMER_JOURNEY_SUNSET_DAYS', DEFAULT_SUNSET_DAYS, 90, 730);
+  const sunsetGraceDays = boundedInteger('CUSTOMER_JOURNEY_SUNSET_GRACE_DAYS', DEFAULT_SUNSET_GRACE_DAYS, 7, 60);
   const now = new Date();
   const results: Array<Record<string, any>> = [];
   let candidates = 0;
@@ -750,7 +872,7 @@ async function evaluateJourneys(base44: any) {
         DISCOUNT_CODE: 'NuViraSummer',
         REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000)
           || DEFAULT_GOOGLE_REVIEW_URL,
-        REWARDS_URL: `${APP_URL}/rewards`,
+        REWARDS_URL: protectedCustomerUrl('/rewards'),
       }));
     }
 
@@ -773,7 +895,7 @@ async function evaluateJourneys(base44: any) {
         POINTS_BALANCE: current,
         REWARD_TITLE: normalizeSingleLine(unlocked?.title, 160),
         POINTS_REQUIRED: finiteNumber(unlocked?.points_required, 0),
-        REWARDS_URL: `${APP_URL}/rewards`,
+        REWARDS_URL: protectedCustomerUrl('/rewards'),
       }));
     }
 
@@ -792,11 +914,11 @@ async function evaluateJourneys(base44: any) {
       };
 
       const secondOrderAt = customerOrders[1] ? orderDate(customerOrders[1]) : null;
-      if (customerOrders.length >= 2 && !activeSubscriptionEmails.has(email) && eventAfterLaunch(lastAt)) {
+      if (subscriptionRecommendationEnabled() && customerOrders.length >= 2 && !activeSubscriptionEmails.has(email) && eventAfterLaunch(lastAt)) {
         await emit(() => emitMilestone(base44, 'subscription_recommended', `subscription_recommended:${email}:${lastOrder.id}`, email, lastAt, {
           ...common,
           ORDER_COUNT: customerOrders.length,
-          SUBSCRIBE_URL: `${APP_URL}/subscriptions`,
+          SUBSCRIBE_URL: `${APP_URL}/subscribe`,
         }, { order_id: lastOrder.id, order_number: lastOrder.order_number }));
       }
       if (results.length >= maxEvents) break;
@@ -815,11 +937,49 @@ async function evaluateJourneys(base44: any) {
 
       const sunsetAt = addDays(lastAt, sunsetDays);
       if (!activeSubscriptionEmails.has(email) && sunsetAt.getTime() <= now.getTime() && eventAfterLaunch(sunsetAt)) {
-        await emit(() => emitMilestone(base44, 'marketing_sunset_due', `marketing_sunset:${lastOrder.id}:${sunsetDays}`, email, sunsetAt, {
+        const sunsetResult = await emitMilestone(base44, 'marketing_sunset_due', `marketing_sunset:${lastOrder.id}:${sunsetDays}`, email, sunsetAt, {
           CUSTOMER_NAME: customerName(profile, lastOrder),
-          PREFERENCES_URL: `${APP_URL}/account/notifications`,
+          PREFERENCES_URL: protectedCustomerUrl('/account/settings'),
           SHOP_URL: `${APP_URL}/shop`,
-        }, { order_id: lastOrder.id, order_number: lastOrder.order_number }));
+        }, { order_id: lastOrder.id, order_number: lastOrder.order_number });
+        candidates++;
+        results.push({
+          event_id: sunsetResult?.event?.event_id,
+          event_name: sunsetResult?.event?.event_name,
+          resend_status: sunsetResult?.event?.resend_status,
+          duplicate: sunsetResult?.duplicate === true,
+          forwarded: sunsetResult?.forwarded === true,
+          error: sunsetResult?.error || null,
+        });
+
+        // The grace period begins when the notice is actually accepted by the
+        // email provider, not at the historical inactivity threshold.
+        const noticeDeliveredAt = dateOrNull(
+          sunsetResult?.event?.resend_forwarded_at || sunsetResult?.event?.created_date,
+        ) || now;
+        const suppressionAt = addDays(noticeDeliveredAt, sunsetGraceDays);
+        if (
+          results.length < maxEvents
+          && suppressionAt.getTime() <= now.getTime()
+          && sunsetResult?.event?.resend_status === 'accepted'
+        ) {
+          const outcome = await applyMarketingSunset(base44, {
+            email,
+            noticeEvent: sunsetResult.event,
+            noticeAt: noticeDeliveredAt,
+            suppressionAt,
+            graceDays: sunsetGraceDays,
+          });
+          candidates++;
+          results.push({
+            event_id: outcome?.event?.event_id,
+            event_name: outcome?.event?.event_name,
+            resend_status: outcome?.event?.resend_status,
+            duplicate: outcome?.duplicate === true,
+            forwarded: false,
+            error: null,
+          });
+        }
       }
       void secondOrderAt;
     }
@@ -854,6 +1014,15 @@ async function preview(base44: any) {
       converted_carts: states.filter((row: any) => row?.status === 'converted').length,
       accepted_events: events.filter((row: any) => row?.resend_status === 'accepted').length,
       failed_events: events.filter((row: any) => row?.resend_status === 'failed').length,
+      marketing_sunset_suppressed: events.filter((row: any) => row?.event_name === 'marketing_sunset_suppressed').length,
+      marketing_sunset_retained: events.filter((row: any) => row?.event_name === 'marketing_sunset_retained').length,
+    },
+    features: {
+      subscription_recommendation_enabled: subscriptionRecommendationEnabled(),
+      subscription_recommendation_url: `${APP_URL}/subscribe`,
+      marketing_preferences_url: protectedCustomerUrl('/account/settings'),
+      marketing_sunset_grace_days: boundedInteger('CUSTOMER_JOURNEY_SUNSET_GRACE_DAYS', DEFAULT_SUNSET_GRACE_DAYS, 7, 60),
+      marketing_sunset_auto_pause: true,
     },
     provider: {
       events: Object.values(EVENT_PROVIDER_NAMES),
@@ -884,6 +1053,20 @@ async function previewRewardsCampaign(base44: any) {
   });
 }
 
+function journeyProofPayloads(profile: any): Record<string, Record<string, any>> {
+  return {
+    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, DISCOUNT_CODE: 'NuViraSummer', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, REWARDS_URL: protectedCustomerUrl('/rewards'), MAILING_ADDRESS },
+    cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x NuVira juice', ITEM_COUNT: 1, CART_TOTAL: 12, RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
+    order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+    purchase_completed: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', MAILING_ADDRESS },
+    reorder_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'July 14, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+    loyalty_reward_unlocked: { CUSTOMER_NAME: customerName(profile), POINTS_BALANCE: 500, REWARD_TITLE: 'Free wellness shot', POINTS_REQUIRED: 500, REWARDS_URL: protectedCustomerUrl('/rewards'), MAILING_ADDRESS },
+    subscription_recommended: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', ORDER_COUNT: 2, SUBSCRIBE_URL: `${APP_URL}/subscribe`, MAILING_ADDRESS },
+    customer_winback_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'June 4, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+    marketing_sunset_due: { CUSTOMER_NAME: customerName(profile), PREFERENCES_URL: protectedCustomerUrl('/account/settings'), SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+  };
+}
+
 async function sandboxEvent(base44: any, caller: any, body: Record<string, any>) {
   if (normalizeSingleLine(body.confirm, 100) !== 'send_test_customer_journey') {
     return Response.json({ error: 'sandbox_confirmation_required', required_confirmation: 'send_test_customer_journey' }, { status: 409 });
@@ -895,17 +1078,7 @@ async function sandboxEvent(base44: any, caller: any, body: Record<string, any>)
   const eventName = normalizeSingleLine(body.event_name || 'loyalty_joined', 80);
   if (!EVENT_PROVIDER_NAMES[eventName]) return Response.json({ error: 'unsupported_journey_event' }, { status: 400 });
   const profile = await profileFor(base44, email);
-  const payloads: Record<string, Record<string, any>> = {
-    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, DISCOUNT_CODE: 'NuViraSummer', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },
-    cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x NuVira juice', ITEM_COUNT: 1, CART_TOTAL: 12, RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
-    order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
-    purchase_completed: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', MAILING_ADDRESS },
-    reorder_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'July 14, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
-    loyalty_reward_unlocked: { CUSTOMER_NAME: customerName(profile), POINTS_BALANCE: 500, REWARD_TITLE: 'Free wellness shot', POINTS_REQUIRED: 500, REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },
-    subscription_recommended: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', ORDER_COUNT: 2, SUBSCRIBE_URL: `${APP_URL}/subscriptions`, MAILING_ADDRESS },
-    customer_winback_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'June 4, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
-    marketing_sunset_due: { CUSTOMER_NAME: customerName(profile), PREFERENCES_URL: `${APP_URL}/account/notifications`, SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
-  };
+  const payloads = journeyProofPayloads(profile);
   const result = await createAndForwardEvent(base44, {
     event_id: `sandbox:${eventName}:${crypto.randomUUID()}`,
     event_name: eventName,
@@ -917,11 +1090,47 @@ async function sandboxEvent(base44: any, caller: any, body: Record<string, any>)
   return Response.json({ success: result.forwarded === true, event_id: result?.event?.event_id, resend_status: result?.event?.resend_status, forwarded: result.forwarded === true, error: result.error || result?.event?.error_message || null });
 }
 
+async function internalProofEvent(base44: any, body: Record<string, any>) {
+  const requiredConfirmation = 'SEND INTERNAL NUVIRA JOURNEY PROOF';
+  if (normalizeSingleLine(body.confirm, 100) !== requiredConfirmation) {
+    return Response.json({ error: 'internal_proof_confirmation_required', required_confirmation: requiredConfirmation }, { status: 409 });
+  }
+  const currentPolicy = policy();
+  const email = currentPolicy.test_recipient;
+  if (!email || email !== 'info@nuvirajuice.com') {
+    return Response.json({ error: 'internal_proof_recipient_not_configured' }, { status: 409 });
+  }
+  const eventName = normalizeSingleLine(body.event_name, 80);
+  if (!EVENT_PROVIDER_NAMES[eventName] || eventName === 'subscription_recommended') {
+    return Response.json({ error: 'unsupported_internal_proof_event' }, { status: 400 });
+  }
+  const profile = await profileFor(base44, email);
+  const payloads = journeyProofPayloads(profile);
+  const result = await createAndForwardEvent(base44, {
+    event_id: `internal_proof:${eventName}:${crypto.randomUUID()}`,
+    event_name: eventName,
+    event_at: isoNow(),
+    customer_email: email,
+    source: 'backend',
+    payload: payloads[eventName],
+  });
+  return Response.json({
+    success: result.forwarded === true,
+    internal_proof: true,
+    recipient: email,
+    event_name: eventName,
+    event_id: result?.event?.event_id,
+    resend_status: result?.event?.resend_status,
+    forwarded: result.forwarded === true,
+    error: result.error || result?.event?.error_message || null,
+  });
+}
+
 export async function handleCustomerJourneyRequest(base44: any, caller: any, raw: Record<string, any>): Promise<Response | null> {
   try {
     const body = raw?.args && typeof raw.args === 'object' ? { ...raw, ...raw.args } : raw;
     const action = normalizeSingleLine(body?.action, 80);
-    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event', 'marketing_launch_preview', 'marketing_launch_sync_contacts', 'marketing_launch_create_draft', 'marketing_launch_send_test', 'marketing_launch_set_order_hold'].includes(action);
+    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event', 'internal_proof_event', 'marketing_launch_preview', 'marketing_launch_sync_contacts', 'marketing_launch_create_draft', 'marketing_launch_send_test', 'marketing_launch_set_order_hold'].includes(action);
     const entityAutomation = Boolean(body?.event && body?.data);
     if (!supportedAction && !entityAutomation) return null;
 
@@ -945,6 +1154,7 @@ export async function handleCustomerJourneyRequest(base44: any, caller: any, raw
     if (marketingResponse) return marketingResponse;
     if (action === 'evaluate_now') return await evaluateJourneys(base44);
     if (action === 'sandbox_event') return await sandboxEvent(base44, caller, body);
+    if (action === 'internal_proof_event') return await internalProofEvent(base44, body);
     return Response.json({ error: 'unsupported_action' }, { status: 400 });
   } catch (error) {
     const message = errorMessage(error);

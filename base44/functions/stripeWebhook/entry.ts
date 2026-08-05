@@ -960,6 +960,7 @@ Deno.serve(async (req) => {
         base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
           order_id: order.id,
           customer_email: customerEmail,
+          customer_name: resolvedCustomerName,
           order_number: orderNumber,
           items: resolvedItems,
           total: order.total || orderData.total || 0,
@@ -1349,6 +1350,7 @@ Deno.serve(async (req) => {
         // Send notifications
         base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
           order_id: order.id, customer_email: customerEmail, order_number: orderNumber,
+          customer_name:         order.customer_name,
           items:                  order.items,
           total:                  order.total,
           delivery_address:       order.delivery_address,
@@ -1468,6 +1470,7 @@ Deno.serve(async (req) => {
         // Notifications
         base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
           order_id: newOrder.id, customer_email: customerEmail, order_number: orderNumber,
+          customer_name: newOrder.customer_name || meta.customer_name,
           items: [], total: amountPaid,
           assigned_delivery_date: meta.selected_delivery_date,
           delivery_window_label:  meta.delivery_window_label || '5 PM – 8 PM',
@@ -2238,6 +2241,7 @@ Deno.serve(async (req) => {
       base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
         order_id: order.id,
         customer_email: order.customer_email,
+        customer_name: order.customer_name,
         order_number: orderNumber,
         items: order.items,
         total: order.total,
