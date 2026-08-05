@@ -180,8 +180,9 @@ Deno.serve(async (req) => {
       return Response.json({
         success: true,
         skipped: true,
+        gate: 'ENABLE_GOOGLE_MERCHANT_PRODUCT_SYNC',
         reason: 'google_merchant_product_sync_disabled',
-        message: 'Google Merchant product sync is disabled for May 30 launch freeze.',
+        message: 'Google Merchant product sync is disabled by the current integration safety gate.',
       });
     }
 

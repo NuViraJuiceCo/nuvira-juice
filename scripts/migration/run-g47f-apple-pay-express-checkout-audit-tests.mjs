@@ -172,7 +172,6 @@ evidence.domain_environment.static_hostnames = [...new Set([
   ...(source.appParams.match(/https:\/\/[^'"`\s]+/g) || []),
   ...(source.seo.match(/https:\/\/[^'"`\s]+/g) || []),
   ...(source.createPaymentIntent.match(/https:\/\/[^'"`\s]+/g) || []),
-  ...(read('base44/functions/createCheckoutSession/entry.ts').match(/https:\/\/[^'"`\s]+/g) || []),
 ].map((url) => url.replace(/[),.;]+$/, '')))].sort();
 
 console.log(JSON.stringify(evidence, null, 2));

@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     const { order_id, customer_email, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label, refund_notification } = await req.json();
     const idempotencyKey = buildOrderConfirmationEmailKey(order_id, order_number);
 
-    // May 30 launch freeze: this function is only approved for order
+    // Transactional policy: this function is only approved for order
     // confirmations. Refund/cancel notifications need a separately audited
     // template and idempotency key so a refund can never send confirmation copy.
     if (refund_notification === true) {

@@ -51,6 +51,7 @@ Deno.serve(async (req) => {
       return Response.json({
         success: false,
         skipped: true,
+        gate: 'ENABLE_SUBSCRIPTION_CHECKOUTS',
         reason: 'subscription_checkouts_disabled',
         message: 'Subscription checkout is currently unavailable. One-time orders are still available.',
       }, { status: 409 });

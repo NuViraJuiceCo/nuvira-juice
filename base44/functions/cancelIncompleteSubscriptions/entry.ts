@@ -34,8 +34,9 @@ Deno.serve(async (req) => {
         skipped: true,
         cancelled: 0,
         errors: 0,
+        gate: 'ENABLE_INCOMPLETE_SUBSCRIPTION_CLEANUP',
         reason: 'incomplete_subscription_cleanup_disabled',
-        message: 'Incomplete subscription cleanup is disabled for May 30 launch freeze.',
+        message: 'Incomplete subscription cleanup is disabled by the current operational safety gate.',
       });
     }
 

@@ -24,8 +24,9 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         expired_count: 0,
+        gate: 'ENABLE_ZONE3_AUTO_EXPIRE_AUTHORIZATIONS',
         reason: 'zone3_auto_expire_disabled',
-        message: 'Zone 3 auto-expire authorization cleanup is disabled for May 30 launch freeze.',
+        message: 'Zone 3 auto-expire authorization cleanup is disabled by the current operational safety gate.',
       });
     }
 

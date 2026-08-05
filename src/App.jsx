@@ -36,7 +36,6 @@ const SubscriptionManagement = React.lazy(() => import('@/pages/SubscriptionMana
 const About = React.lazy(() => import('@/pages/About'));
 const WhyNuVira = React.lazy(() => import('@/pages/WhyNuVira'));
 const Events = React.lazy(() => import('@/pages/Events'));
-const EventMay30 = React.lazy(() => import('@/pages/EventMay30'));
 const Merch = React.lazy(() => import('@/pages/Merch'));
 const Subscribe = React.lazy(() => import('@/pages/Subscribe'));
 const Referral = React.lazy(() => import('@/pages/Referral'));
@@ -353,7 +352,6 @@ const AuthenticatedApp = () => {
           <Route path="/about" element={<About />} />
           <Route path="/why-nuvira" element={<WhyNuVira />} />
           <Route path="/events" element={<Events />} />
-          <Route path="/event/may30" element={<ProtectedRoute element={<EventMay30 />} user={user} />} />
           <Route path="/merch" element={<Merch />} />
           <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/referral" element={<Referral />} />

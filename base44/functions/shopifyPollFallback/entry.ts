@@ -1,8 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 /**
- * Scheduled fallback: polls Shopify for recent orders every 15 minutes
- * to catch any missed webhooks. Only syncs orders from the last 30 minutes.
+ * Scheduled fallback: polls Shopify for recent orders on a bounded interval
+ * to catch any missed webhooks. The default three-hour lookback safely covers
+ * the current two-hour automation cadence with overlap for delayed runs.
  */
 
 Deno.serve(async (req) => {
@@ -12,8 +13,9 @@ Deno.serve(async (req) => {
       skipped: true,
       polled: 0,
       new_created: 0,
+      gate: 'ENABLE_SHOPIFY_POLL_FALLBACK',
       reason: 'shopify_poll_fallback_disabled',
-      message: 'Shopify poll fallback is disabled for May 30 launch freeze.',
+      message: 'Shopify poll fallback is disabled by the current integration safety gate.',
     });
   }
 
@@ -27,7 +29,11 @@ Deno.serve(async (req) => {
 
   const base44 = createClientFromRequest(req);
 
-  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const configuredLookback = Number(Deno.env.get('SHOPIFY_POLL_LOOKBACK_MINUTES') || 180);
+  const lookbackMinutes = Number.isFinite(configuredLookback)
+    ? Math.min(1440, Math.max(30, Math.round(configuredLookback)))
+    : 180;
+  const since = new Date(Date.now() - lookbackMinutes * 60 * 1000).toISOString();
   const storeHost = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '');
   const url = `https://${storeHost}/admin/api/2024-01/orders.json?status=any&limit=50&updated_at_min=${since}`;
 
@@ -86,7 +92,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  return Response.json({ ok: true, polled: orders.length, new_created: synced });
+  return Response.json({ ok: true, lookback_minutes: lookbackMinutes, polled: orders.length, new_created: synced });
 });
 
 function detectChannel(order) {

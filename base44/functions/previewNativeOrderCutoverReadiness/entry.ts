@@ -10389,7 +10389,7 @@ const G42B_ACTION_DEFINITIONS = Object.freeze([
   {
     key: 'notification_message_dispatch',
     ui_control: 'No DeliveryQueue notification send control',
-    backend_function: 'sendUpcomingDeliveryNotifications / verifyOutForDeliveryNotification',
+    backend_function: 'sendUpcomingDeliveryNotifications',
     native_command_function: null,
     current_source_of_truth: 'Notification behavior remains separately gated and held.',
     hub_dependency: false,
@@ -10402,7 +10402,7 @@ const G42B_ACTION_DEFINITIONS = Object.freeze([
   {
     key: 'hub_delivery_state_sync',
     ui_control: 'Admin sync functions outside DeliveryQueue action migration',
-    backend_function: 'pushOrderStatusToHub / syncHubDeliveryStatuses / syncAdminSingleHubDeliveryStatus',
+    backend_function: 'syncHubDeliveryStatuses / syncAdminSingleHubDeliveryStatus',
     native_command_function: null,
     current_source_of_truth: 'Hub writes and fallback remain active; suppression is not part of G42B.',
     hub_dependency: true,

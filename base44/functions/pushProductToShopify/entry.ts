@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
       success: true,
       skipped: true,
       reason: 'product_shopify_automation_disabled',
-      message: 'Product Shopify automation is disabled for May 30 launch freeze.',
+      message: 'Product Shopify automation is disabled by the current integration safety gate.',
     });
   }
 

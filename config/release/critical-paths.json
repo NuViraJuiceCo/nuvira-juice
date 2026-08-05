@@ -24,8 +24,6 @@
     "base44/functions/sendCustomerPushNotification/**",
     "base44/functions/registerPushSubscription/**",
     "base44/functions/unregisterPushSubscription/**",
-    "base44/functions/redeemMay30EventBonus/**",
-    "base44/functions/sendMay30PushTest/**",
     "ios/App/AppDelegate*",
     "ios/App/Podfile*",
     "ios/App/Podfile.lock",

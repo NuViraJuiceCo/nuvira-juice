@@ -348,7 +348,7 @@ function optionConflictsWithSubmittedFields(option, selectedOption) {
  * A pending Order record is created immediately so the webhook can finalize it
  * on payment_intent.succeeded without needing a CheckoutSession lookup.
  *
- * Metadata mirrors createCheckoutSession for full backward compatibility.
+ * Metadata preserves the canonical one-time checkout contract.
  */
 
 
