@@ -2,9 +2,12 @@ const RESEND_API_BASE = 'https://api.resend.com';
 const MARKETING_SEGMENT_NAME = 'NuVira Verified Marketing Customers';
 const TEST_SEGMENT_NAME = 'NuVira Internal Marketing Proof';
 const CAMPAIGN_RECORD_ID = '6a6ed28996d315756fa4403a';
+const CAMPAIGN_KEY = 'customer_appreciation_2026_08';
+const MARKETING_HOLD_COMMAND = 'marketing_order_hold';
 const CUSTOMER_SYNC_CONFIRMATION = 'SYNC VERIFIED NUVIRA MARKETING CONTACTS';
 const DRAFT_CONFIRMATION = 'CREATE NUVIRA MARKETING DRAFT';
 const TEST_CONFIRMATION = 'SEND NUVIRA MARKETING PROOF';
+const HOLD_CONFIRMATION = 'HOLD NUVIRA MARKETING ORDER';
 const APP_URL = 'https://www.nuvirajuice.com';
 const FALLBACK_REVIEW_URL = 'https://g.page/nuvirajuiceco/review';
 const MAILING_ADDRESS = "NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366";
@@ -51,6 +54,21 @@ function internalOrPrivateEmail(value: string): boolean {
     || /(^|[._+-])(test|demo|sandbox|internal)([._+-]|@)/i.test(value);
 }
 
+function orderNumber(order: any): string {
+  return text(order?.order_number || order?.shopify_order_number, 160);
+}
+
+function orderIsTerminal(order: any): boolean {
+  const statuses = [order?.status, order?.fulfillment_status, order?.delivery_status, order?.shopify_fulfillment_status]
+    .map((value) => text(value, 40).toLowerCase());
+  return statuses.some((status) => ['delivered', 'picked_up', 'fulfilled'].includes(status));
+}
+
+function orderIsPaid(order: any): boolean {
+  return order?.payment_captured === true
+    || ['paid', 'captured'].includes(text(order?.payment_status || order?.financial_status, 40).toLowerCase());
+}
+
 async function listAll(entity: any, max = 2000): Promise<any[]> {
   const rows = [];
   for (let skip = 0; skip < max; skip += 200) {
@@ -63,11 +81,17 @@ async function listAll(entity: any, max = 2000): Promise<any[]> {
 }
 
 async function marketingAudience(base44: any) {
-  const [consents, profiles, claims, orders] = await Promise.all([
+  const [consents, profiles, claims, shopifyOrders, orders, holdCommands] = await Promise.all([
     listAll(base44.asServiceRole.entities.MarketingConsent, 1000),
     listAll(base44.asServiceRole.entities.UserProfile, 1000),
     listAll(base44.asServiceRole.entities.POSCustomerClaim, 1000),
     listAll(base44.asServiceRole.entities.ShopifyOrder, 2000),
+    listAll(base44.asServiceRole.entities.Order, 2000),
+    base44.asServiceRole.entities.CommandLog.filter({
+      command_type: MARKETING_HOLD_COMMAND,
+      command_source: CAMPAIGN_KEY,
+      status: 'running',
+    }, '-created_date', 200),
   ]);
 
   const consentByEmail = new Map<string, any>();
@@ -87,9 +111,47 @@ async function marketingAudience(base44: any) {
     if (key && !claimByEmail.has(key)) claimByEmail.set(key, row);
   }
   const orderByEmail = new Map<string, any>();
-  for (const row of orders) {
+  for (const row of shopifyOrders) {
     const key = email(row?.customer_email);
     if (key && !orderByEmail.has(key)) orderByEmail.set(key, row);
+  }
+
+  const ordersByNumber = new Map<string, any>();
+  for (const row of orders) {
+    const key = orderNumber(row);
+    if (key && !ordersByNumber.has(key)) ordersByNumber.set(key, row);
+  }
+  const holdCommandByOrder = new Map<string, any>();
+  for (const command of Array.isArray(holdCommands) ? holdCommands : []) {
+    const key = text(command?.related_order_number || command?.target_display_id, 160);
+    if (key && !holdCommandByOrder.has(key)) holdCommandByOrder.set(key, command);
+  }
+  const configuredHoldNumbers = [...holdCommandByOrder.keys()];
+  const activeHoldContacts: Array<{ email: string; order_number: string }> = [];
+  const activeHoldEmails = new Set<string>();
+  const releaseCandidateCommands: Array<{ id: string; order_number: string }> = [];
+  const unresolvedOrderNumbers: string[] = [];
+  let unresolvedHoldCount = 0;
+  for (const heldOrderNumber of configuredHoldNumbers) {
+    const order = ordersByNumber.get(heldOrderNumber);
+    if (!order) {
+      unresolvedHoldCount += 1;
+      unresolvedOrderNumbers.push(heldOrderNumber);
+      continue;
+    }
+    if (orderIsTerminal(order)) {
+      const commandId = text(holdCommandByOrder.get(heldOrderNumber)?.id, 160);
+      if (commandId) releaseCandidateCommands.push({ id: commandId, order_number: heldOrderNumber });
+      continue;
+    }
+    const customerEmail = email(order?.customer_email);
+    if (!customerEmail) {
+      unresolvedHoldCount += 1;
+      unresolvedOrderNumbers.push(heldOrderNumber);
+      continue;
+    }
+    activeHoldEmails.add(customerEmail);
+    activeHoldContacts.push({ email: customerEmail, order_number: heldOrderNumber });
   }
 
   const contacts: ContactRow[] = [];
@@ -99,6 +161,7 @@ async function marketingAudience(base44: any) {
   let profileNames = 0;
   let claimNames = 0;
   let orderNames = 0;
+  let orderHoldExcluded = 0;
 
   for (const [customerEmail, consent] of consentByEmail.entries()) {
     if (consent?.email_status !== 'subscribed' || consent?.promotional_email_eligible !== true) {
@@ -107,6 +170,10 @@ async function marketingAudience(base44: any) {
     }
     if (internalOrPrivateEmail(customerEmail)) {
       internalExcluded += 1;
+      continue;
+    }
+    if (activeHoldEmails.has(customerEmail)) {
+      orderHoldExcluded += 1;
       continue;
     }
 
@@ -145,6 +212,16 @@ async function marketingAudience(base44: any) {
       missing_name_count: missingName,
       consent_excluded_count: consentExcluded,
       internal_or_private_excluded_count: internalExcluded,
+      active_order_hold_count: activeHoldContacts.length,
+      order_hold_excluded_count: orderHoldExcluded,
+      unresolved_order_hold_count: unresolvedHoldCount,
+    },
+    holds: {
+      configured_order_numbers: configuredHoldNumbers,
+      active_contacts: activeHoldContacts,
+      active_order_numbers: activeHoldContacts.map((row) => row.order_number),
+      release_candidate_commands: releaseCandidateCommands,
+      unresolved_order_numbers: unresolvedOrderNumbers,
     },
   };
 }
@@ -228,6 +305,43 @@ async function addContactToSegment(contactId: string, segmentId: string): Promis
   }
 }
 
+async function removeContactFromSegment(contactId: string, segmentId: string): Promise<void> {
+  try {
+    await resendRequest(`/contacts/${encodeURIComponent(contactId)}/segments/${encodeURIComponent(segmentId)}`, {
+      method: 'DELETE',
+    });
+  } catch (error: any) {
+    if (![404, 409].includes(error?.status)) throw error;
+  }
+}
+
+async function updateCampaignAudienceCounts(base44: any, audience: any): Promise<void> {
+  const orderHoldExcluded = Number(audience?.summary?.order_hold_excluded_count) || 0;
+  await base44.asServiceRole.entities.NotificationCampaign.update(CAMPAIGN_RECORD_ID, {
+    recipients_total: Number(audience?.summary?.eligible_count || 0) + orderHoldExcluded,
+    eligible_count: Number(audience?.summary?.eligible_count || 0),
+    skipped_count: orderHoldExcluded,
+    skipped_reasons: orderHoldExcluded > 0 ? { active_order_hold: orderHoldExcluded } : {},
+  });
+}
+
+async function reconcileReleasedHolds(base44: any, audience: any): Promise<void> {
+  const releaseCandidates = Array.isArray(audience?.holds?.release_candidate_commands)
+    ? audience.holds.release_candidate_commands
+    : [];
+  if (releaseCandidates.length === 0) return;
+  const completedAt = new Date().toISOString();
+  await Promise.all(releaseCandidates.map((command: any) => base44.asServiceRole.entities.CommandLog.update(command.id, {
+    status: 'success',
+    completed_at: completedAt,
+    result: {
+      release_reason: 'released_during_audience_sync',
+      order_terminal: true,
+      customer_emails_sent: 0,
+    },
+  })));
+}
+
 async function syncContacts(base44: any, body: any): Promise<Response> {
   const audience = await marketingAudience(base44);
   if (text(body?.confirmation, 100) !== CUSTOMER_SYNC_CONFIRMATION) {
@@ -249,6 +363,14 @@ async function syncContacts(base44: any, body: any): Promise<Response> {
   let providerSuppressed = 0;
   let failed = 0;
   const failureCodes: Record<string, number> = {};
+  let removedForOrderHold = 0;
+
+  for (const held of audience.holds.active_contacts) {
+    const providerContact = existingByEmail.get(held.email);
+    if (!providerContact?.id) continue;
+    await removeContactFromSegment(providerContact.id, segment.id);
+    removedForOrderHold += 1;
+  }
 
   for (const contact of audience.contacts) {
     try {
@@ -281,7 +403,9 @@ async function syncContacts(base44: any, body: any): Promise<Response> {
     }
   }
 
+  await reconcileReleasedHolds(base44, audience);
   const segmentContacts = await listContacts(segment.id);
+  await updateCampaignAudienceCounts(base44, audience);
   return Response.json({
     success: failed === 0,
     writes_performed: true,
@@ -292,11 +416,161 @@ async function syncContacts(base44: any, body: any): Promise<Response> {
       created_count: created,
       existing_count: existing,
       provider_suppressed_count: providerSuppressed,
+      removed_for_active_order_hold_count: removedForOrderHold,
       failed_count: failed,
       failure_codes: failureCodes,
       segment_contact_count: segmentContacts.length,
     },
   }, { status: failed === 0 ? 200 : 502 });
+}
+
+async function setOrderHold(base44: any, body: any): Promise<Response> {
+  if (text(body?.confirmation, 100) !== HOLD_CONFIRMATION) {
+    return Response.json({ error: 'confirmation_required', confirmation_phrase: HOLD_CONFIRMATION }, { status: 400 });
+  }
+  const heldOrderNumber = text(body?.order_number, 160);
+  if (!heldOrderNumber) return Response.json({ error: 'order_number_required' }, { status: 400 });
+
+  const orders = await base44.asServiceRole.entities.Order.filter({ order_number: heldOrderNumber }, '-created_date', 5);
+  if (!Array.isArray(orders) || orders.length !== 1) {
+    return Response.json({ error: orders?.length > 1 ? 'authoritative_order_ambiguous' : 'authoritative_order_not_found' }, { status: 409 });
+  }
+  const order = orders[0];
+  if (!orderIsPaid(order)) return Response.json({ error: 'order_not_paid' }, { status: 409 });
+  if (orderIsTerminal(order)) return Response.json({ error: 'order_already_terminal' }, { status: 409 });
+  const customerEmail = email(order?.customer_email);
+  if (!customerEmail) return Response.json({ error: 'order_customer_identity_missing' }, { status: 409 });
+
+  const audienceBefore = await marketingAudience(base44);
+  const currentlyEligible = audienceBefore.contacts.some((row) => row.email === customerEmail);
+
+  const holdKey = `${MARKETING_HOLD_COMMAND}:${CAMPAIGN_KEY}:${heldOrderNumber}`;
+  const [campaign, existingHolds, segments, contacts] = await Promise.all([
+    base44.asServiceRole.entities.NotificationCampaign.get(CAMPAIGN_RECORD_ID),
+    base44.asServiceRole.entities.CommandLog.filter({ idempotency_key: holdKey }, '-created_date', 5),
+    listSegments(),
+    listContacts(),
+  ]);
+  if (!campaign?.id || text(campaign?.status, 40) !== 'draft') {
+    return Response.json({ error: 'marketing_campaign_not_draft' }, { status: 409 });
+  }
+  const segment = segments.find((row) => text(row?.name, 200) === MARKETING_SEGMENT_NAME);
+  if (!segment?.id) return Response.json({ error: 'marketing_segment_missing' }, { status: 409 });
+  const providerContact = contacts.find((row) => email(row?.email) === customerEmail);
+
+  const now = new Date().toISOString();
+  const activeHold = (Array.isArray(existingHolds) ? existingHolds : []).find((row) => row?.status === 'running');
+  if (!activeHold) {
+    await base44.asServiceRole.entities.CommandLog.create({
+      command_id: holdKey,
+      command_type: MARKETING_HOLD_COMMAND,
+      command_source: CAMPAIGN_KEY,
+      status: 'running',
+      target_entity: 'Order',
+      target_id: text(order?.id, 160),
+      target_display_id: heldOrderNumber,
+      payload: {
+        campaign_key: CAMPAIGN_KEY,
+        release_on_order_terminal: true,
+        global_contact_unsubscribe: false,
+      },
+      idempotency_key: holdKey,
+      submitted_at: now,
+      started_at: now,
+      function_name: 'customerJourneyAutomation',
+      related_order_id: text(order?.id, 160),
+      related_order_number: heldOrderNumber,
+      notes: 'Campaign-only hold; automatically released when the authoritative order becomes terminal.',
+    });
+  }
+  if (providerContact?.id) await removeContactFromSegment(providerContact.id, segment.id);
+
+  const audienceAfter = await marketingAudience(base44);
+  const segmentContacts = await listContacts(segment.id);
+  await updateCampaignAudienceCounts(base44, audienceAfter);
+  const heldContactStillInSegment = segmentContacts.some((row) => email(row?.email) === customerEmail);
+  if (heldContactStillInSegment) {
+    return Response.json({
+      success: false,
+      error: 'provider_order_hold_verification_failed',
+      order_number: heldOrderNumber,
+      hold_recorded: true,
+      customer_emails_sent: 0,
+    }, { status: 502 });
+  }
+  return Response.json({
+    success: true,
+    order_number: heldOrderNumber,
+    hold_status: 'active_until_order_terminal',
+    global_contact_unsubscribed: false,
+    customer_emails_sent: 0,
+    marketing_eligible_before_hold: currentlyEligible,
+    provider_contact_present: Boolean(providerContact?.id),
+    active_order_hold_count: audienceAfter.summary.active_order_hold_count,
+    eligible_recipient_count: audienceAfter.summary.eligible_count,
+    segment_contact_count: segmentContacts.length,
+  });
+}
+
+export async function releaseCompletedMarketingHold(base44: any, order: any): Promise<Record<string, any>> {
+  const completedOrderNumber = orderNumber(order);
+  if (!completedOrderNumber || !orderIsTerminal(order)) return { released: false, reason: 'order_not_terminal' };
+  const holdCommands = await base44.asServiceRole.entities.CommandLog.filter({
+    command_type: MARKETING_HOLD_COMMAND,
+    command_source: CAMPAIGN_KEY,
+    status: 'running',
+    related_order_number: completedOrderNumber,
+  }, '-created_date', 20);
+  const activeHolds = Array.isArray(holdCommands) ? holdCommands : [];
+  if (activeHolds.length === 0) return { released: false, reason: 'order_not_held' };
+
+  const customerEmail = email(order?.customer_email);
+  let rejoinedSegment = false;
+  let releaseReason = 'released';
+  if (customerEmail && !internalOrPrivateEmail(customerEmail)) {
+    const [consents, segments, contacts] = await Promise.all([
+      base44.asServiceRole.entities.MarketingConsent.filter({ customer_email: customerEmail }, '-created_date', 5),
+      listSegments(),
+      listContacts(),
+    ]);
+    const consent = consents[0];
+    const providerContact = contacts.find((row) => email(row?.email) === customerEmail);
+    const segment = segments.find((row) => text(row?.name, 200) === MARKETING_SEGMENT_NAME);
+    if (consent?.email_status === 'subscribed' && consent?.promotional_email_eligible === true && providerContact?.id && segment?.id) {
+      if (providerContact.unsubscribed === true) releaseReason = 'provider_suppressed';
+      else {
+        await addContactToSegment(providerContact.id, segment.id);
+        rejoinedSegment = true;
+      }
+    } else {
+      releaseReason = 'not_marketing_eligible';
+    }
+  } else {
+    releaseReason = 'customer_identity_unavailable';
+  }
+
+  const completedAt = new Date().toISOString();
+  await Promise.all(activeHolds.map((command) => base44.asServiceRole.entities.CommandLog.update(command.id, {
+    status: 'success',
+    completed_at: completedAt,
+    result: {
+      release_reason: releaseReason,
+      order_terminal: true,
+      rejoined_segment: rejoinedSegment,
+      customer_emails_sent: 0,
+    },
+  })));
+  const refreshedAudience = await marketingAudience(base44);
+  const segment = (await listSegments()).find((row) => text(row?.name, 200) === MARKETING_SEGMENT_NAME);
+  const segmentContacts = segment?.id ? await listContacts(segment.id) : [];
+  await updateCampaignAudienceCounts(base44, refreshedAudience);
+  return {
+    released: true,
+    order_number: completedOrderNumber,
+    release_reason: releaseReason,
+    rejoined_segment: rejoinedSegment,
+    customer_emails_sent: 0,
+  };
 }
 
 function marketingHtml(): string {
@@ -449,5 +723,6 @@ export async function handleMarketingLaunchAction(base44: any, body: any): Promi
   if (action === 'marketing_launch_sync_contacts') return await syncContacts(base44, body);
   if (action === 'marketing_launch_create_draft') return await createCustomerDraft(base44, body);
   if (action === 'marketing_launch_send_test') return await sendInternalProof(body);
+  if (action === 'marketing_launch_set_order_hold') return await setOrderHold(base44, body);
   return null;
 }

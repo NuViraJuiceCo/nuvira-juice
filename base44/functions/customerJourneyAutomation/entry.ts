@@ -49,6 +49,7 @@ Deno.serve(async (req) => {
       'marketing_launch_sync_contacts',
       'marketing_launch_create_draft',
       'marketing_launch_send_test',
+      'marketing_launch_set_order_hold',
     ].includes(action);
     const entityAutomation = Boolean(flattened.event && flattened.data);
 

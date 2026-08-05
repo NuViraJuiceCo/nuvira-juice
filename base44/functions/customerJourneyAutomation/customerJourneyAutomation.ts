@@ -1,4 +1,4 @@
-import { handleMarketingLaunchAction } from './marketingLaunch.ts';
+import { handleMarketingLaunchAction, releaseCompletedMarketingHold } from './marketingLaunch.ts';
 
 type JourneyMode = 'disabled' | 'test' | 'production';
 type ConsentResult = {
@@ -546,12 +546,23 @@ async function processOrderChange(base44: any, body: Record<string, any>) {
   const email = normalizeEmail(order?.customer_email);
   if (!email) return Response.json({ success: true, skipped: true, reason: 'order_identity_missing' });
 
+  const marketingHoldRelease = await releaseCompletedMarketingHold(base44, order).catch((error) => ({
+    released: false,
+    reason: 'release_failed',
+    error: errorMessage(error),
+  }));
+
   const nowPaid = paidOrder(order);
   const nowDelivered = orderIsDelivered(order);
   const shouldProcessPurchase = nowPaid;
   const shouldProcessDelivery = nowDelivered;
   if (!shouldProcessPurchase && !shouldProcessDelivery) {
-    return Response.json({ success: true, skipped: true, reason: 'no_authoritative_journey_transition' });
+    return Response.json({
+      success: true,
+      skipped: true,
+      reason: 'no_authoritative_journey_transition',
+      marketing_hold_release: marketingHoldRelease,
+    });
   }
 
   const convertedStates = shouldProcessPurchase ? await markStatesConverted(base44, email, order) : 0;
@@ -588,7 +599,7 @@ async function processOrderChange(base44: any, body: Record<string, any>) {
       payload: await orderPayload(base44, order),
     }));
   }
-  return Response.json({ success: true, converted_states: convertedStates, events: results.map((result) => ({
+  return Response.json({ success: true, converted_states: convertedStates, marketing_hold_release: marketingHoldRelease, events: results.map((result) => ({
     event_id: result?.event?.event_id,
     resend_status: result?.event?.resend_status,
     duplicate: result?.duplicate === true,
@@ -909,7 +920,7 @@ export async function handleCustomerJourneyRequest(base44: any, caller: any, raw
   try {
     const body = raw?.args && typeof raw.args === 'object' ? { ...raw, ...raw.args } : raw;
     const action = normalizeSingleLine(body?.action, 80);
-    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event', 'marketing_launch_preview', 'marketing_launch_sync_contacts', 'marketing_launch_create_draft', 'marketing_launch_send_test'].includes(action);
+    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event', 'marketing_launch_preview', 'marketing_launch_sync_contacts', 'marketing_launch_create_draft', 'marketing_launch_send_test', 'marketing_launch_set_order_hold'].includes(action);
     const entityAutomation = Boolean(body?.event && body?.data);
     if (!supportedAction && !entityAutomation) return null;
 
