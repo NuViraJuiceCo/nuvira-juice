@@ -26,6 +26,7 @@ const Checkout = React.lazy(() => import('@/pages/Checkout'));
 const OrderConfirmation = React.lazy(() => import('@/pages/OrderConfirmation'));
 const OrderIncomplete = React.lazy(() => import('@/pages/OrderIncomplete'));
 const OrderTracker = React.lazy(() => import('@/pages/OrderTracker'));
+const OrderOptions = React.lazy(() => import('@/pages/OrderOptions'));
 const Account = React.lazy(() => import('@/pages/Account'));
 const OrderHistory = React.lazy(() => import('@/pages/OrderHistory'));
 const Notifications = React.lazy(() => import('@/pages/Notifications'));
@@ -329,7 +330,7 @@ const AuthenticatedApp = () => {
       <ScrollToTop />
       <LowercaseRedirect />
       <SeoHeadSanitizer />
-      {showSplash && <SplashScreen onDone={handleSplashDone} />}
+      {showSplash && location.pathname !== '/order-options' && <SplashScreen onDone={handleSplashDone} />}
       <Suspense fallback={<AppRouteFallback />}>
       <Routes>
         <Route element={<AppLayout />}>
@@ -455,6 +456,7 @@ const AuthenticatedApp = () => {
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
         <Route path="/order-incomplete" element={<OrderIncomplete />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
+        <Route path="/order-options" element={<OrderOptions />} />
         <Route path="/native-login" element={<NativeLogin />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
