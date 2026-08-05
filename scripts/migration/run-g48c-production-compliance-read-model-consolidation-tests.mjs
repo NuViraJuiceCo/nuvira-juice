@@ -109,7 +109,7 @@ assert('No raw payload exposure.', !/raw_payload|payloads_returned:\s*true|JSON\
 assert('No customer PII.', !/customer_email|customer_phone|contact_phone|shipping_address|billing_address/.test(helper), {});
 assert('No logs/queues created.', !/CommandLog\.create|OrderSyncLog\.create|SafeSyncParityLog\.create|OrderReviewQueue\.create/.test(entry + helper + complianceOps), {});
 assert('Existing G39F production-planning contract passes.', entry.includes('summary: nativeFirstPlanning.summary') && entry.includes('dates: nativeFirstPlanning.dates.slice'), {});
-assert('Existing G37H/G31U verify contract passes.', !changedFiles.some(file => /verifyNativeProductionBatchesForCustomerApp|previewNativeProductionBatchLifecycle/.test(file)), { changedFiles });
+assert('Existing G31U lifecycle preview contract passes.', !changedFiles.some(file => /previewNativeProductionBatchLifecycle/.test(file)), { changedFiles });
 
 const failures = results.filter(result => !result.ok);
 console.log(JSON.stringify({ success: failures.length === 0, classification: 'production_compliance_read_model_consolidation_pr_ready', results }, null, 2));

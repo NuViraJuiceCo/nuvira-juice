@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         reason: 'upcoming_delivery_notifications_disabled',
-        message: 'Upcoming delivery notifications are disabled for May 30 launch freeze.',
+        message: 'Upcoming delivery notifications are disabled by the current communications safety gate.',
       });
     }
 

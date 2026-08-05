@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         reason: 'admin_manual_refunds_disabled',
-        message: 'Admin manual refunds are disabled for May 30 launch freeze.',
+        message: 'Admin manual refunds are disabled by the current operational safety gate.',
       }, { status: 409 });
     }
 

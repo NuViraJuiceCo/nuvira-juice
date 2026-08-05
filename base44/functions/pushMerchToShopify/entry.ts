@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
       success: true,
       skipped: true,
       reason: 'merch_shopify_automation_disabled',
-      message: 'Merch Shopify automation is disabled for May 30 launch freeze.',
+      message: 'Merch Shopify automation is disabled by the current integration safety gate.',
     });
   }
 

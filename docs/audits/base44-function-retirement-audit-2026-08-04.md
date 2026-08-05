@@ -2,177 +2,128 @@
 
 ## Outcome
 
-Three verified cleanup batches are complete. Thirty-one obsolete live functions were deleted after zero canonical callers, zero automation attachments, and zero preview/production invocations over the 30-day log window were confirmed. Thirteen source-only loyalty/import fragments were removed from the active tree because they were not deployed and caused broad deploys to emit slot-ceiling failures.
+The audit now evaluates **necessity, ownership, overlap, and side effects**, not merely whether code runs. Four cleanup batches reduced the deployed estate from 249 live functions to a proposed canonical estate of **145**. Across the four batches, **104 obsolete live functions** were retired. An additional **13 never-deployed source fragments** were removed from canonical source.
 
-Canonical source and the Base44 remote are now in exact parity at 218 functions: zero source-only functions and zero remote-only functions. The hard-coded eight-customer loyalty audit was replaced in place with a paginated, read-only aggregate integrity audit because the grandfathered app remains above Base44's current function-creation ceiling. Payment, webhook, order lifecycle, Hub, Shopify, push, current customer journeys, consent gates, idempotency controls, current connectivity checks, recovery paths, and lifecycle protections were preserved.
+The fourth batch removes 73 more functions after confirming zero canonical callers or a superseding canonical path, zero remaining automation attachments, and zero invocation records in the 30-day Base44 preview log window. The app's separately published production log surface has no recorded function traffic, so current live evidence comes from the active Base44 deployment, UI callers, automation inventory, webhook contracts, and source call graph.
+
+The exhaustive retained-function inventory and retention rationale are in [the required-function manifest](./base44-function-necessity-manifest-2026-08-04.md).
 
 ## Current inventory
 
-| Surface | Count | Finding |
-|---|---:|---|
-| Functions in canonical source | 218 | Active `entry.ts` functions after the verified cleanup |
-| Functions reported by Base44 | 218 | Live remote inventory after deletion verification on August 4, 2026 |
-| Source-only functions | 0 | Broad deploy no longer attempts dead loyalty/import endpoints |
-| Remote-only functions | 0 | Every live function now has canonical source |
-| Functions with automation references | 21 | 24 total automation references |
+| Surface | Before audit | After batch 4 |
+|---|---:|---:|
+| Live Base44 functions | 249 | 145 |
+| Canonical source functions | 262 | 145 |
+| Obsolete live functions retired | 0 | 104 |
+| Never-deployed source fragments retired | 0 | 13 |
+| Source-only functions | 13 | 0 |
+| Remote-only functions | 0 | 0 |
+| Automation-attached functions | 21 | 19 |
+| Automation references | 24 | 22 |
 
-The function-creation ceiling remains real, so the generic loyalty audit retains the historical endpoint name `auditCustomerAppLoyaltyAfterPhase2` for compatibility. Its implementation contains no named customers, fixed emails, fixed orders, or Apple-relay expectations.
+The source/live count becomes 145/145 after batch 4 is deployed and the retirement delete is verified.
 
-## Required live capability map
+## Necessity standard
 
-The following families are required for the current system to flow. Functions in these families remain **keep** unless a separate replacement is deployed and proven first.
+A retained function must have at least one of these responsibilities:
 
-| Capability | Required live functions or families |
-|---|---|
-| Checkout and payment | `createCheckoutSession`, `createPaymentIntent`, `createSubscriptionPaymentElementIntent`, `stripeCustomerPortal`, `stripeWebhook`, `shopifyWebhookReceiver`, `processManualRefund`, `adminCancelAndRefundSubscription`, `capturePreOrderPayments`, Zone 3 authorization/capture functions |
-| Order lifecycle and customer status | `sendOrderStatusNotification`, `sendOrderReceivedNotification`, `pollOrderStatusUpdates`, `notifyOrderProcessed`, `getCustomerOrderDetail`, `getCustomerOrdersWithHub`, native order status/update functions, delivery and fulfillment functions |
-| Communications | `customerJourneyAutomation`, `sendNotificationCampaign`, `sendCustomerNotification`, `sendCustomerPushNotification`, `registerPushSubscription`, `unregisterPushSubscription`, `resendWebhook`, transactional order/SMS functions |
-| Loyalty | `createLoyaltyMember`, `enrollNewCustomerInLoyalty`, `claimReward`, `getCustomerAccountDashboardData`, `verifyCustomerFacingLoyaltyDisplay`, live order-history and profile sources used to calculate points |
-| Hub and operations sync | `syncOrderToHub`, `syncShopifyOrderToHub`, `syncOrdersFromHub`, `syncHubDeliveryStatuses`, `retryFailedHubSyncs`, `hubSyncProxy`, `receiveSyncedEvent`, order/subscription/refund sync functions and their manual recovery functions |
-| Shopify and catalog | `shopifyWebhookReceiver`, `shopifyPollFallback`, product push/delete/resync functions, `googleMerchantFeed`, `syncProductsToGMC`, `resolveShopifyCartPermalink` |
-| Production and fulfillment | current `getAdmin*Summary`, `previewAdminProduction*`, `startAdminProductionBatch`, `completeAdminProductionBatch`, inventory deduction, batch verification, fulfillment-task and delivery functions |
-| Security and account | `completeAccountSetup`, `requestAccountDeletion`, `sendUserInvite`, `addressSuggest`, `validateDeliveryEligibility`, account/dashboard read functions |
-| Lifecycle safeguards | `previewNativeOrderCutoverReadiness`, native safe-sync previews/executors, `LOCK_FROZEN_FIELDS`, `order_lock_status`, launch cutoffs, consent gates, kill switches, recipient gates and idempotency controls |
+1. A current customer or operations UI caller.
+2. An active automation with a necessary business outcome.
+3. An authenticated Hub, Shopify, Resend, Stripe, GMC, driver, or webhook contract.
+4. A canonical customer lifecycle action or provider recovery path.
+5. A required admin read model or explicit operational command.
+6. A controlled preview/apply, exact-allowlist, idempotency, rollback, or historical recovery boundary.
 
-The temporary May 30 or named-customer utilities are not the same thing as lifecycle locks. Retiring those utilities must not remove field locks, order lock state, preview/apply boundaries, consent checks, or live-send gates.
+The following are not sufficient reasons to keep a function: it compiles, it returns success, it was used during launch, it may be useful someday, it contains a feature gate, or it appears in an old migration document.
 
-## Automation-attached functions
+## Fourth-batch removals
 
-These 21 functions have 24 automation references and cannot be deleted until their automation is detached or replaced:
+### Duplicate checkout and payment paths
 
-- `auditCustomerAppLoyaltyAfterPhase2` (1)
-- `autoExpireZone3Authorizations` (1)
-- `cancelAbandonedCheckouts` (1)
-- `cancelIncompleteSubscriptions` (1)
-- `customerJourneyAutomation` (2)
-- `deleteProductFromShopify` (1)
-- `enrollNewCustomerInLoyalty` (1)
-- `googleMerchantFeed` (1)
-- `monitorPostPaymentChain` (1)
-- `previewAdminMay30POSProfileCandidates` (1)
-- `pushMerchToShopify` (1)
-- `pushProductToShopify` (1)
-- `retryFailedHubSyncs` (1)
-- `sendOrderStatusNotification` (2)
-- `sendUpcomingDeliveryNotifications` (1)
-- `shopifyPollFallback` (1)
-- `syncHubDeliveryStatuses` (1)
-- `syncOrderToHub` (2)
-- `syncProductsToGMC` (1)
-- `syncShopifyOrderToHub` (1)
-- `syncSubscriptionPlansToHub` (1)
+The app now has one one-time checkout path and one subscription checkout path:
 
-`auditCustomerAppLoyaltyAfterPhase2` now runs the replacement aggregate loyalty-integrity audit. The August 4 live verification reported `healthy: true`, zero critical exceptions, one informational legacy balance-cache mismatch, and three profiles whose phone number is unavailable from current profile/order sources. The function is read-only and reports `writes_performed: false`.
+- one-time orders: `createPaymentIntent`
+- subscriptions: `createSubscriptionPaymentElementIntent`
 
-`previewAdminMay30POSProfileCandidates` has a stale name, but its current implementation is the generic POS rewards-claim workflow. Rename it in a later compatibility-safe change; do not delete it by name.
+Retired duplicates: `createCheckoutSession`, `createSubscriptionSession`, `createSubscriptionCheckoutHosted`, `createSubscriptionPaymentIntent`, `createSubscriptionPaymentIntentV2`, `sendOrderConfirmation`, `capturePreOrderPayments`, and `pushSubscriptionPlanToStripe`.
 
-## Phase 1 retirement candidates
+`stripeWebhook`, `sendOrderReceivedNotification`, `notifyOrderProcessed`, `sendOrderStatusNotification`, `sendOrderSms`, and `syncSubscriptionWithFulfillments` remain the canonical post-payment lifecycle.
 
-These were the high-confidence historical or duplicate live functions. The first verified batch has been deleted; remaining rows stay staged until their prerequisites are independently proven.
+### Legacy repair, diagnostic, and recovery chains
 
-| Function | Reason | Prerequisite |
-|---|---|---|
-| `auditAmarkSubscriptions` | Named-customer diagnostic | **Deleted 2026-08-04** |
-| `auditLatestStripePaymentForAmark` | Named-customer payment diagnostic | **Deleted 2026-08-04** |
-| `canonicalizeAmarkSubscription` | Named-customer repair command | **Deleted 2026-08-04** |
-| `repairR1DeepaCAPatch` | Named-customer repair command | **Deleted 2026-08-04** |
-| `repairR2RefundedDuplicatesCA` | Historical fixed repair | **Deleted 2026-08-04** |
-| `repairR3HenrryCAHydration` | Named-customer repair command | **Deleted 2026-08-04** |
-| `repairR4SukhwantCAStructure` | Named-customer repair command | **Deleted 2026-08-04** |
-| `replaySubscriptionRefundDryRun` | Historical refund replay diagnostic | **Deleted 2026-08-04** |
-| `probeHubSubscriptionCancelled` | Historical Hub probe | **Deleted 2026-08-04** |
-| `correctAdminOrderDeliverySchedule` | Superseded delivery correction command | **Deleted 2026-08-04** |
-| `correctAdminOrderDeliveryScheduleV2` | Superseded by native schedule correction | **Deleted 2026-08-04** |
-| `monitorLiveCheckoutTest` | Active read-only admin checkout monitor | **Keep: `/admin/live-monitor` caller verified** |
-| `auditCustomerAppLoyaltyAfterPhase2` | Historical name, now generic implementation | **Keep until the slot ceiling permits a compatibility-safe rename** |
+Retired: `refundFlowDiagnostic`, `repairFulfillmentTaskAssignedDeliveryDates`, `repairLiveSubscriptionFailure`, `repairLiveSubscriptionV2`, `repairMissingSubscriptionForPaidInvoice`, `retryRepairedSubscriptionHubSync`, `syncRepairedSubscriptionToHub`, `syncStuckOrdersPollerManual`, `detectStuckOrders`, `recoverStuckOrder`, `retryFailedDriverSync`, `pushOrderStatusToHub`, `reconcileDeliveredOrders`, and `verifyOutForDeliveryNotification`.
 
-## Source-only cleanup
+Current health and recovery are handled by `getAdminSyncHealthSummary`, `retryFailedHubSyncs`, `syncHubDeliveryStatuses`, exact historical preview/apply controls, the Delivery Queue lifecycle commands, and idempotent provider webhooks.
 
-These 13 functions existed in source but were not deployed. They were removed from the active tree on August 4, 2026; their implementation remains recoverable from Git history:
+### Superseded scheduling and admin utilities
 
-- `applyStripeEventCleanup`
-- `deactivateLoyaltyMembers`
-- `executeCustomerAppLoyaltyImportPhase2`
-- `manualSyncLoyaltyMember`
-- `monitorSubscriptionLoyalty`
-- `pushExistingLoyaltyMembersToHub`
-- `pushLoyaltyMemberToHub`
-- `receivePointsSync`
-- `reconcileCustomerLoyalty`
-- `sendLoyaltySignup`
-- `sendThankYouToLoyaltyMembers`
-- `syncLoyaltyFromHub`
-- `syncLoyaltyToHub`
+Retired: `adminDashboardData`, `assignDeliveryWindow`, `assignProductionWindow`, `evaluateSaturdayThreshold`, `getWindow3Status`, `correctAdminProductionBatchStaffOnDuty`, `previewAdminNonSubscriptionBottledCascadeCandidates`, `previewAdminSubscriptionFulfillmentProductionStatus`, `markAdminHubOrderDeliveredForCustomerAppSync`, `findCustomerOrders`, `findCustomerSubscriptions`, `getCustomerOrdersWithHub`, and `sendUserInvite`.
 
-No live endpoint was deleted for these source-only names. No canonical UI, automation, or function caller referenced them. Any future loyalty reconciliation must be designed as one authoritative boundary with idempotency, provenance, preview/apply separation, and a single direction of ownership rather than restoring these fragments.
+Current schedule ownership is `calculateNuViraFulfillmentSchedule` plus the previewed `executeNativeOrderScheduleCorrection` path. Current customer reads come from `getCustomerAccountDashboardData` and `getCustomerOrderDetail`. Current delivery actions come from the Delivery Queue functions.
 
-## Repair findings before retirement
+### Disabled compatibility shells and inaccurate legacy sync
 
-### Missing delivery endpoint
+Retired: `generateSubscriptionOrders`, `syncAllSubscriptionsFromHub`, `syncSubscriptionFromHub`, `syncOrdersFromHub`, `ingestCustomerAppOrderManual`, `hubToCustomerAppStatusSync`, `syncEventToHub`, `receiveSyncedEvent`, `hubSyncProxy`, and `getLoyaltyDataForSync`.
 
-`src/components/program/SubscriptionUpsellModal.jsx` was refactored from the nonexistent `calculateDeliveryZone` call to the supported `validateDeliveryEligibility` contract. Subscription eligibility now uses the server's `checkout_allowed`, `allowed_for_subscriptions`, zone, distance, fee, and customer-message fields; the old fixed 15-mile copy was removed. The site build and publish completed successfully.
+`getLoyaltyDataForSync` was especially unsafe to retain because it exported the legacy `LoyaltyMember` cache rather than the authoritative `UserPoints` balance now used by customer and admin surfaces.
 
-### Legacy payment endpoints need provider proof
+### Expired May 30 event surface
 
-The following have no current canonical frontend callers, but they touch payment/subscription creation and are not deletion-ready from static evidence alone:
+Retired: `redeemMay30EventBonus`, `sendMay30PushTest`, the `/event/may30` route, the expired event page, and the old event check-in card. `processMay30NativeOrderOps` remains because it is a current native order-processing dependency despite its compatibility name.
 
-- `createSubscriptionSession`
-- `createSubscriptionCheckoutHosted`
-- `createSubscriptionPaymentIntent`
-- `createSubscriptionPaymentIntentV2`
-- `sendOrderConfirmation`
+### Superseded native migration commands
 
-Hold them until Stripe, Resend, Base44 invocation, and webhook logs show a full observation window with no traffic and the current replacement path is proven end to end.
+Retired writer/migration endpoints with no current UI, automation, external contract, or 30-day invocation evidence:
 
-### Old cleanup documents are stale
+- `bottleNativeProductionShopifyOrderForCustomerApp`
+- `completeNativeProductionBatchesForCustomerApp`
+- `correctNativeScheduleExceptionForCustomerApp`
+- `createNativeOneTimeFulfillmentTaskMirrorForCustomerApp`
+- `createNativeOneTimeShopifyOrderMirrorForCustomerApp`
+- `createNativePartialRefundReviewQueueForCustomerApp`
+- `createNativeSubscriptionOccurrenceShopifyOrderMirrorForCustomerApp`
+- `executeNativeFulfillmentTaskMetadataRepair`
+- `importNativeProductionMasterDataForCustomerApp`
+- `materializeNativeProductionBatchesForCustomerApp`
+- `packNativeProductionFulfillmentTaskForCustomerApp`
+- `startNativeProductionBatchesForCustomerApp`
+- `updateNativeCustomerOrderDeliveredStatusForCustomerApp`
+- `updateNativeCustomerOrderStatusForCustomerApp`
+- `verifyNativeProductionBatchesForCustomerApp`
 
-`docs/migration/g33c-mirror2-base44-function-slot-unblock-audit.md`, `src/CLEANUP_PLAN_PHASE_4-5_BATCHED_EXECUTION.md`, and `src/FUNCTION_BACKUP_ARCHIVE.md` describe older inventories. Some functions they describe as deleted or differently classified are still live. This audit supersedes their counts, but their rollback/history notes remain useful.
+The corresponding current operations pages, read-only previews, and generalized production/delivery lifecycle commands remain. Standalone migration-only previews `previewNativeFulfillmentTaskMetadataRepair`, `previewNativeCustomerDeliveredStatusImpact`, and `previewNativeSafeSyncParityHarness` were also retired because they had no current caller or external contract.
 
-## Retirement sequence
+### Shopify and Hub cleanup
 
-1. **Completed:** export the current remote function and automation inventory.
-2. **Completed:** replace the hard-coded loyalty audit and repair the missing delivery endpoint.
-3. **Completed for the first batch:** verify zero canonical source callers, zero active automation references, and zero preview/production invocations over 30 days.
-4. **Completed:** run the cleanup-specific test, lint, production build, and all critical regression suites.
-5. **Completed:** delete only the proven batch from Base44 and source while preserving recovery in Git history.
-6. **Completed:** re-run the remote/source inventory and prove exact 218/218 parity.
-7. **Remaining:** observe payment-adjacent and operational recovery candidates for at least one complete order/subscription cycle before another deletion batch.
+Retired: `deleteProductFromShopify`, `shopifyBulkPushProducts`, `shopifyFulfillOrder`, `syncMerchToShopify`, `syncSubscriptionPlansToHub`, `verifyHubEndpointReachability`, and `verifyShopifyAuth`.
 
-## Completed first batch
+The destructive Product-delete automation and the disabled SubscriptionPlan-to-Hub automation were turned off and archived before their functions were removed. Current Shopify ownership remains with the signed webhook receiver, explicit product/merch push functions, controlled resync recovery, and the order poll fallback.
 
-Deleted from Base44 and canonical source on August 4, 2026:
+## Preserved safeguards
 
-1. `auditAmarkSubscriptions`
-2. `auditLatestStripePaymentForAmark`
-3. `canonicalizeAmarkSubscription`
-4. `repairR1DeepaCAPatch`
-5. `repairR2RefundedDuplicatesCA`
-6. `repairR3HenrryCAHydration`
-7. `repairR4SukhwantCAStructure`
+The cleanup did not remove:
 
-`verifyCustomerFacingLoyaltyDisplay` was also deleted because it was a second hard-coded historical loyalty verifier with zero caller, automation, or 30-day invocation evidence and is superseded by the aggregate audit.
+- Stripe or Shopify webhook receivers
+- canonical one-time or subscription payment creation
+- consent, unsubscribe, recipient, or idempotency controls
+- customer order, loyalty, account, push, or notification reads
+- active Hub/Shopify/GMC pull, push, poll, or retry contracts
+- current production, fulfillment, delivery, compliance, or admin read models
+- exact allowlists, kill switches, `LOCK_FROZEN_FIELDS`, `order_lock_status`, preview/apply separation, rollback evidence, or lifecycle locks
 
-## Completed second batch
+Temporary May 30 compatibility names are distinct from current lifecycle safeguards. The remaining stale names are documented in the manifest and are retained only where current callers still depend on them.
 
-Deleted from Base44 and canonical source on August 4, 2026 after the same 30-day, caller, and automation checks:
+## Verification requirements
 
-1. `replaySubscriptionRefundDryRun`
-2. `probeHubSubscriptionCancelled`
-3. `correctAdminOrderDeliverySchedule`
-4. `correctAdminOrderDeliveryScheduleV2`
+Before merging batch 4:
 
-The two schedule correctors are superseded by `executeNativeOrderScheduleCorrection`, which is the endpoint used by the active Delivery Queue. `monitorLiveCheckoutTest` remains live because `/admin/live-monitor` is an active caller.
+1. Run the G67 retirement regression and all critical regression suites.
+2. Run lint and the production Web build.
+3. Verify all remaining function names in the required-function manifest exist exactly once.
+4. Deploy/delete the 73-function batch only after the two attached legacy automations are archived.
+5. Re-run Base44 inventory and confirm source/live parity at 145/145.
+6. Re-run the live aggregate loyalty audit and confirm `writes_performed: false` with zero critical exceptions.
 
-## Completed third batch
+## Forward rule
 
-Deleted from Base44 and canonical source on August 4, 2026 after caller, automation, and 30-day invocation checks:
-
-- fixed-customer subscription audits: `auditNewSubscriptions`, `auditStabilizationRepair`, `auditSubscriptionFulfillments`, and `auditSubscriptionPayloadToHub`
-- obsolete audit/debug endpoints: `auditStripeAndIntegrationInventory`, `stabilizationDiagnostic`, `debugAndRetryHubSync`, and `debugHubSyncPayload`
-- legacy payment diagnostics: `diagnosePiConfig`, `inspectPaymentIntent`, `listRecentPIs`, `verifyLiveSubscriptionSmoke`, and `verifyStripeLiveMode`
-- deprecated sync shells: `manualPushOrderToHub`, `manualSyncOrders`, `manualSyncSubscription`, and `manualSyncSubscriptionOrders`
-- obsolete live test/mutation endpoints: `auditWindow3Orders` and `testSchedulingLogic`
-
-`auditWindow3Orders` was especially misleading: despite its audit name, it could directly update order scheduling fields after a Saturday threshold. The current scheduling and controlled recovery paths remain in place.
-
-This cleanup removed thirty-one obsolete live functions and thirteen never-deployed source fragments without touching payments, webhook receivers, order status, production, loyalty calculation, push, active Hub/Shopify sync, customer journeys, or lifecycle safeguards. Lint, production build, the G67 cleanup suite, and all 42 critical regression suites passed. Remaining payment-adjacent or recovery candidates stay live until their specific replacement and observation requirements are proven.
+No new customer-specific function, probe, duplicate payment path, or compatibility shell should be deployed. A new function must declare its canonical caller or external contract, unique responsibility, source of truth, side effects, authorization, idempotency, rollback behavior, and the function it replaces.

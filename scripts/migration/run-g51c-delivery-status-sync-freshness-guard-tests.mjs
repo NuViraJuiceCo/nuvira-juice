@@ -22,7 +22,6 @@ function assert(name, condition, detail = {}) {
 }
 
 const syncSource = read('base44/functions/syncHubDeliveryStatuses/entry.ts');
-const verifierSource = read('base44/functions/verifyOutForDeliveryNotification/entry.ts');
 const statusNotificationSource = read('base44/functions/sendOrderStatusNotification/entry.ts');
 const criticalCi = read('scripts/ci/run-critical-regressions.mjs');
 
@@ -32,7 +31,6 @@ const orderUpdateIndex = syncSource.indexOf('entities.Order.update');
 assert('Delivery status sync has a no-write dry-run mode.', syncSource.includes("body.mode === 'dry_run'") && syncSource.includes('wouldUpdateOrders'), {});
 assert('Dry-run branch executes before Customer App Order update.', dryRunIndex >= 0 && orderUpdateIndex >= 0 && dryRunIndex < orderUpdateIndex, { dryRunIndex, orderUpdateIndex });
 assert('Scheduled sync gate no longer references launch freeze copy.', !syncSource.includes('May 30 launch freeze') && syncSource.includes('current controlled-sync gate'), {});
-assert('Verifier run-sync gate no longer references launch freeze copy.', !verifierSource.includes('May 30 launch freeze') && verifierSource.includes('current controlled-sync gate'), {});
 assert('Delivery date fields are explicitly considered before status sync.', syncSource.includes('DELIVERY_DATE_FIELDS') && syncSource.includes('assigned_delivery_date') && syncSource.includes('requested_delivery_date'), {});
 assert('Delivery status sync has bounded freshness controls.', syncSource.includes('HUB_DELIVERY_STATUS_SYNC_LOOKBACK_DAYS') && syncSource.includes('HUB_DELIVERY_STATUS_SYNC_LOOKAHEAD_DAYS'), {});
 assert('Out-of-window active orders are reported instead of mutated.', syncSource.includes('skippedByDeliveryWindow') && syncSource.includes('delivery_date_before_sync_window'), {});

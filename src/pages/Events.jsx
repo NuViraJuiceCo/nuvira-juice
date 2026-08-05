@@ -1,13 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MapPin, Calendar, Users, ExternalLink, Gift } from 'lucide-react';
+import { MapPin, Calendar, Users, ExternalLink } from 'lucide-react';
 import MobilePageHeader from '@/components/layout/MobilePageHeader';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import SEO from '@/components/SEO';
 import PullToRefresh from '@/components/PullToRefresh';
-import { isEventCheckInVisible } from '@/lib/eventCheckIn';
 import { eventStructuredDateTimes, resolveEventTimeSemantics } from '@/lib/eventTimeSemantics';
 
 function buildEventSchema(events) {
@@ -98,7 +97,6 @@ export default function Events() {
     .sort((a, b) => eventSortValue(a) - eventSortValue(b));
 
   const eventSchema = buildEventSchema(events);
-  const showEventCheckIn = isEventCheckInVisible();
 
   return (
     <PullToRefresh onRefresh={refetch}>
@@ -145,23 +143,6 @@ export default function Events() {
             </div>
           </div>
         </motion.div>
-
-        {showEventCheckIn && (
-        <Link
-          to="/event/may30"
-          className="flex items-center gap-3 rounded-2xl border p-4 text-left nuvira-premium-card"
-        >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl nuvira-icon-badge">
-            <Gift className="h-5 w-5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-foreground">Event Check-In</span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-              Claim the one-time 250 point event visit bonus.
-            </span>
-          </span>
-        </Link>
-        )}
 
         {/* Events List */}
         <div className="space-y-4">

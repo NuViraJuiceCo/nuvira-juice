@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
         success: false,
         skipped: true,
         reason: 'zone3_route_review_decisions_disabled',
-        message: 'Zone 3 subscription route review approvals are disabled for May 30 launch freeze.',
+        message: 'Zone 3 subscription route review approvals are disabled by the current operational safety gate.',
       }, { status: 409 });
     }
 

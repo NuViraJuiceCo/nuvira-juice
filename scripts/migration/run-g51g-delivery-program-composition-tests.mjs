@@ -51,13 +51,6 @@ function loadExports(relativePath, exportNames) {
 const hydrationLineItems = [
   { id: 'li_hydration', product_id: 'prod_hydration', title: 'Hydration Program (3-Day)', quantity: 1, price: 144 },
 ];
-const radianceLineItems = [
-  { id: 'li_radiance', product_id: 'prod_radiance', title: 'Radiance Program (3-Day)', quantity: 2, price: 144 },
-];
-const resetLineItems = [
-  { id: 'li_reset', product_id: 'prod_reset', title: 'Reset Program (3-Day)', quantity: 1, price: 144 },
-];
-
 function baseDeliveryOrder(lineItems = hydrationLineItems) {
   return {
     id: 'shopify_program_order',
@@ -132,66 +125,6 @@ for (const [label, relativePath] of [
   assert.equal(draft.items_summary, '9x OASIS, 3x AURA');
   assert.equal(draft.line_item_count, 2);
   results.push(`${label}_expands_hydration_program_into_delivery_task_items`);
-}
-
-for (const [label, relativePath] of [
-  ['preview_metadata_repair', 'base44/functions/previewNativeFulfillmentTaskMetadataRepair/entry.ts'],
-  ['execute_metadata_repair', 'base44/functions/executeNativeFulfillmentTaskMetadataRepair/entry.ts'],
-]) {
-  const { sourceMetadata, buildMetadataRepairPlan } = loadExports(relativePath, ['sourceMetadata', 'buildMetadataRepairPlan']);
-  const hydration = sourceMetadata({ task: {}, nativeOrder: baseDeliveryOrder(), customerOrder: {} });
-  assert.equal(hydration.items_summary, '9x OASIS, 3x AURA');
-  assert.equal(hydration.line_item_count, 2);
-
-  const radiance = sourceMetadata({ task: {}, nativeOrder: baseDeliveryOrder(radianceLineItems), customerOrder: {} });
-  assert.equal(radiance.items_summary, '18x AURA, 6x OASIS');
-  assert.equal(radiance.line_item_count, 2);
-
-  const reset = sourceMetadata({ task: {}, nativeOrder: baseDeliveryOrder(resetLineItems), customerOrder: {} });
-  assert.equal(reset.items_summary, '9x RE-NU, 3x OASIS');
-  assert.equal(reset.line_item_count, 2);
-
-  const stalePlan = buildMetadataRepairPlan({
-    task: {
-      id: 'task_program',
-      order_id: 'shopify_program_order',
-      base44_order_id: 'customer_order_program',
-      shopify_order_number: 'NV-PROGRAM',
-      order_number: 'NV-PROGRAM',
-      native_shopify_order_id: 'shopify_program_order',
-      shopify_order_id: 'shopify_program_order',
-      source_channel: 'customer_app',
-      source_type: 'customer_app_one_time',
-      schedule_source: 'native_customer_app_paid_order_mirror',
-      task_source: 'native_fulfillment_task_metadata_repair',
-      created_from_native_ops: true,
-      scheduled_date: '2026-07-22',
-      assigned_delivery_date: '2026-07-22',
-      production_date: '2026-07-21',
-      fulfillment_type: 'delivery',
-      payment_status: 'paid',
-      production_status: 'awaiting_production',
-      sync_status: 'native_task_metadata_repaired',
-      address: '1 Test Way, Wentzville, MO 63385',
-      address_line1: '1 Test Way',
-      address_city: 'Wentzville',
-      address_state: 'MO',
-      address_postal_code: '63385',
-      address_complete: true,
-      time_window: '5 PM - 8 PM',
-      delivery_window_label: '5 PM - 8 PM',
-      total_price: 151.99,
-      items_summary: '1x Hydration Program (3-Day)',
-      line_item_count: 1,
-    },
-    nativeOrder: baseDeliveryOrder(),
-    customerOrder: { id: 'customer_order_program', order_number: 'NV-PROGRAM' },
-  });
-  assert.equal(stalePlan.patch.items_summary, '9x OASIS, 3x AURA');
-  assert.equal(stalePlan.patch.line_item_count, 2);
-  assert.deepEqual(Array.from(stalePlan.stale_existing_fields_repaired), ['items_summary', 'line_item_count']);
-  results.push(`${label}_repairs_program_task_summary_to_bottle_counts`);
-  results.push(`${label}_refreshes_stale_program_task_summary`);
 }
 
 {

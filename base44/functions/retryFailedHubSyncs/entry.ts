@@ -44,8 +44,9 @@ Deno.serve(async (req) => {
       success: true,
       skipped: true,
       retried: 0,
+      gate: 'ENABLE_FAILED_HUB_SYNC_RETRY',
       reason: 'failed_hub_sync_retry_disabled',
-      message: 'Failed Hub sync retry sweep is disabled for May 30 launch freeze.',
+      message: 'Failed Hub sync retry sweep is disabled by the current integration safety gate.',
     });
   }
 

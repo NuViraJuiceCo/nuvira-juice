@@ -653,7 +653,7 @@ Deno.serve(async (req) => {
   }
 
   // order_type: always one_time for Customer App orders.
-  // (Subscriptions go through createSubscriptionSession, not syncOrderToHub)
+  // (Subscriptions go through createSubscriptionPaymentElementIntent, not syncOrderToHub)
   const order_type       = 'one_time';
   const fulfillment_mode = 'single_delivery';
 

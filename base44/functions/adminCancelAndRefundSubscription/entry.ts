@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         reason: 'admin_subscription_cancel_refund_disabled',
-        message: 'Admin subscription cancel/refund is disabled for May 30 launch freeze.',
+        message: 'Admin subscription cancel/refund is disabled by the current operational safety gate.',
       }, { status: 409 });
     }
 

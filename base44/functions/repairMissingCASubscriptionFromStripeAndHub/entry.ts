@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
         success: true,
         skipped: true,
         reason: 'legacy_repair_tools_disabled',
-        message: 'Legacy repair tools are disabled for May 30 launch freeze.',
+        message: 'Subscription reconciliation is disabled by the current operational safety gate.',
       });
     }
 
