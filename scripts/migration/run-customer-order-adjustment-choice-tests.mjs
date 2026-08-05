@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  buildCustomerOrderAdjustmentCommunications,
   CUSTOMER_ORDER_ADJUSTMENT_CHOICES,
   handleCustomerOrderAdjustmentRequest,
 } from '../../base44/functions/processManualRefund/customerOrderAdjustment.ts';
@@ -186,6 +187,8 @@ async function run() {
   assert.equal(state.invocations.length, 1);
   assert.equal(state.invocations[0].payload.notification_subtype, 'order_delayed');
   assert.equal(state.invocations[0].payload.push_priority, 'high');
+  assert.equal(state.invocations[0].payload.title, 'Choose an update for order NV-TEST-LEE');
+  assert.match(state.invocations[0].payload.message, /full Friday production for one Saturday delivery/);
   assert.equal(state.stores.FulfillmentTask.rows[0].status, 'needs_review');
   assert.equal(state.stores.FulfillmentTask.rows[0].review_status, 'customer_choice_pending');
   assert.equal(state.stores.Order.rows[0].status, 'scheduled_for_juicing', 'prepare must not mutate order lifecycle');
@@ -205,7 +208,29 @@ async function run() {
   assert.equal(state.stores.OrderReviewQueue.rows.length, 1, 'prepare retry must reuse the request');
   assert.equal(emailCalls.length, 1, 'prepare retry must not resend email');
   assert.equal(state.stores.FulfillmentTask.rows[0].audit_trail.length, 1, 'prepare retry must not duplicate task audit events');
-  assertions += 22;
+  assertions += 24;
+
+  const exactPreview = buildCustomerOrderAdjustmentCommunications({
+    orderNumber: 'NV-TEST-LEE',
+    firstName: 'Lee',
+    token,
+    currentDate: '2026-08-05',
+    targetDate: '2026-08-08',
+    refundAmount: 12,
+  });
+  assert.equal(exactPreview.email.subject, JSON.parse(emailCalls[0].init.body).subject);
+  assert.equal(exactPreview.email.html, JSON.parse(emailCalls[0].init.body).html);
+  assert.equal(Object.keys(exactPreview.email.links).length, 3);
+  for (const [choice, url] of Object.entries(exactPreview.email.links)) {
+    const parsed = new URL(url);
+    assert.equal(parsed.pathname, '/order-options');
+    assert.equal(parsed.searchParams.get('token'), token);
+    assert.equal(parsed.searchParams.get('choice'), choice);
+  }
+  assert.equal(exactPreview.push.title, state.invocations[0].payload.title);
+  assert.equal(exactPreview.push.message, state.invocations[0].payload.message);
+  assert.equal(exactPreview.push.deep_link, state.invocations[0].payload.deep_link);
+  assertions += 12;
 
   {
     const invalid = await responseJson(await handleCustomerOrderAdjustmentRequest({

@@ -249,13 +249,14 @@ function selectionGuidance(choice, refundAmount, currentDate, targetDate) {
   return `Customer requested a $${money(refundAmount).toFixed(2)} partial refund for OASIS. Keep available items on ${formatDate(currentDate)} and do not produce or deliver OASIS.`;
 }
 
-function emailHtml({ orderNumber, firstName, token, currentDate, targetDate, refundAmount }) {
+export function buildCustomerOrderAdjustmentCommunications({ orderNumber, firstName, token, currentDate, targetDate, refundAmount }) {
   const baseUrl = `${APP_ORIGIN}/order-options?token=${encodeURIComponent(token)}`;
   const links = Object.keys(CUSTOMER_ORDER_ADJUSTMENT_CHOICES).reduce((out, choice) => {
     out[choice] = `${baseUrl}&choice=${encodeURIComponent(choice)}`;
     return out;
   }, {});
-  return `<!doctype html>
+  const emailSubject = `Please choose an update for NuVira order ${orderNumber}`;
+  const emailHtml = `<!doctype html>
 <html><body style="margin:0;background:#f3f7f3;font-family:Arial,sans-serif;color:#15211a">
   <div style="max-width:620px;margin:0 auto;padding:28px 18px">
     <div style="background:#0d1b14;color:#fff;padding:26px;border-radius:12px 12px 0 0">
@@ -276,6 +277,18 @@ function emailHtml({ orderNumber, firstName, token, currentDate, targetDate, ref
     </div>
   </div>
 </body></html>`;
+  return {
+    email: {
+      subject: emailSubject,
+      html: emailHtml,
+      links,
+    },
+    push: {
+      title: `Choose an update for order ${orderNumber}`,
+      message: 'Freshness-first option: full Friday production for one Saturday delivery. You can also split OASIS or request its refund.',
+      deep_link: `/order-options?token=${encodeURIComponent(token)}`,
+    },
+  };
 }
 
 async function deliveryLog(base44, idempotencyKey) {
@@ -298,6 +311,14 @@ async function sendChoiceEmail({ base44, review, order, token, fetchImpl, envGet
   if (existing && ['sent', 'delivered'].includes(existing.status)) {
     return { sent: true, skipped: true, reason: 'duplicate_idempotency_key' };
   }
+  const communications = buildCustomerOrderAdjustmentCommunications({
+    orderNumber: order.order_number,
+    firstName: customerFirstName(order.customer_name),
+    token,
+    currentDate: payload.current_delivery_date,
+    targetDate: payload.target_delivery_date,
+    refundAmount: payload.oasis_refund_amount,
+  });
   const response = await fetchImpl('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -309,15 +330,8 @@ async function sendChoiceEmail({ base44, review, order, token, fetchImpl, envGet
       from: 'NuVira Juice Co <info@nuvirajuice.com>',
       to: order.customer_email,
       reply_to: 'support@nuvirajuice.com',
-      subject: `Please choose an update for NuVira order ${order.order_number}`,
-      html: emailHtml({
-        orderNumber: order.order_number,
-        firstName: customerFirstName(order.customer_name),
-        token,
-        currentDate: payload.current_delivery_date,
-        targetDate: payload.target_delivery_date,
-        refundAmount: payload.oasis_refund_amount,
-      }),
+      subject: communications.email.subject,
+      html: communications.email.html,
     }),
   });
   const result = await response.json().catch(() => ({}));
@@ -347,15 +361,24 @@ async function sendChoiceEmail({ base44, review, order, token, fetchImpl, envGet
 async function sendChoicePush({ base44, review, order, token, envGet }) {
   const internalToken = text(envGet('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN'), 1000);
   if (!internalToken) return { sent: false, reason: 'transactional_internal_token_missing' };
+  const payload = review.incoming_payload || {};
+  const communications = buildCustomerOrderAdjustmentCommunications({
+    orderNumber: order.order_number,
+    firstName: customerFirstName(order.customer_name),
+    token,
+    currentDate: payload.current_delivery_date,
+    targetDate: payload.target_delivery_date,
+    refundAmount: payload.oasis_refund_amount,
+  });
   try {
     const result = await base44.functions.invoke('sendCustomerNotification', {
       customer_email: order.customer_email,
       type: 'order_update',
       notification_subtype: 'order_delayed',
-      title: `Action needed for order ${order.order_number}`,
-      message: 'Please choose Saturday delivery for the full order, a separate Saturday OASIS delivery, or an OASIS refund.',
+      title: communications.push.title,
+      message: communications.push.message,
       order_id: order.id,
-      deep_link: `/order-options?token=${encodeURIComponent(token)}`,
+      deep_link: communications.push.deep_link,
       idempotency_key: `customer_order_adjustment_push:${review.id}`,
       delivery_key: `customer_order_adjustment_push:${review.id}`,
       source: 'elevated_transactional',
