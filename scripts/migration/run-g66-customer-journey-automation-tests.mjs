@@ -10,6 +10,7 @@ const cart = read('src/lib/cartContext.jsx');
 const checkout = read('src/pages/Checkout.jsx');
 const campaigns = read('src/pages/admin/NotificationCampaigns.jsx');
 const loyalty = read('base44/functions/createLoyaltyMember/entry.ts');
+const marketingLaunch = read('base44/functions/customerJourneyAutomation/marketingLaunch.ts');
 
 for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
   const schema = JSON.parse(read(`base44/entities/${entity}.jsonc`));
@@ -74,12 +75,28 @@ assert.ok(source.includes("NuVira Juice Company, 619 N. Main St., O'Fallon, MO 6
 assert.doesNotMatch(source, /206 W\. Pine Creek Ct\./);
 assert.match(source, /CART_TOTAL:\s*Number\(finiteNumber\(state\.cart_total, 0\)\.toFixed\(2\)\)/);
 assert.match(source, /CART_TOTAL:\s*12,/);
+assert.match(source, /POSCustomerClaim\.filter/);
+assert.match(source, /REVIEW_URL:/);
+assert.match(source, /loyalty_joined: \['customer_name', 'points', 'discount_code', 'review_url'/);
 assert.match(source, /existingJourneyEvent/);
 assert.match(source, /results\.length >= maxEvents/);
 assert.match(source, /send_test_customer_journey/);
 assert.match(source, /sandbox_requires_test_mode/);
 
 assert.match(source, /action === 'evaluate_scheduled'/);
+assert.match(source, /handleMarketingLaunchAction/);
+assert.match(marketingLaunch, /SYNC VERIFIED NUVIRA MARKETING CONTACTS/);
+assert.match(marketingLaunch, /CREATE NUVIRA MARKETING DRAFT/);
+assert.match(marketingLaunch, /SEND NUVIRA MARKETING PROOF/);
+assert.match(marketingLaunch, /internalOrPrivateEmail/);
+assert.match(marketingLaunch, /providerContact\?\.unsubscribed === true/);
+assert.match(marketingLaunch, /segment_id: segment\.id/);
+assert.match(marketingLaunch, /segments\/\$\{encodeURIComponent\(segmentId\)\}\/contacts/);
+assert.match(marketingLaunch, /send: false/);
+assert.match(marketingLaunch, /RESEND_UNSUBSCRIBE_URL/);
+assert.match(marketingLaunch, /619 N\. Main St\./);
+assert.match(marketingLaunch, /NuViraSummer/);
+assert.match(marketingLaunch, /g\.page\/nuvirajuiceco\/review/);
 assert.match(source, /body\?\.event && body\?\.data/);
 assert.match(source, /asServiceRole\.entities\.Order\.get\(orderId\)/);
 assert.match(source, /authoritative_order_not_found/);

@@ -1,3 +1,5 @@
+import { handleMarketingLaunchAction } from './marketingLaunch.ts';
+
 type JourneyMode = 'disabled' | 'test' | 'production';
 type ConsentResult = {
   eligible: boolean;
@@ -38,7 +40,7 @@ const PROVIDER_REQUIRED_FIELDS: Record<string, string[]> = {
   cart_abandoned: ['customer_name', 'cart_summary', 'item_count', 'cart_total', 'recovery_url', 'mailing_address'],
   purchase_completed: ['customer_name', 'order_number', 'mailing_address'],
   order_delivered: ['customer_name', 'order_number', 'review_url', 'shop_url', 'mailing_address'],
-  loyalty_joined: ['customer_name', 'points', 'discount_code', 'rewards_url', 'mailing_address'],
+  loyalty_joined: ['customer_name', 'points', 'discount_code', 'review_url', 'rewards_url', 'mailing_address'],
   reorder_due: ['customer_name', 'favorite_product', 'last_order_date', 'shop_url', 'mailing_address'],
   loyalty_reward_unlocked: ['customer_name', 'points_balance', 'reward_title', 'points_required', 'rewards_url', 'mailing_address'],
   subscription_recommended: ['customer_name', 'favorite_product', 'order_count', 'subscribe_url', 'mailing_address'],
@@ -306,8 +308,26 @@ async function resolveConsent(base44: any, email: string, eventName: string): Pr
 }
 
 async function profileFor(base44: any, email: string): Promise<any | null> {
-  const rows = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: normalizeEmail(email) }, '-created_date', 5);
-  return rows[0] || null;
+  const normalized = normalizeEmail(email);
+  const [profiles, contactProfiles, claims, orders] = await Promise.all([
+    base44.asServiceRole.entities.UserProfile.filter({ customer_email: normalized }, '-created_date', 5),
+    base44.asServiceRole.entities.UserProfile.filter({ contact_email: normalized }, '-created_date', 5),
+    base44.asServiceRole.entities.POSCustomerClaim.filter({ customer_email: normalized }, '-created_date', 5),
+    base44.asServiceRole.entities.ShopifyOrder.filter({ customer_email: normalized }, '-created_date', 5),
+  ]);
+  const profile = profiles[0] || contactProfiles[0] || {};
+  const claim = claims[0] || {};
+  const order = orders[0] || {};
+  const orderName = normalizeSingleLine(order?.customer_name, 200).split(/\s+/).filter(Boolean);
+  const firstName = normalizeSingleLine(profile?.first_name || claim?.first_name || orderName[0], 100);
+  const lastName = normalizeSingleLine(profile?.last_name || claim?.last_name || orderName.slice(1).join(' '), 100);
+  if (!profile?.id && !claim?.id && !order?.id) return null;
+  return {
+    ...profile,
+    first_name: firstName,
+    last_name: lastName,
+    phone: normalizeSingleLine(profile?.phone || claim?.phone || order?.customer_phone, 80),
+  };
 }
 
 async function existingJourneyEvent(base44: any, eventId: string): Promise<any | null> {
@@ -502,7 +522,7 @@ async function orderPayload(base44: any, order: any) {
     CUSTOMER_NAME: customerName(profile, order),
     ORDER_NUMBER: normalizeSingleLine(order?.order_number || order?.id, 160),
     REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000)
-      || 'https://www.google.com/maps/search/?api=1&query=NuVira%20Juice%20Company%20Wentzville%20Missouri',
+      || 'https://g.page/nuvirajuiceco/review',
     SHOP_URL: `${APP_URL}/shop`,
     MAILING_ADDRESS,
   };
@@ -716,6 +736,8 @@ async function evaluateJourneys(base44: any) {
         CUSTOMER_NAME: customerName(profile),
         POINTS: finiteNumber(pointsRecord?.total_points, 0),
         DISCOUNT_CODE: 'NuViraSummer',
+        REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000)
+          || 'https://g.page/nuvirajuiceco/review',
         REWARDS_URL: `${APP_URL}/rewards`,
       }));
     }
@@ -862,9 +884,9 @@ async function sandboxEvent(base44: any, caller: any, body: Record<string, any>)
   if (!EVENT_PROVIDER_NAMES[eventName]) return Response.json({ error: 'unsupported_journey_event' }, { status: 400 });
   const profile = await profileFor(base44, email);
   const payloads: Record<string, Record<string, any>> = {
-    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, DISCOUNT_CODE: 'NuViraSummer', REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },
+    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, DISCOUNT_CODE: 'NuViraSummer', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || 'https://g.page/nuvirajuiceco/review', REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },
     cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x NuVira juice', ITEM_COUNT: 1, CART_TOTAL: 12, RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
-    order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || 'https://www.google.com/maps/search/?api=1&query=NuVira%20Juice%20Company%20Wentzville%20Missouri', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+    order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || 'https://g.page/nuvirajuiceco/review', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     purchase_completed: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', MAILING_ADDRESS },
     reorder_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'July 14, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     loyalty_reward_unlocked: { CUSTOMER_NAME: customerName(profile), POINTS_BALANCE: 500, REWARD_TITLE: 'Free wellness shot', POINTS_REQUIRED: 500, REWARDS_URL: `${APP_URL}/rewards`, MAILING_ADDRESS },
@@ -887,7 +909,7 @@ export async function handleCustomerJourneyRequest(base44: any, caller: any, raw
   try {
     const body = raw?.args && typeof raw.args === 'object' ? { ...raw, ...raw.args } : raw;
     const action = normalizeSingleLine(body?.action, 80);
-    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event'].includes(action);
+    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event', 'marketing_launch_preview', 'marketing_launch_sync_contacts', 'marketing_launch_create_draft', 'marketing_launch_send_test'].includes(action);
     const entityAutomation = Boolean(body?.event && body?.data);
     if (!supportedAction && !entityAutomation) return null;
 
@@ -907,6 +929,8 @@ export async function handleCustomerJourneyRequest(base44: any, caller: any, raw
     }
     if (action === 'preview') return await preview(base44);
     if (action === 'preview_rewards_email_campaign') return await previewRewardsCampaign(base44);
+    const marketingResponse = await handleMarketingLaunchAction(base44, body);
+    if (marketingResponse) return marketingResponse;
     if (action === 'evaluate_now') return await evaluateJourneys(base44);
     if (action === 'sandbox_event') return await sandboxEvent(base44, caller, body);
     return Response.json({ error: 'unsupported_action' }, { status: 400 });
