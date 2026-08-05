@@ -84,25 +84,26 @@ Deno.serve(async (req) => {
 
     console.log(`[processManualRefund] Order ${order_number} updated to refunded status`);
 
-    // Restore loyalty points if full refund
+    // Reverse points earned on the refunded purchase. A refund must never
+    // create additional available or lifetime points.
     if (isFull && order.customer_email) {
-      const pointsToRestore = Math.floor(order.total * 10);
-      const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: order.customer_email });
-      
-      if (existing.length > 0) {
-        const entry = {
-          amount: pointsToRestore,
-          type: 'adjustment',
-          description: `Points restored due to manual refund of order ${order_number}`,
-          timestamp: new Date().toISOString(),
-        };
-        await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-          total_points: (existing[0].total_points || 0) + pointsToRestore,
-          lifetime_points: (existing[0].lifetime_points || 0) + pointsToRestore,
-          points_history: [...(existing[0].points_history || []), entry],
-        });
-        console.log(`[processManualRefund] Restored ${pointsToRestore} points to ${order.customer_email}`);
-      }
+      const pointsToReverse = Math.floor(Number(effectiveRefundAmount || 0) * 10);
+      const loyaltyResponse = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+        action: 'post',
+        customer_email: order.customer_email,
+        amount: -pointsToReverse,
+        transaction_type: 'reversal',
+        idempotency_key: `manual_refund:${stripe_refund_id || order.id}:${order.id}:reversal`,
+        description: `Manual refund of order ${order_number}`,
+        source_type: 'manual_refund',
+        source_id: stripe_refund_id || order.id,
+        order_id: order.id,
+        order_number,
+        metadata: { refund_amount: effectiveRefundAmount, full_refund: true },
+      }, { headers: { 'x-internal-secret': Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' } });
+      const loyaltyResult = loyaltyResponse?.data || loyaltyResponse;
+      if (loyaltyResult?.success !== true) throw new Error(loyaltyResult?.error || 'manual_refund_loyalty_transaction_failed');
+      console.log(`[processManualRefund] Reversed ${pointsToReverse} points for ${order.customer_email}`);
     }
 
     // Sync to Hub with refund event via shared helper
@@ -136,7 +137,7 @@ Deno.serve(async (req) => {
       order_number: order_number,
       status: 'success',
       hub_action: 'manual_refund_processed',
-      description: `💰 MANUAL REFUND: $${effectiveRefundAmount} (${isFull ? 'FULL' : 'PARTIAL'}). Order updated in Customer App. Hub sync attempted. Points ${isFull ? 'restored' : 'not restored (partial)'}.`,
+      description: `MANUAL REFUND: $${effectiveRefundAmount} (${isFull ? 'FULL' : 'PARTIAL'}). Order updated in Customer App. Hub sync attempted. Earned points ${isFull ? 'reversed' : 'not changed for partial refund'}.`,
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
       triggered_by: 'manual_refund_process',
@@ -150,7 +151,7 @@ Deno.serve(async (req) => {
       is_full_refund: isFull,
       action: isFull ? 'full_refund_processed' : 'partial_refund_manual_review',
       hub_sync_attempted: true,
-      points_restored: isFull,
+      points_reversed: isFull,
     });
 
   } catch (error) {

@@ -4,47 +4,46 @@ function normalizeEmail(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
-async function requireOwnerOrAdmin(base44: any, email: unknown) {
+async function requireOwnerOrAdmin(base44: any, email: unknown, authEmail: unknown = null) {
   const user = await base44.auth.me().catch(() => null);
   if (!user) return { response: Response.json({ error: 'unauthorized' }, { status: 401 }) };
   const targetEmail = normalizeEmail(email);
   const requesterEmail = normalizeEmail(user.email);
-  if (user.role !== 'admin' && requesterEmail !== targetEmail) {
+  const authenticatedAlias = normalizeEmail(authEmail);
+  const verifiedAppleContact = requesterEmail.endsWith('@privaterelay.appleid.com')
+    && authenticatedAlias === requesterEmail
+    && targetEmail
+    && !targetEmail.endsWith('@privaterelay.appleid.com');
+  if (user.role !== 'admin' && requesterEmail !== targetEmail && !verifiedAppleContact) {
     return { response: Response.json({ error: 'forbidden' }, { status: 403 }) };
   }
   return { user };
 }
 
 /**
- * Single source of truth for loyalty enrollment.
- * 1. Pushes to hub first
- * 2. Creates local LoyaltyMember + UserPoints cache
+ * Single entry point for loyalty enrollment.
+ * 1. Posts an idempotent local loyalty-ledger transaction
+ * 2. Mirrors enrollment to Hub and maintains profile projections
  * Called by: completeAccountSetup, enrollNewCustomerInLoyalty
  */
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { email, first_name, last_name, phone, address, birthday, signup_date } = await req.json();
+    const { email, auth_email, first_name, last_name, phone, address, birthday, signup_date } = await req.json();
 
     if (!email) {
       return Response.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    const auth = await requireOwnerOrAdmin(base44, email);
+    const auth = await requireOwnerOrAdmin(base44, email, auth_email);
     if (auth.response) return auth.response;
 
-    // Check if already enrolled
-    const existing = await base44.asServiceRole.entities.LoyaltyMember.filter({ email });
-    if (existing.length > 0) {
-      console.log(`Loyalty member already exists: ${email}`);
-      return Response.json({ error: 'Already enrolled', existing: true }, { status: 409 });
-    }
-
+    const customerEmail = normalizeEmail(email);
     const preorderBonus = 250;
     const normalizedFirstName = String(first_name || '').trim();
     const normalizedLastName = String(last_name || '').trim();
     const fullName = `${normalizedFirstName} ${normalizedLastName}`.trim() || 'NuVira Member';
-    const bonusTimestamp = new Date().toISOString();
+    const bonusTimestamp = signup_date ? `${signup_date}T12:00:00.000Z` : new Date().toISOString();
     const bonusEntry = {
       amount: preorderBonus,
       type: 'bonus',
@@ -52,7 +51,27 @@ Deno.serve(async (req) => {
       timestamp: bonusTimestamp,
     };
 
-    // Step 1: Enroll in hub (source of truth)
+    // Step 1: Create the idempotent local ledger transaction. UserPoints and
+    // LoyaltyMember are projections maintained by the consolidated ledger action.
+    const loyaltyResponse = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+      action: 'post',
+      customer_email: customerEmail,
+      amount: preorderBonus,
+      transaction_type: 'bonus',
+      idempotency_key: `loyalty_signup:${customerEmail}`,
+      description: bonusEntry.description,
+      source_type: 'loyalty_signup',
+      source_id: customerEmail,
+      occurred_at: bonusTimestamp,
+      metadata: { signup_date: signup_date || bonusTimestamp.slice(0, 10) },
+    }, { headers: { 'x-internal-secret': Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' } });
+    const loyaltyResult = loyaltyResponse?.data || loyaltyResponse;
+    if (loyaltyResult?.success !== true) {
+      return Response.json({ error: loyaltyResult?.error || 'loyalty_enrollment_failed' }, { status: 500 });
+    }
+
+    // Step 2: Mirror the enrollment to Hub. The local ledger remains
+    // authoritative, so a temporary Hub outage cannot duplicate signup points.
     const hubApiUrl = Deno.env.get('HUB_API_URL');
     const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 
@@ -65,7 +84,7 @@ Deno.serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            email,
+            email: customerEmail,
             full_name: fullName,
             phone: phone || null,
             signup_date: signup_date || new Date().toISOString().split('T')[0],
@@ -76,56 +95,47 @@ Deno.serve(async (req) => {
             points_history: [bonusEntry],
           }),
         });
-        console.log(`Enrolled in hub: ${email}`);
+        console.log(`Enrolled in hub: ${customerEmail}`);
       } catch (hubErr) {
-        console.error('Hub enrollment failed:', hubErr instanceof Error ? hubErr.message : String(hubErr));
-        return Response.json({ error: 'Failed to enroll in loyalty program' }, { status: 500 });
+        console.warn('Hub enrollment mirror failed:', hubErr instanceof Error ? hubErr.message : String(hubErr));
       }
     }
 
-    // Step 2: Create local LoyaltyMember cache
-    const member = await base44.asServiceRole.entities.LoyaltyMember.create({
-      email,
-      total_points: preorderBonus,
-      lifetime_points: preorderBonus,
-      redeemed_points: 0,
-      points_history: [bonusEntry],
-    });
-
-    // Step 3: Update/create UserProfile
-    const profileExisting = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: email });
+    // Step 3: Update/create the canonical profile projection.
+    const authenticatedEmail = normalizeEmail(auth_email) || customerEmail;
+    const [customerProfiles, contactProfiles, authenticatedProfiles] = await Promise.all([
+      base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail }),
+      base44.asServiceRole.entities.UserProfile.filter({ contact_email: customerEmail }),
+      authenticatedEmail === customerEmail
+        ? Promise.resolve([])
+        : base44.asServiceRole.entities.UserProfile.filter({ customer_email: authenticatedEmail }),
+    ]);
+    const profileExisting = [...customerProfiles, ...contactProfiles, ...authenticatedProfiles]
+      .filter((row, index, all) => all.findIndex(candidate => candidate.id === row.id) === index);
+    const existingProfile = profileExisting[0] || null;
     const profileData = {
-      customer_email: email,
-      contact_email: email,
+      customer_email: existingProfile?.customer_email || authenticatedEmail,
+      contact_email: customerEmail,
       ...(normalizedFirstName ? { first_name: normalizedFirstName } : {}),
       ...(normalizedLastName ? { last_name: normalizedLastName } : {}),
       phone: phone || null,
       address: address || null,
       birthday: birthday || null,
-      onboarding_complete: profileExisting.length > 0 ? profileExisting[0].onboarding_complete : false,
+      onboarding_complete: existingProfile?.onboarding_complete || false,
     };
 
-    if (profileExisting.length === 0) {
+    if (!existingProfile) {
       await base44.asServiceRole.entities.UserProfile.create(profileData);
     } else {
-      await base44.asServiceRole.entities.UserProfile.update(profileExisting[0].id, profileData);
+      await base44.asServiceRole.entities.UserProfile.update(existingProfile.id, profileData);
     }
 
-    // Step 4: Initialize UserPoints cache
-    const pointsExisting = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: email });
-    if (pointsExisting.length === 0) {
-      await base44.asServiceRole.entities.UserPoints.create({
-        customer_email: email,
-        total_points: preorderBonus,
-        lifetime_points: preorderBonus,
-        redeemed_points: 0,
-        points_history: [bonusEntry],
-      });
-    }
+    const members = await base44.asServiceRole.entities.LoyaltyMember.filter({ email: customerEmail }, '-updated_date', 1);
+    const member = members[0];
 
     // Step 5: Send welcome email + notification (non-blocking)
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    if (resendApiKey && Deno.env.get('ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL') === 'true') {
+    if (!loyaltyResult.idempotent && resendApiKey && Deno.env.get('ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL') === 'true') {
       fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -134,29 +144,32 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           from: 'nuvira@nuvirajuice.com',
-          to: email,
+          to: customerEmail,
           subject: '🎉 Welcome to NuVira!',
           html: `<h2>Hi ${normalizedFirstName || 'there'},</h2><p>Welcome to NuVira Juice Co.! 🌿</p><p>You're enrolled in <strong>NuVira Rewards</strong> and earned <strong>250 bonus points</strong> just for joining!</p><h3>🎁 Rewards</h3><ul><li>500 pts → Free wellness shot</li><li>1,000 pts → Free delivery</li><li>2,500 pts → Free 32oz juice</li><li>5,000 pts → 6-pack bundle</li></ul><p><a href="https://www.nuvirajuice.com/rewards" style="background-color: #2d7c5e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Rewards</a></p><p>Cheers,<br/><strong>The NuVira Team</strong> 🍊</p>`,
         }),
       }).catch(err => console.warn('Email failed:', err.message));
     }
 
-    base44.asServiceRole.entities.Notification.create({
-      customer_email: email,
-      title: '🎉 Welcome to NuVira Rewards!',
-      message: `You've earned 250 bonus points — start shopping and earn more.`,
-      type: 'general',
-      is_read: false,
-      icon: '🏆',
-    }).catch(err => console.warn('Notification failed:', err.message));
+    if (!loyaltyResult.idempotent) {
+      base44.asServiceRole.entities.Notification.create({
+        customer_email: customerEmail,
+        title: '🎉 Welcome to NuVira Rewards!',
+        message: `You've earned 250 bonus points — start shopping and earn more.`,
+        type: 'general',
+        is_read: false,
+        icon: '🏆',
+      }).catch(err => console.warn('Notification failed:', err.message));
+    }
 
-    console.log(`Enrollment complete: ${email} (${fullName}), member ID: ${member.id}`);
+    console.log(`Enrollment complete: ${customerEmail} (${fullName}), member ID: ${member?.id || 'pending'}`);
 
     return Response.json({
       success: true,
-      member_id: member.id,
-      email,
-      points_awarded: preorderBonus,
+      member_id: member?.id || null,
+      email: customerEmail,
+      points_awarded: loyaltyResult.idempotent ? 0 : preorderBonus,
+      idempotent: loyaltyResult.idempotent === true,
     });
   } catch (error) {
     console.error('Enrollment error:', error);

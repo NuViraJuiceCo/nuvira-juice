@@ -1,0 +1,126 @@
+{
+  "name": "LoyaltyTransaction",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Stable key for the business event. Replays with the same key must not change a balance twice."
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Signed points delta. Earnings are positive; redemptions and reversals are negative."
+    },
+    "transaction_type": {
+      "type": "string",
+      "enum": [
+        "earned",
+        "bonus",
+        "redeemed",
+        "reversal",
+        "adjustment",
+        "migration"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "posted",
+        "voided"
+      ],
+      "default": "pending"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "source_type": {
+      "type": "string"
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "provider_event_id": {
+      "type": "string"
+    },
+    "order_id": {
+      "type": "string"
+    },
+    "order_number": {
+      "type": "string"
+    },
+    "occurred_at": {
+      "type": "string"
+    },
+    "posted_at": {
+      "type": "string"
+    },
+    "balance_before": {
+      "type": "number"
+    },
+    "balance_after": {
+      "type": "number"
+    },
+    "lifetime_before": {
+      "type": "number"
+    },
+    "lifetime_after": {
+      "type": "number"
+    },
+    "redeemed_before": {
+      "type": "number"
+    },
+    "redeemed_after": {
+      "type": "number"
+    },
+    "actor_type": {
+      "type": "string"
+    },
+    "actor_email": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Safe non-secret trace metadata."
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "customer_email",
+    "amount",
+    "transaction_type",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.customer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

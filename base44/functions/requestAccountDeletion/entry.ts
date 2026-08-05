@@ -103,6 +103,10 @@ async function deleteAppOwnedRecords(base44: any, identityEmails: string[]): Pro
       filters: identityEmails.map((email) => ({ customer_email: email })),
     },
     {
+      entityName: 'LoyaltyTransaction',
+      filters: identityEmails.map((email) => ({ customer_email: email })),
+    },
+    {
       entityName: 'LoyaltyMember',
       filters: identityEmails.map((email) => ({ email })),
     },

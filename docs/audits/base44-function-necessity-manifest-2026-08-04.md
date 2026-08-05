@@ -4,7 +4,7 @@
 
 A function remains only when it owns a distinct current responsibility that is not safely covered by another canonical path. A function can qualify through an active UI caller, an automation, an authenticated external contract, a webhook/provider callback, a required read model, a customer lifecycle action, or a controlled preview/apply/recovery boundary. Merely compiling or returning a successful response is not a retention reason.
 
-The retained estate contains **145 functions**. The lists below are exhaustive: every deployed function after cleanup appears exactly once.
+The retained estate contains **144 functions**. The lists below are exhaustive: every deployed function after cleanup appears exactly once. Loyalty mutation/admin repair and operational-notice maintenance were consolidated into existing canonical functions instead of consuming new function slots.
 
 ## Customer identity, loyalty, and customer reads — 15
 
@@ -70,11 +70,10 @@ These functions own consent-aware journeys, transactional email/SMS/push dispatc
 - `sendUpcomingDeliveryNotifications`
 - `unregisterPushSubscription`
 
-## Hub, Shopify, GMC, and event integration contracts — 26
+## Hub, Shopify, GMC, and event integration contracts — 25
 
 These functions are explicit webhook, pull, push, retry, or provider-recovery boundaries. Zero local UI callers is expected for externally invoked endpoints.
 
-- `adminEventCatalogShopifySync`
 - `appendAdminHubOrderNote`
 - `getAllOrdersForSync`
 - `getBagReturnsForSync`

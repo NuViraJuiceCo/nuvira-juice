@@ -85,9 +85,15 @@ function normalizeEmail(value: unknown): string {
 
 function providerPayload(eventName: string, payload: Record<string, unknown>): Record<string, string | number | boolean> {
   const normalized: Record<string, string | number | boolean> = {};
+  const numericFields = new Set(PROVIDER_NUMBER_FIELDS[eventName] || []);
   for (const [rawKey, rawValue] of Object.entries(payload || {})) {
     const key = normalizeSingleLine(rawKey, 120).toLowerCase();
     if (!key) continue;
+    if (numericFields.has(key)) {
+      const numericValue = finiteNumber(rawValue, Number.NaN);
+      if (Number.isFinite(numericValue)) normalized[key] = numericValue;
+      continue;
+    }
     if (typeof rawValue === 'number') {
       if (Number.isFinite(rawValue)) normalized[key] = rawValue;
       continue;
@@ -309,7 +315,7 @@ async function existingJourneyEvent(base44: any, eventId: string): Promise<any |
   return rows[0] || null;
 }
 
-async function sendResendEvent(eventName: string, email: string, payload: Record<string, unknown>, eventId: string) {
+async function sendResendEvent(eventName: string, providerEventName: string, email: string, payload: Record<string, unknown>, eventId: string) {
   const apiKey = Deno.env.get('RESEND_AUTOMATION_API_KEY') || '';
   const normalizedPayload = providerPayload(eventName, payload);
   const response = await fetch('https://api.resend.com/events/send', {
@@ -320,7 +326,7 @@ async function sendResendEvent(eventName: string, email: string, payload: Record
       'User-Agent': 'NuViraCustomerJourney/1.0',
       'Idempotency-Key': eventId.slice(0, 256),
     },
-    body: JSON.stringify({ event: eventName, email, payload: normalizedPayload }),
+    body: JSON.stringify({ event: providerEventName, email, payload: normalizedPayload }),
   });
   const text = await response.text();
   let data: any = {};
@@ -385,7 +391,7 @@ async function createAndForwardEvent(base44: any, input: Record<string, any>) {
   if (resendStatus !== 'prepared') return { event: eventRow, duplicate: false, forwarded: false, reason: skipReason };
 
   try {
-    const provider = await sendResendEvent(providerName, email, input.payload || {}, eventId);
+    const provider = await sendResendEvent(eventName, providerName, email, input.payload || {}, eventId);
     await base44.asServiceRole.entities.CustomerJourneyEvent.update(eventRow.id, {
       resend_status: 'accepted',
       resend_forwarded_at: isoNow(),

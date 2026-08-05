@@ -378,17 +378,21 @@ Deno.serve(async (req) => {
       console.log(`[Zone3 Approve] STAGING SAFE MODE: skipped loyalty points for ${orderNumber}`);
     } else if (dar.customer_email && captureTotal > 0) {
       const pointsToAward = Math.floor(captureTotal * 10);
-      const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: dar.customer_email });
-      const entry = { amount: pointsToAward, type: 'earned', description: `Zone 3 order payment of $${captureTotal.toFixed(2)} (${orderNumber})`, timestamp: new Date().toISOString() };
-      if (existing.length > 0) {
-        await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-          total_points: (existing[0].total_points || 0) + pointsToAward,
-          lifetime_points: (existing[0].lifetime_points || 0) + pointsToAward,
-          points_history: [...(existing[0].points_history || []), entry],
-        });
-      } else {
-        await base44.asServiceRole.entities.UserPoints.create({ customer_email: dar.customer_email, total_points: pointsToAward, lifetime_points: pointsToAward, redeemed_points: 0, points_history: [entry] });
-      }
+      const loyaltyResponse = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+        action: 'post',
+        customer_email: dar.customer_email,
+        amount: pointsToAward,
+        transaction_type: 'earned',
+        idempotency_key: `zone3_capture:${dar_id}:${order.id}:earned`,
+        description: `Zone 3 order payment of $${captureTotal.toFixed(2)} (${orderNumber})`,
+        source_type: 'stripe_zone3_capture',
+        source_id: dar.stripe_payment_intent_id || dar_id,
+        order_id: order.id,
+        order_number: orderNumber,
+        metadata: { delivery_approval_request_id: dar_id },
+      }, { headers: { 'x-internal-secret': Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' } });
+      const loyaltyResult = loyaltyResponse?.data || loyaltyResponse;
+      if (loyaltyResult?.success !== true) throw new Error(loyaltyResult?.error || 'zone3_loyalty_transaction_failed');
     }
 
     return Response.json({

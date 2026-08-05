@@ -602,22 +602,28 @@ export async function handlePOSCustomerClaims(req: Request) {
       else await service.entities.UserProfile.create(profilePayload);
       await base44.auth.updateMe({ first_name: firstName, last_name: lastName, phone_number: phone }).catch(() => {});
 
-      const memberPayload = {
-        email: userEmail,
-        total_points: number(operations.total_points),
-        lifetime_points: number(operations.lifetime_points),
-        redeemed_points: number(operations.redeemed_points),
-        points_history: Array.isArray(operations.points_history) ? operations.points_history : [],
-      };
-      const members = normalizeRows(await service.entities.LoyaltyMember.filter({ email: userEmail }));
-      if (members[0]) await service.entities.LoyaltyMember.update(members[0].id, memberPayload);
-      else await service.entities.LoyaltyMember.create(memberPayload);
-
-      const aggregatePayload: Record<string, any> = { customer_email: userEmail, ...memberPayload };
-      delete aggregatePayload.email;
-      const aggregates = normalizeRows(await service.entities.UserPoints.filter({ customer_email: userEmail }));
-      if (aggregates[0]) await service.entities.UserPoints.update(aggregates[0].id, aggregatePayload);
-      else await service.entities.UserPoints.create(aggregatePayload);
+      const expectedTotal = number(operations.total_points);
+      const expectedLifetime = number(operations.lifetime_points);
+      const expectedRedeemed = number(operations.redeemed_points);
+      const reconciliationKey = `pos_claim:${claim.id}:${text(operations.member_id || 'member', 100)}:${expectedTotal}:${expectedLifetime}:${expectedRedeemed}`;
+      const loyaltyResponse = await service.functions.invoke('enrollNewCustomerInLoyalty', {
+        action: 'reconcile',
+        customer_email: userEmail,
+        expected_total: expectedTotal,
+        expected_lifetime: expectedLifetime,
+        expected_redeemed: expectedRedeemed,
+        idempotency_key: reconciliationKey,
+        description: 'Verified POS purchase-history claim reconciliation',
+        source_type: 'pos_customer_claim',
+        source_id: claim.id,
+        metadata: {
+          operations_member_id: operations.member_id || '',
+          eligible_order_count: number(claim.eligible_order_count),
+          eligible_spend: number(claim.eligible_spend),
+        },
+      }, { headers: { 'x-internal-secret': Deno.env.get('LOYALTY_LEDGER_SECRET') || SYNC_SECRET } });
+      const loyaltyResult = loyaltyResponse?.data || loyaltyResponse;
+      if (loyaltyResult?.success !== true) throw new Error(loyaltyResult?.error || 'pos_claim_loyalty_reconciliation_failed');
 
       const emailOptIn = body?.email_marketing_opt_in === true;
       const smsOptIn = body?.sms_marketing_opt_in === true;
@@ -658,9 +664,9 @@ export async function handlePOSCustomerClaims(req: Request) {
       return Response.json({
         success: true,
         idempotent: Number(operations.backfilled_order_count || 0) === 0,
-        available_points: number(operations.total_points),
-        lifetime_points: number(operations.lifetime_points),
-        redeemed_points: number(operations.redeemed_points),
+        available_points: loyaltyResult.available_points ?? expectedTotal,
+        lifetime_points: loyaltyResult.lifetime_points ?? expectedLifetime,
+        redeemed_points: loyaltyResult.redeemed_points ?? expectedRedeemed,
         eligible_order_count: number(claim.eligible_order_count),
         eligible_spend: number(claim.eligible_spend),
         emails_sent: 0,

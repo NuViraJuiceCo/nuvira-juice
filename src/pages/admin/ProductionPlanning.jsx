@@ -12,7 +12,6 @@ import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStat
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
-import May30EventStockPlanPanel from '@/components/admin/May30EventStockPlanPanel';
 import { usePageVisibility } from '@/lib/usePageVisibility';
 
 const MAX_RANGE_DAYS = 31;
@@ -82,7 +81,7 @@ function formatQuantity(value, unit, maximumFractionDigits = 2) {
 }
 
 function hasNativeYieldContext(item) {
-  return ['customer_app_native', 'may30_pos_event_stock_plan', 'mixed_native_and_event_plan'].includes(item.source);
+  return item.source === 'customer_app_native';
 }
 
 function procurementNeedLabel(item) {
@@ -185,8 +184,6 @@ function StatusBadge({ status }) {
 
 function sourceLabel(source) {
   if (source === 'customer_app_native') return 'Native Customer App';
-  if (source === 'may30_pos_event_stock_plan') return 'POS Event Stock';
-  if (source === 'mixed_native_and_event_plan') return 'Native + POS Event Stock';
   return 'Source';
 }
 
@@ -219,7 +216,7 @@ function ProductGroupList({ groups }) {
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Batches</p>
-              <p className="text-xs font-bold">{group.source === 'customer_app_native' || group.source === 'may30_pos_event_stock_plan' ? 'Plan' : formatNumber(group.batch_count, 0)}</p>
+              <p className="text-xs font-bold">{group.source === 'customer_app_native' ? 'Plan' : formatNumber(group.batch_count, 0)}</p>
             </div>
           </div>
           {Number(group.source_order_count || 0) > 0 && (
@@ -245,9 +242,7 @@ function DateGroup({ group }) {
           {group.excluded_from_scheduled_totals
             ? 'Review only'
             : group.source === 'customer_app_native'
-            ? 'Native mirror'
-            : group.source === 'may30_pos_event_stock_plan'
-              ? 'POS event stock'
+              ? 'Native mirror'
               : 'Read-only planning'}
         </span>
       </div>
@@ -540,7 +535,6 @@ export default function ProductionPlanning() {
   const dateGroups = data?.dates || [];
   const ingredients = data?.ingredients || [];
   const nativeOverlay = data?.native_overlay || {};
-  const eventStockPlan = nativeOverlay?.event_stock_plan || {};
   const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
   const datePendingUnits = Number(summary.date_pending_planned_units || 0);
   const datePendingOrders = Number(summary.date_pending_order_count || nativeOverlay.skipped_missing_date_count || 0);
@@ -675,7 +669,7 @@ export default function ProductionPlanning() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">Production Planning view</p>
-            <p className="text-[10px] text-muted-foreground">Source batches, native Customer App production demand, and event stock plans. Food and juice ingredients are calculated from recipes/yields, not standing inventory counts.</p>
+            <p className="text-[10px] text-muted-foreground">Source batches and native Customer App production demand. Food and juice ingredients are calculated from recipes and yields, not standing inventory counts.</p>
             {Number(nativeOverlay.order_count || 0) > 0 && (
               <p className="text-[10px] text-emerald-700 mt-1">
                 Native production overlay: {formatNumber(nativeOverlay.order_count, 0)} order{Number(nativeOverlay.order_count) === 1 ? '' : 's'} · {formatNumber(nativeOverlay.planned_units, 0)} units · {formatNumber(nativeOverlay.ingredient_count, 0)} ingredient rows · {formatNumber(nativeOverlay.demand_based_procurement_count, 0)} demand procurement row{Number(nativeOverlay.demand_based_procurement_count) === 1 ? '' : 's'} · read-only
@@ -684,11 +678,6 @@ export default function ProductionPlanning() {
             {datePendingUnits > 0 && (
               <p className="text-[10px] text-amber-700 mt-1">
                 Date-pending native demand: {formatNumber(datePendingUnits, 0)} unit{datePendingUnits === 1 ? '' : 's'} · {formatNumber(datePendingOrders, 0)} order{datePendingOrders === 1 ? '' : 's'} · {formatNumber(datePendingIngredients, 0)} ingredient row{datePendingIngredients === 1 ? '' : 's'} · excluded from scheduled totals until assigned to a production date.
-              </p>
-            )}
-            {eventStockPlan.included && (
-              <p className="text-[10px] text-fuchsia-700 mt-1">
-                POS event stock plan included: {formatNumber(eventStockPlan.total_units, 0)} units across {formatNumber(eventStockPlan.event_count, 0)} events · target sell-out · read-only
               </p>
             )}
             {Number(nativeOverlay.built_in_fallback_recipe_count || 0) > 0 && (
@@ -709,17 +698,6 @@ export default function ProductionPlanning() {
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
-
-        {eventStockPlan.included === true && (
-          <details className="rounded-xl border border-border/60 bg-card p-3">
-            <summary className="cursor-pointer text-xs font-black uppercase tracking-wider text-muted-foreground">
-              Legacy Event Stock Context
-            </summary>
-            <div className="mt-3">
-              <May30EventStockPlanPanel includedInPlanning />
-            </div>
-          </details>
-        )}
 
         <ProductionBatchDraftCards dateGroups={dateGroups} ingredients={ingredients} />
 

@@ -738,7 +738,7 @@ function CheckoutFlow() {
         </div>
         <h2 className="font-heading text-2xl font-bold mb-2">One Quick Step First</h2>
         <p className="text-sm text-muted-foreground leading-relaxed mb-6 max-w-xs">
-          Before placing your order, we need a few details — your name, phone number, and delivery address — so we know exactly where to bring your juice.
+          Before placing your order, we only need your name and phone number. Delivery details are collected here when delivery is selected.
         </p>
         <Button
           onClick={() => navigate('/account-setup')}

@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
 
     const { email, contact_email, first_name, last_name, phone, birthday, address } = await req.json();
 
-    if (!email || !first_name || !last_name || !phone || !birthday || !address) {
+    if (!email || !first_name || !last_name || !phone) {
       return Response.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -29,6 +29,9 @@ Deno.serve(async (req) => {
     }
 
     const normalizedContactEmail = normalizeEmail(contact_email) || authenticatedEmail;
+    const loyaltyEmail = authenticatedEmail.endsWith('@privaterelay.appleid.com')
+      ? normalizedContactEmail
+      : authenticatedEmail;
 
     // Sync name to User entity
     console.log(`Syncing name to User entity for: ${authenticatedEmail}`);
@@ -37,8 +40,8 @@ Deno.serve(async (req) => {
         first_name,
         last_name,
         phone,
-        address,
-        birthday,
+        ...(address ? { address } : {}),
+        ...(birthday ? { birthday } : {}),
       });
     } catch (err) {
       console.warn('Failed to update User entity:', err.message);
@@ -57,8 +60,8 @@ Deno.serve(async (req) => {
         last_name,
         contact_email: normalizedContactEmail,
         phone,
-        address,
-        birthday,
+        ...(address ? { address } : {}),
+        ...(birthday ? { birthday } : {}),
         onboarding_complete: true,
       });
     } else {
@@ -69,8 +72,8 @@ Deno.serve(async (req) => {
         last_name,
         contact_email: normalizedContactEmail,
         phone,
-        address,
-        birthday,
+        ...(address ? { address } : {}),
+        ...(birthday ? { birthday } : {}),
         onboarding_complete: true,
       });
     }
@@ -82,7 +85,8 @@ Deno.serve(async (req) => {
     if (existingMembers.length === 0) {
       // Call centralized enrollment function
       const enrollRes = await base44.functions.invoke('createLoyaltyMember', {
-        email: authenticatedEmail,
+        email: loyaltyEmail,
+        auth_email: authenticatedEmail,
         first_name,
         last_name,
         phone,

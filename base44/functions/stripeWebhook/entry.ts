@@ -27,6 +27,20 @@ function skipLoyaltyWrite(stagingSafeMode) {
   return true;
 }
 
+async function postLoyaltyTransaction(base44, payload) {
+  const secret = Deno.env.get('LOYALTY_LEDGER_SECRET')
+    || Deno.env.get('CUSTOMER_APP_SYNC_SECRET')
+    || Deno.env.get('HUB_SYNC_SECRET')
+    || '';
+  const response = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+    action: 'post',
+    ...payload,
+  }, { headers: { 'x-internal-secret': secret } });
+  const result = response?.data || response;
+  if (result?.success !== true) throw new Error(result?.error || 'loyalty_transaction_failed');
+  return result;
+}
+
 function installStagingSideEffectGuards(base44, stagingSafeMode) {
   if (!stagingSafeMode) return;
 
@@ -41,6 +55,7 @@ function installStagingSideEffectGuards(base44, stagingSafeMode) {
     'sendPushNotification',
     'syncCustomerToHub',
     'syncRefundToHub',
+    'enrollNewCustomerInLoyalty',
   ]);
 
   const originalInvoke = base44.asServiceRole.functions.invoke.bind(base44.asServiceRole.functions);
@@ -698,54 +713,27 @@ Deno.serve(async (req) => {
           console.log(`[stripeWebhook] Subscription already exists for ${customerEmail} (stripe_sub=${stripeSubscriptionId}), skipping creation`);
         }
 
-        // Award loyalty points for subscription payment (10 pts per $1) — exactly once per stripe subscription
+        // Award loyalty points for the payment. The payment-intent key also
+        // deduplicates the initial invoice webhook for this subscription.
         if (skipLoyaltyWrite(stagingSafeMode)) {
           // Loyalty is intentionally suppressed in isolated staging smoke tests.
         } else if (customerEmail && amountPaid > 0) {
-        const pointsToAward = Math.floor(amountPaid * 10);
-        const stripeSubId = session.subscription;
-
-        // Idempotency: check if points already awarded for this subscription
-        const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-        if (existing[0]) {
-          // Check by subscription ID in description to prevent duplicate awards
-          const alreadyAwarded = existing[0].points_history?.some(h => 
-            h.description?.includes(`(subscription ${stripeSubId})`) ||
-            h.description?.includes(`stripe_subscription_id=${stripeSubId}`)
-          );
-          if (!alreadyAwarded) {
-            const entry = {
-              amount: pointsToAward,
-              type: 'earned',
-              description: `Subscription payment of $${amountPaid.toFixed(2)} (subscription ${stripeSubId})`,
-              timestamp: new Date().toISOString(),
-            };
-            const history = [...(existing[0].points_history || []), entry];
-            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-              total_points: (existing[0].total_points || 0) + pointsToAward,
-              lifetime_points: (existing[0].lifetime_points || 0) + pointsToAward,
-              points_history: history,
-            });
-            console.log(`[stripeWebhook] Awarded ${pointsToAward} pts to ${customerEmail} for subscription ${stripeSubId}`);
-          } else {
-            console.log(`[stripeWebhook] Points already awarded for subscription ${stripeSubId}, skipping`);
-          }
-        } else {
-          const entry = {
-            amount: pointsToAward,
-            type: 'earned',
-            description: `Subscription payment of $${amountPaid.toFixed(2)} (subscription ${stripeSubId})`,
-            timestamp: new Date().toISOString(),
-          };
-          await base44.asServiceRole.entities.UserPoints.create({
+          const pointsToAward = Math.floor(amountPaid * 10);
+          const stripeSubId = session.subscription;
+          const paymentId = session.payment_intent || session.id;
+          await postLoyaltyTransaction(base44, {
             customer_email: customerEmail,
-            total_points: pointsToAward,
-            lifetime_points: pointsToAward,
-            redeemed_points: 0,
-            points_history: [entry],
+            amount: pointsToAward,
+            transaction_type: 'earned',
+            idempotency_key: `stripe_payment:${paymentId}:earned`,
+            description: `Subscription payment of $${amountPaid.toFixed(2)} (subscription ${stripeSubId})`,
+            source_type: 'stripe_payment',
+            source_id: String(paymentId),
+            provider_event_id: event.id,
+            occurred_at: new Date(event.created * 1000).toISOString(),
+            metadata: { subscription_id: String(stripeSubId || '') },
           });
-          console.log(`[stripeWebhook] Created points record and awarded ${pointsToAward} pts to ${customerEmail} for subscription ${stripeSubId}`);
-        }
+          console.log(`[stripeWebhook] Recorded ${pointsToAward} pts for payment ${paymentId}`);
         }
       }
 
@@ -903,22 +891,22 @@ Deno.serve(async (req) => {
         if (skipLoyaltyWrite(stagingSafeMode)) {
           // Loyalty redemption is intentionally suppressed in isolated staging smoke tests.
         } else if (customerEmail && (orderData.points_used || orderData.active_reward?.points_required)) {
-          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-          if (existing[0]) {
-            const deductPoints = (orderData.points_used || 0) + (orderData.active_reward?.points_required || 0);
-            const historyEntries = [];
-            if (orderData.points_used) {
-              historyEntries.push({ amount: -orderData.points_used, type: 'redeemed', description: 'Redeemed at checkout', timestamp: new Date().toISOString() });
-            }
-            if (orderData.active_reward?.points_required) {
-              historyEntries.push({ amount: -orderData.active_reward.points_required, type: 'redeemed', description: `Redeemed: ${orderData.active_reward.title}`, timestamp: new Date().toISOString() });
-            }
-            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-              total_points: Math.max(0, (existing[0].total_points || 0) - deductPoints),
-              redeemed_points: (existing[0].redeemed_points || 0) + deductPoints,
-              points_history: [...(existing[0].points_history || []), ...historyEntries],
-            });
-          }
+          const deductPoints = Number(orderData.points_used || 0) + Number(orderData.active_reward?.points_required || 0);
+          const paymentId = session.payment_intent || session.id;
+          await postLoyaltyTransaction(base44, {
+            customer_email: customerEmail,
+            amount: -Math.trunc(deductPoints),
+            transaction_type: 'redeemed',
+            idempotency_key: `stripe_payment:${paymentId}:redeemed`,
+            description: orderData.active_reward?.title
+              ? `Redeemed at checkout: ${orderData.active_reward.title}`
+              : `Redeemed at checkout for order ${orderNumber}`,
+            source_type: 'stripe_redemption',
+            source_id: String(paymentId),
+            provider_event_id: event.id,
+            order_id: order.id,
+            order_number: orderNumber,
+          });
         }
 
         if (customerEmail && orderData.credits_discount > 0) {
@@ -1012,7 +1000,7 @@ Deno.serve(async (req) => {
             total: order.total || orderData.total || 0,
             assigned_delivery_date: resolvedDeliveryDate,
             delivery_window_label: resolvedWindowLabel,
-          })
+          }, { headers: { 'x-internal-secret': Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '' } })
             .catch(err => console.error('Failed to send order confirmation SMS:', err.message));
         }
       }
@@ -1023,35 +1011,21 @@ Deno.serve(async (req) => {
         // Loyalty is intentionally suppressed in isolated staging smoke tests.
       } else if (session.mode !== 'subscription' && customerEmail && session.metadata?.is_preorder !== 'true') {
         const pointsToAward = Math.floor(amountPaid * 10);
-        const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-
-        const entry = {
+        const paymentId = session.payment_intent || session.id;
+        await postLoyaltyTransaction(base44, {
+          customer_email: customerEmail,
           amount: pointsToAward,
-          type: 'earned',
-          description: `Order payment of $${amountPaid.toFixed(2)}`,
-          timestamp: new Date().toISOString(),
-        };
-
-        if (existing.length > 0) {
-          const rec = existing[0];
-          const history = rec.points_history || [];
-          history.push(entry);
-          await base44.asServiceRole.entities.UserPoints.update(rec.id, {
-            total_points: (rec.total_points || 0) + pointsToAward,
-            lifetime_points: (rec.lifetime_points || 0) + pointsToAward,
-            points_history: history,
-          });
-          console.log(`Awarded ${pointsToAward} pts to ${customerEmail}`);
-        } else {
-          await base44.asServiceRole.entities.UserPoints.create({
-            customer_email: customerEmail,
-            total_points: pointsToAward,
-            lifetime_points: pointsToAward,
-            redeemed_points: 0,
-            points_history: [entry],
-          });
-          console.log(`Created points record and awarded ${pointsToAward} pts to ${customerEmail}`);
-        }
+          transaction_type: 'earned',
+          idempotency_key: `stripe_payment:${paymentId}:earned`,
+          description: `Order payment of $${amountPaid.toFixed(2)} (${orderData.order_number || session.metadata?.order_number || session.id})`,
+          source_type: 'stripe_payment',
+          source_id: String(paymentId),
+          provider_event_id: event.id,
+          order_id: null,
+          order_number: orderData.order_number || session.metadata?.order_number || null,
+          occurred_at: new Date(event.created * 1000).toISOString(),
+        });
+        console.log(`[stripeWebhook] Recorded ${pointsToAward} pts for payment ${paymentId}`);
       }
     }
 
@@ -1295,18 +1269,21 @@ Deno.serve(async (req) => {
         if (skipLoyaltyWrite(stagingSafeMode)) {
           // Loyalty redemption is intentionally suppressed in isolated staging smoke tests.
         } else if (customerEmail && (checkoutData.points_used || checkoutData.active_reward?.points_required)) {
-          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-          if (existing[0]) {
-            const deductPoints = (checkoutData.points_used || 0) + (checkoutData.active_reward?.points_required || 0);
-            const historyEntries = [];
-            if (checkoutData.points_used) historyEntries.push({ amount: -checkoutData.points_used, type: 'redeemed', description: 'Redeemed at checkout', timestamp: new Date().toISOString() });
-            if (checkoutData.active_reward?.points_required) historyEntries.push({ amount: -checkoutData.active_reward.points_required, type: 'redeemed', description: `Redeemed: ${checkoutData.active_reward.title}`, timestamp: new Date().toISOString() });
-            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-              total_points:    Math.max(0, (existing[0].total_points || 0) - deductPoints),
-              redeemed_points: (existing[0].redeemed_points || 0) + deductPoints,
-              points_history:  [...(existing[0].points_history || []), ...historyEntries],
-            });
-          }
+          const deductPoints = Number(checkoutData.points_used || 0) + Number(checkoutData.active_reward?.points_required || 0);
+          await postLoyaltyTransaction(base44, {
+            customer_email: customerEmail,
+            amount: -Math.trunc(deductPoints),
+            transaction_type: 'redeemed',
+            idempotency_key: `stripe_payment:${pi.id}:redeemed`,
+            description: checkoutData.active_reward?.title
+              ? `Redeemed at checkout: ${checkoutData.active_reward.title}`
+              : `Redeemed at checkout for order ${orderNumber}`,
+            source_type: 'stripe_redemption',
+            source_id: pi.id,
+            provider_event_id: event.id,
+            order_id: order.id,
+            order_number: orderNumber,
+          });
         }
 
         if (customerEmail && checkoutData.credits_discount > 0) {
@@ -1326,17 +1303,19 @@ Deno.serve(async (req) => {
           // Loyalty is intentionally suppressed in isolated staging smoke tests.
         } else if (customerEmail) {
           const pointsToAward = Math.floor(amountPaid * 10);
-          const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-          const entry = { amount: pointsToAward, type: 'earned', description: `Order payment of $${amountPaid.toFixed(2)}`, timestamp: new Date().toISOString() };
-          if (existing.length > 0) {
-            await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-              total_points:    (existing[0].total_points || 0) + pointsToAward,
-              lifetime_points: (existing[0].lifetime_points || 0) + pointsToAward,
-              points_history:  [...(existing[0].points_history || []), entry],
-            });
-          } else {
-            await base44.asServiceRole.entities.UserPoints.create({ customer_email: customerEmail, total_points: pointsToAward, lifetime_points: pointsToAward, redeemed_points: 0, points_history: [entry] });
-          }
+          await postLoyaltyTransaction(base44, {
+            customer_email: customerEmail,
+            amount: pointsToAward,
+            transaction_type: 'earned',
+            idempotency_key: `stripe_payment:${pi.id}:earned`,
+            description: `Order payment of $${amountPaid.toFixed(2)} (${orderNumber})`,
+            source_type: 'stripe_payment',
+            source_id: pi.id,
+            provider_event_id: event.id,
+            order_id: order.id,
+            order_number: orderNumber,
+            occurred_at: new Date(event.created * 1000).toISOString(),
+          });
         }
 
         // Push to Shopify
@@ -1386,7 +1365,7 @@ Deno.serve(async (req) => {
             total:                  order.total,
             assigned_delivery_date: order.assigned_delivery_date,
             delivery_window_label:  order.delivery_window_label,
-          }).catch(err => console.error('[PI succeeded] SMS failed:', err.message));
+          }, { headers: { 'x-internal-secret': Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '' } }).catch(err => console.error('[PI succeeded] SMS failed:', err.message));
         }
 
         base44.asServiceRole.functions.invoke('notifyOrderProcessed', {
@@ -1698,34 +1677,20 @@ Deno.serve(async (req) => {
         // Loyalty is intentionally suppressed in isolated staging smoke tests.
       } else if (amountPaid > 0) {
         const pointsToAward = Math.floor(amountPaid * 10);
-        const existingPoints = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-        const loyaltyEntry = {
+        const paymentId = invoice.payment_intent || invoice.id;
+        await postLoyaltyTransaction(base44, {
+          customer_email: customerEmail,
           amount: pointsToAward,
-          type: 'earned',
-          description: `Subscription payment of $${amountPaid.toFixed(2)} (subscription ${stripeSubscriptionId})`,
-          timestamp: new Date().toISOString(),
-        };
-        if (existingPoints[0]) {
-          const alreadyAwarded = existingPoints[0].points_history?.some(h =>
-            h.description?.includes(`subscription ${stripeSubscriptionId}`)
-          );
-          if (!alreadyAwarded) {
-            await base44.asServiceRole.entities.UserPoints.update(existingPoints[0].id, {
-              total_points: (existingPoints[0].total_points || 0) + pointsToAward,
-              lifetime_points: (existingPoints[0].lifetime_points || 0) + pointsToAward,
-              points_history: [...(existingPoints[0].points_history || []), loyaltyEntry],
-            });
-            console.log(`[invoice.payment_succeeded] Awarded ${pointsToAward} pts to ${customerEmail}`);
-          }
-        } else {
-          await base44.asServiceRole.entities.UserPoints.create({
-            customer_email: customerEmail,
-            total_points: pointsToAward,
-            lifetime_points: pointsToAward,
-            redeemed_points: 0,
-            points_history: [loyaltyEntry],
-          });
-        }
+          transaction_type: 'earned',
+          idempotency_key: `stripe_payment:${paymentId}:earned`,
+          description: `Subscription payment of $${amountPaid.toFixed(2)} (invoice ${invoice.id})`,
+          source_type: 'stripe_invoice',
+          source_id: invoice.id,
+          provider_event_id: event.id,
+          occurred_at: new Date(event.created * 1000).toISOString(),
+          metadata: { subscription_id: String(stripeSubscriptionId || '') },
+        });
+        console.log(`[invoice.payment_succeeded] Recorded ${pointsToAward} pts for invoice ${invoice.id}`);
       }
 
       // Update PendingSubscriptionCheckout as completed
@@ -1891,34 +1856,20 @@ Deno.serve(async (req) => {
         // Loyalty is intentionally suppressed in isolated staging smoke tests.
       } else if (amountPaidInvoice > 0) {
         const pointsToAwardPaid = Math.floor(amountPaidInvoice * 10);
-        const existingPointsPaid = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail });
-        const loyaltyEntryPaid = {
+        const paymentId = invoice.payment_intent || invoice.id;
+        await postLoyaltyTransaction(base44, {
+          customer_email: customerEmail,
           amount: pointsToAwardPaid,
-          type: 'earned',
-          description: `Subscription payment of $${amountPaidInvoice.toFixed(2)} (subscription ${stripeSubscriptionId})`,
-          timestamp: new Date().toISOString(),
-        };
-        if (existingPointsPaid[0]) {
-          const alreadyAwardedPaid = existingPointsPaid[0].points_history?.some(h =>
-            h.description?.includes(`subscription ${stripeSubscriptionId}`)
-          );
-          if (!alreadyAwardedPaid) {
-            await base44.asServiceRole.entities.UserPoints.update(existingPointsPaid[0].id, {
-              total_points: (existingPointsPaid[0].total_points || 0) + pointsToAwardPaid,
-              lifetime_points: (existingPointsPaid[0].lifetime_points || 0) + pointsToAwardPaid,
-              points_history: [...(existingPointsPaid[0].points_history || []), loyaltyEntryPaid],
-            });
-            console.log(`[invoice.paid] Awarded ${pointsToAwardPaid} pts to ${customerEmail}`);
-          }
-        } else {
-          await base44.asServiceRole.entities.UserPoints.create({
-            customer_email: customerEmail,
-            total_points: pointsToAwardPaid,
-            lifetime_points: pointsToAwardPaid,
-            redeemed_points: 0,
-            points_history: [loyaltyEntryPaid],
-          });
-        }
+          transaction_type: 'earned',
+          idempotency_key: `stripe_payment:${paymentId}:earned`,
+          description: `Subscription payment of $${amountPaidInvoice.toFixed(2)} (invoice ${invoice.id})`,
+          source_type: 'stripe_invoice',
+          source_id: invoice.id,
+          provider_event_id: event.id,
+          occurred_at: new Date(event.created * 1000).toISOString(),
+          metadata: { subscription_id: String(stripeSubscriptionId || '') },
+        });
+        console.log(`[invoice.paid] Recorded ${pointsToAwardPaid} pts for invoice ${invoice.id}`);
       }
 
       // Update PendingSubscriptionCheckout as completed
@@ -2074,34 +2025,21 @@ Deno.serve(async (req) => {
           let loyaltyAction = 'skipped_no_record';
           if (skipLoyaltyWrite(stagingSafeMode)) {
             loyaltyAction = 'skipped_staging_safe_mode';
-          } else {
-            const pointsRecs = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: subEmail });
-            if (pointsRecs[0]) {
-              const rec = pointsRecs[0];
-              // Check for ANY adjustment (admin or webhook) that mentions this subscription
-              const alreadyReversed = rec.points_history?.some(h =>
-                h.type === 'adjustment' && h.description?.includes(stripeSubscriptionId)
-              );
-              if (!alreadyReversed) {
-                const entry = {
-                  amount: -pointsToReverse,
-                  type: 'adjustment',
-                  description: `Points reversed: subscription refund (subscription ${stripeSubscriptionId}), refund $${refundAmount.toFixed(2)}`,
-                  timestamp: new Date().toISOString(),
-                };
-                await base44.asServiceRole.entities.UserPoints.update(rec.id, {
-                  total_points: Math.max(0, (rec.total_points || 0) - pointsToReverse),
-                  points_history: [...(rec.points_history || []), entry],
-                });
-                loyaltyAction = `reversed_${pointsToReverse}_pts`;
-                console.log(`[charge.refunded] ✅ Reversed ${pointsToReverse} loyalty pts for ${subEmail}`);
-              } else {
-                loyaltyAction = 'already_reversed_idempotent';
-                console.log(`[charge.refunded] Loyalty already reversed for sub ${stripeSubscriptionId} (admin or prior webhook), skipping`);
-              }
-            } else {
-              loyaltyAction = 'skipped_no_record';
-            }
+          } else if (subEmail && pointsToReverse > 0) {
+            const result = await postLoyaltyTransaction(base44, {
+              customer_email: subEmail,
+              amount: -pointsToReverse,
+              transaction_type: 'reversal',
+              idempotency_key: `stripe_refund_event:${event.id}:subscription:${stripeSubscriptionId}`,
+              description: `Subscription refund of $${refundAmount.toFixed(2)} (subscription ${stripeSubscriptionId})`,
+              source_type: 'stripe_refund',
+              source_id: charge.id,
+              provider_event_id: event.id,
+              occurred_at: new Date(event.created * 1000).toISOString(),
+              metadata: { subscription_id: stripeSubscriptionId, refund_amount: refundAmount },
+            });
+            loyaltyAction = result.idempotent ? 'already_reversed_idempotent' : `reversed_${pointsToReverse}_pts`;
+            console.log(`[charge.refunded] ${loyaltyAction} for ${subEmail}`);
           }
 
           // --- Mark Subscription cancelled (idempotent) ---
@@ -2273,27 +2211,27 @@ Deno.serve(async (req) => {
         } catch {}
       }
 
-      // Restore loyalty points if full refund
+      // Reverse points earned on a fully refunded order. Refunds must never
+      // increase a customer's available or lifetime points.
       if (skipLoyaltyWrite(stagingSafeMode)) {
         // Loyalty is intentionally suppressed in isolated staging smoke tests.
       } else if (isFullRefund && order.customer_email) {
-        const pointsToRestore = Math.floor(order.total * 10);
-        const existing = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: order.customer_email });
-        
-        if (existing.length > 0) {
-          const entry = {
-            amount: pointsToRestore,
-            type: 'adjustment',
-            description: `Points restored due to refund of order ${orderNumber}`,
-            timestamp: new Date().toISOString(),
-          };
-          await base44.asServiceRole.entities.UserPoints.update(existing[0].id, {
-            total_points: (existing[0].total_points || 0) + pointsToRestore,
-            lifetime_points: (existing[0].lifetime_points || 0) + pointsToRestore,
-            points_history: [...(existing[0].points_history || []), entry],
-          });
-          console.log(`[charge.refunded] Restored ${pointsToRestore} points to ${order.customer_email}`);
-        }
+        const pointsToReverse = Math.floor(Number(order.total || refundAmount) * 10);
+        await postLoyaltyTransaction(base44, {
+          customer_email: order.customer_email,
+          amount: -pointsToReverse,
+          transaction_type: 'reversal',
+          idempotency_key: `stripe_refund_event:${event.id}:order:${order.id}`,
+          description: `Full refund of order ${orderNumber}`,
+          source_type: 'stripe_refund',
+          source_id: charge.id,
+          provider_event_id: event.id,
+          order_id: order.id,
+          order_number: orderNumber,
+          occurred_at: new Date(event.created * 1000).toISOString(),
+          metadata: { refund_amount: refundAmount },
+        });
+        console.log(`[charge.refunded] Reversed ${pointsToReverse} points for ${order.customer_email}`);
       }
 
       // Send refund notification email

@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { handleOperationalNoticeMaintenance } from './noticeMaintenance.ts';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
@@ -167,6 +168,10 @@ Deno.serve(async (req) => {
     const body = await readJsonBody(req);
     if (body === null) {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
+
+    if (body.action === 'maintenance_preview' || body.action === 'maintenance_apply') {
+      return await handleOperationalNoticeMaintenance(base44, user, body);
     }
 
     const forbiddenKey = findForbiddenBodyKey(body);

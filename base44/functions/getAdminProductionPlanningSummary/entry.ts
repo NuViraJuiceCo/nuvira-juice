@@ -13,17 +13,6 @@ const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data',
 const DATE_PENDING = 'date_pending';
 const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
 const UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS = 14;
-const MAY30_EVENT_DATE = '2026-07-11';
-const MAY30_POS_EVENT_STOCK_PLAN = {
-  event_date: MAY30_EVENT_DATE,
-  event_count: 1,
-  target: 'sell_out',
-  items: [
-    { product_name: 'Oasis', quantity: 75, product_category: 'July 11 POS Event Stock' },
-    { product_name: 'Aura', quantity: 75, product_category: 'July 11 POS Event Stock' },
-    { product_name: 'Re-Nu', quantity: 20, product_category: 'July 11 POS Event Stock' },
-  ],
-};
 const BUILT_IN_RECIPE_FALLBACKS = {
   'Re-Nu': [
     { ingredient_name: 'Cucumber', quantity_oz: 3, unit: 'oz' },
@@ -1144,7 +1133,6 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const ambiguousYieldKeys = new Set();
   let skippedDateCount = 0;
   let builtInFallbackRecipeCount = 0;
-  let eventStockPlanIncluded = false;
 
   recipes
     .filter(recipe => recipe?.is_active !== false)
@@ -1253,27 +1241,11 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
           productionDate,
           productName: product.product_name,
           quantity: numberOrZero(product.quantity),
-          sourceCategory: 'Native May 30 Orders',
+          sourceCategory: 'Native Customer Orders',
           source: 'customer_app_native',
           sizeOz: product.size_oz,
         });
       }
-    }
-  }
-
-  if (isInRange(MAY30_POS_EVENT_STOCK_PLAN.event_date, dateFrom, dateTo)) {
-    eventStockPlanIncluded = true;
-    ensurePlanningDate(MAY30_POS_EVENT_STOCK_PLAN.event_date);
-    orderNumbersByDate.get(MAY30_POS_EVENT_STOCK_PLAN.event_date).add('July 11 POS Event');
-
-    for (const item of MAY30_POS_EVENT_STOCK_PLAN.items) {
-      addProductDemand({
-        productionDate: MAY30_POS_EVENT_STOCK_PLAN.event_date,
-        productName: item.product_name,
-        quantity: numberOrZero(item.quantity),
-        sourceCategory: item.product_category,
-        source: 'may30_pos_event_stock_plan',
-      });
     }
   }
 
@@ -1284,8 +1256,6 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
         source_order_count: orderNumbersByDate.get(productionDate)?.size || 0,
       }));
       const plannedUnits = productGroups.reduce((sum, group) => sum + numberOrZero(group.planned_units), 0);
-      const hasEventPlan = productGroups.some(group => group.source === 'may30_pos_event_stock_plan');
-      const hasNativeOrders = productGroups.some(group => group.source === 'customer_app_native');
       return {
         production_date: productionDate,
         batch_count: 0,
@@ -1296,7 +1266,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
         shortage_count: 0,
         demand_based_procurement_count: 0,
         native_order_count: orderNumbersByDate.get(productionDate)?.size || 0,
-        source: hasEventPlan && !hasNativeOrders ? 'may30_pos_event_stock_plan' : 'customer_app_native',
+        source: 'customer_app_native',
       };
     })
     .sort((a, b) => (a.production_date || '').localeCompare(b.production_date || ''));
@@ -1362,7 +1332,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
       missing_yield_count: missingYieldKeys.size + ambiguousYieldKeys.size,
       native_order_count: nativeOrderCount,
       skipped_missing_date_count: skippedDateCount,
-      event_stock_plan_count: eventStockPlanIncluded ? 1 : 0,
+      event_stock_plan_count: 0,
     },
     dates,
     ingredients,
@@ -1377,20 +1347,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     missing_inventory_count: missingInventoryKeys.size,
     missing_yield_count: missingYieldKeys.size,
     ambiguous_yield_count: ambiguousYieldKeys.size,
-    event_stock_plan: {
-      included: eventStockPlanIncluded,
-      event_date: MAY30_POS_EVENT_STOCK_PLAN.event_date,
-      event_count: MAY30_POS_EVENT_STOCK_PLAN.event_count,
-      target: MAY30_POS_EVENT_STOCK_PLAN.target,
-      total_units: MAY30_POS_EVENT_STOCK_PLAN.items.reduce((sum, item) => sum + numberOrZero(item.quantity), 0),
-      items: MAY30_POS_EVENT_STOCK_PLAN.items.map(item => ({
-        product_name: sanitizeText(item.product_name, 120),
-        quantity: numberOrZero(item.quantity),
-        product_category: sanitizeText(item.product_category, 80),
-      })),
-      inventory_deduction_enabled: false,
-      purchase_order_automation_enabled: false,
-    },
+    event_stock_plan: { included: false, retired: true, event_count: 0, total_units: 0, items: [] },
   };
 }
 

@@ -99,7 +99,7 @@ export default function AccountSetup() {
   };
 
   const validateForm = () => {
-    const { first_name, last_name, phone, birthday, address, contact_email } = formData;
+    const { first_name, last_name, phone, contact_email } = formData;
     if (!first_name?.trim() || !last_name?.trim()) {
       toast.error('Please enter your full name');
       return false;
@@ -110,17 +110,6 @@ export default function AccountSetup() {
     }
     if (!phone?.trim()) {
       toast.error('Please enter your phone number');
-      return false;
-    }
-    if (!birthday?.trim()) {
-      toast.error('Please enter your birthday');
-      return false;
-    }
-    const addrString = [address.street, address.city, address.state, address.zip]
-      .filter(Boolean)
-      .join(', ');
-    if (!addrString?.trim()) {
-      toast.error('Please enter your address');
       return false;
     }
     return true;
@@ -211,7 +200,7 @@ export default function AccountSetup() {
         >
           <h1 className="font-heading text-2xl font-bold mb-2">Complete Your Profile</h1>
           <p className="text-sm text-muted-foreground">
-            Just a few details to get you fully set up and earning rewards.
+            We only need your name and phone to activate rewards. You can add delivery details when you order.
           </p>
         </motion.div>
 
@@ -286,7 +275,7 @@ export default function AccountSetup() {
           {/* Birthday */}
           <div>
             <Label htmlFor="birthday" className="text-xs font-semibold mb-1.5 block">
-              Birthday
+              Birthday <span className="font-normal text-muted-foreground">(optional)</span>
             </Label>
             <Input
               id="birthday"
@@ -300,7 +289,7 @@ export default function AccountSetup() {
 
           {/* Address */}
           <div>
-            <Label className="text-xs font-semibold mb-1.5 block">Delivery Address</Label>
+            <Label className="text-xs font-semibold mb-1.5 block">Delivery Address <span className="font-normal text-muted-foreground">(optional until checkout)</span></Label>
             <AddressAutocomplete
               value={formData.address}
               onChange={handleAddressChange}

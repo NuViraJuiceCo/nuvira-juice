@@ -354,7 +354,7 @@ function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus
       procurement_needed: true,
       stock_deduction_deferred: true,
       purchase_order_deferred: true,
-      note: 'Native order mirror records product demand; detailed recipe and ingredient procurement remain Hub-backed for May 30.',
+      note: 'Native order mirror records product demand; detailed recipe and ingredient procurement remain Hub-backed during staged migration.',
     },
   };
 }
@@ -391,7 +391,7 @@ function buildPosRecord({ order, source, eventType, lineItems, paymentStatus }) 
       event_name: sanitizeText(order?.event_name, 120),
       event_date: sanitizeText(order?.event_date, 40),
       event_location: locationLabel,
-      internal_notes: sanitizeText(`POS/event order mirrored for May 30 operations${locationLabel ? ` - ${locationLabel}` : ''}`, 300),
+      internal_notes: sanitizeText(`POS/event order mirrored for native operations${locationLabel ? ` - ${locationLabel}` : ''}`, 300),
       tags: ['may30_native_ops', 'pos_sale', 'event_sale', 'no_delivery', 'no_production'],
       fulfillments: [],
       audit_trail: [{
@@ -443,9 +443,12 @@ async function createOrUpdateReviewQueue({ base44, incidentType, errorCode, sour
     incident_type: incidentType,
     customer_email: sanitizeText(order?.customer_email, 180),
     customer_name: sanitizeText(order?.customer_name, 160),
+    existing_order_id: sanitizeText(order?.id, 180) || null,
+    existing_order_number: normalizeOrderNumber(order) || null,
+    existing_order_type: sanitizeText(order?.order_type || order?.source_type || source, 80) || null,
     incoming_source: source,
     incoming_payload: buildSafeReviewPayload({ source, eventType, order, lineItems, paymentStatus, fulfillmentMethod }),
-    issue_description: sanitizeText(`May 30 native order ops rejected order: ${errorCode}`, 220),
+    issue_description: sanitizeText(`Native order processing rejected order: ${errorCode}`, 220),
     recommended_action: 'manual_review_before_operational_processing',
     status: 'pending',
     idempotency_key: idempotencyKey,
@@ -472,13 +475,33 @@ async function createOrUpdateReviewQueue({ base44, incidentType, errorCode, sour
   return { record: created, action: 'created' };
 }
 
+async function resolveReviewQueue({ base44, idempotencyKey, record, mode }) {
+  if (mode !== 'live') return 0;
+  const rows = await base44.asServiceRole.entities.OrderReviewQueue.filter({ idempotency_key: idempotencyKey }, '-created_date', 10).catch(() => []);
+  let resolved = 0;
+  for (const row of rows) {
+    if (!['pending', 'reviewing'].includes(row?.status)) continue;
+    await base44.asServiceRole.entities.OrderReviewQueue.update(row.id, {
+      status: 'resolved',
+      resolved_action: 'canonical_order_reprocessed_successfully',
+      resolved_at: new Date().toISOString(),
+      resolved_by: 'processNativeOrderOps',
+      existing_order_id: record?.id || row.existing_order_id || null,
+      existing_order_number: record?.shopify_order_number || row.existing_order_number || null,
+      queue_visibility_status: 'resolved',
+    });
+    resolved += 1;
+  }
+  return resolved;
+}
+
 async function createOrderSyncLog({ base44, record, action, status, reason, fieldsUpdated, fieldsRejected, errorCode, idempotencyKey, requestId, source, eventType, mode }) {
   if (mode !== 'live') return null;
   return base44.asServiceRole.entities.OrderSyncLog.create({
     order_number: record?.shopify_order_number || 'unknown',
     status,
     sync_timestamp: new Date().toISOString(),
-    sync_source: 'may30_native_order_ops',
+    sync_source: 'native_order_ops',
     event_type: eventType,
     order_id: record?.id || null,
     action,
@@ -499,7 +522,7 @@ async function createOrderSyncLog({ base44, record, action, status, reason, fiel
 async function createCommandLog({ base44, record, action, status, idempotencyKey, requestId, source, eventType, outputs, mode }) {
   if (mode !== 'live') return null;
   return base44.asServiceRole.entities.CommandLog.create({
-    command_type: 'may30_native_order_ops',
+    command_type: 'native_order_ops',
     command_source: source,
     status,
     target_entity: 'ShopifyOrder',
@@ -812,7 +835,7 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
     schedule_source: 'native_customer_app_paid_order_mirror',
     delivery_zone_key: outputs.record.delivery_zone_key,
     notes: sanitizeText(
-      `Native May 30 delivery task mirror. Source=${source}; event=${eventType}; request=${requestId}; idempotency=${idempotencyKey}`,
+      `Native delivery task mirror. Source=${source}; event=${eventType}; request=${requestId}; idempotency=${idempotencyKey}`,
       500,
     ),
   };
@@ -874,7 +897,7 @@ Deno.serve(async (req) => {
         dry_run: false,
         action: 'skipped',
         error_code: 'may30_native_order_ops_disabled',
-        message: 'May 30 native order ops is disabled; existing Hub bridge remains the fallback.',
+        message: 'Native order processing is disabled; the existing Hub bridge remains the fallback.',
       });
     }
 
@@ -935,7 +958,7 @@ Deno.serve(async (req) => {
         review_queue_action: review.action,
         order_review_queue_draft: mode === 'live' ? null : review.draft,
         hub_bridge_fallback: true,
-        native_writer_scope: 'may30_order_ops_only',
+      native_writer_scope: 'native_order_ops',
       }, { status: 202 });
     }
 
@@ -1038,7 +1061,7 @@ Deno.serve(async (req) => {
         record: writtenRecord,
         action: writeAction,
         status: writeAction === 'skipped' ? 'deduped' : 'success',
-        reason: `May 30 native operational mirror ${writeAction}`,
+        reason: `Native operational mirror ${writeAction}`,
         fieldsUpdated,
         fieldsRejected: Object.keys(planner?.rejected_fields || {}),
         errorCode: null,
@@ -1061,6 +1084,7 @@ Deno.serve(async (req) => {
         outputs,
         mode,
       });
+      await resolveReviewQueue({ base44, idempotencyKey, record: writtenRecord, mode });
     }
 
     return Response.json({
@@ -1111,7 +1135,7 @@ Deno.serve(async (req) => {
     return Response.json({
       success: false,
       error_code: 'may30_native_order_ops_failed',
-      message: 'May 30 native order ops failed safely; Hub bridge fallback remains available.',
+      message: 'Native order processing failed safely; the Hub bridge fallback remains available.',
       hub_bridge_fallback: true,
     }, { status: 500 });
   }

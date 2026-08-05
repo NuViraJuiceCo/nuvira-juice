@@ -145,7 +145,7 @@ function sanitizeNativePosOrder(order) {
     requires_delivery: false,
     requires_production: false,
     requires_fulfillment_task: false,
-    internal_note_summary: order.internal_notes || 'Native May 30 POS operational mirror',
+    internal_note_summary: order.internal_notes || 'Native POS operational mirror',
   });
   return {
     ...sanitized,

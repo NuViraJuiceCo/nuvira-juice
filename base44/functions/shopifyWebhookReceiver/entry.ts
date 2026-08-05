@@ -24,6 +24,15 @@ function getCustomerAppSyncSecret() {
   return Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
 }
 
+function internalIngestionAuthorized(req, envelope) {
+  const presented = (req.headers.get('x-internal-secret') || '').trim();
+  const allowed = [
+    Deno.env.get('CUSTOMER_APP_SYNC_SECRET'),
+    Deno.env.get('HUB_SYNC_SECRET'),
+  ].map(value => (value || '').trim()).filter(Boolean);
+  return Boolean(envelope?.internal_topic && presented && allowed.includes(presented));
+}
+
 function isMay30NativeOrderOpsEnabled() {
   return Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
 }
@@ -215,7 +224,6 @@ function mapToShopifyOrder(order) {
     is_subscription: (order.tags || '').toLowerCase().includes('subscription'),
     subscription_cadence: '',
     shopify_synced_at: new Date().toISOString(),
-    shopify_raw_payload: order,
   };
 }
 
@@ -403,6 +411,31 @@ async function createOrderWriteAuditLog(base44, { record, topic, action, reason,
   });
 }
 
+async function syncIngestedOrderToHub(base44, record, topic) {
+  if (!record?.id || !['orders/create', 'orders/paid'].includes(topic)) return { skipped: true };
+  try {
+    const response = await base44.asServiceRole.functions.invoke('syncShopifyOrderToHub', record, {
+      headers: { 'x-internal-secret': getCustomerAppSyncSecret() },
+    });
+    const result = response?.data || response;
+    if (result?.success !== true && result?.skipped !== true) throw new Error(result?.error || 'hub_sync_failed');
+    return result;
+  } catch (error) {
+    const message = safeLogText(error?.message || error, 300) || 'hub_sync_failed';
+    await base44.asServiceRole.entities.OrderSyncLog.create({
+      order_number: record.shopify_order_number || record.id,
+      status: 'error',
+      description: `Shopify ingestion succeeded; Hub projection failed: ${message}`,
+      started_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+      triggered_by: 'shopify_ingestion',
+      idempotency_key: `shopify_hub_sync:${record.shopify_order_id || record.id}`,
+    }).catch(() => {});
+    console.error(`[shopifyWebhookReceiver] Hub projection failed safely for ${record.shopify_order_number || record.id}: ${message}`);
+    return { success: false, error: message };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
@@ -410,30 +443,41 @@ Deno.serve(async (req) => {
 
   const bodyText = await req.text();
 
-  // Verify HMAC
-  let valid = false;
+  let envelope;
   try {
-    valid = await verifyShopifyHmac(req, bodyText);
-  } catch (error) {
-    console.error('Shopify HMAC verification unavailable:', error.message, {
-      env_present: shopifyWebhookSecretDiagnostic(),
-    });
-    console.error(`Shopify HMAC verification env presence: ${shopifyWebhookSecretDiagnosticLog()}`);
-    return Response.json({ error: 'shopify_webhook_verification_unavailable' }, { status: 500 });
+    envelope = JSON.parse(bodyText);
+  } catch (e) {
+    console.error('Failed to parse Shopify ingestion payload:', e.message);
+    return Response.json({ error: 'Bad JSON' }, { status: 400 });
+  }
+  const internalIngestion = internalIngestionAuthorized(req, envelope);
+
+  // Shopify webhooks use HMAC. The scheduled poller uses the same canonical
+  // ingestion path with a server-only internal secret.
+  let valid = false;
+  if (internalIngestion) {
+    valid = true;
+  } else {
+    try {
+      valid = await verifyShopifyHmac(req, bodyText);
+    } catch (error) {
+      console.error('Shopify HMAC verification unavailable:', error.message, {
+        env_present: shopifyWebhookSecretDiagnostic(),
+      });
+      console.error(`Shopify HMAC verification env presence: ${shopifyWebhookSecretDiagnosticLog()}`);
+      return Response.json({ error: 'shopify_webhook_verification_unavailable' }, { status: 500 });
+    }
   }
   if (!valid) {
     console.error('Invalid Shopify HMAC signature');
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const topic = req.headers.get('x-shopify-topic') || 'unknown';
-  let payload;
-  try {
-    payload = JSON.parse(bodyText);
-  } catch (e) {
-    console.error('Failed to parse webhook payload:', e.message);
-    return Response.json({ error: 'Bad JSON' }, { status: 400 });
-  }
+  const topic = internalIngestion
+    ? String(envelope.internal_topic || 'unknown')
+    : req.headers.get('x-shopify-topic') || 'unknown';
+  const payload = internalIngestion ? envelope.data : envelope;
+  if (!payload || typeof payload !== 'object') return Response.json({ error: 'missing_order_payload' }, { status: 400 });
 
   const base44 = createClientFromRequest(req);
   const shopifyOrderId = payload.id ? String(payload.id) : null;
@@ -455,7 +499,7 @@ Deno.serve(async (req) => {
     await handleProductSync(base44, topic, payload);
     await updateWebhookLog(base44, webhookLog, {
       status: 'processed',
-      description: 'Product webhook processed. May 30 order ops not applicable.',
+      description: 'Product webhook processed. Native order processing is not applicable.',
     });
     return Response.json({ ok: true });
   }
@@ -503,6 +547,20 @@ Deno.serve(async (req) => {
     } else if (existing.length > 0) {
       const updates = mapToShopifyOrder(payload);
       record = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
+        source_channel: updates.source_channel,
+        customer_name: updates.customer_name,
+        customer_email: updates.customer_email,
+        customer_phone: updates.customer_phone,
+        fulfillment_method: updates.fulfillment_method,
+        delivery_address: updates.delivery_address,
+        address_line1: updates.address_line1,
+        address_line2: updates.address_line2,
+        address_city: updates.address_city,
+        address_state: updates.address_state,
+        address_postal_code: updates.address_postal_code,
+        address_country: updates.address_country,
+        requested_delivery_date: updates.requested_delivery_date,
+        requested_time_window: updates.requested_time_window,
         shopify_fulfillment_status: updates.shopify_fulfillment_status,
         financial_status: updates.financial_status,
         payment_status: updates.payment_status,
@@ -519,6 +577,20 @@ Deno.serve(async (req) => {
         action,
         reason: 'shopify_order_create_or_paid_existing_order_update',
         fieldsUpdated: [
+          'source_channel',
+          'customer_name',
+          'customer_email',
+          'customer_phone',
+          'fulfillment_method',
+          'delivery_address',
+          'address_line1',
+          'address_line2',
+          'address_city',
+          'address_state',
+          'address_postal_code',
+          'address_country',
+          'requested_delivery_date',
+          'requested_time_window',
           'shopify_fulfillment_status',
           'financial_status',
           'payment_status',
@@ -543,10 +615,9 @@ Deno.serve(async (req) => {
       console.log(`Created ShopifyOrder for #${orderNumber}`);
     }
 
-    // Create operational alert
+    // Only actionable exceptions become alerts. Successful orders belong in
+    // the operations dashboard, not an indefinitely unresolved notice queue.
     if (action === 'created') {
-      await createAlert(base44, 'new_order', `New Order #${orderNumber}`, `${record.customer_name} · $${record.total_price?.toFixed(2)}`, shopifyOrderId, orderNumber, 'info');
-
       // Same-day pickup check
       const requestedDate = record.requested_delivery_date;
       if (requestedDate) {
@@ -574,6 +645,7 @@ Deno.serve(async (req) => {
     await logSync(base44, 'webhook', 'success', 1, 0);
     nativeOpsAttempted = shouldAttemptMay30NativeOrderOps(record, topic);
     nativeOpsResult = await maybeRunMay30NativeOrderOps(base44, record, topic);
+    await syncIngestedOrderToHub(base44, record, topic);
 
   } else if (topic === 'orders/updated') {
     const mappedForNativeSafeSync = mapToShopifyOrder(payload);
@@ -587,7 +659,22 @@ Deno.serve(async (req) => {
     } else if (existing.length > 0) {
       const updates = mapToShopifyOrder(payload);
       const updatedRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
+        source_channel: updates.source_channel,
+        customer_name: updates.customer_name,
+        customer_email: updates.customer_email,
+        customer_phone: updates.customer_phone,
+        fulfillment_method: updates.fulfillment_method,
+        delivery_address: updates.delivery_address,
+        address_line1: updates.address_line1,
+        address_line2: updates.address_line2,
+        address_city: updates.address_city,
+        address_state: updates.address_state,
+        address_postal_code: updates.address_postal_code,
+        address_country: updates.address_country,
+        requested_delivery_date: updates.requested_delivery_date,
+        requested_time_window: updates.requested_time_window,
         shopify_fulfillment_status: updates.shopify_fulfillment_status,
+        payment_status: updates.payment_status,
         financial_status: updates.financial_status,
         customer_notes: updates.customer_notes,
         line_items: updates.line_items,
@@ -602,6 +689,7 @@ Deno.serve(async (req) => {
         reason: 'shopify_order_updated_existing_order_update',
         fieldsUpdated: [
           'shopify_fulfillment_status',
+          'payment_status',
           'financial_status',
           'customer_notes',
           'line_items',
@@ -654,7 +742,7 @@ Deno.serve(async (req) => {
         fulfillment_status: 'cancelled',
         order_status: 'refunded',
         operational_visibility: 'archived',
-        sync_status: 'native_may30_refunded',
+        sync_status: 'native_refunded',
         excluded_from_production: true,
         refunded_at: now,
         cancel_type: 'shopify_refund',
@@ -763,12 +851,19 @@ async function handleProductSync(base44, topic, payload) {
 }
 
 async function createAlert(base44, alertType, title, message, shopifyOrderId, orderNumber, severity) {
-  await base44.asServiceRole.entities.OperationalAlert.create({
+  const existing = await base44.asServiceRole.entities.OperationalAlert.filter({
+    alert_type: alertType,
+    shopify_order_id: shopifyOrderId,
+    resolved: false,
+  }, '-created_date', 3).catch(() => []);
+  const payload = {
     alert_type: alertType, title, message,
     shopify_order_id: shopifyOrderId,
     order_number: orderNumber,
     severity, is_read: false, resolved: false,
-  });
+  };
+  if (existing[0]) await base44.asServiceRole.entities.OperationalAlert.update(existing[0].id, payload);
+  else await base44.asServiceRole.entities.OperationalAlert.create(payload);
 }
 
 async function logSync(base44, syncType, status, synced, failed) {
@@ -944,7 +1039,7 @@ async function createOrUpdateFallbackFulfillmentTask(base44, { record, idempoten
       quantity: Number(item.quantity || 0),
     })),
     status: 'pending',
-    notes: `May 30 native fallback task from ${topic}; idempotency=${idempotencyKey}`,
+    notes: `Native fallback task from ${topic}; idempotency=${idempotencyKey}`,
   };
 
   if (Array.isArray(existing) && existing.length > 0) {
@@ -1103,26 +1198,26 @@ function shouldAttemptMay30NativeOrderOps(record, topic) {
 
 function webhookDescription({ topic, nativeOpsAttempted, nativeOpsResult }) {
   if (!MAY30_NATIVE_ORDER_TOPICS.has(topic) && topic !== 'orders/refunded') {
-    return 'Webhook processed. May 30 native order ops not applicable for this topic.';
+    return 'Webhook processed. Native order processing is not applicable for this topic.';
   }
 
   if (!isMay30NativeOrderOpsEnabled()) {
-    return 'Webhook processed. May 30 native order ops is disabled; Hub bridge/fallback remains available.';
+    return 'Webhook processed. Native order processing is disabled; Hub bridge/fallback remains available.';
   }
 
   if (!nativeOpsAttempted) {
-    return 'Webhook processed. May 30 native order ops skipped because order source/status is out of launch scope.';
+    return 'Webhook processed. Native order processing skipped because the order source or status is outside the supported scope.';
   }
 
   if (!nativeOpsResult) {
-    return 'Webhook processed. May 30 native order ops attempted but returned no result; check function console logs.';
+    return 'Webhook processed. Native order processing returned no result; check function logs.';
   }
 
   const action = nativeOpsResult.action || 'unknown';
   const success = nativeOpsResult.success === true ? 'success' : 'not accepted';
   const source = nativeOpsResult.source || 'unknown';
   const errorCode = nativeOpsResult.error_code ? ` error=${nativeOpsResult.error_code}` : '';
-  return `Webhook processed. May 30 native order ops ${success}: source=${source} action=${action}.${errorCode}`;
+  return `Webhook processed. Native order processing ${success}: source=${source} action=${action}.${errorCode}`;
 }
 
 function may30NativeSourceForOrder(record, topic) {
