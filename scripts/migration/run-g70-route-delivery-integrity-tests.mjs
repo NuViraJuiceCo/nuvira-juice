@@ -169,6 +169,33 @@ const results = [];
 }
 
 {
+  const { effectiveAdminOperationalStatuses } = loadExports(
+    'base44/functions/getAdminOrdersWithHub/entry.ts',
+    ['effectiveAdminOperationalStatuses'],
+  );
+  const mixed = effectiveAdminOperationalStatuses({
+    status: 'delivered',
+    customer_app_order_status: 'delivered',
+    delivered_at: '2026-08-05T23:38:28.061Z',
+    native_production_status: 'awaiting_production',
+    native_fulfillment_status: 'pending',
+    native_fulfillment_task_summary: {
+      count: 2,
+      status_counts: { delivered: 1, scheduled: 1 },
+    },
+    has_customer_app_order: true,
+    has_native_order: true,
+  });
+  assert.equal(mixed.effective_order_status, 'partially_fulfilled');
+  assert.equal(mixed.effective_production_status, 'partially_complete');
+  assert.equal(mixed.effective_fulfillment_status, 'partially_fulfilled');
+  assert.equal(mixed.native_status_stale_against_source, false);
+  assert.equal(mixed.fulfillment_occurrence_summary.terminal, 1);
+  assert.equal(mixed.fulfillment_occurrence_summary.pending, 1);
+  results.push('admin_order_summary_represents_mixed_delivery_occurrences_as_partial');
+}
+
+{
   const { dedupeCrossSourceProjections } = loadExports(
     'base44/functions/getAdminOrderTimeline/entry.ts',
     ['dedupeCrossSourceProjections'],

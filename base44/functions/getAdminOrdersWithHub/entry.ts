@@ -302,6 +302,21 @@ function taskSummaryHasTerminalStatus(taskSummary = {}) {
   return Object.keys(taskSummary?.status_counts || {}).some(isTerminalOperationalStatus);
 }
 
+function taskSummaryCompletion(taskSummary = {}) {
+  const counts = Object.entries(taskSummary?.status_counts || {});
+  const total = Number(taskSummary?.count || counts.reduce((sum, [, count]) => sum + Number(count || 0), 0));
+  const terminal = counts.reduce((sum, [status, count]) => (
+    sum + (isTerminalOperationalStatus(status) ? Number(count || 0) : 0)
+  ), 0);
+  return {
+    total,
+    terminal,
+    pending: Math.max(0, total - terminal),
+    mixed: terminal > 0 && terminal < total,
+    all_terminal: total > 0 && terminal === total,
+  };
+}
+
 function mapKnownOperationalStatus(value) {
   const normalized = normalizeLower(value);
   return normalized ? mapHubStatus(normalized) : null;
@@ -309,11 +324,14 @@ function mapKnownOperationalStatus(value) {
 
 function effectiveAdminOperationalStatuses(order = {}) {
   const taskSummary = order.native_fulfillment_task_summary || {};
-  const taskTerminal = taskSummaryHasTerminalStatus(taskSummary);
+  const taskCompletion = taskSummaryCompletion(taskSummary);
+  const taskTerminal = taskCompletion.all_terminal || (taskCompletion.total === 0 && taskSummaryHasTerminalStatus(taskSummary));
+  const taskMixed = taskCompletion.mixed;
   const hubTerminal = isTerminalOperationalStatus(order.hub_operational_status) || isTerminalOperationalStatus(order.hub_fulfillment_status);
   const customerTerminal = isTerminalOperationalStatus(order.customer_app_order_status) || isTerminalOperationalStatus(order.status);
-  const deliveredLike = hubTerminal || taskTerminal || customerTerminal || Boolean(order.delivered_at);
+  const deliveredLike = !taskMixed && (hubTerminal || taskTerminal || customerTerminal || Boolean(order.delivered_at));
   const sourceStatus = (
+    (taskMixed ? 'partially_fulfilled' : null) ||
     order.hub_operational_status ||
     order.hub_fulfillment_status ||
     (taskTerminal ? 'delivered' : null) ||
@@ -322,6 +340,7 @@ function effectiveAdminOperationalStatuses(order = {}) {
     null
   );
   const sourceFulfillment = (
+    (taskMixed ? 'partially_fulfilled' : null) ||
     order.hub_fulfillment_status ||
     order.hub_operational_status ||
     (taskTerminal ? 'delivered' : null) ||
@@ -334,19 +353,26 @@ function effectiveAdminOperationalStatuses(order = {}) {
   ].filter(Boolean);
 
   return {
-    effective_order_status: mapKnownOperationalStatus(sourceStatus) || (order.status || null),
-    effective_production_status: staleFields.includes('native_production_status')
+    effective_order_status: taskMixed ? 'partially_fulfilled' : mapKnownOperationalStatus(sourceStatus) || (order.status || null),
+    effective_production_status: taskMixed
+      ? 'partially_complete'
+      : staleFields.includes('native_production_status')
       ? mapKnownOperationalStatus(sourceStatus || sourceFulfillment || 'delivered')
       : (order.native_production_status || mapKnownOperationalStatus(sourceStatus) || null),
-    effective_fulfillment_status: staleFields.includes('native_fulfillment_status')
+    effective_fulfillment_status: taskMixed
+      ? 'partially_fulfilled'
+      : staleFields.includes('native_fulfillment_status')
       ? mapKnownOperationalStatus(sourceFulfillment || sourceStatus || 'delivered')
       : (order.native_fulfillment_status || mapKnownOperationalStatus(sourceFulfillment || sourceStatus) || null),
-    effective_delivery_status: deliveredLike
+    effective_delivery_status: taskMixed
+      ? 'partially_fulfilled'
+      : deliveredLike
       ? 'delivered'
       : mapKnownOperationalStatus(sourceFulfillment || sourceStatus),
     effective_status_source: order.is_hub_order
       ? (taskTerminal ? 'hub_primary_with_native_task_context' : 'hub_primary')
-      : taskTerminal ? 'native_task' : order.has_customer_app_order ? 'customer_app_order' : 'native_mirror',
+      : taskMixed ? 'native_task_occurrences' : taskTerminal ? 'native_task' : order.has_customer_app_order ? 'customer_app_order' : 'native_mirror',
+    fulfillment_occurrence_summary: taskCompletion,
     native_status_stale_against_source: staleFields.length > 0,
     native_status_stale_fields: staleFields,
   };
@@ -1719,7 +1745,7 @@ function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, review
 
       if (!task.shopify_order_number && !task.order_number) missingMetadataFields.add('shopify_order_number');
       if (!task.source_type) missingMetadataFields.add('source_type');
-      if (!task.schedule_source) missingMetadataFields.add('schedule_source');
+      if (!task.schedule_source && !task.task_source) missingMetadataFields.add('schedule_source');
       if (!task.production_date) missingMetadataFields.add('production_date');
     }
 
@@ -1740,7 +1766,7 @@ function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, review
         production_date: task.production_date || null,
         source_channel: task.source_channel || null,
         source_type: task.source_type || null,
-        schedule_source: task.schedule_source || null,
+        schedule_source: task.schedule_source || task.task_source || null,
         fulfillment_type: task.fulfillment_type || null,
         fulfillment_number: task.fulfillment_number || null,
         delivery_window_label: task.delivery_window_label || task.time_window || null,
@@ -1924,7 +1950,7 @@ function buildOperationalContextGuidance(order) {
     });
   }
 
-  if (order.has_customer_app_order && paid && !order.is_hub_order) {
+  if (order.has_customer_app_order && paid && !order.is_hub_order && !order.has_native_order) {
     guidance.push({
       tone: 'warning',
       label: 'Hub sync missing',

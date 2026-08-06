@@ -911,7 +911,7 @@ function FulfillmentTasksPanel({ order }) {
 
 function HubTimelinePanel({ order }) {
   const shouldFetchTimeline = Boolean(
-    order.is_hub_order &&
+    (order.is_hub_order || order.has_native_order || order.has_native_task) &&
     (order.hub_order_id || order.order_number || order.stripe_subscription_id || order.id)
   );
 
@@ -932,8 +932,6 @@ function HubTimelinePanel({ order }) {
     enabled: shouldFetchTimeline,
     staleTime: 60000,
   });
-
-  if (!order.is_hub_order) return null;
 
   const events = data?.events || [];
 
@@ -1085,6 +1083,12 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
   const [expanded, setExpanded] = useState(forceExpanded);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
   const currentIndex = Math.max(0, stages.findIndex(s => s.key === normalizeOrderStage(order.status)));
+  const partialFulfillment = normalizedLower(order.effective_fulfillment_status || order.effective_delivery_status) === 'partially_fulfilled';
+  const taskStatusCounts = order.native_fulfillment_task_summary?.status_counts || {};
+  const completedTaskCount = Object.entries(taskStatusCounts).reduce((total, [status, count]) => (
+    total + (['delivered', 'completed', 'fulfilled', 'complete', 'picked_up'].includes(normalizedLower(status)) ? Number(count || 0) : 0)
+  ), 0);
+  const totalTaskCount = Number(order.native_fulfillment_task_summary?.count || 0);
 
   const deliveryDateStr = order.estimated_delivery_date
     ? format(parseLocalDate(order.estimated_delivery_date), 'MMM d, yyyy')
@@ -1095,7 +1099,9 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
   const itemsSummary = order.items?.length > 0
     ? order.items.map(i => `${i.title} ×${i.quantity}`).join(', ')
     : null;
-  const customerAppStatusLabel = stages.find(s => s.key === order.status)?.label || formatStatusLabel(order.status);
+  const customerAppStatusLabel = partialFulfillment
+    ? 'Partially Fulfilled'
+    : stages.find(s => s.key === order.status)?.label || formatStatusLabel(order.status);
 
   useEffect(() => {
     if (forceExpanded) setExpanded(true);
@@ -1115,7 +1121,7 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
           {/* Row 1: order # + status badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-bold">#{order.order_number}</p>
-            <AdminStatusPill value={order.status} label={customerAppStatusLabel} tone={null} />
+            <AdminStatusPill value={partialFulfillment ? 'partially_fulfilled' : order.status} label={customerAppStatusLabel} tone={null} />
             <AdminStatusPill value={order.fulfillment_type} label={order.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'} context="source" tone={null} />
             <ContextBadges badges={order.admin_context_badges || [
               order.has_customer_app_order ? 'Customer App Order' : null,
@@ -1216,6 +1222,17 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
                 </section>
               )}
 
+              {!order.is_hub_order && (order.has_native_order || order.has_native_task) && (
+                <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
+                  <SectionLabel
+                    title="Order Timeline"
+                    description="Occurrence-level source events with mirrored parent projections consolidated."
+                    badge="Read-only"
+                  />
+                  <HubTimelinePanel order={order} />
+                </section>
+              )}
+
               <InternalHubNoteComposer order={order} />
 
               <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
@@ -1228,13 +1245,23 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
 
                 {/* Progress */}
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Progress — Step {currentIndex + 1} of {stages.length}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    {partialFulfillment ? 'Progress — Partial fulfillment' : `Progress — Step ${currentIndex + 1} of ${stages.length}`}
+                  </p>
                   <div className="flex gap-1">
-                    {stages.map((stage, i) => (
-                      <div key={stage.key} className={`h-1.5 flex-1 rounded-full ${i <= currentIndex ? 'bg-primary' : 'bg-border'}`} />
-                    ))}
+                    {partialFulfillment
+                      ? Array.from({ length: Math.max(totalTaskCount, 1) }, (_, index) => (
+                        <div key={`fulfillment-${index}`} className={`h-1.5 flex-1 rounded-full ${index < completedTaskCount ? 'bg-primary' : 'bg-border'}`} />
+                      ))
+                      : stages.map((stage, i) => (
+                        <div key={stage.key} className={`h-1.5 flex-1 rounded-full ${i <= currentIndex ? 'bg-primary' : 'bg-border'}`} />
+                      ))}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{stages[currentIndex]?.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {partialFulfillment
+                      ? `${completedTaskCount} of ${totalTaskCount} delivery ${totalTaskCount === 1 ? 'task' : 'tasks'} complete`
+                      : stages[currentIndex]?.label}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
