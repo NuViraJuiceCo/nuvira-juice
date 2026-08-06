@@ -32,21 +32,21 @@ function normalizeLower(value) {
 
 const PROGRAM_COMPOSITIONS = [
   {
-    matcher: /hydration/i,
+    matcher: /\bhydration\s+program\b/i,
     items: [
       { title: 'OASIS', quantity: 9 },
       { title: 'AURA', quantity: 3 },
     ],
   },
   {
-    matcher: /radiance/i,
+    matcher: /\bradiance\s+program\b/i,
     items: [
       { title: 'AURA', quantity: 9 },
       { title: 'OASIS', quantity: 3 },
     ],
   },
   {
-    matcher: /reset/i,
+    matcher: /\breset\s+program\b/i,
     items: [
       { title: 'RE-NU', quantity: 9 },
       { title: 'OASIS', quantity: 3 },
@@ -548,15 +548,30 @@ function isNativeMay30DeliveryOrder(order) {
   return safeLineItems(order).length > 0;
 }
 
+function preferredCustomerName({ customerOrder = {}, order = {}, task = {}, profilesByEmail = new Map() }) {
+  const identityEmail = normalizeLower(
+    customerOrder?.customer_email || order?.customer_email || task?.customer_email,
+  );
+  const profile = profilesByEmail.get(identityEmail);
+  const profileName = [profile?.first_name, profile?.last_name]
+    .map(normalizeText)
+    .filter(Boolean)
+    .join(' ');
+  return profileName || customerOrder?.customer_name || order?.customer_name || task?.customer_name;
+}
+
 async function loadNativeDeliveryStops(base44, deliveryDate, limit, testTaskMode = 'exclude') {
   const includeOrderSources = testTaskMode !== 'only';
-  const [tasks, orders, customerOrders] = await Promise.all([
+  const [tasks, orders, customerOrders, userProfiles] = await Promise.all([
     base44.asServiceRole.entities.FulfillmentTask.list('-delivery_date', 500).catch(() => []),
     includeOrderSources
       ? base44.asServiceRole.entities.ShopifyOrder.list('-created_date', 500).catch(() => [])
       : Promise.resolve([]),
     includeOrderSources && base44.asServiceRole.entities.Order?.list
       ? base44.asServiceRole.entities.Order.list('-created_date', 500).catch(() => [])
+      : Promise.resolve([]),
+    includeOrderSources && base44.asServiceRole.entities.UserProfile?.list
+      ? base44.asServiceRole.entities.UserProfile.list('-updated_date', 500).catch(() => [])
       : Promise.resolve([]),
   ]);
   const selectedTasks = tasks.filter(task => (
@@ -575,6 +590,13 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit, testTaskMode
     const orderNumber = normalizeLower(order.order_number || order.shopify_order_number);
     if (orderNumber) customerOrdersByNumber.set(orderNumber, order);
   }
+  const profilesByEmail = new Map();
+  for (const profile of userProfiles) {
+    for (const email of [profile?.customer_email, profile?.contact_email]) {
+      const key = normalizeLower(email);
+      if (key && !profilesByEmail.has(key)) profilesByEmail.set(key, profile);
+    }
+  }
 
   function customerAppOrderFor(order = {}, task = {}) {
     return (
@@ -585,7 +607,7 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit, testTaskMode
   }
 
   function displayCustomerName({ customerOrder, order = {}, task = {} }) {
-    return customerOrder?.customer_name || order.customer_name || task.customer_name;
+    return preferredCustomerName({ customerOrder, order, task, profilesByEmail });
   }
 
   const mappedTaskStops = selectedTasks

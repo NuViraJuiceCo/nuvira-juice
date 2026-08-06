@@ -40,6 +40,58 @@ function sanitizeEvent(event) {
   };
 }
 
+const CROSS_SOURCE_PROJECTION_TYPES = new Set([
+  'delivered',
+  'delivery_proof_added',
+  'production_scheduled',
+]);
+
+function normalizeEventToken(value) {
+  return normalizeText(value).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+function normalizedEventMoment(event) {
+  const value = normalizeText(event?.timestamp || event?.date);
+  if (!value) return '';
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? value : new Date(parsed).toISOString();
+}
+
+function projectionIdentity(event) {
+  const type = normalizeEventToken(event?.type);
+  if (!CROSS_SOURCE_PROJECTION_TYPES.has(type)) return '';
+  return [
+    type,
+    normalizedEventMoment(event),
+    normalizeText(event?.production_date),
+    normalizeText(event?.delivery_date),
+  ].join('|');
+}
+
+function dedupeCrossSourceProjections(events) {
+  const groups = new Map();
+  events.forEach((event, index) => {
+    const key = projectionIdentity(event);
+    if (!key) return;
+    const group = groups.get(key) || [];
+    group.push({ event, index });
+    groups.set(key, group);
+  });
+
+  const dropIndexes = new Set();
+  for (const group of groups.values()) {
+    const taskEvents = group.filter(({ event }) => normalizeEventToken(event?.source) === 'fulfillment_task');
+    const orderEvents = group.filter(({ event }) => normalizeEventToken(event?.source) === 'shopify_order');
+    if (taskEvents.length === 0 || orderEvents.length === 0) continue;
+
+    // FulfillmentTask is the occurrence-level source. Keep every distinct task
+    // event, but hide the parent ShopifyOrder projection of the same milestone.
+    for (const { index } of orderEvents) dropIndexes.add(index);
+  }
+
+  return events.filter((_, index) => !dropIndexes.has(index));
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -108,13 +160,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Malformed Hub timeline response' }, { status: 502 });
     }
 
-    const events = hubData.events.map(sanitizeEvent);
+    const sourceEvents = hubData.events.map(sanitizeEvent);
+    const events = dedupeCrossSourceProjections(sourceEvents);
 
     return Response.json({
       success: true,
       matched_by: hubData.matched_by || null,
       order_number: hubData.order_number || null,
       count: events.length,
+      source_event_count: sourceEvents.length,
+      duplicate_projection_count: sourceEvents.length - events.length,
       events,
     });
   } catch (error) {

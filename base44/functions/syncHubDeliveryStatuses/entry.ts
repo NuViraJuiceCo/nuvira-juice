@@ -140,6 +140,93 @@ function taskMatchesOrder(task, order) {
   ].some(value => value && orderIds.has(value));
 }
 
+function taskDeliveryDateKey(task) {
+  return dateKey(task?.delivery_date || task?.scheduled_date || task?.assigned_delivery_date);
+}
+
+function centralDateKeyFromTimestamp(value) {
+  const text = (value ?? '').toString().trim();
+  if (!text || Number.isNaN(Date.parse(text))) return null;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(text));
+}
+
+function hubDeliveredTaskKeys(hubOrder) {
+  const keys = new Set();
+  const add = (value) => {
+    const key = orderKey(value);
+    if (key) keys.add(key);
+  };
+  add(hubOrder?.fulfillment_task_id);
+  add(hubOrder?.task_id);
+
+  for (const row of [
+    ...(Array.isArray(hubOrder?.fulfillment_tasks) ? hubOrder.fulfillment_tasks : []),
+    ...(Array.isArray(hubOrder?.fulfillments) ? hubOrder.fulfillments : []),
+  ]) {
+    if (!taskAlreadyDelivered(row)) continue;
+    add(row?.id);
+    add(row?.fulfillment_task_id);
+    add(row?.task_id);
+  }
+  return keys;
+}
+
+function taskMatchesExplicitHubEvidence(task, hubKeys) {
+  if (!hubKeys.size) return false;
+  return [task?.id, task?.fulfillment_task_id, task?.task_id]
+    .map(orderKey)
+    .filter(Boolean)
+    .some((key) => hubKeys.has(key));
+}
+
+function planDeliveredTaskReconciliation({ tasks, order, hubOrder = null }) {
+  const matchingTasks = tasks.filter((task) => taskMatchesOrder(task, order));
+  const nonterminalTasks = matchingTasks.filter((task) => !taskAlreadyDelivered(task));
+  const hubKeys = hubDeliveredTaskKeys(hubOrder);
+  const explicitMatches = nonterminalTasks.filter((task) => taskMatchesExplicitHubEvidence(task, hubKeys));
+  const evidenceDates = new Set([
+    orderDeliveryDateKey(hubOrder),
+    orderDeliveryDateKey(order),
+    centralDateKeyFromTimestamp(hubOrder?.delivered_at),
+    centralDateKeyFromTimestamp(order?.delivered_at),
+  ].filter(Boolean));
+  const dateMatches = nonterminalTasks.filter((task) => evidenceDates.has(taskDeliveryDateKey(task)));
+
+  let task = null;
+  let reason = null;
+  if (explicitMatches.length === 1) {
+    task = explicitMatches[0];
+    reason = 'exact_hub_task_identity';
+  } else if (explicitMatches.length > 1) {
+    reason = 'multiple_exact_hub_task_matches';
+  } else if (dateMatches.length === 1) {
+    task = dateMatches[0];
+    reason = 'exact_delivery_date_match';
+  } else if (dateMatches.length > 1) {
+    reason = 'multiple_delivery_date_task_matches';
+  } else if (matchingTasks.length === 1 && nonterminalTasks.length === 1) {
+    task = nonterminalTasks[0];
+    reason = 'single_order_task';
+  } else if (nonterminalTasks.length > 0) {
+    reason = 'no_exact_fulfillment_occurrence_match';
+  } else {
+    reason = 'no_nonterminal_task_reconciliation_needed';
+  }
+
+  return {
+    task,
+    reason,
+    matching_task_count: matchingTasks.length,
+    nonterminal_task_count: nonterminalTasks.length,
+    remaining_nonterminal_task_count: Math.max(0, nonterminalTasks.length - (task ? 1 : 0)),
+  };
+}
+
 function buildTaskDeliveredPayload(task, order, hubOrder = null, source = 'customer_app_order_delivered') {
   const deliveredAt = validIsoDate(order?.delivered_at) || validIsoDate(hubOrder?.delivered_at) || new Date().toISOString();
   const existingAudit = Array.isArray(task?.audit_trail) ? task.audit_trail : [];
@@ -168,15 +255,15 @@ function buildTaskDeliveredPayload(task, order, hubOrder = null, source = 'custo
 }
 
 function stageDeliveredTaskReconciliation({ taskUpdates, tasks, order, hubOrder = null, source }) {
-  for (const task of tasks) {
-    if (!taskMatchesOrder(task, order)) continue;
-    if (taskAlreadyDelivered(task)) continue;
-    taskUpdates.set(task.id, {
-      task,
-      order_number: order?.order_number || hubOrder?.order_number || hubOrder?.shopify_order_number || task?.order_number || null,
-      payload: buildTaskDeliveredPayload(task, order, hubOrder, source),
+  const plan = planDeliveredTaskReconciliation({ tasks, order, hubOrder });
+  if (plan.task) {
+    taskUpdates.set(plan.task.id, {
+      task: plan.task,
+      order_number: order?.order_number || hubOrder?.order_number || hubOrder?.shopify_order_number || plan.task?.order_number || null,
+      payload: buildTaskDeliveredPayload(plan.task, order, hubOrder, source),
     });
   }
+  return plan;
 }
 
 function getDeliverySyncWindow() {
@@ -322,6 +409,8 @@ Deno.serve(async (req) => {
     const taskUpdates = new Map();
     const wouldUpdateFulfillmentTasks = [];
     const updatedFulfillmentTasks = [];
+    const heldOrderDeliveryCompletions = [];
+    const heldTaskReconciliations = [];
 
     for (const caOrder of eligibleOrders) {
       const hubOrder = hubByOrderNum.get(caOrder.order_number);
@@ -360,6 +449,27 @@ Deno.serve(async (req) => {
         if (hubOrder.delivery_drop_location) updatePayload.delivery_drop_location = hubOrder.delivery_drop_location;
       }
 
+      if (mappedStatus === 'delivered') {
+        const reconciliation = stageDeliveredTaskReconciliation({
+          taskUpdates,
+          tasks: allFulfillmentTasks,
+          order: { ...caOrder, ...updatePayload },
+          hubOrder,
+          source: dryRun ? 'hub_status_mapping_dry_run' : 'hub_status_mapping',
+        });
+        if (reconciliation.remaining_nonterminal_task_count > 0 || (!reconciliation.task && reconciliation.nonterminal_task_count > 0)) {
+          heldOrderDeliveryCompletions.push({
+            order_number: caOrder.order_number,
+            reason: 'pending_or_ambiguous_fulfillment_occurrences',
+            reconciliation_reason: reconciliation.reason,
+            matching_task_count: reconciliation.matching_task_count,
+            remaining_nonterminal_task_count: reconciliation.remaining_nonterminal_task_count,
+          });
+          skipped++;
+          continue;
+        }
+      }
+
       if (dryRun) {
         wouldUpdateOrders.push({
           order_number: caOrder.order_number,
@@ -370,29 +480,11 @@ Deno.serve(async (req) => {
           would_pull_delivery_photo_url: mappedStatus === 'delivered' ? Boolean(updatePayload.delivery_photo_url) : false,
           would_pull_delivery_drop_location: mappedStatus === 'delivered' ? Boolean(updatePayload.delivery_drop_location) : false,
         });
-        if (mappedStatus === 'delivered') {
-          stageDeliveredTaskReconciliation({
-            taskUpdates,
-            tasks: allFulfillmentTasks,
-            order: { ...caOrder, ...updatePayload },
-            hubOrder,
-            source: 'hub_status_mapping_dry_run',
-          });
-        }
         skipped++;
         continue;
       }
 
       await base44.asServiceRole.entities.Order.update(caOrder.id, updatePayload);
-      if (mappedStatus === 'delivered') {
-        stageDeliveredTaskReconciliation({
-          taskUpdates,
-          tasks: allFulfillmentTasks,
-          order: { ...caOrder, ...updatePayload },
-          hubOrder,
-          source: 'hub_status_mapping',
-        });
-      }
 
       console.log(`[syncHubDeliveryStatuses] ✅ ${caOrder.order_number}: ${caOrder.status} → ${mappedStatus}`);
       updated++;
@@ -406,13 +498,21 @@ Deno.serve(async (req) => {
 
     for (const deliveredOrder of deliveredOrdersInWindow) {
       const hubOrder = hubByOrderNum.get(deliveredOrder.order_number) || null;
-      stageDeliveredTaskReconciliation({
+      const reconciliation = stageDeliveredTaskReconciliation({
         taskUpdates,
         tasks: allFulfillmentTasks,
         order: deliveredOrder,
         hubOrder,
         source: 'customer_app_order_delivered',
       });
+      if (!reconciliation.task && reconciliation.nonterminal_task_count > 0) {
+        heldTaskReconciliations.push({
+          order_number: deliveredOrder.order_number,
+          reason: reconciliation.reason,
+          matching_task_count: reconciliation.matching_task_count,
+          nonterminal_task_count: reconciliation.nonterminal_task_count,
+        });
+      }
     }
 
     for (const entry of taskUpdates.values()) {
@@ -444,12 +544,16 @@ Deno.serve(async (req) => {
       updated,
       skipped,
       updatedOrders,
+      held_order_delivery_completions: heldOrderDeliveryCompletions.length,
+      heldOrderDeliveryCompletions,
       updated_fulfillment_tasks: updatedFulfillmentTasks.length,
       updatedFulfillmentTasks,
       would_update: wouldUpdateOrders.length,
       wouldUpdateOrders,
       would_update_fulfillment_tasks: wouldUpdateFulfillmentTasks.length,
       wouldUpdateFulfillmentTasks,
+      held_task_reconciliations: heldTaskReconciliations.length,
+      heldTaskReconciliations,
       eligible_orders: eligibleOrders.length,
       skipped_by_delivery_window: skippedByDeliveryWindow.length,
       skippedByDeliveryWindow,

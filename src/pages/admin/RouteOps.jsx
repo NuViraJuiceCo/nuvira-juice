@@ -56,18 +56,36 @@ function StatCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefr
     <div className={`rounded-xl border p-3 ${toneClass}`}>
       {Icon && <Icon className={`mb-1 h-4 w-4 text-primary ${isRefreshing ? 'animate-spin' : ''}`} />}
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="text-lg font-bold text-foreground">{Number(value || 0).toLocaleString()}</p>
+      <p className="text-lg font-bold text-foreground">
+        {value === null || value === undefined ? '—' : Number(value).toLocaleString()}
+      </p>
       {sublabel && <p className="text-[10px] text-muted-foreground">{sublabel}</p>}
     </div>
   );
 }
 
-function RouteReadiness({ summary }) {
+function RouteReadiness({ summary, data }) {
   const unscheduled = Number(summary.unscheduled || 0);
   const active = Number(summary.active || 0);
   const completed = Number(summary.completed || 0);
-  const label = unscheduled > 0 ? 'Schedule review needed' : active > 0 ? 'Route active' : completed > 0 ? 'Completed route evidence' : 'No active route';
-  const value = unscheduled > 0 ? 'needs_attention' : active > 0 || completed > 0 ? 'ready' : 'clear';
+  const lifecycleSummary = data?.delivery_lifecycle_read_model?.summary || {};
+  const reviewRequired = Number(lifecycleSummary.review_required_count || 0);
+  const duplicateIdentities = Number(lifecycleSummary.duplicate_identity_count || 0);
+  const fallbackRows = Number(lifecycleSummary.fallback_required_count || 0);
+  const needsAttention = unscheduled > 0 || reviewRequired > 0 || duplicateIdentities > 0 || fallbackRows > 0 || data?.fallback_required === true;
+  const label = needsAttention
+    ? 'Route review needed'
+    : active > 0
+      ? 'Route active'
+      : completed > 0
+        ? 'Completed route evidence'
+        : 'No active route';
+  const value = needsAttention ? 'needs_attention' : active > 0 || completed > 0 ? 'ready' : 'clear';
+  const reviewDetails = [
+    reviewRequired > 0 ? `${reviewRequired} lifecycle ${reviewRequired === 1 ? 'item' : 'items'}` : null,
+    duplicateIdentities > 0 ? `${duplicateIdentities} identity ${duplicateIdentities === 1 ? 'conflict' : 'conflicts'}` : null,
+    fallbackRows > 0 ? `${fallbackRows} fallback ${fallbackRows === 1 ? 'row' : 'rows'}` : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <section className="rounded-xl border border-border bg-card p-4">
@@ -76,7 +94,9 @@ function RouteReadiness({ summary }) {
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Route Review</p>
           <h2 className="mt-1 text-base font-bold text-foreground">{label}</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Delivery Queue remains the write surface for assignment, Out For Delivery, proof capture, and Delivered. This page is a route-management snapshot.
+            {needsAttention && reviewDetails
+              ? `${reviewDetails} need review before this route can be treated as reconciled.`
+              : 'Delivery Queue remains the write surface for assignment, Out For Delivery, proof capture, and Delivered. This page is a route-management snapshot.'}
           </p>
         </div>
         <AdminStatusPill value={value} label={formatLabel(value)} size="md" />
@@ -199,10 +219,15 @@ export default function RouteOps() {
           <StatCard icon={Clock} label="Active" value={summary.active} />
           <StatCard icon={CheckCircle2} label="Completed" value={summary.completed} tone="success" />
           <StatCard icon={AlertTriangle} label="Date Pending" value={summary.unscheduled} tone={Number(summary.unscheduled || 0) > 0 ? 'warning' : 'default'} />
-          <StatCard icon={Navigation} label="Bag Returns" value={summary.bag_returns ?? 0} />
+          <StatCard
+            icon={Navigation}
+            label="Bag Returns"
+            value={summary.bag_returns}
+            sublabel={summary.bag_returns === null || summary.bag_returns === undefined ? 'No count recorded' : ''}
+          />
         </div>
 
-        <RouteReadiness summary={summary} />
+        <RouteReadiness summary={summary} data={data} />
 
         {suppressedNativeRows.length > 0 && (
           <section className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 space-y-2 dark:border-cyan-900/60 dark:bg-cyan-950/30">

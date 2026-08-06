@@ -62,6 +62,7 @@ const harnesses = [
   'scripts/migration/run-g67-function-estate-cleanup-tests.mjs',
   'scripts/migration/run-g68-authoritative-loyalty-and-ingestion-tests.mjs',
   'scripts/migration/run-g69-production-prestart-modal-tests.mjs',
+  'scripts/migration/run-g70-route-delivery-integrity-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

@@ -490,6 +490,30 @@ function terminalCustomerStatus(value) {
   return ['delivered', 'picked_up', 'cancelled', 'canceled', 'refunded', 'failed'].includes(normalizeLower(value));
 }
 
+function terminalFulfillmentTask(task) {
+  const statuses = [task?.status, task?.delivery_status]
+    .map((value) => normalizeLower(value).replace(/\s+/g, '_'));
+  return statuses.some((status) => ['delivered', 'completed', 'fulfilled', 'cancelled', 'canceled', 'unable_to_deliver'].includes(status)) ||
+    Boolean(sanitizeText(task?.delivered_at, 80));
+}
+
+async function pendingSiblingFulfillmentTasks(base44, task, order) {
+  const orderNumber = normalizedOrderNumber(task?.order_number || task?.shopify_order_number || order?.order_number);
+  let rows = [];
+  if (orderNumber) {
+    rows = await base44.asServiceRole.entities.FulfillmentTask.filter({ order_number: orderNumber }, '-created_date', 50).catch(() => []);
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    const orderId = sanitizeId(task?.order_id || task?.base44_order_id || order?.id);
+    rows = orderId
+      ? await base44.asServiceRole.entities.FulfillmentTask.filter({ order_id: orderId }, '-created_date', 50).catch(() => [])
+      : [];
+  }
+  return (Array.isArray(rows) ? rows : []).filter((candidate) => (
+    candidate?.id !== task?.id && !terminalFulfillmentTask(candidate)
+  ));
+}
+
 async function findCustomerOrderForTask(base44, task) {
   const candidates = [
     sanitizeId(task?.base44_order_id),
@@ -593,6 +617,23 @@ async function projectCustomerOrderStatus({ base44, task, writtenTask, action, n
     !sameOrderNumber(task?.order_number || task?.shopify_order_number, order?.order_number)
   ) {
     return { attempted: true, updated: false, skipped: true, reason: 'customer_order_number_mismatch' };
+  }
+
+  if (action === 'delivered_operational') {
+    const pendingSiblings = await pendingSiblingFulfillmentTasks(base44, task, order);
+    if (pendingSiblings.length > 0) {
+      return {
+        attempted: true,
+        updated: false,
+        skipped: true,
+        reason: 'pending_sibling_fulfillment_tasks',
+        partial_fulfillment_completed: true,
+        pending_sibling_count: pendingSiblings.length,
+        order_id: sanitizeId(order.id) || null,
+        order_number: sanitizeText(order.order_number, 80) || null,
+        status: sanitizeText(order.status, 80) || null,
+      };
+    }
   }
 
   const { patch, skipped, reason } = buildCustomerOrderPatch({ order, task, writtenTask, action, now, requestId });

@@ -89,6 +89,9 @@ const results = [];
   assert.equal(operationalSummaryFromText('Hydration Program (3-Day) ×2'), '18x OASIS, 6x AURA');
   assert.equal(operationalSummaryFromText('1x Radiance Program (3-Day)'), '9x AURA, 3x OASIS');
   assert.equal(operationalSummaryFromText('Reset Program (3-Day) ×1'), '9x RE-NU, 3x OASIS');
+  assert.equal(operationalSummaryFromText('1x Radiance Shot'), '1x Radiance Shot');
+  assert.equal(operationalSummaryFromText('1x Reset Shot'), '1x Reset Shot');
+  assert.equal(operationalSummaryFromText('2x Hydration Shot'), '2x Hydration Shot');
   assert.equal(lineItemsSummary(hydrationLineItems), '9x OASIS, 3x AURA');
   assert.equal(operationalLineItemCount({ order: { line_items: hydrationLineItems } }), 2);
   assert.equal(operationalLineItemCount({ task: { items_summary: '1x Hydration Program (3-Day)' } }), 2);
@@ -96,6 +99,7 @@ const results = [];
   results.push('route_summary_expands_program_text_prefix_and_suffix');
   results.push('route_summary_sanitizer_canonicalizes_stale_program_summary');
   results.push('route_summary_counts_program_components');
+  results.push('route_summary_preserves_shots_as_literal_items');
 }
 
 {
@@ -124,7 +128,20 @@ for (const [label, relativePath] of [
   const draft = buildTaskDraft(order, { delivery_date: '2026-07-22', production_date: '2026-07-21' }, 'g51g_request', 'admin@example.test');
   assert.equal(draft.items_summary, '9x OASIS, 3x AURA');
   assert.equal(draft.line_item_count, 2);
+  const shotOrder = baseDeliveryOrder([
+    { title: 'Radiance Shot', quantity: 1 },
+    { title: 'Reset Shot', quantity: 2 },
+    { title: 'Hydration Shot', quantity: 1 },
+  ]);
+  const shotItems = taskItemsFromOrder(shotOrder);
+  assert.equal(lineItemsSummary(shotOrder.line_items), '1x Radiance Shot, 2x Reset Shot, 1x Hydration Shot');
+  assert.deepEqual(shotItems.map(item => [item.title, item.quantity]), [
+    ['Radiance Shot', 1],
+    ['Reset Shot', 2],
+    ['Hydration Shot', 1],
+  ]);
   results.push(`${label}_expands_hydration_program_into_delivery_task_items`);
+  results.push(`${label}_preserves_shots_without_program_expansion`);
 }
 
 {
@@ -151,7 +168,13 @@ for (const [label, relativePath] of [
   });
   assert.equal(packet.items_summary, '9x OASIS, 3x AURA');
   assert.deepEqual(packet.items.map(item => [item.title, item.quantity]), [['OASIS', 9], ['AURA', 3]]);
+  const shotItems = [
+    { title: 'Reset Shot', quantity: 1 },
+    { title: 'Radiance Shot', quantity: 1 },
+  ];
+  assert.equal(g33cTask1ItemsSummary(shotItems), '1x Reset Shot, 1x Radiance Shot');
   results.push('g33c_one_time_task_packet_uses_operational_bottle_counts');
+  results.push('g33c_one_time_task_packet_preserves_shots');
 }
 
 console.log(JSON.stringify({

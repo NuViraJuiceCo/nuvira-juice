@@ -99,6 +99,13 @@ test('11. Native delivery preview supports the same proof/drop fields as executi
   assert.match(previewSource, /FulfillmentTask\.delivery_photo_url/);
 });
 
+test('12. Completing one occurrence cannot close a parent order with pending sibling tasks', () => {
+  assert.match(commandSource, /pendingSiblingFulfillmentTasks/);
+  assert.match(commandSource, /action === 'delivered_operational'/);
+  assert.match(commandSource, /reason: 'pending_sibling_fulfillment_tasks'/);
+  assert.match(commandSource, /partial_fulfillment_completed: true/);
+});
+
 for (const item of tests) {
   item.fn();
 }

@@ -52,21 +52,21 @@ function safeNumber(value) {
 
 const PROGRAM_COMPOSITIONS = [
   {
-    matcher: /hydration/i,
+    matcher: /\bhydration\s+program\b/i,
     items: [
       { title: 'OASIS', quantity: 9 },
       { title: 'AURA', quantity: 3 },
     ],
   },
   {
-    matcher: /radiance/i,
+    matcher: /\bradiance\s+program\b/i,
     items: [
       { title: 'AURA', quantity: 9 },
       { title: 'OASIS', quantity: 3 },
     ],
   },
   {
-    matcher: /reset/i,
+    matcher: /\breset\s+program\b/i,
     items: [
       { title: 'RE-NU', quantity: 9 },
       { title: 'OASIS', quantity: 3 },
