@@ -375,6 +375,7 @@ test('numeric POS order number resolves through phone-owned ShopifyOrder fallbac
   assert.equal(result.json.hub_order.shopify_order_number, '1058');
   assert.equal(result.json.hub_order.status, 'picked_up');
   assert.equal(result.json.hub_order.fulfillment_method, 'pickup');
+  assert.equal(result.json.hub_order.requested_time_window, 'Pickup complete');
   assert.equal(result.json.customer_visible_status, 'Picked Up ✓');
   assert.equal(result.json.hub_order.line_items.length, 1);
   assert.equal(Object.hasOwn(result.json.hub_order, 'customer_email'), false);

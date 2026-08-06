@@ -219,7 +219,9 @@ function sanitizeHubOrderForCustomer(order) {
     total_price: Number.isFinite(Number(order.total_price)) ? Number(order.total_price) : 0,
     requested_delivery_date: normalizeText(order.requested_delivery_date) || null,
     assigned_delivery_date: normalizeText(order.assigned_delivery_date) || null,
-    requested_time_window: normalizeText(order.requested_time_window) || null,
+    requested_time_window: customerStatus === 'picked_up'
+      ? 'Pickup complete'
+      : normalizeText(order.requested_time_window) || null,
     delivery_window_label: normalizeText(order.delivery_window_label) || null,
     delivered_at: normalizeText(order.delivered_at) || null,
     delivery_photo_url: normalizeText(order.delivery_photo_url) || null,
