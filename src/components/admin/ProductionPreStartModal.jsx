@@ -105,6 +105,27 @@ function messageClass(type) {
   return 'text-amber-700 dark:text-amber-300';
 }
 
+function applyBatchDefaults(form, defaults) {
+  if (!defaults || typeof defaults !== 'object') return form;
+  const hasEnteredIngredients = form.ingredients_used.some(row => String(row?.ingredient_name || '').trim());
+  const defaultIngredients = Array.isArray(defaults.ingredients_used)
+    ? defaults.ingredients_used.map(row => ({
+        ingredient_name: String(row?.ingredient_name || ''),
+        quantity: row?.quantity ?? '',
+        unit: String(row?.unit || 'oz'),
+        lot_number: String(row?.lot_number || ''),
+      })).filter(row => row.ingredient_name)
+    : [];
+  return {
+    ...form,
+    formula_or_recipe_used: form.formula_or_recipe_used || String(defaults.formula_or_recipe_used || ''),
+    bottle_size: form.bottle_size || String(defaults.bottle_size || ''),
+    ingredients_used: !hasEnteredIngredients && defaultIngredients.length > 0
+      ? defaultIngredients
+      : form.ingredients_used,
+  };
+}
+
 export default function ProductionPreStartModal({ batch, open, onOpenChange, onReadyChange, onContinue }) {
   const queryClient = useQueryClient();
   const [view, setView] = useState('overview');
@@ -137,6 +158,7 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
       const result = unwrapBase44Result(response);
       if (!result?.success) throw new Error(result?.error || 'pre_start_status_unavailable');
       setStatus(result);
+      setForm(previous => applyBatchDefaults(previous, result.batch_defaults));
       onReadyChange?.(result.ready === true, result);
       return result;
     } catch (error) {
@@ -397,6 +419,9 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
                   <p className="mt-1 text-xs text-muted-foreground">
                     Existing batch-linked records are recognized automatically. A valid same-day facility log can be linked instead of entered twice.
                   </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Measured pH and final quality checks are recorded after production in Verify—not estimated during Start.
+                  </p>
                 </div>
                 <button type="button" onClick={() => refreshStatus()} disabled={loading} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold disabled:opacity-50">
                   <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -420,7 +445,13 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
                               <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
                             </div>
                             {item.ready ? (
-                              <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">Logged</span>
+                              item.key === 'batch_setup' ? (
+                                <button type="button" onClick={() => { setView(item.key); setMessage(null); }} disabled={loading || saving} className="h-8 rounded-lg border border-emerald-300 bg-emerald-100 px-3 text-xs font-semibold text-emerald-800 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                                  Review setup
+                                </button>
+                              ) : (
+                                <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">Logged</span>
+                              )
                             ) : item.reusable_same_day_record ? (
                               <button type="button" onClick={() => linkExisting(item)} disabled={Boolean(linking) || saving} className="h-8 rounded-lg border border-primary/40 bg-primary/5 px-3 text-xs font-semibold text-primary disabled:opacity-50">
                                 {linking === item.key ? 'Linking...' : "Use today's log"}
@@ -490,6 +521,21 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
 
               {view === 'batch_setup' && (
                 <div className="space-y-4">
+                  {status?.batch_defaults?.master_data_resolved && (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-foreground">
+                      Recipe defaults are loaded automatically. Confirm the planned ingredient quantities and enter the supplier/package lot number for every ingredient.
+                      {Array.isArray(status.batch_defaults.recipe_planned_ingredients) && status.batch_defaults.recipe_planned_ingredients.length > 0 && (
+                        <p className="mt-1 font-medium">
+                          Recipe plan for {batch?.planned_units || 1} bottle{Number(batch?.planned_units || 1) === 1 ? '' : 's'}: {status.batch_defaults.recipe_planned_ingredients.map(row => `${row.ingredient_name} ${row.quantity} ${row.unit}`).join(', ')}.
+                        </p>
+                      )}
+                      {Array.isArray(status.batch_defaults.ingredient_quantity_variances) && status.batch_defaults.ingredient_quantity_variances.length > 0 && (
+                        <p className="mt-1 text-amber-700 dark:text-amber-300">
+                          Review required: the recorded amount differs from the recipe plan. Confirm the actual planned batch amount before Start.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <StaffMemberPicker
                     label="Staff on duty"
                     value={form.staff_on_duty}
@@ -499,8 +545,8 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
                   />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="space-y-1 sm:col-span-2"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Equipment used</span><input value={form.equipment_used_text} onChange={event => update('equipment_used_text', event.target.value)} placeholder="Juicer, prep table, scale" className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs" /><span className="text-[10px] text-muted-foreground">Separate multiple items with commas.</span></label>
-                    <label className="space-y-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Formula or recipe</span><input value={form.formula_or_recipe_used} onChange={event => update('formula_or_recipe_used', event.target.value)} placeholder={`${batch?.product_name || 'Product'} standard recipe`} className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs" /></label>
-                    <label className="space-y-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Bottle size</span><input value={form.bottle_size} onChange={event => update('bottle_size', event.target.value)} placeholder="12 oz" className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs" /></label>
+                    <label className="space-y-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Formula or recipe</span><input value={form.formula_or_recipe_used} onChange={event => update('formula_or_recipe_used', event.target.value)} readOnly={status?.batch_defaults?.formula_source === 'recipe'} placeholder={`${batch?.product_name || 'Product'} standard recipe`} className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs read-only:cursor-default read-only:bg-secondary/60" />{status?.batch_defaults?.formula_source === 'recipe' && <span className="text-[10px] text-muted-foreground">Loaded from the active Recipe record.</span>}</label>
+                    <label className="space-y-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Bottle size</span><input value={form.bottle_size} onChange={event => update('bottle_size', event.target.value)} readOnly={Boolean(status?.batch_defaults?.bottle_size_source)} placeholder="Bottle size" className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs read-only:cursor-default read-only:bg-secondary/60" />{status?.batch_defaults?.bottle_size_source && <span className="text-[10px] text-muted-foreground">Loaded from {status.batch_defaults.bottle_size_source === 'recipe' ? 'Recipe' : status.batch_defaults.bottle_size_source === 'product' ? 'Product' : 'this batch'} master data.</span>}</label>
                   </div>
 
                   <div className="space-y-2">

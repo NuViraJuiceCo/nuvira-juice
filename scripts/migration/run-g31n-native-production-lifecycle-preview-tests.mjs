@@ -58,7 +58,21 @@ function makeBatch(overrides = {}) {
     procurement_needed: true,
     inventory_deduction_status: 'held',
     ingredient_usage_status: 'not_started',
+    staff_on_duty: ['Production Admin'],
+    equipment_used: ['Juicer', 'Scale'],
+    formula_or_recipe_used: 'Aura standard recipe',
+    bottle_size: '12 oz',
+    ingredients_used: [{ ingredient_name: 'Carrot', quantity: 10, unit: 'oz', lot_number: 'LOT-G31N' }],
     ...overrides,
+  };
+}
+
+function readyPreStartRecordsFor(batch) {
+  const link = { source_production_batch_id: batch.id, batch_id: batch.batch_id };
+  return {
+    sanitationLogs: [{ id: `san_${batch.id}`, ...link, cleaned: true, sanitized: true, sanitizer_level: 'Adequate' }],
+    dailyChecklists: [{ id: `check_${batch.id}`, ...link, overall_status: 'Pre-Production Complete', morning_fridge_temp_logged: true, sanitizer_levels_checked: true, equipment_sanitized: true, work_areas_cleaned: true }],
+    temperatureLogs: [{ id: `temp_${batch.id}`, ...link, temperature: 38, within_range: true }],
   };
 }
 
@@ -92,6 +106,10 @@ function makeStore({ user = { role: 'admin', email: 'owner@example.test' }, prod
     fulfillment_type: 'delivery',
   };
   const writes = [];
+  const preStartRecords = productionBatches.map(readyPreStartRecordsFor);
+  const sanitationLogs = preStartRecords.flatMap(records => records.sanitationLogs);
+  const dailyChecklists = preStartRecords.flatMap(records => records.dailyChecklists);
+  const temperatureLogs = preStartRecords.flatMap(records => records.temperatureLogs);
   const filterMatches = (row, filter) => Object.entries(filter || {}).every(([key, value]) => row?.[key] === value);
   const rowsFor = name => {
     if (name === 'Order') return [customerOrder];
@@ -99,6 +117,9 @@ function makeStore({ user = { role: 'admin', email: 'owner@example.test' }, prod
     if (name === 'FulfillmentTask') return [task];
     if (name === 'ProductionBatch') return productionBatches;
     if (name === 'BatchComplianceLog') return complianceLogs;
+    if (name === 'SanitationLog') return sanitationLogs;
+    if (name === 'DailyChecklist') return dailyChecklists;
+    if (name === 'TemperatureLog') return temperatureLogs;
     return [];
   };
   const entityApi = name => ({
@@ -120,6 +141,9 @@ function makeStore({ user = { role: 'admin', email: 'owner@example.test' }, prod
         FulfillmentTask: entityApi('FulfillmentTask'),
         ProductionBatch: entityApi('ProductionBatch'),
         BatchComplianceLog: entityApi('BatchComplianceLog'),
+        SanitationLog: entityApi('SanitationLog'),
+        DailyChecklist: entityApi('DailyChecklist'),
+        TemperatureLog: entityApi('TemperatureLog'),
       },
     },
   };
@@ -149,7 +173,7 @@ let previewAuth = await fns.requirePreviewAccess({
 assert.equal(previewAuth.ok, true);
 
 const planned = makeBatch();
-let row = fns.buildBatchLifecycleRow({ batch: planned, actorEmail: 'admin@example.test', requestId: 'g31n_test', now: '2026-06-07T00:00:00.000Z', complianceLogs: [] });
+let row = fns.buildBatchLifecycleRow({ batch: planned, actorEmail: 'admin@example.test', requestId: 'g31n_test', now: '2026-06-07T00:00:00.000Z', complianceLogs: [], preStartComplianceRecords: readyPreStartRecordsFor(planned) });
 assert.equal(row.classification, 'ready_to_start_preview_only');
 assert.equal(row.current_status, 'planned');
 assert.equal(row.next_lifecycle_step, 'start');
@@ -206,6 +230,11 @@ row = fns.buildBatchLifecycleRow({
     actual_units: 1,
     pH_result: 3.7,
     pH_passed_failed: 'passed',
+    pH_meter_id: 'PH-METER-1',
+    calibration_checked: true,
+    ccp_check_complete: true,
+    sanitation_verification_complete: true,
+    labels_applied: true,
     passed_failed: 'passed',
   }),
   actorEmail: 'admin@example.test',

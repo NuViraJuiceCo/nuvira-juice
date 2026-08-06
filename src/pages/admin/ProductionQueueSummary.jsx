@@ -1238,8 +1238,13 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
   const [completeForm, setCompleteForm] = useState({
     actual_units: batch.actual_units || batch.planned_units || '',
     pH_result: batch.pH_result || '',
-    pH_passed_failed: batch.pH_passed_failed || 'passed',
-    passed_failed: batch.passed_failed || 'passed',
+    pH_passed_failed: batch.pH_passed_failed || '',
+    pH_meter_id: batch.pH_meter_id || '',
+    calibration_checked: batch.calibration_checked === true,
+    ccp_check_complete: batch.ccp_check_complete === true,
+    sanitation_verification_complete: batch.sanitation_verification_complete === true,
+    labels_applied: batch.labels_applied === true,
+    passed_failed: batch.passed_failed || '',
     staff_on_duty: Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty.join(', ') : '',
     bottles_produced: batch.bottles_produced || '',
     bottles_rejected_or_wasted: batch.bottles_rejected_or_wasted || '',
@@ -1279,6 +1284,11 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     return {
       pH_result: Number(completeForm.pH_result),
       pH_passed_failed: completeForm.pH_passed_failed,
+      pH_meter_id: completeForm.pH_meter_id,
+      calibration_checked: completeForm.calibration_checked,
+      ccp_check_complete: completeForm.ccp_check_complete,
+      sanitation_verification_complete: completeForm.sanitation_verification_complete,
+      labels_applied: completeForm.labels_applied,
       passed_failed: completeForm.passed_failed,
       staff_on_duty: completeForm.staff_on_duty
         .split(',')
@@ -1532,6 +1542,9 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
 
           {activeAction === 'verify' && (
             <>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50/80 p-3 text-[11px] text-cyan-950 dark:border-cyan-900/60 dark:bg-cyan-950/20 dark:text-cyan-100">
+                Measure pH from this finished batch, record the meter used, and compare the reading to NuVira's approved product/HACCP limit. The system never invents a pH value or pass/fail result.
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label className="space-y-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">pH result</span>
@@ -1544,13 +1557,15 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
                     className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
                   />
                 </label>
-                <StaffMemberPicker
-                  label="Staff on duty"
-                  value={completeForm.staff_on_duty}
-                  onChange={value => setCompleteForm(prev => ({ ...prev, staff_on_duty: value }))}
-                  multiple
-                  helperText="Tap names to build the staff list, or type another name if needed."
-                />
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">pH meter ID</span>
+                  <input
+                    value={completeForm.pH_meter_id}
+                    onChange={event => setCompleteForm(prev => ({ ...prev, pH_meter_id: event.target.value }))}
+                    placeholder="Meter or calibration record ID"
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
+                  />
+                </label>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label className="space-y-1">
@@ -1560,6 +1575,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
                     onChange={event => setCompleteForm(prev => ({ ...prev, pH_passed_failed: event.target.value }))}
                     className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
                   >
+                    <option value="">Select after measuring</option>
                     <option value="passed">Passed</option>
                     <option value="failed">Failed</option>
                   </select>
@@ -1571,11 +1587,36 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
                     onChange={event => setCompleteForm(prev => ({ ...prev, passed_failed: event.target.value }))}
                     className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
                   >
+                    <option value="">Select after QC review</option>
                     <option value="passed">Passed</option>
                     <option value="failed">Failed</option>
                   </select>
                 </label>
               </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {[
+                  ['calibration_checked', 'pH meter calibration checked'],
+                  ['ccp_check_complete', 'CCP monitoring complete'],
+                  ['sanitation_verification_complete', 'Sanitation verification complete'],
+                  ['labels_applied', 'Labels applied and checked'],
+                ].map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2 rounded-lg border border-border bg-background p-2.5 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={completeForm[key]}
+                      onChange={event => setCompleteForm(prev => ({ ...prev, [key]: event.target.checked }))}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <StaffMemberPicker
+                label="Staff on duty"
+                value={completeForm.staff_on_duty}
+                onChange={value => setCompleteForm(prev => ({ ...prev, staff_on_duty: value }))}
+                multiple
+                helperText="Tap names to build the staff list, or type another name if needed."
+              />
               <label className="space-y-1 block">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Verification notes</span>
                 <textarea

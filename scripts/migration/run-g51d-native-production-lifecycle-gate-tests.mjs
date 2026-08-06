@@ -231,6 +231,49 @@ const executeBlockedByBatchSetup = executeFns.planLifecycle({
 assert.ok(executeBlockedByBatchSetup.blockers.includes('batch_setup_ingredients_missing'));
 assert.equal(executeBlockedByBatchSetup.proposed_patch, null);
 
+const completedForVerification = {
+  ...plannedAura,
+  status: 'completed_pending_verification',
+  actual_start_time: '2026-07-23T12:00:00.000Z',
+  actual_end_time: '2026-07-23T13:00:00.000Z',
+  completed_by: 'info@nuvirajuice.com',
+  actual_units: 4,
+};
+const completeQcInput = {
+  pH_result: 3.8,
+  pH_passed_failed: 'passed',
+  pH_meter_id: 'PH-METER-1',
+  calibration_checked: true,
+  ccp_check_complete: true,
+  sanitation_verification_complete: true,
+  labels_applied: true,
+  passed_failed: 'passed',
+};
+const verifyReady = executeFns.planLifecycle({
+  action: 'verify',
+  batch: completedForVerification,
+  actorEmail: 'info@nuvirajuice.com',
+  requestId: 'g51d_verify_qc_complete',
+  now: '2026-07-23T13:30:00.000Z',
+  body: completeQcInput,
+  reason: 'test complete QC capture',
+});
+assert.equal(verifyReady.blockers.length, 0);
+assert.equal(verifyReady.proposed_patch.pH_meter_id, 'PH-METER-1');
+assert.equal(verifyReady.proposed_patch.calibration_checked, true);
+
+const verifyMissingMeter = executeFns.planLifecycle({
+  action: 'verify',
+  batch: completedForVerification,
+  actorEmail: 'info@nuvirajuice.com',
+  requestId: 'g51d_verify_missing_meter',
+  now: '2026-07-23T13:30:00.000Z',
+  body: { ...completeQcInput, pH_meter_id: '' },
+  reason: 'test missing meter',
+});
+assert.ok(verifyMissingMeter.blockers.includes('missing_ph_meter_id'));
+assert.equal(verifyMissingMeter.proposed_patch, null);
+
 const closedPreviewFns = loadFunction(
   path.join(repoRoot, 'base44/functions/previewNativeProductionBatchLifecycle/entry.ts'),
   ['planLifecycle'],
@@ -263,7 +306,7 @@ assert.ok(productionPage.includes('!actionReady || !writeAvailable'), 'Run Nativ
 console.log(JSON.stringify({
   ok: true,
   suite: 'g51d-native-production-lifecycle-gate',
-  checks: 19,
+  checks: 25,
   writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));

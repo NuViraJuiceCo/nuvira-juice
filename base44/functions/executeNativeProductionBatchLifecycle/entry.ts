@@ -34,6 +34,12 @@ const ALLOWED_BODY_KEYS = new Set([
   'ph_value',
   'pH_passed_failed',
   'ph_passed_failed',
+  'pH_meter_id',
+  'ph_meter_id',
+  'calibration_checked',
+  'ccp_check_complete',
+  'sanitation_verification_complete',
+  'labels_applied',
   'passed_failed',
   'staff_on_duty',
   'corrective_action_required',
@@ -126,6 +132,10 @@ function isPositiveNumber(value) {
 
 function safeObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
 }
 
 function safeStringArray(value, maxLength = 120) {
@@ -485,12 +495,31 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
   const pHResult = body.pH_result ?? body.ph_result ?? body.ph_value ?? batch.pH_result;
   const pHStatus = normalizePassFail(body.pH_passed_failed ?? body.ph_passed_failed ?? batch.pH_passed_failed);
   const passedFailed = normalizePassFail(body.passed_failed ?? batch.passed_failed);
+  const pHMeterId = sanitizeText(body.pH_meter_id ?? batch.pH_meter_id, 120);
+  const calibrationChecked = hasOwn(body, 'calibration_checked')
+    ? body.calibration_checked === true
+    : batch.calibration_checked === true;
+  const ccpCheckComplete = hasOwn(body, 'ccp_check_complete')
+    ? body.ccp_check_complete === true
+    : batch.ccp_check_complete === true;
+  const sanitationVerificationComplete = hasOwn(body, 'sanitation_verification_complete')
+    ? body.sanitation_verification_complete === true
+    : batch.sanitation_verification_complete === true;
+  const labelsApplied = hasOwn(body, 'labels_applied')
+    ? body.labels_applied === true
+    : batch.labels_applied === true;
   const staffOnDuty = Array.isArray(body.staff_on_duty) ? body.staff_on_duty : (Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty : []);
   const quantityProduced = safeNumber(batch.actual_units) ?? safeNumber(batch.final_usable_quantity);
 
   if (!isPositiveNumber(pHResult)) blockers.push('missing_ph_result');
   if (!pHStatus) blockers.push('missing_ph_pass_fail');
   if (!passedFailed) blockers.push('missing_batch_pass_fail');
+  if (!pHMeterId) blockers.push('missing_ph_meter_id');
+  if (!calibrationChecked) blockers.push('ph_meter_calibration_not_confirmed');
+  if (!ccpCheckComplete) blockers.push('ccp_check_incomplete');
+  if (!sanitationVerificationComplete) blockers.push('sanitation_verification_incomplete');
+  if (!labelsApplied) blockers.push('labels_not_confirmed');
+  if (pHStatus === 'failed' && passedFailed === 'passed') blockers.push('batch_cannot_pass_when_ph_fails');
   if (!isPositiveNumber(quantityProduced)) blockers.push('missing_quantity_produced_for_compliance_log');
   if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
   if (body.corrective_action_required === true || batch.corrective_action_required === true) {
@@ -526,6 +555,11 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
     verified_at: now,
     pH_result: Number(pHResult),
     pH_passed_failed: pHStatus,
+    pH_meter_id: pHMeterId,
+    calibration_checked: calibrationChecked,
+    ccp_check_complete: ccpCheckComplete,
+    sanitation_verification_complete: sanitationVerificationComplete,
+    labels_applied: labelsApplied,
     passed_failed: passedFailed,
     audit_trail_append: auditTrailAppend({ action: 'verify', actorEmail, requestId, now, reason }),
   };
@@ -538,6 +572,11 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
       'ProductionBatch.verified_at',
       'ProductionBatch.pH_result',
       'ProductionBatch.pH_passed_failed',
+      'ProductionBatch.pH_meter_id',
+      'ProductionBatch.calibration_checked',
+      'ProductionBatch.ccp_check_complete',
+      'ProductionBatch.sanitation_verification_complete',
+      'ProductionBatch.labels_applied',
       'ProductionBatch.passed_failed',
       'ProductionBatch.compliance_log_id',
       'ProductionBatch.audit_trail',

@@ -197,6 +197,100 @@ function batchSetupReady(batch) {
   return staff.length > 0 && equipment.length > 0 && Boolean(recipe) && Boolean(bottleSize) && ingredientsComplete;
 }
 
+function exactNamedRows(rows, field, value, { requireActive = false } = {}) {
+  const expected = lower(value);
+  return (Array.isArray(rows) ? rows : []).filter(row => (
+    lower(row?.[field]) === expected && (!requireActive || row?.is_active !== false)
+  ));
+}
+
+function roundedQuantity(value) {
+  return Math.round(Number(value) * 10000) / 10000;
+}
+
+async function resolveBatchDefaults(base44, batch) {
+  const productName = normalizeText(batch?.product_name);
+  if (!productName) {
+    return {
+      master_data_resolved: false,
+      warnings: ['batch_product_name_missing'],
+      pH_capture_step: 'verify',
+      measured_pH_must_be_entered: true,
+    };
+  }
+
+  const recipeEntity = base44.asServiceRole?.entities?.Recipe;
+  const productEntity = base44.asServiceRole?.entities?.Product;
+  const [recipeRows, productRows] = await Promise.all([
+    recipeEntity?.filter
+      ? recipeEntity.filter({ product_name: productName }, '-updated_date', 5).catch(() => [])
+      : [],
+    productEntity?.filter
+      ? productEntity.filter({ title: productName }, '-updated_date', 5).catch(() => [])
+      : [],
+  ]);
+  const recipeMatches = exactNamedRows(recipeRows, 'product_name', productName, { requireActive: true });
+  const productMatches = exactNamedRows(productRows, 'title', productName);
+  const recipe = recipeMatches.length === 1 ? recipeMatches[0] : null;
+  const product = productMatches.length === 1 ? productMatches[0] : null;
+  const warnings = [];
+  if (recipeMatches.length > 1) warnings.push('multiple_active_recipe_matches');
+  if (productMatches.length > 1) warnings.push('multiple_product_matches');
+
+  const existingIngredients = safeIngredientUsageRows(batch?.ingredients_used);
+  const plannedUnits = safeNumber(batch?.planned_units);
+  const recipeIngredients = (Array.isArray(recipe?.ingredients) ? recipe.ingredients : []).slice(0, 40).map(row => {
+    const ingredientName = normalizeText(row?.ingredient_name);
+    const perBottleQuantity = safeNumber(row?.quantity_oz);
+    if (!ingredientName || perBottleQuantity === null || perBottleQuantity <= 0) return null;
+    return {
+      ingredient_name: ingredientName,
+      quantity: roundedQuantity(plannedUnits && plannedUnits > 0 ? perBottleQuantity * plannedUnits : perBottleQuantity),
+      unit: normalizeText(row?.unit) || 'oz',
+      lot_number: '',
+    };
+  }).filter(Boolean);
+  const recipeBottleOunces = safeNumber(recipe?.bottle_size_oz);
+  const existingBottleSize = normalizeText(batch?.bottle_size);
+  const recipeBottleSize = recipeBottleOunces && recipeBottleOunces > 0 ? `${recipeBottleOunces} oz` : '';
+  const productBottleSize = normalizeText(product?.size);
+  const ingredientQuantityVariances = existingIngredients.length > 0 && recipeIngredients.length > 0
+    ? recipeIngredients.map(planned => {
+        const recorded = existingIngredients.find(row => lower(row?.ingredient_name) === lower(planned.ingredient_name));
+        const recordedQuantity = safeNumber(recorded?.quantity);
+        return recordedQuantity !== null && recordedQuantity !== planned.quantity
+          ? {
+              ingredient_name: planned.ingredient_name,
+              recorded_quantity: recordedQuantity,
+              planned_quantity: planned.quantity,
+              unit: planned.unit,
+            }
+          : null;
+      }).filter(Boolean)
+    : [];
+  if (ingredientQuantityVariances.length > 0) warnings.push('recorded_ingredient_quantity_differs_from_recipe_plan');
+
+  return {
+    master_data_resolved: Boolean(recipe || product),
+    recipe_resolved: Boolean(recipe),
+    product_resolved: Boolean(product),
+    formula_or_recipe_used: normalizeText(batch?.formula_or_recipe_used) || normalizeText(recipe?.product_name),
+    formula_source: normalizeText(batch?.formula_or_recipe_used) ? 'production_batch' : (recipe ? 'recipe' : null),
+    bottle_size: existingBottleSize || recipeBottleSize || productBottleSize,
+    bottle_size_source: existingBottleSize ? 'production_batch' : (recipeBottleSize ? 'recipe' : (productBottleSize ? 'product' : null)),
+    ingredients_used: existingIngredients.length > 0 ? existingIngredients : recipeIngredients,
+    recipe_planned_ingredients: recipeIngredients,
+    ingredient_quantity_variances: ingredientQuantityVariances,
+    ingredient_source: existingIngredients.length > 0 ? 'production_batch' : (recipeIngredients.length > 0 ? 'recipe_planned_usage' : null),
+    ingredient_quantity_basis: recipeIngredients.length > 0 && existingIngredients.length === 0
+      ? (plannedUnits && plannedUnits > 0 ? 'recipe_per_bottle_times_planned_units' : 'recipe_per_bottle')
+      : null,
+    warnings,
+    pH_capture_step: 'verify',
+    measured_pH_must_be_entered: true,
+  };
+}
+
 async function resolvePreStartBatch(base44, body) {
   const entity = base44.asServiceRole?.entities?.ProductionBatch;
   const sourceId = safeId(body?.production_batch_id);
@@ -253,9 +347,12 @@ async function preStartStatusResponse(base44, body) {
   if (!batch.id && !batch.batch_id) {
     return Response.json({ success: false, error: 'production_batch_id_or_batch_id_required' }, { status: 400 });
   }
-  const entries = await Promise.all(Object.keys(PRE_START_RECORD_TYPES).map(async recordType => (
-    [recordType, await loadPreStartRows(base44, recordType, batch)]
-  )));
+  const [entries, batchDefaults] = await Promise.all([
+    Promise.all(Object.keys(PRE_START_RECORD_TYPES).map(async recordType => (
+      [recordType, await loadPreStartRows(base44, recordType, batch)]
+    ))),
+    resolveBatchDefaults(base44, batch.record),
+  ]);
   const rowsByType = Object.fromEntries(entries);
   const items = Object.keys(PRE_START_RECORD_TYPES).map(recordType => preStartStatusItem(recordType, rowsByType[recordType], batch));
   if (batch.record?.id) {
@@ -283,6 +380,7 @@ async function preStartStatusResponse(base44, body) {
     },
     items,
     required_item_count: items.length,
+    batch_defaults: batchDefaults,
     missing,
     writes_performed: false,
     provider_calls_performed: false,
@@ -361,6 +459,11 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
           source_system: normalizeText(batch.source_system),
           pH_result: safeNumber(batch.pH_result),
           pH_passed_failed: normalizeText(batch.pH_passed_failed),
+          pH_meter_id: normalizeText(batch.pH_meter_id),
+          calibration_checked: batch.calibration_checked === true,
+          ccp_check_complete: batch.ccp_check_complete === true,
+          sanitation_verification_complete: batch.sanitation_verification_complete === true,
+          labels_applied: batch.labels_applied === true,
           passed_failed: normalizeText(batch.passed_failed),
           bottles_produced: safeNumber(batch.bottles_produced),
           bottles_rejected_or_wasted: safeNumber(batch.bottles_rejected_or_wasted),

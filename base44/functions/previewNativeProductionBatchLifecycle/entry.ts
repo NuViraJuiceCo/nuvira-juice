@@ -747,6 +747,12 @@ function normalizeVerificationInput(source, label, blockers) {
     else normalized.passed_failed = batchStatus;
   }
 
+  const pHMeterId = sanitizeText(input.pH_meter_id, 120);
+  if (pHMeterId) normalized.pH_meter_id = pHMeterId;
+  for (const key of ['calibration_checked', 'ccp_check_complete', 'sanitation_verification_complete', 'labels_applied']) {
+    if (hasOwn(input, key)) normalized[key] = input[key] === true;
+  }
+
   const verificationNotes = sanitizeText(input.verification_notes || input.notes, 600);
   if (verificationNotes) normalized.verification_notes = verificationNotes;
   if (Array.isArray(input.staff_on_duty)) normalized.staff_on_duty = safeStringArray(input.staff_on_duty, 120);
@@ -789,6 +795,19 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
   const pHResult = verificationInput.pH_result ?? verificationInput.ph_result ?? verificationInput.ph_value ?? batch.pH_result;
   const pHStatus = normalizePassFail(verificationInput.pH_passed_failed ?? verificationInput.ph_passed_failed ?? verificationInput.pH_passed ?? verificationInput.ph_passed ?? batch.pH_passed_failed);
   const passedFailed = normalizePassFail(verificationInput.passed_failed ?? verificationInput.batch_passed_failed ?? verificationInput.batch_passed ?? batch.passed_failed);
+  const pHMeterId = sanitizeText(verificationInput.pH_meter_id ?? batch.pH_meter_id, 120);
+  const calibrationChecked = hasOwn(verificationInput, 'calibration_checked')
+    ? verificationInput.calibration_checked === true
+    : batch.calibration_checked === true;
+  const ccpCheckComplete = hasOwn(verificationInput, 'ccp_check_complete')
+    ? verificationInput.ccp_check_complete === true
+    : batch.ccp_check_complete === true;
+  const sanitationVerificationComplete = hasOwn(verificationInput, 'sanitation_verification_complete')
+    ? verificationInput.sanitation_verification_complete === true
+    : batch.sanitation_verification_complete === true;
+  const labelsApplied = hasOwn(verificationInput, 'labels_applied')
+    ? verificationInput.labels_applied === true
+    : batch.labels_applied === true;
   const staffOnDuty = Array.isArray(verificationInput.staff_on_duty)
     ? verificationInput.staff_on_duty
     : (Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty : []);
@@ -797,6 +816,12 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
   if (!isPositiveNumber(pHResult)) blockers.push('missing_ph_result');
   if (!pHStatus) blockers.push('missing_ph_pass_fail');
   if (!passedFailed) blockers.push('missing_batch_pass_fail');
+  if (!pHMeterId) blockers.push('missing_ph_meter_id');
+  if (!calibrationChecked) blockers.push('ph_meter_calibration_not_confirmed');
+  if (!ccpCheckComplete) blockers.push('ccp_check_incomplete');
+  if (!sanitationVerificationComplete) blockers.push('sanitation_verification_incomplete');
+  if (!labelsApplied) blockers.push('labels_not_confirmed');
+  if (pHStatus === 'failed' && passedFailed === 'passed') blockers.push('batch_cannot_pass_when_ph_fails');
   if (!isPositiveNumber(quantityProduced)) blockers.push('missing_quantity_produced_for_compliance_log');
   if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
   if (verificationInput.corrective_action_required === true || batch.corrective_action_required === true) {
@@ -831,6 +856,11 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
     verified_at: now,
     pH_result: Number(pHResult),
     pH_passed_failed: pHStatus,
+    pH_meter_id: pHMeterId,
+    calibration_checked: calibrationChecked,
+    ccp_check_complete: ccpCheckComplete,
+    sanitation_verification_complete: sanitationVerificationComplete,
+    labels_applied: labelsApplied,
     passed_failed: passedFailed,
     audit_trail_append: {
       timestamp: now,
@@ -848,6 +878,11 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
       'ProductionBatch.verified_at',
       'ProductionBatch.pH_result',
       'ProductionBatch.pH_passed_failed',
+      'ProductionBatch.pH_meter_id',
+      'ProductionBatch.calibration_checked',
+      'ProductionBatch.ccp_check_complete',
+      'ProductionBatch.sanitation_verification_complete',
+      'ProductionBatch.labels_applied',
       'ProductionBatch.passed_failed',
       'ProductionBatch.compliance_log_id',
       'ProductionBatch.audit_trail',
@@ -1063,6 +1098,11 @@ function safeVerificationPreviewSummary(input) {
   return {
     pH_result: safeNumber(source.pH_result),
     pH_passed_failed: normalizePassFail(source.pH_passed_failed),
+    pH_meter_id_present: Boolean(sanitizeText(source.pH_meter_id, 120)),
+    calibration_checked: source.calibration_checked === true,
+    ccp_check_complete: source.ccp_check_complete === true,
+    sanitation_verification_complete: source.sanitation_verification_complete === true,
+    labels_applied: source.labels_applied === true,
     passed_failed: normalizePassFail(source.passed_failed),
     verification_notes_present: Boolean(source.verification_notes),
     staff_on_duty_count: Array.isArray(source.staff_on_duty) ? source.staff_on_duty.length : 0,
@@ -1101,7 +1141,7 @@ function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceL
     completion_optional_fields: [],
     completion_data_contract: 'exact_batch_actual_units_only',
     verification_input_preview: safeVerificationPreviewSummary(verificationInput),
-    verification_required_fields: ['pH_result', 'pH_passed', 'batch_passed'],
+    verification_required_fields: ['pH_result', 'pH_passed', 'pH_meter_id', 'calibration_checked', 'ccp_check_complete', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
     verification_optional_fields: ['verification_notes', 'staff_on_duty'],
     verification_data_contract: 'exact_batch_verification_data_only',
     verification_compliance_log_draft: verifyPlan.compliance_log_draft || null,
@@ -1277,7 +1317,7 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     actual_units_present: safeNumber(row.actual_units) !== null,
     actual_end_time_present: Boolean(row.actual_end_time),
     verification_input_preview: row.verification_input_preview,
-    required_fields: row.verification_required_fields || ['pH_result', 'pH_passed', 'batch_passed'],
+    required_fields: row.verification_required_fields || ['pH_result', 'pH_passed', 'pH_meter_id', 'calibration_checked', 'ccp_check_complete', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
     optional_fields: row.verification_optional_fields || ['verification_notes', 'staff_on_duty'],
     compliance_log_draft_ready: Boolean(row.verification_compliance_log_draft),
     projected_writes_if_later_approved: row.expected_verify_writes_if_approved || [],
@@ -1287,7 +1327,16 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
   const completionPreviewReady = rows.length > 0 && completePreview.ready_count === rows.length && blockers.length === 0;
   const verificationPreviewReady = rows.length > 0 && verifyPreview.ready_count === rows.length && blockers.length === 0;
   const actualUnitsSuppliedCount = rows.filter(row => safeNumber(row.completion_actual_units_preview) !== null).length;
-  const verificationDataSuppliedCount = rows.filter(row => safeNumber(row.verification_input_preview?.pH_result) !== null && Boolean(row.verification_input_preview?.pH_passed_failed) && Boolean(row.verification_input_preview?.passed_failed)).length;
+  const verificationDataSuppliedCount = rows.filter(row => (
+    safeNumber(row.verification_input_preview?.pH_result) !== null &&
+    Boolean(row.verification_input_preview?.pH_passed_failed) &&
+    row.verification_input_preview?.pH_meter_id_present === true &&
+    row.verification_input_preview?.calibration_checked === true &&
+    row.verification_input_preview?.ccp_check_complete === true &&
+    row.verification_input_preview?.sanitation_verification_complete === true &&
+    row.verification_input_preview?.labels_applied === true &&
+    Boolean(row.verification_input_preview?.passed_failed)
+  )).length;
   const hasInProductionRows = rows.some(row => normalizeLower(row.current_status) === 'in_production');
   const hasCompletedPendingVerificationRows = rows.some(row => normalizeLower(row.current_status) === 'completed_pending_verification');
   const allLifecycleComplete = rows.length > 0 && rows.every(row => row.next_lifecycle_step === 'lifecycle_complete');
@@ -1363,7 +1412,7 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     verify_ready_count: verifyPreview.ready_count,
     verify_blocked_count: verifyPreview.blocked_count,
     verification_data_supplied_count: verificationDataSuppliedCount,
-    verification_required_fields: ['pH_result', 'pH_passed', 'batch_passed'],
+    verification_required_fields: ['pH_result', 'pH_passed', 'pH_meter_id', 'calibration_checked', 'ccp_check_complete', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
     verification_optional_fields: ['verification_notes', 'staff_on_duty'],
     verification_data_contract: 'exact_batch_verification_data_only',
     verification_rows: verificationRows,
