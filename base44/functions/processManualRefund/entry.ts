@@ -1,4 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import Stripe from 'npm:stripe@14.21.0';
+import {
+  CUSTOMER_ORDER_ADJUSTMENT_ACTIONS,
+  handleCustomerOrderAdjustmentRequest,
+} from './customerOrderAdjustment.ts';
 
 /**
  * Manually processes a refund for an order that was refunded in Stripe
@@ -16,6 +21,33 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+
+    let body = {};
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
+
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me().catch(() => null);
+    if (CUSTOMER_ORDER_ADJUSTMENT_ACTIONS.has(String(body.action || '').trim())) {
+      try {
+        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY') || '';
+        const stripeClient = stripeKey ? new Stripe(stripeKey, { apiVersion: '2023-10-16' }) : null;
+        return await handleCustomerOrderAdjustmentRequest({ base44, body, caller: user, stripeClient });
+      } catch (error) {
+        console.error('[processManualRefund] Customer order-adjustment request failed', error instanceof Error ? error.name : 'unknown_error');
+        return Response.json({ error: 'customer_order_adjustment_failed' }, { status: 500 });
+      }
+    }
+
     if (Deno.env.get('ENABLE_ADMIN_MANUAL_REFUNDS') !== 'true') {
       return Response.json({
         success: true,
@@ -25,15 +57,12 @@ Deno.serve(async (req) => {
       }, { status: 409 });
     }
 
-    const base44 = createClientFromRequest(req);
-
     // Admin-only: this is a sensitive repair tool that processes refunds
-    const user = await base44.auth.me();
     if (!user || user.role !== 'admin') {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    const { order_number, refund_amount, is_full_refund = true, stripe_refund_id } = await req.json();
+    const { order_number, refund_amount, is_full_refund = true, stripe_refund_id } = body;
 
     if (!order_number) {
       return Response.json({ error: 'order_number is required' }, { status: 400 });
