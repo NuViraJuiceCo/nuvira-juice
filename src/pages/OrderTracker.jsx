@@ -324,10 +324,13 @@ export default function OrderTracker() {
   }
 
   // ── Normal order detail view ───────────────────────────────────────────────
+  const isPickupOrder = order?.fulfillment_type === 'pickup'
+    || hubOrder?.fulfillment_method === 'pickup'
+    || ['ready_for_pickup', 'picked_up'].includes(currentStatus);
   const displayOrder = order || {
     order_number: hubOrder?.shopify_order_number || orderNumberParam,
     status: hubOrder?.status || hubOrder?.production_status || 'order_received',
-    fulfillment_type: hubOrder?.fulfillment_method === 'pickup' ? 'pickup' : 'delivery',
+    fulfillment_type: isPickupOrder ? 'pickup' : 'delivery',
     items: hubOrder?.line_items?.map(li => ({
       title: li.title,
       quantity: li.quantity,
@@ -365,6 +368,7 @@ export default function OrderTracker() {
           <div className="flex-1">
             <p className="text-primary-foreground/70 text-xs">
               {currentStatus === 'delivered' ? 'Delivered On'
+                : currentStatus === 'picked_up' ? 'Pickup Status'
                 : isOnRoute && etaData?.eta_window ? 'Estimated Arrival Window'
                 : isDelivery ? 'Estimated Delivery'
                 : 'Estimated Pickup'}
@@ -373,6 +377,8 @@ export default function OrderTracker() {
               {currentStatus === 'delivered'
               // Priority: delivered_at (full timestamp with time) → assigned_delivery_date → estimated_delivery_date
               ? formatDeliveredAt(deliveryStatus?.delivered_at, order?.assigned_delivery_date || displayOrder.estimated_delivery_date)
+                : currentStatus === 'picked_up'
+                  ? 'Pickup complete'
                 : isOnRoute && etaData?.eta_window
                   ? etaData.eta_window
                   : (displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)

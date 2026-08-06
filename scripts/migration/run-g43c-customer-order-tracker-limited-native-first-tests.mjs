@@ -374,6 +374,7 @@ test('numeric POS order number resolves through phone-owned ShopifyOrder fallbac
   assert.equal(result.json.source_record, 'hub_shopify_order');
   assert.equal(result.json.hub_order.shopify_order_number, '1058');
   assert.equal(result.json.hub_order.status, 'picked_up');
+  assert.equal(result.json.hub_order.fulfillment_method, 'pickup');
   assert.equal(result.json.customer_visible_status, 'Picked Up ✓');
   assert.equal(result.json.hub_order.line_items.length, 1);
   assert.equal(Object.hasOwn(result.json.hub_order, 'customer_email'), false);
@@ -385,6 +386,13 @@ test('numeric order routes are treated as order numbers instead of Base44 entity
   assert.match(trackerSource, /const isBase44EntityId = \/\^\[a-f0-9\]\{24\}\$\/i/);
   assert.match(trackerSource, /const isOrderNumber = Boolean\(rawParam && !isStripeIdentifier && !isBase44EntityId\)/);
   assert.match(trackerSource, /const orderNumberParam = isOrderNumber \? rawParam\.replace\(\/\^#\//);
+});
+
+test('picked-up hub orders always use the pickup tracker journey', async () => {
+  assert.match(trackerSource, /\['ready_for_pickup', 'picked_up'\]\.includes\(currentStatus\)/);
+  assert.match(trackerSource, /fulfillment_type: isPickupOrder \? 'pickup' : 'delivery'/);
+  assert.match(trackerSource, /currentStatus === 'picked_up' \? 'Pickup Status'/);
+  assert.match(trackerSource, /currentStatus === 'picked_up'[\s\S]*?\? 'Pickup complete'/);
 });
 
 test('no customer-visible G43C diagnostic fields are added', async () => {

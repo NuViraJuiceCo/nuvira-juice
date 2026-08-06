@@ -195,6 +195,13 @@ function customerStatusForHubOrder(order) {
 
 function sanitizeHubOrderForCustomer(order) {
   if (!order) return null;
+  const customerStatus = customerStatusForHubOrder(order);
+  const rawFulfillmentMethod = normalizeLower(order.fulfillment_method);
+  const fulfillmentMethod = ['picked_up', 'ready_for_pickup'].includes(customerStatus)
+    || rawFulfillmentMethod === 'pos'
+    || normalizeLower(order.source_channel) === 'pos'
+    ? 'pickup'
+    : rawFulfillmentMethod || 'delivery';
   return {
     shopify_order_number: normalizeOrderNumber(order.shopify_order_number || order.order_number),
     customer_name: normalizeText(order.customer_name) || null,
@@ -205,8 +212,8 @@ function sanitizeHubOrderForCustomer(order) {
       price: Number.isFinite(Number(item?.price)) ? Number(item.price) : 0,
       image_url: normalizeText(item?.image_url) || null,
     })),
-    fulfillment_method: normalizeLower(order.fulfillment_method) || 'delivery',
-    status: customerStatusForHubOrder(order),
+    fulfillment_method: fulfillmentMethod,
+    status: customerStatus,
     production_status: normalizeLower(order.production_status) || null,
     fulfillment_status: normalizeLower(order.fulfillment_status || order.shopify_fulfillment_status) || null,
     total_price: Number.isFinite(Number(order.total_price)) ? Number(order.total_price) : 0,
