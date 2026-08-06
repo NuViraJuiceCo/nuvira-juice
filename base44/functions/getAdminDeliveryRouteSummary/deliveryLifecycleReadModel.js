@@ -161,7 +161,7 @@ function findTasksForContext({ order, nativeOrder, stop, tasks = [] }) {
   const orderId = text(order?.id || stop?.customer_app_order_id);
   const nativeIds = [nativeOrder?.id, nativeOrder?.shopify_order_id, stop?.native_shopify_order_id].map(text).filter(Boolean);
   const number = canonicalOrderNumber(order || stop || nativeOrder);
-  return (tasks || []).filter(task => {
+  const matchingTasks = (tasks || []).filter(task => {
     const taskOrderLinks = [task?.order_id, task?.base44_order_id, task?.customer_app_order_id].map(text).filter(Boolean);
     const taskNativeLinks = [task?.native_shopify_order_id, task?.shopify_order_id].map(text).filter(Boolean);
     const taskNumber = canonicalOrderNumber(task);
@@ -169,6 +169,21 @@ function findTasksForContext({ order, nativeOrder, stop, tasks = [] }) {
     const nativeMatch = nativeIds.length === 0 || taskNativeLinks.length === 0 || taskNativeLinks.some(id => nativeIds.includes(id));
     return orderMatch && nativeMatch;
   });
+  const stopDate = normalizeDate(stop?.delivery_date || stop?.scheduled_date || stop?.assigned_delivery_date);
+  const dateMatches = stopDate
+    ? matchingTasks.filter(task => normalizeDate(task?.delivery_date || task?.scheduled_date || task?.assigned_delivery_date) === stopDate)
+    : [];
+  if (dateMatches.length > 0) return dateMatches;
+
+  const stopTaskIds = unique([
+    text(stop?.task_id),
+    text(stop?.native_fulfillment_task_id),
+    text(stop?.fulfillment_task_id),
+  ]);
+  const explicitMatches = stopTaskIds.length > 0
+    ? matchingTasks.filter(task => [task?.id, task?.fulfillment_task_id, task?.task_id].map(text).some(id => stopTaskIds.includes(id)))
+    : [];
+  return explicitMatches.length > 0 ? explicitMatches : matchingTasks;
 }
 
 function hasReviewHold(order, stop, reviewRows = []) {
@@ -211,11 +226,14 @@ function canonicalDeliveryDateFor(order, nativeOrder, task, stop) {
 }
 
 function scheduleDates(order, nativeOrder, task, stop) {
+  const occurrenceDates = unique([
+    normalizeDate(task?.delivery_date || task?.scheduled_date || task?.assigned_delivery_date),
+    normalizeDate(stop?.delivery_date || stop?.scheduled_date || stop?.assigned_delivery_date),
+  ]);
+  if (occurrenceDates.length > 0) return occurrenceDates;
   return unique([
     normalizeDate(order?.assigned_delivery_date || order?.estimated_delivery_date),
     normalizeDate(nativeOrder?.assigned_delivery_date || nativeOrder?.selected_delivery_date || nativeOrder?.requested_delivery_date),
-    normalizeDate(task?.delivery_date || task?.scheduled_date || task?.assigned_delivery_date),
-    normalizeDate(stop?.delivery_date || stop?.scheduled_date || stop?.assigned_delivery_date),
   ]);
 }
 
@@ -299,7 +317,8 @@ function buildDeliveryLifecycleRow({ stop, orderIndexes, customerOrders, nativeO
 
   const classification = buildClassification({ exactIdentityReady, blockers, task, stop });
   const fallbackRequired = stop?.hub_fallback_used === true || blockers.length > 0 || !exactIdentityReady;
-  const reviewRequired = blockers.length > 0 || warnings.includes('delivery_lifecycle_route_context_missing');
+  const completed = isDeliveredStatus(visibleDeliveryStatus({ stop, task, nativeOrder, order }));
+  const reviewRequired = blockers.length > 0 || (!completed && warnings.includes('delivery_lifecycle_route_context_missing'));
 
   return {
     canonical_order_ref: order?.id || stop?.customer_app_order_id || null,

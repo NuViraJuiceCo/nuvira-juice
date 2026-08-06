@@ -72,7 +72,7 @@ function RouteReadiness({ summary, data }) {
   const reviewRequired = Number(lifecycleSummary.review_required_count || 0);
   const duplicateIdentities = Number(lifecycleSummary.duplicate_identity_count || 0);
   const fallbackRows = Number(lifecycleSummary.fallback_required_count || 0);
-  const needsAttention = unscheduled > 0 || reviewRequired > 0 || duplicateIdentities > 0 || fallbackRows > 0 || data?.fallback_required === true;
+  const needsAttention = unscheduled > 0 || reviewRequired > 0 || duplicateIdentities > 0;
   const label = needsAttention
     ? 'Route review needed'
     : active > 0
@@ -84,7 +84,7 @@ function RouteReadiness({ summary, data }) {
   const reviewDetails = [
     reviewRequired > 0 ? `${reviewRequired} lifecycle ${reviewRequired === 1 ? 'item' : 'items'}` : null,
     duplicateIdentities > 0 ? `${duplicateIdentities} identity ${duplicateIdentities === 1 ? 'conflict' : 'conflicts'}` : null,
-    fallbackRows > 0 ? `${fallbackRows} fallback ${fallbackRows === 1 ? 'row' : 'rows'}` : null,
+    needsAttention && fallbackRows > 0 ? `${fallbackRows} fallback ${fallbackRows === 1 ? 'row' : 'rows'}` : null,
   ].filter(Boolean).join(' · ');
 
   return (

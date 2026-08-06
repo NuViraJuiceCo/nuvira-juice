@@ -311,7 +311,7 @@ test('23b. Hub completed route context counts as delivered even when native task
   assert.equal(row.delivery_status, 'delivered');
   assert.equal(row.production_status, 'delivered');
   assert.equal(result.summary.delivered_count, 1);
-  assert.equal(row.review_required, true);
+  assert.equal(row.review_required, false);
 });
 test('23c. Route summary completed duplicate maps stale native production to delivered when Hub omits production status', async () => {
   const store = base44Fake({

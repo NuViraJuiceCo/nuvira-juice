@@ -103,6 +103,68 @@ const results = [];
 }
 
 {
+  const { buildDeliveryLifecycleReadModel } = await import(
+    new URL('../../base44/functions/getAdminDeliveryRouteSummary/deliveryLifecycleReadModel.js', import.meta.url)
+  );
+  const customerOrder = {
+    id: 'order_multi_date',
+    order_number: 'NV-MULTI-DATE',
+    assigned_delivery_date: '2026-08-05',
+    status: 'delivered',
+    payment_status: 'paid',
+    payment_captured: true,
+  };
+  const nativeOrder = {
+    id: 'native_multi_date',
+    base44_order_id: customerOrder.id,
+    shopify_order_number: customerOrder.order_number,
+    assigned_delivery_date: '2026-08-05',
+    payment_status: 'paid',
+  };
+  const tasks = [
+    {
+      id: 'task_aug_5',
+      order_id: customerOrder.id,
+      native_shopify_order_id: nativeOrder.id,
+      order_number: customerOrder.order_number,
+      delivery_date: '2026-08-05',
+      status: 'delivered',
+      delivery_status: 'delivered',
+      payment_status: 'paid',
+    },
+    {
+      id: 'task_aug_8',
+      order_id: customerOrder.id,
+      native_shopify_order_id: nativeOrder.id,
+      order_number: customerOrder.order_number,
+      delivery_date: '2026-08-08',
+      status: 'scheduled',
+      delivery_status: 'pending',
+      payment_status: 'paid',
+    },
+  ];
+  const result = buildDeliveryLifecycleReadModel({
+    deliveryDate: '2026-08-08',
+    routeSummaryRows: [{
+      task_id: 'task_aug_8',
+      order_number: customerOrder.order_number,
+      customer_app_order_id: customerOrder.id,
+      native_shopify_order_id: nativeOrder.id,
+      delivery_date: '2026-08-08',
+      status: 'scheduled',
+      delivery_status: 'pending',
+    }],
+    customerOrders: [customerOrder],
+    nativeOrders: [nativeOrder],
+    fulfillmentTasks: tasks,
+  });
+  assert.equal(result.summary.duplicate_identity_count, 0);
+  assert.equal(result.summary.schedule_mismatch_count, 0);
+  assert.equal(result.rows[0].fulfillment_task_ref, 'task_aug_8');
+  results.push('lifecycle_read_model_resolves_multi_date_sibling_occurrences');
+}
+
+{
   const { dedupeCrossSourceProjections } = loadExports(
     'base44/functions/getAdminOrderTimeline/entry.ts',
     ['dedupeCrossSourceProjections'],
