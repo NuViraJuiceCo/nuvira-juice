@@ -397,7 +397,7 @@ function formatDurationSeconds(value) {
 }
 
 function BagReturnsValue({ value }) {
-  if (value === null || value === undefined) return <span className="text-xs font-semibold">Not tracked</span>;
+  if (value === null || value === undefined) return <span className="text-xs font-semibold">Managed</span>;
   return <span className="text-lg font-bold">{value}</span>;
 }
 
@@ -2486,7 +2486,7 @@ export default function DeliveryQueue() {
             icon={Package}
             label="Bag Returns"
             value={<BagReturnsValue value={summary.bag_returns} />}
-            sublabel={summary.bag_returns === null || summary.bag_returns === undefined ? 'read-only v1' : null}
+            sublabel={summary.bag_returns === null || summary.bag_returns === undefined ? 'Return + Reward' : null}
           />
         </div>
 
