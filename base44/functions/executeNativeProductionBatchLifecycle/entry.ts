@@ -14,6 +14,11 @@ const COMPLETABLE_STATUSES = new Set(['in_production']);
 const VERIFYABLE_STATUSES = new Set(['completed_pending_verification']);
 const SAFE_ARRAY_LIMIT = 50;
 const MAX_REASON_LENGTH = 300;
+const PRE_START_DATE_FIELD_BY_ENTITY = Object.freeze({
+  SanitationLog: 'log_date',
+  DailyChecklist: 'checklist_date',
+  TemperatureLog: 'log_date',
+});
 const ALLOWED_BODY_KEYS = new Set([
   'mode',
   'confirmation',
@@ -230,11 +235,17 @@ async function linkedComplianceRows(base44, entityName, batch) {
   if (!entity || typeof entity.filter !== 'function') throw new Error(`${entityName}_unavailable`);
   const sourceBatchId = sanitizeId(batch?.id);
   const displayBatchId = sanitizeId(batch?.batch_id);
+  const productionDate = sanitizeText(batch?.production_date, 40);
+  const dateField = PRE_START_DATE_FIELD_BY_ENTITY[entityName];
+  const dateFilterAvailable = dateField && /^\d{4}-\d{2}-\d{2}$/.test(productionDate);
   const results = await Promise.all([
     sourceBatchId ? entity.filter({ source_production_batch_id: sourceBatchId }, '-created_date', 20).catch(() => []) : [],
     displayBatchId ? entity.filter({ batch_id: displayBatchId }, '-created_date', 20).catch(() => []) : [],
+    dateFilterAvailable ? entity.filter({ [dateField]: productionDate }, '-created_date', 50).catch(() => []) : [],
   ]);
-  return uniqueRecords(results.flat());
+  return uniqueRecords(results.flat()).filter(row => (
+    isInternalTestBatch(batch) ? row?.is_test_record === true : row?.is_test_record !== true
+  ));
 }
 
 async function loadPreStartCompliance(base44, batch) {

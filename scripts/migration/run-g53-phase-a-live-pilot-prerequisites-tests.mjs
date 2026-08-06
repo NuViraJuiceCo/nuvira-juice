@@ -100,7 +100,7 @@ const gateEnv = {
 const executePath = path.join(repoRoot, 'base44/functions/executeNativeProductionBatchLifecycle/entry.ts');
 const executeFns = loadFunction(
   executePath,
-  ['envGateFailure', 'testBatchMarkerFailure', 'evaluatePreStartCompliance', 'planLifecycle'],
+  ['envGateFailure', 'testBatchMarkerFailure', 'evaluatePreStartCompliance', 'loadPreStartCompliance', 'planLifecycle'],
   gateEnv,
 );
 
@@ -200,7 +200,7 @@ assert.equal(plan.proposed_patch.status, 'in_production');
 const previewPath = path.join(repoRoot, 'base44/functions/previewNativeProductionBatchLifecycle/entry.ts');
 const previewFns = loadFunction(
   previewPath,
-  ['evaluatePreStartCompliance', 'planLifecycle'],
+  ['evaluatePreStartCompliance', 'loadPreStartCompliance', 'planLifecycle'],
   gateEnv,
 );
 const previewCompliance = previewFns.evaluatePreStartCompliance({ batch: testBatch, ...completeCompliance });
@@ -215,6 +215,41 @@ const preview = previewFns.planLifecycle({
 assert.equal(preview.lifecycle_ready, true);
 assert.equal(preview.live_command_available, true);
 assert.equal(preview.pre_start_compliance.ready, true);
+
+const sharedOperationalBatch = {
+  ...testBatch,
+  id: 'pineapple-batch-id',
+  batch_id: 'MANUAL-20260805-PINEAPPLE-JUICE-4',
+  product_name: 'Pineapple Juice',
+  production_date: '2026-08-05',
+  is_test_batch: false,
+  test_purpose: '',
+};
+const sharedOriginLink = {
+  source_production_batch_id: 'orange-batch-id',
+  batch_id: 'MANUAL-20260805-ORANGE-JUICE-4',
+  related_source_production_batch_ids: ['orange-batch-id', sharedOperationalBatch.id],
+  related_batch_ids: ['MANUAL-20260805-ORANGE-JUICE-4', sharedOperationalBatch.batch_id],
+  is_test_record: false,
+};
+const sharedRows = {
+  SanitationLog: [{ id: 'shared-sanitation', ...sharedOriginLink, log_date: sharedOperationalBatch.production_date, cleaned: true, sanitized: true, sanitizer_level: 'Optimal' }],
+  DailyChecklist: [{ id: 'shared-checklist', ...sharedOriginLink, checklist_date: sharedOperationalBatch.production_date, batches_logged: `MANUAL-20260805-ORANGE-JUICE-4, ${sharedOperationalBatch.batch_id}`, overall_status: 'Pre-Production Complete', morning_fridge_temp_logged: true, sanitizer_levels_checked: true, equipment_sanitized: true, work_areas_cleaned: true }],
+  TemperatureLog: [{ id: 'shared-temperature', ...sharedOriginLink, log_date: sharedOperationalBatch.production_date, temperature: 37, within_range: true }],
+};
+const sharedBase44 = {
+  asServiceRole: {
+    entities: Object.fromEntries(Object.entries(sharedRows).map(([entityName, rows]) => [entityName, {
+      filter: async filter => rows.filter(row => Object.entries(filter || {}).every(([key, value]) => row?.[key] === value)),
+    }])),
+  },
+};
+const executeSharedCompliance = await executeFns.loadPreStartCompliance(sharedBase44, sharedOperationalBatch);
+assert.equal(executeSharedCompliance.ready, true);
+assert.deepEqual(JSON.parse(JSON.stringify(executeSharedCompliance.matched_record_counts)), { sanitation: 1, daily_checklist: 1, temperature: 1 });
+const previewSharedCompliance = await previewFns.loadPreStartCompliance(sharedBase44, sharedOperationalBatch);
+assert.equal(previewSharedCompliance.ready, true);
+assert.deepEqual(JSON.parse(JSON.stringify(previewSharedCompliance.matched_record_counts)), { sanitation: 1, daily_checklist: 1, temperature: 1 });
 
 const savePath = path.join(repoRoot, 'base44/functions/saveAdminComplianceRecord/entry.ts');
 const saveFns = loadFunction(savePath, ['deriveComplianceTestContext']);
@@ -289,7 +324,7 @@ assert.ok(fs.readFileSync(previewPath, 'utf8').includes('is_test_batch: isIntern
 const evidence = {
   ok: true,
   suite: 'g53-phase-a-live-pilot-prerequisites',
-  checks: 49,
+  checks: 57,
   live_writes_performed: false,
   provider_calls_performed: false,
   customer_notifications_sent: false,

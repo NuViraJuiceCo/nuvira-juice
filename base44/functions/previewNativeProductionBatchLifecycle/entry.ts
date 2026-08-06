@@ -25,6 +25,11 @@ const SAFE_PRODUCTION_LIFECYCLE_LABELS = new Set([
 const SAFE_ARRAY_LIMIT = 40;
 const SAFE_SUMMARY_LIMIT = 12;
 const DEFAULT_LIST_LIMIT = 500;
+const PRE_START_DATE_FIELD_BY_ENTITY = Object.freeze({
+  SanitationLog: 'log_date',
+  DailyChecklist: 'checklist_date',
+  TemperatureLog: 'log_date',
+});
 
 function normalizeText(value) {
   return (value ?? '').toString().trim();
@@ -184,11 +189,17 @@ function evaluatePreStartCompliance({ batch, sanitationLogs = [], dailyChecklist
 async function linkedComplianceRows(base44, entityName, batch) {
   const sourceBatchId = sanitizeId(batch?.id);
   const displayBatchId = sanitizeId(batch?.batch_id);
+  const productionDate = sanitizeText(batch?.production_date, 40);
+  const dateField = PRE_START_DATE_FIELD_BY_ENTITY[entityName];
+  const dateFilterAvailable = dateField && /^\d{4}-\d{2}-\d{2}$/.test(productionDate);
   const results = await Promise.all([
     sourceBatchId ? filterEntity(base44, entityName, { source_production_batch_id: sourceBatchId }, '-created_date', 20) : [],
     displayBatchId ? filterEntity(base44, entityName, { batch_id: displayBatchId }, '-created_date', 20) : [],
+    dateFilterAvailable ? filterEntity(base44, entityName, { [dateField]: productionDate }, '-created_date', 50) : [],
   ]);
-  return uniqueRecords(results.flat());
+  return uniqueRecords(results.flat()).filter(row => (
+    isInternalTestBatch(batch) ? row?.is_test_record === true : row?.is_test_record !== true
+  ));
 }
 
 async function loadPreStartCompliance(base44, batch) {
