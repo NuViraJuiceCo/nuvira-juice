@@ -10,6 +10,7 @@ const androidSettings = fs.readFileSync('android/capacitor.settings.gradle', 'ut
 const androidDependencies = fs.readFileSync('android/app/capacitor.build.gradle', 'utf8');
 const mainSource = fs.readFileSync('src/main.jsx', 'utf8');
 const liveUpdateSource = fs.readFileSync('src/lib/nativeLiveUpdates.js', 'utf8');
+const liveUpdatePatch = fs.readFileSync('patches/@capacitor+live-updates+0.5.0.patch', 'utf8');
 
 const liveUpdates = capacitor.plugins?.LiveUpdates;
 const lockedPackage = packageLock.packages?.['node_modules/@capacitor/live-updates'];
@@ -42,11 +43,15 @@ assert.match(liveUpdateSource, /activeApplicationPathChanged/);
 assert.match(liveUpdateSource, /LiveUpdates\.reload\(\)/);
 assert.match(liveUpdateSource, /CapacitorApp\.addListener\('resume'/);
 assert.match(liveUpdateSource, /if \(syncInFlight\) return syncInFlight/);
+assert.equal(packageJson.scripts?.postinstall, 'patch-package');
+assert.equal(packageJson.devDependencies?.['patch-package'], '^8.0.0');
+assert.match(liveUpdatePatch, /if binaryIsNew/);
+assert.match(liveUpdatePatch, /liveUpdateManager\.reset\(retainCache: false\)/);
 
 console.log(JSON.stringify({
   success: true,
   suite: 'g63-capacitor-live-update-bootstrap',
-  cases: 22,
+  cases: 26,
   appflow_app_id: liveUpdates.appId,
   channel: liveUpdates.channel,
   update_method: liveUpdates.autoUpdateMethod,

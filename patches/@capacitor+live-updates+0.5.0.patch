@@ -1,0 +1,19 @@
+diff --git a/node_modules/@capacitor/live-updates/ios/Sources/CAPLiveUpdatesPlugin/LiveUpdates.swift b/node_modules/@capacitor/live-updates/ios/Sources/CAPLiveUpdatesPlugin/LiveUpdates.swift
+index f87fcd7..5fd9b9f 100644
+--- a/node_modules/@capacitor/live-updates/ios/Sources/CAPLiveUpdatesPlugin/LiveUpdates.swift
++++ b/node_modules/@capacitor/live-updates/ios/Sources/CAPLiveUpdatesPlugin/LiveUpdates.swift
+@@ -54,6 +54,14 @@ class LiveUpdates {
+             )
+         }
+ 
++        // A native binary must boot from its bundled web assets before it can
++        // run a newly bundled JavaScript updater. Retaining a snapshot from the
++        // previous binary can otherwise strand the app on updater code that no
++        // longer matches the shipped native configuration.
++        if binaryIsNew {
++            try? liveUpdateManager.reset(retainCache: false)
++        }
++
+         try? liveUpdateManager.add(self.config.liveUpdate, existingCacheUrl: bundledAppUrl)
+     }
+ 
