@@ -103,12 +103,20 @@ assert.equal(executeFns.envGateFailure({
   action: 'start',
   batchKeys: [testBatch.id, testBatch.batch_id],
   actorEmail: 'info@nuvirajuice.com',
+  batch: testBatch,
 }), null);
 assert.equal(executeFns.envGateFailure({
   action: 'start',
   batchKeys: ['BATCH-REAL-NOT-COMPLIANCE-ALLOWLISTED'],
   actorEmail: 'info@nuvirajuice.com',
-}), 'batch_not_allowlisted');
+  batch: {
+    batch_id: 'BATCH-REAL-NOT-COMPLIANCE-ALLOWLISTED',
+    product_name: 'Aura',
+    production_date: '2026-07-23',
+    status: 'planned',
+    is_test_batch: false,
+  },
+}), null);
 assert.equal(executeFns.testBatchMarkerFailure({
   batchKeys: [testBatch.batch_id],
   batch: testBatch,

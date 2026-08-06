@@ -2,9 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const ENABLE_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_LIFECYCLE_WRITES';
 const ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_EMAILS';
-const BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_BATCH_ALLOWLIST';
 const TEST_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_BATCH_ALLOWLIST';
-const COMPLIANCE_GATE_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_COMPLIANCE_GATE_BATCH_ALLOWLIST';
 const ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS';
 const KILL_SWITCH_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH';
 const ALLOWED_ACTIONS = new Set(['start', 'complete', 'verify']);
@@ -228,22 +226,13 @@ function liveGateStatus({ action, batch, actorEmail }) {
     sanitizeId(batch?.id),
     sanitizeId(batch?.batch_id),
   ].filter(Boolean);
-  const normalAllowedBatches = parseCsvSet(Deno.env.get(BATCH_ALLOWLIST_FLAG) || '');
   const testAllowedBatches = parseCsvSet(Deno.env.get(TEST_BATCH_ALLOWLIST_FLAG) || '');
-  const allowedBatches = new Set([...normalAllowedBatches, ...testAllowedBatches]);
+  const internalTestBatch = isInternalTestBatch(batch);
+  const testBatchAllowlisted = batchKeys.some(batchKey => testAllowedBatches.has(normalizeLower(batchKey)));
   if (batchKeys.length === 0) blockers.push('production_batch_id_or_batch_id_required');
-  else if (allowedBatches.size === 0) blockers.push('batch_allowlist_required');
-  else if (!batchKeys.some(batchKey => allowedBatches.has(normalizeLower(batchKey)))) blockers.push('batch_not_allowlisted');
-  const usesTestAllowlist = batchKeys.some(batchKey => testAllowedBatches.has(normalizeLower(batchKey)));
-  if (usesTestAllowlist && !isInternalTestBatch(batch)) blockers.push('test_batch_allowlist_requires_test_marker');
-
-  const complianceGateBatches = parseCsvSet(Deno.env.get(COMPLIANCE_GATE_BATCH_ALLOWLIST_FLAG) || '');
-  if (normalizedAction === 'start') {
-    if (complianceGateBatches.size === 0) blockers.push('pre_start_compliance_gate_batch_allowlist_required');
-    else if (!batchKeys.some(batchKey => complianceGateBatches.has(normalizeLower(batchKey)))) {
-      blockers.push('pre_start_compliance_gate_batch_not_allowlisted');
-    }
-  }
+  if (internalTestBatch && testAllowedBatches.size === 0) blockers.push('test_batch_allowlist_required');
+  else if (internalTestBatch && !testBatchAllowlisted) blockers.push('test_batch_not_allowlisted');
+  if (!internalTestBatch && testBatchAllowlisted) blockers.push('test_batch_allowlist_requires_test_marker');
 
   const liveCommandAvailable = blockers.length === 0;
   return {
@@ -256,10 +245,12 @@ function liveGateStatus({ action, batch, actorEmail }) {
       writer_enabled: nativeWriterEnabled,
       actor_email_allowed: allowedEmails.size > 0 && allowedEmails.has(normalizedActorEmail),
       action_allowed: allowedActions.size > 0 && allowedActions.has(normalizedAction),
-      batch_allowlisted: batchKeys.length > 0 && allowedBatches.size > 0 && batchKeys.some(batchKey => allowedBatches.has(normalizeLower(batchKey))),
-      test_batch_marker_valid: !usesTestAllowlist || isInternalTestBatch(batch),
-      pre_start_compliance_gate_batch_allowlisted: normalizedAction !== 'start' ||
-        (batchKeys.length > 0 && complianceGateBatches.size > 0 && batchKeys.some(batchKey => complianceGateBatches.has(normalizeLower(batchKey)))),
+      operational_batch_authorized: batchKeys.length > 0 && !internalTestBatch,
+      test_batch_allowlisted: internalTestBatch && testBatchAllowlisted,
+      batch_allowlisted: batchKeys.length > 0 && (!internalTestBatch || testBatchAllowlisted),
+      test_batch_marker_valid: !testBatchAllowlisted || internalTestBatch,
+      pre_start_compliance_enforced: normalizedAction === 'start',
+      legacy_exact_batch_allowlist_required: false,
     },
   };
 }
@@ -1238,7 +1229,6 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
   if (rows.some(row => row.lifecycle_warnings.includes('inventory_deduction_held'))) warnings.push('inventory_deduction_held');
   warnings.push('purchase_order_automation_held');
   warnings.push('hub_fallback_required');
-  warnings.push('live_lifecycle_execution_requires_separate_exact_approval');
 
   const startPreview = summarizeAction(rows, 'start');
   const completePreview = summarizeAction(rows, 'complete');

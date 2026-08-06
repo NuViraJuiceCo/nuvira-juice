@@ -45,7 +45,7 @@ const result = {
     lifecycleLogs.filter(log => log?.command_type === 'native_production_batch_lifecycle').length === 4 &&
     preview.ok === true &&
     Array.isArray(preview.data?.live_command_blockers) &&
-    preview.data.live_command_blockers.includes('batch_not_allowlisted') &&
+    preview.data.live_command_blockers.includes('test_batch_allowlist_required') &&
     preview.data.live_command_available === false,
   classification: 'phase_a_live_pilot_closed_read_only_audit_preserved',
   verified_at_utc: new Date().toISOString(),
@@ -66,7 +66,7 @@ const result = {
   mutation_gate: {
     live_command_available: preview.data?.live_command_available === true,
     live_command_blockers: preview.data?.live_command_blockers || [],
-    test_batch_allowlisted: preview.data?.live_gate?.batch_allowlisted === true,
+    test_batch_allowlisted: preview.data?.live_gate?.test_batch_allowlisted === true,
   },
   safety: {
     writes_performed: false,

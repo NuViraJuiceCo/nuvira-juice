@@ -59,6 +59,7 @@ assert.equal(
     action: 'start',
     batchKeys: ['internal_production_batch_id', 'BATCH-20260723-AURA'],
     actorEmail: 'info@nuvirajuice.com',
+    batch: { batch_id: 'BATCH-20260723-AURA', is_test_batch: false },
   }),
   null,
   'Execution gate accepts exact readable batch_id when UI also sends an internal id.',
@@ -68,18 +69,37 @@ assert.equal(
     action: 'start',
     batchKeys: ['internal_production_batch_id', 'BATCH-20260723-OTHER'],
     actorEmail: 'info@nuvirajuice.com',
+    batch: { batch_id: 'BATCH-20260723-OTHER', is_test_batch: false },
   }),
-  'batch_not_allowlisted',
-  'Execution gate still rejects non-allowlisted batches.',
+  null,
+  'Execution gate authorizes an operational batch without a one-off exact-batch allowlist.',
 );
 assert.equal(
   executeFns.envGateFailure({
     action: 'start',
     batchKeys: ['BATCH-G53-TEST-20260723-AURA'],
     actorEmail: 'info@nuvirajuice.com',
+    batch: {
+      batch_id: 'BATCH-G53-TEST-20260723-AURA',
+      source_system: 'customer_app_internal_validation',
+      native_owner_status: 'internal_test_only',
+    },
   }),
   null,
   'Execution gate accepts the exact test batch allowlist.',
+);
+assert.equal(
+  executeFns.envGateFailure({
+    action: 'start',
+    batchKeys: ['BATCH-G53-TEST-NOT-ALLOWLISTED'],
+    actorEmail: 'info@nuvirajuice.com',
+    batch: {
+      batch_id: 'BATCH-G53-TEST-NOT-ALLOWLISTED',
+      is_test_batch: true,
+    },
+  }),
+  'test_batch_not_allowlisted',
+  'Execution gate keeps exact allowlisting for internal test batches.',
 );
 assert.equal(
   executeFns.testBatchMarkerFailure({
@@ -220,7 +240,7 @@ assert.ok(productionPage.includes('!actionReady || !writeAvailable'), 'Run Nativ
 console.log(JSON.stringify({
   ok: true,
   suite: 'g51d-native-production-lifecycle-gate',
-  checks: 16,
+  checks: 17,
   writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));

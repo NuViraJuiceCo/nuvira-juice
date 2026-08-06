@@ -4,9 +4,7 @@ const COMMAND_TYPE = 'native_production_batch_lifecycle';
 const SOURCE = 'customer_app_native_admin';
 const ENABLE_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_LIFECYCLE_WRITES';
 const ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_EMAILS';
-const BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_BATCH_ALLOWLIST';
 const TEST_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_BATCH_ALLOWLIST';
-const COMPLIANCE_GATE_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_COMPLIANCE_GATE_BATCH_ALLOWLIST';
 const ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS';
 const KILL_SWITCH_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH';
 const CONFIRMATION_PHRASE = 'execute_native_production_batch_lifecycle';
@@ -290,7 +288,7 @@ function findUnsupportedBodyKey(body) {
   return null;
 }
 
-function envGateFailure({ action, batchKeys, actorEmail }) {
+function envGateFailure({ action, batchKeys, actorEmail, batch }) {
   if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') return 'kill_switch_active';
   if (Deno.env.get(ENABLE_WRITES_FLAG) !== 'true') return 'native_production_batch_lifecycle_writes_disabled';
 
@@ -302,22 +300,14 @@ function envGateFailure({ action, batchKeys, actorEmail }) {
   if (allowedActions.size === 0) return 'allowed_action_gate_required';
   if (!allowedActions.has(action)) return 'action_not_allowlisted';
 
-  const allowedBatches = new Set([
-    ...parseCsvSet(Deno.env.get(BATCH_ALLOWLIST_FLAG) || ''),
-    ...parseCsvSet(Deno.env.get(TEST_BATCH_ALLOWLIST_FLAG) || ''),
-  ]);
-  if (allowedBatches.size === 0) return 'batch_allowlist_required';
   const requestedBatchKeys = Array.isArray(batchKeys)
     ? batchKeys.map(normalizeLower).filter(Boolean)
     : [];
   if (requestedBatchKeys.length === 0) return 'production_batch_id_or_batch_id_required';
-  if (!requestedBatchKeys.some(batchKey => allowedBatches.has(batchKey))) return 'batch_not_allowlisted';
-  if (action === 'start') {
-    const complianceGateBatches = parseCsvSet(Deno.env.get(COMPLIANCE_GATE_BATCH_ALLOWLIST_FLAG) || '');
-    if (complianceGateBatches.size === 0) return 'pre_start_compliance_gate_batch_allowlist_required';
-    if (!requestedBatchKeys.some(batchKey => complianceGateBatches.has(batchKey))) {
-      return 'pre_start_compliance_gate_batch_not_allowlisted';
-    }
+  if (isInternalTestBatch(batch)) {
+    const testBatches = parseCsvSet(Deno.env.get(TEST_BATCH_ALLOWLIST_FLAG) || '');
+    if (testBatches.size === 0) return 'test_batch_allowlist_required';
+    if (!requestedBatchKeys.some(batchKey => testBatches.has(batchKey))) return 'test_batch_not_allowlisted';
   }
 
   return null;
@@ -585,7 +575,9 @@ async function createCommandLog({ base44, batch, action, status, idempotencyKey,
     actor_type: 'admin',
     payload: {
       action,
-      exact_batch_allowlist: true,
+      operational_batch_policy: 'authenticated_admin_and_lifecycle_gates',
+      legacy_exact_batch_allowlist_required: false,
+      test_batch_allowlist_enforced: isInternalTestBatch(batch),
       is_test_batch: isInternalTestBatch(batch),
       test_batch_id: isInternalTestBatch(batch) ? sanitizeId(batch?.batch_id) || sanitizeId(batch?.id) || null : null,
     },
@@ -702,7 +694,28 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error_code: 'invalid_input', error: error.message }, { status: 400 });
     }
 
-    const gateFailure = envGateFailure({ action, batchKeys, actorEmail });
+    const batch = await findBatch(base44, batchKey);
+    if (!batch) {
+      return Response.json({
+        success: false,
+        skipped: true,
+        error_code: 'production_batch_not_found',
+        native_writer_enabled: true,
+        writes_performed: false,
+      }, { status: 404 });
+    }
+    const testMarkerFailure = testBatchMarkerFailure({ batchKeys, batch });
+    if (testMarkerFailure) {
+      return Response.json({
+        success: false,
+        skipped: true,
+        error_code: testMarkerFailure,
+        native_writer_enabled: true,
+        writes_performed: false,
+      }, { status: 409 });
+    }
+
+    const gateFailure = envGateFailure({ action, batchKeys, actorEmail, batch });
     if (gateFailure) {
       return Response.json({
         success: false,
@@ -768,27 +781,6 @@ Deno.serve(async (req) => {
         idempotency_key: idempotencyKey,
         error_code: 'prior_failed_verify_requires_manual_review',
         blockers: ['prior_failed_verify_requires_manual_review'],
-        native_writer_enabled: true,
-        writes_performed: false,
-      }, { status: 409 });
-    }
-
-    const batch = await findBatch(base44, batchKey);
-    if (!batch) {
-      return Response.json({
-        success: false,
-        skipped: true,
-        error_code: 'production_batch_not_found',
-        native_writer_enabled: true,
-        writes_performed: false,
-      }, { status: 404 });
-    }
-    const testMarkerFailure = testBatchMarkerFailure({ batchKeys, batch });
-    if (testMarkerFailure) {
-      return Response.json({
-        success: false,
-        skipped: true,
-        error_code: testMarkerFailure,
         native_writer_enabled: true,
         writes_performed: false,
       }, { status: 409 });

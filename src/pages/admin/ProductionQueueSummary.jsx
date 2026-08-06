@@ -1322,8 +1322,8 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
         type: actionReady && writeAvailable ? 'success' : 'warn',
         text: actionReady
           ? writeAvailable
-            ? `${formatLabel(action)} readiness preview passed and the exact native gate is open.`
-            : `${formatLabel(action)} readiness preview passed. Native execution is still blocked by the exact write gate.`
+            ? `${formatLabel(action)} readiness preview passed and the native operational gate is open.`
+            : `${formatLabel(action)} readiness preview passed. Native execution is still blocked by an operational safety gate.`
           : `${formatLabel(action)} has preview blockers or warnings.`,
       });
     } catch (error) {
@@ -1347,8 +1347,8 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
       setMessage({
         type: 'error',
         text: gateBlockers
-          ? `Native ${formatLabel(action)} is ready but the exact write gate is closed: ${gateBlockers}.`
-          : `Native ${formatLabel(action)} is ready but the exact write gate is closed.`,
+          ? `Native ${formatLabel(action)} is ready but an operational safety gate is closed: ${gateBlockers}.`
+          : `Native ${formatLabel(action)} is ready but an operational safety gate is closed.`,
       });
       return;
     }
