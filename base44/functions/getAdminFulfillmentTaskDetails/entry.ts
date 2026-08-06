@@ -22,6 +22,12 @@ function normalizeFulfillmentNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeLimit(value, fallback = 50, maximum = 100) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), maximum);
+}
+
 function sanitizeTask(task) {
   return {
     id: task.id || null,
@@ -35,13 +41,48 @@ function sanitizeTask(task) {
     delivery_date: task.delivery_date || task.scheduled_date || null,
     delivery_window_label: task.delivery_window_label || null,
     items_summary: task.items_summary || null,
-    source_type: task.source_type || null,
-    schedule_source: task.schedule_source || null,
+    source_type: task.source_type || task.source_channel || null,
+    schedule_source: task.schedule_source || task.task_source || null,
     payment_status: task.payment_status || null,
     delivered_at: task.delivered_at || null,
     delivery_photo_url: task.delivery_photo_url || null,
     delivery_drop_location: task.delivery_drop_location || null,
   };
+}
+
+
+async function findNativeTasks(base44, {
+  orderNumber,
+  customerAppOrderId,
+  fulfillmentNumber,
+  limit,
+}) {
+  const entities = base44.asServiceRole.entities;
+  const queries = [];
+
+  if (orderNumber) {
+    queries.push(entities.FulfillmentTask.filter({ order_number: orderNumber }, '-created_date', limit).catch(() => []));
+    queries.push(entities.FulfillmentTask.filter({ shopify_order_number: orderNumber }, '-created_date', limit).catch(() => []));
+  }
+  if (customerAppOrderId) {
+    queries.push(entities.FulfillmentTask.filter({ order_id: customerAppOrderId }, '-created_date', limit).catch(() => []));
+    queries.push(entities.FulfillmentTask.filter({ base44_order_id: customerAppOrderId }, '-created_date', limit).catch(() => []));
+  }
+
+  if (queries.length === 0) return [];
+
+  const rows = (await Promise.all(queries)).flat();
+  const seen = new Set();
+  return rows
+    .filter((task) => {
+      const identity = normalizeText(task?.id || task?.fulfillment_task_id || `${task?.order_number || ''}:${task?.fulfillment_number || ''}:${task?.delivery_date || task?.scheduled_date || ''}`);
+      if (!identity || seen.has(identity)) return false;
+      seen.add(identity);
+      if (fulfillmentNumber === null) return true;
+      return Number(task?.fulfillment_number) === fulfillmentNumber;
+    })
+    .slice(0, limit)
+    .map(sanitizeTask);
 }
 
 Deno.serve(async (req) => {
@@ -72,7 +113,7 @@ Deno.serve(async (req) => {
     const stripeSubscriptionId = normalizeText(body.stripe_subscription_id);
     const customerAppOrderId = normalizeText(body.customer_app_order_id);
     const fulfillmentNumber = normalizeFulfillmentNumber(body.fulfillment_number);
-    const limit = normalizeText(body.limit);
+    const limit = normalizeLimit(body.limit);
 
     if (!hubOrderId && !orderNumber && !stripeSubscriptionId && !customerAppOrderId) {
       return Response.json({
@@ -81,8 +122,35 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
+    const nativeTasks = await findNativeTasks(base44, {
+      orderNumber,
+      customerAppOrderId,
+      fulfillmentNumber,
+      limit,
+    });
+
+    // Native FulfillmentTask rows are the occurrence-level operational source.
+    // Read them before consulting the legacy Hub bridge so the admin page does
+    // not depend on a second service for records already stored in this app.
+    if (nativeTasks.length > 0) {
+      return Response.json({
+        success: true,
+        matched_by: orderNumber ? 'native_order_number' : 'native_customer_app_order_id',
+        source: 'customer_app_native',
+        count: nativeTasks.length,
+        tasks: nativeTasks,
+      });
+    }
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub task detail service is not configured' }, { status: 503 });
+      return Response.json({
+        success: true,
+        matched_by: null,
+        source: 'customer_app_native',
+        count: 0,
+        tasks: [],
+        warning: 'legacy_source_unavailable',
+      });
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -91,7 +159,7 @@ Deno.serve(async (req) => {
     if (orderNumber) params.set('order_number', orderNumber);
     if (stripeSubscriptionId) params.set('stripe_subscription_id', stripeSubscriptionId);
     if (customerAppOrderId) params.set('customer_app_order_id', customerAppOrderId);
-    if (limit) params.set('limit', limit);
+    params.set('limit', String(limit));
 
     const hubUrl = `${hubBase}/functions/getFulfillmentTaskDetailsForCustomerApp?${params.toString()}`;
     const hubResponse = await fetch(hubUrl, {
@@ -103,9 +171,13 @@ Deno.serve(async (req) => {
 
     if (!hubResponse.ok) {
       return Response.json({
-        error: 'Unable to load FulfillmentTask details',
-        hub_status: hubResponse.status,
-      }, { status: 502 });
+        success: true,
+        matched_by: null,
+        source: 'customer_app_native',
+        count: 0,
+        tasks: [],
+        warning: 'legacy_source_unavailable',
+      });
     }
 
     const hubData = await hubResponse.json().catch(() => null);

@@ -214,6 +214,47 @@ const results = [];
 }
 
 {
+  const { buildNativeTimeline } = loadExports(
+    'base44/functions/getAdminOrderTimeline/entry.ts',
+    ['buildNativeTimeline'],
+  );
+  const events = buildNativeTimeline({
+    customerOrder: {
+      created_date: '2026-08-05T10:00:00.000Z',
+      status: 'delivered',
+    },
+    nativeOrder: {
+      created_date: '2026-08-05T10:01:00.000Z',
+      fulfillment_status: 'partially_fulfilled',
+    },
+    tasks: [
+      {
+        id: 'task_delivered',
+        created_date: '2026-08-05T10:02:00.000Z',
+        production_date: '2026-08-05',
+        delivery_date: '2026-08-05',
+        delivered_at: '2026-08-05T23:38:28.061Z',
+        delivery_photo_url: 'https://example.test/proof.jpg',
+        status: 'delivered',
+      },
+      {
+        id: 'task_future',
+        created_date: '2026-08-05T10:03:00.000Z',
+        production_date: '2026-08-07',
+        delivery_date: '2026-08-08',
+        status: 'scheduled',
+      },
+    ],
+    limit: 50,
+  });
+  assert.equal(events.filter(event => event.type === 'delivered').length, 1);
+  assert.equal(events.filter(event => event.type === 'delivery_proof_added').length, 1);
+  assert.equal(events.filter(event => event.type === 'production_scheduled').length, 2);
+  assert.equal(events.some(event => event.task_id === 'task_future' && event.delivery_date === '2026-08-08'), true);
+  results.push('native_timeline_keeps_delivery_occurrences_distinct');
+}
+
+{
   const { preferredCustomerName } = loadExports(
     'base44/functions/getAdminDeliveryRouteSummary/entry.ts',
     ['preferredCustomerName'],
@@ -241,6 +282,14 @@ const results = [];
   assert.match(routeOpsSource, /value === null \|\| value === undefined \? '—'/);
   assert.match(routeOpsSource, /No count recorded/);
   results.push('route_readiness_surfaces_lifecycle_conflicts_and_unknown_counts');
+}
+
+{
+  const adminOrdersSource = fs.readFileSync(path.join(repoRoot, 'src/pages/AdminOrders.jsx'), 'utf8');
+  assert.doesNotMatch(adminOrdersSource, /upcomingIsoDates/);
+  assert.doesNotMatch(adminOrdersSource, /getAdminDeliveryRouteSummary/);
+  assert.match(adminOrdersSource, /getAdminOrdersWithHub already consolidates/);
+  results.push('admin_orders_avoids_redundant_route_summary_fanout');
 }
 
 console.log(JSON.stringify({

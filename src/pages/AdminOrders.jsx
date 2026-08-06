@@ -226,42 +226,6 @@ function itemSummary(items = []) {
     .join(' · ') + (items.length > 2 ? ` +${items.length - 2} more` : '');
 }
 
-function _todayIsoDate() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  const localDate = new Date(now.getTime() - offset * 60 * 1000);
-  return localDate.toISOString().slice(0, 10);
-}
-
-function upcomingIsoDates(dayCount = 14) {
-  const dates = [];
-  const start = new Date();
-  for (let index = 0; index < dayCount; index += 1) {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    const offset = date.getTimezoneOffset();
-    const localDate = new Date(date.getTime() - offset * 60 * 1000);
-    dates.push(localDate.toISOString().slice(0, 10));
-  }
-  return dates;
-}
-
-function itemsFromSummary(summary) {
-  if (!summary || typeof summary !== 'string') return [];
-  return summary
-    .split(',')
-    .map(part => part.trim())
-    .filter(Boolean)
-    .map(part => {
-      const match = part.match(/^(\d+(?:\.\d+)?)x\s+(.+)$/i);
-      return {
-        quantity: match ? Number(match[1]) : 1,
-        title: match ? match[2].trim() : part,
-        price: 0,
-      };
-    });
-}
-
 function AuditInfoRow({ label, value, formatter, missing = 'Not recorded' }) {
   const hasValue = hasRecordedValue(value);
   const displayValue = hasValue && formatter ? formatter(value) : value;
@@ -394,49 +358,6 @@ function DeliveryRateContextPanel({ order }) {
   );
 }
 
-function mapDeliveryStopToAdminOrder(stop) {
-  if (!stop?.order_number) return null;
-  const status = ['delivered', 'completed', 'fulfilled'].includes((stop.task_status || stop.delivery_status || '').toString().toLowerCase())
-    ? 'delivered'
-    : 'order_received';
-
-  return {
-    id: `native_delivery_fallback_${stop.task_id || stop.order_number}`,
-    order_number: stop.order_number,
-    customer_email: '',
-    customer_name: stop.customer_name || '',
-    status,
-    native_production_status: null,
-    native_fulfillment_status: stop.task_status || stop.delivery_status || null,
-    native_sync_status: 'delivery_queue_fallback',
-    native_review_status: stop.missing_address ? 'review_required' : 'complete',
-    native_fulfillment_task_summary: {
-      count: stop.task_id ? 1 : 0,
-      status_counts: stop.task_status ? { [stop.task_status]: 1 } : {},
-      next_delivery_date: stop.delivery_date || null,
-      production_date: null,
-      task_ids: stop.task_id ? [stop.task_id] : [],
-    },
-    payment_status: null,
-    source_channel: stop.source_type || 'customer_app_native',
-    source_type: stop.data_source || 'delivery_queue_native_fallback',
-    order_type: null,
-    order_lock_status: null,
-    total: 0,
-    subtotal: 0,
-    delivery_fee: 0,
-    fulfillment_type: 'delivery',
-    delivery_address: stop.delivery_address || '',
-    contact_phone: '',
-    estimated_delivery_date: stop.delivery_date || null,
-    created_date: stop.delivery_date || null,
-    items: itemsFromSummary(stop.items_summary),
-    notes: stop.delivery_window_label ? `Window: ${stop.delivery_window_label}` : null,
-    is_native_order: true,
-    is_native_delivery_fallback: true,
-  };
-}
-
 function SectionLabel({ title, description, badge }) {
   return (
     <div className="flex items-start justify-between gap-2">
@@ -518,31 +439,23 @@ function guidanceToneClass(tone) {
   return 'border-border bg-background text-foreground';
 }
 
-function adminOrderSourceDiagnosticErrors({ ordersData, ordersError, ordersQueryError, deliveryFallbackError, deliveryFallbackQueryError }) {
+function adminOrderSourceDiagnosticErrors({ ordersData, ordersError, ordersQueryError }) {
   return [
     ordersData?.error,
     ordersError ? (ordersQueryError?.message || 'Admin orders query failed') : null,
-    deliveryFallbackError ? (deliveryFallbackQueryError?.message || 'Delivery fallback query failed') : null,
   ].filter(Boolean);
 }
 
-function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliveryFallbackOrders, ordersError, ordersQueryError, deliveryFallbackError, deliveryFallbackQueryError }) {
-  const summaries = Array.isArray(deliveryFallbackData?.summaries)
-    ? deliveryFallbackData.summaries
-    : (deliveryFallbackData?.sections ? [deliveryFallbackData] : []);
+function AdminOrderSourceDiagnostics({ ordersData, ordersError, ordersQueryError }) {
   const sourceRows = [
     ['Local Customer App orders', ordersData?.local_count],
     ['Source bridge expanded rows', ordersData?.hub_count],
     ['Native ShopifyOrder rows', ordersData?.native_shopify_order_count],
-    ['Delivery fallback rows', deliveryFallbackOrders?.length],
-    ['Delivery fallback dates checked', summaries.length],
   ];
   const errors = adminOrderSourceDiagnosticErrors({
     ordersData,
     ordersError,
     ordersQueryError,
-    deliveryFallbackError,
-    deliveryFallbackQueryError,
   });
 
   return (
@@ -568,7 +481,7 @@ function AdminOrderSourceDiagnostics({ ordersData, deliveryFallbackData, deliver
           </div>
           <AdminStatusPill value={errors.length ? 'Needs review' : 'Read-only'} label={errors.length ? 'Needs review' : 'Read-only'} tone={errors.length ? 'warning' : 'native'} />
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {sourceRows.map(([label, value]) => (
             <div key={label} className="rounded-xl border border-border bg-background p-2">
               <p className="text-lg font-black text-foreground">{Number.isFinite(Number(value)) ? Number(value) : 0}</p>
@@ -859,8 +772,8 @@ function FulfillmentTasksPanel({ order }) {
   return (
     <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fulfillment Tasks</p>
-        <AdminStatusPill value="Read-only" label="Read-only" tone="hub" />
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Delivery Occurrences</p>
+        <AdminStatusPill value="Read-only" label="Read-only" tone={data?.source === 'customer_app_native' ? 'native' : 'hub'} />
       </div>
 
       {!shouldFetchTasks ? (
@@ -938,8 +851,8 @@ function HubTimelinePanel({ order }) {
   return (
     <div className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Source Timeline</p>
-        <AdminStatusPill value="Read-only" label="Read-only" tone="hub" />
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Order Timeline</p>
+        <AdminStatusPill value="Read-only" label="Read-only" tone={data?.source === 'customer_app_native' ? 'native' : 'hub'} />
       </div>
 
       {!shouldFetchTimeline ? (
@@ -1350,66 +1263,11 @@ export default function AdminOrders() {
     ? orderLifecycleData.admin_order_lifecycle_read_model
     : null;
 
-  const {
-    data: deliveryFallbackData = {},
-    isLoading: deliveryFallbackLoading,
-    isError: deliveryFallbackError,
-    error: deliveryFallbackQueryError,
-  } = useQuery({
-    queryKey: ['admin-orders-delivery-fallback'],
-    queryFn: async () => {
-      const dates = upcomingIsoDates(14);
-      const summaries = await Promise.all(
-        dates.map(async deliveryDate => {
-          try {
-            const res = await base44.functions.invoke('getAdminDeliveryRouteSummary', {
-              delivery_date: deliveryDate,
-              limit: 100,
-            });
-            return res.data || {};
-          } catch (error) {
-            console.warn('[AdminOrders] Native delivery fallback unavailable for date', deliveryDate, error?.message || error);
-            return {};
-          }
-        })
-      );
-      return { summaries };
-    },
-    enabled: isAdminUser(user) && isPageVisible,
-    refetchInterval: isPageVisible ? 30000 : false,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-  });
-
-  const deliveryFallbackOrders = useMemo(() => {
-    const summaries = Array.isArray(deliveryFallbackData.summaries)
-      ? deliveryFallbackData.summaries
-      : [deliveryFallbackData];
-    return summaries
-      .flatMap(summary => {
-        const sections = summary.sections || {};
-        return [
-          ...(sections.delivery_stops || []),
-          ...(sections.unscheduled_delivery_orders || []),
-        ];
-      })
-      .map(mapDeliveryStopToAdminOrder)
-      .filter(Boolean);
-  }, [deliveryFallbackData]);
-
-  const orders = useMemo(() => {
-    const merged = new Map();
-    primaryOrders.forEach(order => {
-      const key = (order.order_number || order.id || '').toString().toLowerCase();
-      if (key) merged.set(key, order);
-    });
-    deliveryFallbackOrders.forEach(order => {
-      const key = (order.order_number || order.id || '').toString().toLowerCase();
-      if (key && !merged.has(key)) merged.set(key, order);
-    });
-    return Array.from(merged.values());
-  }, [primaryOrders, deliveryFallbackOrders]);
-  const isLoading = ordersLoading || (primaryOrders.length === 0 && deliveryFallbackLoading);
+  // getAdminOrdersWithHub already consolidates Customer App orders, native
+  // ShopifyOrder mirrors, and FulfillmentTask occurrences. A second 14-date
+  // route-summary fan-out duplicated that work and could exhaust read capacity.
+  const orders = primaryOrders;
+  const isLoading = ordersLoading;
   const totalOrderCount = Number(ordersData.order_count ?? ordersData.total ?? orders.length);
   const returnedOrderCount = Number(ordersData.orders_returned ?? primaryOrders.length);
   const orderListWindowed = ordersData.compact_order_windowed === true;
@@ -1448,8 +1306,6 @@ export default function AdminOrders() {
     ordersData,
     ordersError,
     ordersQueryError,
-    deliveryFallbackError,
-    deliveryFallbackQueryError,
   });
   const showOrderSourceDiagnostics = orderSourceDiagnosticErrors.length > 0;
 
@@ -1540,12 +1396,8 @@ export default function AdminOrders() {
       {showOrderSourceDiagnostics && (
         <AdminOrderSourceDiagnostics
           ordersData={ordersData}
-          deliveryFallbackData={deliveryFallbackData}
-          deliveryFallbackOrders={deliveryFallbackOrders}
           ordersError={ordersError}
           ordersQueryError={ordersQueryError}
-          deliveryFallbackError={deliveryFallbackError}
-          deliveryFallbackQueryError={deliveryFallbackQueryError}
         />
       )}
 

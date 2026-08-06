@@ -16,6 +16,12 @@ function normalizeText(value) {
   return (value || '').toString().trim();
 }
 
+function normalizeLimit(value, fallback = 50, maximum = 100) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), maximum);
+}
+
 function sanitizeEvent(event) {
   const details = event.details || {};
   return {
@@ -92,6 +98,180 @@ function dedupeCrossSourceProjections(events) {
   return events.filter((_, index) => !dropIndexes.has(index));
 }
 
+function nativeEvent({
+  type,
+  label,
+  timestamp = null,
+  date = null,
+  source,
+  status = null,
+  task = null,
+}) {
+  return sanitizeEvent({
+    type,
+    label,
+    timestamp,
+    date,
+    source,
+    status,
+    task_id: task?.id || task?.fulfillment_task_id || null,
+    fulfillment_number: task?.fulfillment_number ?? null,
+    production_date: task?.production_date || null,
+    delivery_date: task?.delivery_date || task?.scheduled_date || null,
+    delivery_window_label: task?.delivery_window_label || task?.time_window || null,
+    schedule_source: task?.schedule_source || task?.task_source || null,
+    source_type: task?.source_type || task?.source_channel || null,
+    details: {
+      proof_available: Boolean(task?.delivery_photo_url),
+      delivery_photo_url: task?.delivery_photo_url || null,
+      delivery_drop_location: task?.delivery_drop_location || null,
+    },
+  });
+}
+
+function eventMoment(event) {
+  const value = event?.timestamp || event?.date;
+  const parsed = Date.parse(value || '');
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
+  const events = [];
+
+  if (customerOrder?.created_date) {
+    events.push(nativeEvent({
+      type: 'order_created',
+      label: 'Order Created',
+      timestamp: customerOrder.created_date,
+      source: 'Customer App Order',
+      status: customerOrder.status || customerOrder.payment_status || null,
+    }));
+  }
+
+  if (nativeOrder?.created_date) {
+    events.push(nativeEvent({
+      type: 'native_operations_record_created',
+      label: 'Native Operations Record Created',
+      timestamp: nativeOrder.created_date,
+      source: 'Shopify Order',
+      status: nativeOrder.fulfillment_status || nativeOrder.production_status || null,
+    }));
+  }
+
+  for (const task of tasks) {
+    if (task?.created_date) {
+      events.push(nativeEvent({
+        type: 'fulfillment_task_created',
+        label: 'Delivery Occurrence Created',
+        timestamp: task.created_date,
+        source: 'Fulfillment Task',
+        status: task.status || task.delivery_status || null,
+        task,
+      }));
+    }
+    if (task?.production_date) {
+      events.push(nativeEvent({
+        type: 'production_scheduled',
+        label: 'Production Scheduled',
+        date: task.production_date,
+        source: 'Fulfillment Task',
+        status: task.production_status || task.status || null,
+        task,
+      }));
+    }
+    if (task?.out_for_delivery_at) {
+      events.push(nativeEvent({
+        type: 'out_for_delivery',
+        label: 'Out for Delivery',
+        timestamp: task.out_for_delivery_at,
+        source: 'Fulfillment Task',
+        status: task.delivery_status || task.status || null,
+        task,
+      }));
+    }
+    if (task?.delivery_photo_url && task?.delivered_at) {
+      events.push(nativeEvent({
+        type: 'delivery_proof_added',
+        label: 'Delivery Proof Added',
+        timestamp: task.delivered_at,
+        source: 'Fulfillment Task',
+        status: task.delivery_status || task.status || null,
+        task,
+      }));
+    }
+    if (task?.delivered_at) {
+      events.push(nativeEvent({
+        type: 'delivered',
+        label: 'Delivered',
+        timestamp: task.delivered_at,
+        source: 'Fulfillment Task',
+        status: task.delivery_status || task.status || 'delivered',
+        task,
+      }));
+    }
+  }
+
+  const seen = new Set();
+  return events
+    .filter((event) => {
+      const identity = [
+        normalizeEventToken(event.type),
+        normalizeEventToken(event.source),
+        normalizeText(event.task_id),
+        normalizedEventMoment(event),
+      ].join('|');
+      if (seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    })
+    .sort((a, b) => eventMoment(b) - eventMoment(a))
+    .slice(0, limit);
+}
+
+async function findFirst(entity, filters) {
+  for (const filter of filters) {
+    const rows = await entity.filter(filter, '-created_date', 2).catch(() => []);
+    if (rows.length > 0) return rows[0];
+  }
+  return null;
+}
+
+async function findNativeTimelineRecords(base44, { orderNumber, customerAppOrderId, limit }) {
+  const entities = base44.asServiceRole.entities;
+  const customerOrder = await findFirst(entities.Order, [
+    ...(customerAppOrderId ? [{ id: customerAppOrderId }] : []),
+    ...(orderNumber ? [{ order_number: orderNumber }] : []),
+  ]);
+  const resolvedOrderNumber = orderNumber || normalizeText(customerOrder?.order_number);
+  const nativeOrder = await findFirst(entities.ShopifyOrder, [
+    ...(customerAppOrderId ? [{ base44_order_id: customerAppOrderId }] : []),
+    ...(resolvedOrderNumber ? [{ shopify_order_number: resolvedOrderNumber }] : []),
+  ]);
+  const taskQueries = [];
+  if (resolvedOrderNumber) {
+    taskQueries.push(entities.FulfillmentTask.filter({ order_number: resolvedOrderNumber }, '-created_date', limit).catch(() => []));
+    taskQueries.push(entities.FulfillmentTask.filter({ shopify_order_number: resolvedOrderNumber }, '-created_date', limit).catch(() => []));
+  }
+  if (customerAppOrderId) {
+    taskQueries.push(entities.FulfillmentTask.filter({ order_id: customerAppOrderId }, '-created_date', limit).catch(() => []));
+    taskQueries.push(entities.FulfillmentTask.filter({ base44_order_id: customerAppOrderId }, '-created_date', limit).catch(() => []));
+  }
+  const seen = new Set();
+  const tasks = (await Promise.all(taskQueries)).flat().filter((task) => {
+    const identity = normalizeText(task?.id || task?.fulfillment_task_id);
+    if (!identity || seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+
+  return {
+    customerOrder,
+    nativeOrder,
+    tasks,
+    orderNumber: resolvedOrderNumber || normalizeText(nativeOrder?.shopify_order_number),
+  };
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -119,7 +299,7 @@ Deno.serve(async (req) => {
     const orderNumber = normalizeText(body.order_number);
     const stripeSubscriptionId = normalizeText(body.stripe_subscription_id);
     const customerAppOrderId = normalizeText(body.customer_app_order_id);
-    const limit = normalizeText(body.limit);
+    const limit = normalizeLimit(body.limit);
 
     if (!hubOrderId && !orderNumber && !stripeSubscriptionId && !customerAppOrderId) {
       return Response.json({
@@ -128,8 +308,45 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
+    const nativeRecords = await findNativeTimelineRecords(base44, {
+      orderNumber,
+      customerAppOrderId,
+      limit,
+    });
+    const nativeEvents = buildNativeTimeline({
+      customerOrder: nativeRecords.customerOrder,
+      nativeOrder: nativeRecords.nativeOrder,
+      tasks: nativeRecords.tasks,
+      limit,
+    });
+
+    // Prefer the records owned by this app. They represent each delivery
+    // occurrence directly and avoid duplicate parent-order projections.
+    if (nativeEvents.length > 0) {
+      return Response.json({
+        success: true,
+        matched_by: nativeRecords.customerOrder ? 'customer_app_order' : 'native_operations_record',
+        source: 'customer_app_native',
+        order_number: nativeRecords.orderNumber || orderNumber || null,
+        count: nativeEvents.length,
+        source_event_count: nativeEvents.length,
+        duplicate_projection_count: 0,
+        events: nativeEvents,
+      });
+    }
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub timeline service is not configured' }, { status: 503 });
+      return Response.json({
+        success: true,
+        matched_by: null,
+        source: 'customer_app_native',
+        order_number: orderNumber || null,
+        count: 0,
+        source_event_count: 0,
+        duplicate_projection_count: 0,
+        events: [],
+        warning: 'legacy_source_unavailable',
+      });
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -138,7 +355,7 @@ Deno.serve(async (req) => {
     if (orderNumber) params.set('order_number', orderNumber);
     if (stripeSubscriptionId) params.set('stripe_subscription_id', stripeSubscriptionId);
     if (customerAppOrderId) params.set('customer_app_order_id', customerAppOrderId);
-    if (limit) params.set('limit', limit);
+    params.set('limit', String(limit));
 
     const hubUrl = `${hubBase}/functions/getOrderTimelineForCustomerApp?${params.toString()}`;
     const hubResponse = await fetch(hubUrl, {
@@ -150,9 +367,16 @@ Deno.serve(async (req) => {
 
     if (!hubResponse.ok) {
       return Response.json({
-        error: 'Unable to load Hub timeline',
-        hub_status: hubResponse.status,
-      }, { status: 502 });
+        success: true,
+        matched_by: null,
+        source: 'customer_app_native',
+        order_number: orderNumber || null,
+        count: 0,
+        source_event_count: 0,
+        duplicate_projection_count: 0,
+        events: [],
+        warning: 'legacy_source_unavailable',
+      });
     }
 
     const hubData = await hubResponse.json().catch(() => null);
