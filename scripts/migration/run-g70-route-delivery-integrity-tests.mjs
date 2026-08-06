@@ -120,6 +120,9 @@ const results = [];
     shopify_order_number: customerOrder.order_number,
     assigned_delivery_date: '2026-08-05',
     payment_status: 'paid',
+    source_type: 'customer_app_one_time',
+    order_type: 'one_time',
+    fulfillment_mode: 'multi_delivery',
   };
   const tasks = [
     {
@@ -160,6 +163,7 @@ const results = [];
   });
   assert.equal(result.summary.duplicate_identity_count, 0);
   assert.equal(result.summary.schedule_mismatch_count, 0);
+  assert.equal(result.rows[0].blockers.includes('delivery_lifecycle_subscription_multi_delivery_hold'), false);
   assert.equal(result.rows[0].fulfillment_task_ref, 'task_aug_8');
   results.push('lifecycle_read_model_resolves_multi_date_sibling_occurrences');
 }

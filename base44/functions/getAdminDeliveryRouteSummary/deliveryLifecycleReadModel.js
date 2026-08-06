@@ -103,10 +103,8 @@ function hasSubscriptionHold(...rows) {
       row.customer_app_subscription_id ||
       row.subscription_occurrence_id ||
       row.subscription_cycle_key ||
-      row.subscription_parent_id ||
-      row.fulfillment_instance_count > 1 ||
-      row.fulfillment_mode === 'multi_delivery'
-    ) || fields.some(field => field.includes('subscription') || field.includes('multi_delivery') || field.includes('multi-delivery'));
+      row.subscription_parent_id
+    ) || fields.some(field => field.includes('subscription'));
   });
 }
 
