@@ -21,6 +21,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const CUSTOMER_ORDER_HISTORY_NATIVE_FIRST_ENABLE = 'ENABLE_CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST';
 const CUSTOMER_ORDER_HISTORY_NATIVE_FIRST_KILL_SWITCH = 'CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST_KILL_SWITCH';
 const CUSTOMER_ORDER_HISTORY_NATIVE_FIRST_ALLOWLIST = 'CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST_ORDER_ALLOWLIST';
+const CUSTOMER_ORDER_HISTORY_SOURCE_MERGE_KILL_SWITCH = 'CUSTOMER_ORDER_HISTORY_SOURCE_MERGE_KILL_SWITCH';
 
 const CUSTOMER_REWARDS_NATIVE_FIRST_READS_ENABLE = 'ENABLE_CUSTOMER_REWARDS_LIMITED_NATIVE_FIRST_READS';
 const CUSTOMER_REWARDS_NATIVE_FIRST_READS_KILL_SWITCH = 'CUSTOMER_REWARDS_LIMITED_NATIVE_FIRST_KILL_SWITCH';
@@ -32,6 +33,34 @@ function normalizeText(value) {
 
 function normalizeLower(value) {
   return normalizeText(value).toLowerCase();
+}
+
+function normalizeEmail(value) {
+  return normalizeLower(value);
+}
+
+function normalizePhone(value) {
+  const digits = normalizeText(value).replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  return digits.length === 10 ? digits : '';
+}
+
+function phoneQueryVariants(value) {
+  const raw = normalizeText(value);
+  const digits = normalizePhone(raw);
+  if (!digits) return raw ? [raw] : [];
+  const area = digits.slice(0, 3);
+  const prefix = digits.slice(3, 6);
+  const line = digits.slice(6);
+  return Array.from(new Set([
+    raw,
+    digits,
+    `1${digits}`,
+    `+1${digits}`,
+    `${area}-${prefix}-${line}`,
+    `(${area}) ${prefix}-${line}`,
+    `${area} ${prefix} ${line}`,
+  ].filter(Boolean)));
 }
 
 function normalizeOrderNumber(value) {
@@ -378,6 +407,134 @@ async function applyLimitedNativeFirstOrderHistory(base44, orders) {
   return enriched;
 }
 
+function paymentWasCaptured(row) {
+  return Boolean(
+    row?.payment_captured === true
+    || ['paid', 'refunded'].includes(normalizeLower(row?.payment_status))
+    || ['paid', 'refunded'].includes(normalizeLower(row?.financial_status))
+  );
+}
+
+function authoritativeCustomerOrderStatus(order) {
+  const payment = normalizeLower(order?.payment_status || order?.financial_status);
+  const refund = normalizeLower(order?.refund_status);
+  if (payment === 'refunded' || refund.includes('refund') || order?.refunded_at) return 'refunded';
+
+  const statusValues = [
+    order?.order_status,
+    order?.fulfillment_status,
+    order?.shopify_fulfillment_status,
+    order?.production_status,
+  ].map(normalizeLower).filter(Boolean);
+  if (statusValues.some(value => ['cancelled', 'canceled', 'failed', 'voided'].includes(value))) return 'cancelled';
+  if (statusValues.some(value => ['fulfilled', 'delivered', 'picked_up'].includes(value))) {
+    return ['pickup', 'pos'].includes(normalizeLower(order?.fulfillment_method)) ? 'picked_up' : 'delivered';
+  }
+
+  const mapped = mapProductionStatus(
+    order?.order_status || order?.production_status || order?.fulfillment_status || order?.shopify_fulfillment_status,
+  );
+  if (mapped && mapped !== 'not_required') return mapped;
+  return normalizeLower(order?.source_channel) === 'pos' ? 'picked_up' : 'order_received';
+}
+
+function sanitizeAuthoritativeHistoryOrder(order) {
+  const orderNumber = normalizeOrderNumber(order?.shopify_order_number || order?.order_number);
+  const items = (Array.isArray(order?.line_items) ? order.line_items : []).map(item => ({
+    product_id: normalizeText(item?.product_id || item?.shopify_product_id) || null,
+    title: normalizeText(item?.title || item?.name) || 'Item',
+    price: finiteNumber(item?.price) ?? 0,
+    quantity: finiteNumber(item?.quantity) ?? 1,
+    image_url: normalizeText(item?.image_url) || null,
+    size: normalizeText(item?.variant_title) || null,
+  }));
+  const total = finiteNumber(order?.total_price ?? order?.total) ?? 0;
+  const subtotal = finiteNumber(order?.subtotal) ?? total;
+  const fulfillmentMethod = normalizeLower(order?.fulfillment_method);
+
+  return {
+    id: `shopify_order_${normalizeText(order?.id) || orderNumber}`,
+    order_number: orderNumber,
+    customer_name: normalizeText(order?.customer_name) || null,
+    items,
+    subtotal,
+    delivery_fee: Math.max(0, finiteNumber(order?.delivery_fee) ?? 0),
+    total,
+    fulfillment_type: fulfillmentMethod === 'delivery' ? 'delivery' : 'pickup',
+    estimated_delivery_date: normalizeText(order?.requested_delivery_date) || null,
+    assigned_delivery_date: normalizeText(order?.assigned_delivery_date) || null,
+    delivery_window_label: normalizeText(order?.delivery_window_label || order?.requested_time_window) || null,
+    status: authoritativeCustomerOrderStatus(order),
+    payment_captured: paymentWasCaptured(order),
+    payment_status: normalizeLower(order?.payment_status || order?.financial_status) || 'paid',
+    financial_status: normalizeLower(order?.financial_status || order?.payment_status) || 'paid',
+    fulfillment_status: normalizeLower(order?.fulfillment_status || order?.shopify_fulfillment_status) || null,
+    created_date: normalizeText(order?.customer_order_date || order?.created_date) || null,
+    is_test_order: false,
+    is_abandoned_checkout: false,
+    source_channel: normalizeLower(order?.source_channel) || 'online',
+    customer_history_source: 'authoritative_shopify_order',
+  };
+}
+
+async function loadOwnedAuthoritativeOrders(base44, identityEmails, profiles) {
+  const entity = base44.asServiceRole.entities.ShopifyOrder;
+  const normalizedEmails = new Set((identityEmails || []).map(normalizeEmail).filter(Boolean));
+  const normalizedPhones = new Set((profiles || []).map(profile => normalizePhone(profile?.phone)).filter(Boolean));
+  const queries = [];
+
+  for (const email of identityEmails || []) {
+    const raw = normalizeText(email);
+    if (raw) queries.push({ customer_email: raw });
+    const normalized = normalizeEmail(raw);
+    if (normalized && normalized !== raw) queries.push({ customer_email: normalized });
+  }
+  for (const profile of profiles || []) {
+    for (const phone of phoneQueryVariants(profile?.phone)) queries.push({ customer_phone: phone });
+  }
+
+  const rows = uniqueRows((await Promise.all(
+    queries.map(query => safeFilter(entity, query, '-created_date', 100)),
+  )).flat());
+
+  return rows.filter(row => {
+    const ownedByEmail = normalizedEmails.has(normalizeEmail(row?.customer_email));
+    const rowPhone = normalizePhone(row?.customer_phone);
+    const ownedByPhone = Boolean(rowPhone && normalizedPhones.has(rowPhone));
+    return (ownedByEmail || ownedByPhone)
+      && paymentWasCaptured(row)
+      && !row?.is_test_order
+      && !row?.is_abandoned_checkout;
+  });
+}
+
+function mergeOwnedAuthoritativeOrderHistory(currentOrders, authoritativeOrders) {
+  if (envEnabled(CUSTOMER_ORDER_HISTORY_SOURCE_MERGE_KILL_SWITCH)) return currentOrders;
+
+  const merged = [...(currentOrders || [])];
+  const currentOrderNumbers = new Set(merged.map(order => normalizeOrderNumber(order?.order_number)).filter(Boolean));
+  const currentIds = new Set(merged.map(order => normalizeText(order?.id)).filter(Boolean));
+
+  for (const authoritativeOrder of authoritativeOrders || []) {
+    const orderNumber = normalizeOrderNumber(authoritativeOrder?.shopify_order_number || authoritativeOrder?.order_number);
+    const linkedCustomerOrderId = normalizeText(authoritativeOrder?.base44_order_id || authoritativeOrder?.customer_app_order_id);
+    if ((orderNumber && currentOrderNumbers.has(orderNumber)) || (linkedCustomerOrderId && currentIds.has(linkedCustomerOrderId))) {
+      continue;
+    }
+
+    const projected = sanitizeAuthoritativeHistoryOrder(authoritativeOrder);
+    if (!projected.order_number) continue;
+    merged.push(projected);
+    currentOrderNumbers.add(projected.order_number);
+  }
+
+  return merged.sort((left, right) => {
+    const leftTime = Date.parse(left?.created_date || '') || 0;
+    const rightTime = Date.parse(right?.created_date || '') || 0;
+    return rightTime - leftTime;
+  });
+}
+
 
 const CUSTOMER_REWARDS_DISPLAY_TIERS = [
   { name: 'Seedling', min: 0, max: 499, next: 500 },
@@ -568,19 +725,30 @@ Deno.serve(async (req) => {
     }
 
     const authEmail = user.email;
-    console.log(`[getCustomerAccountDashboardData] Loading dashboard for auth_email=${authEmail}`);
+    console.log('[getCustomerAccountDashboardData] Loading authenticated dashboard');
 
     // ── STEP 1: Resolve all identity emails via service role ──────────────────
     const identities = new Set([authEmail]);
+    const resolvedProfiles = [];
+    const seenProfileIds = new Set();
+    const rememberProfile = (profile) => {
+      if (!profile) return;
+      const key = normalizeText(profile.id) || JSON.stringify(profile);
+      if (seenProfileIds.has(key)) return;
+      seenProfileIds.add(key);
+      resolvedProfiles.push(profile);
+    };
 
     // Forward lookup: profile where customer_email = authEmail
     const fwdProfiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: authEmail });
+    fwdProfiles.forEach(rememberProfile);
     const fwdProfile = fwdProfiles[0] || null;
     if (fwdProfile?.contact_email) identities.add(fwdProfile.contact_email);
     if (fwdProfile?.customer_email) identities.add(fwdProfile.customer_email);
 
     // Reverse lookup: profile where contact_email = authEmail (Apple relay case)
     const revProfiles = await base44.asServiceRole.entities.UserProfile.filter({ contact_email: authEmail });
+    revProfiles.forEach(rememberProfile);
     for (const p of revProfiles) {
       if (p.customer_email) identities.add(p.customer_email);
       if (p.contact_email) identities.add(p.contact_email);
@@ -590,8 +758,10 @@ Deno.serve(async (req) => {
     for (const email of [...identities]) {
       if (email !== authEmail) {
         const extraProfiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: email });
+        extraProfiles.forEach(rememberProfile);
         if (extraProfiles[0]?.contact_email) identities.add(extraProfiles[0].contact_email);
         const revExtra = await base44.asServiceRole.entities.UserProfile.filter({ contact_email: email });
+        revExtra.forEach(rememberProfile);
         for (const p of revExtra) {
           if (p.customer_email) identities.add(p.customer_email);
           if (p.contact_email) identities.add(p.contact_email);
@@ -600,7 +770,7 @@ Deno.serve(async (req) => {
     }
 
     const identityList = [...identities];
-    console.log(`[getCustomerAccountDashboardData] Resolved identities: ${JSON.stringify(identityList)}`);
+    console.log(`[getCustomerAccountDashboardData] Resolved ${identityList.length} identity email(s)`);
 
     // Determine primary canonical email (prefer real email over relay)
     // contact_email on the profile is always the real email
@@ -617,9 +787,11 @@ Deno.serve(async (req) => {
     if (!customerProfile) {
       for (const email of identityList) {
         const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: email });
+        profiles.forEach(rememberProfile);
         if (profiles[0]) { customerProfile = profiles[0]; break; }
       }
     }
+    rememberProfile(customerProfile);
 
     // ── STEP 3: Load subscriptions across all identities ─────────────────────
     const allSubs = [];
@@ -689,9 +861,10 @@ Deno.serve(async (req) => {
     });
 
     allOrdersForHistory = await applyLimitedNativeFirstOrderHistory(base44, allOrdersForHistory);
+    const authoritativeOrders = await loadOwnedAuthoritativeOrders(base44, identityList, resolvedProfiles);
+    allOrdersForHistory = mergeOwnedAuthoritativeOrderHistory(allOrdersForHistory, authoritativeOrders);
 
-    console.log(`[getCustomerAccountDashboardData] allOrders=${allOrders.length} validOrders=${validOrders.length} allOrdersForHistory=${allOrdersForHistory.length}`);
-    console.log(`[getCustomerAccountDashboardData] order details: ${JSON.stringify(allOrders.map(o => ({ num: o.order_number, id: o.id, status: o.status, payment_status: o.payment_status, captured: o.payment_captured, pi: o.stripe_payment_intent_id?.slice(0,12) })))}`);
+    console.log(`[getCustomerAccountDashboardData] sourceOrders=${allOrders.length} sourceValidOrders=${validOrders.length} authoritativeOrders=${authoritativeOrders.length} customerHistoryOrders=${allOrdersForHistory.length}`);
 
     // ── STEP 5: Load credits across all identities ────────────────────────────
     let creditRecord = null;
@@ -736,7 +909,7 @@ Deno.serve(async (req) => {
       unreadCount += notifs.length;
     }
 
-    console.log(`[getCustomerAccountDashboardData] Done. identities=${identityList.length} subs=${allSubs.length} active_subs=${activeSubs.length} orders=${validOrders.length} credits=${creditRecord?.balance || 0} pts=${pointsRecord?.total_points || 0}`);
+    console.log(`[getCustomerAccountDashboardData] Done. identities=${identityList.length} subs=${allSubs.length} active_subs=${activeSubs.length} orders=${allOrdersForHistory.length} credits=${creditRecord?.balance || 0} pts=${pointsRecord?.total_points || 0}`);
 
     return Response.json({
       // Identity resolution
@@ -755,9 +928,9 @@ Deno.serve(async (req) => {
       current_ritual: currentRitual,
 
       // Orders
-      orders: validOrders,
+      orders: allOrdersForHistory,
       all_orders_raw: allOrdersForHistory,
-      order_count: validOrders.length,
+      order_count: allOrdersForHistory.length,
 
       // Credits
       credits: creditRecord?.balance || 0,
@@ -778,7 +951,7 @@ Deno.serve(async (req) => {
       debug: {
         resolved_identity_emails: identityList,
         active_subscription_ids_found: activeSubs.map(s => s.stripe_subscription_id || s.id),
-        orders_found: validOrders.length,
+        orders_found: allOrdersForHistory.length,
         credits_found: creditRecord?.balance || 0,
         profile_email_displayed: customerProfile?.contact_email || authEmail,
         ritual_card_value: currentRitual ? 'Active' : 'None',

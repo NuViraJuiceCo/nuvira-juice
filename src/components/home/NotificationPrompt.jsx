@@ -6,6 +6,7 @@ import {
   getEventPushSupportStatus,
   subscribeToEventPushNotifications,
 } from '@/lib/eventPushNotifications';
+import { useAuth } from '@/lib/AuthContext';
 
 const STORAGE_KEY = 'nuvira_native_notif_prompt_dismissed_v1';
 
@@ -26,16 +27,18 @@ function storeDismissedState() {
 }
 
 export default function NotificationPrompt() {
+  const { user } = useAuth();
   const [permission, setPermission] = useState(null);
   const [dismissed, setDismissed] = useState(false);
   const [show, setShow] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
+  const [enableError, setEnableError] = useState('');
 
   useEffect(() => {
     let active = true;
     let timer = null;
 
-    if (typeof window === 'undefined') return undefined;
+    if (typeof window === 'undefined' || !user?.email) return undefined;
     const isDismissed = getStoredDismissedState();
     setDismissed(isDismissed);
 
@@ -60,7 +63,7 @@ export default function NotificationPrompt() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, []);
+  }, [user?.email]);
 
   const handleDismiss = () => {
     storeDismissedState();
@@ -70,25 +73,28 @@ export default function NotificationPrompt() {
 
   const handleEnable = async () => {
     setIsEnabling(true);
+    setEnableError('');
     try {
       const result = await subscribeToEventPushNotifications();
       const nextPermission = result.status || (result.success ? 'granted' : 'default');
       setPermission(nextPermission);
-      if (result.success || nextPermission === 'granted') {
+      if (result.success) {
         setShow(false);
         storeDismissedState();
       } else if (nextPermission === 'denied') {
         setShow(false);
         storeDismissedState();
+      } else {
+        setEnableError('Notifications are allowed, but this device is not connected yet. Tap retry.');
       }
     } catch {
-      setShow(false);
+      setEnableError('We could not connect this device yet. Please try again.');
     } finally {
       setIsEnabling(false);
     }
   };
 
-  if (permission === 'granted' || !show) return null;
+  if (!user?.email || !show) return null;
 
   return (
     <AnimatePresence>
@@ -108,6 +114,9 @@ export default function NotificationPrompt() {
             <p className="text-xs text-muted-foreground leading-snug">
               Enable notifications to be the first to know about new drops, deliveries, and community events.
             </p>
+            {enableError && (
+              <p className="mt-2 text-xs text-destructive" role="alert">{enableError}</p>
+            )}
             <div className="flex gap-2 mt-3">
               <button
                 onClick={handleEnable}

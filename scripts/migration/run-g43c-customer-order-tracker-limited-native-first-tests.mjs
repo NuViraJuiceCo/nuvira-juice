@@ -7,6 +7,7 @@ import vm from 'node:vm';
 const repoRoot = process.cwd();
 const functionPath = path.join(repoRoot, 'base44/functions/getCustomerOrderDetail/entry.ts');
 const source = fs.readFileSync(functionPath, 'utf8');
+const trackerSource = fs.readFileSync(path.join(repoRoot, 'src/pages/OrderTracker.jsx'), 'utf8');
 
 function loadHarness(env = {}) {
   let handler;
@@ -339,6 +340,51 @@ test('existing tracker route identifiers remain compatible', async () => {
   const byId = await invoke({ body: { order_id: 'ca_NV-MQHJR3V2', source: 'order_history' } });
   assert.equal(byNumber.json.found, true);
   assert.equal(byId.json.found, true);
+});
+
+test('numeric POS order number resolves through phone-owned ShopifyOrder fallback', async () => {
+  const result = await invoke({
+    scenario: {
+      orders: [],
+      profiles: [{ id: 'profile_owner', customer_email: 'owner@example.test', contact_email: 'owner@example.test', phone: '5551234567' }],
+      nativeOrders: [makeNativeOrder({
+        id: 'native_1058',
+        base44_order_id: '',
+        shopify_order_number: '1058',
+        customer_email: 'checkout-alias@example.test',
+        customer_phone: '+15551234567',
+        customer_name: 'Owner Example',
+        source_channel: 'pos',
+        fulfillment_method: 'pos',
+        production_status: 'not_required',
+        fulfillment_status: 'fulfilled',
+        shopify_fulfillment_status: 'fulfilled',
+        line_items: [{ title: 'Juice', quantity: 2, price: 12 }],
+        total_price: 24,
+        shopify_raw_payload: { secret: 'must-not-return' },
+        internal_notes: 'must-not-return',
+      })],
+      tasks: [],
+    },
+    body: { order_number: '1058', source: 'order_history' },
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.json.found, true);
+  assert.equal(result.json.source_record, 'hub_shopify_order');
+  assert.equal(result.json.hub_order.shopify_order_number, '1058');
+  assert.equal(result.json.hub_order.status, 'picked_up');
+  assert.equal(result.json.customer_visible_status, 'Picked Up ✓');
+  assert.equal(result.json.hub_order.line_items.length, 1);
+  assert.equal(Object.hasOwn(result.json.hub_order, 'customer_email'), false);
+  assert.equal(Object.hasOwn(result.json.hub_order, 'customer_phone'), false);
+  assert.equal(JSON.stringify(result.json.hub_order).includes('must-not-return'), false);
+});
+
+test('numeric order routes are treated as order numbers instead of Base44 entity ids', async () => {
+  assert.match(trackerSource, /const isBase44EntityId = \/\^\[a-f0-9\]\{24\}\$\/i/);
+  assert.match(trackerSource, /const isOrderNumber = Boolean\(rawParam && !isStripeIdentifier && !isBase44EntityId\)/);
+  assert.match(trackerSource, /const orderNumberParam = isOrderNumber \? rawParam\.replace\(\/\^#\//);
 });
 
 test('no customer-visible G43C diagnostic fields are added', async () => {

@@ -17,7 +17,10 @@ import LowercaseRedirect from '@/components/LowercaseRedirect';
 import SeoHeadSanitizer from '@/components/SeoHeadSanitizer';
 import { base44 } from '@/api/base44Client';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
-import { installEventNativePushListeners } from '@/lib/eventPushNotifications';
+import {
+  ensureAuthenticatedNativePushRegistration,
+  installEventNativePushListeners,
+} from '@/lib/eventPushNotifications';
 
 const ProductDetail = React.lazy(() => import('@/pages/ProductDetail'));
 const LocalSeoLanding = React.lazy(() => import('@/pages/LocalSeoLanding'));
@@ -192,6 +195,32 @@ const AuthenticatedApp = () => {
       removeListeners?.();
     };
   }, [navigate]);
+
+  React.useEffect(() => {
+    if (!user?.email) return undefined;
+
+    let active = true;
+    let retryTimer = null;
+    const reconcilePushRegistration = async (attempt = 0) => {
+      const result = await ensureAuthenticatedNativePushRegistration().catch((error) => ({
+        success: false,
+        status: 'error',
+        reason: error?.message || 'native_push_registration_failed',
+      }));
+      if (!active || result.success || result.status === 'unsupported' || result.status === 'denied' || result.status === 'default') return;
+      if (attempt < 2) {
+        retryTimer = window.setTimeout(() => reconcilePushRegistration(attempt + 1), 3000 * (attempt + 1));
+      } else {
+        console.warn('[App] Authenticated native push registration could not be confirmed');
+      }
+    };
+
+    reconcilePushRegistration();
+    return () => {
+      active = false;
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [user?.email]);
 
   const isResetSignInRoute = React.useMemo(() => {
     if (location.pathname !== '/native-login') return false;

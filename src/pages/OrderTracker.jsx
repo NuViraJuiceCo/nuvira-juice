@@ -78,9 +78,11 @@ export default function OrderTracker() {
   const sessionId = urlParams.get('session_id');
   const paymentIntentId = urlParams.get('payment_intent');
 
-  const isOrderNumber = rawParam && rawParam.startsWith('NV-');
-  const orderId = isOrderNumber ? null : rawParam;
-  const orderNumberParam = isOrderNumber ? rawParam : null;
+  const isStripeIdentifier = rawParam?.startsWith('cs_') || rawParam?.startsWith('pi_');
+  const isBase44EntityId = /^[a-f0-9]{24}$/i.test(rawParam || '');
+  const isOrderNumber = Boolean(rawParam && !isStripeIdentifier && !isBase44EntityId);
+  const orderId = isBase44EntityId ? rawParam : null;
+  const orderNumberParam = isOrderNumber ? rawParam.replace(/^#/, '') : null;
 
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -251,7 +253,7 @@ export default function OrderTracker() {
   }
 
   // ── Terminal / cancelled / refunded status views ───────────────────────────
-  const currentStatus = order?.status || hubOrder?.production_status || 'unknown';
+  const currentStatus = order?.status || hubOrder?.status || hubOrder?.production_status || 'unknown';
 
   if (['cancelled', 'refunded', 'failed'].includes(currentStatus)) {
     const isCancelled = currentStatus === 'cancelled';
@@ -324,7 +326,7 @@ export default function OrderTracker() {
   // ── Normal order detail view ───────────────────────────────────────────────
   const displayOrder = order || {
     order_number: hubOrder?.shopify_order_number || orderNumberParam,
-    status: hubOrder?.production_status || 'order_received',
+    status: hubOrder?.status || hubOrder?.production_status || 'order_received',
     fulfillment_type: hubOrder?.fulfillment_method === 'pickup' ? 'pickup' : 'delivery',
     items: hubOrder?.line_items?.map(li => ({
       title: li.title,

@@ -382,6 +382,105 @@ test('no duplicate order is returned', async () => {
   assert.equal(json.all_orders_raw.filter(row => row.order_number === 'NV-MQHJR3V2').length, 1);
 });
 
+test('paid POS order owned by normalized profile phone is included without a Customer App mirror', async () => {
+  const { json } = await invoke({
+    storeArgs: {
+      orders: [],
+      profiles: [{ id: 'profile_customer', customer_email: 'customer', contact_email: 'customer', phone: '5551234567' }],
+      nativeOrders: [makeNativeOrder({
+        id: 'native_1058',
+        shopify_order_number: '1058',
+        base44_order_id: '',
+        customer_email: 'checkout-alias',
+        customer_phone: '+15551234567',
+        customer_name: 'Customer',
+        source_channel: 'pos',
+        fulfillment_method: 'pos',
+        fulfillment_status: 'fulfilled',
+        shopify_fulfillment_status: 'fulfilled',
+        production_status: 'not_required',
+        payment_status: 'paid',
+        financial_status: 'paid',
+        customer_order_date: '2026-07-11T19:10:55.518Z',
+        total_price: 104.30,
+        subtotal: 104.30,
+        line_items: [
+          { title: 'Juice One', quantity: 2, price: 20 },
+          { title: 'Juice Two', quantity: 1, price: 24.30 },
+          { title: 'Juice Three', quantity: 1, price: 40 },
+        ],
+      })],
+      tasks: [],
+    },
+  });
+
+  assert.equal(json.all_orders_raw.length, 1);
+  assert.equal(json.all_orders_raw[0].order_number, '1058');
+  assert.equal(json.all_orders_raw[0].status, 'picked_up');
+  assert.equal(json.all_orders_raw[0].total, 104.30);
+  assert.equal(json.all_orders_raw[0].items.length, 3);
+  assert.equal(json.order_count, 1);
+  assert.equal(json.orders.length, 1);
+  assert.equal(Object.hasOwn(json.all_orders_raw[0], 'customer_email'), false);
+  assert.equal(Object.hasOwn(json.all_orders_raw[0], 'customer_phone'), false);
+  assert.equal(JSON.stringify(json.all_orders_raw[0]).includes('shopify_raw_payload'), false);
+});
+
+test('authoritative source merge deduplicates an owned Shopify or POS mirror by order number', async () => {
+  const current = makeOrder({ order_number: '1058' });
+  const { json } = await invoke({
+    storeArgs: {
+      orders: [current],
+      profiles: [{ id: 'profile_customer', customer_email: 'customer', contact_email: 'customer', phone: '5551234567' }],
+      nativeOrders: [makeNativeOrder({
+        id: 'native_1058',
+        shopify_order_number: '#1058',
+        base44_order_id: '',
+        customer_email: 'customer',
+        customer_phone: '+15551234567',
+      })],
+      tasks: [],
+    },
+  });
+  assert.equal(json.all_orders_raw.length, 1);
+  assert.equal(json.all_orders_raw[0].id, current.id);
+});
+
+test('authoritative source merge rejects paid rows that match neither owned email nor owned phone', async () => {
+  const { json } = await invoke({
+    storeArgs: {
+      orders: [],
+      profiles: [{ id: 'profile_customer', customer_email: 'customer', contact_email: 'customer', phone: '5551234567' }],
+      nativeOrders: [makeNativeOrder({
+        id: 'native_unowned',
+        shopify_order_number: '9999',
+        customer_email: 'someone-else',
+        customer_phone: '+15559876543',
+      })],
+      tasks: [],
+    },
+  });
+  assert.equal(json.all_orders_raw.length, 0);
+});
+
+test('authoritative source merge kill switch restores the prior Customer App-only history', async () => {
+  const { json } = await invoke({
+    env: { CUSTOMER_ORDER_HISTORY_SOURCE_MERGE_KILL_SWITCH: 'true' },
+    storeArgs: {
+      orders: [],
+      profiles: [{ id: 'profile_customer', customer_email: 'customer', contact_email: 'customer', phone: '5551234567' }],
+      nativeOrders: [makeNativeOrder({
+        id: 'native_1058',
+        shopify_order_number: '1058',
+        customer_email: 'customer',
+        customer_phone: '+15551234567',
+      })],
+      tasks: [],
+    },
+  });
+  assert.equal(json.all_orders_raw.length, 0);
+});
+
 test('pagination and sorting remain compatible', async () => {
   const orders = [
     makeOrder({ order_number: 'NV-MQHJR3V2', created_date: '2026-06-17T12:00:00.000Z' }),

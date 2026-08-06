@@ -20,6 +20,16 @@ function normalizeLower(value) {
   return normalizeText(value).toLowerCase();
 }
 
+function normalizeEmail(value) {
+  return normalizeLower(value);
+}
+
+function normalizePhone(value) {
+  const digits = normalizeText(value).replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  return digits.length === 10 ? digits : '';
+}
+
 function normalizeOrderNumber(value) {
   return normalizeText(value).replace(/^#/, '').toUpperCase();
 }
@@ -160,6 +170,54 @@ function mapCustomerStatus(value) {
     scheduled_for_juicing: 'scheduled_for_juicing',
   };
   return map[status] || status;
+}
+
+function customerStatusForHubOrder(order) {
+  const payment = normalizeLower(order?.payment_status || order?.financial_status);
+  const refund = normalizeLower(order?.refund_status);
+  if (payment === 'refunded' || refund.includes('refund') || order?.refunded_at) return 'refunded';
+
+  const statusValues = [
+    order?.order_status,
+    order?.fulfillment_status,
+    order?.shopify_fulfillment_status,
+    order?.production_status,
+  ].map(normalizeLower).filter(Boolean);
+  if (statusValues.some(value => ['cancelled', 'canceled', 'failed', 'voided'].includes(value))) return 'cancelled';
+  if (statusValues.some(value => ['fulfilled', 'delivered', 'picked_up'].includes(value))) {
+    return ['pickup', 'pos'].includes(normalizeLower(order?.fulfillment_method)) ? 'picked_up' : 'delivered';
+  }
+
+  const mapped = mapCustomerStatus(order?.order_status || order?.production_status || order?.fulfillment_status);
+  if (mapped && mapped !== 'not_required') return mapped;
+  return normalizeLower(order?.source_channel) === 'pos' ? 'picked_up' : 'order_received';
+}
+
+function sanitizeHubOrderForCustomer(order) {
+  if (!order) return null;
+  return {
+    shopify_order_number: normalizeOrderNumber(order.shopify_order_number || order.order_number),
+    customer_name: normalizeText(order.customer_name) || null,
+    line_items: (Array.isArray(order.line_items) ? order.line_items : []).map(item => ({
+      title: normalizeText(item?.title || item?.name) || 'Item',
+      variant_title: normalizeText(item?.variant_title) || null,
+      quantity: Number.isFinite(Number(item?.quantity)) ? Number(item.quantity) : 1,
+      price: Number.isFinite(Number(item?.price)) ? Number(item.price) : 0,
+      image_url: normalizeText(item?.image_url) || null,
+    })),
+    fulfillment_method: normalizeLower(order.fulfillment_method) || 'delivery',
+    status: customerStatusForHubOrder(order),
+    production_status: normalizeLower(order.production_status) || null,
+    fulfillment_status: normalizeLower(order.fulfillment_status || order.shopify_fulfillment_status) || null,
+    total_price: Number.isFinite(Number(order.total_price)) ? Number(order.total_price) : 0,
+    requested_delivery_date: normalizeText(order.requested_delivery_date) || null,
+    assigned_delivery_date: normalizeText(order.assigned_delivery_date) || null,
+    requested_time_window: normalizeText(order.requested_time_window) || null,
+    delivery_window_label: normalizeText(order.delivery_window_label) || null,
+    delivered_at: normalizeText(order.delivered_at) || null,
+    delivery_photo_url: normalizeText(order.delivery_photo_url) || null,
+    delivery_drop_location: normalizeText(order.delivery_drop_location) || null,
+  };
 }
 
 
@@ -404,6 +462,15 @@ Deno.serve(async (req) => {
 
     // ── 1. Resolve all identity emails for this customer ──────────────────────
     const resolvedEmails = new Set([user.email]);
+    const resolvedProfiles = [];
+    const seenProfileIds = new Set();
+    const rememberProfile = (profile) => {
+      if (!profile) return;
+      const key = normalizeText(profile.id) || JSON.stringify(profile);
+      if (seenProfileIds.has(key)) return;
+      seenProfileIds.add(key);
+      resolvedProfiles.push(profile);
+    };
 
     // Forward lookup: find profiles that share contact_email with this user's email
     const [primaryProfiles, contactProfiles] = await Promise.all([
@@ -412,6 +479,7 @@ Deno.serve(async (req) => {
     ]);
 
     for (const p of [...primaryProfiles, ...contactProfiles]) {
+      rememberProfile(p);
       if (p.customer_email) resolvedEmails.add(p.customer_email);
       if (p.contact_email) resolvedEmails.add(p.contact_email);
     }
@@ -420,12 +488,21 @@ Deno.serve(async (req) => {
     for (const email of [...resolvedEmails]) {
       const aliases = await base44.asServiceRole.entities.UserProfile.filter({ contact_email: email }, null, 10);
       for (const a of aliases) {
+        rememberProfile(a);
         if (a.customer_email) resolvedEmails.add(a.customer_email);
       }
     }
 
     const emailList = [...resolvedEmails];
-    debugPath.push(`resolved_emails: ${emailList.join(', ')}`);
+    const normalizedEmailList = new Set(emailList.map(normalizeEmail).filter(Boolean));
+    const normalizedPhoneList = new Set(resolvedProfiles.map(profile => normalizePhone(profile?.phone)).filter(Boolean));
+    const orderBelongsToCustomer = (candidate) => {
+      if (!candidate) return false;
+      const emailMatches = normalizedEmailList.has(normalizeEmail(candidate.customer_email));
+      const phone = normalizePhone(candidate.customer_phone || candidate.contact_phone);
+      return emailMatches || Boolean(phone && normalizedPhoneList.has(phone));
+    };
+    debugPath.push(`resolved_identity_count: ${emailList.length}`);
 
     // ── 2. Multi-path order lookup (CA Order entity) ──────────────────────────
     let order = null;
@@ -468,9 +545,8 @@ Deno.serve(async (req) => {
 
     // ── 3. Security: verify order belongs to resolved identity ────────────────
     if (order && user.role !== 'admin') {
-      const orderEmail = order.customer_email;
-      if (!emailList.includes(orderEmail)) {
-        debugPath.push('SECURITY: order email not in resolved identity — blocked');
+      if (!orderBelongsToCustomer(order)) {
+        debugPath.push('SECURITY: order identity did not match — blocked');
         return Response.json({ found: false, error: 'Not authorized', debug_lookup_path: debugPath }, { status: 403 });
       }
     }
@@ -479,18 +555,24 @@ Deno.serve(async (req) => {
     let hubOrder = null;
     if (!order) {
       debugPath.push('CA Order not found — trying Hub ShopifyOrder fallback');
-      const searchNum = order_number || null;
+      const searchNum = normalizeOrderNumber(order_number || null);
       const searchId = order_id || null;
 
       const hubRows = await (async () => {
-        if (searchNum) return base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_number: searchNum }, null, 5);
+        if (searchNum) {
+          const rows = await Promise.all([
+            base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_number: searchNum }, null, 5),
+            base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_number: `#${searchNum}` }, null, 5),
+          ]);
+          return uniqueRows(rows.flat());
+        }
         if (searchId) return base44.asServiceRole.entities.ShopifyOrder.filter({ base44_order_id: searchId }, null, 5);
         return [];
       })();
 
       // Match hub order by identity
       for (const h of hubRows) {
-        if (user.role === 'admin' || emailList.includes(h.customer_email)) {
+        if (user.role === 'admin' || orderBelongsToCustomer(h)) {
           hubOrder = h;
           lookupSource = 'hub_shopify_order';
           debugPath.push('found: Hub ShopifyOrder');
@@ -567,7 +649,7 @@ Deno.serve(async (req) => {
 
     const TERMINAL_STATUSES = ['delivered', 'picked_up', 'cancelled', 'refunded', 'failed'];
 
-    const orderStatus = order?.status || hubOrder?.production_status || 'unknown';
+    const orderStatus = order?.status || customerStatusForHubOrder(hubOrder) || 'unknown';
     const isTerminal = TERMINAL_STATUSES.includes(orderStatus);
 
     const statusTimeline = (order?.status_history || []).map(h => ({
@@ -581,11 +663,11 @@ Deno.serve(async (req) => {
     const deliveryStatus = {
       status: orderStatus,
       label: STATUS_LABELS[orderStatus] || orderStatus,
-      delivered_at: order?.delivered_at || null,
-      delivery_photo_url: order?.delivery_photo_url || null,
-      delivery_drop_location: order?.delivery_drop_location || null,
-      assigned_delivery_date: order?.assigned_delivery_date || order?.estimated_delivery_date || null,
-      delivery_window_label: order?.delivery_window_label || null,
+      delivered_at: order?.delivered_at || hubOrder?.delivered_at || null,
+      delivery_photo_url: order?.delivery_photo_url || hubOrder?.delivery_photo_url || null,
+      delivery_drop_location: order?.delivery_drop_location || hubOrder?.delivery_drop_location || null,
+      assigned_delivery_date: order?.assigned_delivery_date || order?.estimated_delivery_date || hubOrder?.assigned_delivery_date || hubOrder?.requested_delivery_date || null,
+      delivery_window_label: order?.delivery_window_label || hubOrder?.delivery_window_label || hubOrder?.requested_time_window || null,
     };
 
     // ── 10. Customer-visible status ───────────────────────────────────────────
@@ -608,7 +690,7 @@ Deno.serve(async (req) => {
       found: true,
       source_record: lookupSource,
       order: order || null,
-      hub_order: hubOrder || null,
+      hub_order: sanitizeHubOrderForCustomer(hubOrder),
       fulfillment_tasks: fulfillmentTasks,
       status_timeline: statusTimeline,
       delivery_status: deliveryStatus,

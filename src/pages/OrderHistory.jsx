@@ -148,6 +148,10 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
   const TERMINAL = ['delivered', 'picked_up', 'cancelled', 'refunded', 'failed'];
   const isActive = !TERMINAL.includes(order.status);
   const isCancelled = ['cancelled', 'refunded', 'failed'].includes(order.status);
+  const canReorder = !isActive
+    && Array.isArray(order.items)
+    && order.items.length > 0
+    && order.items.every(item => item?.product_id);
   const { addItem } = useCart();
   const navigate = useNavigate();
 
@@ -227,7 +231,7 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
             </p>
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold">${order.total?.toFixed(2)}</p>
-              {!isActive && (
+              {canReorder && (
                 <button
                   onClick={handleReorder}
                   className="flex items-center gap-1 nuvira-gradient-button text-[10px] font-bold px-2.5 py-1 rounded-full active:scale-95 transition-transform"                >
