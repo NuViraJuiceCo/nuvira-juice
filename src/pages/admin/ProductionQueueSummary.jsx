@@ -1239,7 +1239,6 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     actual_units: batch.actual_units || batch.planned_units || '',
     pH_result: batch.pH_result || '',
     pH_passed_failed: batch.pH_passed_failed || '',
-    pH_meter_id: batch.pH_meter_id || '',
     calibration_checked: batch.calibration_checked === true,
     ccp_check_complete: batch.ccp_check_complete === true,
     sanitation_verification_complete: batch.sanitation_verification_complete === true,
@@ -1284,7 +1283,6 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     return {
       pH_result: Number(completeForm.pH_result),
       pH_passed_failed: completeForm.pH_passed_failed,
-      pH_meter_id: completeForm.pH_meter_id,
       calibration_checked: completeForm.calibration_checked,
       ccp_check_complete: completeForm.ccp_check_complete,
       sanitation_verification_complete: completeForm.sanitation_verification_complete,
@@ -1543,9 +1541,9 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           {activeAction === 'verify' && (
             <>
               <div className="rounded-lg border border-cyan-200 bg-cyan-50/80 p-3 text-[11px] text-cyan-950 dark:border-cyan-900/60 dark:bg-cyan-950/20 dark:text-cyan-100">
-                Measure pH from this finished batch, record the meter used, and compare the reading to NuVira's approved product/HACCP limit. The system never invents a pH value or pass/fail result.
+                Measure pH from this finished batch, confirm the meter was calibrated, and compare the reading to NuVira's approved product/HACCP limit. The system never invents a pH value or pass/fail result.
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <label className="space-y-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">pH result</span>
                   <input
@@ -1554,15 +1552,6 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
                     min="0"
                     value={completeForm.pH_result}
                     onChange={event => setCompleteForm(prev => ({ ...prev, pH_result: event.target.value }))}
-                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">pH meter ID</span>
-                  <input
-                    value={completeForm.pH_meter_id}
-                    onChange={event => setCompleteForm(prev => ({ ...prev, pH_meter_id: event.target.value }))}
-                    placeholder="Meter or calibration record ID"
                     className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs"
                   />
                 </label>
@@ -1629,6 +1618,18 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
             </>
           )}
         </div>
+      )}
+
+      {(activeAction === 'complete' || activeAction === 'verify') && (
+        <button
+          type="button"
+          data-testid="native-lifecycle-refresh-preview"
+          disabled={pending || actionPending}
+          onClick={() => runPreview(activeAction)}
+          className="w-full h-9 rounded-lg border border-primary/40 bg-primary/5 px-3 text-xs font-semibold text-primary disabled:opacity-50"
+        >
+          {pending ? 'Checking readiness...' : `Check ${formatLabel(activeAction)} Readiness`}
+        </button>
       )}
 
       {message && (

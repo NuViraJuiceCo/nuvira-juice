@@ -242,7 +242,6 @@ const completedForVerification = {
 const completeQcInput = {
   pH_result: 3.8,
   pH_passed_failed: 'passed',
-  pH_meter_id: 'PH-METER-1',
   calibration_checked: true,
   ccp_check_complete: true,
   sanitation_verification_complete: true,
@@ -259,20 +258,20 @@ const verifyReady = executeFns.planLifecycle({
   reason: 'test complete QC capture',
 });
 assert.equal(verifyReady.blockers.length, 0);
-assert.equal(verifyReady.proposed_patch.pH_meter_id, 'PH-METER-1');
+assert.equal(Object.hasOwn(verifyReady.proposed_patch, 'pH_meter_id'), false);
 assert.equal(verifyReady.proposed_patch.calibration_checked, true);
 
-const verifyMissingMeter = executeFns.planLifecycle({
+const verifyWithoutMeterId = executeFns.planLifecycle({
   action: 'verify',
   batch: completedForVerification,
   actorEmail: 'info@nuvirajuice.com',
-  requestId: 'g51d_verify_missing_meter',
+  requestId: 'g51d_verify_without_meter_id',
   now: '2026-07-23T13:30:00.000Z',
-  body: { ...completeQcInput, pH_meter_id: '' },
-  reason: 'test missing meter',
+  body: completeQcInput,
+  reason: 'test no meter id required',
 });
-assert.ok(verifyMissingMeter.blockers.includes('missing_ph_meter_id'));
-assert.equal(verifyMissingMeter.proposed_patch, null);
+assert.equal(verifyWithoutMeterId.blockers.length, 0);
+assert.equal(Object.hasOwn(verifyWithoutMeterId.proposed_patch, 'pH_meter_id'), false);
 
 const closedPreviewFns = loadFunction(
   path.join(repoRoot, 'base44/functions/previewNativeProductionBatchLifecycle/entry.ts'),

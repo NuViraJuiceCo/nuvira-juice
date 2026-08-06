@@ -525,7 +525,6 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
   if (!isPositiveNumber(pHResult)) blockers.push('missing_ph_result');
   if (!pHStatus) blockers.push('missing_ph_pass_fail');
   if (!passedFailed) blockers.push('missing_batch_pass_fail');
-  if (!pHMeterId) blockers.push('missing_ph_meter_id');
   if (!calibrationChecked) blockers.push('ph_meter_calibration_not_confirmed');
   if (!ccpCheckComplete) blockers.push('ccp_check_incomplete');
   if (!sanitationVerificationComplete) blockers.push('sanitation_verification_incomplete');
@@ -566,7 +565,7 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
     verified_at: now,
     pH_result: Number(pHResult),
     pH_passed_failed: pHStatus,
-    pH_meter_id: pHMeterId,
+    ...(pHMeterId ? { pH_meter_id: pHMeterId } : {}),
     calibration_checked: calibrationChecked,
     ccp_check_complete: ccpCheckComplete,
     sanitation_verification_complete: sanitationVerificationComplete,
@@ -583,7 +582,7 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
       'ProductionBatch.verified_at',
       'ProductionBatch.pH_result',
       'ProductionBatch.pH_passed_failed',
-      'ProductionBatch.pH_meter_id',
+      ...(pHMeterId ? ['ProductionBatch.pH_meter_id'] : []),
       'ProductionBatch.calibration_checked',
       'ProductionBatch.ccp_check_complete',
       'ProductionBatch.sanitation_verification_complete',

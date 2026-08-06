@@ -228,10 +228,11 @@ assert.ok(modalSource.includes('the recorded amount differs from the recipe plan
 assert.ok(modalSource.includes('max-h-[calc(100dvh-2rem)]'));
 assert.ok(modalSource.includes('min-h-0 flex-1 space-y-4 overflow-y-auto'));
 assert.ok(cssSource.includes('[data-scroll] {'));
-assert.ok(productionSource.includes('pH meter ID'));
+assert.equal(productionSource.includes('pH meter ID'), false);
 assert.ok(productionSource.includes('pH meter calibration checked'));
 assert.ok(productionSource.includes('CCP monitoring complete'));
 assert.ok(productionSource.includes('The system never invents a pH value or pass/fail result.'));
+assert.ok(productionSource.includes('Check ${formatLabel(activeAction)} Readiness'));
 const genericOverflowGroup = cssSource.match(/\[data-scroll\],\s*\.overflow-y-auto[\s\S]*?\}/)?.[0] || '';
 assert.equal(genericOverflowGroup.includes('transform:'), false);
 assert.equal(modalSource.includes('Promise.all'), false);

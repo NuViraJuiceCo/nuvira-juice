@@ -230,7 +230,6 @@ row = fns.buildBatchLifecycleRow({
     actual_units: 1,
     pH_result: 3.7,
     pH_passed_failed: 'passed',
-    pH_meter_id: 'PH-METER-1',
     calibration_checked: true,
     ccp_check_complete: true,
     sanitation_verification_complete: true,
