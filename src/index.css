@@ -209,9 +209,14 @@ body {
 .overflow-x-scroll {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
-  /* GPU-accelerate the scroll layer */
-  transform: translateZ(0);
   will-change: scroll-position;
+}
+
+/* Do not apply a transform to generic overflow utilities. A transformed
+   element creates a containing block and overrides Tailwind's translate
+   positioning, which can push fixed Radix dialogs off-screen in Safari. */
+[data-scroll] {
+  transform: translateZ(0);
 }
 
 /* Horizontal carousels — smooth scrolling without snap locks */

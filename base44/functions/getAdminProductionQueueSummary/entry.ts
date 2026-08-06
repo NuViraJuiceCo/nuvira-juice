@@ -184,6 +184,19 @@ function preStartRecordReady(recordType, record) {
   return record?.within_range === true && Number.isFinite(Number(record?.temperature));
 }
 
+function batchSetupReady(batch) {
+  if (!batch) return false;
+  const staff = safeStringArray(batch.staff_on_duty, 20);
+  const equipment = safeStringArray(batch.equipment_used, 30);
+  const recipe = normalizeText(batch.formula_or_recipe_used);
+  const bottleSize = normalizeText(batch.bottle_size);
+  const ingredients = safeIngredientUsageRows(batch.ingredients_used);
+  const ingredientsComplete = ingredients.length > 0 && ingredients.every(row => (
+    row.ingredient_name && Number.isFinite(row.quantity) && row.quantity > 0 && row.unit && row.lot_number
+  ));
+  return staff.length > 0 && equipment.length > 0 && Boolean(recipe) && Boolean(bottleSize) && ingredientsComplete;
+}
+
 async function resolvePreStartBatch(base44, body) {
   const entity = base44.asServiceRole?.entities?.ProductionBatch;
   const sourceId = safeId(body?.production_batch_id);
@@ -202,6 +215,7 @@ async function resolvePreStartBatch(base44, body) {
     batch_id: safeId(batch?.batch_id) || displayId,
     production_date: productionDate,
     is_test_batch: isInternalTestBatch(batch),
+    record: batch,
   };
 }
 
@@ -244,6 +258,17 @@ async function preStartStatusResponse(base44, body) {
   )));
   const rowsByType = Object.fromEntries(entries);
   const items = Object.keys(PRE_START_RECORD_TYPES).map(recordType => preStartStatusItem(recordType, rowsByType[recordType], batch));
+  if (batch.record?.id) {
+    const setupReady = batchSetupReady(batch.record);
+    items.push({
+      key: 'batch_setup',
+      ready: setupReady,
+      match_scope: setupReady ? 'production_batch' : null,
+      record_id: setupReady ? safeId(batch.record.id) : null,
+      reusable_record_id: null,
+      reusable_same_day_record: false,
+    });
+  }
   const missing = items.filter(item => !item.ready).map(item => item.key);
   return Response.json({
     success: true,
@@ -257,6 +282,7 @@ async function preStartStatusResponse(base44, body) {
       is_test_batch: batch.is_test_batch,
     },
     items,
+    required_item_count: items.length,
     missing,
     writes_performed: false,
     provider_calls_performed: false,
@@ -342,7 +368,11 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
           storage_location: normalizeText(batch.storage_location),
           use_by_date: normalizeText(batch.use_by_date),
           staff_on_duty: safeStringArray(batch.staff_on_duty, 20),
+          equipment_used: safeStringArray(batch.equipment_used, 30),
+          formula_or_recipe_used: normalizeText(batch.formula_or_recipe_used),
+          bottle_size: normalizeText(batch.bottle_size),
           ingredients_used: safeIngredientUsageRows(batch.ingredients_used),
+          ingredient_lot_notes: normalizeText(batch.ingredient_lot_notes),
         };
       });
 

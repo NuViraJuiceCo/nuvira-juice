@@ -215,6 +215,99 @@ async function linkPreStartRecord(base44, body) {
   });
 }
 
+function strictIngredientRows(value) {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const rows = value.slice(0, 80).map(row => {
+    const source = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+    const ingredientName = text(source.ingredient_name || source.name, 160);
+    const quantity = optionalNumber(source.quantity);
+    const unit = text(source.unit, 40);
+    const lotNumber = text(source.lot_number, 120);
+    if (!ingredientName || !Number.isFinite(quantity) || quantity <= 0 || !unit || !lotNumber) return null;
+    return {
+      ingredient_name: ingredientName,
+      quantity,
+      unit,
+      lot_number: lotNumber,
+    };
+  });
+  return rows.length === value.length && rows.every(Boolean) ? rows : null;
+}
+
+async function saveProductionBatchSetup(base44, body, user) {
+  const entity = base44.asServiceRole?.entities?.ProductionBatch;
+  if (!entity?.update) {
+    return Response.json({ success: false, error: 'production_batch_entity_unavailable' }, { status: 503 });
+  }
+
+  const batch = await resolveLinkedProductionBatch(base44, {
+    source_production_batch_id: body?.production_batch_id,
+    batch_id: body?.batch_id,
+  });
+  if (!batch?.id) {
+    return Response.json({ success: false, error: 'production_batch_must_resolve' }, { status: 404 });
+  }
+  if (batch?.is_locked === true) {
+    return Response.json({ success: false, error: 'production_batch_locked' }, { status: 409 });
+  }
+  const status = text(batch?.status, 80).toLowerCase();
+  if (!['planned', 'ready_for_production'].includes(status)) {
+    return Response.json({ success: false, error: 'production_batch_setup_only_allowed_before_start' }, { status: 409 });
+  }
+
+  const data = body?.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : {};
+  const staffOnDuty = stringArray(data?.staff_on_duty);
+  const equipmentUsed = stringArray(data?.equipment_used);
+  const formulaOrRecipeUsed = text(data?.formula_or_recipe_used, 240);
+  const bottleSize = text(data?.bottle_size, 80);
+  const ingredientsUsed = strictIngredientRows(data?.ingredients_used);
+  if (staffOnDuty.length === 0) {
+    return Response.json({ success: false, error: 'batch_setup_staff_required' }, { status: 400 });
+  }
+  if (equipmentUsed.length === 0) {
+    return Response.json({ success: false, error: 'batch_setup_equipment_required' }, { status: 400 });
+  }
+  if (!formulaOrRecipeUsed) {
+    return Response.json({ success: false, error: 'batch_setup_recipe_required' }, { status: 400 });
+  }
+  if (!bottleSize) {
+    return Response.json({ success: false, error: 'batch_setup_bottle_size_required' }, { status: 400 });
+  }
+  if (!ingredientsUsed) {
+    return Response.json({ success: false, error: 'batch_setup_complete_ingredient_lots_required' }, { status: 400 });
+  }
+
+  const now = new Date().toISOString();
+  const existingAuditTrail = Array.isArray(batch?.audit_trail) ? batch.audit_trail.slice(-199) : [];
+  const patch = {
+    staff_on_duty: staffOnDuty,
+    equipment_used: equipmentUsed,
+    formula_or_recipe_used: formulaOrRecipeUsed,
+    bottle_size: bottleSize,
+    ingredients_used: ingredientsUsed,
+    ingredient_lot_notes: text(data?.ingredient_lot_notes, 2000),
+    ingredient_usage_status: 'recorded_pending_deduction',
+    audit_trail: [...existingAuditTrail, {
+      timestamp: now,
+      action: 'production_batch_setup_saved',
+      performed_by: text(user?.email, 160) || 'admin',
+      reason: 'Required pre-start batch production details recorded',
+    }],
+  };
+  await entity.update(batch.id, patch);
+
+  return Response.json({
+    success: true,
+    action: 'production_batch_setup_saved',
+    production_batch_id: text(batch.id, 160),
+    batch_id: text(batch.batch_id, 120) || null,
+    ingredient_count: ingredientsUsed.length,
+    native_batch_write: true,
+    customer_notifications_sent: false,
+    provider_calls_performed: false,
+  });
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -524,6 +617,9 @@ Deno.serve(async (req) => {
 
     if (text(body?.action, 80).toLowerCase() === 'link_pre_start_record') {
       return await linkPreStartRecord(base44, body);
+    }
+    if (text(body?.action, 80).toLowerCase() === 'save_production_batch_setup') {
+      return await saveProductionBatchSetup(base44, body, user);
     }
 
     const recordType = text(body?.record_type || body?.type, 80).toLowerCase();

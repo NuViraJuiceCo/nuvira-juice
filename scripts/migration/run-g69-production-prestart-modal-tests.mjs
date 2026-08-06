@@ -7,7 +7,18 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const productionDate = '2026-08-07';
-const batch = { id: 'pb_g69', batch_id: 'BATCH-20260807-OASIS', production_date: productionDate, is_test_batch: false };
+const batch = {
+  id: 'pb_g69',
+  batch_id: 'BATCH-20260807-OASIS',
+  production_date: productionDate,
+  status: 'planned',
+  is_test_batch: false,
+  staff_on_duty: ['Admin'],
+  equipment_used: ['Juicer'],
+  formula_or_recipe_used: 'Oasis standard recipe',
+  bottle_size: '12 oz',
+  ingredients_used: [{ ingredient_name: 'Watermelon', quantity: 10, unit: 'lb', lot_number: 'LOT-G69' }],
+};
 
 function loadHandler(relativePath) {
   const filename = path.join(repoRoot, relativePath);
@@ -94,7 +105,9 @@ const linkHandler = loadHandler('base44/functions/saveAdminComplianceRecord/entr
   const { status, payload } = await call(statusHandler, store.base44, { action: 'pre_start_status', production_batch_id: batch.id, batch_id: batch.batch_id, production_date: productionDate });
   assert.equal(status, 200);
   assert.equal(payload.ready, true);
-  assert.equal(payload.items.every(item => item.ready && item.match_scope === 'batch_linked'), true);
+  assert.equal(payload.items.length, 4);
+  assert.equal(payload.items.every(item => item.ready), true);
+  assert.equal(payload.items.find(item => item.key === 'batch_setup')?.match_scope, 'production_batch');
   assert.equal(store.writes.length, 0);
 }
 
@@ -103,8 +116,39 @@ const linkHandler = loadHandler('base44/functions/saveAdminComplianceRecord/entr
   const { status, payload } = await call(statusHandler, store.base44, { action: 'pre_start_status', production_batch_id: batch.id, batch_id: batch.batch_id, production_date: productionDate });
   assert.equal(status, 200);
   assert.equal(payload.ready, false);
-  assert.equal(payload.items.every(item => item.reusable_same_day_record && item.reusable_record_id), true);
+  assert.equal(payload.items.filter(item => item.key !== 'batch_setup').every(item => item.reusable_same_day_record && item.reusable_record_id), true);
+  assert.equal(payload.items.find(item => item.key === 'batch_setup')?.ready, true);
   assert.equal(store.writes.length, 0);
+}
+
+{
+  const incompleteBatch = {
+    id: batch.id,
+    batch_id: batch.batch_id,
+    production_date: productionDate,
+    status: 'planned',
+    is_test_batch: false,
+  };
+  const store = makeBase44({ productionBatch: incompleteBatch });
+  const { status, payload } = await call(linkHandler, store.base44, {
+    action: 'save_production_batch_setup',
+    production_batch_id: batch.id,
+    batch_id: batch.batch_id,
+    data: {
+      staff_on_duty: ['Admin'],
+      equipment_used: ['Juicer', 'Scale'],
+      formula_or_recipe_used: 'Oasis standard recipe',
+      bottle_size: '12 oz',
+      ingredients_used: [{ ingredient_name: 'Watermelon', quantity: 10, unit: 'lb', lot_number: 'LOT-G69' }],
+      ingredient_lot_notes: 'Supplier lot verified.',
+    },
+  });
+  assert.equal(status, 200);
+  assert.equal(payload.success, true);
+  assert.equal(store.writes.length, 1);
+  assert.equal(store.writes[0].name, 'ProductionBatch');
+  assert.equal(store.writes[0].patch.ingredients_used[0].lot_number, 'LOT-G69');
+  assert.equal(store.writes[0].patch.ingredient_usage_status, 'recorded_pending_deduction');
 }
 
 {
@@ -143,16 +187,23 @@ const linkHandler = loadHandler('base44/functions/saveAdminComplianceRecord/entr
 }
 
 const modalSource = fs.readFileSync(path.join(repoRoot, 'src/components/admin/ProductionPreStartModal.jsx'), 'utf8');
+const cssSource = fs.readFileSync(path.join(repoRoot, 'src/index.css'), 'utf8');
 assert.ok(modalSource.includes("setView('overview');"));
 assert.ok(modalSource.includes('Choose the next missing item.'));
 assert.ok(modalSource.includes("Use today's log"));
 assert.ok(modalSource.includes('Continue to Start Preview'));
+assert.ok(modalSource.includes("action: 'save_production_batch_setup'"));
+assert.ok(modalSource.includes('max-h-[calc(100dvh-2rem)]'));
+assert.ok(modalSource.includes('min-h-0 flex-1 space-y-4 overflow-y-auto'));
+assert.ok(cssSource.includes('[data-scroll] {'));
+const genericOverflowGroup = cssSource.match(/\[data-scroll\],\s*\.overflow-y-auto[\s\S]*?\}/)?.[0] || '';
+assert.equal(genericOverflowGroup.includes('transform:'), false);
 assert.equal(modalSource.includes('Promise.all'), false);
 
 console.log(JSON.stringify({
   ok: true,
   suite: 'g69-production-prestart-modal',
-  cases: 9,
+  cases: 16,
   writes_performed: false,
   live_calls_performed: false,
   provider_calls_performed: false,

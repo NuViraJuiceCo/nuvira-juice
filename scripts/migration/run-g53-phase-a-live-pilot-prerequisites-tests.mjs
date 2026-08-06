@@ -50,6 +50,11 @@ const testBatch = {
   status: 'planned',
   is_test_batch: true,
   test_purpose: 'G53 controlled live persistence validation',
+  staff_on_duty: ['Admin'],
+  equipment_used: ['Juicer', 'Scale'],
+  formula_or_recipe_used: 'Aura standard recipe',
+  bottle_size: '12 oz',
+  ingredients_used: [{ ingredient_name: 'Carrot', quantity: 10, unit: 'lb', lot_number: 'LOT-G53' }],
 };
 
 const linked = {

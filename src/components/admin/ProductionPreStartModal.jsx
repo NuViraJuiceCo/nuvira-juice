@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ChevronLeft, ClipboardList, RefreshCw, SprayCan, Thermometer } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ClipboardList, Plus, RefreshCw, SprayCan, Thermometer, Trash2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { unwrapBase44Result } from '@/lib/base44-result';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -54,9 +54,22 @@ const ITEM_CONFIG = {
     description: 'Record a current cold-storage reading in the approved 35–40°F range.',
     icon: Thermometer,
   },
+  batch_setup: {
+    label: 'Batch setup',
+    description: 'Record staff, equipment, recipe, bottle size, ingredients, quantities, and lot numbers for this batch.',
+    icon: ClipboardList,
+  },
 };
 
 function initialForm(batch) {
+  const existingIngredients = Array.isArray(batch?.ingredients_used)
+    ? batch.ingredients_used.map(row => ({
+        ingredient_name: String(row?.ingredient_name || row?.name || ''),
+        quantity: row?.quantity ?? '',
+        unit: String(row?.unit || 'oz'),
+        lot_number: String(row?.lot_number || ''),
+      })).filter(row => row.ingredient_name)
+    : [];
   return {
     log_date: batch?.production_date || todayDate(),
     log_time: currentTime(),
@@ -74,6 +87,14 @@ function initialForm(batch) {
     sanitizer_levels_checked: false,
     equipment_sanitized: false,
     work_areas_cleaned: false,
+    staff_on_duty: Array.isArray(batch?.staff_on_duty) ? batch.staff_on_duty.join(', ') : '',
+    equipment_used_text: Array.isArray(batch?.equipment_used) ? batch.equipment_used.join(', ') : '',
+    formula_or_recipe_used: String(batch?.formula_or_recipe_used || ''),
+    bottle_size: String(batch?.bottle_size || ''),
+    ingredients_used: existingIngredients.length > 0
+      ? existingIngredients
+      : [{ ingredient_name: '', quantity: '', unit: 'oz', lot_number: '' }],
+    ingredient_lot_notes: String(batch?.ingredient_lot_notes || ''),
     notes: '',
   };
 }
@@ -96,9 +117,14 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
 
   const items = useMemo(() => {
     const byKey = Object.fromEntries((status?.items || []).map(item => [item.key, item]));
-    return Object.keys(ITEM_CONFIG).map(key => ({ key, ...ITEM_CONFIG[key], ...(byKey[key] || {}) }));
-  }, [status]);
+    const fallbackKeys = batch?.source === 'customer_app_native'
+      ? Object.keys(ITEM_CONFIG)
+      : Object.keys(ITEM_CONFIG).filter(key => key !== 'batch_setup');
+    const keys = (status?.items || []).length > 0 ? status.items.map(item => item.key) : fallbackKeys;
+    return keys.map(key => ({ key, ...ITEM_CONFIG[key], ...(byKey[key] || {}) })).filter(item => item.label);
+  }, [status, batch?.source]);
   const readyCount = items.filter(item => item.ready).length;
+  const requiredCount = items.length;
 
   async function refreshStatus({ keepMessage = false } = {}) {
     setLoading(true);
@@ -145,6 +171,31 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
     setForm(previous => ({ ...previous, [field]: value }));
   }
 
+  function updateIngredient(index, field, value) {
+    setForm(previous => ({
+      ...previous,
+      ingredients_used: previous.ingredients_used.map((row, rowIndex) => (
+        rowIndex === index ? { ...row, [field]: value } : row
+      )),
+    }));
+  }
+
+  function addIngredient() {
+    setForm(previous => ({
+      ...previous,
+      ingredients_used: [...previous.ingredients_used, { ingredient_name: '', quantity: '', unit: 'oz', lot_number: '' }],
+    }));
+  }
+
+  function removeIngredient(index) {
+    setForm(previous => ({
+      ...previous,
+      ingredients_used: previous.ingredients_used.length === 1
+        ? previous.ingredients_used
+        : previous.ingredients_used.filter((_, rowIndex) => rowIndex !== index),
+    }));
+  }
+
   async function refreshComplianceViews() {
     await queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
     await queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
@@ -152,6 +203,18 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
   }
 
   function validate(recordType) {
+    if (recordType === 'batch_setup') {
+      if (!form.staff_on_duty.trim()) return 'Select at least one staff member working on this batch.';
+      if (!form.equipment_used_text.trim()) return 'Enter the equipment used for this batch.';
+      if (!form.formula_or_recipe_used.trim()) return 'Enter the formula or recipe used.';
+      if (!form.bottle_size.trim()) return 'Enter the bottle size.';
+      if (form.ingredients_used.length === 0) return 'Add at least one ingredient.';
+      const incompleteIngredient = form.ingredients_used.find(row => (
+        !row.ingredient_name.trim() || !(Number(row.quantity) > 0) || !row.unit.trim() || !row.lot_number.trim()
+      ));
+      if (incompleteIngredient) return 'Every ingredient needs a name, positive quantity, unit, and lot number.';
+      return null;
+    }
     if (!form.staff_member.trim()) return 'Select or enter the staff member responsible for this log.';
     if (recordType === 'sanitation' && (!form.cleaned || !form.sanitized)) {
       return 'Confirm both cleaning and sanitizing before saving.';
@@ -176,6 +239,38 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
     setSaving(true);
     setMessage(null);
     try {
+      if (recordType === 'batch_setup') {
+        const response = await base44.functions.invoke('saveAdminComplianceRecord', {
+          action: 'save_production_batch_setup',
+          ...batchPayload(batch),
+          data: {
+            staff_on_duty: form.staff_on_duty.split(',').map(value => value.trim()).filter(Boolean),
+            equipment_used: form.equipment_used_text.split(',').map(value => value.trim()).filter(Boolean),
+            formula_or_recipe_used: form.formula_or_recipe_used,
+            bottle_size: form.bottle_size,
+            ingredients_used: form.ingredients_used.map(row => ({
+              ingredient_name: row.ingredient_name.trim(),
+              quantity: Number(row.quantity),
+              unit: row.unit.trim(),
+              lot_number: row.lot_number.trim(),
+            })),
+            ingredient_lot_notes: form.ingredient_lot_notes,
+          },
+        });
+        const result = unwrapBase44Result(response);
+        if (!result?.success) throw new Error(result?.error || 'production_batch_setup_save_failed');
+        setView('overview');
+        await refreshComplianceViews();
+        const next = await refreshStatus({ keepMessage: true });
+        setMessage({
+          type: 'success',
+          text: next?.ready
+            ? 'Batch setup saved. All pre-start items are ready.'
+            : 'Batch setup saved. Choose the next missing item.',
+        });
+        return;
+      }
+
       const common = {
         log_date: form.log_date,
         log_time: form.log_time,
@@ -283,17 +378,17 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto p-0">
-        <DialogHeader className="border-b border-border bg-secondary/40 px-5 py-4 pr-12 text-left">
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b border-border bg-secondary/40 px-5 py-4 pr-12 text-left">
           <DialogTitle>{activeConfig ? activeConfig.label : 'Start production batch'}</DialogTitle>
           <DialogDescription>
             {activeConfig
               ? 'Save this item, then you will return to the batch-start checklist.'
-              : `${batch?.batch_id || batch?.product_name || 'Batch'} · ${readyCount}/3 pre-start items ready`}
+              : `${batch?.batch_id || batch?.product_name || 'Batch'} · ${readyCount}/${requiredCount} pre-start items ready`}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           {view === 'overview' ? (
             <>
               <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card p-3">
@@ -349,7 +444,7 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
                 <ChevronLeft className="h-4 w-4" /> Back to missing items
               </button>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {view !== 'batch_setup' && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="space-y-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Production date</span>
                   <input type="date" value={form.log_date} onChange={event => update('log_date', event.target.value)} className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs" />
@@ -361,7 +456,7 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
                 <div className="sm:col-span-2">
                   <StaffMemberPicker label="Production staff" value={form.staff_member} onChange={value => update('staff_member', value)} helperText="This staff selection carries to the remaining pre-start items." />
                 </div>
-              </div>
+              </div>}
 
               {view === 'sanitation' && (
                 <div className="space-y-3">
@@ -393,22 +488,57 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
                 </div>
               )}
 
-              <label className="block space-y-1">
+              {view === 'batch_setup' && (
+                <div className="space-y-4">
+                  <StaffMemberPicker
+                    label="Staff on duty"
+                    value={form.staff_on_duty}
+                    onChange={value => update('staff_on_duty', value)}
+                    multiple
+                    helperText="Select everyone working on this batch."
+                  />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="space-y-1 sm:col-span-2"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Equipment used</span><input value={form.equipment_used_text} onChange={event => update('equipment_used_text', event.target.value)} placeholder="Juicer, prep table, scale" className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs" /><span className="text-[10px] text-muted-foreground">Separate multiple items with commas.</span></label>
+                    <label className="space-y-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Formula or recipe</span><input value={form.formula_or_recipe_used} onChange={event => update('formula_or_recipe_used', event.target.value)} placeholder={`${batch?.product_name || 'Product'} standard recipe`} className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs" /></label>
+                    <label className="space-y-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Bottle size</span><input value={form.bottle_size} onChange={event => update('bottle_size', event.target.value)} placeholder="12 oz" className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs" /></label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div><p className="text-sm font-semibold">Ingredients and lots</p><p className="text-[10px] text-muted-foreground">Record what actually went into this batch.</p></div>
+                      <button type="button" onClick={addIngredient} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-semibold"><Plus className="h-3.5 w-3.5" /> Add</button>
+                    </div>
+                    {form.ingredients_used.map((row, index) => (
+                      <div key={`ingredient-${index}`} className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-card p-3 sm:grid-cols-[minmax(0,1.5fr)_minmax(5rem,.6fr)_minmax(4rem,.5fr)_minmax(0,1fr)_auto]">
+                        <label className="col-span-2 space-y-1 sm:col-span-1"><span className="text-[10px] font-semibold uppercase text-muted-foreground">Ingredient</span><input value={row.ingredient_name} onChange={event => updateIngredient(index, 'ingredient_name', event.target.value)} placeholder="Pineapple" className="h-9 w-full rounded-lg border border-border bg-background px-2 text-xs" /></label>
+                        <label className="space-y-1"><span className="text-[10px] font-semibold uppercase text-muted-foreground">Quantity</span><input type="number" min="0" step="0.01" value={row.quantity} onChange={event => updateIngredient(index, 'quantity', event.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-2 text-xs" /></label>
+                        <label className="space-y-1"><span className="text-[10px] font-semibold uppercase text-muted-foreground">Unit</span><input value={row.unit} onChange={event => updateIngredient(index, 'unit', event.target.value)} placeholder="oz" className="h-9 w-full rounded-lg border border-border bg-background px-2 text-xs" /></label>
+                        <label className="col-span-2 space-y-1 sm:col-span-1"><span className="text-[10px] font-semibold uppercase text-muted-foreground">Lot number</span><input value={row.lot_number} onChange={event => updateIngredient(index, 'lot_number', event.target.value)} placeholder="Supplier/package lot" className="h-9 w-full rounded-lg border border-border bg-background px-2 text-xs" /></label>
+                        <button type="button" onClick={() => removeIngredient(index)} disabled={form.ingredients_used.length === 1} aria-label={`Remove ingredient ${index + 1}`} className="col-span-2 h-9 rounded-lg border border-border px-2 text-muted-foreground disabled:opacity-30 sm:col-span-1 sm:self-end"><Trash2 className="mx-auto h-4 w-4" /></button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <label className="block space-y-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Ingredient lot notes</span><textarea rows={2} value={form.ingredient_lot_notes} onChange={event => update('ingredient_lot_notes', event.target.value)} placeholder="Supplier, substitutions, or lot observations" className="w-full resize-none rounded-lg border border-border bg-card px-2 py-2 text-xs" /></label>
+                </div>
+              )}
+
+              {view !== 'batch_setup' && <label className="block space-y-1">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notes</span>
                 <textarea rows={2} value={form.notes} onChange={event => update('notes', event.target.value)} placeholder="Issues or observations" className="w-full resize-none rounded-lg border border-border bg-card px-2 py-2 text-xs" />
-              </label>
+              </label>}
             </div>
           )}
 
           {message && <p className={`text-xs ${messageClass(message.type)}`}>{message.text}</p>}
         </div>
 
-        <DialogFooter className="gap-2 border-t border-border px-5 py-4 sm:space-x-0">
+        <DialogFooter className="shrink-0 gap-2 border-t border-border bg-card px-5 py-4 sm:space-x-0">
           {view === 'overview' ? (
             <>
               <button type="button" onClick={() => onOpenChange?.(false)} className="h-9 rounded-lg border border-border px-3 text-xs font-semibold">Close</button>
               <button type="button" onClick={() => onContinue?.(status)} disabled={!status?.ready || loading || saving || Boolean(linking)} data-testid="production-prestart-continue" className="h-9 rounded-lg bg-nuvira-gradient px-4 text-xs font-semibold text-white disabled:opacity-50">
-                {status?.ready ? 'Continue to Start Preview' : `${3 - readyCount} item${3 - readyCount === 1 ? '' : 's'} remaining`}
+                {status?.ready ? 'Continue to Start Preview' : `${requiredCount - readyCount} item${requiredCount - readyCount === 1 ? '' : 's'} remaining`}
               </button>
             </>
           ) : (

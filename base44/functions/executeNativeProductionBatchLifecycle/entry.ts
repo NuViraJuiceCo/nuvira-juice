@@ -372,6 +372,25 @@ function safeIngredientRows(value) {
   }).filter(row => row.ingredient_name);
 }
 
+function batchSetupBlockers(batch) {
+  const blockers = [];
+  if (safeStringArray(batch?.staff_on_duty).length === 0) blockers.push('batch_setup_staff_missing');
+  if (safeStringArray(batch?.equipment_used).length === 0) blockers.push('batch_setup_equipment_missing');
+  if (!sanitizeText(batch?.formula_or_recipe_used, 240)) blockers.push('batch_setup_recipe_missing');
+  if (!sanitizeText(batch?.bottle_size, 80)) blockers.push('batch_setup_bottle_size_missing');
+  const rawIngredients = Array.isArray(batch?.ingredients_used) ? batch.ingredients_used : [];
+  if (rawIngredients.length === 0) {
+    blockers.push('batch_setup_ingredients_missing');
+  } else {
+    const completeIngredients = safeIngredientRows(rawIngredients);
+    const allComplete = completeIngredients.length === rawIngredients.length && completeIngredients.every(row => (
+      row.ingredient_name && Number.isFinite(row.quantity) && row.quantity > 0 && row.unit && row.lot_number
+    ));
+    if (!allComplete) blockers.push('batch_setup_ingredient_details_incomplete');
+  }
+  return blockers;
+}
+
 function planStart({ batch, actorEmail, requestId, now, reason, preStartCompliance }) {
   const blockers = [];
   const warnings = [];
@@ -381,6 +400,7 @@ function planStart({ batch, actorEmail, requestId, now, reason, preStartComplian
   if (batch.actual_start_time) blockers.push('already_started');
   if (batch.actual_end_time || batch.completed_by) blockers.push('already_completed');
   if (batch.compliance_log_id || batch.verified_at || batch.verified_by) blockers.push('already_verified_logged');
+  blockers.push(...batchSetupBlockers(batch));
   if (preStartCompliance?.enforced !== true) {
     blockers.push('pre_start_compliance_unavailable');
   } else {

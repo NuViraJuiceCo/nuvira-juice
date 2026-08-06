@@ -139,12 +139,21 @@ const previewAccess = await previewFns.requirePreviewAccess({
 assert.equal(previewAccess.ok, true);
 assert.equal(previewAccess.actor_email, 'info@nuvirajuice.com', 'Preview access keeps normalized admin email for internal gate checks.');
 
+const completeBatchSetup = {
+  staff_on_duty: ['Admin'],
+  equipment_used: ['Juicer', 'Scale'],
+  formula_or_recipe_used: 'Standard production recipe',
+  bottle_size: '12 oz',
+  ingredients_used: [{ ingredient_name: 'Produce', quantity: 10, unit: 'lb', lot_number: 'LOT-G51D' }],
+};
+
 const plannedAura = {
   id: 'internal_production_batch_id',
   batch_id: 'BATCH-20260723-AURA',
   product_name: 'Aura',
   status: 'planned',
   production_date: '2026-07-23',
+  ...completeBatchSetup,
 };
 let preview = previewFns.planLifecycle({
   mode: 'dry_run',
@@ -171,6 +180,7 @@ const g53TestBatch = {
   production_date: '2026-07-23',
   source_system: 'customer_app_internal_validation',
   native_owner_status: 'internal_test_only',
+  ...completeBatchSetup,
 };
 preview = previewFns.planLifecycle({
   mode: 'dry_run',
@@ -208,6 +218,19 @@ assert.ok(
 );
 assert.equal(executeBlockedByPreStart.proposed_patch, null);
 
+const executeBlockedByBatchSetup = executeFns.planLifecycle({
+  action: 'start',
+  batch: { ...plannedAura, ingredients_used: [] },
+  actorEmail: 'info@nuvirajuice.com',
+  requestId: 'g51d_execute_missing_batch_setup',
+  now: '2026-07-23T12:00:00.000Z',
+  body: {},
+  reason: 'test missing batch setup',
+  preStartCompliance: { enforced: true, ready: true, blockers: [] },
+});
+assert.ok(executeBlockedByBatchSetup.blockers.includes('batch_setup_ingredients_missing'));
+assert.equal(executeBlockedByBatchSetup.proposed_patch, null);
+
 const closedPreviewFns = loadFunction(
   path.join(repoRoot, 'base44/functions/previewNativeProductionBatchLifecycle/entry.ts'),
   ['planLifecycle'],
@@ -240,7 +263,7 @@ assert.ok(productionPage.includes('!actionReady || !writeAvailable'), 'Run Nativ
 console.log(JSON.stringify({
   ok: true,
   suite: 'g51d-native-production-lifecycle-gate',
-  checks: 17,
+  checks: 19,
   writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));
