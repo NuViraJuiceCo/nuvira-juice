@@ -7,7 +7,7 @@ import ts from 'typescript';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const functionPath = path.join(repoRoot, 'base44/functions/verifyAdminBagReturn/entry.ts');
+const functionPath = path.join(repoRoot, 'base44/functions/getBagReturnsForSync/entry.ts');
 
 function loadHandler() {
   let source = fs.readFileSync(functionPath, 'utf8').replace(/^import .*$/gm, '');
@@ -31,7 +31,7 @@ function loadHandler() {
     Response,
     Promise,
     createClientFromRequest: req => req.__base44,
-    Deno: { serve: handler => { context.globalThis.__handler = handler; } },
+    Deno: { env: { get: () => '' }, serve: handler => { context.globalThis.__handler = handler; } },
     globalThis: {},
   });
   vm.runInContext(source, context, { filename: functionPath });
@@ -86,6 +86,7 @@ async function invoke(store, body) {
   const response = await loadHandler()({
     method: 'POST',
     __base44: store.base44,
+    headers: { get: () => '' },
     json: async () => body,
   });
   return { status: response.status, payload: await response.json() };
@@ -94,6 +95,7 @@ async function invoke(store, body) {
 {
   const store = makeStore();
   const first = await invoke(store, {
+    action: 'verify_return',
     bag_return_id: 'return_1',
     small_bag_status: 'accepted',
     small_bags_accepted: 1,
@@ -110,6 +112,7 @@ async function invoke(store, body) {
 
   const writesBeforeRetry = store.writes.length;
   const retry = await invoke(store, {
+    action: 'verify_return',
     bag_return_id: 'return_1',
     small_bag_status: 'accepted',
     small_bags_accepted: 1,
@@ -125,6 +128,7 @@ async function invoke(store, body) {
 {
   const store = makeStore({ bagReturn: { small_bags_requested: 0, tote_bags_requested: 1 } });
   const result = await invoke(store, {
+    action: 'verify_return',
     bag_return_id: 'return_1',
     tote_bag_status: 'not_found',
     tote_bags_accepted: 0,
@@ -138,6 +142,7 @@ async function invoke(store, body) {
 {
   const store = makeStore();
   const result = await invoke(store, {
+    action: 'verify_return',
     bag_return_id: 'return_1',
     small_bag_status: 'accepted',
     small_bags_accepted: 2,
@@ -149,7 +154,7 @@ async function invoke(store, body) {
 
 {
   const store = makeStore({ role: 'user' });
-  const result = await invoke(store, { bag_return_id: 'return_1' });
+  const result = await invoke(store, { action: 'verify_return', bag_return_id: 'return_1' });
   assert.equal(result.status, 403);
   assert.equal(store.writes.length, 0);
 }
@@ -160,7 +165,8 @@ const intentSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/creat
 const webhookSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/stripeWebhook/entry.ts'), 'utf8');
 assert.equal(adminSource.includes('verificationLocked'), false);
 assert.equal(adminSource.includes('badge="Read-only"'), false);
-assert.ok(adminSource.includes("functions.invoke('verifyAdminBagReturn'"));
+assert.ok(adminSource.includes("functions.invoke('getBagReturnsForSync'"));
+assert.ok(adminSource.includes("action: 'verify_return'"));
 assert.ok(adminSource.includes('Verify Return & Apply Credit'));
 assert.ok(checkoutSource.includes('bag_return_request_id: pendingBagReturnId'));
 assert.ok(intentSource.includes('bag_return_request_id:      String(bag_return_request_id'));
@@ -174,4 +180,3 @@ console.log(JSON.stringify({
   live_calls_performed: false,
   customer_notifications_sent: false,
 }, null, 2));
-

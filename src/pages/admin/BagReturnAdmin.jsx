@@ -53,7 +53,8 @@ function ReturnCard({ ret, onVerified }) {
     if (saving) return;
     setSaving(true);
     try {
-      const response = await base44.functions.invoke('verifyAdminBagReturn', {
+      const response = await base44.functions.invoke('getBagReturnsForSync', {
+        action: 'verify_return',
         bag_return_id: ret.id,
         small_bag_status: smallStatus,
         tote_bag_status: toteStatus,
