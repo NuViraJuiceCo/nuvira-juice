@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { useNavigate } from 'react-router-dom';
@@ -32,12 +32,13 @@ function bagSummary(r) {
   return parts.join(' + ') || '—';
 }
 
-function ReturnCard({ ret, verificationLocked }) {
+function ReturnCard({ ret, onVerified }) {
   const [expanded, setExpanded] = useState(false);
   const [smallStatus, setSmallStatus] = useState('accepted');
   const [toteStatus, setToteStatus] = useState('accepted');
   const [reason, setReason] = useState('dirty_stained');
   const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const isPending = ret.verification_status === 'requested';
 
@@ -49,7 +50,35 @@ function ReturnCard({ ret, verificationLocked }) {
   };
 
   const handleSubmit = async () => {
-    toast.error('Bag return verification, credits, and customer emails are disabled until this exact live credit workflow is approved.');
+    if (saving) return;
+    setSaving(true);
+    try {
+      const response = await base44.functions.invoke('verifyAdminBagReturn', {
+        bag_return_id: ret.id,
+        small_bag_status: smallStatus,
+        tote_bag_status: toteStatus,
+        small_bags_accepted: smallStatus === 'accepted' ? Number(ret.small_bags_requested || 0) : 0,
+        tote_bags_accepted: toteStatus === 'accepted' ? Number(ret.tote_bags_requested || 0) : 0,
+        rejection_reason: (smallStatus === 'not_eligible' || toteStatus === 'not_eligible') ? reason : '',
+        notes,
+        request_id: `bag_return_${ret.id}`,
+      });
+      const payload = response?.data || response;
+      if (!payload?.success) throw new Error(payload?.error || 'Bag return verification failed');
+      toast.success(payload.credit_issued > 0
+        ? `Return verified · $${Number(payload.credit_issued).toFixed(2)} credit issued`
+        : 'Return review saved');
+      setExpanded(false);
+      await onVerified?.();
+    } catch (error) {
+      const payload = error?.response?.data;
+      const message = payload?.error_code === 'credit_account_ambiguous'
+        ? 'This customer has duplicate credit accounts. Resolve those before issuing this return credit.'
+        : payload?.error || error?.message || 'Unable to verify this bag return right now.';
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -148,17 +177,12 @@ function ReturnCard({ ret, verificationLocked }) {
                     <p className="text-sm font-medium">Credit to Issue</p>
                     <p className="font-heading text-xl font-bold text-primary">${calcCredit().toFixed(2)}</p>
                   </div>
-                  {verificationLocked && (
-                    <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
-                      Bag return credits and customer emails are protected until this exact workflow is approved for live customer credit issuance.
-                    </div>
-                  )}
                   <button
                     onClick={handleSubmit}
-                    disabled={verificationLocked}
+                    disabled={saving}
                     className="w-full py-3 bg-nuvira-gradient text-white rounded-xl text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
                   >
-                    {verificationLocked ? 'Verification Requires Approval' : 'Submit Verification'}
+                    {saving ? 'Applying Credit...' : 'Verify Return & Apply Credit'}
                   </button>
                 </>
               )}
@@ -173,9 +197,9 @@ function ReturnCard({ ret, verificationLocked }) {
 export default function BagReturnAdmin() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState('pending');
   const [search, setSearch] = useState('');
-  const verificationLocked = true;
 
   const { data: returns = [], isLoading } = useQuery({
     queryKey: ['admin-bag-returns'],
@@ -220,15 +244,15 @@ export default function BagReturnAdmin() {
       <AdminOpsHeader
         title="Return + Reward"
         subtitle="Verify bag returns · Issue NuVira Credits"
-        badge="Read-only"
-        badgeTone="warning"
+        badge="Active"
+        badgeTone="success"
         onBack={() => navigate('/admin/operations')}
         actions={<Leaf className="h-4 w-4 text-muted-foreground" />}
       />
 
       <div className="px-4 mt-4">
-        <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
-          Bag return credits and customer emails are protected until this exact workflow is approved for live customer credit issuance. This page remains review-only.
+        <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-foreground/80">
+          Verify the exact bags received. Credits are applied once, and retries cannot issue the same return credit twice.
         </div>
       </div>
 
@@ -290,7 +314,7 @@ export default function BagReturnAdmin() {
             <ReturnCard
               key={ret.id}
               ret={ret}
-              verificationLocked={verificationLocked}
+              onVerified={() => queryClient.invalidateQueries({ queryKey: ['admin-bag-returns'] })}
             />
           ))
         )}

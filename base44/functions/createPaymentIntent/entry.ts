@@ -450,6 +450,7 @@ Deno.serve(async (req) => {
       zone_key: clientZoneKey,
       // Client-supplied idempotency key for duplicate-request protection
       checkout_idempotency_key,
+      bag_return_request_id,
     } = requestBody;
     const authenticatedUser = await base44.auth.me().catch(() => null);
     if (!authenticatedUser?.email) {
@@ -767,6 +768,7 @@ Deno.serve(async (req) => {
       promotion_discount_amount:  appliedPromotionDiscountAmt.toFixed(2),
       total_discount_amount:      totalDiscountAmount.toFixed(2),
       discount_codes:             discountCodes.join(','),
+      bag_return_request_id:      String(bag_return_request_id || '').trim(),
     };
 
     // Account discounts are represented in the pre-code total. The checkout
@@ -939,6 +941,7 @@ Deno.serve(async (req) => {
           customer_last_name: customerIdentity.lastName,
           customer_name_source: customerIdentity.source,
           checkout_idempotency_key: checkout_idempotency_key || null,
+          bag_return_request_id: bag_return_request_id || null,
           address_line1: normalizedAddress.line1,
           address_line2: normalizedAddress.line2,
           address_city: normalizedAddress.city,

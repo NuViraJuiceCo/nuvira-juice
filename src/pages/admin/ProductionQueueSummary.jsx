@@ -1812,11 +1812,18 @@ function BatchCard({ batch, onActionSuccess }) {
       ) : (
         <>
           <ProductionLifecyclePanel batch={batch} onActionSuccess={onActionSuccess} />
-          <IngredientUsageCorrectionPanel batch={batch} onCorrectionSuccess={onActionSuccess} />
           {batch.status === 'verified_logged' && (
-            <PostVerifyCascadesPanel batch={batch} onCascadeSuccess={onActionSuccess} />
+            <>
+              <IngredientUsageCorrectionPanel batch={batch} onCorrectionSuccess={onActionSuccess} />
+              <PostVerifyCascadesPanel batch={batch} onCascadeSuccess={onActionSuccess} />
+              <InventoryDeductionPanel batch={batch} onDeductionSuccess={onActionSuccess} />
+            </>
           )}
-          <InventoryDeductionPanel batch={batch} onDeductionSuccess={onActionSuccess} />
+          {batch.status !== 'verified_logged' && (
+            <div className="rounded-xl border border-border/50 bg-muted/20 p-3 text-xs text-muted-foreground">
+              Ingredient correction and inventory deduction become available after Complete and Verify.
+            </div>
+          )}
         </>
       )}
     </div>

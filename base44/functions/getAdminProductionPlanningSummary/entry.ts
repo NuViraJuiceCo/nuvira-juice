@@ -772,6 +772,7 @@ function emptyNativePlanning() {
       missing_recipe_count: 0,
       missing_yield_count: 0,
       native_order_count: 0,
+      native_fulfillment_task_count: 0,
       skipped_missing_date_count: 0,
     },
     dates: [],
@@ -787,6 +788,7 @@ function emptyNativePlanning() {
     missing_inventory_count: 0,
     missing_yield_count: 0,
     ambiguous_yield_count: 0,
+    native_fulfillment_task_count: 0,
   };
 }
 
@@ -858,9 +860,9 @@ function firstFulfillmentDate(order) {
 }
 
 function safeLineItems(order) {
-  return Array.isArray(order?.line_items)
-    ? order.line_items.slice(0, 60)
-    : [];
+  if (Array.isArray(order?.line_items)) return order.line_items.slice(0, 60);
+  if (Array.isArray(order?.items)) return order.items.slice(0, 60);
+  return [];
 }
 
 function addToIndex(index, value, record) {
@@ -1107,6 +1109,48 @@ function isNativeMay30OperationalOrder(order) {
   return safeLineItems(order).length > 0;
 }
 
+function nativeTaskOrderKeys(task) {
+  return uniqueStrings([
+    task?.order_id,
+    task?.base44_order_id,
+    task?.shopify_order_id,
+    task?.native_shopify_order_id,
+    normalizeLower(task?.shopify_order_number),
+    normalizeLower(task?.order_number),
+  ]);
+}
+
+function nativeOrderKeys(order) {
+  return uniqueStrings([
+    order?.id,
+    order?.base44_order_id,
+    order?.shopify_order_id,
+    normalizeLower(order?.shopify_order_number),
+    normalizeLower(order?.order_number),
+  ]);
+}
+
+function isNativeOperationalFulfillmentTask(task) {
+  const status = normalizeLower(task?.status);
+  const deliveryStatus = normalizeLower(task?.delivery_status);
+  const productionStatus = normalizeLower(task?.production_status);
+  const paymentStatus = normalizeLower(task?.payment_status);
+  const fulfillmentType = normalizeLower(task?.fulfillment_type);
+  const sourceChannel = normalizeLower(task?.source_channel);
+  const sourceType = normalizeLower(task?.source_type);
+  const terminal = new Set(['delivered', 'fulfilled', 'completed', 'picked_up', 'cancelled', 'canceled', 'refunded']);
+  const hasNativeMarker = task?.created_from_native_ops === true ||
+    Boolean(normalizeText(task?.task_source)) ||
+    ['customer_app', 'online', 'website'].includes(sourceChannel) ||
+    sourceType.includes('customer_app');
+
+  if (!hasNativeMarker || task?.is_test_task === true) return false;
+  if (terminal.has(status) || terminal.has(deliveryStatus) || terminal.has(productionStatus)) return false;
+  if (paymentStatus && !['paid', 'succeeded'].includes(paymentStatus)) return false;
+  if (['pos', 'event_pos', 'pickup'].includes(fulfillmentType) || sourceChannel === 'pos') return false;
+  return safeLineItems(task).length > 0;
+}
+
 async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const listEntity = async (entityName, sort, limit) => {
     try {
@@ -1121,6 +1165,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
 
   const nativeOrders = await listEntity('ShopifyOrder', '-customer_order_date', 500);
   const customerOrders = await listEntity('Order', '-created_date', 500);
+  const fulfillmentTasks = await listEntity('FulfillmentTask', '-production_date', 500);
   const recipes = await listEntity('Recipe', 'product_name', 500);
   const bundles = await listEntity('Bundle', 'bundle_name', 500);
   const products = await listEntity('Product', 'title', 500);
@@ -1251,9 +1296,42 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     productMap.set(key, current);
   }
 
+  const operationalTasks = fulfillmentTasks.filter(task => {
+    if (!isNativeOperationalFulfillmentTask(task)) return false;
+    const plannedProductionDate = orderPlanningDate(task);
+    if (plannedProductionDate) return isInRange(plannedProductionDate, dateFrom, dateTo);
+    return isUnscheduledNativePlanningOrderInReviewWindow(task, dateFrom, dateTo);
+  });
+  const taskBackedOrderKeys = new Set(operationalTasks.flatMap(nativeTaskOrderKeys));
+
+  for (const task of operationalTasks) {
+    const plannedProductionDate = orderPlanningDate(task);
+    const productionDate = plannedProductionDate || DATE_PENDING;
+    if (!plannedProductionDate) skippedDateCount += 1;
+
+    const orderNumber = sanitizeText(task.shopify_order_number || task.order_number, 80);
+    ensurePlanningDate(productionDate);
+    if (orderNumber) orderNumbersByDate.get(productionDate).add(orderNumber);
+
+    for (const item of safeLineItems(task)) {
+      const expandedProducts = expandLineItemProducts(item, bundleIndex, productIndex);
+      for (const product of expandedProducts) {
+        addProductDemand({
+          productionDate,
+          productName: product.product_name,
+          quantity: numberOrZero(product.quantity),
+          sourceCategory: 'Native Fulfillment Tasks',
+          source: 'customer_app_native_fulfillment_task',
+          sizeOz: product.size_oz,
+        });
+      }
+    }
+  }
+
   for (const nativeOrder of nativeOrders) {
     const order = withAuthoritativeCustomerLifecycle(nativeOrder);
     if (!isNativeMay30OperationalOrder(order)) continue;
+    if (nativeOrderKeys(order).some(key => taskBackedOrderKeys.has(key))) continue;
 
     const plannedProductionDate = orderPlanningDate(order);
     const productionDate = plannedProductionDate || DATE_PENDING;
@@ -1366,6 +1444,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
       missing_recipe_count: missingRecipeKeys.size + ambiguousRecipeKeys.size,
       missing_yield_count: missingYieldKeys.size + ambiguousYieldKeys.size,
       native_order_count: nativeOrderCount,
+      native_fulfillment_task_count: operationalTasks.length,
       skipped_missing_date_count: skippedDateCount,
       event_stock_plan_count: 0,
     },
@@ -1382,6 +1461,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     missing_inventory_count: missingInventoryKeys.size,
     missing_yield_count: missingYieldKeys.size,
     ambiguous_yield_count: ambiguousYieldKeys.size,
+    native_fulfillment_task_count: operationalTasks.length,
     event_stock_plan: { included: false, retired: true, event_count: 0, total_units: 0, items: [] },
   };
 }
@@ -1596,6 +1676,7 @@ Deno.serve(async (req) => {
         source: 'customer_app_shopify_order_mirror',
         read_only: true,
         order_count: nativePlanning.summary.native_order_count,
+        fulfillment_task_count: nativePlanning.native_fulfillment_task_count || 0,
         planned_units: nativePlanning.summary.planned_units,
         date_count: nativePlanning.summary.production_date_count,
         ingredient_count: nativePlanning.summary.ingredient_count,

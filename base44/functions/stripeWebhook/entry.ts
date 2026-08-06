@@ -41,6 +41,22 @@ async function postLoyaltyTransaction(base44, payload) {
   return result;
 }
 
+async function linkPendingBagReturn(base44, bagReturnId, customerEmail, orderId) {
+  const id = String(bagReturnId || '').trim();
+  if (!id || !orderId) return { linked: false, reason: 'not_requested' };
+  const bagReturn = await base44.asServiceRole.entities.BagReturn.get(id).catch(() => null);
+  if (!bagReturn?.id) return { linked: false, reason: 'bag_return_not_found' };
+  if (String(bagReturn.customer_email || '').trim().toLowerCase() !== String(customerEmail || '').trim().toLowerCase()) {
+    return { linked: false, reason: 'customer_mismatch' };
+  }
+  if (bagReturn.order_id === orderId) return { linked: true, reason: 'already_linked' };
+  if (bagReturn.order_id !== 'pending' || bagReturn.verification_status !== 'requested') {
+    return { linked: false, reason: 'bag_return_not_pending' };
+  }
+  await base44.asServiceRole.entities.BagReturn.update(bagReturn.id, { order_id: orderId });
+  return { linked: true, reason: 'linked' };
+}
+
 function installStagingSideEffectGuards(base44, stagingSafeMode) {
   if (!stagingSafeMode) return;
 
@@ -885,6 +901,13 @@ Deno.serve(async (req) => {
           cutoff_window_label: checkoutFinalSchedule?.cutoff_window_label || 'unknown',
         });
 
+        await linkPendingBagReturn(
+          base44,
+          orderData.bag_return_request_id || session.metadata?.bag_return_request_id,
+          customerEmail,
+          order.id,
+        ).catch(error => console.warn(`[checkout.completed] Bag return link failed: ${error.message}`));
+
         console.log(`Regular order ${order.id} (${orderNumber}) created after payment completed`);
 
         // Deduct points and credits after order is confirmed
@@ -1267,6 +1290,13 @@ Deno.serve(async (req) => {
           if (csSessions[0]) checkoutData = csSessions[0].checkout_data || {};
         } catch {}
 
+        await linkPendingBagReturn(
+          base44,
+          checkoutData.bag_return_request_id || meta.bag_return_request_id,
+          customerEmail,
+          order.id,
+        ).catch(error => console.warn(`[PI succeeded] Bag return link failed: ${error.message}`));
+
         if (skipLoyaltyWrite(stagingSafeMode)) {
           // Loyalty redemption is intentionally suppressed in isolated staging smoke tests.
         } else if (customerEmail && (checkoutData.points_used || checkoutData.active_reward?.points_required)) {
@@ -1458,6 +1488,8 @@ Deno.serve(async (req) => {
             { status: 'scheduled_for_juicing', timestamp: new Date().toISOString(), message: 'Payment confirmed.' },
           ],
         });
+        await linkPendingBagReturn(base44, meta.bag_return_request_id, customerEmail, newOrder.id)
+          .catch(error => console.warn(`[PI succeeded] Safety-net bag return link failed: ${error.message}`));
         console.log(`[PI succeeded] Safety-net Order created: ${newOrder.id}`);
 
         // Sync safety-net order to Hub

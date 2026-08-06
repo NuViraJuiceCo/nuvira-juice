@@ -559,6 +559,8 @@ function CheckoutFlow() {
         }
       }
 
+      let pendingBagReturnId = null;
+
       // Save bag return request if any
       if ((bagReturn.smallBags > 0 || bagReturn.toteBags > 0) && user?.email) {
         setCheckoutStartStage(CHECKOUT_START_STAGES.SAVING_BAG_RETURN);
@@ -569,9 +571,13 @@ function CheckoutFlow() {
           order_id: 'pending',
         });
 
+        if (existingPending.length > 1) {
+          throw new Error('Multiple pending bag returns need admin review before checkout.');
+        }
+
         if (existingPending.length === 0) {
           try {
-            await base44.entities.BagReturn.create({
+            const createdReturn = await base44.entities.BagReturn.create({
               order_id: 'pending', // will be updated post-checkout
               customer_email: user.email,
               small_bags_requested: bagReturn.smallBags,
@@ -579,8 +585,18 @@ function CheckoutFlow() {
               verification_status: 'requested',
               credit_issued: 0,
             });
+            pendingBagReturnId = createdReturn?.id || null;
           } catch (error) {
             throw markCheckoutStateUnknown(error);
+          }
+        } else {
+          pendingBagReturnId = existingPending[0].id;
+          if (Number(existingPending[0].small_bags_requested || 0) !== bagReturn.smallBags ||
+              Number(existingPending[0].tote_bags_requested || 0) !== bagReturn.toteBags) {
+            await base44.entities.BagReturn.update(existingPending[0].id, {
+              small_bags_requested: bagReturn.smallBags,
+              tote_bags_requested: bagReturn.toteBags,
+            });
           }
         }
         // Sync bag return to hub (non-blocking)
@@ -648,6 +664,7 @@ function CheckoutFlow() {
         zone_key: zoneEligibility?.zone_key || null,
         // Idempotency key — stable for this checkout session, reused on retries
         checkout_idempotency_key: checkoutIdempotencyKey.current,
+        bag_return_request_id: pendingBagReturnId,
         // Health advisory acknowledgment
         health_advisory_acknowledged: true,
         health_advisory_acknowledged_at: new Date().toISOString(),

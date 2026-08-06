@@ -201,12 +201,13 @@ function hubPlanningWithPineapple(overrides = {}) {
 }
 
 function makeBase44({
-  nativeOrders = [], customerOrders = [], recipes = baseRecipes(), bundles = [], products = [], inventoryItems = baseInventoryItems(), ingredientYields = baseIngredientYields(),
+  nativeOrders = [], customerOrders = [], fulfillmentTasks = [], recipes = baseRecipes(), bundles = [], products = [], inventoryItems = baseInventoryItems(), ingredientYields = baseIngredientYields(),
 } = {}) {
   const writes = [];
   const rowsByName = {
     ShopifyOrder: nativeOrders,
     Order: customerOrders,
+    FulfillmentTask: fulfillmentTasks,
     Recipe: recipes,
     Bundle: bundles,
     Product: products,
@@ -277,6 +278,47 @@ const results = [];
   assert.equal(payload.dates.length, 0);
   assert.equal(writes.length, 0);
   results.push('authoritative_delivered_order_suppresses_stale_awaiting_production_mirror');
+}
+
+{
+  const mirror = nativeOrder({ base44_order_id: 'order_delivered_with_future_task' });
+  const { payload, writes } = await invoke({
+    store: {
+      nativeOrders: [mirror],
+      customerOrders: [{
+        id: 'order_delivered_with_future_task',
+        order_number: mirror.shopify_order_number,
+        status: 'delivered',
+        delivered_at: '2026-06-19T18:00:00.000Z',
+      }],
+      fulfillmentTasks: [{
+        id: 'task_future_oasis',
+        order_id: mirror.id,
+        base44_order_id: 'order_delivered_with_future_task',
+        native_shopify_order_id: mirror.id,
+        order_number: mirror.order_number,
+        created_from_native_ops: true,
+        task_source: 'customer_order_adjustment',
+        source_channel: 'online',
+        source_type: 'customer_app_one_time',
+        fulfillment_type: 'delivery',
+        payment_status: 'paid',
+        status: 'scheduled',
+        delivery_status: 'pending',
+        production_status: 'scheduled_for_production',
+        production_date: PRODUCTION_DATE,
+        delivery_date: '2026-06-21',
+        items: [{ title: 'Pineapple Juice', quantity: 1, variant_title: '32 oz' }],
+      }],
+    },
+    hubData: emptyHubPlanning(),
+  });
+  assert.equal(payload.summary.native_order_count, 1);
+  assert.equal(payload.native_overlay.fulfillment_task_count, 1);
+  assert.equal(payload.summary.planned_units, 1);
+  assert.equal(payload.dates[0].product_groups[0].source, 'customer_app_native_fulfillment_task');
+  assert.equal(writes.length, 0);
+  results.push('future_fulfillment_task_remains_visible_after_parent_order_delivery');
 }
 
 {
