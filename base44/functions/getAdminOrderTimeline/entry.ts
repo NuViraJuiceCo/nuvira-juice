@@ -144,7 +144,7 @@ function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
       label: 'Order Created',
       timestamp: customerOrder.created_date,
       source: 'Customer App Order',
-      status: customerOrder.status || customerOrder.payment_status || null,
+      status: 'created',
     }));
   }
 
@@ -154,7 +154,7 @@ function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
       label: 'Native Operations Record Created',
       timestamp: nativeOrder.created_date,
       source: 'Shopify Order',
-      status: nativeOrder.fulfillment_status || nativeOrder.production_status || null,
+      status: 'created',
     }));
   }
 
@@ -165,7 +165,7 @@ function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
         label: 'Delivery Occurrence Created',
         timestamp: task.created_date,
         source: 'Fulfillment Task',
-        status: task.status || task.delivery_status || null,
+        status: 'created',
         task,
       }));
     }
@@ -175,7 +175,7 @@ function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
         label: 'Production Scheduled',
         date: task.production_date,
         source: 'Fulfillment Task',
-        status: task.production_status || task.status || null,
+        status: 'scheduled_for_production',
         task,
       }));
     }
@@ -185,7 +185,7 @@ function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
         label: 'Out for Delivery',
         timestamp: task.out_for_delivery_at,
         source: 'Fulfillment Task',
-        status: task.delivery_status || task.status || null,
+        status: 'out_for_delivery',
         task,
       }));
     }
@@ -195,7 +195,7 @@ function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
         label: 'Delivery Proof Added',
         timestamp: task.delivered_at,
         source: 'Fulfillment Task',
-        status: task.delivery_status || task.status || null,
+        status: 'proof_recorded',
         task,
       }));
     }
@@ -205,7 +205,7 @@ function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
         label: 'Delivered',
         timestamp: task.delivered_at,
         source: 'Fulfillment Task',
-        status: task.delivery_status || task.status || 'delivered',
+        status: 'delivered',
         task,
       }));
     }

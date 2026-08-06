@@ -251,6 +251,8 @@ const results = [];
   assert.equal(events.filter(event => event.type === 'delivery_proof_added').length, 1);
   assert.equal(events.filter(event => event.type === 'production_scheduled').length, 2);
   assert.equal(events.some(event => event.task_id === 'task_future' && event.delivery_date === '2026-08-08'), true);
+  assert.equal(events.find(event => event.type === 'order_created')?.status, 'created');
+  assert.equal(events.find(event => event.type === 'fulfillment_task_created')?.status, 'created');
   results.push('native_timeline_keeps_delivery_occurrences_distinct');
 }
 
