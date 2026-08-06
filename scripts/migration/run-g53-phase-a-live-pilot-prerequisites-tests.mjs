@@ -262,8 +262,11 @@ const productionPage = fs.readFileSync(path.join(repoRoot, 'src/pages/admin/Prod
 assert.ok(productionPage.includes("test_batch_mode: testBatchMode"));
 assert.ok(productionPage.includes('Open Internal Test Validation'));
 assert.ok(productionPage.includes('Internal test batches only.'));
-assert.ok(productionPage.includes("test_record_mode: batch.is_test_batch === true ? 'only' : 'exclude'"));
-assert.ok(productionPage.includes('checklistMatchesBatchMode'));
+assert.ok(productionPage.includes('<ProductionPreStartModal'));
+const preStartModal = fs.readFileSync(path.join(repoRoot, 'src/components/admin/ProductionPreStartModal.jsx'), 'utf8');
+assert.ok(preStartModal.includes('is_test_batch: batch?.is_test_batch === true'));
+assert.ok(preStartModal.includes("invoke('getAdminProductionQueueSummary'"));
+assert.ok(preStartModal.includes("action: 'pre_start_status'"));
 assert.ok(productionPage.includes('enabled: isAdminUser(user) && isPageVisible && !rangeInvalid,'));
 assert.ok(!productionPage.includes("enabled: isAdminUser(user) && !rangeInvalid && testBatchMode === 'exclude'"));
 assert.ok(productionPage.includes('disabled={!action.enabled || pending || actionPending'));

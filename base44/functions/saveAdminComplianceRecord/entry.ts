@@ -12,6 +12,11 @@ const ALLOWED_TYPES = new Set([
   'label_allergen',
   'haccp_plan',
 ]);
+const PRE_START_LINK_TYPES = {
+  sanitation: { entity: 'SanitationLog', dateField: 'log_date' },
+  daily_checklist: { entity: 'DailyChecklist', dateField: 'checklist_date' },
+  temperature: { entity: 'TemperatureLog', dateField: 'log_date' },
+};
 
 function text(value, max = 220) {
   const normalized = (value ?? '').toString().trim().replace(/\s+/g, ' ');
@@ -46,6 +51,29 @@ async function readJsonBody(req) {
 function stringArray(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 30).map(item => text(item, 120)).filter(Boolean);
+}
+
+function referenceList(value) {
+  if (Array.isArray(value)) return value.map(item => text(item, 160)).filter(Boolean);
+  return text(value, 1000).split(',').map(item => text(item, 160)).filter(Boolean);
+}
+
+function uniqueReferences(values) {
+  return [...new Set(values.map(item => text(item, 160)).filter(Boolean))].slice(0, 40);
+}
+
+function preStartRecordReady(recordType, record) {
+  if (recordType === 'sanitation') {
+    return record?.cleaned === true && record?.sanitized === true && text(record?.sanitizer_level, 80).toLowerCase() !== 'low';
+  }
+  if (recordType === 'daily_checklist') {
+    return ['complete', 'pre-production complete'].includes(text(record?.overall_status, 80).toLowerCase()) &&
+      record?.morning_fridge_temp_logged === true &&
+      record?.sanitizer_levels_checked === true &&
+      record?.equipment_sanitized === true &&
+      record?.work_areas_cleaned === true;
+  }
+  return record?.within_range === true && Number.isFinite(Number(record?.temperature));
 }
 
 function ingredientRows(value) {
@@ -109,6 +137,82 @@ async function deriveComplianceTestContext(base44, data) {
     };
   }
   return { is_test_record: false };
+}
+
+async function linkPreStartRecord(base44, body) {
+  const recordType = text(body?.record_type, 80).toLowerCase();
+  const config = PRE_START_LINK_TYPES[recordType];
+  const recordId = text(body?.record_id, 160);
+  if (!config || !recordId) {
+    return Response.json({ success: false, error: 'record_type_and_record_id_required' }, { status: 400 });
+  }
+
+  const resolved = await resolveLinkedProductionBatch(base44, {
+    source_production_batch_id: body?.production_batch_id,
+    batch_id: body?.batch_id,
+  });
+  if (!resolved && body?.is_test_batch === true) {
+    return Response.json({ success: false, error: 'test_batch_must_resolve' }, { status: 400 });
+  }
+  const batch = {
+    id: text(resolved?.id || body?.production_batch_id, 160),
+    batch_id: text(resolved?.batch_id || body?.batch_id, 120),
+    production_date: text(resolved?.production_date || body?.production_date, 40),
+    is_test_batch: resolved?.is_test_batch === true || text(resolved?.batch_id || resolved?.id, 160).toLowerCase().includes('-test-'),
+  };
+  if (!batch.id && !batch.batch_id) {
+    return Response.json({ success: false, error: 'production_batch_id_or_batch_id_required' }, { status: 400 });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(batch.production_date)) {
+    return Response.json({ success: false, error: 'production_date_required' }, { status: 400 });
+  }
+  if (batch.is_test_batch) {
+    return Response.json({ success: false, error: 'test_records_must_be_logged_for_the_exact_batch' }, { status: 409 });
+  }
+
+  const entity = base44.asServiceRole?.entities?.[config.entity];
+  if (!entity?.get || !entity?.update) {
+    return Response.json({ success: false, error: 'entity_unavailable' }, { status: 503 });
+  }
+  const record = await entity.get(recordId).catch(() => null);
+  if (!record) return Response.json({ success: false, error: 'record_not_found' }, { status: 404 });
+  if (record?.is_test_record === true) {
+    return Response.json({ success: false, error: 'test_record_cannot_be_used_for_operational_batch' }, { status: 409 });
+  }
+  if (text(record?.[config.dateField], 40) !== batch.production_date) {
+    return Response.json({ success: false, error: 'record_date_does_not_match_batch' }, { status: 409 });
+  }
+  if (!preStartRecordReady(recordType, record)) {
+    return Response.json({ success: false, error: 'record_is_not_pre_start_ready' }, { status: 409 });
+  }
+
+  const relatedBatchIds = uniqueReferences([
+    ...referenceList(record?.related_batch_ids),
+    ...referenceList(record?.batches_logged),
+    batch.batch_id,
+  ]);
+  const relatedSourceIds = uniqueReferences([
+    ...referenceList(record?.related_source_production_batch_ids),
+    batch.id,
+  ]);
+  const patch = {
+    ...(batch.batch_id && !text(record?.batch_id, 120) ? { batch_id: batch.batch_id } : {}),
+    ...(batch.id && !text(record?.source_production_batch_id, 160) ? { source_production_batch_id: batch.id } : {}),
+    ...(relatedBatchIds.length ? { related_batch_ids: relatedBatchIds } : {}),
+    ...(relatedSourceIds.length ? { related_source_production_batch_ids: relatedSourceIds } : {}),
+    ...(recordType === 'daily_checklist' && relatedBatchIds.length ? { batches_logged: relatedBatchIds.join(', ') } : {}),
+  };
+  await entity.update(recordId, patch);
+  return Response.json({
+    success: true,
+    action: 'linked_existing_pre_start_record',
+    record_type: recordType,
+    record_id: recordId,
+    production_batch_id: batch.id || null,
+    batch_id: batch.batch_id || null,
+    customer_notifications_sent: false,
+    provider_calls_performed: false,
+  });
 }
 
 function todayIso() {
@@ -416,6 +520,10 @@ Deno.serve(async (req) => {
     const body = await readJsonBody(req);
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
+
+    if (text(body?.action, 80).toLowerCase() === 'link_pre_start_record') {
+      return await linkPreStartRecord(base44, body);
     }
 
     const recordType = text(body?.record_type || body?.type, 80).toLowerCase();

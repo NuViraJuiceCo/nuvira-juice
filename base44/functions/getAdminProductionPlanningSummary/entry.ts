@@ -1080,6 +1080,9 @@ function isNativeMay30OperationalOrder(order) {
   const sourceChannel = normalizeLower(order?.source_channel);
   const fulfillmentMethod = normalizeLower(order?.fulfillment_method);
   const productionStatus = normalizeLower(order?.production_status);
+  const orderStatus = normalizeLower(order?.status || order?.order_status);
+  const fulfillmentStatus = normalizeLower(order?.fulfillment_status || order?.shopify_fulfillment_status);
+  const deliveryStatus = normalizeLower(order?.delivery_status);
   const syncStatus = normalizeLower(order?.sync_status);
   const referenceDate = orderReferenceDate(order);
   const isRecentLaunchOrder = Boolean(referenceDate && referenceDate >= MAY30_NATIVE_ORDER_START_DATE);
@@ -1091,7 +1094,12 @@ function isNativeMay30OperationalOrder(order) {
 
   if (!hasNativeOpsMarker) return false;
   if (order?.excluded_from_production === true) return false;
+  if (order?.delivered_at || order?.fulfilled_at || order?.completed_at) return false;
+  if (['delivered', 'fulfilled', 'completed', 'picked_up', 'cancelled', 'canceled', 'refunded'].includes(orderStatus)) return false;
+  if (['delivered', 'fulfilled', 'completed', 'picked_up', 'cancelled', 'canceled', 'refunded'].includes(fulfillmentStatus)) return false;
+  if (['delivered', 'fulfilled', 'completed', 'picked_up', 'cancelled', 'canceled', 'refunded'].includes(deliveryStatus)) return false;
   if (['canceled', 'cancelled', 'refunded'].includes(productionStatus)) return false;
+  if (productionStatus === 'fulfilled') return false;
   if (['refunded', 'partially_refunded'].includes(paymentStatus)) return false;
   if (paymentStatus && paymentStatus !== 'paid') return false;
   if (orderType === 'pos' || sourceChannel === 'pos' || fulfillmentMethod === 'pos') return false;
@@ -1112,6 +1120,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   };
 
   const nativeOrders = await listEntity('ShopifyOrder', '-customer_order_date', 500);
+  const customerOrders = await listEntity('Order', '-created_date', 500);
   const recipes = await listEntity('Recipe', 'product_name', 500);
   const bundles = await listEntity('Bundle', 'bundle_name', 500);
   const products = await listEntity('Product', 'title', 500);
@@ -1133,6 +1142,31 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
   const ambiguousYieldKeys = new Set();
   let skippedDateCount = 0;
   let builtInFallbackRecipeCount = 0;
+
+  const customerOrderById = new Map();
+  const customerOrderByNumber = new Map();
+  for (const order of customerOrders) {
+    if (order?.id) customerOrderById.set(normalizeText(order.id), order);
+    const orderNumber = normalizeLower(order?.order_number);
+    if (orderNumber && !customerOrderByNumber.has(orderNumber)) customerOrderByNumber.set(orderNumber, order);
+  }
+
+  function withAuthoritativeCustomerLifecycle(nativeOrder) {
+    const customerOrder = customerOrderById.get(normalizeText(nativeOrder?.base44_order_id)) ||
+      customerOrderByNumber.get(normalizeLower(nativeOrder?.shopify_order_number || nativeOrder?.order_number));
+    if (!customerOrder) return nativeOrder;
+    return {
+      ...nativeOrder,
+      status: customerOrder.status || nativeOrder.status,
+      order_status: customerOrder.status || customerOrder.order_status || nativeOrder.order_status,
+      delivery_status: customerOrder.delivery_status || nativeOrder.delivery_status,
+      fulfillment_status: customerOrder.fulfillment_status || nativeOrder.fulfillment_status,
+      delivered_at: customerOrder.delivered_at || nativeOrder.delivered_at,
+      fulfilled_at: customerOrder.fulfilled_at || nativeOrder.fulfilled_at,
+      completed_at: customerOrder.completed_at || nativeOrder.completed_at,
+      excluded_from_production: customerOrder.excluded_from_production === true || nativeOrder.excluded_from_production === true,
+    };
+  }
 
   recipes
     .filter(recipe => recipe?.is_active !== false)
@@ -1217,7 +1251,8 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
     productMap.set(key, current);
   }
 
-  for (const order of nativeOrders) {
+  for (const nativeOrder of nativeOrders) {
+    const order = withAuthoritativeCustomerLifecycle(nativeOrder);
     if (!isNativeMay30OperationalOrder(order)) continue;
 
     const plannedProductionDate = orderPlanningDate(order);

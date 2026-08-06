@@ -87,6 +87,73 @@ async function readJsonBody(req) {
   }
 }
 
+function referenceList(value) {
+  if (Array.isArray(value)) return value.map(item => sanitizeText(item, 160)).filter(Boolean);
+  return normalizeText(value).split(',').map(item => sanitizeText(item, 160)).filter(Boolean);
+}
+
+function complianceRecordMatchesBatch(record, batch) {
+  const sourceId = normalizeText(batch?.id);
+  const batchId = normalizeText(batch?.batch_id);
+  const sourceRefs = new Set([
+    normalizeText(record?.source_production_batch_id),
+    ...referenceList(record?.related_source_production_batch_ids),
+  ].filter(Boolean));
+  const batchRefs = new Set([
+    normalizeText(record?.batch_id),
+    ...referenceList(record?.related_batch_ids),
+    ...referenceList(record?.batches_logged),
+  ].filter(Boolean));
+  return Boolean((sourceId && sourceRefs.has(sourceId)) || (batchId && batchRefs.has(batchId)));
+}
+
+function preStartRecordReady(recordType, record) {
+  if (recordType === 'sanitation') {
+    return record?.cleaned === true && record?.sanitized === true && normalizeLower(record?.sanitizer_level) !== 'low';
+  }
+  if (recordType === 'daily_checklist') {
+    return ['complete', 'pre-production complete'].includes(normalizeLower(record?.overall_status)) &&
+      record?.morning_fridge_temp_logged === true &&
+      record?.sanitizer_levels_checked === true &&
+      record?.equipment_sanitized === true &&
+      record?.work_areas_cleaned === true;
+  }
+  return record?.within_range === true && Number.isFinite(Number(record?.temperature));
+}
+
+async function linkedComplianceRows(base44, entityName, batch) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  if (!entity?.filter) throw new Error(`${entityName}_unavailable`);
+  const results = await Promise.all([
+    batch.id ? entity.filter({ source_production_batch_id: batch.id }, '-created_date', 20).catch(() => []) : [],
+    batch.batch_id ? entity.filter({ batch_id: batch.batch_id }, '-created_date', 20).catch(() => []) : [],
+  ]);
+  const seen = new Set();
+  return results.flat().filter(row => {
+    const key = normalizeText(row?.id);
+    if (!key || seen.has(key) || row?.is_test_record === true) return false;
+    seen.add(key);
+    return complianceRecordMatchesBatch(row, batch);
+  });
+}
+
+async function loadPreStartCompliance(base44, batch) {
+  try {
+    const [sanitation, dailyChecklist, temperature] = await Promise.all([
+      linkedComplianceRows(base44, 'SanitationLog', batch),
+      linkedComplianceRows(base44, 'DailyChecklist', batch),
+      linkedComplianceRows(base44, 'TemperatureLog', batch),
+    ]);
+    const blockers = [];
+    if (!sanitation.some(row => preStartRecordReady('sanitation', row))) blockers.push('pre_start_sanitation_missing_or_incomplete');
+    if (!dailyChecklist.some(row => preStartRecordReady('daily_checklist', row))) blockers.push('pre_start_daily_checklist_missing_or_incomplete');
+    if (!temperature.some(row => preStartRecordReady('temperature', row))) blockers.push('pre_start_temperature_missing_or_out_of_range');
+    return { ready: blockers.length === 0, blockers };
+  } catch {
+    return { ready: false, blockers: ['pre_start_compliance_unavailable'] };
+  }
+}
+
 function sanitizeHubCommandResponse(data, requestId) {
   return {
     success: data?.success === true,
@@ -171,6 +238,21 @@ Deno.serve(async (req) => {
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       return Response.json({ error: 'Hub production batch start command service is not configured' }, { status: 503 });
+    }
+
+    const preStartCompliance = await loadPreStartCompliance(base44, {
+      id: productionBatchId,
+      batch_id: batchId,
+    });
+    if (!preStartCompliance.ready) {
+      return Response.json({
+        success: false,
+        skipped: true,
+        error: 'Pre-start compliance is incomplete for this exact batch',
+        error_code: 'pre_start_compliance_incomplete',
+        blockers: preStartCompliance.blockers,
+        writes_performed: false,
+      }, { status: 409 });
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');

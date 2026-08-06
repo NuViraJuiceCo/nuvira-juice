@@ -7,6 +7,11 @@ const DEFAULT_RANGE_DAYS_AHEAD = 14;
 const MAX_LIMIT = 100;
 const CHICAGO_TZ = 'America/Chicago';
 const TEST_BATCH_MODES = new Set(['exclude', 'only']);
+const PRE_START_RECORD_TYPES = {
+  sanitation: { entity: 'SanitationLog', dateField: 'log_date' },
+  daily_checklist: { entity: 'DailyChecklist', dateField: 'checklist_date' },
+  temperature: { entity: 'TemperatureLog', dateField: 'log_date' },
+};
 
 async function readJsonBody(req) {
   try {
@@ -124,6 +129,139 @@ function isInternalTestBatch(batch) {
     sourceSystem.includes('internal_validation') ||
     ownerStatus.includes('internal_test') ||
     testPurpose.includes('internal validation');
+}
+
+function safeId(value) {
+  const normalized = normalizeText(value).replace(/\s+/g, ' ');
+  return normalized && normalized.length <= 180 && /^[A-Za-z0-9._:@/#-]+$/.test(normalized) ? normalized : '';
+}
+
+function lower(value) {
+  return normalizeText(value).replace(/\s+/g, ' ').toLowerCase();
+}
+
+function referenceList(value) {
+  if (Array.isArray(value)) return value.map(safeId).filter(Boolean);
+  return normalizeText(value).split(',').map(safeId).filter(Boolean);
+}
+
+function uniqueRows(rows) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : []).filter(row => {
+    const key = safeId(row?.id);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function preStartRecordMatchesBatch(record, batch) {
+  const sourceId = safeId(batch?.id);
+  const batchId = safeId(batch?.batch_id);
+  const sourceRefs = new Set([
+    safeId(record?.source_production_batch_id),
+    ...referenceList(record?.related_source_production_batch_ids),
+  ].filter(Boolean));
+  const batchRefs = new Set([
+    safeId(record?.batch_id),
+    ...referenceList(record?.related_batch_ids),
+    ...referenceList(record?.batches_logged),
+  ].filter(Boolean));
+  return Boolean((sourceId && sourceRefs.has(sourceId)) || (batchId && batchRefs.has(batchId)));
+}
+
+function preStartRecordReady(recordType, record) {
+  if (recordType === 'sanitation') {
+    return record?.cleaned === true && record?.sanitized === true && lower(record?.sanitizer_level) !== 'low';
+  }
+  if (recordType === 'daily_checklist') {
+    return ['complete', 'pre-production complete'].includes(lower(record?.overall_status)) &&
+      record?.morning_fridge_temp_logged === true &&
+      record?.sanitizer_levels_checked === true &&
+      record?.equipment_sanitized === true &&
+      record?.work_areas_cleaned === true;
+  }
+  return record?.within_range === true && Number.isFinite(Number(record?.temperature));
+}
+
+async function resolvePreStartBatch(base44, body) {
+  const entity = base44.asServiceRole?.entities?.ProductionBatch;
+  const sourceId = safeId(body?.production_batch_id);
+  const displayId = safeId(body?.batch_id);
+  let batch = null;
+  if (sourceId && entity?.get) batch = await entity.get(sourceId).catch(() => null);
+  if (!batch && displayId && entity?.filter) {
+    const rows = await entity.filter({ batch_id: displayId }, '-created_date', 2).catch(() => []);
+    if (Array.isArray(rows) && rows.length === 1) batch = rows[0];
+  }
+  if (!batch && body?.is_test_batch === true) throw new Error('test_batch_must_resolve');
+  const productionDate = normalizeText(batch?.production_date || body?.production_date);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(productionDate)) throw new Error('production_date_required');
+  return {
+    id: safeId(batch?.id) || sourceId,
+    batch_id: safeId(batch?.batch_id) || displayId,
+    production_date: productionDate,
+    is_test_batch: isInternalTestBatch(batch),
+  };
+}
+
+async function loadPreStartRows(base44, recordType, batch) {
+  const config = PRE_START_RECORD_TYPES[recordType];
+  const entity = base44.asServiceRole?.entities?.[config.entity];
+  if (!entity?.filter) throw new Error(`${config.entity}_unavailable`);
+  const requests = [
+    batch.id ? entity.filter({ source_production_batch_id: batch.id }, '-created_date', 20).catch(() => []) : [],
+    batch.batch_id ? entity.filter({ batch_id: batch.batch_id }, '-created_date', 20).catch(() => []) : [],
+    entity.filter({ [config.dateField]: batch.production_date }, '-created_date', 50).catch(() => []),
+  ];
+  return uniqueRows((await Promise.all(requests)).flat()).filter(row => (
+    batch.is_test_batch ? row?.is_test_record === true : row?.is_test_record !== true
+  ));
+}
+
+function preStartStatusItem(recordType, rows, batch) {
+  const exact = rows.find(row => preStartRecordMatchesBatch(row, batch) && preStartRecordReady(recordType, row));
+  const reusable = batch.is_test_batch
+    ? null
+    : rows.find(row => !preStartRecordMatchesBatch(row, batch) && preStartRecordReady(recordType, row));
+  return {
+    key: recordType,
+    ready: Boolean(exact),
+    match_scope: exact ? 'batch_linked' : null,
+    record_id: safeId(exact?.id) || null,
+    reusable_record_id: safeId(reusable?.id) || null,
+    reusable_same_day_record: Boolean(reusable),
+  };
+}
+
+async function preStartStatusResponse(base44, body) {
+  const batch = await resolvePreStartBatch(base44, body);
+  if (!batch.id && !batch.batch_id) {
+    return Response.json({ success: false, error: 'production_batch_id_or_batch_id_required' }, { status: 400 });
+  }
+  const entries = await Promise.all(Object.keys(PRE_START_RECORD_TYPES).map(async recordType => (
+    [recordType, await loadPreStartRows(base44, recordType, batch)]
+  )));
+  const rowsByType = Object.fromEntries(entries);
+  const items = Object.keys(PRE_START_RECORD_TYPES).map(recordType => preStartStatusItem(recordType, rowsByType[recordType], batch));
+  const missing = items.filter(item => !item.ready).map(item => item.key);
+  return Response.json({
+    success: true,
+    action: 'pre_start_status',
+    read_only: true,
+    ready: missing.length === 0,
+    batch: {
+      production_batch_id: batch.id || null,
+      batch_id: batch.batch_id || null,
+      production_date: batch.production_date,
+      is_test_batch: batch.is_test_batch,
+    },
+    items,
+    missing,
+    writes_performed: false,
+    provider_calls_performed: false,
+    customer_notifications_sent: false,
+  });
 }
 
 function sanitizeBatch(batch) {
@@ -282,6 +420,15 @@ Deno.serve(async (req) => {
     const body = await readJsonBody(req);
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
+    if (lower(body?.action) === 'pre_start_status') {
+      try {
+        return await preStartStatusResponse(base44, body);
+      } catch (error) {
+        const message = normalizeText(error?.message) || 'pre_start_status_unavailable';
+        const status = ['production_date_required', 'test_batch_must_resolve'].includes(message) ? 400 : 500;
+        return Response.json({ success: false, error: message }, { status });
+      }
     }
     let dateFrom;
     let dateTo;

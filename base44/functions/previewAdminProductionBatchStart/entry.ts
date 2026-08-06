@@ -98,6 +98,96 @@ function safeStringArray(value, itemLength = 120) {
     .filter(Boolean);
 }
 
+function referenceList(value) {
+  if (Array.isArray(value)) return value.map(item => sanitizeText(item, 160)).filter(Boolean);
+  return normalizeText(value).split(',').map(item => sanitizeText(item, 160)).filter(Boolean);
+}
+
+function complianceRecordMatchesBatch(record, batch) {
+  const sourceId = normalizeText(batch?.id);
+  const batchId = normalizeText(batch?.batch_id);
+  const sourceRefs = new Set([
+    normalizeText(record?.source_production_batch_id),
+    ...referenceList(record?.related_source_production_batch_ids),
+  ].filter(Boolean));
+  const batchRefs = new Set([
+    normalizeText(record?.batch_id),
+    ...referenceList(record?.related_batch_ids),
+    ...referenceList(record?.batches_logged),
+  ].filter(Boolean));
+  return Boolean((sourceId && sourceRefs.has(sourceId)) || (batchId && batchRefs.has(batchId)));
+}
+
+function preStartRecordReady(recordType, record) {
+  if (recordType === 'sanitation') {
+    return record?.cleaned === true && record?.sanitized === true && normalizeLower(record?.sanitizer_level) !== 'low';
+  }
+  if (recordType === 'daily_checklist') {
+    return ['complete', 'pre-production complete'].includes(normalizeLower(record?.overall_status)) &&
+      record?.morning_fridge_temp_logged === true &&
+      record?.sanitizer_levels_checked === true &&
+      record?.equipment_sanitized === true &&
+      record?.work_areas_cleaned === true;
+  }
+  return record?.within_range === true && Number.isFinite(Number(record?.temperature));
+}
+
+async function linkedComplianceRows(base44, entityName, batch) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  if (!entity?.filter) throw new Error(`${entityName}_unavailable`);
+  const results = await Promise.all([
+    batch.id ? entity.filter({ source_production_batch_id: batch.id }, '-created_date', 20).catch(() => []) : [],
+    batch.batch_id ? entity.filter({ batch_id: batch.batch_id }, '-created_date', 20).catch(() => []) : [],
+  ]);
+  const seen = new Set();
+  return results.flat().filter(row => {
+    const key = normalizeText(row?.id);
+    if (!key || seen.has(key) || row?.is_test_record === true) return false;
+    seen.add(key);
+    return complianceRecordMatchesBatch(row, batch);
+  });
+}
+
+async function loadPreStartCompliance(base44, batch) {
+  try {
+    const [sanitation, dailyChecklist, temperature] = await Promise.all([
+      linkedComplianceRows(base44, 'SanitationLog', batch),
+      linkedComplianceRows(base44, 'DailyChecklist', batch),
+      linkedComplianceRows(base44, 'TemperatureLog', batch),
+    ]);
+    const ready = {
+      sanitation: sanitation.some(row => preStartRecordReady('sanitation', row)),
+      daily_checklist: dailyChecklist.some(row => preStartRecordReady('daily_checklist', row)),
+      temperature: temperature.some(row => preStartRecordReady('temperature', row)),
+    };
+    const blockers = [];
+    if (!ready.sanitation) blockers.push('pre_start_sanitation_missing_or_incomplete');
+    if (!ready.daily_checklist) blockers.push('pre_start_daily_checklist_missing_or_incomplete');
+    if (!ready.temperature) blockers.push('pre_start_temperature_missing_or_out_of_range');
+    return { enforced: true, ready: blockers.length === 0, blockers, items: ready };
+  } catch {
+    return {
+      enforced: true,
+      ready: false,
+      blockers: ['pre_start_compliance_unavailable'],
+      items: { sanitation: false, daily_checklist: false, temperature: false },
+    };
+  }
+}
+
+function safePreStartCompliance(value) {
+  return {
+    enforced: value?.enforced === true,
+    ready: value?.ready === true,
+    blockers: safeStringArray(value?.blockers, 120),
+    items: {
+      sanitation: value?.items?.sanitation === true,
+      daily_checklist: value?.items?.daily_checklist === true,
+      temperature: value?.items?.temperature === true,
+    },
+  };
+}
+
 function safeCountMap(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(
@@ -262,7 +352,21 @@ Deno.serve(async (req) => {
       }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
     }
 
-    return Response.json(sanitizeHubPreviewResponse(hubData, requestId));
+    const preStartCompliance = await loadPreStartCompliance(base44, {
+      id: productionBatchId,
+      batch_id: batchId,
+    });
+    const sanitized = sanitizeHubPreviewResponse(hubData, requestId);
+    const blockers = [...new Set([
+      ...safeStringArray(sanitized.blockers, 120),
+      ...safeStringArray(preStartCompliance.blockers, 120),
+    ])];
+    return Response.json({
+      ...sanitized,
+      live_allowed: sanitized.live_allowed === true && preStartCompliance.ready === true,
+      blockers,
+      pre_start_compliance: safePreStartCompliance(preStartCompliance),
+    });
   } catch {
     console.error('[previewAdminProductionBatchStart] Error');
     return Response.json({ error: 'Unable to preview Hub production batch start' }, { status: 500 });

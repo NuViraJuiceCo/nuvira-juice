@@ -201,11 +201,12 @@ function hubPlanningWithPineapple(overrides = {}) {
 }
 
 function makeBase44({
-  nativeOrders = [], recipes = baseRecipes(), bundles = [], products = [], inventoryItems = baseInventoryItems(), ingredientYields = baseIngredientYields(),
+  nativeOrders = [], customerOrders = [], recipes = baseRecipes(), bundles = [], products = [], inventoryItems = baseInventoryItems(), ingredientYields = baseIngredientYields(),
 } = {}) {
   const writes = [];
   const rowsByName = {
     ShopifyOrder: nativeOrders,
+    Order: customerOrders,
     Recipe: recipes,
     Bundle: bundles,
     Product: products,
@@ -256,6 +257,27 @@ function assertNoForbiddenPayloads(payload) {
 }
 
 const results = [];
+
+{
+  const mirror = nativeOrder({ base44_order_id: 'order_delivered_authoritative' });
+  const { payload, writes } = await invoke({
+    store: {
+      nativeOrders: [mirror],
+      customerOrders: [{
+        id: 'order_delivered_authoritative',
+        order_number: mirror.shopify_order_number,
+        status: 'delivered',
+        delivered_at: '2026-06-20T18:00:00.000Z',
+      }],
+    },
+    hubData: emptyHubPlanning(),
+  });
+  assert.equal(payload.summary.native_order_count, 0);
+  assert.equal(payload.summary.planned_units, 0);
+  assert.equal(payload.dates.length, 0);
+  assert.equal(writes.length, 0);
+  results.push('authoritative_delivered_order_suppresses_stale_awaiting_production_mirror');
+}
 
 {
   const { status, payload, writes } = await invoke({

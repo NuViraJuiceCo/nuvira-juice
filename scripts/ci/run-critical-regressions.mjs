@@ -26,6 +26,7 @@ const harnesses = [
   'scripts/migration/run-g43b-customer-order-history-limited-native-first-tests.mjs',
   'scripts/migration/run-g43c-customer-order-tracker-limited-native-first-tests.mjs',
   'scripts/migration/run-g39d-admin-delivery-route-native-first-tests.mjs',
+  'scripts/migration/run-g39f-admin-production-planning-native-first-tests.mjs',
   'scripts/migration/run-g42b-admin-delivery-action-readiness-tests.mjs',
   'scripts/migration/run-g39j-admin-orders-mismatch-diagnostics-tests.mjs',
   'scripts/migration/run-g39l-admin-orders-limited-native-primary-tests.mjs',
@@ -60,6 +61,7 @@ const harnesses = [
   'scripts/migration/run-g66-customer-journey-automation-tests.mjs',
   'scripts/migration/run-g67-function-estate-cleanup-tests.mjs',
   'scripts/migration/run-g68-authoritative-loyalty-and-ingestion-tests.mjs',
+  'scripts/migration/run-g69-production-prestart-modal-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

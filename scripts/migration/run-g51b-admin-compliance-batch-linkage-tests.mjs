@@ -16,6 +16,10 @@ const checklistSchema = readJson('base44/entities/DailyChecklist.jsonc');
 const saveEntry = read('base44/functions/saveAdminComplianceRecord/entry.ts');
 const complianceSummaryEntry = read('base44/functions/getAdminComplianceOpsSummary/entry.ts');
 const productionQueue = read('src/pages/admin/ProductionQueueSummary.jsx');
+const preStartModal = read('src/components/admin/ProductionPreStartModal.jsx');
+const productionQueueEntry = read('base44/functions/getAdminProductionQueueSummary/entry.ts');
+const previewStartEntry = read('base44/functions/previewAdminProductionBatchStart/entry.ts');
+const liveStartEntry = read('base44/functions/startAdminProductionBatch/entry.ts');
 const complianceOps = read('src/pages/admin/ComplianceOps.jsx');
 const unifiedComplianceForm = read('src/components/compliance/UnifiedComplianceForm.jsx');
 const sanitationLogForm = read('src/components/compliance/SanitationLogForm.jsx');
@@ -47,17 +51,19 @@ assert('Sanitation records persist batch link fields.', /function sanitationReco
 assert('Daily checklist records persist batch link fields.', /function checklistRecord[\s\S]*const linkFields = batchLinkFields\(data\)[\s\S]*\.\.\.linkFields/.test(saveEntry), {});
 assert('Daily checklist batch text falls back to structured references.', saveEntry.includes("data?.batches_logged || data?.batch_id || batchRefs.join(', ')"), {});
 
-assert('Production Queue builds per-batch compliance links once.', productionQueue.includes('function batchComplianceLinkFields(batch)') && productionQueue.includes('source_production_batch_id: sourceBatchId'), {});
-assert('Production Queue merges existing daily checklist batch references.', productionQueue.includes('function checklistBatchLinkFields(existingChecklist, batch)') && productionQueue.includes('existingChecklist?.batches_logged'), {});
-assert('Hub-style pre-start save fetches full existing checklist, not only an id.', productionQueue.includes('async function findExistingDailyChecklist()') && productionQueue.includes('return match || null;'), {});
-assert('Native pre-start save fetches full existing checklist, not only an id.', productionQueue.includes('async function findExistingChecklist()') && productionQueue.includes('return checklists.find(checklist =>'), {});
-assert('Pre-start checklist lookup supports live native.records response shape.', productionQueue.includes('result?.native?.records || result?.native_compliance?.records || result?.records'), {});
-assert('Pre-start sanitation and temperature records receive batch links.', (productionQueue.match(/\.\.\.batchLink/g) || []).length >= 2, {});
-assert('Pre-start daily checklist updates use the existing checklist id and merged refs.', productionQueue.includes('existing_id: existingChecklist?.id') && productionQueue.includes('...checklistBatchLinkFields(existingChecklist, batch)'), {});
-assert('CCP remains out of the pre-start save path.', !/record_type:\s*['"]ccp['"][\s\S]{0,900}Save Pre-start Compliance/.test(productionQueue), {});
-assert('Source-backed Start execution requires pre-start compliance save.', productionQueue.includes("action === 'start' && !preStartSaved") && productionQueue.includes('Save Pre-start Compliance First'), {});
-assert('Native Start execution requires pre-start compliance save.', productionQueue.includes("action === 'start' && !preStartComplianceSaved") && productionQueue.includes('Save pre-start compliance before saving Start for this native batch.'), {});
-assert('Native pre-start save reports saved state to the lifecycle gate.', productionQueue.includes('onSavedChange?.(false)') && productionQueue.includes('onSavedChange?.(true)'), {});
+assert('Shared pre-start modal builds exact per-batch links.', preStartModal.includes('function batchLinkFields(batch)') && preStartModal.includes('related_source_production_batch_ids: [sourceId]'), {});
+assert('Start opens one shared modal for source-backed and native batches.', (productionQueue.match(/<ProductionPreStartModal/g) || []).length === 2 && productionQueue.includes('setPreStartModalOpen(true)'), {});
+assert('Modal reloads authoritative completion status whenever it opens.', preStartModal.includes("invoke('getAdminProductionQueueSummary'") && preStartModal.includes("action: 'pre_start_status'") && preStartModal.includes('refreshStatus();'), {});
+assert('Modal saves one selected compliance item at a time.', preStartModal.includes('async function saveRecord(recordType)') && preStartModal.includes('record_type: recordType') && !preStartModal.includes('Promise.all'), {});
+assert('After one save the modal returns to the remaining-items checklist.', preStartModal.includes("setView('overview');") && preStartModal.includes('Choose the next missing item.'), {});
+assert('Valid same-day manual logs can be linked instead of duplicated.', preStartModal.includes("Use today's log") && preStartModal.includes("invoke('saveAdminComplianceRecord'") && preStartModal.includes("action: 'link_pre_start_record'"), {});
+assert('Status reader distinguishes exact ready rows from reusable same-day rows.', productionQueueEntry.includes("match_scope: exact ? 'batch_linked' : null") && productionQueueEntry.includes('reusable_same_day_record: Boolean(reusable)'), {});
+assert('Same-day linking revalidates date, readiness, and operational/test separation.', saveEntry.includes('record_date_does_not_match_batch') && saveEntry.includes('record_is_not_pre_start_ready') && saveEntry.includes('test_record_cannot_be_used_for_operational_batch'), {});
+assert('Linked existing logs merge structured batch references.', saveEntry.includes('related_batch_ids: relatedBatchIds') && saveEntry.includes('related_source_production_batch_ids: relatedSourceIds'), {});
+assert('CCP remains out of the pre-start workflow.', !/record_type:\s*['"]ccp['"]/.test(preStartModal), {});
+assert('Source-backed Start execution requires record-backed readiness.', productionQueue.includes("action === 'start' && !preStartReady") && liveStartEntry.includes('pre_start_compliance_incomplete'), {});
+assert('Native Start execution requires record-backed readiness.', productionQueue.includes("action === 'start' && !preStartReady") && productionQueue.includes('Complete the record-backed pre-start checklist before saving Start'), {});
+assert('Source-backed preview independently applies the server compliance gate.', previewStartEntry.includes('loadPreStartCompliance') && previewStartEntry.includes('pre_start_compliance: safePreStartCompliance(preStartCompliance)'), {});
 assert('Compliance Ops hides Hub fallback warnings when native compliance is ready.', complianceOps.includes('nativeComplianceReady') && complianceOps.includes('hubComplianceWarning && !nativeComplianceReady'), {});
 assert('Compliance summary fallback promotes native counts into top-level counts.', complianceSummaryEntry.includes('countFromFallbackOrNative') && complianceSummaryEntry.includes('production_batches: countFromFallbackOrNative') && complianceSummaryEntry.includes('native_production_batches'), {});
 assert('Compliance summary preserves Hub fallback warnings outside top-level native-ready warnings.', complianceSummaryEntry.includes('function nativeComplianceReady(native)') && complianceSummaryEntry.includes('source_fallback_warnings: safeStringArray(fallback.warnings)') && complianceSummaryEntry.includes('? safeStringArray(native.warnings)'), {});
@@ -68,12 +74,12 @@ assert('Compliance summary exposes computed internal-test batch status after san
 assert('Unified compliance form uses staff picker for responsible staff.', unifiedComplianceForm.includes("import StaffMemberPicker from '@/components/admin/StaffMemberPicker';") && unifiedComplianceForm.includes('label="Responsible staff member"'), {});
 assert('Unified compliance form no longer hardcodes user full_name as the only log staff value.', unifiedComplianceForm.includes('staff_member: staffMember || user.full_name || user.email'), {});
 assert('Unified compliance form supports multi-select staff on duty.', unifiedComplianceForm.includes("staff_on_duty: 'Staff on duty'") && unifiedComplianceForm.includes("multiple={field === 'staff_on_duty'}"), {});
-assert('Production pre-start verifier uses the staff picker in both source and native flows.', (productionQueue.match(/label="Verified by"/g) || []).length >= 2 && productionQueue.includes('placeholder="Optional verifier"'), {});
+assert('Shared production pre-start verifier uses the staff picker.', preStartModal.includes('label="Verified by"') && preStartModal.includes('placeholder="Optional verifier"'), {});
 assert('Standalone sanitation verifier uses the staff picker.', sanitationLogForm.includes("import StaffMemberPicker from '@/components/admin/StaffMemberPicker';") && sanitationLogForm.includes('label="Verified by"'), {});
 
 assert('Critical regressions include the compliance batch-linkage guard.', criticalCi.includes('scripts/migration/run-g51b-admin-compliance-batch-linkage-tests.mjs'), {});
-assert('No provider calls were introduced by the batch-linkage guard.', !/Stripe\(|new Stripe|Shopify\(|provider_call_impact:\s*true/i.test(saveEntry + productionQueue), {});
-assert('No customer notifications were introduced by the batch-linkage guard.', !/CustomerMessageDeliveryLog|sendNotification|notifications_sent:\s*true/.test(saveEntry + productionQueue), {});
+assert('No provider calls were introduced by the batch-linkage guard.', !/Stripe\(|new Stripe|Shopify\(|provider_call_impact:\s*true/i.test(saveEntry + productionQueue + preStartModal + productionQueueEntry), {});
+assert('No customer notifications were introduced by the batch-linkage guard.', !/CustomerMessageDeliveryLog|sendNotification|notifications_sent:\s*true/.test(saveEntry + productionQueue + preStartModal + productionQueueEntry), {});
 
 const failures = results.filter(result => !result.ok);
 console.log(JSON.stringify({

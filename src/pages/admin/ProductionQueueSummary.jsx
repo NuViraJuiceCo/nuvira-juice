@@ -6,6 +6,7 @@ import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Database, Lock, Package, Play, RefreshCw } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
+import ProductionPreStartModal from '@/components/admin/ProductionPreStartModal';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
@@ -18,11 +19,6 @@ function todayDate() {
   const month = `${today.getMonth() + 1}`.padStart(2, '0');
   const day = `${today.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function currentTimeValue() {
-  const now = new Date();
-  return `${now.getHours()}`.padStart(2, '0') + ':' + `${now.getMinutes()}`.padStart(2, '0');
 }
 
 const LIVE_INVENTORY_DEDUCTION_REQUIRES_EXACT_APPROVAL = true;
@@ -147,82 +143,6 @@ function requestIdFor(prefix, batch) {
   return `${prefix}_${batch.id || batch.batch_id || 'batch'}_${Date.now()}_${randomId}`;
 }
 
-function splitReferenceList(value) {
-  if (Array.isArray(value)) {
-    return value.map(item => String(item || '').trim()).filter(Boolean);
-  }
-  return String(value || '')
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean);
-}
-
-function uniqueReferenceList(values) {
-  const seen = new Set();
-  return values
-    .map(value => String(value || '').trim())
-    .filter(Boolean)
-    .filter(value => {
-      const key = value.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-function batchComplianceLinkFields(batch) {
-  const batchId = String(batch?.batch_id || '').trim();
-  const sourceBatchId = String(batch?.id || '').trim();
-  return {
-    ...(batchId ? { batch_id: batchId, related_batch_ids: [batchId] } : {}),
-    ...(sourceBatchId ? { source_production_batch_id: sourceBatchId, related_source_production_batch_ids: [sourceBatchId] } : {}),
-    is_test_record: batch?.is_test_batch === true,
-  };
-}
-
-function checklistBatchLinkFields(existingChecklist, batch) {
-  const batchId = String(batch?.batch_id || '').trim();
-  const sourceBatchId = String(batch?.id || '').trim();
-  const relatedBatchIds = uniqueReferenceList([
-    ...splitReferenceList(existingChecklist?.related_batch_ids),
-    ...splitReferenceList(existingChecklist?.batches_logged),
-    batchId,
-  ]);
-  const relatedSourceBatchIds = uniqueReferenceList([
-    ...splitReferenceList(existingChecklist?.related_source_production_batch_ids),
-    existingChecklist?.source_production_batch_id,
-    sourceBatchId,
-  ]);
-
-  return {
-    ...(batchId ? { batch_id: batchId } : {}),
-    ...(sourceBatchId ? { source_production_batch_id: sourceBatchId } : {}),
-    ...(relatedBatchIds.length > 0 ? { related_batch_ids: relatedBatchIds, batches_logged: relatedBatchIds.join(', ') } : {}),
-    ...(relatedSourceBatchIds.length > 0 ? { related_source_production_batch_ids: relatedSourceBatchIds } : {}),
-    is_test_record: batch?.is_test_batch === true,
-  };
-}
-
-function checklistMatchesBatchMode(checklist, batch, checklistDate, staffMember) {
-  if (checklist?.checklist_date !== checklistDate || checklist?.staff_member !== staffMember) return false;
-  const testBatch = batch?.is_test_batch === true;
-  if ((checklist?.is_test_record === true) !== testBatch) return false;
-  if (!testBatch) return true;
-
-  const batchId = String(batch?.batch_id || '').trim();
-  const sourceBatchId = String(batch?.id || '').trim();
-  const batchRefs = new Set([
-    checklist?.batch_id,
-    ...splitReferenceList(checklist?.related_batch_ids),
-    ...splitReferenceList(checklist?.batches_logged),
-  ].map(value => String(value || '').trim()).filter(Boolean));
-  const sourceRefs = new Set([
-    checklist?.source_production_batch_id,
-    ...splitReferenceList(checklist?.related_source_production_batch_ids),
-  ].map(value => String(value || '').trim()).filter(Boolean));
-  return (batchId && batchRefs.has(batchId)) || (sourceBatchId && sourceRefs.has(sourceBatchId));
-}
-
 function formatNumber(value) {
   if (value === null || value === undefined || value === '') return '-';
   const parsed = Number(value);
@@ -288,26 +208,12 @@ function PreviewResult({ preview }) {
 }
 
 function ProductionLifecyclePanel({ batch, onActionSuccess }) {
-  const queryClient = useQueryClient();
   const [activeAction, setActiveAction] = useState(null);
   const [preview, setPreview] = useState(null);
   const [message, setMessage] = useState(null);
   const [pending, setPending] = useState(null);
-  const [preStartSaving, setPreStartSaving] = useState(false);
-  const [preStartSaved, setPreStartSaved] = useState(false);
-  const [preStartForm, setPreStartForm] = useState({
-    log_date: batch.production_date || todayDate(),
-    log_time: currentTimeValue(),
-    staff_member: '',
-    shift: 'Morning',
-    area: 'Prep Area',
-    sanitizer_type: 'Bleach Solution',
-    sanitizer_level: 'Adequate',
-    verified_by: '',
-    location: 'Cold Room 1',
-    temperature: '',
-    notes: '',
-  });
+  const [preStartModalOpen, setPreStartModalOpen] = useState(false);
+  const [preStartReady, setPreStartReady] = useState(false);
   const [completeForm, setCompleteForm] = useState({
     actual_units: batch.actual_units || batch.planned_units || '',
     pH_result: '',
@@ -329,132 +235,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
     setActiveAction(action);
     setPreview(null);
     setMessage(null);
-  }
-
-  function updatePreStart(field, value) {
-    setPreStartSaved(false);
-    setPreStartForm(form => ({ ...form, [field]: value }));
-  }
-
-  async function findExistingDailyChecklist() {
-    try {
-      const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {
-        test_record_mode: batch.is_test_batch === true ? 'only' : 'exclude',
-      });
-      const result = unwrapBase44Result(res);
-      const records = result?.native?.records || result?.native_compliance?.records || result?.records || {};
-      const checklists = Array.isArray(records.daily_checklists) ? records.daily_checklists : [];
-      const match = checklists.find(checklist => checklistMatchesBatchMode(
-        checklist,
-        batch,
-        preStartForm.log_date,
-        preStartForm.staff_member,
-      ));
-      return match || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function savePreStartCompliance() {
-    const temp = Number(preStartForm.temperature);
-    if (!preStartForm.staff_member.trim()) {
-      setMessage({ type: 'error', text: 'Select or enter the staff member before saving pre-start compliance.' });
-      return;
-    }
-    if (!Number.isFinite(temp)) {
-      setMessage({ type: 'error', text: 'Enter the current cold storage temperature before saving pre-start compliance.' });
-      return;
-    }
-
-    setPreStartSaving(true);
-    setMessage(null);
-
-    try {
-      const existingChecklist = await findExistingDailyChecklist();
-      const batchLink = batchComplianceLinkFields(batch);
-      const common = {
-        log_date: preStartForm.log_date,
-        log_time: preStartForm.log_time,
-        staff_member: preStartForm.staff_member,
-        notes: preStartForm.notes,
-        ...batchLink,
-      };
-      const checklistData = {
-        checklist_date: preStartForm.log_date,
-        staff_member: preStartForm.staff_member,
-        ...checklistBatchLinkFields(existingChecklist, batch),
-        shift: preStartForm.shift,
-        morning_fridge_temp_logged: true,
-        morning_fridge_time: preStartForm.log_time,
-        sanitizer_levels_checked: true,
-        sanitizer_check_time: preStartForm.log_time,
-        equipment_sanitized: true,
-        sanitization_time: preStartForm.log_time,
-        work_areas_cleaned: true,
-        cleaning_time: preStartForm.log_time,
-        batch_logs_completed: false,
-        ccp_logs_completed: false,
-        issues_reported: preStartForm.notes,
-        overall_status: 'Pre-Production Complete',
-        completed_at: new Date().toISOString(),
-      };
-
-      const saves = [
-        base44.functions.invoke('saveAdminComplianceRecord', {
-          record_type: 'sanitation',
-          data: {
-            ...common,
-            area: preStartForm.area,
-            sanitizer_type: preStartForm.sanitizer_type,
-            sanitizer_level: preStartForm.sanitizer_level,
-            cleaned: true,
-            sanitized: true,
-            verified_by: preStartForm.verified_by,
-          },
-        }),
-        base44.functions.invoke('saveAdminComplianceRecord', {
-          record_type: 'temperature',
-          data: {
-            ...common,
-            location: preStartForm.location,
-            temperature: temp,
-            min_range: 35,
-            max_range: 40,
-            unit: 'F',
-            shift: preStartForm.shift,
-            production_date: preStartForm.log_date,
-          },
-        }),
-        base44.functions.invoke('saveAdminComplianceRecord', {
-          record_type: 'daily_checklist',
-          existing_id: existingChecklist?.id,
-          data: checklistData,
-        }),
-      ];
-
-      const results = await Promise.all(saves);
-      const failed = results.find(res => {
-        const result = unwrapBase44Result(res);
-        return result?.success === false || result?.error;
-      });
-      if (failed) {
-        const result = failed?.data || failed;
-        throw new Error(result?.error || 'pre_start_compliance_save_failed');
-      }
-
-      setPreStartSaved(true);
-      setMessage({ type: 'success', text: 'Pre-start sanitation, daily checklist, and temperature records saved.' });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['admin-production-queue-summary'] }),
-      ]);
-    } catch (error) {
-      setMessage({ type: 'error', text: error?.message || 'Unable to save pre-start compliance records.' });
-    } finally {
-      setPreStartSaving(false);
-    }
+    if (action === 'start') setPreStartModalOpen(true);
   }
 
   function basePayload(prefix) {
@@ -517,8 +298,9 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
 
   async function runLive(action) {
     if (!preview?.live_allowed) return;
-    if (action === 'start' && !preStartSaved) {
-      setMessage({ type: 'error', text: 'Save pre-start compliance before running Start for this batch.' });
+    if (action === 'start' && !preStartReady) {
+      setMessage({ type: 'error', text: 'Complete the record-backed pre-start checklist before running Start for this batch.' });
+      setPreStartModalOpen(true);
       return;
     }
     const label = formatLabel(action);
@@ -597,153 +379,6 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
           </button>
         ))}
       </div>
-
-      {activeAction === 'start' && (
-        <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-primary font-semibold">Pre-start compliance</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Save pre-op sanitation, the daily checklist, and the cold storage temperature before starting this batch. CCP is not required here.
-              </p>
-            </div>
-            <AdminStatusPill label={preStartSaved ? 'Saved' : 'Needs save'} tone={preStartSaved ? 'native' : 'warning'} />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <label className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Production date</span>
-              <input
-                type="date"
-                value={preStartForm.log_date}
-                onChange={event => updatePreStart('log_date', event.target.value)}
-                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Time</span>
-              <input
-                type="time"
-                value={preStartForm.log_time}
-                onChange={event => updatePreStart('log_time', event.target.value)}
-                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
-              />
-            </label>
-            <div className="sm:col-span-2">
-              <StaffMemberPicker
-                label="Production staff"
-                value={preStartForm.staff_member}
-                onChange={value => updatePreStart('staff_member', value)}
-                helperText="Select from team members or type another staff name."
-              />
-            </div>
-            <label className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Area</span>
-              <select
-                value={preStartForm.area}
-                onChange={event => updatePreStart('area', event.target.value)}
-                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
-              >
-                <option>Prep Area</option>
-                <option>Production Floor</option>
-                <option>Packing Area</option>
-                <option>Cold Storage</option>
-                <option>Equipment</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sanitizer</span>
-              <select
-                value={preStartForm.sanitizer_type}
-                onChange={event => updatePreStart('sanitizer_type', event.target.value)}
-                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
-              >
-                <option>Bleach Solution</option>
-                <option>Quaternary Ammonium</option>
-                <option>Iodine</option>
-                <option>Alcohol 70%</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sanitizer level</span>
-              <select
-                value={preStartForm.sanitizer_level}
-                onChange={event => updatePreStart('sanitizer_level', event.target.value)}
-                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
-              >
-                <option>Adequate</option>
-                <option>Optimal</option>
-                <option>Low</option>
-              </select>
-            </label>
-            <StaffMemberPicker
-              label="Verified by"
-              value={preStartForm.verified_by}
-              onChange={value => updatePreStart('verified_by', value)}
-              placeholder="Optional verifier"
-              helperText="Optional manager or supervisor verification."
-            />
-            <label className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cold storage</span>
-              <select
-                value={preStartForm.location}
-                onChange={event => updatePreStart('location', event.target.value)}
-                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
-              >
-                <option>Cold Room 1</option>
-                <option>Cold Room 2</option>
-                <option>Walk-in Cooler</option>
-                <option>Freezer</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Temperature F</span>
-              <input
-                type="number"
-                step="0.1"
-                value={preStartForm.temperature}
-                onChange={event => updatePreStart('temperature', event.target.value)}
-                placeholder="37.0"
-                className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs"
-              />
-            </label>
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Notes</span>
-              <textarea
-                value={preStartForm.notes}
-                onChange={event => updatePreStart('notes', event.target.value)}
-                rows={2}
-                placeholder="Any issues or observations"
-                className="w-full rounded-lg border border-border bg-card px-2 py-2 text-xs resize-none"
-              />
-            </label>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-            <div className="rounded-lg border border-border/60 bg-card p-2">
-              <p className="font-semibold text-foreground">Pre-op sanitation</p>
-              <p className="text-muted-foreground mt-0.5">Area cleaned and sanitized.</p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-card p-2">
-              <p className="font-semibold text-foreground">Daily checklist</p>
-              <p className="text-muted-foreground mt-0.5">Pre-production items marked complete.</p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-card p-2">
-              <p className="font-semibold text-foreground">Temperature log</p>
-              <p className="text-muted-foreground mt-0.5">Cold storage range recorded.</p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={savePreStartCompliance}
-            disabled={preStartSaving}
-            className="w-full h-10 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60"
-          >
-            {preStartSaving ? 'Saving Pre-start Records...' : 'Save Pre-start Compliance'}
-          </button>
-        </div>
-      )}
 
       {activeAction === 'complete' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -851,19 +486,29 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
           <button
             type="button"
             onClick={() => runLive(activeAction)}
-            disabled={!preview?.live_allowed || Boolean(pending) || (activeAction === 'start' && !preStartSaved)}
+            disabled={!preview?.live_allowed || Boolean(pending) || (activeAction === 'start' && !preStartReady)}
             className="h-8 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
           >
             {pending === `live_${activeAction}`
               ? 'Running...'
-              : activeAction === 'start' && !preStartSaved
-                ? 'Save Pre-start Compliance First'
+              : activeAction === 'start' && !preStartReady
+                ? 'Complete Pre-start Checklist First'
                 : `Run ${formatLabel(activeAction)}`}
           </button>
         </div>
       )}
 
       <PreviewResult preview={preview} />
+      <ProductionPreStartModal
+        batch={batch}
+        open={preStartModalOpen}
+        onOpenChange={setPreStartModalOpen}
+        onReadyChange={setPreStartReady}
+        onContinue={() => {
+          setPreStartModalOpen(false);
+          runPreview('start');
+        }}
+      />
     </div>
   );
 }
@@ -1543,245 +1188,6 @@ function NativeBatchReadOnlyNotice() {
   );
 }
 
-function NativePreStartCompliancePanel({ batch, onSavedChange }) {
-  const queryClient = useQueryClient();
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [message, setMessage] = useState(null);
-  const [form, setForm] = useState({
-    log_date: batch.production_date || todayDate(),
-    log_time: currentTimeValue(),
-    staff_member: '',
-    shift: 'Morning',
-    area: 'Prep Area',
-    sanitizer_type: 'Bleach Solution',
-    sanitizer_level: 'Adequate',
-    verified_by: '',
-    location: 'Cold Room 1',
-    temperature: '',
-    notes: '',
-  });
-
-  function update(field, value) {
-    setSaved(false);
-    onSavedChange?.(false);
-    setForm(prev => ({ ...prev, [field]: value }));
-  }
-
-  async function findExistingChecklist() {
-    try {
-      const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {
-        test_record_mode: batch.is_test_batch === true ? 'only' : 'exclude',
-      });
-      const result = unwrapBase44Result(res);
-      const records = result?.native?.records || result?.native_compliance?.records || result?.records || {};
-      const checklists = Array.isArray(records.daily_checklists) ? records.daily_checklists : [];
-      return checklists.find(checklist => checklistMatchesBatchMode(
-        checklist,
-        batch,
-        form.log_date,
-        form.staff_member,
-      )) || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function saveRecords() {
-    const temp = Number(form.temperature);
-    if (!form.staff_member.trim()) {
-      setMessage({ type: 'error', text: 'Select or enter the staff member before saving pre-start compliance.' });
-      return;
-    }
-    if (!Number.isFinite(temp)) {
-      setMessage({ type: 'error', text: 'Enter the current cold storage temperature before saving pre-start compliance.' });
-      return;
-    }
-
-    setSaving(true);
-    setMessage(null);
-
-    try {
-      const existingChecklist = await findExistingChecklist();
-      const batchLink = batchComplianceLinkFields(batch);
-      const common = {
-        log_date: form.log_date,
-        log_time: form.log_time,
-        staff_member: form.staff_member,
-        notes: form.notes,
-        ...batchLink,
-      };
-      const responses = await Promise.all([
-        base44.functions.invoke('saveAdminComplianceRecord', {
-          record_type: 'sanitation',
-          data: {
-            ...common,
-            area: form.area,
-            sanitizer_type: form.sanitizer_type,
-            sanitizer_level: form.sanitizer_level,
-            cleaned: true,
-            sanitized: true,
-            verified_by: form.verified_by,
-          },
-        }),
-        base44.functions.invoke('saveAdminComplianceRecord', {
-          record_type: 'temperature',
-          data: {
-            ...common,
-            location: form.location,
-            temperature: temp,
-            min_range: 35,
-            max_range: 40,
-            unit: 'F',
-            shift: form.shift,
-            production_date: form.log_date,
-          },
-        }),
-        base44.functions.invoke('saveAdminComplianceRecord', {
-          record_type: 'daily_checklist',
-          existing_id: existingChecklist?.id,
-          data: {
-            checklist_date: form.log_date,
-            staff_member: form.staff_member,
-            ...checklistBatchLinkFields(existingChecklist, batch),
-            shift: form.shift,
-            morning_fridge_temp_logged: true,
-            morning_fridge_time: form.log_time,
-            sanitizer_levels_checked: true,
-            sanitizer_check_time: form.log_time,
-            equipment_sanitized: true,
-            sanitization_time: form.log_time,
-            work_areas_cleaned: true,
-            cleaning_time: form.log_time,
-            batch_logs_completed: false,
-            ccp_logs_completed: false,
-            issues_reported: form.notes,
-            overall_status: 'Pre-Production Complete',
-            completed_at: new Date().toISOString(),
-          },
-        }),
-      ]);
-
-      const failed = responses.find(response => {
-        const result = unwrapBase44Result(response);
-        return result?.success === false || result?.error;
-      });
-      if (failed) {
-        const result = failed?.data || failed;
-        throw new Error(result?.error || 'pre_start_compliance_save_failed');
-      }
-
-      setSaved(true);
-      onSavedChange?.(true);
-      setMessage({ type: 'success', text: 'Pre-start sanitation, daily checklist, and temperature records saved.' });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['admin-production-queue-summary'] }),
-      ]);
-    } catch (error) {
-      setMessage({ type: 'error', text: error?.message || 'Unable to save pre-start compliance records.' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-primary font-semibold">Pre-start compliance</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Save pre-op sanitation, the daily checklist, and the cold storage temperature before starting this native batch. CCP is not required here.
-          </p>
-        </div>
-        <AdminStatusPill label={saved ? 'Saved' : 'Needs save'} tone={saved ? 'native' : 'warning'} />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Production date</span>
-          <input type="date" value={form.log_date} onChange={event => update('log_date', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs" />
-        </label>
-        <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Time</span>
-          <input type="time" value={form.log_time} onChange={event => update('log_time', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs" />
-        </label>
-        <div className="sm:col-span-2">
-          <StaffMemberPicker
-            label="Production staff"
-            value={form.staff_member}
-            onChange={value => update('staff_member', value)}
-            helperText="Select from team members or type another staff name."
-          />
-        </div>
-        <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Area</span>
-          <select value={form.area} onChange={event => update('area', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs">
-            <option>Prep Area</option>
-            <option>Production Floor</option>
-            <option>Packing Area</option>
-            <option>Cold Storage</option>
-            <option>Equipment</option>
-          </select>
-        </label>
-        <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cold storage</span>
-          <select value={form.location} onChange={event => update('location', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs">
-            <option>Cold Room 1</option>
-            <option>Cold Room 2</option>
-            <option>Walk-in Cooler</option>
-            <option>Freezer</option>
-          </select>
-        </label>
-        <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Temperature F</span>
-          <input type="number" step="0.1" value={form.temperature} onChange={event => update('temperature', event.target.value)} placeholder="37.0" className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs" />
-        </label>
-        <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sanitizer</span>
-          <select value={form.sanitizer_type} onChange={event => update('sanitizer_type', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs">
-            <option>Bleach Solution</option>
-            <option>Quaternary Ammonium</option>
-            <option>Iodine</option>
-            <option>Alcohol 70%</option>
-          </select>
-        </label>
-        <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sanitizer level</span>
-          <select value={form.sanitizer_level} onChange={event => update('sanitizer_level', event.target.value)} className="w-full h-9 rounded-lg border border-border bg-card px-2 text-xs">
-            <option>Adequate</option>
-            <option>Optimal</option>
-            <option>Low</option>
-          </select>
-        </label>
-        <div className="sm:col-span-2">
-          <StaffMemberPicker
-            label="Verified by"
-            value={form.verified_by}
-            onChange={value => update('verified_by', value)}
-            placeholder="Optional verifier"
-            helperText="Optional manager or supervisor verification."
-          />
-        </div>
-        <label className="space-y-1 sm:col-span-2">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Notes</span>
-          <textarea value={form.notes} onChange={event => update('notes', event.target.value)} rows={2} placeholder="Any issues or observations" className="w-full rounded-lg border border-border bg-card px-2 py-2 text-xs resize-none" />
-        </label>
-      </div>
-
-      {message && (
-        <p className={`text-xs ${message.type === 'error' ? 'text-destructive' : message.type === 'success' ? 'text-green-700 dark:text-green-300' : 'text-cyan-700 dark:text-cyan-300'}`}>
-          {message.text}
-        </p>
-      )}
-
-      <button type="button" onClick={saveRecords} disabled={saving} className="w-full h-10 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-60">
-        {saving ? 'Saving Pre-start Records...' : 'Save Pre-start Compliance'}
-      </button>
-    </div>
-  );
-}
 
 function nativePreviewReadyForAction(preview, action) {
   if (!preview) return false;
@@ -1827,7 +1233,8 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
   const [pending, setPending] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [message, setMessage] = useState(null);
-  const [preStartComplianceSaved, setPreStartComplianceSaved] = useState(false);
+  const [preStartModalOpen, setPreStartModalOpen] = useState(false);
+  const [preStartReady, setPreStartReady] = useState(false);
   const [completeForm, setCompleteForm] = useState({
     actual_units: batch.actual_units || batch.planned_units || '',
     pH_result: batch.pH_result || '',
@@ -1843,7 +1250,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
   });
 
   useEffect(() => {
-    if (activeAction !== 'start') setPreStartComplianceSaved(false);
+    if (activeAction !== 'start') setPreStartReady(false);
   }, [activeAction]);
 
   function baseNativePayload(action, prefix) {
@@ -1945,8 +1352,9 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
       });
       return;
     }
-    if (action === 'start' && !preStartComplianceSaved) {
-      setMessage({ type: 'error', text: 'Save pre-start compliance before saving Start for this native batch.' });
+    if (action === 'start' && !preStartReady) {
+      setMessage({ type: 'error', text: 'Complete the record-backed pre-start checklist before saving Start for this native batch.' });
+      setPreStartModalOpen(true);
       return;
     }
 
@@ -2015,7 +1423,16 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
             type="button"
             data-testid={`native-lifecycle-${action.key}-${batch.batch_id || batch.id || 'unknown'}`}
             disabled={!action.enabled || pending || actionPending || (!batch.id && !batch.batch_id)}
-            onClick={() => runPreview(action.key)}
+            onClick={() => {
+              if (action.key === 'start') {
+                setActiveAction('start');
+                setPreview(null);
+                setMessage(null);
+                setPreStartModalOpen(true);
+                return;
+              }
+              runPreview(action.key);
+            }}
             className={`h-9 rounded-lg border px-2 text-xs font-semibold ${
               activeAction === action.key
                 ? 'bg-nuvira-gradient text-white border-primary'
@@ -2043,10 +1460,6 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
             Start opens pre-start sanitation, daily checklist, and temperature capture for this exact batch. Complete and Verify stay separated for clean records and traceability.
           </p>
         </div>
-      )}
-
-      {activeAction === 'start' && (
-        <NativePreStartCompliancePanel batch={batch} onSavedChange={setPreStartComplianceSaved} />
       )}
 
       {(activeAction === 'complete' || activeAction === 'verify') && (
@@ -2242,14 +1655,14 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
 
           <button
             type="button"
-            disabled={actionPending || pending || !actionReady || !writeAvailable || (activeAction === 'start' && !preStartComplianceSaved)}
+            disabled={actionPending || pending || !actionReady || !writeAvailable || (activeAction === 'start' && !preStartReady)}
             onClick={() => runNative(activeAction)}
             className="w-full h-10 rounded-lg bg-nuvira-gradient text-white text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {actionPending
               ? `Saving ${formatLabel(activeAction)}...`
-              : activeAction === 'start' && !preStartComplianceSaved
-                ? 'Save Pre-start Compliance First'
+              : activeAction === 'start' && !preStartReady
+                ? 'Complete Pre-start Checklist First'
                 : writeAvailable
                 ? `Save ${formatLabel(activeAction)}`
                 : actionReady
@@ -2263,6 +1676,16 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           </div>
         </div>
       )}
+      <ProductionPreStartModal
+        batch={batch}
+        open={preStartModalOpen}
+        onOpenChange={setPreStartModalOpen}
+        onReadyChange={setPreStartReady}
+        onContinue={() => {
+          setPreStartModalOpen(false);
+          runPreview('start');
+        }}
+      />
     </div>
   );
 }
