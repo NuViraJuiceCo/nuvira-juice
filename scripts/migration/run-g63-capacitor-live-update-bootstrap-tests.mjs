@@ -8,6 +8,8 @@ const capacitor = JSON.parse(fs.readFileSync('capacitor.config.json', 'utf8'));
 const iosPackage = fs.readFileSync('ios/App/CapApp-SPM/Package.swift', 'utf8');
 const androidSettings = fs.readFileSync('android/capacitor.settings.gradle', 'utf8');
 const androidDependencies = fs.readFileSync('android/app/capacitor.build.gradle', 'utf8');
+const mainSource = fs.readFileSync('src/main.jsx', 'utf8');
+const liveUpdateSource = fs.readFileSync('src/lib/nativeLiveUpdates.js', 'utf8');
 
 const liveUpdates = capacitor.plugins?.LiveUpdates;
 const lockedPackage = packageLock.packages?.['node_modules/@capacitor/live-updates'];
@@ -20,8 +22,9 @@ assert.equal(capacitor.webDir, 'dist');
 assert.equal(Object.prototype.hasOwnProperty.call(capacitor, 'server'), false);
 assert.equal(liveUpdates?.appId, '044c03e1');
 assert.equal(liveUpdates?.channel, 'Production');
-assert.equal(liveUpdates?.autoUpdateMethod, 'background');
+assert.equal(liveUpdates?.autoUpdateMethod, 'none');
 assert.equal(liveUpdates?.maxVersions, 2);
+assert.equal(liveUpdates?.strategy, 'zip');
 
 assert.deepEqual(
   capacitor.plugins?.FirebaseMessaging?.presentationOptions,
@@ -32,14 +35,22 @@ assert.match(iosPackage, /\.package\(name: "CapacitorLiveUpdates"/);
 assert.match(iosPackage, /\.product\(name: "CapacitorLiveUpdates"/);
 assert.match(androidSettings, /include ':capacitor-live-updates'/);
 assert.match(androidDependencies, /implementation project\(':capacitor-live-updates'\)/);
+assert.match(mainSource, /initializeNativeLiveUpdates\(\)/);
+assert.match(liveUpdateSource, /Capacitor\.isNativePlatform\(\)/);
+assert.match(liveUpdateSource, /LiveUpdates\.sync\(\)/);
+assert.match(liveUpdateSource, /activeApplicationPathChanged/);
+assert.match(liveUpdateSource, /LiveUpdates\.reload\(\)/);
+assert.match(liveUpdateSource, /CapacitorApp\.addListener\('resume'/);
+assert.match(liveUpdateSource, /if \(syncInFlight\) return syncInFlight/);
 
 console.log(JSON.stringify({
   success: true,
   suite: 'g63-capacitor-live-update-bootstrap',
-  cases: 14,
+  cases: 22,
   appflow_app_id: liveUpdates.appId,
   channel: liveUpdates.channel,
   update_method: liveUpdates.autoUpdateMethod,
+  strategy: liveUpdates.strategy,
   cached_versions: liveUpdates.maxVersions,
   server_url_present: false,
   writes_performed: false,

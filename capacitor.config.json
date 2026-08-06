@@ -6,8 +6,9 @@
     "LiveUpdates": {
       "appId": "044c03e1",
       "channel": "Production",
-      "autoUpdateMethod": "background",
-      "maxVersions": 2
+      "autoUpdateMethod": "none",
+      "maxVersions": 2,
+      "strategy": "zip"
     },
     "FirebaseMessaging": {
       "presentationOptions": ["alert", "badge", "sound"]
