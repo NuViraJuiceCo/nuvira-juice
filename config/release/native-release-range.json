@@ -2,5 +2,12 @@
   "description": "Release range input for native release manifest included_prs derivation. Update previous_released_commit after each approved native release.",
   "previous_released_commit": "e1dcdc5f2adcc788251c0f1dbd33fe3e932397aa",
   "included_prs_policy": "derive_from_merge_history_or_fail_when_merge_commits_are_unrepresented",
+  "included_prs": [
+    {
+      "number": 647,
+      "merge_commit": "b36cfa71f849109a4846ebe4c824ec7fe8a06adc",
+      "title": "Harden loyalty and customer operations"
+    }
+  ],
   "allow_empty_included_prs_when_no_merge_commits": true
 }
