@@ -92,8 +92,8 @@ function formatNumber(value) {
 function displaySourceNoteSummary(value) {
   if (!value) return value;
   return value
-    .replace(/POS\/event order mirrored for May 30 operations/gi, 'POS/event order mirrored from legacy POS import')
-    .replace(/\bMay 30 operations\b/gi, 'legacy POS import');
+    .replace(/POS\/event order mirrored for [A-Z][a-z]{2} \d{1,2} operations/gi, 'POS/event order mirrored from legacy POS import')
+    .replace(/\b[A-Z][a-z]{2} \d{1,2} operations\b/gi, 'legacy POS import');
 }
 
 function SummaryCard({ icon: Icon, label, value, sublabel, tone = 'default', isRefreshing }) {
@@ -261,9 +261,9 @@ export default function POSOrders() {
     error: profilePreviewError,
     isFetching: isProfilePreviewFetching,
   } = useQuery({
-    queryKey: ['admin-may30-pos-profile-candidates', profilePreviewPreset, profilePreviewRange.date_from, profilePreviewRange.date_to],
+    queryKey: ['admin-pos-profile-candidates', profilePreviewPreset, profilePreviewRange.date_from, profilePreviewRange.date_to],
     queryFn: async () => {
-      const res = await base44.functions.invoke('previewAdminMay30POSProfileCandidates', {
+      const res = await base44.functions.invoke('getAdminPOSOrdersSummary', {
         preset: profilePreviewPreset,
         date_from: profilePreviewRange.date_from,
         date_to: profilePreviewRange.date_to,

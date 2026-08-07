@@ -154,6 +154,9 @@ const retiredFunctions = [
   'createCheckoutSession',
   'hubSyncProxy',
   'previewNativeSafeSyncParityHarness',
+  'getAdminLaunchReadOnlySummary',
+  'previewAdminMay30POSProfileCandidates',
+  'processMay30NativeOrderOps',
 ];
 for (const functionName of retiredFunctions) {
   assert.equal(exists(`base44/functions/${functionName}/entry.ts`), false, `${functionName} must remain retired`);
@@ -168,6 +171,8 @@ const requiredSafeguards = [
   'previewNativeOrderCutoverReadiness',
   'previewNativeSafeSyncOrderUpdate',
   'executeNativeSafeSyncOrderUpdate',
+  'getAdminResourcesSummary',
+  'getAdminPOSOrdersSummary',
 ];
 for (const functionName of requiredSafeguards) {
   assert.equal(exists(`base44/functions/${functionName}/entry.ts`), true, `${functionName} must not be removed`);

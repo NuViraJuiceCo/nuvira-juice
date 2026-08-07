@@ -12,7 +12,7 @@
     "src/lib/app-params.*",
     "src/lib/AuthContext.jsx",
     "src/lib/nativeAuthRedirect.js",
-    "src/lib/eventPushNotifications.js",
+    "src/lib/pushNotifications.js",
     "src/pages/AccountSetup*",
     "src/pages/NativeLogin.jsx",
     "src/pages/Checkout.jsx",

@@ -302,7 +302,7 @@ function NativeCutoverReadinessPreview({
   const retirementBlockers = Array.isArray(hubRetirement.blockers) ? hubRetirement.blockers : [];
   const retirementWarnings = Array.isArray(hubRetirement.warnings) ? hubRetirement.warnings : [];
   const nativeWriter = gates.native_safe_sync_writer || {};
-  const may30Ops = gates.may30_native_order_ops || {};
+  const nativeOrderOps = gates.native_order_ops || {};
   const taskMaterialization = gates.native_fulfillment_task_materialization || {};
   const blockers = Array.isArray(readiness.blockers) ? readiness.blockers : [];
   const warnings = Array.isArray(readiness.warnings) ? readiness.warnings : [];
@@ -474,9 +474,9 @@ function NativeCutoverReadinessPreview({
             <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
               <p className="text-xs font-bold text-foreground">Native order ops</p>
               <div className="flex flex-wrap gap-2">
-                <StatusChip value={may30Ops.enabled ? 'Enabled' : 'Disabled'} />
-                <StatusChip value={may30Ops.secret_configured ? 'Secret configured' : 'Secret missing'} />
-                <StatusChip value={may30Ops.hub_bridge_fallback_expected ? 'Hub fallback expected' : 'Fallback state unknown'} />
+                <StatusChip value={nativeOrderOps.enabled ? 'Enabled' : 'Disabled'} />
+                <StatusChip value={nativeOrderOps.secret_configured ? 'Secret configured' : 'Secret missing'} />
+                <StatusChip value={nativeOrderOps.hub_bridge_fallback_expected ? 'Hub fallback expected' : 'Fallback state unknown'} />
               </div>
             </div>
             <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">

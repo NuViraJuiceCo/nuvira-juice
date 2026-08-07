@@ -14,12 +14,12 @@ import { motion } from 'framer-motion';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import { unwrapBase44Result } from '@/lib/base44-result';
 import {
-  getEventPushPermission,
-  getEventPushSupportStatus,
-  getExistingEventPushSubscription,
-  subscribeToEventPushNotifications,
-  unsubscribeFromEventPushNotifications,
-} from '@/lib/eventPushNotifications';
+  getPushPermission,
+  getPushSupportStatus,
+  getExistingPushSubscription,
+  subscribeToPushNotifications,
+  unsubscribeFromPushNotifications,
+} from '@/lib/pushNotifications';
 
 const AUDIENCE_LABELS = {
   test_only: 'Test Only (admin)',
@@ -69,7 +69,7 @@ async function readAdminPushDiagnostics() {
 }
 
 async function readAdminPushStatus() {
-  const support = getEventPushSupportStatus();
+  const support = getPushSupportStatus();
   const diagnostics = await readAdminPushDiagnostics();
   if (!support.supported) {
     return {
@@ -85,8 +85,8 @@ async function readAdminPushStatus() {
   }
 
   const [permission, subscription] = await Promise.all([
-    getEventPushPermission().catch(() => 'default'),
-    getExistingEventPushSubscription().catch(() => null),
+    getPushPermission().catch(() => 'default'),
+    getExistingPushSubscription().catch(() => null),
   ]);
 
   return {
@@ -182,7 +182,7 @@ export default function NotificationCampaigns() {
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ['notification-campaigns'],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
+      const res = await base44.functions.invoke('getAdminResourcesSummary', {
         resource: 'notification_campaigns',
       });
       const payload = unwrapBase44Data(res, {});
@@ -238,7 +238,7 @@ export default function NotificationCampaigns() {
   const handleEnableAdminPush = async () => {
     setAdminPushStatus(prev => ({ ...prev, action: 'enable' }));
     try {
-      const result = await subscribeToEventPushNotifications({
+      const result = await subscribeToPushNotifications({
         vapidPublicKey: adminPushStatus.diagnostics?.providers?.web_push_public_key,
       });
       await refreshAdminPushStatus();
@@ -257,7 +257,7 @@ export default function NotificationCampaigns() {
   const handleDisableAdminPush = async () => {
     setAdminPushStatus(prev => ({ ...prev, action: 'disable' }));
     try {
-      await unsubscribeFromEventPushNotifications();
+      await unsubscribeFromPushNotifications();
       await refreshAdminPushStatus();
       toast.success('Admin order push disabled on this device.');
     } catch (err) {

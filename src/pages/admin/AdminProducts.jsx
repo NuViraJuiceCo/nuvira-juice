@@ -145,7 +145,7 @@ export default function AdminProducts() {
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['admin-products'],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
+      const res = await base44.functions.invoke('getAdminResourcesSummary', {
         resource: 'product_catalog',
       });
       const payload = res?.data || res;

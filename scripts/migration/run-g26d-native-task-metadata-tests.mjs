@@ -12,8 +12,11 @@ function loadFunctions(relativePath, exportNames) {
   const filePath = path.join(repoRoot, relativePath);
   let source = fs.readFileSync(filePath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
+  source = source.replace(/^export\s+/gm, '');
   const serveIndex = source.indexOf('Deno.serve');
   if (serveIndex >= 0) source = source.slice(0, serveIndex);
+  const sharedHandlerIndex = source.indexOf('async function handleNativeOrderOpsRequest');
+  if (sharedHandlerIndex >= 0) source = source.slice(0, sharedHandlerIndex);
   source += `\nglobalThis.__exports = { ${exportNames.join(', ')} };\n`;
 
   const context = vm.createContext({
@@ -38,7 +41,7 @@ function loadFunctions(relativePath, exportNames) {
   return context.globalThis.__exports;
 }
 
-const processFns = loadFunctions('base44/functions/processMay30NativeOrderOps/entry.ts', [
+const processFns = loadFunctions('base44/functions/syncOrderToHub/nativeOrderOps.ts', [
   'sanitizeLineItems',
   'buildOneTimeRecord',
   'buildPosRecord',
@@ -102,7 +105,7 @@ assert.equal(taskResult.draft.order_number, 'G26D-1001');
 assert.equal(taskResult.draft.customer_name, 'Test Owner');
 assert.equal(taskResult.draft.customer_email, 'owner@example.test');
 assert.equal(taskResult.draft.source_type, 'customer_app_one_time');
-assert.equal(taskResult.draft.task_source, 'processMay30NativeOrderOps');
+assert.equal(taskResult.draft.task_source, 'syncOrderToHub');
 assert.equal(taskResult.draft.created_from_native_ops, true);
 assert.equal(taskResult.draft.order_type, 'one_time');
 assert.equal(taskResult.draft.schedule_source, 'native_customer_app_paid_order_mirror');

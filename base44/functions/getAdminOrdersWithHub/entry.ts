@@ -1502,7 +1502,7 @@ Deno.serve(async (req) => {
     });
 
     // 4. Merge: Hub remains the primary operational row when present, but same-order
-    // Customer App + native May 30 context is attached to that row instead of hidden.
+    // Customer App + native context is attached to that row instead of hidden.
     // Normalize order numbers for comparison: strip leading #, lowercase, trim
     const mergedMap = new Map();
 
@@ -1515,7 +1515,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Native May 30 operational records are visible in Customer App admin even while
+    // Native operational records are visible in Customer App admin even while
     // Hub remains the operational fallback. When Hub already has the same order, its row
     // was enriched above; otherwise render the native row directly.
     for (const order of nativeAdminOrders) {
@@ -1695,7 +1695,6 @@ function buildNativeOperationalContext({ fulfillmentTasks, orderSyncLogs, review
       timestamp: log.sync_timestamp || log.completed_at || log.created_date || null,
     };
     const isNativeSync = normalizeLower(log.sync_source).includes('native') ||
-      normalizeLower(log.sync_source).includes('may30') ||
       normalizeLower(log.action).includes('native');
     const isHubSync = Boolean(log.hub_order_id || log.hub_action) ||
       normalizeLower(log.triggered_by).includes('hub') ||

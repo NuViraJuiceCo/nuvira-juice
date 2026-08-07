@@ -205,7 +205,7 @@ export default function BagReturnAdmin() {
   const { data: returns = [], isLoading } = useQuery({
     queryKey: ['admin-bag-returns'],
     queryFn: async () => {
-      const res = await base44.functions.invoke('getAdminLaunchReadOnlySummary', {
+      const res = await base44.functions.invoke('getAdminResourcesSummary', {
         resource: 'bag_returns',
       });
       const payload = res?.data || res;

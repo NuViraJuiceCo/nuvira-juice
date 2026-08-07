@@ -397,20 +397,22 @@ test('stale undated native delivery rows do not inflate current dashboard unsche
   assert.equal(unscheduled.displayed_value, 0);
 });
 
-test('legacy launch-era review queue rejects do not inflate current operations health', async () => {
+test('stale unlinked payment review rejects do not inflate current operations health', async () => {
   const store = makeStore({
     OrderReviewQueue: [
       reviewQueueItem({
-        id: 'legacy_may30_pos_reject',
+        id: 'stale_unlinked_pos_reject',
         status: 'pending',
         incident_type: 'payment_not_paid',
         incoming_source: 'shopify_pos',
         existing_order_number: null,
         order_number: null,
         shopify_order_number: null,
-        issue_description: 'May 30 native order ops rejected order: payment_not_paid',
+        issue_description: 'Historical native order processing rejected order: payment_not_paid',
         recommended_action: 'manual_review_before_operational_processing',
-        last_seen_at: DATE,
+        created_date: addDays(DATE, -45),
+        updated_date: addDays(DATE, -45),
+        last_seen_at: addDays(DATE, -45),
       }),
     ],
   });

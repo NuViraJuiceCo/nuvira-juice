@@ -4,7 +4,7 @@
 
 A function remains only when it owns a distinct current responsibility that is not safely covered by another canonical path. A function can qualify through an active UI caller, an automation, an authenticated external contract, a webhook/provider callback, a required read model, a customer lifecycle action, or a controlled preview/apply/recovery boundary. Merely compiling or returning a successful response is not a retention reason.
 
-The retained estate contains **144 functions**. The lists below are exhaustive: every deployed function after cleanup appears exactly once. Loyalty mutation/admin repair and operational-notice maintenance were consolidated into existing canonical functions instead of consuming new function slots.
+The retained estate contains **141 functions**. The lists below are exhaustive: every deployed function after cleanup appears exactly once. Loyalty mutation/admin repair, operational-notice maintenance, legacy admin reads, POS customer claims, and native order processing were consolidated into existing canonical functions instead of consuming new function slots.
 
 ## Customer identity, loyalty, and customer reads — 15
 
@@ -100,7 +100,7 @@ These functions are explicit webhook, pull, push, retry, or provider-recovery bo
 - `syncShopifyOrderToHub`
 - `syncUserToHub`
 
-## Admin and operations read/write surface — 40
+## Admin and operations read/write surface — 38
 
 These functions back a current operations page, produce an admin-only read model, or own one explicit production, delivery, compliance, catalog, or safe-sync command.
 
@@ -119,7 +119,6 @@ These functions back a current operations page, produce an admin-only read model
 - `getAdminDeliveryRouteSummary`
 - `getAdminFulfillmentTaskDetails`
 - `getAdminInventoryStatusSummary`
-- `getAdminLaunchReadOnlySummary`
 - `getAdminOperationsDashboardSummary`
 - `getAdminOpsAlertsSummary`
 - `getAdminOrderTimeline`
@@ -135,7 +134,6 @@ These functions back a current operations page, produce an admin-only read model
 - `monitorLiveCheckoutTest`
 - `optimizeDeliveryRoute`
 - `packAdminProductionVerifyFulfillmentTasks`
-- `processMay30NativeOrderOps`
 - `recordAdminFulfillmentTaskDelivered`
 - `saveAdminComplianceRecord`
 - `startAdminProductionBatch`
@@ -145,14 +143,13 @@ These functions back a current operations page, produce an admin-only read model
 - `validateComplianceEntry`
 - `verifyAdminProductionBatch`
 
-## Preview, cutover, and scoped recovery controls — 30
+## Preview, cutover, and scoped recovery controls — 29
 
 These are intentionally separate from live writers. Preview/apply separation, exact allowlists, idempotency, rollback evidence, and historical recovery controls are lifecycle safeguards rather than duplicate functions.
 
 - `backfillAdminHistoricalHubOrders`
 - `backfillHistoricalHubFulfilledNativeShopifyOrderForCustomerApp`
 - `previewAdminHistoricalHubBackfill`
-- `previewAdminMay30POSProfileCandidates`
 - `previewAdminProductionBatchComplete`
 - `previewAdminProductionBatchStart`
 - `previewAdminProductionBatchVerify`
@@ -180,9 +177,15 @@ These are intentionally separate from live writers. Preview/apply separation, ex
 - `previewNativeScheduleExceptionCorrection`
 - `reconcileNativeDeliveryCompletionForCustomerApp`
 
-## Compatibility names retained intentionally
+## Legacy event function consolidation
 
-`getAdminLaunchReadOnlySummary`, `previewAdminMay30POSProfileCandidates`, and `processMay30NativeOrderOps` have stale historical names but current callers and current generic responsibilities. They remain until a zero-downtime rename can be performed without crossing Base44's function-slot ceiling. Their names are not evidence of an active launch freeze.
+The remaining event-era compatibility functions were unnecessary as separate endpoints and were consolidated into existing canonical owners:
+
+- Admin data read models now dispatch through `getAdminResourcesSummary`.
+- POS claim previews, activation, and ShopifyOrder refresh automation now dispatch through `getAdminPOSOrdersSummary`.
+- Native one-time and POS order mirroring now runs inside `syncOrderToHub`, while its Hub bridge remains the isolated fallback.
+
+This removes three stale function names without creating replacement slots. Current callers, automations, gates, metadata, and operational UI use the consolidated owners. Historical production metadata can be migrated separately; active readers no longer depend on event-specific tags or statuses.
 
 ## Ownership rule going forward
 

@@ -11,7 +11,6 @@ const PRODUCTION_COMPLIANCE_READ_MODEL_LIMIT = 500;
 const VALID_PRESETS = new Set(['today', 'this_week', 'next_7_days']);
 const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data', 'demand_based']);
 const DATE_PENDING = 'date_pending';
-const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
 const UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS = 14;
 const BUILT_IN_RECIPE_FALLBACKS = {
   'Re-Nu': [
@@ -1074,7 +1073,7 @@ function aggregateNativeIngredient(ingredientMap, row) {
   ingredientMap.set(key, current);
 }
 
-function isNativeMay30OperationalOrder(order) {
+function isNativeOperationalOrder(order) {
   const tags = Array.isArray(order?.tags) ? order.tags.map(normalizeLower) : [];
   const paymentStatus = normalizeLower(order?.payment_status || order?.financial_status);
   const orderType = normalizeLower(order?.order_type);
@@ -1086,13 +1085,11 @@ function isNativeMay30OperationalOrder(order) {
   const fulfillmentStatus = normalizeLower(order?.fulfillment_status || order?.shopify_fulfillment_status);
   const deliveryStatus = normalizeLower(order?.delivery_status);
   const syncStatus = normalizeLower(order?.sync_status);
-  const referenceDate = orderReferenceDate(order);
-  const isRecentLaunchOrder = Boolean(referenceDate && referenceDate >= MAY30_NATIVE_ORDER_START_DATE);
   const hasNativeOpsMarker =
-    tags.includes('may30_native_ops') ||
-    syncStatus === 'native_may30_ready' ||
+    tags.includes('native_order_ops') ||
+    ['native_ops_ready', 'native_ops_refunded'].includes(syncStatus) ||
     ['customer_app_one_time', 'website_one_time'].includes(sourceType) ||
-    ((sourceChannel === 'online' || sourceChannel === 'customer_app' || sourceChannel === 'website') && isRecentLaunchOrder);
+    order?.created_from_native_ops === true;
 
   if (!hasNativeOpsMarker) return false;
   if (order?.excluded_from_production === true) return false;
@@ -1151,7 +1148,7 @@ function isNativeOperationalFulfillmentTask(task) {
   return safeLineItems(task).length > 0;
 }
 
-async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
+async function loadNativePlanning(base44, dateFrom, dateTo) {
   const listEntity = async (entityName, sort, limit) => {
     try {
       const entity = base44.asServiceRole?.entities?.[entityName];
@@ -1330,7 +1327,7 @@ async function loadNativeMay30Planning(base44, dateFrom, dateTo) {
 
   for (const nativeOrder of nativeOrders) {
     const order = withAuthoritativeCustomerLifecycle(nativeOrder);
-    if (!isNativeMay30OperationalOrder(order)) continue;
+    if (!isNativeOperationalOrder(order)) continue;
     if (nativeOrderKeys(order).some(key => taskBackedOrderKeys.has(key))) continue;
 
     const plannedProductionDate = orderPlanningDate(order);
@@ -1581,7 +1578,7 @@ Deno.serve(async (req) => {
     const warnings = [];
     let nativePlanning = emptyNativePlanning();
     try {
-      nativePlanning = await loadNativeMay30Planning(base44, resolvedRange.dateFrom, resolvedRange.dateTo);
+      nativePlanning = await loadNativePlanning(base44, resolvedRange.dateFrom, resolvedRange.dateTo);
     } catch (error) {
       console.error('[getAdminProductionPlanningSummary] Native overlay error:', error.message);
       warnings.push('native_production_planning_overlay_unavailable');

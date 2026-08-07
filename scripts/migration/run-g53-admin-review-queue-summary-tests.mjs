@@ -51,14 +51,15 @@ check('Review queue summary preserves side-effect safety markers', () => {
   assert.match(functionSource, /hub_mutation_performed:\s*false/);
 });
 
-check('Review queue summary suppresses legacy launch-era POS reject noise by default', () => {
+check('Review queue summary suppresses stale unlinked POS payment rejects by default', () => {
   assert.match(functionSource, /function isLegacyLaunchReviewQueueNoise/);
   assert.match(functionSource, /function isInternalTestReviewQueueItem/);
   assert.match(functionSource, /include_legacy_review_queue/);
   assert.match(functionSource, /include_internal_test_review_queue/);
   assert.match(functionSource, /legacy_launch_suppressed/);
   assert.match(functionSource, /internal_test_suppressed/);
-  assert.match(functionSource, /may 30 native order ops rejected order/);
+  assert.match(functionSource, /manual_review_before_operational_processing/);
+  assert.match(functionSource, /30 \* 24 \* 60 \* 60 \* 1000/);
 });
 
 check('Review Queue page uses the admin summary function', () => {

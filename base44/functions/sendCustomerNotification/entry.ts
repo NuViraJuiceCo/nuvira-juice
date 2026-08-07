@@ -74,11 +74,11 @@ const ELEVATED_TRANSACTIONAL_SUBTYPES = new Set([
   'order_payment_failed',
 ]);
 
-const MAY30_DEFAULT_ALLOWED_SUBTYPES = new Set([
+const DEFAULT_ALLOWED_SUBTYPES = new Set([
   'order_confirmation',
 ]);
 
-const MAY30_DELIVERY_STATUS_SUBTYPES = new Set([
+const DELIVERY_STATUS_SUBTYPES = new Set([
   'out_for_delivery',
   'delivered',
 ]);
@@ -129,9 +129,9 @@ function customerNotificationSubtypeAllowed(
   if (String(source || '') === 'elevated_transactional') {
     return elevatedTransactionalEnabled() && ELEVATED_TRANSACTIONAL_SUBTYPES.has(notificationSubtype);
   }
-  if (MAY30_DEFAULT_ALLOWED_SUBTYPES.has(notificationSubtype)) return true;
+  if (DEFAULT_ALLOWED_SUBTYPES.has(notificationSubtype)) return true;
   if (nonConfirmationNotificationsEnabled()) return true;
-  return MAY30_DELIVERY_STATUS_SUBTYPES.has(notificationSubtype) && deliveryStatusNotificationsEnabled();
+  return DELIVERY_STATUS_SUBTYPES.has(notificationSubtype) && deliveryStatusNotificationsEnabled();
 }
 
 function maskEmail(email: string | null | undefined) {

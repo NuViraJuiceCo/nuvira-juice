@@ -90,7 +90,7 @@ const readinessResult = {
     native_fulfillment_task_materialization: {
       broad_real_order_mode: false,
     },
-    may30_native_order_ops: {
+    native_order_ops: {
       enabled: true,
       hub_bridge_fallback_expected: true,
     },
@@ -107,7 +107,7 @@ const readinessResult = {
     payment_captured: true,
     address_complete: true,
     fulfillment_method: 'delivery',
-    native_sync_status: 'native_may30_ready',
+    native_sync_status: 'native_ops_ready',
     native_task_count: 1,
     native_task_display_metadata_complete_count: 0,
     planner_summary: {

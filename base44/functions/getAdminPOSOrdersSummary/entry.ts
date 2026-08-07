@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { handlePOSCustomerClaims } from './claimManager.ts';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
@@ -189,7 +190,7 @@ async function fetchHubJson(url, headers, warningPrefix) {
   }
 }
 
-Deno.serve(async (req) => {
+async function handlePOSOrdersSummary(req: Request) {
   try {
     const base44 = createClientFromRequest(req);
 
@@ -339,4 +340,26 @@ Deno.serve(async (req) => {
     console.error('[getAdminPOSOrdersSummary] Error:', error.message);
     return Response.json({ error: 'Unable to load POS orders summary' }, { status: 500 });
   }
+}
+
+const POS_CLAIM_ACTIONS = new Set([
+  'preview_import',
+  'apply_import',
+  'admin_summary',
+  'preview_current_claim',
+  'activate_claim',
+]);
+
+Deno.serve(async (req) => {
+  if (req.method === 'POST') {
+    const body = await req.clone().json().catch(() => ({}));
+    const action = String(body?.action || '').trim();
+    const eventType = String(body?.event?.type || body?.event?.event_type || '').toLowerCase();
+    const isPOSClaimAutomation = body?.event?.entity_name === 'ShopifyOrder'
+      && ['create', 'update'].includes(eventType);
+    if (isPOSClaimAutomation || POS_CLAIM_ACTIONS.has(action)) {
+      return handlePOSCustomerClaims(req);
+    }
+  }
+  return handlePOSOrdersSummary(req);
 });

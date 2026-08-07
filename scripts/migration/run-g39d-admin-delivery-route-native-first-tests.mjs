@@ -9,6 +9,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
 const functionPath = path.join(repoRoot, 'base44/functions/getAdminDeliveryRouteSummary/entry.ts');
 const DELIVERY_DATE = '2026-06-20';
+const TEST_NOW = '2026-06-18T12:00:00.000Z';
+
+class FixedDate extends Date {
+  constructor(...args) {
+    super(...(args.length > 0 ? args : [TEST_NOW]));
+  }
+
+  static now() {
+    return new Date(TEST_NOW).getTime();
+  }
+}
 
 function loadHandler({ env = {}, hubData = null, hubStatus = 200, fetchError = null } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
@@ -18,7 +29,7 @@ function loadHandler({ env = {}, hubData = null, hubStatus = 200, fetchError = n
     console,
     URL,
     URLSearchParams,
-    Date,
+    Date: FixedDate,
     Math,
     Number,
     String,
@@ -74,6 +85,9 @@ function nativeOrder(overrides = {}) {
     fulfillment_status: overrides.fulfillment_status || 'pending',
     payment_status: 'paid',
     production_status: 'awaiting_production',
+    sync_status: overrides.sync_status || 'native_ops_ready',
+    tags: overrides.tags || ['native_order_ops'],
+    created_from_native_ops: overrides.created_from_native_ops ?? true,
     line_items: lineItems(),
     delivery_address: overrides.delivery_address ?? '100 Native Rd, Chicago, IL',
     delivery_window_label: overrides.delivery_window_label || '9 AM - 11 AM',

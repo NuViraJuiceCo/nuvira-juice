@@ -64,8 +64,8 @@ async function readJsonBody(req) {
 
 function hasNativeMarker(order) {
   const tags = Array.isArray(order?.tags) ? order.tags.map(normalizeLower) : [];
-  return tags.includes('may30_native_ops') ||
-    normalizeLower(order?.sync_status) === 'native_may30_ready' ||
+  return tags.includes('native_order_ops') ||
+    normalizeLower(order?.sync_status) === 'native_ops_ready' ||
     normalizeLower(order?.source_type).includes('customer_app') ||
     normalizeLower(order?.source_channel) === 'online';
 }

@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 
 function getHubApiUrl() {
   const hubBaseUrl = (Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '');
@@ -20,8 +21,8 @@ function getNativeSafeSyncPreviewInvokeOptions() {
   };
 }
 
-function isMay30NativeOrderOpsEnabled() {
-  return Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
+function isNativeOrderOpsEnabled() {
+  return Deno.env.get('ENABLE_NATIVE_ORDER_OPS') === 'true';
 }
 
 function getNativeSafeSyncDarkLaunchConfig() {
@@ -494,46 +495,63 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
   }
 }
 
-async function maybeRunMay30NativeOrderOps({ base44, payload, body }) {
-  if (!isMay30NativeOrderOpsEnabled()) return null;
+async function maybeRunNativeOrderOps({ req, payload, body }) {
+  if (!isNativeOrderOpsEnabled()) return null;
   const eventType = payload?.event || 'order.created';
-  if (eventType !== 'order.created' && eventType !== 'order.refunded') return { skipped: true, reason: 'event_out_of_scope' };
-  if (payload?.order?.order_type === 'subscription' || payload?.order?.stripe_subscription_id) {
+  const source = ['customer_app_one_time', 'website_one_time', 'shopify_pos'].includes(body?.native_source)
+    ? body.native_source
+    : 'customer_app_one_time';
+  const nativeOrder = body?.native_order && typeof body.native_order === 'object'
+    ? body.native_order
+    : payload?.order;
+  if (nativeOrder?.order_type === 'subscription' || nativeOrder?.stripe_subscription_id) {
     return { skipped: true, reason: 'subscription_out_of_scope' };
   }
-  const orderNumber = payload?.order?.order_number || payload?.order?.id || 'unknown';
+  const orderNumber = nativeOrder?.shopify_order_number || nativeOrder?.order_number || nativeOrder?.id || 'unknown';
   const refundSuffix = eventType === 'order.refunded'
-    ? `:${payload?.order?.refund_id || payload?.order?.refunded_at || 'refund'}`
+    ? `:${nativeOrder?.refund_id || nativeOrder?.refunded_at || 'refund'}`
     : '';
 
   try {
-    const response = await base44.asServiceRole.functions.invoke('processMay30NativeOrderOps', {
-      mode: 'live',
-      source: 'customer_app_one_time',
-      event_type: eventType,
-      order: payload.order,
-      request_id: `syncOrderToHub:${eventType}:${payload?.order?.id || payload?.order?.order_number || Date.now()}`,
-      idempotency_key: `may30_native_order_ops:customer_app_one_time:${eventType}:${orderNumber}${refundSuffix}`,
-      internal_secret: getCustomerAppSyncSecret(),
-    });
-    const result = response?.data || response;
-    console.log(`[May30 native order ops] order=${payload?.order?.order_number || 'unknown'} action=${result?.action || 'unknown'} success=${result?.success === true}`);
+    const headers = new Headers(req.headers);
+    headers.set('content-type', 'application/json');
+    const response = await handleNativeOrderOpsRequest(new Request(req.url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        mode: 'live',
+        source,
+        event_type: eventType,
+        order: nativeOrder,
+        request_id: body?.request_id || `syncOrderToHub:${eventType}:${nativeOrder?.id || orderNumber || Date.now()}`,
+        idempotency_key: body?.idempotency_key || `native_order_ops:${source}:${eventType}:${orderNumber}${refundSuffix}`,
+        internal_secret: getCustomerAppSyncSecret(),
+        actor_email: body?.actor_email || null,
+      }),
+    }));
+    const result = await response.json().catch(() => null);
+    console.log(`[Native order ops] source=${source} order=${orderNumber} action=${result?.action || 'unknown'} success=${result?.success === true}`);
     return {
       attempted: true,
       success: result?.success === true,
       action: result?.action || null,
       error_code: result?.error_code || null,
-      order_number: payload?.order?.order_number || null,
+      order_id: result?.order_id || null,
+      order_number: result?.order_number || orderNumber || null,
+      source,
+      status: response.status,
+      result,
       triggered_by: body?.triggered_by || 'stripe_webhook',
     };
   } catch (error) {
-    console.warn(`[May30 native order ops] failed safely for order=${payload?.order?.order_number || 'unknown'}: ${error?.message || 'unknown error'}`);
+    console.warn(`[Native order ops] failed safely for source=${source} order=${orderNumber}: ${error?.message || 'unknown error'}`);
     return {
       attempted: true,
       success: false,
       action: 'failed_safely',
-      error_code: 'may30_native_order_ops_invoke_failed',
-      order_number: payload?.order?.order_number || null,
+      error_code: 'native_order_ops_internal_failed',
+      order_number: orderNumber || null,
+      source,
     };
   }
 }
@@ -562,6 +580,25 @@ Deno.serve(async (req) => {
   if (!order || !order.id) {
     console.error('syncOrderToHub: no order data provided');
     return Response.json({ error: 'No order data' }, { status: 400 });
+  }
+
+  if (body?.native_only === true) {
+    const nativeEventType = body?.event_type || body?.event || 'order.created';
+    const nativeResult = await maybeRunNativeOrderOps({
+      req,
+      payload: { event: nativeEventType, order },
+      body: { ...body, native_order: body?.native_order || order },
+    });
+    const success = nativeResult?.success === true;
+    return Response.json({
+      success,
+      native_only: true,
+      hub_sync_skipped: true,
+      action: nativeResult?.action || (nativeResult ? 'not_accepted' : 'disabled'),
+      error_code: nativeResult?.error_code || (nativeResult ? null : 'native_order_ops_disabled'),
+      order_number: nativeResult?.order_number || order?.shopify_order_number || order?.order_number || null,
+      native_order_ops: nativeResult?.result || nativeResult,
+    }, { status: success ? 200 : (nativeResult?.status || 503) });
   }
 
   const hubApiUrl = getHubApiUrl();
@@ -790,10 +827,9 @@ Deno.serve(async (req) => {
   console.log(`syncOrderToHub: PAYLOAD for ${order.order_number}: ${payloadSummary}`);
 
   try {
-    // M30A: default-off native operational mirror for one-time app orders.
-    // Hub remains the live bridge/fallback. This call is isolated so native
-    // mirror errors never alter the payload sent to Hub or the Hub response.
-    await maybeRunMay30NativeOrderOps({ base44, payload, body });
+    // The native operational mirror is consolidated inside this core sync
+    // endpoint. Its failure remains isolated so the Hub bridge still runs.
+    await maybeRunNativeOrderOps({ req, payload, body });
 
     // Log refund-specific details
     if (eventType === 'order.refunded') {

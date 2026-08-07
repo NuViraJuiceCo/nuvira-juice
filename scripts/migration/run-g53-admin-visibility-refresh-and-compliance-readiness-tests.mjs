@@ -34,7 +34,6 @@ const adminOrders = read('src/pages/AdminOrders.jsx');
 const posOrders = read('src/pages/admin/POSOrders.jsx');
 const shopifyDashboard = read('src/pages/admin/ShopifyDashboard.jsx');
 const operations = read('src/pages/admin/Operations.jsx');
-const readinessPanel = read('src/components/admin/May30ReadinessPanel.jsx');
 const runtimeCheck = read('scripts/migration/run-g52-live-readiness-runtime-check.js');
 const criticalCi = read('scripts/ci/run-critical-regressions.mjs');
 
@@ -93,7 +92,7 @@ const coreAdminSurface = [
 ].join('\n');
 
 assert('Core admin readiness panels no longer expose stale controlled-action language.', !/Controlled action|Controlled actions|Controlled writes|controlled actions|controlled operational actions|remain controlled|are controlled|stays controlled/.test(coreAdminSurface), {});
-assert('Shared readiness panel presents live workflows instead of launch-era controlled-action copy.', readinessPanel.includes("label: 'Live workflow'") && readinessPanel.includes("label: 'Protected safeguard'") && !readinessPanel.includes("label: 'Controlled action'"), {});
+assert('Obsolete shared launch-readiness panel has been retired.', !fs.existsSync(path.join(repoRoot, 'src/components/admin/May30ReadinessPanel.jsx')), {});
 assert('Operations dashboard card map presents live workflow labels for active work surfaces.', operations.includes("badges: ['Live workflow', 'Batch-linked', 'Live source']") && operations.includes("badges: ['Live forms', 'Batch-linked', 'Native']") && operations.includes("badges: ['Live campaigns', 'Native']"), {});
 assert('Active operator pages no longer carry redundant shared mini-readiness panels.', ![
   adminOrders,
@@ -109,7 +108,7 @@ assert('Admin Orders no longer exposes the dead route-review panel.', !adminOrde
 assert('Admin Orders routes lifecycle changes through live queues instead of disabled direct status buttons.', !adminOrders.includes('ORDER_DIRECT_STATUS_MUTATIONS_LOCKED') && !adminOrders.includes('admin_order_workflow_controls_disabled') && adminOrders.includes('Operational Workflow') && adminOrders.includes('to="/admin/production-queue"') && adminOrders.includes("'/admin/delivery-queue'") && adminOrders.includes("'/admin/route-ops'"), {});
 assert('Shopify bridge order detail no longer renders disabled legacy workflow buttons.', !shopifyDashboard.includes('SHOPIFY_DIRECT_WORKFLOW_MUTATIONS_LOCKED') && !shopifyDashboard.includes('Mark as "') && !shopifyDashboard.includes('Mark as Fulfilled') && !shopifyDashboard.includes('Save Notes (Locked)') && shopifyDashboard.includes('Workflow Handoff') && shopifyDashboard.includes('to="/admin/production-queue"') && shopifyDashboard.includes("'/admin/delivery-queue'"), {});
 assert('POS Orders keeps customer profile preview optional instead of loading another mini dashboard by default.', posOrders.includes('showProfilePreview') && posOrders.includes('enabled: isAdminUser(user) && showProfilePreview') && !posOrders.includes('Customer profile readiness'), {});
-assert('POS Orders normalizes legacy May 30 source-note wording for the operator UI.', posOrders.includes('displaySourceNoteSummary') && posOrders.includes('legacy POS import'), {});
+assert('POS Orders normalizes dated legacy source-note wording for the operator UI.', posOrders.includes('displaySourceNoteSummary') && posOrders.includes('legacy POS import'), {});
 assert('Compliance Ops avoids readiness wording that looks like a stale launch gate.', !complianceOps.includes('Audit Readiness'), {});
 assert('Admin Events uses the source-backed calendar read model.', adminEvents.includes("base44.functions.invoke('getAdminCalendarEventsSummary'") && adminEvents.includes("preset: 'next_30_days'") && adminEvents.includes("type: 'event'"), {});
 assert('Admin Events presents compact operational handoff instead of a mobile stat-card grid.', adminEvents.includes('Event calendar, POS context, and production handoff') && adminEvents.includes('Event records') && !adminEvents.includes('Read-only event records') && !adminEvents.includes('function StatCard'), {});

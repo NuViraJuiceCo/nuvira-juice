@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { handleAdminDataSummary } from './adminDataSummary.ts';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
@@ -284,7 +285,7 @@ function nativeFallbackResponse({ nativeResources, reason, hubStatus = null }) {
   });
 }
 
-Deno.serve(async (req) => {
+async function handleOperationalResourcesSummary(req: Request) {
   try {
     const base44 = createClientFromRequest(req);
 
@@ -403,4 +404,12 @@ Deno.serve(async (req) => {
     console.error('[getAdminResourcesSummary] Error:', error.message);
     return Response.json({ error: 'Unable to load resources summary' }, { status: 500 });
   }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'POST') {
+    const body = await req.clone().json().catch(() => ({}));
+    if (body?.resource) return handleAdminDataSummary(req);
+  }
+  return handleOperationalResourcesSummary(req);
 });

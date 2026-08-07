@@ -19,8 +19,8 @@ import { base44 } from '@/api/base44Client';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
 import {
   ensureAuthenticatedNativePushRegistration,
-  installEventNativePushListeners,
-} from '@/lib/eventPushNotifications';
+  installNativePushListeners,
+} from '@/lib/pushNotifications';
 
 const ProductDetail = React.lazy(() => import('@/pages/ProductDetail'));
 const LocalSeoLanding = React.lazy(() => import('@/pages/LocalSeoLanding'));
@@ -178,7 +178,7 @@ const AuthenticatedApp = () => {
     let active = true;
     let removeListeners = null;
 
-    installEventNativePushListeners({
+    installNativePushListeners({
       onNotificationAction: ({ route }) => navigate(route),
     }).then((remove) => {
       if (active) {
@@ -273,7 +273,7 @@ const AuthenticatedApp = () => {
     (profileMissing || profileLoadedAndIncomplete)
   );
   const shouldRouteToLogin = Boolean(authError?.type === 'auth_required' && !isResetSignInRoute);
-  const isProtectedStartupRoute = /^\/(account|admin|notifications|rewards|return-reward|event\/may30)(\/|$)/.test(location.pathname);
+  const isProtectedStartupRoute = /^\/(account|admin|notifications|rewards|return-reward)(\/|$)/.test(location.pathname);
 
   React.useEffect(() => {
     if (!shouldRouteToLogin) {

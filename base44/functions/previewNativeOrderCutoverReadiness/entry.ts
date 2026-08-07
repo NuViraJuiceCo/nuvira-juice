@@ -304,9 +304,9 @@ function gateSummary() {
       actor_allowlist_count: countCsv(Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ACTOR_EMAIL_ALLOWLIST') || Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ACTOR_ALLOWLIST')),
       broad_real_order_mode: Deno.env.get('ENABLE_NATIVE_SAFE_SYNC_WRITER') === 'true' && countCsv(Deno.env.get('NATIVE_SAFE_SYNC_WRITER_ORDER_ALLOWLIST')) === 0,
     },
-    may30_native_order_ops: {
-      enabled: Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true',
-      secret_configured: Boolean(Deno.env.get('MAY30_NATIVE_ORDER_OPS_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET')),
+    native_order_ops: {
+      enabled: Deno.env.get('ENABLE_NATIVE_ORDER_OPS') === 'true',
+      secret_configured: Boolean(Deno.env.get('NATIVE_ORDER_OPS_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET')),
       hub_bridge_fallback_expected: true,
     },
     native_fulfillment_task_materialization: {
@@ -388,10 +388,10 @@ function buildHubRetirementReadiness(gates) {
     subsystemSummary({
       key: 'paid_order_native_ingestion',
       label: 'Paid Customer App order native ingestion',
-      status: gates.may30_native_order_ops.enabled ? 'native_ops_available_with_hub_fallback' : 'not_auto_active_for_future_orders',
-      warnings: gates.may30_native_order_ops.enabled ? [] : ['native_paid_order_ops_future_order_trigger_not_confirmed'],
+      status: gates.native_order_ops.enabled ? 'native_ops_available_with_hub_fallback' : 'not_auto_active_for_future_orders',
+      warnings: gates.native_order_ops.enabled ? [] : ['native_paid_order_ops_future_order_trigger_not_confirmed'],
       evidence: [
-        gates.may30_native_order_ops.enabled ? 'May 30 native ops flag enabled' : 'May 30 native ops flag disabled',
+        gates.native_order_ops.enabled ? 'Native ops flag enabled' : 'Native ops flag disabled',
         'Hub bridge remains fallback',
       ],
     }),
@@ -598,7 +598,7 @@ function aggregateReadiness(targets, gates) {
   if (targetBlockers.length > 0) blockers.push('one_or_more_targets_blocked');
   if (gates.native_safe_sync_writer.broad_real_order_mode) blockers.push('native_safe_sync_writer_broad_mode_enabled_unexpectedly');
   if (gates.native_fulfillment_task_materialization.broad_real_order_mode) blockers.push('native_task_materialization_broad_mode_enabled_unexpectedly');
-  if (!gates.may30_native_order_ops.enabled) warnings.push('may30_native_order_ops_live_path_disabled_future_orders_need_existing_checkout_or_bridge_flow');
+  if (!gates.native_order_ops.enabled) warnings.push('native_order_ops_live_path_disabled_future_orders_need_existing_checkout_or_bridge_flow');
   if (!gates.native_safe_sync_writer.enabled) warnings.push('native_safe_sync_writer_disabled_for_broad_real_orders');
   if (!gates.native_fulfillment_task_materialization.enabled) warnings.push('native_task_materialization_writes_disabled');
   if (targetWarnings.length > 0) warnings.push('one_or_more_targets_have_warnings');

@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The audit now evaluates **necessity, ownership, overlap, and side effects**, not merely whether code runs. Four cleanup batches reduced the deployed estate from 249 live functions to a proposed canonical estate of **145**. Across the four batches, **104 obsolete live functions** were retired. An additional **13 never-deployed source fragments** were removed from canonical source.
+The audit now evaluates **necessity, ownership, overlap, and side effects**, not merely whether code runs. The cleanup reduced the deployed estate from 249 live functions to a verified canonical estate of **141**. In total, **108 obsolete live functions** were retired. An additional **13 never-deployed source fragments** were removed from canonical source.
 
 The fourth batch removes 73 more functions after confirming zero canonical callers or a superseding canonical path, zero remaining automation attachments, and zero invocation records in the 30-day Base44 preview log window. The app's separately published production log surface has no recorded function traffic, so current live evidence comes from the active Base44 deployment, UI callers, automation inventory, webhook contracts, and source call graph.
 
@@ -10,18 +10,18 @@ The exhaustive retained-function inventory and retention rationale are in [the r
 
 ## Current inventory
 
-| Surface | Before audit | After batch 4 |
+| Surface | Before audit | Current verified production |
 |---|---:|---:|
-| Live Base44 functions | 249 | 145 |
-| Canonical source functions | 262 | 145 |
-| Obsolete live functions retired | 0 | 104 |
+| Live Base44 functions | 249 | 141 |
+| Canonical source functions | 262 | 141 |
+| Obsolete live functions retired | 0 | 108 |
 | Never-deployed source fragments retired | 0 | 13 |
 | Source-only functions | 13 | 0 |
 | Remote-only functions | 0 | 0 |
 | Automation-attached functions | 21 | 19 |
 | Automation references | 24 | 22 |
 
-The source/live count becomes 145/145 after batch 4 is deployed and the retirement delete is verified.
+The source/live count is **141/141** after deployment and verified retirement deletion.
 
 ## Necessity standard
 
@@ -69,7 +69,7 @@ Retired: `generateSubscriptionOrders`, `syncAllSubscriptionsFromHub`, `syncSubsc
 
 ### Expired May 30 event surface
 
-Retired: `redeemMay30EventBonus`, `sendMay30PushTest`, the `/event/may30` route, the expired event page, and the old event check-in card. `processMay30NativeOrderOps` remains because it is a current native order-processing dependency despite its compatibility name.
+Retired: `redeemMay30EventBonus`, `sendMay30PushTest`, the expired event route, page, event check-in card, and the separate event-era order processor. Native paid-order processing is consolidated inside `syncOrderToHub`.
 
 ### Superseded native migration commands
 
@@ -111,18 +111,16 @@ The cleanup did not remove:
 - current production, fulfillment, delivery, compliance, or admin read models
 - exact allowlists, kill switches, `LOCK_FROZEN_FIELDS`, `order_lock_status`, preview/apply separation, rollback evidence, or lifecycle locks
 
-Temporary May 30 compatibility names are distinct from current lifecycle safeguards. The remaining stale names are documented in the manifest and are retained only where current callers still depend on them.
+Temporary event compatibility names were removed or consolidated. Current lifecycle safeguards remain distinct and preserved.
 
-## Verification requirements
+## Verification completed
 
-Before merging batch 4:
-
-1. Run the G67 retirement regression and all critical regression suites.
-2. Run lint and the production Web build.
-3. Verify all remaining function names in the required-function manifest exist exactly once.
-4. Deploy/delete the 73-function batch only after the two attached legacy automations are archived.
-5. Re-run Base44 inventory and confirm source/live parity at 145/145.
-6. Re-run the live aggregate loyalty audit and confirm `writes_performed: false` with zero critical exceptions.
+1. G67 retirement regression and the complete critical regression harness pass.
+2. The production Web build passes and the published asset contains the consolidated callers.
+3. Every retained function in the required-function manifest exists exactly once.
+4. Replacement functions were deployed and read back before obsolete endpoints were deleted.
+5. Base44 inventory confirms source/live parity at 141/141 with 19 automation-attached functions and 22 automation references.
+6. No provider calls, customer notifications, or live data mutations were used for cleanup verification.
 
 ## Forward rule
 

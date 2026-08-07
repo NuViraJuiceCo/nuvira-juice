@@ -47,14 +47,14 @@ async function readJsonBody(req: Request): Promise<Record<string, any> | null> {
 const FALLBACK_MESSAGE_TYPE = 'order_status';
 
 function fallbackIdempotencyKey(customerEmail: string): string {
-  return `may30_event_push_subscription:${customerEmail}`;
+  return `push_subscription_fallback:${customerEmail}`;
 }
 
 async function upsertFallbackPushSubscription(base44: any, payload: Record<string, any>) {
   const now = new Date().toISOString();
   const idempotencyKey = fallbackIdempotencyKey(payload.customer_email);
   const metadata = {
-    purpose: 'may30_event_push_subscription',
+    purpose: 'push_subscription_fallback',
     token_type: payload.token_type,
     endpoint: payload.endpoint || null,
     p256dh: payload.p256dh || null,

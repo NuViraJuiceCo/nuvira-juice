@@ -6,7 +6,7 @@ const VAPID_PUBLIC_KEY = import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY || '';
 const SERVICE_WORKER_PATH = '/push-sw.js';
 const NUVIRA_IOS_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
 const NUVIRA_ANDROID_APP_ID = 'com.nuvirajuice.app';
-const EVENT_NATIVE_PUSH_TARGET_KEY = 'nuvira_may30_native_push_target_v1';
+const NATIVE_PUSH_TARGET_KEY = 'nuvira_native_push_target_v2';
 let cachedVapidPublicKey = null;
 
 function isNativeApp() {
@@ -89,7 +89,7 @@ async function readWebPushVapidPublicKey() {
   return cachedVapidPublicKey;
 }
 
-function eventNativePushPayload({ status, tokenResult, apnsToken }) {
+function nativePushPayload({ status, tokenResult, apnsToken }) {
   const fcmToken = tokenResult?.token || null;
   const nativeApnsToken = apnsToken || null;
 
@@ -137,21 +137,21 @@ function sameNativePushTarget(left, right) {
   );
 }
 
-function clearEventNativePushTarget() {
+function clearNativePushTarget() {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.removeItem(EVENT_NATIVE_PUSH_TARGET_KEY);
+    window.localStorage.removeItem(NATIVE_PUSH_TARGET_KEY);
   } catch {
     // Local storage can be unavailable in early WKWebView startup.
   }
 }
 
-function saveEventNativePushTarget(pushTarget) {
+function saveNativePushTarget(pushTarget) {
   if (typeof window === 'undefined' || !pushTarget) return;
 
   try {
-    window.localStorage.setItem(EVENT_NATIVE_PUSH_TARGET_KEY, JSON.stringify({
+    window.localStorage.setItem(NATIVE_PUSH_TARGET_KEY, JSON.stringify({
       ...pushTarget,
       saved_at: new Date().toISOString(),
     }));
@@ -160,11 +160,11 @@ function saveEventNativePushTarget(pushTarget) {
   }
 }
 
-function readEventNativePushTarget() {
+function readNativePushTarget() {
   if (typeof window === 'undefined') return null;
 
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(EVENT_NATIVE_PUSH_TARGET_KEY) || 'null');
+    const parsed = JSON.parse(window.localStorage.getItem(NATIVE_PUSH_TARGET_KEY) || 'null');
     if (!parsed || typeof parsed !== 'object') return null;
     if (parsed.token_type === 'apns' && parsed.apns_token) return parsed;
     if (parsed.token_type === 'fcm' && parsed.fcm_token) return parsed;
@@ -180,8 +180,8 @@ async function registerNativePushTarget(pushTarget, status = 'granted') {
     return { success: false, status, reason: 'native_push_token_unavailable', mode: 'native_push' };
   }
 
-  const existing = readEventNativePushTarget();
-  saveEventNativePushTarget({
+  const existing = readNativePushTarget();
+  saveNativePushTarget({
     ...pushTarget,
     server_registered: Boolean(existing?.server_registered && sameNativePushTarget(existing, pushTarget)),
   });
@@ -202,7 +202,7 @@ async function registerNativePushTarget(pushTarget, status = 'granted') {
   }
 
   const registeredTokenTypes = successful.map(registration => registration.tokenType);
-  saveEventNativePushTarget({
+  saveNativePushTarget({
     ...pushTarget,
     server_registered: true,
     server_registered_at: new Date().toISOString(),
@@ -221,10 +221,10 @@ async function registerNativePushTarget(pushTarget, status = 'granted') {
 async function currentNativePushTarget(status, apnsWaitMs = 1500) {
   const tokenResult = await FirebaseMessaging.getToken().catch(() => null);
   const apnsToken = await waitForApnsToken(apnsWaitMs).catch(() => null);
-  return eventNativePushPayload({ status, tokenResult, apnsToken }) || readEventNativePushTarget();
+  return nativePushPayload({ status, tokenResult, apnsToken }) || readNativePushTarget();
 }
 
-function normalizeEventPushRoute(value) {
+function normalizePushRoute(value) {
   const route = String(value || '/notifications').trim();
   if (!route.startsWith('/') || route.startsWith('//') || route.includes('\\')) {
     return '/notifications';
@@ -239,7 +239,7 @@ function normalizeEventPushRoute(value) {
   }
 }
 
-function eventNativeNotificationData(event) {
+function nativeNotificationData(event) {
   const notification = event?.notification || {};
   const data = notification?.data && typeof notification.data === 'object'
     ? notification.data
@@ -250,18 +250,18 @@ function eventNativeNotificationData(event) {
   return {
     ...data,
     notification_id: String(data.notification_id || '').trim(),
-    url: normalizeEventPushRoute(data.url),
+    url: normalizePushRoute(data.url),
   };
 }
 
-async function markEventPushNotificationOpened(notificationId) {
+async function markPushNotificationOpened(notificationId) {
   if (!notificationId) return;
   await base44.functions.invoke('getCustomerNotifications', {
     mark_read_id: notificationId,
   }).catch(() => {});
 }
 
-export async function installEventNativePushListeners({
+export async function installNativePushListeners({
   onNotificationAction,
   onNotificationReceived,
 } = {}) {
@@ -269,12 +269,12 @@ export async function installEventNativePushListeners({
 
   const handles = await Promise.all([
     FirebaseMessaging.addListener('notificationActionPerformed', async (event) => {
-      const data = eventNativeNotificationData(event);
-      await markEventPushNotificationOpened(data.notification_id);
+      const data = nativeNotificationData(event);
+      await markPushNotificationOpened(data.notification_id);
       onNotificationAction?.({ event, data, route: data.url });
     }),
     FirebaseMessaging.addListener('notificationReceived', (event) => {
-      const data = eventNativeNotificationData(event);
+      const data = nativeNotificationData(event);
       onNotificationReceived?.({ event, data, route: data.url });
     }),
   ]);
@@ -284,7 +284,7 @@ export async function installEventNativePushListeners({
   };
 }
 
-export function getEventPushSupportStatus() {
+export function getPushSupportStatus() {
   if (typeof window === 'undefined') return { supported: false, reason: 'server' };
   if (isNativeApp()) return { supported: true, reason: null, mode: 'native_push' };
   if (!('Notification' in window)) return { supported: false, reason: 'notifications_unavailable' };
@@ -294,7 +294,7 @@ export function getEventPushSupportStatus() {
   return { supported: true, reason: null, mode: 'web_push' };
 }
 
-export async function getEventPushPermission() {
+export async function getPushPermission() {
   if (isNativeApp()) {
     const result = await FirebaseMessaging.checkPermissions();
     return normalizeNativePermission(result.receive);
@@ -303,14 +303,14 @@ export async function getEventPushPermission() {
   return Notification.permission;
 }
 
-export async function getExistingEventPushSubscription() {
-  const support = getEventPushSupportStatus();
+export async function getExistingPushSubscription() {
+  const support = getPushSupportStatus();
   if (!support.supported) return null;
 
   if (isNativeApp()) {
     const permission = await FirebaseMessaging.checkPermissions();
     if (permission.receive !== 'granted') return null;
-    const savedTarget = readEventNativePushTarget();
+    const savedTarget = readNativePushTarget();
     return savedTarget?.server_registered === true
       ? { token_type: savedTarget.token_type, device_platform: Capacitor.getPlatform() }
       : null;
@@ -322,7 +322,7 @@ export async function getExistingEventPushSubscription() {
   return registration?.pushManager.getSubscription() || null;
 }
 
-export async function getEventNativePushRequestPayload() {
+export async function getNativePushRequestPayload() {
   if (!isNativeApp()) return null;
 
   const permission = await FirebaseMessaging.checkPermissions().catch(() => null);
@@ -332,15 +332,15 @@ export async function getEventNativePushRequestPayload() {
   const pushTarget = await currentNativePushTarget(status);
 
   if (pushTarget) {
-    const existing = readEventNativePushTarget();
-    saveEventNativePushTarget({
+    const existing = readNativePushTarget();
+    saveNativePushTarget({
       ...pushTarget,
       server_registered: Boolean(existing?.server_registered && sameNativePushTarget(existing, pushTarget)),
     });
     return pushTarget;
   }
 
-  return readEventNativePushTarget();
+  return readNativePushTarget();
 }
 
 export async function ensureAuthenticatedNativePushRegistration() {
@@ -363,8 +363,8 @@ export async function ensureAuthenticatedNativePushRegistration() {
   return registerNativePushTarget(pushTarget, status);
 }
 
-export async function subscribeToEventPushNotifications(options = {}) {
-  const support = getEventPushSupportStatus();
+export async function subscribeToPushNotifications(options = {}) {
+  const support = getPushSupportStatus();
   if (!support.supported) {
     return { success: false, status: 'unsupported', reason: support.reason };
   }
@@ -384,7 +384,7 @@ export async function subscribeToEventPushNotifications(options = {}) {
 
     const tokenResult = await FirebaseMessaging.getToken();
     const apnsToken = await apnsTokenPromise;
-    const pushTarget = eventNativePushPayload({ status, tokenResult, apnsToken });
+    const pushTarget = nativePushPayload({ status, tokenResult, apnsToken });
     return registerNativePushTarget(pushTarget, status);
   }
 
@@ -433,9 +433,9 @@ export async function subscribeToEventPushNotifications(options = {}) {
   };
 }
 
-export async function unsubscribeFromEventPushNotifications() {
+export async function unsubscribeFromPushNotifications() {
   if (isNativeApp()) {
-    const savedTarget = readEventNativePushTarget();
+    const savedTarget = readNativePushTarget();
     const tokenResult = await FirebaseMessaging.getToken().catch(() => null);
     const selectors = [];
     const fcmToken = savedTarget?.fcm_token || tokenResult?.token;
@@ -451,11 +451,11 @@ export async function unsubscribeFromEventPushNotifications() {
     }
 
     await FirebaseMessaging.deleteToken().catch(() => {});
-    clearEventNativePushTarget();
+    clearNativePushTarget();
     return { success: true, revoked };
   }
 
-  const existing = await getExistingEventPushSubscription();
+  const existing = await getExistingPushSubscription();
   const endpoint = existing?.endpoint || null;
 
   if (existing) {

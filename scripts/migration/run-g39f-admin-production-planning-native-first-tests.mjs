@@ -71,7 +71,7 @@ function nativeOrder(overrides = {}) {
     payment_status: overrides.payment_status || 'paid',
     financial_status: overrides.financial_status || 'paid',
     production_status: overrides.production_status || 'awaiting_production',
-    sync_status: overrides.sync_status || 'native_may30_ready',
+    sync_status: overrides.sync_status || 'native_ops_ready',
     customer_order_date: overrides.customer_order_date || '2026-06-16T12:00:00Z',
     created_date: overrides.created_date || '2026-06-16T12:00:00Z',
     production_date: overrides.production_date ?? PRODUCTION_DATE,

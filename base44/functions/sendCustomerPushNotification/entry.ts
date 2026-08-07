@@ -262,8 +262,8 @@ function shouldRevokeFcmToken(statusCode: number, errorCode: string): boolean {
 function isFallbackSubscriptionLog(record: Record<string, any>): boolean {
   return record.channel === 'push'
     && (
-      record.message_type === 'may30_event_push_subscription'
-      || record.metadata?.purpose === 'may30_event_push_subscription'
+      record.message_type === 'push_subscription_fallback'
+      || record.metadata?.purpose === 'push_subscription_fallback'
     );
 }
 

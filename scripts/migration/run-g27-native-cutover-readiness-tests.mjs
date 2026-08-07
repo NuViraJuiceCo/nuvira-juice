@@ -60,8 +60,8 @@ const fns = loadFunctions('base44/functions/previewNativeOrderCutoverReadiness/e
   NATIVE_SAFE_SYNC_WRITER_ACTOR_EMAIL_ALLOWLIST: 'owner@example.test',
   NATIVE_SAFE_SYNC_WRITER_ALLOWED_SOURCES: 'customer_app,customer_app_one_time',
   NATIVE_SAFE_SYNC_WRITER_ALLOWED_EVENTS: 'order.created,paid_order',
-  ENABLE_MAY30_NATIVE_ORDER_OPS: 'true',
-  MAY30_NATIVE_ORDER_OPS_SECRET: 'configured',
+  ENABLE_NATIVE_ORDER_OPS: 'true',
+  NATIVE_ORDER_OPS_SECRET: 'configured',
   ENABLE_NATIVE_FULFILLMENT_TASK_MATERIALIZATION_WRITES: 'false',
   NATIVE_FULFILLMENT_TASK_MATERIALIZATION_KILL_SWITCH: 'true',
   NATIVE_FULFILLMENT_TASK_MATERIALIZATION_ORDER_ALLOWLIST: 'G27-1001',
@@ -195,7 +195,7 @@ const paidDeliveryOrder = {
 const nativeOrder = {
   id: 'native_shopify_order_001',
   shopify_order_number: 'G27-1001',
-  sync_status: 'native_may30_ready',
+  sync_status: 'native_ops_ready',
   source_type: 'customer_app_one_time',
   order_type: 'one_time',
 };
@@ -255,7 +255,7 @@ const gates = fns.gateSummary();
 assert.equal(gates.native_safe_sync_writer.enabled, false);
 assert.equal(gates.native_safe_sync_writer.broad_real_order_mode, false);
 assert.equal(gates.native_safe_sync_writer.order_allowlist_count, 1);
-assert.equal(gates.may30_native_order_ops.enabled, true);
+assert.equal(gates.native_order_ops.enabled, true);
 assert.equal(gates.native_fulfillment_task_materialization.enabled, false);
 assert.equal(gates.native_fulfillment_task_materialization.order_allowlist_count, 1);
 assert.equal(gates.native_fulfillment_task_lifecycle.enabled, false);

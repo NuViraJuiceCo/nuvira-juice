@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X } from 'lucide-react';
 import {
-  getEventPushPermission,
-  getEventPushSupportStatus,
-  subscribeToEventPushNotifications,
-} from '@/lib/eventPushNotifications';
+  getPushPermission,
+  getPushSupportStatus,
+  subscribeToPushNotifications,
+} from '@/lib/pushNotifications';
 import { useAuth } from '@/lib/AuthContext';
 
 const STORAGE_KEY = 'nuvira_native_notif_prompt_dismissed_v1';
@@ -43,10 +43,10 @@ export default function NotificationPrompt() {
     setDismissed(isDismissed);
 
     async function loadPermission() {
-      const support = getEventPushSupportStatus();
+      const support = getPushSupportStatus();
       if (!support.supported) return;
 
-      const currentPermission = await getEventPushPermission().catch(() => 'unsupported');
+      const currentPermission = await getPushPermission().catch(() => 'unsupported');
       if (!active) return;
 
       setPermission(currentPermission);
@@ -75,7 +75,7 @@ export default function NotificationPrompt() {
     setIsEnabling(true);
     setEnableError('');
     try {
-      const result = await subscribeToEventPushNotifications();
+      const result = await subscribeToPushNotifications();
       const nextPermission = result.status || (result.success ? 'granted' : 'default');
       setPermission(nextPermission);
       if (result.success) {

@@ -10,7 +10,7 @@ const manifest = fs.readFileSync('android/app/src/main/AndroidManifest.xml', 'ut
 const strings = fs.readFileSync('android/app/src/main/res/values/strings.xml', 'utf8');
 const styles = fs.readFileSync('android/app/src/main/res/values/styles.xml', 'utf8');
 const googleServices = JSON.parse(fs.readFileSync('android/app/google-services.json', 'utf8'));
-const pushSource = fs.readFileSync('src/lib/eventPushNotifications.js', 'utf8');
+const pushSource = fs.readFileSync('src/lib/pushNotifications.js', 'utf8');
 const rootGitignore = fs.readFileSync('.gitignore', 'utf8');
 const androidGitignore = fs.readFileSync('android/.gitignore', 'utf8');
 

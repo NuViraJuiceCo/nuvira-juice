@@ -1,5 +1,5 @@
 {
-  "name": "previewAdminMay30POSProfileCandidates",
+  "name": "getAdminPOSOrdersSummary",
   "entry": "entry.ts",
   "automations": [
     {

@@ -219,9 +219,9 @@ function buildApprovalPacket({ readinessResult, lookup, actor }) {
         order_allowlist_count: Number(gates?.native_safe_sync_writer?.order_allowlist_count || 0),
         actor_allowlist_count: Number(gates?.native_safe_sync_writer?.actor_allowlist_count || 0),
       },
-      may30_native_order_ops: {
-        enabled: gates?.may30_native_order_ops?.enabled === true,
-        hub_bridge_fallback_expected: gates?.may30_native_order_ops?.hub_bridge_fallback_expected === true,
+      native_order_ops: {
+        enabled: gates?.native_order_ops?.enabled === true,
+        hub_bridge_fallback_expected: gates?.native_order_ops?.hub_bridge_fallback_expected === true,
       },
     },
     live_execution_contract: {

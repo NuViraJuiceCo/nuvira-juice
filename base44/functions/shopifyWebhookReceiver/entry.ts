@@ -9,7 +9,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  * Set your SHOPIFY_WEBHOOK_SECRET in secrets for verification.
  */
 
-const MAY30_NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
+const NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
 const SHOPIFY_WEBHOOK_SECRET_ENV_NAMES = [
   'SHOPIFY_WEBHOOK_SECRET',
   'SHOPIFY_WEBHOOK_SIGNING_SECRET',
@@ -33,8 +33,8 @@ function internalIngestionAuthorized(req, envelope) {
   return Boolean(envelope?.internal_topic && presented && allowed.includes(presented));
 }
 
-function isMay30NativeOrderOpsEnabled() {
-  return Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
+function isNativeOrderOpsEnabled() {
+  return Deno.env.get('ENABLE_NATIVE_ORDER_OPS') === 'true';
 }
 
 function getShopifyNativeSafeSyncBridgeConfig() {
@@ -643,8 +643,8 @@ Deno.serve(async (req) => {
     }
 
     await logSync(base44, 'webhook', 'success', 1, 0);
-    nativeOpsAttempted = shouldAttemptMay30NativeOrderOps(record, topic);
-    nativeOpsResult = await maybeRunMay30NativeOrderOps(base44, record, topic);
+    nativeOpsAttempted = shouldAttemptNativeOrderOps(record, topic);
+    nativeOpsResult = await maybeRunNativeOrderOps(base44, record, topic);
     await syncIngestedOrderToHub(base44, record, topic);
 
   } else if (topic === 'orders/updated') {
@@ -709,8 +709,8 @@ Deno.serve(async (req) => {
         reason: 'shopify_order_updated_missing_order_create',
         fieldsUpdated: Object.keys(created || {}),
       });
-      nativeOpsAttempted = shouldAttemptMay30NativeOrderOps(created, topic);
-      nativeOpsResult = await maybeRunMay30NativeOrderOps(base44, created, topic);
+      nativeOpsAttempted = shouldAttemptNativeOrderOps(created, topic);
+      nativeOpsResult = await maybeRunNativeOrderOps(base44, created, topic);
       console.log(`Created missing ShopifyOrder #${orderNumber} from update event`);
     }
 
@@ -788,8 +788,8 @@ Deno.serve(async (req) => {
           'audit_trail',
         ],
       });
-      nativeOpsAttempted = Boolean(may30NativeRefundSourceForOrder(updatedOrder));
-      nativeOpsResult = await maybeRunMay30NativeRefundMirror(base44, updatedOrder, topic, payload);
+      nativeOpsAttempted = Boolean(nativeRefundSourceForOrder(updatedOrder));
+      nativeOpsResult = await maybeRunNativeRefundMirror(base44, updatedOrder, topic, payload);
       await createAlert(base44, 'refund', `Refund #${orderNumber}`, `Refund processed for ${payload.customer?.first_name || ''} — $${payload.total_price || '?'}`, shopifyOrderId, orderNumber, 'info');
     }
 
@@ -893,8 +893,8 @@ function uniqueTags(values) {
     .filter(Boolean)));
 }
 
-function may30NativeRefundSourceForOrder(record) {
-  if (!isMay30NativeOrderOpsEnabled()) return null;
+function nativeRefundSourceForOrder(record) {
+  if (!isNativeOrderOpsEnabled()) return null;
   if (record?.is_subscription || record?.source_channel === 'subscription' || record?.order_type === 'subscription') {
     return null;
   }
@@ -907,17 +907,17 @@ function may30NativeRefundSourceForOrder(record) {
   return null;
 }
 
-async function maybeRunMay30NativeRefundMirror(base44, record, topic, payload) {
-  const source = may30NativeRefundSourceForOrder(record);
+async function maybeRunNativeRefundMirror(base44, record, topic, payload) {
+  const source = nativeRefundSourceForOrder(record);
   if (!source) return null;
 
   const orderKey = record.shopify_order_number || record.shopify_order_id || 'unknown';
   try {
-    const response = await base44.asServiceRole.functions.invoke('processMay30NativeOrderOps', {
-      mode: 'live',
-      source,
+    const response = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+      native_only: true,
+      native_source: source,
       event_type: 'order.refunded',
-      order: {
+      data: {
         ...record,
         payment_status: 'refunded',
         financial_status: 'refunded',
@@ -926,14 +926,14 @@ async function maybeRunMay30NativeRefundMirror(base44, record, topic, payload) {
         refunded_at: new Date().toISOString(),
       },
       request_id: `shopifyWebhookReceiver:${topic}:${orderKey}`,
-      idempotency_key: `may30_native_order_ops:${source}:refund:${orderKey}`,
-      internal_secret: getCustomerAppSyncSecret(),
+      idempotency_key: `native_order_ops:${source}:refund:${orderKey}`,
     });
-    const result = response?.data || response;
-    console.log(`[May30 native refund mirror] source=${source} order=${orderKey} action=${result?.action || 'unknown'} success=${result?.success === true}`);
+    const envelope = response?.data || response;
+    const result = envelope?.native_order_ops || envelope;
+    console.log(`[Native refund mirror] source=${source} order=${orderKey} action=${result?.action || 'unknown'} success=${result?.success === true}`);
     return result;
   } catch (error) {
-    console.warn(`[May30 native refund mirror] failed safely for order=${orderKey}: ${error?.message || 'unknown error'}`);
+    console.warn(`[Native refund mirror] failed safely for order=${orderKey}: ${error?.message || 'unknown error'}`);
     return { success: false, error_code: 'native_refund_mirror_failed' };
   }
 }
@@ -989,7 +989,7 @@ async function createOrUpdateNativeOpsReview(base44, { record, source, topic, re
       has_delivery_address: hasDeliveryAddress(record),
       requested_delivery_date_present: Boolean(record.requested_delivery_date),
     },
-    issue_description: `May 30 native order ops fallback queued order for review: ${reason}`,
+    issue_description: `Native order ops fallback queued order for review: ${reason}`,
     recommended_action: 'Review fulfillment date/details before production or delivery task scheduling.',
     status: 'pending',
     idempotency_key: `${idempotencyKey}:review:${reason}`,
@@ -1061,7 +1061,7 @@ async function createNativeOpsAuditLogs(base44, { record, source, topic, idempot
     order_number: record.shopify_order_number || 'unknown',
     status,
     sync_timestamp: new Date().toISOString(),
-    sync_source: 'may30_shopify_webhook_fallback',
+    sync_source: 'native_shopify_webhook_fallback',
     event_type: topic,
     order_id: record.id || '',
     action,
@@ -1074,11 +1074,11 @@ async function createNativeOpsAuditLogs(base44, { record, source, topic, idempot
     request_id: requestId,
     correlation_id: `${source}:${record.shopify_order_number || 'unknown'}`,
   }).catch(error => {
-    console.warn(`[May30 native ops fallback] OrderSyncLog write failed safely: ${error?.message || 'unknown'}`);
+    console.warn(`[Native ops fallback] OrderSyncLog write failed safely: ${error?.message || 'unknown'}`);
   });
 
   await base44.asServiceRole.entities.CommandLog.create({
-    command_type: 'may30_native_order_ops_fallback',
+    command_type: 'native_order_ops_fallback',
     command_source: source,
     status: status === 'queued_for_review' ? 'skipped' : 'success',
     target_entity: 'ShopifyOrder',
@@ -1101,13 +1101,13 @@ async function createNativeOpsAuditLogs(base44, { record, source, topic, idempot
     function_name: 'shopifyWebhookReceiver',
     completed_at: new Date().toISOString(),
   }).catch(error => {
-    console.warn(`[May30 native ops fallback] CommandLog write failed safely: ${error?.message || 'unknown'}`);
+    console.warn(`[Native ops fallback] CommandLog write failed safely: ${error?.message || 'unknown'}`);
   });
 }
 
-async function runMay30NativeOpsFallback(base44, { record, topic, source, reason }) {
+async function runNativeOpsFallback(base44, { record, topic, source, reason }) {
   const orderKey = record.shopify_order_number || record.shopify_order_id || 'unknown';
-  const idempotencyKey = `may30_native_order_ops:${source}:${orderKey}`;
+  const idempotencyKey = `native_order_ops:${source}:${orderKey}`;
   const requestId = `shopifyWebhookReceiver:fallback:${topic}:${orderKey}`;
   const demand = productionDemandFor(record);
 
@@ -1192,16 +1192,16 @@ async function runMay30NativeOpsFallback(base44, { record, topic, source, reason
   };
 }
 
-function shouldAttemptMay30NativeOrderOps(record, topic) {
-  return Boolean(may30NativeSourceForOrder(record, topic));
+function shouldAttemptNativeOrderOps(record, topic) {
+  return Boolean(nativeSourceForOrder(record, topic));
 }
 
 function webhookDescription({ topic, nativeOpsAttempted, nativeOpsResult }) {
-  if (!MAY30_NATIVE_ORDER_TOPICS.has(topic) && topic !== 'orders/refunded') {
+  if (!NATIVE_ORDER_TOPICS.has(topic) && topic !== 'orders/refunded') {
     return 'Webhook processed. Native order processing is not applicable for this topic.';
   }
 
-  if (!isMay30NativeOrderOpsEnabled()) {
+  if (!isNativeOrderOpsEnabled()) {
     return 'Webhook processed. Native order processing is disabled; Hub bridge/fallback remains available.';
   }
 
@@ -1220,9 +1220,9 @@ function webhookDescription({ topic, nativeOpsAttempted, nativeOpsResult }) {
   return `Webhook processed. Native order processing ${success}: source=${source} action=${action}.${errorCode}`;
 }
 
-function may30NativeSourceForOrder(record, topic) {
-  if (!isMay30NativeOrderOpsEnabled()) return null;
-  if (!MAY30_NATIVE_ORDER_TOPICS.has(topic)) return null;
+function nativeSourceForOrder(record, topic) {
+  if (!isNativeOrderOpsEnabled()) return null;
+  if (!NATIVE_ORDER_TOPICS.has(topic)) return null;
   if (record?.is_subscription || record?.source_channel === 'subscription' || record?.order_type === 'subscription') {
     return null;
   }
@@ -1238,26 +1238,26 @@ function may30NativeSourceForOrder(record, topic) {
   return null;
 }
 
-async function maybeRunMay30NativeOrderOps(base44, record, topic) {
-  const source = may30NativeSourceForOrder(record, topic);
+async function maybeRunNativeOrderOps(base44, record, topic) {
+  const source = nativeSourceForOrder(record, topic);
   if (!source) return null;
 
   const orderKey = record.shopify_order_number || record.shopify_order_id || 'unknown';
 
   try {
-    const response = await base44.asServiceRole.functions.invoke('processMay30NativeOrderOps', {
-      mode: 'live',
-      source,
+    const response = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+      native_only: true,
+      native_source: source,
       event_type: 'order.created',
-      order: record,
+      data: record,
       request_id: `shopifyWebhookReceiver:${topic}:${orderKey}`,
-      idempotency_key: `may30_native_order_ops:${source}:${orderKey}`,
-      internal_secret: getCustomerAppSyncSecret(),
+      idempotency_key: `native_order_ops:${source}:${orderKey}`,
     });
-    const result = response?.data || response;
-    console.log(`[May30 native order ops] source=${source} order=${orderKey} action=${result?.action || 'unknown'} success=${result?.success === true}`);
+    const envelope = response?.data || response;
+    const result = envelope?.native_order_ops || envelope;
+    console.log(`[Native order ops] source=${source} order=${orderKey} action=${result?.action || 'unknown'} success=${result?.success === true}`);
     if (!result) {
-      return runMay30NativeOpsFallback(base44, {
+      return runNativeOpsFallback(base44, {
         record,
         topic,
         source,
@@ -1266,8 +1266,8 @@ async function maybeRunMay30NativeOrderOps(base44, record, topic) {
     }
     return result;
   } catch (error) {
-    console.warn(`[May30 native order ops] failed safely for order=${orderKey}: ${error?.message || 'unknown error'}`);
-    return runMay30NativeOpsFallback(base44, {
+    console.warn(`[Native order ops] failed safely for order=${orderKey}: ${error?.message || 'unknown error'}`);
+    return runNativeOpsFallback(base44, {
       record,
       topic,
       source,

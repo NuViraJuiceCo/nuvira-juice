@@ -2,24 +2,24 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const eventPush = fs.readFileSync('src/lib/eventPushNotifications.js', 'utf8');
+const eventPush = fs.readFileSync('src/lib/pushNotifications.js', 'utf8');
 const app = fs.readFileSync('src/App.jsx', 'utf8');
 const notificationPrompt = fs.readFileSync('src/components/home/NotificationPrompt.jsx', 'utf8');
 const registerPush = fs.readFileSync('base44/functions/registerPushSubscription/entry.ts', 'utf8');
 const sendPush = fs.readFileSync('base44/functions/sendCustomerPushNotification/entry.ts', 'utf8');
 
 const existingSubscriptionBody = eventPush.match(
-  /export async function getExistingEventPushSubscription\(\) \{([\s\S]*?)\n\}/,
+  /export async function getExistingPushSubscription\(\) \{([\s\S]*?)\n\}/,
 )?.[1] || '';
 const unsubscribeBody = eventPush.match(
-  /export async function unsubscribeFromEventPushNotifications\(\) \{([\s\S]*?)\n\}/,
+  /export async function unsubscribeFromPushNotifications\(\) \{([\s\S]*?)\n\}/,
 )?.[1] || '';
 
 assert.match(eventPush, /token_type: fcmToken \? 'fcm' : 'apns'/);
 assert.match(registerPush, /if \(requested === 'fcm' && fcmToken\) return 'fcm'/);
 assert.match(registerPush, /const tokenType = resolveTokenType\(body, fcmToken, apnsToken\)/);
 
-assert.match(existingSubscriptionBody, /const savedTarget = readEventNativePushTarget\(\)/);
+assert.match(existingSubscriptionBody, /const savedTarget = readNativePushTarget\(\)/);
 assert.doesNotMatch(existingSubscriptionBody, /FirebaseMessaging\.getToken/);
 assert.match(existingSubscriptionBody, /savedTarget\?\.server_registered === true/);
 assert.match(eventPush, /function nativePushRegistrationTargets\(pushTarget\)/);
@@ -32,14 +32,14 @@ assert.match(eventPush, /apns_environment: 'production'/);
 assert.match(eventPush, /registered_token_types/);
 assert.match(unsubscribeBody, /selectors\.push\(\{ token_type: 'fcm'/);
 assert.match(unsubscribeBody, /selectors\.push\(\{ token_type: 'apns'/);
-assert.match(unsubscribeBody, /clearEventNativePushTarget\(\)/);
+assert.match(unsubscribeBody, /clearNativePushTarget\(\)/);
 
 assert.match(eventPush, /notificationActionPerformed/);
 assert.match(eventPush, /notificationReceived/);
 assert.match(eventPush, /mark_read_id: notificationId/);
 assert.match(eventPush, /route\.startsWith\('\/'\)/);
 assert.match(eventPush, /route\.startsWith\('\/\/'\)/);
-assert.match(app, /installEventNativePushListeners/);
+assert.match(app, /installNativePushListeners/);
 assert.match(app, /onNotificationAction: \(\{ route \}\) => navigate\(route\)/);
 assert.match(app, /ensureAuthenticatedNativePushRegistration/);
 assert.match(app, /if \(!user\?\.email\) return undefined/);

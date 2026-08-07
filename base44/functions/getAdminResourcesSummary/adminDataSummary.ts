@@ -180,7 +180,7 @@ async function readRows(base44: any, resource: keyof typeof RESOURCE_LIMITS) {
   }
 }
 
-Deno.serve(async (req) => {
+export async function handleAdminDataSummary(req: Request) {
   if (req.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
   }
@@ -215,4 +215,4 @@ Deno.serve(async (req) => {
     const message = error instanceof Error ? error.message : 'Unable to load admin summary.';
     return Response.json({ error: text(message, 180) || 'admin_summary_failed' }, { status: 500 });
   }
-});
+}

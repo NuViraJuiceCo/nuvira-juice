@@ -47,7 +47,7 @@ function hasActivePushToken(row: Record<string, any>): boolean {
 }
 
 function fallbackSubscriptionFromLog(row: Record<string, any>): Record<string, any> | null {
-  if (row.channel !== 'push' || row.metadata?.purpose !== 'may30_event_push_subscription') return null;
+  if (row.channel !== 'push' || row.metadata?.purpose !== 'push_subscription_fallback') return null;
   const metadata = row.metadata || {};
   return {
     token_type: metadata.token_type,

@@ -61,8 +61,7 @@ export async function handleOperationalNoticeMaintenance(base44: any, user: any,
 
     const legacyReviewRows = (reviewRows || []).filter((row: any) => {
       if (!['pending', 'reviewing'].includes(row?.status)) return false;
-      const issue = text(row?.issue_description, 500).toLowerCase();
-      return row?.incident_type === 'payment_not_paid' && (issue.includes('may 30') || olderThan(row?.created_date, 24 * 30));
+      return row?.incident_type === 'payment_not_paid' && olderThan(row?.created_date, 24 * 30);
     });
     const recoveredReviewRows = (reviewRows || []).filter((row: any) => {
       if (!['pending', 'reviewing'].includes(row?.status)) return false;
@@ -96,7 +95,7 @@ export async function handleOperationalNoticeMaintenance(base44: any, user: any,
           queue_visibility_status: 'archived',
           archived_at: new Date().toISOString(),
           archived_by: user.email,
-          archived_reason: 'legacy launch-era payment review noise',
+          archived_reason: 'stale unlinked payment review noise',
         }));
       const recoveredOnly = recoveredReviewRows.filter(row => !legacyReviewRows.some((legacy: any) => legacy.id === row.id));
       await inBatches(recoveredOnly, row =>

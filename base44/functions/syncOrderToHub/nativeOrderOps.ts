@@ -3,14 +3,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const SUPPORTED_SOURCES = new Set(['customer_app_one_time', 'website_one_time', 'shopify_pos']);
 const MAX_LINE_ITEMS = 60;
 
-function isMay30NativeOrderOpsEnabled() {
+function isNativeOrderOpsEnabled() {
   // Read gates per request so Base44 runtime artifact/env propagation cannot
   // leave native mirror controls stuck on a stale top-level snapshot.
-  return Deno.env.get('ENABLE_MAY30_NATIVE_ORDER_OPS') === 'true';
+  return Deno.env.get('ENABLE_NATIVE_ORDER_OPS') === 'true';
 }
 
-function getMay30NativeOrderOpsSecret() {
-  return Deno.env.get('MAY30_NATIVE_ORDER_OPS_SECRET') ||
+function getNativeOrderOpsSecret() {
+  return Deno.env.get('NATIVE_ORDER_OPS_SECRET') ||
     Deno.env.get('CUSTOMER_APP_SYNC_SECRET') ||
     '';
 }
@@ -235,7 +235,7 @@ async function resolveAuth({ base44, req, body, mode }) {
   const authHeader = req.headers.get('authorization') || '';
   const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
   const bodySecret = normalizeText(body?.internal_secret || body?._internal_secret);
-  const nativeOrderOpsSecret = getMay30NativeOrderOpsSecret();
+  const nativeOrderOpsSecret = getNativeOrderOpsSecret();
   if (nativeOrderOpsSecret && (bearer === nativeOrderOpsSecret || bodySecret === nativeOrderOpsSecret)) {
     return { ok: true, actor_type: 'system', actor_role: 'service', actor_email: 'system' };
   }
@@ -315,7 +315,7 @@ function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus
       production_status: 'awaiting_production',
       order_lock_status: 'verified',
       data_quality_status: 'complete',
-      sync_status: 'native_may30_ready',
+      sync_status: 'native_ops_ready',
       last_sync_at: now,
       customer_order_date: sanitizeText(order?.created_date || order?.customer_order_date || now, 80),
       requested_delivery_date: sanitizeText(order?.requested_delivery_date || order?.estimated_delivery_date, 40),
@@ -331,11 +331,11 @@ function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus
       customer_notes: sanitizeText(order?.customer_notes || order?.notes, 300),
       stripe_checkout_session_id: sanitizeText(order?.stripe_checkout_session_id, 160),
       stripe_payment_intent_id: sanitizeText(order?.stripe_payment_intent_id, 160),
-      tags: ['may30_native_ops', source, fulfillmentMethod].filter(Boolean),
+      tags: ['native_order_ops', source, fulfillmentMethod].filter(Boolean),
       fulfillments: [fulfillment],
       audit_trail: [{
         at: now,
-        source: 'processMay30NativeOrderOps',
+        source: 'syncOrderToHub',
         action: 'native_operational_mirror_prepared',
         event_type: eventType,
         production_units: productionDemand.total_units,
@@ -385,18 +385,18 @@ function buildPosRecord({ order, source, eventType, lineItems, paymentStatus }) 
       production_status: 'not_required',
       order_lock_status: 'fulfilled',
       data_quality_status: 'complete',
-      sync_status: 'native_may30_ready',
+      sync_status: 'native_ops_ready',
       last_sync_at: now,
       customer_order_date: sanitizeText(order?.created_at || order?.order_date || order?.customer_order_date || now, 80),
       event_name: sanitizeText(order?.event_name, 120),
       event_date: sanitizeText(order?.event_date, 40),
       event_location: locationLabel,
       internal_notes: sanitizeText(`POS/event order mirrored for native operations${locationLabel ? ` - ${locationLabel}` : ''}`, 300),
-      tags: ['may30_native_ops', 'pos_sale', 'event_sale', 'no_delivery', 'no_production'],
+      tags: ['native_order_ops', 'pos_sale', 'event_sale', 'no_delivery', 'no_production'],
       fulfillments: [],
       audit_trail: [{
         at: now,
-        source: 'processMay30NativeOrderOps',
+        source: 'syncOrderToHub',
         action: 'native_pos_operational_mirror_prepared',
         event_type: eventType,
         item_units: productionDemand.total_units,
@@ -485,7 +485,7 @@ async function resolveReviewQueue({ base44, idempotencyKey, record, mode }) {
       status: 'resolved',
       resolved_action: 'canonical_order_reprocessed_successfully',
       resolved_at: new Date().toISOString(),
-      resolved_by: 'processNativeOrderOps',
+      resolved_by: 'syncOrderToHub',
       existing_order_id: record?.id || row.existing_order_id || null,
       existing_order_number: record?.shopify_order_number || row.existing_order_number || null,
       queue_visibility_status: 'resolved',
@@ -514,7 +514,7 @@ async function createOrderSyncLog({ base44, record, action, status, reason, fiel
     request_id: requestId,
     correlation_id: `${source}:${record?.shopify_order_number || 'unknown'}`,
   }).catch(error => {
-    console.warn(`[processMay30NativeOrderOps] OrderSyncLog write failed safely: ${error?.message || 'unknown'}`);
+    console.warn(`[syncOrderToHub:nativeOrderOps] OrderSyncLog write failed safely: ${error?.message || 'unknown'}`);
     return null;
   });
 }
@@ -545,10 +545,10 @@ async function createCommandLog({ base44, record, action, status, idempotencyKey
     },
     idempotency_key: idempotencyKey,
     request_id: requestId,
-    function_name: 'processMay30NativeOrderOps',
+    function_name: 'syncOrderToHub',
     completed_at: new Date().toISOString(),
   }).catch(error => {
-    console.warn(`[processMay30NativeOrderOps] CommandLog write failed safely: ${error?.message || 'unknown'}`);
+    console.warn(`[syncOrderToHub:nativeOrderOps] CommandLog write failed safely: ${error?.message || 'unknown'}`);
     return null;
   });
 }
@@ -644,10 +644,10 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     });
   }
 
-  const tags = uniqueStrings([...(existing.tags || []), 'may30_native_ops', 'refunded', 'excluded']);
+  const tags = uniqueStrings([...(existing.tags || []), 'native_order_ops', 'refunded', 'excluded']);
   const auditEntry = {
     at: now,
-    source: 'processMay30NativeOrderOps',
+    source: 'syncOrderToHub',
     action: 'native_refund_mirror_applied',
     event_type: eventType,
     request_id: requestId,
@@ -663,7 +663,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     fulfillment_status: 'cancelled',
     order_status: 'refunded',
     operational_visibility: 'archived',
-    sync_status: 'native_may30_refunded',
+    sync_status: 'native_ops_refunded',
     data_quality_status: existing.data_quality_status || 'complete',
     excluded_from_production: true,
     refunded_at: sanitizeText(order?.refunded_at, 80) || now,
@@ -672,7 +672,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     stripe_payment_intent_id: sanitizeText(order?.stripe_payment_intent_id, 160) || existing.stripe_payment_intent_id,
     tags,
     fulfillments,
-    internal_notes: sanitizeText(`${existing.internal_notes || ''}\n[May30 native refund mirror] ${refundId} on ${now}`, 1200),
+    internal_notes: sanitizeText(`${existing.internal_notes || ''}\n[Native refund mirror] ${refundId} on ${now}`, 1200),
     audit_trail: [...(existing.audit_trail || []), auditEntry],
     last_sync_at: now,
   });
@@ -688,7 +688,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
       if (normalizeLower(task.status) === 'cancelled' || normalizeLower(task.status) === 'delivered') continue;
       await base44.asServiceRole.entities.FulfillmentTask.update(task.id, {
         status: 'cancelled',
-        notes: sanitizeText(`${task.notes || ''}\nCancelled by native May 30 refund mirror for ${orderNumber || existing.shopify_order_number}.`, 500),
+        notes: sanitizeText(`${task.notes || ''}\nCancelled by native refund mirror for ${orderNumber || existing.shopify_order_number}.`, 500),
       });
       cancelledCount += 1;
     }
@@ -699,7 +699,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
       record: writtenRecord,
       action: 'refund_mirrored',
       status: 'success',
-      reason: `Native May 30 refund mirror applied. Refund amount=${refundAmount ?? 'unknown'}.`,
+      reason: `Native refund mirror applied. Refund amount=${refundAmount ?? 'unknown'}.`,
       fieldsUpdated: ['payment_status', 'financial_status', 'production_status', 'fulfillment_status', 'order_status', 'sync_status', 'excluded_from_production', 'refunded_at'],
       fieldsRejected: [],
       errorCode: null,
@@ -792,7 +792,7 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
     customer_phone: outputs.record.customer_phone,
     source_channel: outputs.record.source_channel,
     source_type: outputs.record.source_type || source,
-    task_source: 'processMay30NativeOrderOps',
+    task_source: 'syncOrderToHub',
     created_from_native_ops: true,
     order_type: outputs.record.order_type || 'one_time',
     fulfillment_type: outputs.record.fulfillment_method || 'delivery',
@@ -863,7 +863,7 @@ async function runPlanner({ base44, source, record, existing, idempotencyKey }) 
 
   const plannerResponse = await base44.asServiceRole.functions.invoke('previewNativeSafeSyncOrderUpdate', {
     mode: 'dry_run',
-    fixture_id: 'may30_native_order_ops',
+    fixture_id: 'native_order_ops',
     source: source === 'shopify_pos' ? 'admin' : 'customer_app',
     idempotency_key: idempotencyKey,
     incoming_payload: plannerPayload,
@@ -872,7 +872,7 @@ async function runPlanner({ base44, source, record, existing, idempotencyKey }) 
   return plannerResponse?.data || plannerResponse;
 }
 
-Deno.serve(async (req) => {
+export async function handleNativeOrderOpsRequest(req: Request) {
   try {
     if (req.method !== 'POST') {
       return Response.json({ success: false, error_code: 'method_not_allowed', message: 'POST required' }, { status: 405 });
@@ -890,13 +890,13 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error_code: 'unauthorized', message: 'Unauthorized' }, { status: 401 });
     }
 
-    if (mode === 'live' && !isMay30NativeOrderOpsEnabled()) {
+    if (mode === 'live' && !isNativeOrderOpsEnabled()) {
       return Response.json({
         success: true,
         skipped: true,
         dry_run: false,
         action: 'skipped',
-        error_code: 'may30_native_order_ops_disabled',
+        error_code: 'native_order_ops_disabled',
         message: 'Native order processing is disabled; the existing Hub bridge remains the fallback.',
       });
     }
@@ -909,9 +909,9 @@ Deno.serve(async (req) => {
     const fulfillmentMethod = source === 'shopify_pos'
       ? 'pos'
       : (normalizeLower(order.fulfillment_method || order.fulfillment_type) || 'delivery');
-    const requestId = sanitizeText(body?.request_id, 120) || `may30_native_ops:${Date.now()}`;
+    const requestId = sanitizeText(body?.request_id, 120) || `native_order_ops:${Date.now()}`;
     const orderNumber = normalizeOrderNumber(order);
-    const idempotencyKey = sanitizeText(body?.idempotency_key, 180) || `may30_native_order_ops:${source}:${orderNumber || order?.id || 'unknown'}`;
+    const idempotencyKey = sanitizeText(body?.idempotency_key, 180) || `native_order_ops:${source}:${orderNumber || order?.id || 'unknown'}`;
 
     if (isRefundEvent(eventType)) {
       return handleNativeRefundMirror({ base44, source, eventType, order, idempotencyKey, requestId, mode });
@@ -1028,7 +1028,7 @@ Deno.serve(async (req) => {
       if (existing) {
         const updatePayload = compactObject({
           ...planner.accepted_fields,
-          sync_status: 'native_may30_ready',
+          sync_status: 'native_ops_ready',
           last_sync_at: new Date().toISOString(),
         });
         delete updatePayload.id;
@@ -1052,7 +1052,7 @@ Deno.serve(async (req) => {
         eventType,
         mode,
       }).catch(error => {
-        console.warn(`[processMay30NativeOrderOps] FulfillmentTask mirror failed safely: ${error?.message || 'unknown'}`);
+        console.warn(`[syncOrderToHub:nativeOrderOps] FulfillmentTask mirror failed safely: ${error?.message || 'unknown'}`);
         return { action: 'failed', record: null, reason: 'fulfillment_task_write_failed' };
       });
 
@@ -1131,12 +1131,12 @@ Deno.serve(async (req) => {
       hub_bridge_fallback: true,
     });
   } catch (error) {
-    console.error(`[processMay30NativeOrderOps] failed safely: ${error?.message || 'unknown error'}`);
+    console.error(`[syncOrderToHub:nativeOrderOps] failed safely: ${error?.message || 'unknown error'}`);
     return Response.json({
       success: false,
-      error_code: 'may30_native_order_ops_failed',
+      error_code: 'native_order_ops_failed',
       message: 'Native order processing failed safely; the Hub bridge fallback remains available.',
       hub_bridge_fallback: true,
     }, { status: 500 });
   }
-});
+}

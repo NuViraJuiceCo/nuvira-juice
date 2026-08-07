@@ -1212,11 +1212,14 @@ function isLegacyLaunchReviewQueueNoise(row) {
   const source = normalizeStatus(row?.incoming_source);
   const incident = normalizeStatus(row?.incident_type);
   const existingOrder = normalizeOrderNumber(row?.existing_order_number || row?.order_number || row?.shopify_order_number);
-  const description = normalizeLower(`${row?.issue_description || ''} ${row?.recommended_action || ''}`);
+  const recommendedAction = normalizeStatus(row?.recommended_action);
+  const referenceTimestamp = Date.parse(String(row?.last_seen_at || row?.updated_date || row?.created_date || ''));
+  const isStale = Number.isFinite(referenceTimestamp) && referenceTimestamp < Date.now() - 30 * 24 * 60 * 60 * 1000;
   return source === 'shopify_pos' &&
     incident === 'payment_not_paid' &&
     !existingOrder &&
-    description.includes('may 30 native order ops rejected order');
+    recommendedAction === 'manual_review_before_operational_processing' &&
+    isStale;
 }
 
 function isInternalTestReviewQueueItem(row) {

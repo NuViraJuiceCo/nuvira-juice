@@ -39,7 +39,7 @@ function activeTokenType(row: Record<string, any>): keyof TokenCounts | null {
 
 function isFallbackPushSubscription(row: Record<string, any>): boolean {
   return row.channel === 'push'
-    && row.metadata?.purpose === 'may30_event_push_subscription';
+    && row.metadata?.purpose === 'push_subscription_fallback';
 }
 
 function fallbackSubscriptionFromLog(row: Record<string, any>): Record<string, any> | null {

@@ -5,7 +5,6 @@ const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const CHICAGO_TZ = 'America/Chicago';
 const MAX_LIMIT = 100;
-const MAY30_NATIVE_ORDER_START_DATE = '2026-05-28';
 const UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS = 14;
 const NATIVE_DELIVERY_TASK_ACTION_WINDOW_DAYS = 14;
 const DELIVERY_LIFECYCLE_READ_MODEL_ENABLE = 'ENABLE_ADMIN_DELIVERY_LIFECYCLE_READ_MODEL';
@@ -506,7 +505,6 @@ function shouldSuppressStaleNativeDeliveryTask(stop, deliveryDate, testTaskMode)
   if (testTaskMode === 'only') return false;
   const stopDate = normalizeDate(stop?.delivery_date || stop?.scheduled_date || stop?.assigned_delivery_date || deliveryDate);
   if (!stopDate || stopDate !== deliveryDate) return false;
-  if (stopDate >= MAY30_NATIVE_ORDER_START_DATE) return false;
   return isNonTerminalRouteStop(stop) && isDeliveryDateOutsideActiveTaskWindow(stopDate);
 }
 
@@ -514,30 +512,27 @@ function safeLineItems(order) {
   return Array.isArray(order?.line_items) ? order.line_items.slice(0, 60) : [];
 }
 
-function hasNativeLaunchMarker(order) {
+function hasNativeOperationalMarker(order) {
   const tags = Array.isArray(order?.tags) ? order.tags.map(normalizeLower) : [];
   const sourceType = normalizeLower(order?.source_type);
   const sourceChannel = normalizeLower(order?.source_channel);
   const syncStatus = normalizeLower(order?.sync_status);
-  const referenceDate = orderReferenceDate(order);
-  const isRecentLaunchOrder = Boolean(referenceDate && referenceDate >= MAY30_NATIVE_ORDER_START_DATE);
-
   return (
-    tags.includes('may30_native_ops') ||
-    syncStatus === 'native_may30_ready' ||
+    tags.includes('native_order_ops') ||
+    ['native_ops_ready', 'native_ops_refunded'].includes(syncStatus) ||
     ['customer_app_one_time', 'website_one_time'].includes(sourceType) ||
-    ((sourceChannel === 'online' || sourceChannel === 'customer_app' || sourceChannel === 'website') && isRecentLaunchOrder)
+    order?.created_from_native_ops === true
   );
 }
 
-function isNativeMay30DeliveryOrder(order) {
+function isNativeDeliveryOrder(order) {
   const paymentStatus = normalizeLower(order?.payment_status || order?.financial_status);
   const orderType = normalizeLower(order?.order_type);
   const sourceChannel = normalizeLower(order?.source_channel);
   const fulfillmentMethod = normalizeLower(order?.fulfillment_method);
   const productionStatus = normalizeLower(order?.production_status);
 
-  if (!hasNativeLaunchMarker(order)) return false;
+  if (!hasNativeOperationalMarker(order)) return false;
   if (order?.excluded_from_production === true) return false;
   if (['canceled', 'cancelled', 'refunded'].includes(productionStatus)) return false;
   if (['refunded', 'partially_refunded'].includes(paymentStatus)) return false;
@@ -752,7 +747,7 @@ async function loadNativeDeliveryStops(base44, deliveryDate, limit, testTaskMode
     ...fromOrders.map(stop => normalizeLower(stop.order_number)).filter(Boolean),
   ]);
   const unscheduled = orders
-    .filter(isNativeMay30DeliveryOrder)
+    .filter(isNativeDeliveryOrder)
     .filter(order => !normalizeDate(order.assigned_delivery_date || order.selected_delivery_date || order.requested_delivery_date))
     .filter(order => isUnscheduledNativeDeliveryOrderInReviewWindow(order, deliveryDate))
     .filter(order => !scheduledOrderNumbers.has(normalizeLower(order.shopify_order_number || order.order_number)))

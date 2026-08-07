@@ -219,18 +219,18 @@ async function importExactShopifyOrder({ base44, token, storeUrl, identifier, ac
   const eventType = source === 'shopify_pos' ? 'pos.order.imported' : 'shopify.order.imported';
   const orderNumber = mapped.shopify_order_number || mapped.order_number || identifier;
 
-  const response = await base44.asServiceRole.functions.invoke('processMay30NativeOrderOps', {
-    mode: 'live',
-    source,
+  const response = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
+    native_only: true,
+    native_source: source,
     event_type: eventType,
+    data: mapped,
     request_id: `shopify_exact_import:${order.id || orderNumber}`,
-    idempotency_key: `may30_native_order_ops:${source}:${order.id || orderNumber}`,
-    internal_secret: Deno.env.get('MAY30_NATIVE_ORDER_OPS_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '',
+    idempotency_key: `native_order_ops:${source}:${order.id || orderNumber}`,
     actor_email: actorEmail,
-    order: mapped,
   });
 
-  const result = response?.data || response || {};
+  const envelope = response?.data || response || {};
+  const result = envelope?.native_order_ops || envelope;
   return Response.json({
     success: result?.success === true,
     action: result?.action || null,
