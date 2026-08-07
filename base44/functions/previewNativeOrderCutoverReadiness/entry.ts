@@ -10159,6 +10159,652 @@ async function buildG47BPreview(base44, body) {
     : buildG47BBoundedScan(base44, lookup, baseResponse);
 }
 
+const G41B_PREVIEW_MODE = 'ADMIN_COMPLIANCE_OPERATIONS_READ_PARITY';
+const G41B_MODE_EXACT = 'EXACT_COMPLIANCE_RECORD_PARITY';
+const G41B_MODE_SCAN = 'BOUNDED_COMPLIANCE_READINESS_SCAN';
+const G41B_SUPPORTED_MODES = new Set([G41B_MODE_EXACT, G41B_MODE_SCAN]);
+const G41B_DEFAULT_LIMIT = 50;
+const G41B_MAX_LIMIT = 100;
+
+const G41B_ALLOWED_BODY_KEYS = new Set([
+  'preview_mode',
+  'mode',
+  'production_batch_id',
+  'batch_id',
+  'source_batch_id',
+  'batch_compliance_log_id',
+  'compliance_log_id',
+  'production_batch_limit',
+  'compliance_log_limit',
+  'related_entity_limit',
+  'request_id',
+  '_internal_secret',
+  'internal_secret',
+]);
+
+const G41B_SUPPORTED_CLASSIFICATIONS = Object.freeze([
+  'compliance_native_read_ready',
+  'compliance_native_read_partial',
+  'compliance_batch_log_missing',
+  'compliance_duplicate_log_risk',
+  'compliance_batch_log_status_mismatch',
+  'compliance_ph_result_missing',
+  'compliance_pass_fail_mismatch',
+  'compliance_locked_log_ready',
+  'compliance_alert_context_present',
+  'compliance_hub_fallback_required',
+  'compliance_review_required',
+  'compliance_repair_replay_hold',
+  'compliance_live_qc_proof_pending',
+  'compliance_customer_facing_held',
+  'compliance_write_not_ready',
+]);
+
+const G41B_READ_ONLY_SAFETY = Object.freeze({
+  ...G33C_READ_ONLY_SAFETY,
+  dry_run_only: true,
+  writes_performed: false,
+  pii_returned: false,
+  raw_payloads_returned: false,
+  provider_call_impact: false,
+  stripe_calls: false,
+  shopify_calls: false,
+  hub_calls: false,
+  notifications_sent: false,
+  hub_mutation_performed: false,
+  production_batch_mutation_performed: false,
+  compliance_log_mutation_performed: false,
+  compliance_alert_created: false,
+  customer_facing_behavior_changed: false,
+  order_mutation_performed: false,
+  native_order_mutation_performed: false,
+  fulfillment_task_mutation_performed: false,
+  inventory_mutation_performed: false,
+  purchase_order_created: false,
+  command_log_created: false,
+});
+
+function isG41BPreviewRequest(body) {
+  return normalizeText(body?.preview_mode).toUpperCase() === G41B_PREVIEW_MODE;
+}
+
+function g41bUnsupportedBodyKey(body) {
+  for (const key of Object.keys(body || {})) {
+    if (!G41B_ALLOWED_BODY_KEYS.has(normalizeText(key).toLowerCase())) return key;
+  }
+  return null;
+}
+
+function g41bLookup(body) {
+  const requestedMode = normalizeText(body?.mode || G41B_MODE_EXACT).toUpperCase();
+  return {
+    previewMode: G41B_PREVIEW_MODE,
+    mode: G41B_SUPPORTED_MODES.has(requestedMode) ? requestedMode : requestedMode || G41B_MODE_EXACT,
+    productionBatchId: normalizeText(body?.production_batch_id),
+    batchId: normalizeText(body?.batch_id || body?.source_batch_id),
+    batchComplianceLogId: normalizeText(body?.batch_compliance_log_id || body?.compliance_log_id),
+    productionBatchLimit: g43dScan1Limit(body?.production_batch_limit, G41B_DEFAULT_LIMIT, G41B_MAX_LIMIT),
+    complianceLogLimit: g43dScan1Limit(body?.compliance_log_limit, G41B_DEFAULT_LIMIT, G41B_MAX_LIMIT),
+    relatedEntityLimit: g43dScan1Limit(body?.related_entity_limit, G41B_DEFAULT_LIMIT, G41B_MAX_LIMIT),
+    requestId: sanitizeText(body?.request_id, 140),
+  };
+}
+
+function g41bBaseResponse(lookup) {
+  return {
+    success: true,
+    dry_run: true,
+    writes_performed: false,
+    generated_at: new Date().toISOString(),
+    function_name: 'previewNativeOrderCutoverReadiness',
+    preview_mode: G41B_PREVIEW_MODE,
+    mode: lookup.mode,
+    request_id: lookup.requestId || null,
+    g41a_carry_forward_classification: 'compliance_native_boundary_partially_ready_pending_live_qc_proof',
+    apple_pay_deferred_intent_backend_blocked_by_platform_atomicity: true,
+    hub_fallback_remains_active: true,
+    customer_facing_status_unchanged: true,
+    write_paths_held: true,
+    held_write_functions: [
+      'saveAdminComplianceRecord',
+      'validateComplianceEntry',
+      'verifyNativeProductionBatchesForCustomerApp',
+      'executeNativeProductionBatchLifecycle',
+    ],
+    supported_classifications: G41B_SUPPORTED_CLASSIFICATIONS,
+    safety: G41B_READ_ONLY_SAFETY,
+    pii_returned: false,
+    raw_payloads_returned: false,
+    provider_call_impact: false,
+    stripe_calls: false,
+    shopify_calls: false,
+    hub_calls: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+    production_batch_mutation_performed: false,
+    compliance_log_mutation_performed: false,
+    compliance_alert_created: false,
+    customer_facing_behavior_changed: false,
+    order_mutation_performed: false,
+    native_order_mutation_performed: false,
+    fulfillment_task_mutation_performed: false,
+    inventory_mutation_performed: false,
+    purchase_order_created: false,
+    command_log_created: false,
+  };
+}
+
+function g41bUnique(values) {
+  return [...new Set((values || []).map(value => normalizeText(value)).filter(Boolean))];
+}
+
+function g41bPassFail(value) {
+  const text = normalizeLower(value);
+  if (['pass', 'passed', 'true', 'yes', 'ok', 'complete', 'completed'].includes(text)) return 'passed';
+  if (['fail', 'failed', 'false', 'no', 'out_of_range', 'out of range', 'blocked'].includes(text)) return 'failed';
+  return text || null;
+}
+
+function g41bNumberPresent(value) {
+  const number = Number(value);
+  return Number.isFinite(number);
+}
+
+function g41bBatchExactKeys(batch) {
+  return g41bUnique([
+    batch?.id,
+    batch?.batch_id,
+    batch?.source_batch_id,
+    batch?.source_production_batch_id,
+  ]);
+}
+
+function g41bLogExactKeys(log) {
+  return g41bUnique([
+    log?.id,
+    log?.batch_id,
+    log?.source_batch_id,
+    log?.source_production_batch_id,
+  ]);
+}
+
+function g41bLogMatchesBatch(log, batch) {
+  if (!log || !batch) return false;
+  const batchId = normalizeText(batch?.id);
+  const batchDisplayId = normalizeText(batch?.batch_id);
+  const linkedLogId = normalizeText(batch?.compliance_log_id);
+  const logId = normalizeText(log?.id);
+  const logSourceBatchId = normalizeText(log?.source_production_batch_id);
+  const logBatchId = normalizeText(log?.batch_id);
+  if (batchId && logSourceBatchId && batchId !== logSourceBatchId) return false;
+  if (batchDisplayId && logBatchId && batchDisplayId !== logBatchId) return false;
+  return Boolean(
+    (linkedLogId && logId && linkedLogId === logId) ||
+    (batchId && logSourceBatchId && batchId === logSourceBatchId) ||
+    (batchDisplayId && logBatchId && batchDisplayId === logBatchId)
+  );
+}
+
+function g41bRowsMatchingBatch(rows, batch, logs = []) {
+  const batchKeys = g41bBatchExactKeys(batch);
+  const logKeys = (logs || []).flatMap(g41bLogExactKeys);
+  const keys = new Set([...batchKeys, ...logKeys]);
+  return (rows || []).filter(row => {
+    const values = g41bUnique([
+      row?.target_id,
+      row?.target_display_id,
+      row?.related_log_id,
+      row?.related_log_type,
+      row?.batch_id,
+      row?.source_production_batch_id,
+      row?.request_id,
+      row?.idempotency_key,
+    ]);
+    return values.some(value => keys.has(value));
+  });
+}
+
+function g41bCommandRowsMatchingBatch(rows, batch, logs = []) {
+  const directRows = g41bRowsMatchingBatch(rows, batch, logs);
+  const batchId = normalizeText(batch?.id);
+  const batchDisplayId = normalizeText(batch?.batch_id);
+  const logIds = new Set((logs || []).map(log => normalizeText(log?.id)).filter(Boolean));
+  return (rows || []).filter(row => {
+    if (directRows.includes(row)) return true;
+    const targetEntity = normalizeLower(row?.target_entity);
+    const targetId = normalizeText(row?.target_id);
+    const targetDisplayId = normalizeText(row?.target_display_id);
+    return (targetEntity === 'productionbatch' && ((batchId && targetId === batchId) || (batchDisplayId && targetDisplayId === batchDisplayId))) ||
+      (targetEntity === 'batchcompliancelog' && targetId && logIds.has(targetId));
+  });
+}
+
+function g41bRepairReplayHold(commandRows) {
+  return (commandRows || []).some(row => {
+    const text = normalizeLower(`${row?.command_type || ''} ${row?.function_name || ''} ${row?.status || ''} ${row?.error_code || ''} ${row?.notes || ''}`);
+    return text.includes('repair') || text.includes('replay') || text.includes('backfill') || text.includes('failed') || text.includes('manual_review');
+  });
+}
+
+function g41bAlertRowsMatchingBatch(alertRows, batch, logs = []) {
+  const logIds = new Set((logs || []).map(log => normalizeText(log?.id)).filter(Boolean));
+  const batchLinkedLogId = normalizeText(batch?.compliance_log_id);
+  if (batchLinkedLogId) logIds.add(batchLinkedLogId);
+  return (alertRows || []).filter(alert => {
+    const relatedLogId = normalizeText(alert?.related_log_id);
+    return relatedLogId && logIds.has(relatedLogId);
+  });
+}
+
+function g41bBatchStatusVerified(batch) {
+  const status = normalizeLower(batch?.status);
+  return status === 'verified_logged' || Boolean(batch?.verified_at || batch?.verified_by || batch?.compliance_log_id);
+}
+
+function g41bBatchStatusMismatch(batch, log) {
+  if (!batch || !log) return false;
+  const status = normalizeLower(batch?.status);
+  const batchVerified = g41bBatchStatusVerified(batch);
+  const logVerified = Boolean(log?.verified_at || log?.verified_by);
+  if (status === 'verified_logged' && !logVerified) return true;
+  if (logVerified && status && !['verified_logged', 'archived'].includes(status)) return true;
+  const linkedLogId = normalizeText(batch?.compliance_log_id);
+  const logId = normalizeText(log?.id);
+  return Boolean(linkedLogId && logId && linkedLogId !== logId);
+}
+
+function g41bPassFailMismatch(batch, log) {
+  if (!batch || !log) return false;
+  const batchPass = g41bPassFail(batch?.passed_failed);
+  const logPass = g41bPassFail(log?.passed_failed);
+  const phPass = g41bPassFail(batch?.pH_passed_failed);
+  if (batchPass && logPass && batchPass !== logPass) return true;
+  if (phPass && logPass && phPass !== logPass) return true;
+  return false;
+}
+
+function g41bSafeBatchSummary(batch, logs, alerts, commands) {
+  const log = logs?.length === 1 ? logs[0] : null;
+  return {
+    batch_id: sanitizeText(batch?.batch_id, 120) || null,
+    product_name: sanitizeText(batch?.product_name, 120) || null,
+    production_date: sanitizeText(batch?.production_date, 40) || null,
+    batch_status: sanitizeText(batch?.status, 80) || null,
+    planned_units: safeNumber(batch?.planned_units, null),
+    actual_units: safeNumber(batch?.actual_units, null),
+    actual_start_time_present: Boolean(batch?.actual_start_time),
+    actual_end_time_present: Boolean(batch?.actual_end_time),
+    production_batch_locked: batch?.is_locked === true,
+    production_batch_verified: g41bBatchStatusVerified(batch),
+    production_batch_verified_by_present: Boolean(batch?.verified_by),
+    production_batch_verified_at_present: Boolean(batch?.verified_at),
+    production_batch_compliance_log_id_present: Boolean(batch?.compliance_log_id),
+    compliance_log_match_count: logs?.length || 0,
+    compliance_log_id_present: Boolean(log?.id),
+    compliance_log_locked: log?.locked === true,
+    compliance_log_verified_by_present: Boolean(log?.verified_by),
+    compliance_log_verified_at_present: Boolean(log?.verified_at),
+    exact_batch_linkage: Boolean(log && g41bLogMatchesBatch(log, batch)),
+    pH_result_present: Boolean(g41bNumberPresent(batch?.pH_result) || g41bNumberPresent(log?.pH_result)),
+    pH_passed: g41bPassFail(batch?.pH_passed_failed) === 'passed',
+    batch_passed: g41bPassFail(batch?.passed_failed || log?.passed_failed) === 'passed',
+    alert_context_count: alerts?.length || 0,
+    command_log_context_count: commands?.length || 0,
+  };
+}
+
+function g41bClassifyBatch({ batch, logs = [], alerts = [], commandRows = [], sourceTruncated = {} }) {
+  const blockers = [];
+  const warnings = [];
+  const secondary = [];
+  const log = logs.length === 1 ? logs[0] : null;
+  const duplicateLogRisk = logs.length > 1;
+  const missingLog = logs.length === 0;
+  const linked = Boolean(log && g41bLogMatchesBatch(log, batch));
+  const lockedLog = Boolean(log?.locked === true);
+  const phPresent = Boolean(g41bNumberPresent(batch?.pH_result) || g41bNumberPresent(log?.pH_result));
+  const statusMismatch = Boolean(log && g41bBatchStatusMismatch(batch, log));
+  const passFailMismatch = Boolean(log && g41bPassFailMismatch(batch, log));
+  const alertContext = alerts.length > 0;
+  const repairReplayHold = g41bRepairReplayHold(commandRows);
+  const verifiedStatus = g41bBatchStatusVerified(batch);
+  const verifiedLog = Boolean(log?.verified_at && log?.verified_by);
+
+  if (missingLog) blockers.push(sourceTruncated.BatchComplianceLog ? 'bounded_scan_context_not_found' : 'compliance_batch_log_missing');
+  if (duplicateLogRisk) blockers.push('compliance_duplicate_log_risk');
+  if (log && !linked) blockers.push('compliance_batch_log_status_mismatch');
+  if (!phPresent) blockers.push('compliance_ph_result_missing');
+  if (statusMismatch) blockers.push('compliance_batch_log_status_mismatch');
+  if (passFailMismatch) blockers.push('compliance_pass_fail_mismatch');
+  if (alertContext) blockers.push('compliance_alert_context_present');
+  if (repairReplayHold) blockers.push('compliance_repair_replay_hold');
+  if (!verifiedStatus || !verifiedLog || !lockedLog) blockers.push('compliance_live_qc_proof_pending');
+  if (sourceTruncated.ProductionBatch || sourceTruncated.BatchComplianceLog || sourceTruncated.ComplianceAlert || sourceTruncated.CommandLog) warnings.push('source_truncated_exact_followup_required');
+  warnings.push('compliance_customer_facing_held');
+  warnings.push('compliance_write_not_ready');
+  warnings.push('hub_fallback_remains_active');
+  warnings.push('hub_compliance_context_not_queried_by_g41b_preview');
+
+  if (lockedLog && linked && phPresent && !passFailMismatch && !statusMismatch) secondary.push('compliance_locked_log_ready');
+  if (alertContext) secondary.push('compliance_alert_context_present');
+  if (repairReplayHold) secondary.push('compliance_repair_replay_hold');
+  secondary.push('compliance_customer_facing_held');
+  secondary.push('compliance_write_not_ready');
+  secondary.push('compliance_hub_fallback_required');
+
+  const readinessBlockers = blockers.filter(blocker => !['compliance_alert_context_present'].includes(blocker));
+  let classification = 'compliance_native_read_ready';
+  if (readinessBlockers.includes('compliance_batch_log_missing')) classification = 'compliance_batch_log_missing';
+  else if (readinessBlockers.includes('bounded_scan_context_not_found')) classification = 'compliance_native_read_partial';
+  else if (readinessBlockers.includes('compliance_duplicate_log_risk')) classification = 'compliance_duplicate_log_risk';
+  else if (readinessBlockers.includes('compliance_batch_log_status_mismatch')) classification = 'compliance_batch_log_status_mismatch';
+  else if (readinessBlockers.includes('compliance_ph_result_missing')) classification = 'compliance_ph_result_missing';
+  else if (readinessBlockers.includes('compliance_pass_fail_mismatch')) classification = 'compliance_pass_fail_mismatch';
+  else if (readinessBlockers.includes('compliance_repair_replay_hold')) classification = 'compliance_repair_replay_hold';
+  else if (readinessBlockers.includes('compliance_live_qc_proof_pending')) classification = 'compliance_live_qc_proof_pending';
+  else if (alertContext) classification = 'compliance_alert_context_present';
+
+  const nativeReady = classification === 'compliance_native_read_ready';
+  return {
+    classification,
+    secondary_classifications: g41bUnique(secondary),
+    native_read_ready: nativeReady,
+    locked_log_ready: secondary.includes('compliance_locked_log_ready'),
+    hub_fallback_required: !nativeReady,
+    review_required: blockers.length > 0,
+    repair_replay_hold: repairReplayHold,
+    customer_facing_held: true,
+    write_path_held: true,
+    exact_batch_log_match: linked,
+    duplicate_log_risk: duplicateLogRisk,
+    missing_log: missingLog,
+    status_mismatch: statusMismatch,
+    pH_missing: !phPresent,
+    pass_fail_mismatch: passFailMismatch,
+    alert_context_present: alertContext,
+    blockers: g41bUnique(blockers),
+    warnings: g41bUnique(warnings),
+    summary: g41bSafeBatchSummary(batch, logs, alerts, commandRows),
+  };
+}
+
+async function g41bFilterEntity(base44, entityName, filter, sort = '-created_date', limit = 10) {
+  const entity = base44.asServiceRole?.entities?.[entityName];
+  if (!entity?.filter) {
+    return { ok: false, rate_limit_detected: false, error_code: `${entityName}_filter_unavailable`, rows: [], source_read_count: 0 };
+  }
+  try {
+    const rows = await entity.filter(filter, sort, limit);
+    return { ok: true, rate_limit_detected: false, error_code: null, rows: Array.isArray(rows) ? rows : [], source_read_count: 1 };
+  } catch (error) {
+    const rateLimitDetected = g43dScan1DetectRateLimit(error);
+    return { ok: false, rate_limit_detected: rateLimitDetected, error_code: rateLimitDetected ? 'rate_limit_detected' : `${entityName}_filter_failed`, rows: [], source_read_count: 1 };
+  }
+}
+
+async function g41bExactRows(base44, lookup) {
+  const reads = [];
+  const batchRows = [];
+  const logRows = [];
+  const alerts = [];
+  const commands = [];
+  const filters = [];
+  if (lookup.productionBatchId) {
+    filters.push(['ProductionBatch', { id: lookup.productionBatchId }, '-created_date', 5, batchRows]);
+    filters.push(['ProductionBatch', { batch_id: lookup.productionBatchId }, '-created_date', 5, batchRows]);
+  }
+  if (lookup.batchId) {
+    filters.push(['ProductionBatch', { id: lookup.batchId }, '-created_date', 5, batchRows]);
+    filters.push(['ProductionBatch', { batch_id: lookup.batchId }, '-created_date', 5, batchRows]);
+    filters.push(['BatchComplianceLog', { batch_id: lookup.batchId }, '-created_date', 10, logRows]);
+  }
+  if (lookup.batchComplianceLogId) {
+    filters.push(['BatchComplianceLog', { id: lookup.batchComplianceLogId }, '-created_date', 5, logRows]);
+  }
+  for (const [entityName, filter, sort, limit, target] of filters) {
+    const read = await g41bFilterEntity(base44, entityName, filter, sort, limit);
+    reads.push(read);
+    target.push(...read.rows);
+  }
+  for (const log of g43dScan1DedupeById(logRows)) {
+    if (log?.source_production_batch_id) {
+      const read = await g41bFilterEntity(base44, 'ProductionBatch', { id: log.source_production_batch_id }, '-created_date', 5);
+      reads.push(read);
+      batchRows.push(...read.rows);
+    }
+    if (log?.batch_id) {
+      const read = await g41bFilterEntity(base44, 'ProductionBatch', { batch_id: log.batch_id }, '-created_date', 5);
+      reads.push(read);
+      batchRows.push(...read.rows);
+    }
+  }
+  const uniqueBatches = g43dScan1DedupeById(batchRows);
+  for (const batch of uniqueBatches) {
+    const batchEntityId = normalizeText(batch?.id);
+    const batchDisplayId = normalizeText(batch?.batch_id);
+    if (batchEntityId) {
+      const read = await g41bFilterEntity(base44, 'BatchComplianceLog', { source_production_batch_id: batchEntityId }, '-created_date', 10);
+      reads.push(read);
+      logRows.push(...read.rows);
+    }
+    if (batchDisplayId) {
+      const read = await g41bFilterEntity(base44, 'BatchComplianceLog', { batch_id: batchDisplayId }, '-created_date', 10);
+      reads.push(read);
+      logRows.push(...read.rows);
+    }
+  }
+  const uniqueLogs = g43dScan1DedupeById(logRows);
+  const logIds = uniqueLogs.map(log => normalizeText(log?.id)).filter(Boolean);
+  const batchLogIds = uniqueBatches.map(batch => normalizeText(batch?.compliance_log_id)).filter(Boolean);
+  for (const logId of g41bUnique([...logIds, ...batchLogIds])) {
+    const alertRead = await g41bFilterEntity(base44, 'ComplianceAlert', { related_log_id: logId }, '-created_date', 10);
+    reads.push(alertRead);
+    alerts.push(...alertRead.rows);
+  }
+  for (const batch of uniqueBatches) {
+    const batchId = normalizeText(batch?.id);
+    const batchDisplayId = normalizeText(batch?.batch_id);
+    if (batchId) {
+      const commandRead = await g41bFilterEntity(base44, 'CommandLog', { target_id: batchId }, '-created_date', 10);
+      reads.push(commandRead);
+      commands.push(...commandRead.rows);
+    }
+    if (batchDisplayId) {
+      const commandRead = await g41bFilterEntity(base44, 'CommandLog', { target_display_id: batchDisplayId }, '-created_date', 10);
+      reads.push(commandRead);
+      commands.push(...commandRead.rows);
+    }
+  }
+  return {
+    batches: uniqueBatches,
+    logs: uniqueLogs,
+    alerts: g43dScan1DedupeById(alerts),
+    commands: g43dScan1DedupeById(commands),
+    reads,
+    source_read_count: reads.reduce((sum, read) => sum + (read.source_read_count || 0), 0),
+    rate_limit_detected: reads.some(read => read.rate_limit_detected),
+    source_failures: reads.filter(read => !read.ok).map(read => read.error_code).filter(Boolean),
+  };
+}
+
+function g41bExactResponse(baseResponse, lookup, rows) {
+  const sourceFailed = rows.source_failures.length > 0;
+  if (!lookup.productionBatchId && !lookup.batchId && !lookup.batchComplianceLogId) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      rate_limit_detected: false,
+      error_code: 'exact_production_batch_or_log_required',
+      blockers: ['exact_production_batch_or_log_required'],
+      warnings: ['provide_production_batch_id_batch_id_or_batch_compliance_log_id'],
+      next_action: 'rerun_with_exact_batch_or_log_identity',
+    };
+  }
+  if (sourceFailed) {
+    return {
+      ...baseResponse,
+      success: false,
+      scan_complete: false,
+      rate_limit_detected: rows.rate_limit_detected,
+      scan_incomplete_reasons: rows.source_failures,
+      blockers: rows.source_failures,
+      next_action: rows.rate_limit_detected ? 'retry_after_rate_limit_window' : 'fix_source_read_failure_and_rerun',
+    };
+  }
+  const batch = rows.batches.length === 1 ? rows.batches[0] : null;
+  const logs = batch ? rows.logs.filter(log => g41bLogMatchesBatch(log, batch)) : rows.logs;
+  const evaluationLogs = batch && lookup.batchComplianceLogId && rows.logs.length > 0 && logs.length === 0 ? rows.logs : logs;
+  const matchingAlerts = batch ? g41bAlertRowsMatchingBatch(rows.alerts, batch, evaluationLogs) : rows.alerts;
+  const matchingCommands = batch ? g41bCommandRowsMatchingBatch(rows.commands, batch, evaluationLogs) : rows.commands;
+  const evaluation = batch
+    ? g41bClassifyBatch({ batch, logs: evaluationLogs, alerts: matchingAlerts, commandRows: matchingCommands })
+    : {
+      classification: rows.batches.length > 1 ? 'compliance_review_required' : 'compliance_batch_log_missing',
+      native_read_ready: false,
+      review_required: true,
+      hub_fallback_required: true,
+      blockers: [rows.batches.length > 1 ? 'duplicate_batch_identity_risk' : 'exact_batch_not_found'],
+      warnings: ['exact_batch_log_agreement_required'],
+      summary: null,
+    };
+  return {
+    ...baseResponse,
+    scan_complete: true,
+    rate_limit_detected: false,
+    source_read_count: rows.source_read_count,
+    exact_batch_match_count: rows.batches.length,
+    exact_log_match_count: rows.logs.length,
+    exact_batch_log_match_count: batch && logs.length === 1 ? 1 : 0,
+    duplicate_batch_identity_risk: rows.batches.length > 1,
+    duplicate_log_risk: evaluationLogs.length > 1,
+    missing_log: Boolean(batch && evaluationLogs.length === 0),
+    classification: evaluation.classification,
+    secondary_classifications: evaluation.secondary_classifications || [],
+    native_read_ready: Boolean(evaluation.native_read_ready),
+    hub_fallback_required: Boolean(evaluation.hub_fallback_required),
+    review_required: Boolean(evaluation.review_required),
+    repair_replay_hold: Boolean(evaluation.repair_replay_hold),
+    customer_facing_held: true,
+    write_path_held: true,
+    batch_parity: evaluation.summary,
+    blockers: evaluation.blockers || [],
+    warnings: evaluation.warnings || [],
+    next_action: evaluation.native_read_ready ? 'candidate_for_limited_native_first_compliance_ops_read' : 'keep_hub_fallback_and_run_exact_followup_after_live_qc_proof',
+  };
+}
+
+function g41bScanSummaryForBatch(batch, allLogs, allAlerts, allCommands, sourceTruncated) {
+  const logs = (allLogs || []).filter(log => g41bLogMatchesBatch(log, batch));
+  const alerts = g41bAlertRowsMatchingBatch(allAlerts, batch, logs);
+  const commands = g41bCommandRowsMatchingBatch(allCommands, batch, logs);
+  const evaluation = g41bClassifyBatch({ batch, logs, alerts, commandRows: commands, sourceTruncated });
+  return {
+    batch_id: sanitizeText(batch?.batch_id, 120) || null,
+    product_name: sanitizeText(batch?.product_name, 120) || null,
+    production_date: sanitizeText(batch?.production_date, 40) || null,
+    batch_status: sanitizeText(batch?.status, 80) || null,
+    verified_batch: g41bBatchStatusVerified(batch),
+    compliance_log_match_count: logs.length,
+    locked_log_ready: evaluation.locked_log_ready,
+    pH_result_present: !evaluation.pH_missing,
+    pH_missing: evaluation.pH_missing,
+    pass_fail_mismatch: evaluation.pass_fail_mismatch,
+    status_mismatch: evaluation.status_mismatch,
+    alert_context_present: evaluation.alert_context_present,
+    repair_replay_hold: evaluation.repair_replay_hold,
+    native_read_ready: evaluation.native_read_ready,
+    hub_fallback_required: evaluation.hub_fallback_required,
+    review_required: evaluation.review_required,
+    classification: evaluation.classification,
+    blockers: evaluation.blockers,
+    warnings: evaluation.warnings,
+  };
+}
+
+async function buildG41BBoundedScan(base44, lookup, baseResponse) {
+  const readsByEntity = {
+    ProductionBatch: await g43dScan5ListSource(base44, 'ProductionBatch', { sort: '-production_date', field: 'production_date', requestedLimit: lookup.productionBatchLimit }),
+    BatchComplianceLog: await g43dScan5ListSource(base44, 'BatchComplianceLog', { sort: '-date', field: 'date', requestedLimit: lookup.complianceLogLimit }),
+    ComplianceAlert: await g43dScan5ListSource(base44, 'ComplianceAlert', { sort: '-triggered_date', field: 'triggered_date', requestedLimit: lookup.relatedEntityLimit }),
+    OperationalAlert: await g43dScan5ListSource(base44, 'OperationalAlert', { sort: '-created_date', field: 'created_date', requestedLimit: lookup.relatedEntityLimit }),
+    ManualProductionBatch: await g43dScan5ListSource(base44, 'ManualProductionBatch', { sort: '-production_date', field: 'production_date', requestedLimit: lookup.relatedEntityLimit }),
+    CommandLog: await g43dScan5ListSource(base44, 'CommandLog', { sort: '-created_date', field: 'created_date', requestedLimit: lookup.relatedEntityLimit }),
+  };
+  const sourceTruncated = g43dScan5SourceTruncated(readsByEntity);
+  const sourceFailures = Object.values(readsByEntity).filter(read => !read?.ok).map(read => read.error_code).filter(Boolean);
+  const rateLimitDetected = Object.values(readsByEntity).some(read => read?.rate_limit_detected);
+  const scanComplete = sourceFailures.length === 0 && !Object.values(sourceTruncated).some(Boolean);
+  const batches = readsByEntity.ProductionBatch.rows || [];
+  const logs = readsByEntity.BatchComplianceLog.rows || [];
+  const alerts = readsByEntity.ComplianceAlert.rows || [];
+  const commands = readsByEntity.CommandLog.rows || [];
+  const summaries = (batches || []).map(batch => g41bScanSummaryForBatch(batch, logs, alerts, commands, sourceTruncated));
+  const exactMatchCount = summaries.filter(row => row.compliance_log_match_count === 1).length;
+  return {
+    ...baseResponse,
+    success: sourceFailures.length === 0,
+    scan_complete: scanComplete,
+    rate_limit_detected: rateLimitDetected,
+    scan_incomplete_reasons: scanComplete ? [] : g43dScan5CoverageIncompleteReasons(readsByEntity),
+    source_read_count: Object.keys(readsByEntity).length,
+    source_row_counts: g43dScan5SourceRowCounts(readsByEntity),
+    source_truncated: sourceTruncated,
+    source_coverage: g43dScan5SourceCoverageMap(readsByEntity),
+    unique_batch_count: batches.length,
+    verified_batch_count: summaries.filter(row => row.verified_batch).length,
+    compliance_log_count: logs.length,
+    exact_batch_log_match_count: exactMatchCount,
+    missing_log_count: summaries.filter(row => row.compliance_log_match_count === 0).length,
+    duplicate_log_count: summaries.filter(row => row.compliance_log_match_count > 1).length,
+    locked_log_ready_count: summaries.filter(row => row.locked_log_ready).length,
+    status_mismatch_count: summaries.filter(row => row.status_mismatch).length,
+    pH_missing_count: summaries.filter(row => row.pH_missing).length,
+    pass_fail_mismatch_count: summaries.filter(row => row.pass_fail_mismatch).length,
+    alert_context_count: summaries.filter(row => row.alert_context_present).length,
+    native_read_candidate_count: summaries.filter(row => row.native_read_ready).length,
+    Hub_fallback_required_count: summaries.filter(row => row.hub_fallback_required).length,
+    review_required_count: summaries.filter(row => row.review_required).length,
+    repair_replay_hold_count: summaries.filter(row => row.repair_replay_hold).length,
+    classification_counts: g43dScan1ClassificationCounts(summaries),
+    safe_candidate_summaries: summaries.slice(0, 50),
+    blockers: scanComplete ? [] : ['source_truncated_or_incomplete_exact_followup_required'],
+    warnings: [
+      'bounded_scan_read_only_no_fleet_claim_when_truncated',
+      'hub_fallback_remains_active',
+      'customer_facing_compliance_status_held',
+      'compliance_writes_alerts_verify_commands_held',
+    ],
+    next_action: scanComplete && summaries.some(row => row.native_read_ready)
+      ? 'run_exact_compliance_record_parity_for_locked_batch_log_candidates'
+      : 'keep_hub_fallback_and_wait_for_live_qc_proof_or_exact_candidate',
+  };
+}
+
+async function buildG41BExactPreview(base44, lookup, baseResponse) {
+  const rows = await g41bExactRows(base44, lookup);
+  return g41bExactResponse(baseResponse, lookup, rows);
+}
+
+async function buildG41BPreview(base44, body) {
+  const lookup = g41bLookup(body);
+  const baseResponse = g41bBaseResponse(lookup);
+  if (!G41B_SUPPORTED_MODES.has(lookup.mode)) {
+    return {
+      ...baseResponse,
+      success: false,
+      error_code: 'unsupported_g41b_mode',
+      warnings: ['supported_modes_exact_compliance_record_parity_or_bounded_compliance_readiness_scan'],
+      next_action: 'rerun_with_supported_g41b_mode',
+    };
+  }
+  return lookup.mode === G41B_MODE_EXACT
+    ? buildG41BExactPreview(base44, lookup, baseResponse)
+    : buildG41BBoundedScan(base44, lookup, baseResponse);
+}
+
+// G41B_ADMIN_COMPLIANCE_READ_PARITY_END
+
 const G42B_PREVIEW_MODE = 'ADMIN_DELIVERY_ACTION_READINESS';
 const G42B_MODE_EXACT = 'EXACT_DELIVERY_ACTION_READINESS';
 const G42B_MODE_SCAN = 'BOUNDED_DELIVERY_ACTION_READINESS_SCAN';
@@ -11808,6 +12454,7 @@ Deno.serve(async (req) => {
     const g36cResolvePreviewRequest = isG36CResolvePreviewRequest(body);
     const g36fPreviewRequest = isG36FPreviewRequest(body);
     const g43dScan1PreviewRequest = isG43DScan1PreviewRequest(body);
+    const g41bPreviewRequest = isG41BPreviewRequest(body);
     const g42bPreviewRequest = isG42BPreviewRequest(body);
     const g45bPreviewRequest = isG45BPreviewRequest(body);
     const g46bPreviewRequest = isG46BPreviewRequest(body);
@@ -11879,6 +12526,12 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
       }
     }
+    if (g41bPreviewRequest) {
+      const unsupported = g41bUnsupportedBodyKey(body);
+      if (unsupported) {
+        return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400 });
+      }
+    }
     if (g42bPreviewRequest) {
       const unsupported = g42bUnsupportedBodyKey(body);
       if (unsupported) {
@@ -11909,7 +12562,7 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error_code: 'unsupported_body_key', unsupported_key: sanitizeText(unsupported, 80), writes_performed: false }, { status: 400, headers: G47F_CONFIG2_NO_STORE_HEADERS });
       }
     }
-    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && !g42bPreviewRequest && !g45bPreviewRequest && !g46bPreviewRequest && !g47bPreviewRequest && !g47fConfig2PreviewRequest && body.mode && body.mode !== 'dry_run') {
+    if (!g39bPreviewRequest && !g33cPreviewRequest && !g33cMirror1PreviewRequest && !g33cTask1PreviewRequest && !g35bPreviewRequest && !g35hPreviewRequest && !g35lPreviewRequest && !g36bPreviewRequest && !g36cHelperPreviewRequest && !g36cResolvePreviewRequest && !g36fPreviewRequest && !g43dScan1PreviewRequest && !g41bPreviewRequest && !g42bPreviewRequest && !g45bPreviewRequest && !g46bPreviewRequest && !g47bPreviewRequest && !g47fConfig2PreviewRequest && body.mode && body.mode !== 'dry_run') {
       return Response.json({ success: false, error_code: 'dry_run_only', message: 'Only dry_run mode is supported' }, { status: 400 });
     }
 
@@ -12035,6 +12688,16 @@ Deno.serve(async (req) => {
 
     if (g43dScan1PreviewRequest) {
       const preview = await buildG43DScan1Preview(base44, body);
+      return Response.json({
+        ...preview,
+        actor_type: auth.actor_type,
+        actor_role: auth.actor_role,
+        actor_email_present: Boolean(auth.actor_email),
+      });
+    }
+
+    if (g41bPreviewRequest) {
+      const preview = await buildG41BPreview(base44, body);
       return Response.json({
         ...preview,
         actor_type: auth.actor_type,
