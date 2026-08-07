@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -14,13 +16,20 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
-import { appParams } from '@/lib/app-params';
-import { getNativeProviderReturnUrl } from '@/lib/nativeAuthRedirect';
+import {
+  createEncryptedNativeAuthCallbackUrl,
+  getNativeBrowserProviderReturnUrl,
+  getNativeProviderReturnUrl,
+  getProviderLoginUrl,
+  getStoredBase44Token,
+  NATIVE_BROWSER_CALLBACK_MARKER,
+} from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
-const ENABLE_PROVIDER_BUTTONS = import.meta.env.VITE_ENABLE_AUTH_PROVIDER_BUTTONS === 'true';
+const IS_NATIVE_PLATFORM = Capacitor.isNativePlatform();
+const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM || Capacitor.isPluginAvailable('Browser');
 const NATIVE_LOGIN_AUTH_TIMEOUT_MS = 10000;
 
 function normalizeReturnRoute(value) {
@@ -43,37 +52,6 @@ function isEmailVerificationMessage(message) {
     || normalizedMessage.includes('not verified');
 }
 
-async function authRequest(path, payload) {
-  console.info(`[NativeLogin] ${path} request started`);
-  const response = await fetch(`${appParams.appBaseUrl}/api/apps/${appParams.appId}/auth/${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'X-App-Id': String(appParams.appId),
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const contentType = response.headers.get('content-type') || '';
-  const rawBody = await response.text();
-  const data = rawBody && contentType.includes('application/json')
-    ? JSON.parse(rawBody)
-    : { message: rawBody };
-
-  console.info(`[NativeLogin] ${path} response`, {
-    ok: response.ok,
-    status: response.status,
-    message: data?.message || data?.detail || null,
-  });
-
-  if (!response.ok) {
-    throw new Error(data?.message || data?.detail || 'Authentication request failed.');
-  }
-
-  return data;
-}
-
 export default function NativeLogin() {
   const navigate = useNavigate();
   const { checkAppState, isAuthenticated, user } = useAuth();
@@ -83,6 +61,7 @@ export default function NativeLogin() {
     [searchParams]
   );
   const isSignInReset = searchParams.get('reset_sign_in') === '1';
+  const isNativeBrowserCallback = searchParams.get(NATIVE_BROWSER_CALLBACK_MARKER) === '1';
 
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -117,34 +96,72 @@ export default function NativeLogin() {
 
   useEffect(() => {
     if (isSignInReset) return;
-    if (isAuthenticated && user?.email) {
+    if (isAuthenticated && user?.email && !isNativeBrowserCallback) {
       navigate(returnTo, { replace: true });
     }
-  }, [isAuthenticated, isSignInReset, navigate, returnTo, user?.email]);
+  }, [isAuthenticated, isNativeBrowserCallback, isSignInReset, navigate, returnTo, user?.email]);
 
-  const handleProviderLogin = (provider) => {
+  useEffect(() => {
+    if (IS_NATIVE_PLATFORM || !isNativeBrowserCallback) return;
+
+    const accessToken = getStoredBase44Token();
+    if (!accessToken) {
+      setFormError('Sign-in returned without an authenticated NuVira session. Please try again.');
+      return;
+    }
+
+    let cancelled = false;
+    const returnToApp = async () => {
+      try {
+        const callbackUrl = await createEncryptedNativeAuthCallbackUrl(window.location.href, accessToken);
+        if (!cancelled) window.location.replace(callbackUrl);
+      } catch {
+        if (!cancelled) {
+          setFormError('Sign-in could not return securely to the NuVira app. Please try again.');
+        }
+      }
+    };
+    returnToApp();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNativeBrowserCallback, returnTo]);
+
+  const handleProviderLogin = async (provider) => {
     setStatusText('');
     setFormError('');
 
     if (!ENABLE_PROVIDER_BUTTONS) {
-      const message = 'Apple and Google sign-in are paused in the app so sign-in stays in-app. Email sign-in is the reliable active path in this build.';
+      const message = 'Update the NuVira app to use Apple or Google sign-in. Email sign-in remains available.';
       setStatusText(message);
       toast.info(message);
       return;
     }
 
-    base44.auth.loginWithProvider(provider, getNativeProviderReturnUrl(returnTo));
+    try {
+      if (IS_NATIVE_PLATFORM) {
+        const callbackUrl = await getNativeBrowserProviderReturnUrl(returnTo);
+        await Browser.open({
+          url: getProviderLoginUrl(provider, callbackUrl),
+          presentationStyle: 'popover',
+        });
+        return;
+      }
+
+      base44.auth.loginWithProvider(provider, getNativeProviderReturnUrl(returnTo));
+    } catch (error) {
+      const message = errorMessage(error, `Unable to start ${provider} sign-in.`);
+      console.warn('[NativeLogin] Provider sign-in failed', 'provider_window_unavailable');
+      setFormError(message);
+      toast.error(message);
+    }
   };
 
   const handleLogin = async () => {
-    const result = await authRequest('login', {
-      email: normalizedEmail,
-      password,
-    });
+    const result = await base44.auth.loginViaEmailPassword(normalizedEmail, password);
     if (!result?.access_token) {
       throw new Error('Sign in did not return an access token.');
     }
-    base44.auth.setToken(result.access_token);
     await completeLogin();
   };
 
@@ -156,7 +173,7 @@ export default function NativeLogin() {
       throw new Error('Passwords do not match.');
     }
 
-    await authRequest('register', {
+    await base44.auth.register({
       email: normalizedEmail,
       password,
     });
@@ -174,10 +191,13 @@ export default function NativeLogin() {
     if (!otpCode.trim()) {
       throw new Error('Enter the verification code from your email.');
     }
-    await authRequest('verify-otp', {
+    const result = await base44.auth.verifyOtp({
       email: normalizedEmail,
-      otp_code: otpCode.trim(),
+      otpCode: otpCode.trim(),
     });
+    if (result?.access_token) {
+      base44.auth.setToken(result.access_token);
+    }
     await handleLogin();
   };
 
@@ -224,7 +244,7 @@ export default function NativeLogin() {
     setIsSubmitting(true);
     setFormError('');
     try {
-      await authRequest('resend-otp', { email: normalizedEmail });
+      await base44.auth.resendOtp(normalizedEmail);
       setStatusText('A new verification code was sent to your email.');
     } catch (error) {
       const message = errorMessage(error, 'Unable to resend verification code.');
@@ -243,7 +263,7 @@ export default function NativeLogin() {
     setIsSubmitting(true);
     setFormError('');
     try {
-      await authRequest('reset-password-request', { email: normalizedEmail });
+      await base44.auth.resetPasswordRequest(normalizedEmail);
       setStatusText('Password reset instructions were sent to your email.');
     } catch (error) {
       const message = errorMessage(error, 'Unable to send password reset email.');
@@ -347,7 +367,7 @@ export default function NativeLogin() {
 
           {!ENABLE_PROVIDER_BUTTONS && (
             <p className="mb-4 rounded-2xl border border-nuvira bg-nuvira-gradient-soft px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-              Apple and Google sign-in are visible here, but kept in safe mode so sign-in stays inside the app. Email sign-in is active now.
+              Apple and Google sign-in require the latest NuVira app. Email sign-in remains available.
             </p>
           )}
 

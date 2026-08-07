@@ -4,6 +4,7 @@ import * as LiveUpdates from '@capacitor/live-updates';
 
 let initialized = false;
 let syncInFlight = null;
+const LIVE_UPDATES_DISABLED_FOR_TESTING = import.meta.env.VITE_DISABLE_NATIVE_LIVE_UPDATES === 'true';
 
 async function syncAndApplyLatestBundle() {
   if (!Capacitor.isNativePlatform()) return;
@@ -27,7 +28,7 @@ async function syncAndApplyLatestBundle() {
 }
 
 export function initializeNativeLiveUpdates() {
-  if (initialized || !Capacitor.isNativePlatform()) return;
+  if (initialized || !Capacitor.isNativePlatform() || LIVE_UPDATES_DISABLED_FOR_TESTING) return;
   initialized = true;
 
   void syncAndApplyLatestBundle();

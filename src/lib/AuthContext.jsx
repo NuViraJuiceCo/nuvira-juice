@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
@@ -178,10 +179,11 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const registration = capacitorApp.addListener('appUrlOpen', async (event) => {
-        const callbackResult = consumeNativeAuthCallbackUrl(event?.url);
+        const callbackResult = await consumeNativeAuthCallbackUrl(event?.url);
         if (!callbackResult) return;
 
         try {
+          await Browser.close().catch(() => {});
           const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
           if (currentUser?.email) {
             replaceInAppRoute(callbackResult.returnTo || '/');

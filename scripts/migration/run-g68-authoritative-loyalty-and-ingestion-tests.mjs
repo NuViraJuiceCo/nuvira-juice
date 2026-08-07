@@ -96,7 +96,7 @@ assert('SMS validates sender and recipient E.164 numbers.', sms.includes('normal
 assert('SMS stores sanitized provider diagnostics for rejected requests.', sms.includes('provider_error_code') && sms.includes('safeProviderError'));
 
 const accountBackend = read('base44/functions/completeAccountSetup/entry.ts');
-assert('Account activation requires only identity and phone, not address or birthday.', accountBackend.includes('!email || !first_name || !last_name || !phone') && !accountBackend.includes('!phone || !birthday || !address'));
+assert('Account activation requires only identity and phone, not address or birthday.', accountBackend.includes('!authenticatedEmail || !requestedEmail || !firstName || !lastName || !phone') && !accountBackend.includes('!phone || !birthday || !address'));
 const loyaltyEnrollment = read('base44/functions/createLoyaltyMember/entry.ts');
 assert('Loyalty enrollment reuses a real-contact or authenticated Apple profile.', loyaltyEnrollment.includes('contactProfiles') && loyaltyEnrollment.includes('authenticatedProfiles') && loyaltyEnrollment.includes('existingProfile?.customer_email || authenticatedEmail'));
 const accountPage = read('src/pages/AccountSetup.jsx');

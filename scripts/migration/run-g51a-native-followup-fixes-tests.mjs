@@ -13,6 +13,8 @@ const subscription = read('src/components/checkout/SubscriptionPaymentPanel.jsx'
 const diagnostic = read('src/components/checkout/ApplePayMountDiagnostic.jsx');
 const indexCss = read('src/index.css');
 const nativeLogin = read('src/pages/NativeLogin.jsx');
+const nativeAuthRedirect = read('src/lib/nativeAuthRedirect.js');
+const authContext = read('src/lib/AuthContext.jsx');
 const createPaymentIntent = read('base44/functions/createPaymentIntent/entry.ts');
 const productDetail = read('src/pages/ProductDetail.jsx');
 
@@ -35,8 +37,25 @@ assert(/const \[expressReady, setExpressReady\] = useState\(false\)/.test(subscr
 assert(/\(!expressReady \|\| expressAvailable\)/.test(subscription), 'SubscriptionPaymentPanel must collapse the wallet section when no wallet methods are available');
 
 assert(/\.nuvira-admin-header\s*\{[\s\S]*padding-top\s*:\s*max\(3\.75rem,\s*calc\(env\(safe-area-inset-top\) \+ 0\.75rem\)\)/.test(indexCss), 'Admin header must include a hard iOS status-bar padding floor plus safe-area top padding');
-assert(/const ENABLE_PROVIDER_BUTTONS = import\.meta\.env\.VITE_ENABLE_AUTH_PROVIDER_BUTTONS === ['"]true['"]/.test(nativeLogin), 'Native provider buttons must be opt-in, not on by default');
-assert(!/VITE_ENABLE_AUTH_PROVIDER_BUTTONS !== ['"]false['"]/.test(nativeLogin), 'Native provider buttons must not default to enabled');
+assert(/import \{ Capacitor \} from ['"]@capacitor\/core['"]/.test(nativeLogin), 'Provider availability must distinguish web from native platforms');
+assert(/import \{ Browser \} from ['"]@capacitor\/browser['"]/.test(nativeLogin), 'Native provider sign-in must use the Capacitor Browser plugin');
+assert(/const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM \|\| Capacitor\.isPluginAvailable\(['"]Browser['"]\)/.test(nativeLogin), 'Provider buttons must remain enabled on web and require the native Browser plugin in packaged apps');
+assert(/Browser\.open\(\{[\s\S]*getProviderLoginUrl\(provider, callbackUrl\)/.test(nativeLogin), 'Native provider sign-in must open the app-scoped OAuth URL in the system browser session');
+assert(/getNativeBrowserProviderReturnUrl\(returnTo\)/.test(nativeLogin), 'Native provider sign-in must first return through the valid NuVira HTTPS callback');
+assert(/createEncryptedNativeAuthCallbackUrl\(window\.location\.href, accessToken\)/.test(nativeLogin), 'NuVira HTTPS callback must encrypt the authenticated session before reopening the app');
+assert(!/searchParams\.set\(['"]access_token['"], accessToken\)/.test(nativeLogin), 'Native browser bridge must never place a raw Base44 token in a URL');
+assert(/window\.location\.replace\(callbackUrl\)/.test(nativeLogin), 'Native browser bridge must reopen the installed app');
+assert(/export async function getNativeBrowserProviderReturnUrl\(returnRoute = ['"]\/['"]\)/.test(nativeAuthRedirect), 'Native browser HTTPS callback builder missing');
+assert(/callbackUrl\.searchParams\.set\(NATIVE_BROWSER_CALLBACK_MARKER, ['"]1['"]\)/.test(nativeAuthRedirect), 'Native browser callback must carry the narrow bridge marker');
+assert(/prepareNativeAuthHandoff\(/.test(nativeAuthRedirect), 'Native provider callback must prepare an encrypted one-time handoff');
+assert(/encryptNativeAuthHandoff\(/.test(nativeAuthRedirect), 'Native browser callback must encrypt the one-time handoff');
+assert(/consumeNativeAuthHandoff\(/.test(nativeAuthRedirect), 'Native app callback must decrypt the one-time handoff');
+assert(/if \(url\.searchParams\.has\(['"]access_token['"]\)\) return null/.test(nativeAuthRedirect), 'Native scheme callbacks must reject raw access tokens');
+assert(/export function getProviderLoginUrl\(provider, fromUrl\)/.test(nativeAuthRedirect), 'Provider login URL builder missing');
+assert(/loginUrl\.searchParams\.set\(['"]app_id['"], String\(appParams\.appId\)\)/.test(nativeAuthRedirect), 'Provider login URL must remain scoped to the NuVira Base44 app');
+assert(/loginUrl\.searchParams\.set\(['"]from_url['"], fromUrl\)/.test(nativeAuthRedirect), 'Provider login URL must preserve the approved callback');
+assert(/await Browser\.close\(\)\.catch\(\(\) => \{\}\)/.test(authContext), 'Native auth callback must dismiss the provider browser before restoring app state');
+assert(/base44\.auth\.loginViaEmailPassword\(normalizedEmail, password\)/.test(nativeLogin), 'Email sign-in must use the installed Base44 SDK contract');
 
 assert(/payment_method_types\s*:\s*\[\s*['"]card['"]\s*\]/.test(createPaymentIntent), 'Checkout PaymentIntent must stay card-backed for wallet/card safety');
 assert(!/automatic_payment_methods\s*:/.test(createPaymentIntent), 'Checkout PaymentIntent must not enable automatic payment methods');
@@ -54,7 +73,7 @@ console.log(JSON.stringify({
   walletCheckoutUsesCurrentPaymentMethods: true,
   emptyWalletSectionCollapses: true,
   adminHeaderSafeAreaPatched: true,
-  nativeProviderAuthOptInOnly: true,
+  webProviderAuthEnabledNativeBrowserGated: true,
   backendPaymentMethodContractPreserved: true,
   productDetailLoadingGuardPreserved: true,
   merchHealthAdvisoryHidden: true,

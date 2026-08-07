@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
+import { appParams } from '@/lib/app-params';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -130,7 +131,7 @@ export default function AccountSetup() {
         .filter(Boolean)
         .join(', ');
 
-      const response = await base44.functions.invoke('completeAccountSetup', {
+      const setupPayload = {
         email: user.email,
         contact_email: isAppleRelay ? formData.contact_email.trim() : user.email,
         first_name: formData.first_name,
@@ -138,9 +139,18 @@ export default function AccountSetup() {
         phone: formData.phone,
         birthday: formData.birthday,
         address: addrString,
+      };
+      const response = await base44.functions.fetch('completeAccountSetup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-App-Id': appParams.appId,
+        },
+        body: JSON.stringify(setupPayload),
       });
+      const responseData = await response.json().catch(() => null);
 
-      if (response?.data?.success) {
+      if (response.ok && responseData?.success) {
         setIsComplete(true);
         // Force refetch immediately
         await queryClient.refetchQueries({ queryKey: ['user-onboarding-check'] });
@@ -148,7 +158,7 @@ export default function AccountSetup() {
           navigate('/shop');
         }, 1500);
       } else {
-        const errorMsg = response?.data?.error || 'Failed to complete setup';
+        const errorMsg = responseData?.error || 'Failed to complete setup';
         toast.error(errorMsg);
         setIsLoading(false);
       }
