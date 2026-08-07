@@ -38,6 +38,8 @@ assert.match(androidSettings, /include ':capacitor-live-updates'/);
 assert.match(androidDependencies, /implementation project\(':capacitor-live-updates'\)/);
 assert.match(mainSource, /initializeNativeLiveUpdates\(\)/);
 assert.match(liveUpdateSource, /Capacitor\.isNativePlatform\(\)/);
+assert.match(liveUpdateSource, /VITE_DISABLE_NATIVE_LIVE_UPDATES === 'true'/);
+assert.match(liveUpdateSource, /LIVE_UPDATES_DISABLED_FOR_TESTING/);
 assert.match(liveUpdateSource, /LiveUpdates\.sync\(\)/);
 assert.match(liveUpdateSource, /activeApplicationPathChanged/);
 assert.match(liveUpdateSource, /LiveUpdates\.reload\(\)/);
@@ -51,7 +53,7 @@ assert.match(liveUpdatePatch, /liveUpdateManager\.reset\(retainCache: false\)/);
 console.log(JSON.stringify({
   success: true,
   suite: 'g63-capacitor-live-update-bootstrap',
-  cases: 26,
+  cases: 28,
   appflow_app_id: liveUpdates.appId,
   channel: liveUpdates.channel,
   update_method: liveUpdates.autoUpdateMethod,

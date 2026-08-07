@@ -1,11 +1,17 @@
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
+import {
+  consumeNativeAuthHandoff,
+  encryptNativeAuthHandoff,
+  prepareNativeAuthHandoff,
+} from '@/lib/nativeAuthHandoff';
 
 const AUTH_TOKEN_STORAGE_KEYS = ['base44_access_token', 'token', 'base44_clear_access_token'];
 const SIGN_IN_RESET_STORAGE_KEYS = [...AUTH_TOKEN_STORAGE_KEYS, 'base44_from_url'];
 const NATIVE_CALLBACK_ROUTE = '/native-login';
 const NATIVE_URL_SCHEME = 'nuvira';
 const NATIVE_CALLBACK_MARKER = 'native_provider_callback';
+export const NATIVE_BROWSER_CALLBACK_MARKER = 'native_browser_callback';
 export const SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000;
 
 export function isNativeAppShell() {
@@ -178,6 +184,15 @@ export function getNativeProviderReturnUrl(returnRoute = '/') {
   return callbackUrl.toString();
 }
 
+export async function getNativeBrowserProviderReturnUrl(returnRoute = '/') {
+  const callbackUrl = new URL(getNativeProviderReturnUrl(returnRoute));
+  callbackUrl.searchParams.set(NATIVE_BROWSER_CALLBACK_MARKER, '1');
+  return prepareNativeAuthHandoff(
+    callbackUrl.toString(),
+    normalizeReturnRoute(returnRoute),
+  );
+}
+
 export function getNativeSchemeProviderReturnUrl(returnRoute = '/') {
   const callbackUrl = new URL(`${NATIVE_URL_SCHEME}://auth/callback`);
   callbackUrl.searchParams.set('return_to', normalizeReturnRoute(returnRoute));
@@ -185,7 +200,25 @@ export function getNativeSchemeProviderReturnUrl(returnRoute = '/') {
   return callbackUrl.toString();
 }
 
-export function consumeNativeAuthCallbackUrl(callbackUrl) {
+export function getProviderLoginUrl(provider, fromUrl) {
+  if (!['google', 'apple'].includes(provider)) {
+    throw new Error('unsupported_auth_provider');
+  }
+
+  const providerPath = provider === 'google' ? '' : `/${provider}`;
+  const loginUrl = new URL(`/api/apps/auth${providerPath}/login`, appParams.appBaseUrl);
+  loginUrl.searchParams.set('app_id', String(appParams.appId));
+  loginUrl.searchParams.set('from_url', fromUrl);
+  return loginUrl.toString();
+}
+
+export async function createEncryptedNativeAuthCallbackUrl(callbackPageUrl, accessToken) {
+  return encryptNativeAuthHandoff(callbackPageUrl, accessToken, {
+    schemeUrl: `${NATIVE_URL_SCHEME}://auth/callback`,
+  });
+}
+
+export async function consumeNativeAuthCallbackUrl(callbackUrl) {
   if (typeof window === 'undefined') return null;
 
   const url = parseUrl(callbackUrl);
@@ -200,6 +233,21 @@ export function consumeNativeAuthCallbackUrl(callbackUrl) {
     && url.pathname === '/callback';
 
   if (!isApprovedWebCallback && !isApprovedSchemeCallback) return null;
+
+  if (isApprovedSchemeCallback) {
+    if (url.searchParams.has('access_token')) return null;
+    try {
+      const handoff = await consumeNativeAuthHandoff(url.toString());
+      base44.auth.setToken(handoff.accessToken);
+      return {
+        accessToken: handoff.accessToken,
+        shouldClearToken: false,
+        returnTo: normalizeReturnRoute(handoff.returnTo),
+      };
+    } catch {
+      return null;
+    }
+  }
 
   const accessToken = applyBase44AuthParams(url);
   const shouldClearToken = url.searchParams.get('clear_access_token') === 'true';

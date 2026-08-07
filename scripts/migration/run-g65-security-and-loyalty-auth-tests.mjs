@@ -87,7 +87,9 @@ assert.match(claimReward, /selected_pending_checkout/);
 const completeAccountSetup = read('base44/functions/completeAccountSetup/entry.ts');
 assert.match(completeAccountSetup, /requestedEmail !== authenticatedEmail/);
 assert.match(completeAccountSetup, /Cannot update another customer profile/);
-assert.match(completeAccountSetup, /phone,\s*\n\s*address,/);
+assert.match(completeAccountSetup, /const phone = normalizeText\(body\.phone, 40\)/);
+assert.match(completeAccountSetup, /\.\.\.\(address \? \{ address \} : \{\}\)/);
+assert.match(completeAccountSetup, /onboarding_complete:\s*true/);
 assert.doesNotMatch(completeAccountSetup, /phone_number:\s*phone/);
 assert.match(completeAccountSetup, /customer_email:\s*authenticatedEmail/);
 
