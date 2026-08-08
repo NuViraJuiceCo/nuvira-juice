@@ -109,7 +109,7 @@ equal(executeFns.envGateFailure({
 }), 'actor_email_not_allowlisted', 'test actor allowlist must remain exact');
 equal(executeFns.envGateFailure({
   action: 'assign',
-  task: { ...task, fulfillment_task_id: 'TASK-REAL' },
+  task: { ...task, fulfillment_task_id: 'TASK-REAL', is_test_task: false, test_purpose: '' },
   requestedKey: 'TASK-REAL',
   actorEmail: 'info@nuvirajuice.com',
 }), 'native_fulfillment_task_lifecycle_writes_disabled', 'normal writer must remain disabled');

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const CUSTOMER_ORDER_TRACKER_NATIVE_FIRST_ENABLE = 'ENABLE_CUSTOMER_ORDER_TRACKER_LIMITED_NATIVE_FIRST';

@@ -1,0 +1,1020 @@
+// @ts-nocheck
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+const HUB_API_URL = Deno.env.get('HUB_API_URL');
+const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+const MAX_RANGE_DAYS = 31;
+const DEFAULT_RANGE_DAYS_BACK = 6;
+const CHICAGO_TZ = 'America/Chicago';
+const TEST_RECORD_MODES = new Set(['exclude', 'only']);
+
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
+function normalizeText(value) {
+  return (value || '').toString().trim();
+}
+
+function sanitizeText(value, maxLength = 160) {
+  const text = normalizeText(value)
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, '[redacted phone]')
+    .replace(/\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Circle|Cir|Way|Place|Pl)\b/gi, '[redacted address]')
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}\b/gi, '[redacted auth]')
+    .replace(/\b(?:sk|pk|rk|whsec|ghp|github_pat|xoxb|xoxp|shpat|secret|token|api[_-]?key)[A-Za-z0-9:_-]{8,}\b/gi, '[redacted secret]')
+    .replace(/\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, '[redacted token]');
+
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
+function todayChicagoDate() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CHICAGO_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const byType = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function parseIsoDate(value, fieldName) {
+  const text = normalizeText(value);
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    throw new Error(`${fieldName} must use YYYY-MM-DD format`);
+  }
+
+  const [year, month, day] = text.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.toISOString().slice(0, 10) !== text) {
+    throw new Error(`${fieldName} must be a valid calendar date`);
+  }
+
+  return text;
+}
+
+function addDays(dateStr, days) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function daysInclusive(from, to) {
+  const fromDate = new Date(`${from}T00:00:00.000Z`);
+  const toDate = new Date(`${to}T00:00:00.000Z`);
+  return Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1;
+}
+
+function safeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function safeBoolean(value) {
+  return value === true;
+}
+
+function safeStringArray(value, maxItems = 30) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).map(item => sanitizeText(item, 120)).filter(Boolean);
+}
+
+function safeArrayOfObjects(value, mapper, maxItems = 30) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).map(mapper).filter(Boolean);
+}
+
+function safeObjectNumberMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, 40)
+      .map(([key, count]) => [sanitizeText(key, 80), safeNumber(count)])
+      .filter(([key]) => Boolean(key))
+  );
+}
+
+function sanitizeLog(log) {
+  return {
+    id: sanitizeText(log?.id, 140) || null,
+    type: sanitizeText(log?.type, 80) || null,
+    date: sanitizeText(log?.date, 40) || null,
+    time: sanitizeText(log?.time, 40) || null,
+    status: sanitizeText(log?.status, 80) || null,
+    staff_member: sanitizeText(log?.staff_member, 100) || null,
+    batch_id: sanitizeText(log?.batch_id, 120) || null,
+    product_name: sanitizeText(log?.product_name, 120) || null,
+    location: sanitizeText(log?.location, 120) || null,
+    value: typeof log?.value === 'number' || typeof log?.value === 'string' ? log.value : null,
+    within_range: typeof log?.within_range === 'boolean' ? log.within_range : null,
+    updated_date: sanitizeText(log?.updated_date, 80) || null,
+  };
+}
+
+function sanitizeRecord(row, fields) {
+  return Object.fromEntries(
+    fields.map(([outputName, sourceName, maxLength = 160]) => {
+      const value = row?.[sourceName];
+      if (typeof value === 'boolean' || typeof value === 'number') return [outputName, value];
+      return [outputName, sanitizeText(value, maxLength) || null];
+    })
+  );
+}
+
+function sanitizeTemperatureRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['location', 'location', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['shift', 'shift', 40],
+    ['staff_member', 'staff_member', 120],
+    ['temperature', 'temperature', 40],
+    ['unit', 'unit', 20],
+    ['min_range', 'min_range', 40],
+    ['max_range', 'max_range', 40],
+    ['within_range', 'within_range'],
+    ['notes', 'notes', 1000],
+    ['batch_id', 'batch_id', 120],
+    ['source_production_batch_id', 'source_production_batch_id', 160],
+    ['is_test_record', 'is_test_record'],
+    ['test_batch_id', 'test_batch_id', 120],
+  ]);
+}
+
+function sanitizePhRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['batch_id', 'batch_id', 120],
+    ['product_name', 'product_name', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['ph_value', 'ph_value', 40],
+    ['within_range', 'within_range'],
+  ]);
+}
+
+function sanitizeCcpRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['ccp_point', 'ccp_point', 120],
+    ['batch_id', 'batch_id', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['measurement', 'measurement', 160],
+    ['critical_limit', 'critical_limit', 160],
+    ['result', 'result', 40],
+    ['notes', 'notes', 1000],
+  ]);
+}
+
+function sanitizeSanitationRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['area', 'area', 120],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['cleaned', 'cleaned'],
+    ['sanitized', 'sanitized'],
+    ['sanitizer_type', 'sanitizer_type', 120],
+    ['sanitizer_level', 'sanitizer_level', 80],
+    ['verified_by', 'verified_by', 120],
+    ['batch_id', 'batch_id', 120],
+    ['notes', 'notes', 1000],
+    ['source_production_batch_id', 'source_production_batch_id', 160],
+    ['is_test_record', 'is_test_record'],
+    ['test_batch_id', 'test_batch_id', 120],
+  ]);
+}
+
+function sanitizeCorrectiveRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['issue_type', 'issue_type', 120],
+    ['issue_description', 'issue_description', 500],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['corrective_action_taken', 'corrective_action_taken', 260],
+    ['status', 'status', 80],
+    ['verified_by', 'verified_by', 120],
+    ['notes', 'notes', 1000],
+  ]);
+}
+
+function sanitizeChecklistRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['checklist_date', 'checklist_date', 40],
+    ['staff_member', 'staff_member', 120],
+    ['shift', 'shift', 40],
+    ['morning_fridge_temp_logged', 'morning_fridge_temp_logged'],
+    ['morning_fridge_time', 'morning_fridge_time', 20],
+    ['evening_fridge_temp_logged', 'evening_fridge_temp_logged'],
+    ['evening_fridge_time', 'evening_fridge_time', 20],
+    ['sanitizer_levels_checked', 'sanitizer_levels_checked'],
+    ['sanitizer_check_time', 'sanitizer_check_time', 20],
+    ['equipment_sanitized', 'equipment_sanitized'],
+    ['sanitization_time', 'sanitization_time', 20],
+    ['work_areas_cleaned', 'work_areas_cleaned'],
+    ['cleaning_time', 'cleaning_time', 20],
+    ['batch_logs_completed', 'batch_logs_completed'],
+    ['batches_logged', 'batches_logged', 500],
+    ['ccp_logs_completed', 'ccp_logs_completed'],
+    ['ccp_notes', 'ccp_notes', 500],
+    ['issues_reported', 'issues_reported', 1000],
+    ['overall_status', 'overall_status', 80],
+    ['completed_at', 'completed_at', 80],
+    ['manager_reviewed', 'manager_reviewed'],
+    ['batch_id', 'batch_id', 120],
+    ['source_production_batch_id', 'source_production_batch_id', 160],
+    ['is_test_record', 'is_test_record'],
+    ['test_batch_id', 'test_batch_id', 120],
+  ]);
+}
+
+function sanitizeBatchComplianceRecord(row) {
+  return {
+    ...sanitizeRecord(row, [
+      ['id', 'id', 140],
+      ['batch_id', 'batch_id', 120],
+      ['juice_flavor', 'juice_flavor', 120],
+      ['product_name', 'product_name', 120],
+      ['date', 'date', 40],
+      ['log_date', 'log_date', 40],
+      ['quantity_produced', 'quantity_produced', 40],
+      ['pH_result', 'pH_result', 40],
+      ['passed_failed', 'passed_failed', 80],
+      ['start_time', 'start_time', 80],
+      ['end_time', 'end_time', 80],
+      ['verified_by', 'verified_by', 120],
+      ['verified_at', 'verified_at', 80],
+      ['notes', 'notes', 1000],
+      ['source_production_batch_id', 'source_production_batch_id', 160],
+      ['is_test_record', 'is_test_record'],
+      ['test_batch_id', 'test_batch_id', 120],
+    ]),
+    staff_on_duty: safeStringArray(row?.staff_on_duty),
+    ingredients: safeArrayOfObjects(row?.ingredients, ing => ({
+      ingredient_name: sanitizeText(ing?.ingredient_name, 120) || null,
+      quantity: typeof ing?.quantity === 'number' || typeof ing?.quantity === 'string' ? ing.quantity : null,
+      unit: sanitizeText(ing?.unit, 40) || null,
+      lot_number: sanitizeText(ing?.lot_number, 120) || null,
+    })),
+  };
+}
+
+function sanitizeUnifiedComplianceRecord(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['log_type', 'log_type', 80],
+    ['log_date', 'log_date', 40],
+    ['log_time', 'log_time', 40],
+    ['staff_member', 'staff_member', 120],
+    ['shift', 'shift', 40],
+    ['status', 'status', 80],
+    ['passed_failed', 'passed_failed', 80],
+    ['notes', 'notes', 1000],
+    ['verified_by', 'verified_by', 120],
+    ['verified_at', 'verified_at', 80],
+  ]);
+}
+
+function sanitizeLabelAllergenReview(row) {
+  return {
+    ...sanitizeRecord(row, [
+      ['id', 'id', 140],
+      ['product_name', 'product_name', 160],
+      ['label_version', 'label_version', 80],
+      ['label_file_url', 'label_file_url', 500],
+      ['ingredient_statement', 'ingredient_statement', 2000],
+      ['allergen_statement', 'allergen_statement', 1000],
+      ['contains_allergens', 'contains_allergens'],
+      ['may_contain_statement', 'may_contain_statement', 1000],
+      ['nutrition_label_status', 'nutrition_label_status', 80],
+      ['net_volume', 'net_volume', 80],
+      ['business_name_and_address', 'business_name_and_address', 500],
+      ['barcode_or_sku', 'barcode_or_sku', 120],
+      ['review_status', 'review_status', 80],
+      ['reviewed_by', 'reviewed_by', 160],
+      ['review_date', 'review_date', 40],
+      ['approval_status', 'approval_status', 80],
+      ['approved_by', 'approved_by', 160],
+      ['approval_date', 'approval_date', 40],
+      ['next_review_date', 'next_review_date', 40],
+      ['notes', 'notes', 2000],
+      ['updated_date', 'updated_date', 80],
+    ]),
+    allergens_present: safeStringArray(row?.allergens_present),
+  };
+}
+
+function sanitizeHaccpPlanReview(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['plan_version', 'plan_version', 80],
+    ['review_period', 'review_period', 120],
+    ['review_date', 'review_date', 40],
+    ['reviewed_by', 'reviewed_by', 160],
+    ['approval_status', 'approval_status', 80],
+    ['approved_by', 'approved_by', 160],
+    ['approval_date', 'approval_date', 40],
+    ['hazard_analysis_reviewed', 'hazard_analysis_reviewed'],
+    ['ccp_steps_reviewed', 'ccp_steps_reviewed'],
+    ['critical_limits_reviewed', 'critical_limits_reviewed'],
+    ['monitoring_procedures_reviewed', 'monitoring_procedures_reviewed'],
+    ['corrective_actions_reviewed', 'corrective_actions_reviewed'],
+    ['verification_procedures_reviewed', 'verification_procedures_reviewed'],
+    ['recordkeeping_reviewed', 'recordkeeping_reviewed'],
+    ['changes_made', 'changes_made'],
+    ['change_summary', 'change_summary', 2000],
+    ['linked_document_url', 'linked_document_url', 500],
+    ['next_review_date', 'next_review_date', 40],
+    ['notes', 'notes', 2000],
+    ['updated_date', 'updated_date', 80],
+  ]);
+}
+
+function sanitizeComplianceDocument(row) {
+  return sanitizeRecord(row, [
+    ['id', 'id', 140],
+    ['name', 'name', 160],
+    ['type', 'type', 80],
+    ['status', 'status', 80],
+    ['expiry_date', 'expiry_date', 40],
+    ['issued_date', 'issued_date', 40],
+    ['owner', 'owner', 160],
+    ['issuing_body', 'issuing_body', 160],
+    ['file_url', 'file_url', 500],
+    ['reminder_days', 'reminder_days'],
+    ['notes', 'notes', 1000],
+    ['updated_date', 'updated_date', 80],
+  ]);
+}
+
+function newestFirst(rows, dateField, limit = 50) {
+  return [...(Array.isArray(rows) ? rows : [])]
+    .sort((a, b) => String(b?.[dateField] || b?.updated_date || b?.created_date || '').localeCompare(String(a?.[dateField] || a?.updated_date || a?.created_date || '')))
+    .slice(0, limit);
+}
+
+function inDateRange(value, dateFrom, dateTo) {
+  const text = sanitizeText(value, 40);
+  return Boolean(text && text >= dateFrom && text <= dateTo);
+}
+
+function idHasInternalTestMarker(value) {
+  const text = normalizeText(value).toUpperCase();
+  return Boolean(text && (
+    text.includes('BATCH-G53-TEST') ||
+    text.includes('-TEST-') ||
+    text.startsWith('TEST-')
+  ));
+}
+
+function textHasInternalTestMarker(value) {
+  const text = normalizeText(value).toLowerCase();
+  return Boolean(text && (
+    text.includes('customer_app_internal_validation') ||
+    text.includes('internal_validation') ||
+    text.includes('internal validation') ||
+    text.includes('internal_test') ||
+    text.includes('internal test') ||
+    text.includes('held_internal_test') ||
+    text.includes('test_batch') ||
+    text.includes('test batch') ||
+    text.includes('test_record') ||
+    text.includes('test record')
+  ));
+}
+
+function arrayHasInternalTestMarker(value) {
+  return Array.isArray(value) && value.some(item => (
+    idHasInternalTestMarker(item) ||
+    textHasInternalTestMarker(item)
+  ));
+}
+
+function isInternalTestRecord(row) {
+  if (!row || typeof row !== 'object') return false;
+  if (
+    row.is_test_record === true ||
+    row.is_test_batch === true ||
+    row.is_internal_test === true ||
+    row.internal_test === true
+  ) return true;
+
+  const idFields = [
+    row.id,
+    row.batch_id,
+    row.test_batch_id,
+    row.source_batch_id,
+    row.source_production_batch_id,
+    row.production_batch_id,
+  ];
+  if (idFields.some(idHasInternalTestMarker)) return true;
+
+  const markerFields = [
+    row.source_system,
+    row.native_owner_status,
+    row.inventory_deduction_status,
+    row.test_purpose,
+    row.test_marker,
+    row.record_purpose,
+    row.validation_scope,
+  ];
+  if (markerFields.some(textHasInternalTestMarker)) return true;
+
+  return arrayHasInternalTestMarker(row.related_batch_ids) ||
+    arrayHasInternalTestMarker(row.related_source_production_batch_ids);
+}
+
+function isInternalTestBatch(row) {
+  return isInternalTestRecord(row);
+}
+
+function nativeComplianceLog(entityName, row, type) {
+  const valueMap = {
+    temperature: row?.temperature,
+    ph: row?.ph_value ?? row?.pH_result ?? row?.ph_result,
+    ccp: row?.measurement,
+    sanitation: row?.cleaned && row?.sanitized ? 'complete' : 'incomplete',
+    corrective: row?.status,
+    daily_checklist: row?.overall_status,
+    batch: row?.quantity_produced,
+    alert: row?.severity,
+    unified: row?.status,
+  };
+
+  return sanitizeLog({
+    id: row?.id,
+    type,
+    date: row?.log_date || row?.checklist_date || row?.date || row?.triggered_date,
+    time: row?.log_time || row?.triggered_time,
+    status: row?.status || row?.overall_status || row?.result || row?.passed_failed || (row?.within_range === false ? 'out_of_range' : 'ok'),
+    staff_member: row?.staff_member || row?.verified_by || row?.resolved_by,
+    batch_id: row?.batch_id,
+    product_name: row?.product_name || row?.juice_flavor,
+    location: row?.location || row?.area || row?.ccp_point || row?.alert_type,
+    value: valueMap[type],
+    within_range: typeof row?.within_range === 'boolean' ? row.within_range : null,
+    updated_date: row?.updated_date || row?.created_date,
+    entity: entityName,
+  });
+}
+
+function countWhere(rows, predicate) {
+  return (Array.isArray(rows) ? rows : []).filter(predicate).length;
+}
+
+function normalizeBatchPhRecord(row) {
+  const result = row?.pH_result ?? row?.ph_result ?? row?.ph_value;
+  const passed = String(row?.passed_failed || '').toLowerCase() === 'passed';
+  const failed = String(row?.passed_failed || '').toLowerCase() === 'failed';
+  return {
+    ...row,
+    log_date: row?.log_date || row?.date,
+    ph_value: result,
+    within_range: typeof row?.within_range === 'boolean' ? row.within_range : (passed ? true : failed ? false : null),
+  };
+}
+
+function mergePhRecords(dedicatedRows, batchRows) {
+  const merged = [];
+  const seen = new Set();
+  for (const row of [...(dedicatedRows || []), ...(batchRows || [])]) {
+    const key = [row?.batch_id || row?.id || '', row?.log_date || row?.date || '', row?.ph_value ?? row?.pH_result ?? ''].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+  return merged;
+}
+
+async function safeEntityList(base44, entityName, sort, limit = 500) {
+  try {
+    const entity = base44.asServiceRole.entities?.[entityName];
+    if (!entity?.list) return { rows: [], warning: `${entityName}_unavailable` };
+    const rows = await entity.list(sort, limit);
+    return { rows: Array.isArray(rows) ? rows : [], warning: null };
+  } catch (error) {
+    return { rows: [], warning: `${entityName}_read_failed` };
+  }
+}
+
+async function loadNativeComplianceSummary(base44, dateFrom, dateTo, testRecordMode = 'exclude') {
+  const [
+    temperatureResult,
+    phResult,
+    ccpResult,
+    sanitationResult,
+    checklistResult,
+    correctiveResult,
+    batchResult,
+    alertResult,
+    unifiedResult,
+    labelResult,
+    haccpResult,
+    documentResult,
+    productionBatchResult,
+  ] = await Promise.all([
+    safeEntityList(base44, 'TemperatureLog', '-log_date', 500),
+    safeEntityList(base44, 'pHLog', '-log_date', 500),
+    safeEntityList(base44, 'CCPLog', '-log_date', 500),
+    safeEntityList(base44, 'SanitationLog', '-log_date', 500),
+    safeEntityList(base44, 'DailyChecklist', '-checklist_date', 500),
+    safeEntityList(base44, 'CorrectiveActionLog', '-log_date', 500),
+    safeEntityList(base44, 'BatchComplianceLog', '-date', 500),
+    safeEntityList(base44, 'ComplianceAlert', '-triggered_date', 500),
+    safeEntityList(base44, 'ComplianceLog', '-log_date', 500),
+    safeEntityList(base44, 'LabelAllergenReview', '-updated_date', 100),
+    safeEntityList(base44, 'HACCPPlanReview', '-review_date', 100),
+    safeEntityList(base44, 'ComplianceDoc', '-expiry_date', 100),
+    safeEntityList(base44, 'ProductionBatch', '-production_date', 500),
+  ]);
+
+  const warnings = [
+    temperatureResult.warning,
+    phResult.warning,
+    ccpResult.warning,
+    sanitationResult.warning,
+    checklistResult.warning,
+    correctiveResult.warning,
+    batchResult.warning,
+    alertResult.warning,
+    unifiedResult.warning,
+    labelResult.warning,
+    haccpResult.warning,
+    documentResult.warning,
+    productionBatchResult.warning,
+  ].filter(Boolean);
+
+  const modeMatches = row => testRecordMode === 'only' ? isInternalTestRecord(row) : !isInternalTestRecord(row);
+  const batchModeMatches = row => testRecordMode === 'only' ? isInternalTestBatch(row) : !isInternalTestBatch(row);
+  const temperature = temperatureResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const ph = testRecordMode === 'only' ? [] : phResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const ccp = testRecordMode === 'only' ? [] : ccpResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const sanitation = sanitationResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const checklists = checklistResult.rows.filter(modeMatches).filter(row => inDateRange(row.checklist_date, dateFrom, dateTo));
+  const corrective = testRecordMode === 'only' ? [] : correctiveResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const batch = batchResult.rows.filter(modeMatches).filter(row => inDateRange(row.date, dateFrom, dateTo));
+  const batchPh = batch
+    .filter(row => Number.isFinite(Number(row?.pH_result ?? row?.ph_result ?? row?.ph_value)))
+    .map(normalizeBatchPhRecord);
+  const operationalPh = mergePhRecords(ph, batchPh);
+  const alerts = testRecordMode === 'only' ? [] : alertResult.rows.filter(modeMatches).filter(row => inDateRange(row.triggered_date, dateFrom, dateTo));
+  const unified = testRecordMode === 'only' ? [] : unifiedResult.rows.filter(modeMatches).filter(row => inDateRange(row.log_date, dateFrom, dateTo));
+  const labelReviews = testRecordMode === 'only' ? [] : labelResult.rows;
+  const haccpReviews = testRecordMode === 'only' ? [] : haccpResult.rows;
+  const complianceDocuments = testRecordMode === 'only' ? [] : documentResult.rows;
+  const productionBatches = productionBatchResult.rows.filter(batchModeMatches).filter(row => inDateRange(row.production_date, dateFrom, dateTo));
+
+  const recentLogs = [
+    ...temperature.map(row => nativeComplianceLog('TemperatureLog', row, 'temperature')),
+    ...operationalPh.map(row => nativeComplianceLog(row?.pH_result !== undefined ? 'BatchComplianceLog' : 'pHLog', row, 'ph')),
+    ...ccp.map(row => nativeComplianceLog('CCPLog', row, 'ccp')),
+    ...sanitation.map(row => nativeComplianceLog('SanitationLog', row, 'sanitation')),
+    ...checklists.map(row => nativeComplianceLog('DailyChecklist', row, 'daily_checklist')),
+    ...corrective.map(row => nativeComplianceLog('CorrectiveActionLog', row, 'corrective')),
+    ...batch.map(row => nativeComplianceLog('BatchComplianceLog', row, 'batch')),
+    ...unified.map(row => nativeComplianceLog('ComplianceLog', row, 'unified')),
+  ]
+    .sort((a, b) => String(b.updated_date || b.date || '').localeCompare(String(a.updated_date || a.date || '')))
+    .slice(0, 80);
+
+  const activeAlerts = alerts
+    .filter(row => String(row?.status || '').toLowerCase() === 'active')
+    .slice(0, 25)
+    .map(row => ({
+      id: sanitizeText(row?.id, 140) || null,
+      alert_type: sanitizeText(row?.alert_type, 80) || null,
+      severity: sanitizeText(row?.severity, 40) || null,
+      message: sanitizeText(row?.message, 220) || null,
+      triggered_date: sanitizeText(row?.triggered_date, 40) || null,
+      triggered_time: sanitizeText(row?.triggered_time, 40) || null,
+      status: sanitizeText(row?.status, 40) || null,
+    }));
+
+  const issues = {
+    temp_out_of_range: countWhere(temperature, row => row.within_range === false),
+    ph_out_of_range: countWhere(operationalPh, row => row.within_range === false),
+    ccp_failed: countWhere(ccp, row => row.result === 'Fail'),
+    sanitation_issues: countWhere(sanitation, row => row.cleaned !== true || row.sanitized !== true),
+    incomplete_checklists: countWhere(checklists, row => row.overall_status === 'Incomplete'),
+    open_corrective_actions: countWhere(corrective, row => !['Completed', 'Verified'].includes(row.status)),
+    failed_batch_logs: countWhere(batch, row => row.passed_failed === 'failed'),
+    active_alerts: activeAlerts.length,
+  };
+
+  return {
+    read_only: true,
+    source: 'customer_app_native',
+    summary: {
+      temperature: temperature.length,
+      ph: operationalPh.length,
+      ccp: ccp.length,
+      sanitation: sanitation.length,
+      daily_checklists: checklists.length,
+      corrective_actions: corrective.length,
+      batch_compliance_logs: batch.length,
+      compliance_alerts: alerts.length,
+      unified_logs: unified.length,
+      label_allergen_reviews: labelReviews.length,
+      haccp_plan_reviews: haccpReviews.length,
+      compliance_documents: complianceDocuments.length,
+      production_batches: productionBatches.length,
+    },
+    issues: {
+      ...issues,
+      total_attention_items: Object.values(issues).reduce((sum, value) => sum + safeNumber(value), 0),
+    },
+    active_alerts: activeAlerts,
+    recent_logs: recentLogs,
+    records: {
+      temperature: newestFirst(temperature, 'log_date').map(sanitizeTemperatureRecord),
+      ph: newestFirst(operationalPh, 'log_date').map(sanitizePhRecord),
+      ccp: newestFirst(ccp, 'log_date').map(sanitizeCcpRecord),
+      sanitation: newestFirst(sanitation, 'log_date').map(sanitizeSanitationRecord),
+      corrective_actions: newestFirst(corrective, 'log_date').map(sanitizeCorrectiveRecord),
+      daily_checklists: newestFirst(checklists, 'checklist_date').map(sanitizeChecklistRecord),
+      batch_compliance: newestFirst(batch, 'date').map(sanitizeBatchComplianceRecord),
+      unified_logs: newestFirst(unified, 'log_date').map(sanitizeUnifiedComplianceRecord),
+      production_batches: newestFirst(productionBatches, 'production_date', 100).map(sanitizeBatch),
+      label_allergen_reviews: newestFirst(labelReviews, 'updated_date', 100).map(sanitizeLabelAllergenReview),
+      haccp_plan_reviews: newestFirst(haccpReviews, 'review_date', 100).map(sanitizeHaccpPlanReview),
+      compliance_documents: newestFirst(complianceDocuments, 'expiry_date', 100).map(sanitizeComplianceDocument),
+    },
+    warnings: warnings.filter(warning => !(warning === 'pHLog_read_failed' && operationalPh.length > 0)),
+    test_record_mode: testRecordMode,
+    operational_totals_exclude_test_records: true,
+  };
+}
+
+function sanitizeBatch(batch) {
+  return {
+    ...sanitizeRecord(batch, [
+      ['id', 'id', 140],
+      ['batch_id', 'batch_id', 120],
+      ['product_name', 'product_name', 120],
+      ['production_date', 'production_date', 40],
+      ['status', 'status', 80],
+      ['is_test_batch', 'is_test_batch'],
+      ['test_purpose', 'test_purpose', 160],
+      ['assigned_to', 'assigned_to', 120],
+      ['planned_units', 'planned_units', 40],
+      ['actual_units', 'actual_units', 40],
+      ['actual_start_time', 'actual_start_time', 80],
+      ['actual_end_time', 'actual_end_time', 80],
+      ['started_by', 'started_by', 120],
+      ['completed_by', 'completed_by', 120],
+      ['formula_or_recipe_used', 'formula_or_recipe_used', 160],
+      ['bottle_size', 'bottle_size', 80],
+      ['bottles_produced', 'bottles_produced', 40],
+      ['bottles_rejected_or_wasted', 'bottles_rejected_or_wasted', 40],
+      ['final_usable_quantity', 'final_usable_quantity', 40],
+      ['storage_location', 'storage_location', 160],
+      ['use_by_date', 'use_by_date', 40],
+      ['pH_result', 'pH_result', 40],
+      ['pH_passed_failed', 'pH_passed_failed', 80],
+      ['pH_meter_id', 'pH_meter_id', 120],
+      ['passed_failed', 'passed_failed', 80],
+      ['verified_by', 'verified_by', 120],
+      ['verified_at', 'verified_at', 80],
+      ['issue_identified', 'issue_identified', 500],
+      ['detection_method', 'detection_method', 160],
+      ['action_taken', 'action_taken', 500],
+      ['quantity_disposed', 'quantity_disposed', 40],
+      ['preventive_steps', 'preventive_steps', 500],
+    ]),
+    is_test_batch: isInternalTestBatch(batch),
+    compliance_log_id_present: safeBoolean(batch?.compliance_log_id_present),
+    corrective_action_required: safeBoolean(batch?.corrective_action_required),
+    corrective_action_log_id_present: safeBoolean(batch?.corrective_action_log_id_present),
+    is_locked: safeBoolean(batch?.is_locked),
+    calibration_checked: typeof batch?.calibration_checked === 'boolean' ? batch.calibration_checked : null,
+    pre_op_sanitation_confirmed: typeof batch?.pre_op_sanitation_confirmed === 'boolean' ? batch.pre_op_sanitation_confirmed : null,
+    ccp_check_complete: typeof batch?.ccp_check_complete === 'boolean' ? batch.ccp_check_complete : null,
+    disposed: typeof batch?.disposed === 'boolean' ? batch.disposed : null,
+    staff_on_duty: safeStringArray(batch?.staff_on_duty),
+    equipment_used: safeStringArray(batch?.equipment_used),
+    ingredients_used: safeArrayOfObjects(batch?.ingredients_used, ing => ({
+      ingredient_name: sanitizeText(ing?.ingredient_name, 120) || null,
+      quantity: typeof ing?.quantity === 'number' || typeof ing?.quantity === 'string' ? ing.quantity : null,
+      unit: sanitizeText(ing?.unit, 40) || null,
+      lot_number: sanitizeText(ing?.lot_number, 120) || null,
+    })),
+    order_sources: safeArrayOfObjects(batch?.order_sources, source => ({
+      order_number: sanitizeText(source?.order_number, 120) || null,
+      customer_name: sanitizeText(source?.customer_name, 120) || null,
+      quantity: typeof source?.quantity === 'number' || typeof source?.quantity === 'string' ? source.quantity : null,
+    }), 20),
+    audit_trail: safeArrayOfObjects(batch?.audit_trail, entry => ({
+      timestamp: sanitizeText(entry?.timestamp, 80) || null,
+      action: sanitizeText(entry?.action, 120) || null,
+      performed_by: sanitizeText(entry?.performed_by, 120) || null,
+      reason: sanitizeText(entry?.reason, 500) || null,
+      before: {
+        missing_checks: safeStringArray(entry?.before?.missing_checks, 20),
+      },
+    }), 20),
+  };
+}
+
+function sanitizeHubResponse(data, fallbackDateFrom, fallbackDateTo) {
+  return {
+    success: data?.success === true,
+    dry_run: data?.dry_run === true,
+    read_only: data?.read_only === true,
+    date_from: sanitizeText(data?.date_from, 40) || fallbackDateFrom,
+    date_to: sanitizeText(data?.date_to, 40) || fallbackDateTo,
+    generated_at: sanitizeText(data?.generated_at, 80) || null,
+    summary: safeObjectNumberMap(data?.summary),
+    issues: safeObjectNumberMap(data?.issues),
+    recent_logs: Array.isArray(data?.recent_logs) ? data.recent_logs.slice(0, 60).map(sanitizeLog) : [],
+    batch_compliance: Array.isArray(data?.batch_compliance) ? data.batch_compliance.slice(0, 60).map(sanitizeLog) : [],
+    attention_batches: Array.isArray(data?.attention_batches) ? data.attention_batches.slice(0, 60).map(sanitizeBatch) : [],
+    warnings: safeStringArray(data?.warnings),
+  };
+}
+
+function fallbackHubUnavailableSummary(dateFrom, dateTo, reason, hubStatus = null) {
+  return {
+    success: true,
+    dry_run: true,
+    read_only: true,
+    hub_unavailable: true,
+    date_from: dateFrom,
+    date_to: dateTo,
+    generated_at: new Date().toISOString(),
+    summary: {
+      temperature: 0,
+      ph: 0,
+      ccp: 0,
+      sanitation: 0,
+      daily_checklists: 0,
+      corrective_actions: 0,
+      batch_compliance_logs: 0,
+      unified_logs: 0,
+      production_batches: 0,
+    },
+    issues: {
+      temp_out_of_range: 0,
+      ph_out_of_range: 0,
+      ccp_failed: 0,
+      sanitation_issues: 0,
+      incomplete_checklists: 0,
+      open_corrective_actions: 0,
+      failed_batch_logs: 0,
+      batches_missing_compliance_log: 0,
+      total_attention_items: 0,
+    },
+    recent_logs: [],
+    batch_compliance: [],
+    attention_batches: [],
+    warnings: [
+      sanitizeText(reason, 160) || 'Hub compliance summary is temporarily unavailable',
+      ...(hubStatus ? [`hub_status_${hubStatus}`] : []),
+    ],
+  };
+}
+
+function nativeComplianceReady(native) {
+  return Boolean(native?.read_only === true && native?.summary && typeof native.summary === 'object');
+}
+
+function withNativeFallback(fallback, native) {
+  const nativeSummary = native?.summary || {};
+  const nativeIssues = native?.issues || {};
+  const fallbackSummary = fallback?.summary || {};
+  const fallbackIssues = fallback?.issues || {};
+  const countFromFallbackOrNative = (key) => {
+    const fallbackValue = safeNumber(fallbackSummary[key]);
+    return fallbackValue > 0 ? fallbackValue : safeNumber(nativeSummary[key]);
+  };
+
+  return {
+    ...fallback,
+    native,
+    native_available: nativeComplianceReady(native),
+    source_fallback_warnings: safeStringArray(fallback.warnings),
+    summary: {
+      ...fallbackSummary,
+      temperature: countFromFallbackOrNative('temperature'),
+      ph: countFromFallbackOrNative('ph'),
+      ccp: countFromFallbackOrNative('ccp'),
+      sanitation: countFromFallbackOrNative('sanitation'),
+      daily_checklists: countFromFallbackOrNative('daily_checklists'),
+      corrective_actions: countFromFallbackOrNative('corrective_actions'),
+      batch_compliance_logs: countFromFallbackOrNative('batch_compliance_logs'),
+      unified_logs: countFromFallbackOrNative('unified_logs'),
+      production_batches: countFromFallbackOrNative('production_batches'),
+      native_temperature: safeNumber(nativeSummary.temperature),
+      native_ph: safeNumber(nativeSummary.ph),
+      native_ccp: safeNumber(nativeSummary.ccp),
+      native_sanitation: safeNumber(nativeSummary.sanitation),
+      native_daily_checklists: safeNumber(nativeSummary.daily_checklists),
+      native_corrective_actions: safeNumber(nativeSummary.corrective_actions),
+      native_batch_compliance_logs: safeNumber(nativeSummary.batch_compliance_logs),
+      native_production_batches: safeNumber(nativeSummary.production_batches),
+    },
+    issues: {
+      ...fallbackIssues,
+      temp_out_of_range: safeNumber(fallbackIssues.temp_out_of_range) || safeNumber(nativeIssues.temp_out_of_range),
+      ph_out_of_range: safeNumber(fallbackIssues.ph_out_of_range) || safeNumber(nativeIssues.ph_out_of_range),
+      ccp_failed: safeNumber(fallbackIssues.ccp_failed) || safeNumber(nativeIssues.ccp_failed),
+      sanitation_issues: safeNumber(fallbackIssues.sanitation_issues) || safeNumber(nativeIssues.sanitation_issues),
+      incomplete_checklists: safeNumber(fallbackIssues.incomplete_checklists) || safeNumber(nativeIssues.incomplete_checklists),
+      open_corrective_actions: safeNumber(fallbackIssues.open_corrective_actions) || safeNumber(nativeIssues.open_corrective_actions),
+      total_attention_items: safeNumber(fallbackIssues.total_attention_items) || safeNumber(nativeIssues.total_attention_items),
+      native_attention_items: safeNumber(nativeIssues.total_attention_items),
+    },
+    recent_logs: native.recent_logs,
+    warnings: nativeComplianceReady(native)
+      ? safeStringArray(native.warnings)
+      : [...safeStringArray(fallback.warnings), ...safeStringArray(native.warnings)],
+  };
+}
+
+function mergeNativeComplianceCounts(primarySummary, nativeSummary) {
+  const source = primarySummary || {};
+  const nativeCounts = nativeSummary || {};
+  const countFromPrimaryOrNative = (key) => {
+    const primaryValue = safeNumber(source[key]);
+    return primaryValue > 0 ? primaryValue : safeNumber(nativeCounts[key]);
+  };
+
+  return {
+    ...source,
+    temperature: countFromPrimaryOrNative('temperature'),
+    ph: countFromPrimaryOrNative('ph'),
+    ccp: countFromPrimaryOrNative('ccp'),
+    sanitation: countFromPrimaryOrNative('sanitation'),
+    daily_checklists: countFromPrimaryOrNative('daily_checklists'),
+    corrective_actions: countFromPrimaryOrNative('corrective_actions'),
+    batch_compliance_logs: countFromPrimaryOrNative('batch_compliance_logs'),
+    unified_logs: countFromPrimaryOrNative('unified_logs'),
+    production_batches: countFromPrimaryOrNative('production_batches'),
+    native_temperature: safeNumber(nativeCounts.temperature),
+    native_ph: safeNumber(nativeCounts.ph),
+    native_ccp: safeNumber(nativeCounts.ccp),
+    native_sanitation: safeNumber(nativeCounts.sanitation),
+    native_daily_checklists: safeNumber(nativeCounts.daily_checklists),
+    native_corrective_actions: safeNumber(nativeCounts.corrective_actions),
+    native_batch_compliance_logs: safeNumber(nativeCounts.batch_compliance_logs),
+    native_production_batches: safeNumber(nativeCounts.production_batches),
+  };
+}
+
+export default async function handler(req: Request) {
+  try {
+    const base44 = createClientFromRequest(req);
+
+    let user = null;
+    try {
+      user = await base44.auth.me();
+    } catch {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
+    if (req.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 });
+
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
+    let dateFrom;
+    let dateTo;
+    let testRecordMode;
+    try {
+      dateFrom = parseIsoDate(body.date_from, 'date_from');
+      dateTo = parseIsoDate(body.date_to, 'date_to');
+      testRecordMode = normalizeText(body.test_record_mode || 'exclude').toLowerCase();
+      if (!TEST_RECORD_MODES.has(testRecordMode)) {
+        throw new Error('test_record_mode must be exclude or only');
+      }
+    } catch (error) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+
+    const today = todayChicagoDate();
+    if (!dateFrom && !dateTo) {
+      dateTo = today;
+      dateFrom = addDays(today, -DEFAULT_RANGE_DAYS_BACK);
+    } else if (dateFrom && !dateTo) {
+      dateTo = addDays(dateFrom, DEFAULT_RANGE_DAYS_BACK);
+    } else if (!dateFrom && dateTo) {
+      dateFrom = addDays(dateTo, -DEFAULT_RANGE_DAYS_BACK);
+    }
+
+    if (dateTo < dateFrom) {
+      return Response.json({ error: 'date_to must be on or after date_from' }, { status: 400 });
+    }
+
+    if (daysInclusive(dateFrom, dateTo) > MAX_RANGE_DAYS) {
+      return Response.json({
+        error: `Date range must be ${MAX_RANGE_DAYS} days or fewer`,
+        max_range_days: MAX_RANGE_DAYS,
+      }, { status: 400 });
+    }
+
+    const native = await loadNativeComplianceSummary(base44, dateFrom, dateTo, testRecordMode);
+    if (testRecordMode === 'only') {
+      return Response.json({
+        success: true,
+        dry_run: true,
+        read_only: true,
+        source: 'customer_app_native_internal_test',
+        native_available: nativeComplianceReady(native),
+        date_from: dateFrom,
+        date_to: dateTo,
+        test_record_mode: 'only',
+        operational_totals_exclude_test_records: true,
+        summary: native.summary,
+        issues: native.issues,
+        recent_logs: native.recent_logs,
+        records: native.records,
+        native,
+        warnings: ['internal_test_compliance_records_only', ...safeStringArray(native.warnings)],
+      });
+    }
+
+    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
+      const fallback = fallbackHubUnavailableSummary(
+        dateFrom,
+        dateTo,
+        'Hub compliance ops summary service is not configured',
+        503
+      );
+      return Response.json(withNativeFallback(fallback, native));
+    }
+
+    const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
+    const params = new URLSearchParams({
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
+
+    let hubResponse;
+    try {
+      hubResponse = await fetch(`${hubBase}/functions/getComplianceOpsSummaryForCustomerApp?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+        },
+      });
+    } catch {
+      const fallback = fallbackHubUnavailableSummary(
+        dateFrom,
+        dateTo,
+        'Hub compliance ops summary fetch failed; native compliance summary remains available',
+        503
+      );
+      return Response.json(withNativeFallback(fallback, native));
+    }
+
+    const hubData = await hubResponse.json().catch(() => null);
+    if (!hubResponse.ok) {
+      const fallback = fallbackHubUnavailableSummary(
+        dateFrom,
+        dateTo,
+        sanitizeText(hubData?.error, 160) || 'Unable to load Hub compliance ops summary',
+        hubResponse.status
+      );
+      return Response.json(withNativeFallback(fallback, native));
+    }
+
+    const hub = sanitizeHubResponse(hubData, dateFrom, dateTo);
+    const hubWarnings = safeStringArray(hub.warnings);
+    return Response.json({
+      ...hub,
+      native,
+      native_available: nativeComplianceReady(native),
+      source_warnings: hubWarnings,
+      summary: mergeNativeComplianceCounts(hub.summary, native.summary),
+      issues: {
+        ...hub.issues,
+        native_attention_items: native.issues.total_attention_items,
+      },
+      warnings: nativeComplianceReady(native)
+        ? safeStringArray(native.warnings)
+        : [...hubWarnings, ...safeStringArray(native.warnings)],
+    });
+  } catch (error) {
+    console.error('[getAdminComplianceOpsSummary] Error:', error.message);
+    return Response.json({ error: 'Unable to load compliance ops summary' }, { status: 500 });
+  }
+}

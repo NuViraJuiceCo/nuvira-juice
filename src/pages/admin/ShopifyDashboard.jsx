@@ -18,6 +18,8 @@ const NAV_TABS = [
 ];
 
 function useShopifyOpsSummary({ refetchInterval = 30000 } = {}) {
+  const { user } = useAuth();
+  const canRead = isAdminUser(user);
   const isPageVisible = usePageVisibility();
   return useQuery({
     queryKey: ['admin-shopify-ops-summary'],
@@ -25,8 +27,8 @@ function useShopifyOpsSummary({ refetchInterval = 30000 } = {}) {
       const res = await base44.functions.invoke('getAdminShopifyOpsSummary', {});
       return res.data || {};
     },
-    enabled: isPageVisible,
-    refetchInterval: isPageVisible ? refetchInterval : false,
+    enabled: canRead && isPageVisible,
+    refetchInterval: canRead && isPageVisible ? refetchInterval : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   });
@@ -448,10 +450,13 @@ function AlertsTab() {
 function ProductsTab() {
   const { data: shopifyOps = {}, isLoading } = useShopifyOpsSummary({ refetchInterval: 60000 });
   const products = shopifyOps.products || [];
+  const productSourceLabel = shopifyOps.product_source === 'customer_app_product_catalog'
+    ? 'products from the current Customer App catalog'
+    : 'products synced from Shopify';
 
   return (
     <div>
-      <p className="text-xs text-muted-foreground mb-3">{products.length} products synced from Shopify</p>
+      <p className="text-xs text-muted-foreground mb-3">{products.length} {productSourceLabel}</p>
       {isLoading ? <div className="flex justify-center py-10"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div> : (
         <div className="space-y-2">
           {products.map(p => (

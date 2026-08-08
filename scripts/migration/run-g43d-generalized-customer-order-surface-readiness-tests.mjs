@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '../..');
-const historySource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getCustomerAccountDashboardData/entry.ts'), 'utf8');
+const historySource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getCustomerAccountDashboardData/handlers/getCustomerAccountDashboardData/entry.ts'), 'utf8');
 const trackerSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getCustomerOrderDetail/entry.ts'), 'utf8');
 
 const normalizeText = value => String(value ?? '').trim();

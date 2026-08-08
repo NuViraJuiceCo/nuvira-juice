@@ -1116,7 +1116,8 @@ function NativeDeliveryActionControls({ stop, onActionSuccess }) {
     const pieces = [];
     if (projection.updated) pieces.push('customer order updated');
     if (notification.sent) pieces.push('customer notified');
-    if (notification.attempted && !notification.sent) pieces.push(`notification ${notification.reason ? formatLabel(notification.reason) : 'not sent'}`);
+    if (notification.queued) pieces.push('customer notification queued');
+    else if (notification.attempted && !notification.sent) pieces.push(`notification ${notification.reason ? formatLabel(notification.reason) : 'not sent'}`);
     return pieces.length ? ` (${pieces.join(', ')})` : '';
   }
 
@@ -2238,7 +2239,6 @@ function StopCard({ stop, completed, selectedDate, onAssignmentSuccess }) {
           {isNativeDeliveryTaskStop(stop) ? (
             <>
               <NativeDeliveryActionControls stop={stop} onActionSuccess={onAssignmentSuccess} />
-              <NativeFulfillmentPreviewPanel stop={stop} onActionSuccess={onAssignmentSuccess} />
             </>
           ) : (
             <>

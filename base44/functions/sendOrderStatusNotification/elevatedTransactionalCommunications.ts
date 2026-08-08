@@ -108,6 +108,13 @@ function orderContext(order: AnyRecord, body: AnyRecord): AnyRecord {
 }
 
 function safeEventId(body: AnyRecord, order: AnyRecord, event: string): string {
+  if (event === 'refunded') {
+    const canonicalRefundMarker = text(
+      order.stripe_refund_id || order.refund_event_id || order.refunded_at,
+      180,
+    ).replace(/[^a-zA-Z0-9:_./-]/g, '_');
+    if (canonicalRefundMarker) return canonicalRefundMarker;
+  }
   const supplied = text(body.event_id || body.idempotency_key, 180).replace(/[^a-zA-Z0-9:_./-]/g, '_');
   if (supplied) return supplied;
   const statusMarker = text(order.updated_date || order.delivered_at || order.created_date || order.id, 120)
@@ -130,6 +137,36 @@ async function createOrUpdateLog(base44: any, existing: AnyRecord | null, payloa
   return existing?.id
     ? await base44.asServiceRole.entities.CustomerMessageDeliveryLog.update(existing.id, payload)
     : await base44.asServiceRole.entities.CustomerMessageDeliveryLog.create(payload);
+}
+
+async function closeScheduledPushesForTerminalOrder(
+  base44: any,
+  orderId: string,
+  event: string,
+  excludeLogId: string | null = null,
+): Promise<number> {
+  if (!['cancelled', 'refunded'].includes(event)) return 0;
+  const rows = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
+    order_id: orderId,
+    message_type: 'transactional_order',
+    channel: 'push',
+    status: 'scheduled',
+  }, 'created_date', MAX_SWEEP_ROWS);
+  let closed = 0;
+  for (const row of rows) {
+    if (!row?.id || row.id === excludeLogId) continue;
+    await base44.asServiceRole.entities.CustomerMessageDeliveryLog.update(row.id, {
+      status: 'skipped',
+      error_message: `superseded_by_${event}`,
+      metadata: {
+        ...(row.metadata || {}),
+        cancelled_at: new Date().toISOString(),
+        cancellation_reason: `order_${event}`,
+      },
+    });
+    closed += 1;
+  }
+  return closed;
 }
 
 async function recordPushResult(base44: any, {
@@ -345,9 +382,27 @@ async function deliverEvent(base44: any, body: AnyRecord, scheduledLog: AnyRecor
   }
   const blockers = validateOrderEvent(event, order);
   if (blockers.length > 0 && body.allow_status_exception !== true) {
+    if (scheduledLog?.id) {
+      await base44.asServiceRole.entities.CustomerMessageDeliveryLog.update(scheduledLog.id, {
+        status: 'skipped',
+        error_message: `authoritative_order_validation_failed:${blockers.join(',')}`,
+        metadata: {
+          ...(scheduledLog.metadata || {}),
+          cancelled_at: new Date().toISOString(),
+          cancellation_reason: 'order_no_longer_eligible',
+        },
+      });
+      return { success: true, skipped: true, reason: 'order_no_longer_eligible', blockers, provider_calls_performed: false };
+    }
     return { success: false, error: 'authoritative_order_validation_failed', blockers, provider_calls_performed: false };
   }
 
+  const scheduledPushesCancelled = await closeScheduledPushesForTerminalOrder(
+    base44,
+    orderId,
+    event,
+    scheduledLog?.id || null,
+  );
   const eventId = scheduledLog?.metadata?.event_id || safeEventId(body, order, event);
   const context = orderContext(order, body);
   const plan: AnyRecord = buildOrderCommunicationPlan(event, context, {
@@ -364,6 +419,7 @@ async function deliverEvent(base44: any, body: AnyRecord, scheduledLog: AnyRecor
     email: { sent: false, skipped: true, reason: 'not_requested' },
     push: { push_sent: false, skipped: true, reason: 'not_requested' },
     provider_calls_performed: false,
+    scheduled_pushes_cancelled: scheduledPushesCancelled,
   };
 
   if (plan.policy.push !== 'never' && pushChannelEnabled()) {

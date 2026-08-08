@@ -64,7 +64,8 @@ Deno.serve(async (req) => {
       source_id: customerEmail,
       occurred_at: bonusTimestamp,
       metadata: { signup_date: signup_date || bonusTimestamp.slice(0, 10) },
-    }, { headers: { 'x-internal-secret': Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' } });
+      internal_secret: Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '',
+    });
     const loyaltyResult = loyaltyResponse?.data || loyaltyResponse;
     if (loyaltyResult?.success !== true) {
       return Response.json({ error: loyaltyResult?.error || 'loyalty_enrollment_failed' }, { status: 500 });

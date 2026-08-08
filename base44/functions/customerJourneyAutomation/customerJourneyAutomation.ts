@@ -857,7 +857,10 @@ async function evaluateJourneys(base44: any) {
       ordersByEmail.set(email, rows);
     }
     const activeSubscriptionEmails = new Set(subscriptions.map((row: any) => normalizeEmail(row?.customer_email)).filter(Boolean));
-    const pointsByEmail = new Map(userPoints.map((row: any) => [normalizeEmail(row?.customer_email), row]).filter(([email]: [string, any]) => Boolean(email)));
+    const pointEntries: Array<[string, any]> = userPoints
+      .map((row: any): [string, any] => [normalizeEmail(row?.customer_email), row])
+      .filter(([email]) => Boolean(email));
+    const pointsByEmail = new Map<string, any>(pointEntries);
 
     for (const member of members) {
       if (results.length >= maxEvents) break;

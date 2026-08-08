@@ -312,10 +312,11 @@ export default function ProductDetail() {
         <Button
           type="button"
           onClick={handleAddToCart}
+          aria-label={`Add ${quantity} ${product.title} to cart for $${((product.price || 0) * quantity).toFixed(2)}`}
           className="nuvira-gradient-button flex-1 h-10 rounded-xl font-semibold text-sm inline-flex items-center justify-center"
         >
           <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
-          {`$${((product.price || 0) * quantity).toFixed(2)}`}
+          {`Add to cart · $${((product.price || 0) * quantity).toFixed(2)}`}
         </Button>
       </div>
     </div>

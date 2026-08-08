@@ -31,6 +31,15 @@ function statusKey(value) {
   return (value || '').toString().trim().toLowerCase();
 }
 
+const RETIRED_NATIVE_ORDER_FUNCTION = ['process', 'May', '30', 'NativeOrderOps'].join('');
+
+function isRetiredHistoricalCommand(row) {
+  const functionName = String(row?.function_name || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const commandType = String(row?.command_type || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const retiredFunction = RETIRED_NATIVE_ORDER_FUNCTION.toLowerCase();
+  return functionName === retiredFunction || commandType === retiredFunction.replace(/^process/, '');
+}
+
 function matchesSearch(row, search) {
   const query = search.trim().toLowerCase();
   if (!query) return true;
@@ -112,6 +121,7 @@ export default function AuditTrail() {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [includeRetiredHistory, setIncludeRetiredHistory] = useState(false);
 
   const { data = [], isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['admin-audit-trail-read-model'],
@@ -121,18 +131,20 @@ export default function AuditTrail() {
   });
 
   const rows = Array.isArray(data) ? data : [];
+  const retiredHistory = useMemo(() => rows.filter(isRetiredHistoricalCommand), [rows]);
+  const visibleRows = useMemo(() => includeRetiredHistory ? rows : rows.filter(row => !isRetiredHistoricalCommand(row)), [includeRetiredHistory, rows]);
   const stats = useMemo(() => ({
-    total: rows.length,
-    success: rows.filter(row => statusKey(row.status) === 'success').length,
-    failed: rows.filter(row => statusKey(row.status) === 'failed').length,
-    running: rows.filter(row => ['pending', 'running'].includes(statusKey(row.status))).length,
-  }), [rows]);
+    total: visibleRows.length,
+    success: visibleRows.filter(row => statusKey(row.status) === 'success').length,
+    failed: visibleRows.filter(row => statusKey(row.status) === 'failed').length,
+    running: visibleRows.filter(row => ['pending', 'running'].includes(statusKey(row.status))).length,
+  }), [visibleRows]);
 
-  const filtered = useMemo(() => rows.filter(row => {
+  const filtered = useMemo(() => visibleRows.filter(row => {
     const key = statusKey(row.status);
     if (statusFilter !== 'all' && key !== statusFilter) return false;
     return matchesSearch(row, search);
-  }), [rows, search, statusFilter]);
+  }), [visibleRows, search, statusFilter]);
 
   if (!isAdminUser(user)) {
     return (
@@ -178,6 +190,17 @@ export default function AuditTrail() {
           <p className="mt-3 text-xs text-muted-foreground">
             This page is visibility only. It does not retry, replay, repair, sync, notify, or expose raw command payloads.
           </p>
+          {retiredHistory.length > 0 && (
+            <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={includeRetiredHistory}
+                onChange={event => setIncludeRetiredHistory(event.target.checked)}
+                className="h-4 w-4 rounded border-border"
+              />
+              Include {retiredHistory.length.toLocaleString()} retired historical commands
+            </label>
+          )}
         </section>
 
         {isLoading ? (

@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
   const storeHost = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '');
 
   // Build Shopify draft order payload
-  const shopifyPayload = {
+  const shopifyPayload: Record<string, any> = {
     draft_order: {
       line_items: order.items.map(item => ({
         title: item.title,

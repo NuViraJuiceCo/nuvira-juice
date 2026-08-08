@@ -621,7 +621,8 @@ export async function handlePOSCustomerClaims(req: Request) {
           eligible_order_count: number(claim.eligible_order_count),
           eligible_spend: number(claim.eligible_spend),
         },
-      }, { headers: { 'x-internal-secret': Deno.env.get('LOYALTY_LEDGER_SECRET') || SYNC_SECRET } });
+        internal_secret: Deno.env.get('LOYALTY_LEDGER_SECRET') || SYNC_SECRET,
+      });
       const loyaltyResult = loyaltyResponse?.data || loyaltyResponse;
       if (loyaltyResult?.success !== true) throw new Error(loyaltyResult?.error || 'pos_claim_loyalty_reconciliation_failed');
 

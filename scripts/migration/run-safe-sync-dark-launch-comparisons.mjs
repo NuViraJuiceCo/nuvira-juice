@@ -3,18 +3,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
 const fixturePath = path.join(repoRoot, 'docs/migration/fixtures/safe-sync-order-update/fixtures.json');
-const plannerPath = path.join(repoRoot, 'base44/functions/previewNativeSafeSyncOrderUpdate/entry.ts');
-const comparatorPath = path.join(repoRoot, 'base44/functions/previewNativeSafeSyncDarkLaunchComparison/entry.ts');
+const plannerPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeSafeSyncOrderUpdate/entry.ts');
+const comparatorPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeSafeSyncDarkLaunchComparison/entry.ts');
 
 function loadFunction(filePath, functionName, globalName) {
   const source = fs.readFileSync(filePath, 'utf8');
-  const functionOnly = source.split('Deno.serve')[0] + `\nglobalThis.${globalName} = ${functionName};\n`;
+  const functionOnly = source.split('export default async')[0] + `\nglobalThis.${globalName} = ${functionName};\n`;
+  const executableFunction = ts.transpileModule(functionOnly, {
+    compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
   const context = vm.createContext({ console, globalThis: {} });
-  vm.runInContext(functionOnly, context, { filename: filePath });
+  vm.runInContext(executableFunction, context, { filename: filePath });
   return context.globalThis[globalName];
 }
 

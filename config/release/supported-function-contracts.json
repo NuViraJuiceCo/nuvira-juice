@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "policy": "Any backend function invoked directly by a supported shipped client remains a standalone endpoint until that client version is outside the support window.",
+  "contracts": [
+    {
+      "id": "ios-app-store-build-26",
+      "client": "ios",
+      "release": "2.117910.0 (26)",
+      "direct_function_invocations": [
+        "addressSuggest",
+        "cancelSubscriptionFutureRenewal",
+        "claimReward",
+        "completeAccountSetup",
+        "createZone3AuthorizationIntent",
+        "getCustomerNotifications",
+        "getCustomerOrderDetail",
+        "getDeliveryEta",
+        "getOrderBySession",
+        "pauseSubscription",
+        "registerPushSubscription",
+        "resolveShopifyCartPermalink",
+        "stripeCustomerPortal",
+        "syncUserToHub",
+        "unregisterPushSubscription",
+        "validateDeliveryEligibility"
+      ]
+    },
+    {
+      "id": "google-play-g58",
+      "client": "android",
+      "release": "G58",
+      "direct_function_invocations": [
+        "addressSuggest",
+        "cancelSubscriptionFutureRenewal",
+        "claimReward",
+        "completeAccountSetup",
+        "createZone3AuthorizationIntent",
+        "getCustomerNotifications",
+        "getCustomerOrderDetail",
+        "getDeliveryEta",
+        "getOrderBySession",
+        "pauseSubscription",
+        "registerPushSubscription",
+        "resolveShopifyCartPermalink",
+        "stripeCustomerPortal",
+        "syncUserToHub",
+        "unregisterPushSubscription",
+        "validateDeliveryEligibility"
+      ]
+    },
+    {
+      "id": "customer-web-lifecycle-compatibility",
+      "client": "web",
+      "release": "current-and-cached-tabs",
+      "direct_function_invocations": [
+        "processManualRefund",
+        "requestAccountDeletion"
+      ]
+    }
+  ]
+}

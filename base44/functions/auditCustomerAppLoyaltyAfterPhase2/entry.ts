@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { buildLoyaltyIntegrityReport } from './loyaltyIntegrity.js';
 import { buildAuthoritativeLoyaltyReconciliation } from './loyaltyReconciliation.js';
@@ -110,7 +111,8 @@ Deno.serve(async (req) => {
             source_type: 'order_history_reconciliation',
             source_id: 'loyalty-order-ledger-v1-2026-08-04',
             metadata: row.components,
-          }, { headers: { 'x-internal-secret': secret } });
+            internal_secret: secret,
+          });
           const result = response?.data || response;
           if (result?.success !== true) throw new Error(`reconciliation_failed:${row.customer_email}:${result?.error || 'unknown'}`);
           const [transactions, pointRows, memberRows] = await Promise.all([

@@ -325,29 +325,14 @@ export default function NotificationCampaigns() {
     setCampaignSendResult(null);
 
     try {
-      const campaignResponse = await base44.entities.NotificationCampaign.create({
+      const response = await base44.functions.invoke('sendNotificationCampaign', {
+        action: 'create_and_send',
+        request_id: globalThis.crypto?.randomUUID?.() || `campaign-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         title,
         message,
         audience: form.audience,
         notification_type: form.notification_type,
         deep_link: form.deep_link || null,
-        status: 'draft',
-        sent_count: 0,
-        failed_count: 0,
-        skipped_count: 0,
-        recipients_total: 0,
-        eligible_count: 0,
-        skipped_reasons: {},
-        created_by: user?.email || null,
-      });
-      const campaign = unwrapBase44Data(campaignResponse, {});
-      const campaignId = campaign?.id;
-      if (!campaignId) {
-        throw new Error('Campaign was created but no campaign id was returned. Refresh campaigns and try again.');
-      }
-
-      const response = await base44.functions.invoke('sendNotificationCampaign', {
-        campaign_id: campaignId,
         confirm: true,
         ...(form.audience !== 'test_only'
           ? {

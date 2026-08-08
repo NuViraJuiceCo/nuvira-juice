@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
-const functionPath = path.join(repoRoot, 'base44/functions/getCustomerAccountDashboardData/entry.ts');
+const functionPath = path.join(repoRoot, 'base44/functions/getCustomerAccountDashboardData/handlers/getCustomerAccountDashboardData/entry.ts');
 
 const ENABLE_ENV = {
   ENABLE_CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST: 'true',
@@ -21,7 +21,8 @@ function clone(value) {
 function loadHarness({ env = {} } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
-  source += `\nglobalThis.__exports = { normalizeOrderNumber, applyLimitedNativeFirstOrderHistory, nativeContextEligible, loadNativeHistoryContextForOrder, buildNativeOrderHistoryPatch };\n`;
+  source = source.replace(/^export default async function handler\(req: Request\)/m, 'async function handler(req)');
+  source += `\nDeno.serve(handler);\nglobalThis.__exports = { normalizeOrderNumber, applyLimitedNativeFirstOrderHistory, nativeContextEligible, loadNativeHistoryContextForOrder, buildNativeOrderHistoryPatch };\n`;
   const context = vm.createContext({
     console,
     Date,

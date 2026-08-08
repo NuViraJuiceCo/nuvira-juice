@@ -230,7 +230,7 @@ function planDeliveredTaskReconciliation({ tasks, order, hubOrder = null }) {
 function buildTaskDeliveredPayload(task, order, hubOrder = null, source = 'customer_app_order_delivered') {
   const deliveredAt = validIsoDate(order?.delivered_at) || validIsoDate(hubOrder?.delivered_at) || new Date().toISOString();
   const existingAudit = Array.isArray(task?.audit_trail) ? task.audit_trail : [];
-  const payload = {
+  const payload = Object.assign(Object.create(null), {
     status: 'delivered',
     delivery_status: 'delivered',
     delivered_at: deliveredAt,
@@ -245,7 +245,7 @@ function buildTaskDeliveredPayload(task, order, hubOrder = null, source = 'custo
         timestamp: new Date().toISOString(),
       },
     ].slice(-25),
-  };
+  });
 
   const photoUrl = hubOrder?.delivery_photo_url || order?.delivery_photo_url;
   const dropLocation = hubOrder?.delivery_drop_location || order?.delivery_drop_location;
@@ -435,10 +435,10 @@ Deno.serve(async (req) => {
       ];
 
       // Build update payload — stamp delivered_at and pull proof fields on delivery
-      const updatePayload = {
+      const updatePayload = Object.assign(Object.create(null), {
         status: mappedStatus,
         status_history: newHistory,
-      };
+      });
       if (mappedStatus === 'delivered') {
         const hubDeliveredAt = hubOrder.delivered_at && !Number.isNaN(Date.parse(hubOrder.delivered_at))
           ? hubOrder.delivered_at

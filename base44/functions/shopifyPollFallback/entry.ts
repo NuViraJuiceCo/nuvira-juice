@@ -10,6 +10,20 @@ function normalizeStoreHost(value: string | undefined): string {
   return String(value || '').trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
+async function invokeInternalFunction(base44, functionName, payload, secret) {
+  const response = await base44.asServiceRole.functions.fetch(`/${functionName}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-secret': secret || '',
+    },
+    body: JSON.stringify(payload),
+  });
+  const data: any = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || data?.error_code || `${functionName}_http_${response.status}`);
+  return { data };
+}
+
 function shopifyClientSecrets() {
   const names = [
     'SHOPIFY_CLIENT_SECRET',
@@ -147,11 +161,11 @@ Deno.serve(async (req) => {
     const shopifyOrderId = String(order.id);
     const existing = await base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_id: shopifyOrderId }, '-created_date', 1);
     try {
-      const response = await base44.asServiceRole.functions.invoke('shopifyWebhookReceiver', {
+      const response = await invokeInternalFunction(base44, 'shopifyWebhookReceiver', {
         internal_topic: 'orders/create',
         source: 'shopify_poll_fallback',
         data: order,
-      }, { headers: { 'x-internal-secret': Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '' } });
+      }, Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '');
       const result = response?.data || response;
       if (result?.ok !== true) throw new Error(result?.error || 'canonical_ingestion_failed');
       if (existing.length === 0) {

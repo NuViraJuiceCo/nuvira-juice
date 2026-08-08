@@ -10,7 +10,9 @@ const repoRoot = path.resolve(__dirname, '../..');
 
 function loadExports(relativePath, exportNames) {
   const functionPath = path.join(repoRoot, relativePath);
-  let source = fs.readFileSync(functionPath, 'utf8').replace(/^import .*$/gm, '');
+  let source = fs.readFileSync(functionPath, 'utf8')
+    .replace(/^import .*$/gm, '')
+    .replace('export default async function handler(req: Request)', 'async function handler(req)');
   source += `\nglobalThis.__exports = { ${exportNames.join(', ')} };\n`;
   const context = vm.createContext({
     console,
@@ -104,7 +106,7 @@ const results = [];
 
 {
   const { buildDeliveryLifecycleReadModel } = await import(
-    new URL('../../base44/functions/getAdminDeliveryRouteSummary/deliveryLifecycleReadModel.js', import.meta.url)
+    new URL('../../base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminDeliveryRouteSummary/deliveryLifecycleReadModel.js', import.meta.url)
   );
   const customerOrder = {
     id: 'order_multi_date',
@@ -170,7 +172,7 @@ const results = [];
 
 {
   const { effectiveAdminOperationalStatuses } = loadExports(
-    'base44/functions/getAdminOrdersWithHub/entry.ts',
+    'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminOrdersWithHub/entry.ts',
     ['effectiveAdminOperationalStatuses'],
   );
   const mixed = effectiveAdminOperationalStatuses({
@@ -197,7 +199,7 @@ const results = [];
 
 {
   const { dedupeCrossSourceProjections } = loadExports(
-    'base44/functions/getAdminOrderTimeline/entry.ts',
+    'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminOrderTimeline/entry.ts',
     ['dedupeCrossSourceProjections'],
   );
   const moment = '2026-08-05T23:38:28.061Z';
@@ -215,7 +217,7 @@ const results = [];
 
 {
   const { buildNativeTimeline } = loadExports(
-    'base44/functions/getAdminOrderTimeline/entry.ts',
+    'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminOrderTimeline/entry.ts',
     ['buildNativeTimeline'],
   );
   const events = buildNativeTimeline({
@@ -258,7 +260,7 @@ const results = [];
 
 {
   const { preferredCustomerName } = loadExports(
-    'base44/functions/getAdminDeliveryRouteSummary/entry.ts',
+    'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminDeliveryRouteSummary/entry.ts',
     ['preferredCustomerName'],
   );
   const profilesByEmail = new Map([

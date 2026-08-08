@@ -61,6 +61,14 @@ function discountValueLabel(code) {
     : `${Number(code.discount_value || 0).toFixed(2).replace(/\.00$/, '')}% off`;
 }
 
+function resultData(result) {
+  return result?.data || result || {};
+}
+
+function requestId() {
+  return globalThis.crypto?.randomUUID?.() || `discount-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function DiscountCodes() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -71,7 +79,11 @@ export default function DiscountCodes() {
 
   const { data: codes = [], isLoading } = useQuery({
     queryKey: ['admin-discount-codes'],
-    queryFn: () => base44.entities.DiscountCode.list('-created_date', 200),
+    queryFn: async () => {
+      const payload = resultData(await base44.functions.invoke('manageAdminDiscountCode', { action: 'list' }));
+      if (payload.success !== true) throw new Error(payload.error || 'Unable to load discount codes.');
+      return Array.isArray(payload.rows) ? payload.rows : [];
+    },
     enabled: isAdminUser(user),
   });
 
@@ -158,11 +170,14 @@ export default function DiscountCodes() {
 
     setSaving(true);
     try {
-      if (editingId) {
-        await base44.entities.DiscountCode.update(editingId, payload);
-      } else {
-        await base44.entities.DiscountCode.create(payload);
-      }
+      const result = resultData(await base44.functions.invoke('manageAdminDiscountCode', {
+        action: 'upsert',
+        request_id: requestId(),
+        discount_code_id: editingId || null,
+        ...payload,
+        confirmation: `SAVE ${code}`,
+      }));
+      if (result.success !== true) throw new Error(result.error || 'Unable to save this discount code.');
       await queryClient.invalidateQueries({ queryKey: ['admin-discount-codes'] });
       toast.success(editingId ? 'Discount code updated.' : 'Discount code created.');
       resetForm();
@@ -175,7 +190,16 @@ export default function DiscountCodes() {
 
   const toggleActive = async (code) => {
     try {
-      await base44.entities.DiscountCode.update(code.id, { active: !code.active });
+      const active = !code.active;
+      const result = resultData(await base44.functions.invoke('manageAdminDiscountCode', {
+        action: 'toggle_active',
+        request_id: requestId(),
+        discount_code_id: code.id,
+        code: code.code,
+        active,
+        confirmation: `SET ${code.id} ${active ? 'ACTIVE' : 'INACTIVE'}`,
+      }));
+      if (result.success !== true) throw new Error(result.error || 'Unable to update this discount code.');
       await queryClient.invalidateQueries({ queryKey: ['admin-discount-codes'] });
       toast.success(`${code.code} ${code.active ? 'deactivated' : 'activated'}.`);
     } catch (error) {

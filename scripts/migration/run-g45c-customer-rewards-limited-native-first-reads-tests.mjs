@@ -5,24 +5,25 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 const repoRoot = process.cwd();
-const functionPath = path.join(repoRoot, 'base44/functions/getCustomerAccountDashboardData/entry.ts');
+const functionPath = path.join(repoRoot, 'base44/functions/getCustomerAccountDashboardData/handlers/getCustomerAccountDashboardData/entry.ts');
 const source = fs.readFileSync(functionPath, 'utf8');
 
 function loadHarness(env = {}) {
-  let handler;
   const sandbox = {
     console,
     Response,
     setTimeout,
     Deno: {
       env: { get: name => env[name] || '' },
-      serve: fn => { handler = fn; },
+      serve: () => { throw new Error('unexpected Deno.serve in consolidated handler'); },
     },
     createClientFromRequest: req => req.__base44,
   };
-  const runnable = source.replace("import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';", '');
+  const runnable = source
+    .replace("import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';", '')
+    .replace('export default async function handler(req: Request)', 'globalThis.__handler = async function handler(req)');
   vm.runInNewContext(runnable, sandbox, { filename: functionPath });
-  return { handler, sandbox };
+  return { handler: sandbox.__handler, sandbox };
 }
 
 function points(overrides = {}) {
