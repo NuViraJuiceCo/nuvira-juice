@@ -7,6 +7,34 @@ on:
         description: Exact approved origin/main commit for a native release verification run
         required: true
         type: string
+      base44_deployment_id:
+        description: Base44 deployment identifier observed live for this commit
+        required: true
+        type: string
+      base44_entry_asset:
+        description: Live Base44 entry asset recorded after deployment (for example index-AbCd1234.js)
+        required: true
+        type: string
+      base44_commit:
+        description: Full Git commit used by the Base44 site deployment
+        required: true
+        type: string
+      base44_observed_at_utc:
+        description: ISO timestamp when the live Base44 asset was verified
+        required: true
+        type: string
+      appflow_build_id:
+        description: Active Appflow Production Web build ID
+        required: true
+        type: string
+      appflow_commit:
+        description: Full Git commit shown by the active Appflow Production build
+        required: true
+        type: string
+      appflow_observed_at_utc:
+        description: ISO timestamp when Appflow Production was verified active
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -47,6 +75,18 @@ jobs:
         run: npm run release:verify-open-critical-prs -- --out release-evidence/critical-prs.json
       - name: Build web bundle
         run: npm run build
+      - name: Verify Base44 and Appflow deployment provenance
+        env:
+          RELEASE_APPROVED_COMMIT: ${{ inputs.approved_commit }}
+          RELEASE_BASE44_DEPLOYMENT_ID: ${{ inputs.base44_deployment_id }}
+          RELEASE_BASE44_COMMIT: ${{ inputs.base44_commit }}
+          RELEASE_BASE44_ENTRY_ASSET: ${{ inputs.base44_entry_asset }}
+          RELEASE_BASE44_OBSERVED_AT_UTC: ${{ inputs.base44_observed_at_utc }}
+          RELEASE_APPFLOW_BUILD_ID: ${{ inputs.appflow_build_id }}
+          RELEASE_APPFLOW_COMMIT: ${{ inputs.appflow_commit }}
+          RELEASE_APPFLOW_STATUS: active
+          RELEASE_APPFLOW_OBSERVED_AT_UTC: ${{ inputs.appflow_observed_at_utc }}
+        run: npm run release:verify-deployment-provenance -- --out release-evidence/deployment-provenance.json
       - name: Capacitor sync iOS
         run: npx cap sync ios
       - name: Verify post-build source mutation policy
@@ -58,7 +98,7 @@ jobs:
       - name: Record simulator build evidence
         run: node scripts/release/write-gate-evidence.mjs --suite g50c-ios-release-simulator-build --out release-evidence/simulator-build.json
       - name: Generate release manifest
-        run: npm run release:generate-manifest -- --evidence-dir release-evidence --out release-evidence/native-release-manifest.json
+        run: npm run release:generate-manifest -- --require-deployment-provenance --evidence-dir release-evidence --out release-evidence/native-release-manifest.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
