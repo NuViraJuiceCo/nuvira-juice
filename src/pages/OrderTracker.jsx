@@ -346,6 +346,9 @@ export default function OrderTracker() {
   const currentIndex = stages.findIndex(s => s.key === displayOrder.status);
   const isDelivery = displayOrder.fulfillment_type !== 'pickup';
   const displayNum = displayOrder.order_number || hubOrder?.shopify_order_number || orderNumberParam || rawParam;
+  const deliveredTimelineTimestamp = [...(detail?.status_timeline || [])]
+    .reverse()
+    .find(entry => entry?.status === 'delivered')?.timestamp;
 
   return (
     <div className="pb-8 min-h-screen bg-background">
@@ -375,8 +378,12 @@ export default function OrderTracker() {
             </p>
             <p className="font-heading text-xl font-bold text-white">
               {currentStatus === 'delivered'
-              // Priority: delivered_at (full timestamp with time) → assigned_delivery_date → estimated_delivery_date
-              ? formatDeliveredAt(deliveryStatus?.delivered_at, order?.assigned_delivery_date || displayOrder.estimated_delivery_date)
+              // Priority: operational delivery detail -> authoritative customer order -> schedule fallback.
+              // The delivery detail can be absent when the Customer App Order itself was updated first.
+              ? formatDeliveredAt(
+                  deliveryStatus?.delivered_at || order?.delivered_at || displayOrder.delivered_at || deliveredTimelineTimestamp,
+                  order?.assigned_delivery_date || displayOrder.estimated_delivery_date,
+                )
                 : currentStatus === 'picked_up'
                   ? 'Pickup complete'
                 : isOnRoute && etaData?.eta_window

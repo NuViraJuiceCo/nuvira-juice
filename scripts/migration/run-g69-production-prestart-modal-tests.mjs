@@ -235,6 +235,8 @@ assert.ok(productionSource.includes('pH meter calibration checked'));
 assert.ok(productionSource.includes('CCP monitoring complete'));
 assert.ok(productionSource.includes('The system never invents a pH value or pass/fail result.'));
 assert.ok(productionSource.includes('Check ${formatLabel(activeAction)} Readiness'));
+assert.equal((productionSource.match(/onReadyChange=\{handlePreStartReadyChange\}/g) || []).length, 2);
+assert.equal((productionSource.match(/Pre-start compliance is ready\. Continue to refresh the Start preview\./g) || []).length, 2);
 const genericOverflowGroup = cssSource.match(/\[data-scroll\],\s*\.overflow-y-auto[\s\S]*?\}/)?.[0] || '';
 assert.equal(genericOverflowGroup.includes('transform:'), false);
 assert.equal(modalSource.includes('Promise.all'), false);

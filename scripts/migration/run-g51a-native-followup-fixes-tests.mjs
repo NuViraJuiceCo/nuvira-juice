@@ -10,7 +10,6 @@ const assert = (condition, message) => {
 
 const embedded = read('src/components/checkout/EmbeddedPayment.jsx');
 const subscription = read('src/components/checkout/SubscriptionPaymentPanel.jsx');
-const diagnostic = read('src/components/checkout/ApplePayMountDiagnostic.jsx');
 const indexCss = read('src/index.css');
 const nativeLogin = read('src/pages/NativeLogin.jsx');
 const nativeAuthRedirect = read('src/lib/nativeAuthRedirect.js');
@@ -26,7 +25,6 @@ function assertCurrentExpressCheckoutOptions(source, label) {
 
 assertCurrentExpressCheckoutOptions(embedded, 'EmbeddedPayment');
 assertCurrentExpressCheckoutOptions(subscription, 'SubscriptionPaymentPanel');
-assertCurrentExpressCheckoutOptions(diagnostic, 'ApplePayMountDiagnostic');
 
 assert(/const \[expressReady, setExpressReady\] = useState\(false\)/.test(embedded), 'EmbeddedPayment must track Express Checkout readiness');
 assert(/\(!expressReady \|\| expressAvailable\)/.test(embedded), 'EmbeddedPayment must collapse the wallet section when no wallet methods are available');

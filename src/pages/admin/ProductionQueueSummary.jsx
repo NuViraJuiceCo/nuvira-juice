@@ -238,6 +238,17 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
     if (action === 'start') setPreStartModalOpen(true);
   }
 
+  function handlePreStartReadyChange(ready) {
+    setPreStartReady(ready);
+    if (ready && activeAction === 'start' && preview && preview.live_allowed !== true) {
+      setPreview(null);
+      setMessage({
+        type: 'success',
+        text: 'Pre-start compliance is ready. Continue to refresh the Start preview.',
+      });
+    }
+  }
+
   function basePayload(prefix) {
     return {
       production_batch_id: batch.id,
@@ -503,7 +514,7 @@ function ProductionLifecyclePanel({ batch, onActionSuccess }) {
         batch={batch}
         open={preStartModalOpen}
         onOpenChange={setPreStartModalOpen}
-        onReadyChange={setPreStartReady}
+        onReadyChange={handlePreStartReadyChange}
         onContinue={() => {
           setPreStartModalOpen(false);
           runPreview('start');
@@ -1257,6 +1268,17 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     if (activeAction !== 'start') setPreStartReady(false);
   }, [activeAction]);
 
+  function handlePreStartReadyChange(ready) {
+    setPreStartReady(ready);
+    if (ready && activeAction === 'start' && preview && !nativePreviewReadyForAction(preview, 'start')) {
+      setPreview(null);
+      setMessage({
+        type: 'success',
+        text: 'Pre-start compliance is ready. Continue to refresh the Start preview.',
+      });
+    }
+  }
+
   function baseNativePayload(action, prefix) {
     return {
       action,
@@ -1728,7 +1750,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
         batch={batch}
         open={preStartModalOpen}
         onOpenChange={setPreStartModalOpen}
-        onReadyChange={setPreStartReady}
+        onReadyChange={handlePreStartReadyChange}
         onContinue={() => {
           setPreStartModalOpen(false);
           runPreview('start');

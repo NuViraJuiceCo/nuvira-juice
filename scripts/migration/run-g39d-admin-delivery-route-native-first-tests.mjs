@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
-const functionPath = path.join(repoRoot, 'base44/functions/getAdminDeliveryRouteSummary/entry.ts');
+const functionPath = path.join(
+  repoRoot,
+  'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminDeliveryRouteSummary/entry.ts',
+);
 const DELIVERY_DATE = '2026-06-20';
 const TEST_NOW = '2026-06-18T12:00:00.000Z';
 
@@ -24,6 +27,10 @@ class FixedDate extends Date {
 function loadHandler({ env = {}, hubData = null, hubStatus = 200, fetchError = null } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
+  source = source.replace(
+    'export default async function handler(req: Request)',
+    'globalThis.__handler = async function handler(req)',
+  );
 
   const context = vm.createContext({
     console,

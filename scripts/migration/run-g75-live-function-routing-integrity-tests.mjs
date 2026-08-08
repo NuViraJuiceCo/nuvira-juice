@@ -91,7 +91,9 @@ for (const [functionName, locations] of [...invocationLocations.entries()].sort(
 }
 
 assert.deepEqual(failures, [], `frontend function routing contains unavailable contracts: ${JSON.stringify(failures)}`);
-assert.match(clientSource, /gateway_action:\s*name/, 'frontend client must forward gateway_action');
+assert.match(clientSource, /gateway_action:\s*action/, 'frontend gateway transport must forward gateway_action');
+assert.match(clientSource, /invokeAdminGateway\(name, data, options\)/, 'admin actions must retain their requested gateway action name');
+assert.match(clientSource, /invokeCustomerGateway\(name, data, options\)/, 'customer actions must retain their requested gateway action name');
 
 const retiredSyncHealthActions = [
   'previewAdminHistoricalHubBackfill',

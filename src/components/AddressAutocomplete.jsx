@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
-import { base44 } from '@/api/base44Client';
+import { invokeCustomerGateway } from '@/api/base44Client';
 
 /**
  * Props:
@@ -15,6 +15,8 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
 
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lookupError, setLookupError] = useState('');
   const debounceRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -29,13 +31,32 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
   };
 
   const fetchSuggestions = (query) => {
-    if (!query || query.length < 3) { setSuggestions([]); setOpen(false); return; }
+    const normalizedQuery = String(query || '').trim();
+    if (normalizedQuery.length < 3) {
+      setSuggestions([]);
+      setOpen(false);
+      setLookupError('');
+      setIsLoading(false);
+      return;
+    }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      const res = await base44.functions.invoke('addressSuggest', { query });
-      const list = res.data?.suggestions || [];
-      setSuggestions(list);
-      setOpen(list.length > 0);
+      setIsLoading(true);
+      setLookupError('');
+      try {
+        const res = await invokeCustomerGateway('addressSuggest', { query: normalizedQuery });
+        const data = res?.data || res;
+        const list = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        setSuggestions(list);
+        setOpen(list.length > 0);
+        if (!list.length) setLookupError('No verified addresses found. Keep typing or check the address.');
+      } catch {
+        setSuggestions([]);
+        setOpen(false);
+        setLookupError('Address lookup is temporarily unavailable. You can still enter the full address below.');
+      } finally {
+        setIsLoading(false);
+      }
     }, 350);
   };
 
@@ -57,7 +78,10 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
   useEffect(() => {
     const handler = (e) => { if (!containerRef.current?.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      clearTimeout(debounceRef.current);
+    };
   }, []);
 
   return (
@@ -69,13 +93,16 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
           aria-label="Street address"
           value={addr.street}
           onChange={handleStreetChange}
-          onFocus={() => suggestions.length > 0 && setOpen(true)}
+          onFocus={() => {
+            if (suggestions.length > 0) setOpen(true);
+            else fetchSuggestions(addr.street);
+          }}
           placeholder={placeholder || '123 Main St'}
           className={className}
           autoComplete="address-line1"
         />
         {open && suggestions.length > 0 && (
-          <ul className="absolute z-10 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto text-sm">
+          <ul aria-label="Google-verified address suggestions" className="absolute z-10 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto text-sm">
             {suggestions.map((s, i) => (
               <li
                 key={i}
@@ -91,6 +118,10 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
           </ul>
         )}
       </div>
+
+      <p className={`text-[11px] ${lookupError ? 'text-amber-700' : 'text-muted-foreground'}`} role="status">
+        {isLoading ? 'Looking up verified addresses…' : lookupError || 'Start typing and select a Google-verified address.'}
+      </p>
 
       {/* City / State / Zip */}
       <div className="grid grid-cols-5 gap-2">

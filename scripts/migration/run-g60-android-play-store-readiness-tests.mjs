@@ -37,8 +37,8 @@ test('2. Android uses its branded Play identity without changing the shared iOS 
 });
 
 test('3. Play release metadata matches the current native release line.', () => {
-  assert.match(appGradle, /versionCode 35/);
-  assert.match(appGradle, /versionName "2\.117916\.0"/);
+  assert.match(appGradle, /versionCode 36/);
+  assert.match(appGradle, /versionName "2\.117917\.0"/);
 });
 
 test('4. Android SDK levels satisfy current Play readiness.', () => {
