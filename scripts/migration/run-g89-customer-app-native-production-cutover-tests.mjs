@@ -157,7 +157,7 @@ assert.equal(orderUpdates, 0, 'Delivered orders cannot be projected back into pr
 assert.equal(terminalProjection.notification_queued_count, 0);
 assert.deepEqual(Array.from(terminalProjection.skips), ['terminal_or_refunded_order']);
 
-const preview = loadFunctions(previewPath, ['planLifecycle'], {});
+const preview = loadFunctions(previewPath, ['planLifecycle', 'getLookup', 'buildOrderLifecyclePreview'], {});
 const previewResult = preview.planLifecycle({
   mode: 'dry_run',
   action: 'verify',
@@ -176,12 +176,27 @@ const previewResult = preview.planLifecycle({
 assert.equal(previewResult.live_command_available, true);
 assert.equal(previewResult.blockers.includes('ccp_check_incomplete'), false);
 const previewSource = fs.readFileSync(path.join(repoRoot, previewPath), 'utf8');
+assert.doesNotMatch(previewSource, /ENABLE_WRITES_FLAG/);
 assert.match(previewSource, /verification_required_fields: \['pH_result', 'pH_passed', 'calibration_checked', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'\]/);
 assert.match(previewSource, /verification_optional_fields: \['ccp_check_complete', 'verification_notes', 'staff_on_duty'\]/);
 
+const orderLevelPreview = preview.buildOrderLifecyclePreview({
+  customerOrder: null,
+  nativeOrder: null,
+  task: null,
+  batches: [{ ...operationalBatch, status: 'planned' }],
+  complianceLogs: [],
+  preStartComplianceRecords: { sanitationLogs: [], dailyChecklists: [], temperatureLogs: [] },
+  lookup: preview.getLookup({ batch_id: operationalBatch.batch_id, request_id: 'g89-order-level-preview' }),
+  auth: { actor_email: 'info@nuvirajuice.com' },
+  now: '2026-08-08T18:00:00.000Z',
+});
+assert.equal(orderLevelPreview.native_writer_enabled, true, 'The live order-level preview reports real-batch writer availability without an obsolete launch flag.');
+assert.equal(orderLevelPreview.safety.writes_performed, false);
+
 const queue = loadFunctions(queuePath, ['loadNativeProductionBatches', 'mergeHubAndNativeBatches']);
 const gateway = fs.readFileSync(gatewayPath, 'utf8');
-assert.match(gateway, /Bundle revision: g89-native-production-cutover-20260808/);
+assert.match(gateway, /Bundle revision: g89-native-production-cutover-preview-runtime-20260808/);
 let nativeBatchSort = null;
 const nativeRead = await queue.loadNativeProductionBatches({
   asServiceRole: {
@@ -225,7 +240,7 @@ assert.doesNotMatch(migration, /functions\.invoke|Notification\.create|CustomerM
 console.log(JSON.stringify({
   ok: true,
   suite: 'g89-customer-app-native-production-cutover',
-  checks: 26,
+  checks: 29,
   writes_performed: false,
   customer_notifications_sent: false,
   provider_calls_performed: false,

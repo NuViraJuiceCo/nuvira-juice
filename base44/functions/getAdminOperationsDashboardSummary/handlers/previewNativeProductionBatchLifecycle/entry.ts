@@ -1388,7 +1388,15 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     nextActionRows.length > 0 &&
     nextActionGates.length === nextActionRows.length &&
     nextActionGates.every(gate => gate.native_write_allowed === true);
-  const nativeWriterEnabled = Deno.env.get(ENABLE_WRITES_FLAG) === 'true' || Deno.env.get(ENABLE_TEST_WRITES_FLAG) === 'true';
+  const nativeWriterEnabled = rows.length > 0 && rows.every(row => liveGateStatus({
+    action: nextActionKey || 'start',
+    batch: {
+      id: row.production_batch_id,
+      batch_id: row.batch_id,
+      is_test_batch: isInternalTestBatch(row),
+    },
+    actorEmail: auth.actor_email,
+  }).native_writer_enabled === true);
 
   return {
     success: blockers.length === 0,
