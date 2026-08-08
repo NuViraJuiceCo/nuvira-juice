@@ -972,6 +972,7 @@ function nativeFirstMergeSection({ nativeRows, hubRows, nativeScheduleIndex, sec
     const hubDate = normalizeDate(hubRow?.delivery_date);
     const missingFields = routeDisplayMissingFields(nativeRow);
     const hubCompleted = section === 'completed' && isCompletedDeliveryStatus(hubRow?.delivery_status || hubRow?.task_status || hubRow?.fulfillment_status);
+    const nativeCompleted = section === 'completed' && isCompletedDeliveryStatus(nativeRow?.delivery_status || nativeRow?.task_status || nativeRow?.fulfillment_status);
     if (hubRow) matchedHubKeys.add(key);
 
     if (hubRow && nativeDate && hubDate && nativeDate !== hubDate) {
@@ -991,7 +992,7 @@ function nativeFirstMergeSection({ nativeRows, hubRows, nativeScheduleIndex, sec
       continue;
     }
 
-    if (hubRow && hubCompleted) {
+    if (hubRow && hubCompleted && !nativeCompleted) {
       const fallbackReason = 'hub_completed_state_preferred_for_native_duplicate';
       const context = nativeFallbackContext({
         nativeRow,

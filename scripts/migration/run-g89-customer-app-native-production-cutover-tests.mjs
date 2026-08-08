@@ -202,7 +202,7 @@ const queue = loadFunctions(queuePath, [
   'mergeHubAndNativeBatches',
 ]);
 const gateway = fs.readFileSync(gatewayPath, 'utf8');
-assert.match(gateway, /Bundle revision: g90-terminal-hub-fallback-suppression-20260808/);
+assert.match(gateway, /Bundle revision: g91-native-delivery-completion-authority-20260808/);
 let nativeBatchSort = null;
 const nativeRead = await queue.loadNativeProductionBatches({
   asServiceRole: {
