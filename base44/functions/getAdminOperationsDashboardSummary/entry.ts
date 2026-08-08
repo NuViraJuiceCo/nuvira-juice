@@ -1,4 +1,7 @@
 // @ts-nocheck
+// Bundle revision: g89-native-production-cutover-20260808.
+// Base44 deploy hashing does not track nested handler-only edits, so update this
+// marker whenever a gateway handler changes and must be repackaged.
 import handler0 from './handlers/appendAdminHubOrderNote/entry.ts';
 import handler1 from './handlers/bottleAdminProductionVerifyShopifyOrder/entry.ts';
 import handler2 from './handlers/completeAdminProductionBatch/entry.ts';
