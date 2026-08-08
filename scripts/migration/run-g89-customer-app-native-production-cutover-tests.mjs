@@ -193,10 +193,12 @@ const orderLevelPreview = preview.buildOrderLifecyclePreview({
 });
 assert.equal(orderLevelPreview.native_writer_enabled, true, 'The live order-level preview reports real-batch writer availability without an obsolete launch flag.');
 assert.equal(orderLevelPreview.safety.writes_performed, false);
+assert.equal(orderLevelPreview.hub_fallback_required, false, 'A native ProductionBatch does not require Hub fallback.');
+assert.equal(orderLevelPreview.warnings.includes('hub_fallback_required'), false, 'Native batch previews do not show a stale Hub fallback warning.');
 
 const queue = loadFunctions(queuePath, ['loadNativeProductionBatches', 'mergeHubAndNativeBatches']);
 const gateway = fs.readFileSync(gatewayPath, 'utf8');
-assert.match(gateway, /Bundle revision: g89-native-production-cutover-preview-runtime-20260808/);
+assert.match(gateway, /Bundle revision: g89-native-production-cutover-fallback-warning-20260808/);
 let nativeBatchSort = null;
 const nativeRead = await queue.loadNativeProductionBatches({
   asServiceRole: {

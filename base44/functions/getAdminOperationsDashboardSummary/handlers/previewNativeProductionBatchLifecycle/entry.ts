@@ -1301,7 +1301,7 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
   if (rows.some(row => normalizeLower(row.current_status) === 'completed_pending_verification')) warnings.push('production_completed_verify_preview_pending_compliance_qc_data');
   if (rows.some(row => row.lifecycle_warnings.includes('inventory_deduction_held'))) warnings.push('inventory_deduction_held');
   warnings.push('purchase_order_automation_held');
-  warnings.push('hub_fallback_required');
+  if (rows.length === 0) warnings.push('hub_fallback_required');
 
   const startPreview = summarizeAction(rows, 'start');
   const completePreview = summarizeAction(rows, 'complete');
