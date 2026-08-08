@@ -178,7 +178,26 @@ const previewSource = fs.readFileSync(path.join(repoRoot, previewPath), 'utf8');
 assert.match(previewSource, /verification_required_fields: \['pH_result', 'pH_passed', 'calibration_checked', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'\]/);
 assert.match(previewSource, /verification_optional_fields: \['ccp_check_complete', 'verification_notes', 'staff_on_duty'\]/);
 
-const queue = loadFunctions(queuePath, ['mergeHubAndNativeBatches']);
+const queue = loadFunctions(queuePath, ['loadNativeProductionBatches', 'mergeHubAndNativeBatches']);
+let nativeBatchSort = null;
+const nativeRead = await queue.loadNativeProductionBatches({
+  asServiceRole: {
+    entities: {
+      ProductionBatch: {
+        list: async (sort, limit) => {
+          nativeBatchSort = { sort, limit };
+          return [{
+            ...operationalBatch,
+            status: 'planned',
+          }];
+        },
+      },
+    },
+  },
+}, '2026-08-07', '2026-08-07', 20, 'exclude');
+assert.deepEqual(nativeBatchSort, { sort: '-production_date', limit: 500 }, 'The queue reads newest native batches first.');
+assert.equal(nativeRead.available, true);
+assert.equal(nativeRead.rows.length, 1, 'The current native batch remains visible after the bounded read.');
 const merged = queue.mergeHubAndNativeBatches(
   [{ id: 'hub_row', batch_id: operationalBatch.batch_id, product_name: 'Re-Nu', production_date: '2026-08-07', status: 'planned' }],
   [{ ...operationalBatch, source: 'customer_app_native' }],
@@ -203,7 +222,7 @@ assert.doesNotMatch(migration, /functions\.invoke|Notification\.create|CustomerM
 console.log(JSON.stringify({
   ok: true,
   suite: 'g89-customer-app-native-production-cutover',
-  checks: 22,
+  checks: 25,
   writes_performed: false,
   customer_notifications_sent: false,
   provider_calls_performed: false,

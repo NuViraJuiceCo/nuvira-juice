@@ -429,7 +429,9 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
     if (!entity || typeof entity.list !== 'function') {
       return { available: false, rows: [], error: 'production_batch_entity_unavailable' };
     }
-    const rows = await entity.list('production_date', 500);
+    // Daily operations must prefer the newest native records. Ascending order can
+    // hide current batches once the entity contains more than 500 rows.
+    const rows = await entity.list('-production_date', 500);
     if (!Array.isArray(rows)) {
       return { available: false, rows: [], error: 'production_batch_entity_malformed' };
     }
