@@ -7,7 +7,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
-const functionDir = path.join(repoRoot, 'base44/functions/getAdminDeliveryRouteSummary');
+const functionDir = path.join(
+  repoRoot,
+  'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminDeliveryRouteSummary',
+);
 const entryPath = path.join(functionDir, 'entry.ts');
 const helperPath = path.join(functionDir, 'deliveryLifecycleReadModel.js');
 const uiPath = path.join(repoRoot, 'src/pages/admin/DeliveryQueue.jsx');
@@ -125,6 +128,10 @@ function rowFor(result, number) {
 
 function loadEntryHandler({ env = {}, hubData = null } = {}) {
   let source = entrySource.replace(/^import .*$/gm, '');
+  source = source.replace(
+    'export default async function handler(req: Request)',
+    'globalThis.__handler = async function handler(req)',
+  );
   const context = vm.createContext({
     console,
     URL,

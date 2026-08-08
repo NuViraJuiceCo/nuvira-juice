@@ -175,15 +175,46 @@ function DeliveryLifecycleReadModelPanel({ model }) {
   );
 }
 
-function DeliveryLifecycleDiagnosticsDisclosure({ model }) {
+function DeliveryLifecycleDiagnosticsDisclosure({ model, reconciliation, suppressedRows = [] }) {
+  const staleDateDetected = reconciliation?.stale_hub_fallback_detected === true;
+
   return (
     <details className="rounded-xl border border-border/50 bg-card p-3">
       <summary className="cursor-pointer text-xs font-semibold text-foreground">
         Delivery diagnostics{' '}
         <span className="ml-2 text-[10px] font-medium text-muted-foreground">native/source reconciliation</span>
       </summary>
-      <div className="mt-3">
-        <DeliveryLifecycleReadModelPanel model={model} />
+      <div className="mt-3 space-y-3">
+        {model && <DeliveryLifecycleReadModelPanel model={model} />}
+
+        {suppressedRows.length > 0 && (
+          <div className={`rounded-lg border p-3 space-y-2 ${
+            staleDateDetected
+              ? 'border-amber-200 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/20'
+              : 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-950/20'
+          }`}>
+            <div className="flex items-start gap-2">
+              {staleDateDetected ? (
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+              ) : (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" />
+              )}
+              <div>
+                <p className="text-xs font-semibold text-foreground">Source reconciliation</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {suppressedRows.length} duplicate source {suppressedRows.length === 1 ? 'row was' : 'rows were'} excluded from route totals because the matching native schedule is authoritative.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1">
+              {suppressedRows.slice(0, 5).map(row => (
+                <p key={`${row.order_number}-${row.hub_delivery_date}-${row.native_delivery_date}`} className="text-[10px] text-muted-foreground">
+                  {row.order_number}: source {row.hub_delivery_date || 'date pending'} → native {row.native_delivery_date || 'date pending'} · {deliveryLifecycleClassificationLabel(row.merge_status)}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </details>
   );
@@ -2498,42 +2529,12 @@ export default function DeliveryQueue() {
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>
 
-        {deliveryLifecycleReadModel && (
-          <DeliveryLifecycleDiagnosticsDisclosure model={deliveryLifecycleReadModel} />
-        )}
-
-        {suppressedHubRows.length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2 dark:border-amber-900/60 dark:bg-amber-950/30">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0 dark:text-amber-300" />
-              <div>
-                <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">Source fallback stale-date context</p>
-                <p className="text-[10px] text-amber-900 dark:text-amber-200/80">
-                  Native corrected schedule rows are preferred. Stale or duplicate source fallback rows are not shown as separate active delivery stops for this date, but remain visible here for audit context.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200 dark:border-amber-800/70 dark:bg-background/70 dark:text-amber-100">
-                {deliveryLifecycleClassificationLabel(hubFallbackReconciliation.merge_status)}
-              </span>
-              <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200 dark:border-amber-800/70 dark:bg-background/70 dark:text-amber-100">
-                Suppressed source rows: {suppressedHubRows.length}
-              </span>
-              {hubFallbackReconciliation.stale_hub_fallback_detected && (
-                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/70 text-amber-900 border border-amber-200 dark:border-amber-800/70 dark:bg-background/70 dark:text-amber-100">
-                  Source fallback stale date detected
-                </span>
-              )}
-            </div>
-            <div className="space-y-1">
-              {suppressedHubRows.slice(0, 5).map(row => (
-                <p key={`${row.order_number}-${row.hub_delivery_date}-${row.native_delivery_date}`} className="text-[10px] text-amber-900 dark:text-amber-200/80">
-                  {row.order_number}: source {row.hub_delivery_date || 'date pending'} → native {row.native_delivery_date || 'date pending'} · {deliveryLifecycleClassificationLabel(row.merge_status)}
-                </p>
-              ))}
-            </div>
-          </div>
+        {(deliveryLifecycleReadModel || suppressedHubRows.length > 0) && (
+          <DeliveryLifecycleDiagnosticsDisclosure
+            model={deliveryLifecycleReadModel}
+            reconciliation={hubFallbackReconciliation}
+            suppressedRows={suppressedHubRows}
+          />
         )}
 
         {suppressedNativeRows.length > 0 && (

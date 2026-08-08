@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const commandPath = 'base44/functions/executeNativeFulfillmentTaskLifecycle/entry.ts';
-const previewPath = 'base44/functions/previewNativeFulfillmentTaskLifecycle/entry.ts';
+const commandPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/executeNativeFulfillmentTaskLifecycle/entry.ts';
+const previewPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeFulfillmentTaskLifecycle/entry.ts';
 const deliveryPagePath = 'src/pages/admin/DeliveryQueue.jsx';
 const commandSource = fs.readFileSync(commandPath, 'utf8');
 const previewSource = fs.readFileSync(previewPath, 'utf8');

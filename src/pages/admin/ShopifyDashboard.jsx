@@ -107,6 +107,9 @@ const PROD_STATUS_COLORS = {
   in_cold_storage: 'bg-cyan-100 text-cyan-700',
   assigned_for_pickup: 'bg-violet-100 text-violet-700',
   assigned_for_delivery: 'bg-sky-100 text-sky-700',
+  scheduled_for_juicing: 'bg-indigo-100 text-indigo-700',
+  ready_for_pickup: 'bg-teal-100 text-teal-700',
+  out_for_delivery: 'bg-sky-100 text-sky-700',
   fulfilled: 'bg-green-100 text-green-700',
   canceled: 'bg-red-100 text-red-700',
   refunded: 'bg-rose-100 text-rose-700',
@@ -146,10 +149,10 @@ function ShopifyOrdersTab() {
   const { data: shopifyOps = {}, isLoading } = useShopifyOpsSummary({ refetchInterval: 30000 });
   const orders = shopifyOps.orders || [];
 
-  const ACTIVE_STATUSES = ['new', 'awaiting_production', 'in_production', 'bottled', 'labeled', 'qc_checked', 'packed', 'in_cold_storage', 'assigned_for_pickup', 'assigned_for_delivery'];
+  const TERMINAL_STATUSES = ['fulfilled', 'canceled', 'refunded'];
 
   const filtered = orders.filter(o => {
-    const matchStatus = filterStatus === 'active' ? ACTIVE_STATUSES.includes(o.production_status) :
+    const matchStatus = filterStatus === 'active' ? !TERMINAL_STATUSES.includes(o.production_status) :
       filterStatus === 'fulfilled' ? o.production_status === 'fulfilled' :
       filterStatus === 'canceled' ? ['canceled', 'refunded'].includes(o.production_status) : true;
     const matchChannel = filterChannel === 'all' || o.source_channel === filterChannel;

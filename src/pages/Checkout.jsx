@@ -13,7 +13,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
-import { base44 } from '@/api/base44Client';
+import { base44, invokeCustomerGateway } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import DeliveryDatePicker from '@/components/checkout/DeliveryDatePicker';
 import { format } from 'date-fns';
@@ -140,6 +140,7 @@ function CheckoutFlow() {
   const [isApplyingDiscountCode, setIsApplyingDiscountCode] = useState(false);
   const [addressValidated, setAddressValidated] = useState(false);
   const [validatingAddress, setValidatingAddress] = useState(false);
+  const [addressValidationError, setAddressValidationError] = useState('');
   const [deliveryZone, setDeliveryZone] = useState(null);
   // Full eligibility result from validateDeliveryEligibility
   const [zoneEligibility, setZoneEligibility] = useState(null);
@@ -223,19 +224,21 @@ function CheckoutFlow() {
       setAddressValidated(false);
       setZoneEligibility(null);
       setDeliveryZone(null);
+      setAddressValidationError('');
       setHasShownOutOfAreaModal(false);
       setValidatingAddress(false);
       return;
     }
 
     setValidatingAddress(true);
+    setAddressValidationError('');
     // Clear previous result while re-validating
     setZoneEligibility(null);
     setAddressValidated(false);
 
     addressDebounceRef.current = setTimeout(async () => {
       try {
-        const res = await base44.functions.invoke('validateDeliveryEligibility', {
+        const res = await invokeCustomerGateway('validateDeliveryEligibility', {
           delivery_address: addrString,
           address_line1: address.street || '',
           address_city: address.city || '',
@@ -244,8 +247,11 @@ function CheckoutFlow() {
           cart_subtotal: subtotal || 0,
           order_type: 'one_time',
         });
-        const eligibility = res.data;
+        const eligibility = res?.data || res;
         if (addressValidationRequestRef.current !== validationRequestId) return;
+        if (!eligibility || typeof eligibility.checkout_allowed !== 'boolean') {
+          throw new Error('invalid_delivery_eligibility_response');
+        }
         setZoneEligibility(eligibility);
 
         // Zone 1 & Zone 2 (minimum met) → valid for checkout
@@ -266,6 +272,7 @@ function CheckoutFlow() {
         setAddressValidated(false);
         setZoneEligibility(null);
         setDeliveryZone(null);
+        setAddressValidationError('We could not verify this delivery address. Re-enter it and select a Google-verified suggestion.');
       } finally {
         if (addressValidationRequestRef.current === validationRequestId) {
           setValidatingAddress(false);
@@ -1037,6 +1044,9 @@ function CheckoutFlow() {
             />
             {validatingAddress && (
               <p className="text-xs text-muted-foreground mt-1.5">Checking delivery area...</p>
+            )}
+            {!validatingAddress && addressValidationError && (
+              <p className="text-xs text-destructive font-medium mt-1.5" role="alert">{addressValidationError}</p>
             )}
             {!validatingAddress && zoneEligibility && (() => {
               const e = zoneEligibility;

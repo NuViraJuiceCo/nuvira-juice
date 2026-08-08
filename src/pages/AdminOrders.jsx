@@ -180,6 +180,14 @@ function normalizeOrderStage(status) {
   return status;
 }
 
+function effectiveOrderStage(order = {}) {
+  return normalizeOrderStage(
+    order.effective_order_status ||
+    order.effective_delivery_status ||
+    order.status
+  );
+}
+
 function formatDateOnly(value) {
   if (!value) return null;
   try {
@@ -376,7 +384,7 @@ function SectionLabel({ title, description, badge }) {
 
 function statusSummary(order) {
   const nativeReviewStatus = (order.native_review_status || '').toString().toLowerCase();
-  const deliveredLike = ['delivered', 'picked_up'].includes(normalizeOrderStage(order.status)) ||
+  const deliveredLike = ['delivered', 'picked_up'].includes(effectiveOrderStage(order)) ||
     ['delivered', 'picked_up', 'fulfilled', 'completed'].includes(normalizedLower(order.hub_operational_status)) ||
     ['delivered', 'fulfilled', 'completed', 'picked_up'].includes(normalizedLower(order.hub_fulfillment_status)) ||
     Boolean(order.delivered_at);
@@ -995,7 +1003,8 @@ function InternalHubNoteComposer({ order }) {
 function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocused }) {
   const [expanded, setExpanded] = useState(forceExpanded);
   const stages = order.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
-  const currentIndex = Math.max(0, stages.findIndex(s => s.key === normalizeOrderStage(order.status)));
+  const effectiveStatus = effectiveOrderStage(order);
+  const currentIndex = Math.max(0, stages.findIndex(s => s.key === effectiveStatus));
   const partialFulfillment = normalizedLower(order.effective_fulfillment_status || order.effective_delivery_status) === 'partially_fulfilled';
   const taskStatusCounts = order.native_fulfillment_task_summary?.status_counts || {};
   const completedTaskCount = Object.entries(taskStatusCounts).reduce((total, [status, count]) => (
@@ -1014,7 +1023,7 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
     : null;
   const customerAppStatusLabel = partialFulfillment
     ? 'Partially Fulfilled'
-    : stages.find(s => s.key === order.status)?.label || formatStatusLabel(order.status);
+    : stages.find(s => s.key === effectiveStatus)?.label || formatStatusLabel(effectiveStatus);
 
   useEffect(() => {
     if (forceExpanded) setExpanded(true);
@@ -1034,7 +1043,7 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
           {/* Row 1: order # + status badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-bold">#{order.order_number}</p>
-            <AdminStatusPill value={partialFulfillment ? 'partially_fulfilled' : order.status} label={customerAppStatusLabel} tone={null} />
+            <AdminStatusPill value={partialFulfillment ? 'partially_fulfilled' : effectiveStatus} label={customerAppStatusLabel} tone={null} />
             <AdminStatusPill value={order.fulfillment_type} label={order.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'} context="source" tone={null} />
             <ContextBadges badges={order.admin_context_badges || [
               order.has_customer_app_order ? 'Customer App Order' : null,
@@ -1299,7 +1308,7 @@ export default function AdminOrders() {
     !o.do_not_recover &&
     o.payment_status !== 'refunded' &&
     o.financial_status !== 'refunded' &&
-    o.status !== 'cancelled'
+    effectiveOrderStage(o) !== 'cancelled'
   );
 
   const orderSourceDiagnosticErrors = adminOrderSourceDiagnosticErrors({
@@ -1310,9 +1319,9 @@ export default function AdminOrders() {
   const showOrderSourceDiagnostics = orderSourceDiagnosticErrors.length > 0;
 
   const statusFiltered = filter === 'active'
-    ? operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status))
+    ? operationalOrders.filter(o => ACTIVE_STATUSES.includes(effectiveOrderStage(o)))
     : filter === 'completed'
-    ? operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status))
+    ? operationalOrders.filter(o => ['delivered', 'picked_up'].includes(effectiveOrderStage(o)))
     : pendingOrders; // 'pending' tab
 
   const filtered = search
@@ -1355,7 +1364,7 @@ export default function AdminOrders() {
     if (match) {
       const nextFilter = isAbandonedOrUnpaid(match)
         ? 'pending'
-        : ['delivered', 'picked_up'].includes(match.status)
+        : ['delivered', 'picked_up'].includes(effectiveOrderStage(match))
           ? 'completed'
           : 'active';
       setFilter(current => current === nextFilter ? current : nextFilter);
@@ -1417,8 +1426,8 @@ export default function AdminOrders() {
       {/* Filter Tabs */}
       <div className="flex gap-2 px-4 mb-4 overflow-x-auto pb-1">
         {[
-          { key: 'active', label: `Active (${operationalOrders.filter(o => ACTIVE_STATUSES.includes(o.status)).length})` },
-          { key: 'completed', label: `Completed (${operationalOrders.filter(o => ['delivered', 'picked_up'].includes(o.status)).length})` },
+          { key: 'active', label: `Active (${operationalOrders.filter(o => ACTIVE_STATUSES.includes(effectiveOrderStage(o))).length})` },
+          { key: 'completed', label: `Completed (${operationalOrders.filter(o => ['delivered', 'picked_up'].includes(effectiveOrderStage(o))).length})` },
           { key: 'pending', label: `Pending (${pendingOrders.length})` },
         ].map(tab => (
           <button

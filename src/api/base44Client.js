@@ -108,19 +108,40 @@ export const base44 = createClient({
 });
 
 const invokeFunction = base44.functions.invoke.bind(base44.functions);
+const invokeGateway = async (gateway, action, payload = {}, options = {}) => {
+  const response = await base44.functions.fetch(gateway, {
+    ...options,
+    method: 'POST',
+    headers: {
+      ...(options?.headers || {}),
+      'Content-Type': 'application/json',
+      'X-App-Id': appParams.appId,
+    },
+    body: JSON.stringify({ gateway_action: action, payload }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(data?.error || 'The requested operation could not be completed.');
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+  return { data, status: response.status };
+};
+
+export const invokeAdminGateway = (action, payload = {}, options) =>
+  invokeGateway(ADMIN_GATEWAY, action, payload, options);
+
+export const invokeCustomerGateway = (action, payload = {}, options) =>
+  invokeGateway(CUSTOMER_GATEWAY, action, payload, options);
+
 base44.functions.invoke = (name, data = {}, options) => {
   if (ADMIN_GATEWAY_ACTIONS.has(name) && name !== ADMIN_GATEWAY) {
-    return invokeFunction(ADMIN_GATEWAY, {
-      gateway_action: name,
-      payload: data,
-    }, options);
+    return invokeAdminGateway(name, data, options);
   }
 
   if (CUSTOMER_GATEWAY_ACTIONS.has(name) && name !== CUSTOMER_GATEWAY) {
-    return invokeFunction(CUSTOMER_GATEWAY, {
-      gateway_action: name,
-      payload: data,
-    }, options);
+    return invokeCustomerGateway(name, data, options);
   }
 
   return invokeFunction(name, data, options);
