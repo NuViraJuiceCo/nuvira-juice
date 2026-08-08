@@ -10,7 +10,15 @@ function data(response) { return response?.data || response || {}; }
 function assert(condition, message) { if (!condition) throw new Error(message); }
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 async function invoke(name, payload) {
-  try { return { ok: true, data: data(await base44.functions.invoke(name, payload)) }; }
+  try {
+    return {
+      ok: true,
+      data: data(await base44.functions.invoke('getAdminOperationsDashboardSummary', {
+        gateway_action: name,
+        payload,
+      })),
+    };
+  }
   catch (error) { return { ok: false, status: error?.status || error?.response?.status || null, data: error?.response?.data || null, message: String(error?.message || error).slice(0, 240) }; }
 }
 function chicagoDate() {
@@ -114,7 +122,7 @@ try {
 
   const startPayload = {
     mode: 'live', confirmation: PRODUCTION_CONFIRMATION, production_batch_id: batch.id, batch_id: BATCH_ID,
-    action: 'start', request_id: 'g81-connected-start-20260807-v1', reason: 'G81 connected production start',
+    action: 'start', request_id: 'g81-connected-start-20260807-r3', reason: 'G81 connected production start',
     update_customer_order_status: true, notify_customer: true, allow_internal_test_customer_side_effects: true,
   };
   const start = await invoke('executeNativeProductionBatchLifecycle', startPayload);
@@ -131,14 +139,14 @@ try {
 
   const complete = await invoke('executeNativeProductionBatchLifecycle', {
     mode: 'live', confirmation: PRODUCTION_CONFIRMATION, production_batch_id: batch.id, batch_id: BATCH_ID,
-    action: 'complete', request_id: 'g81-connected-complete-20260807-v1', reason: 'G81 connected production complete',
+    action: 'complete', request_id: 'g81-connected-complete-20260807-r3', reason: 'G81 connected production complete',
     actual_units: 1, bottles_produced: 1, bottles_rejected_or_wasted: 0, final_usable_quantity: 1,
     storage_location: 'Internal Test Hold', use_by_date: today,
   });
   assert(complete.ok && complete.data?.status === 'completed_pending_verification', 'connected complete failed');
   const verify = await invoke('executeNativeProductionBatchLifecycle', {
     mode: 'live', confirmation: PRODUCTION_CONFIRMATION, production_batch_id: batch.id, batch_id: BATCH_ID,
-    action: 'verify', request_id: 'g81-connected-verify-20260807-v1', reason: 'G81 connected production verify',
+    action: 'verify', request_id: 'g81-connected-verify-20260807-r3', reason: 'G81 connected production verify',
     pH_result: 4.1, pH_passed_failed: 'passed', passed_failed: 'passed', calibration_checked: true,
     ccp_check_complete: true, sanitation_verification_complete: true, labels_applied: true,
     staff_on_duty: [STAFF], verification_notes: 'G81 connected verification; meter ID intentionally omitted',
@@ -168,15 +176,15 @@ try {
       action, request_id: requestId, reason: `G81 connected ${action}`, ...extras,
     });
   }
-  const assign = await fulfillment('assign', 'g81-connected-assign-20260807-v1', { assigned_driver: 'NuVira Internal QA Driver' });
+  const assign = await fulfillment('assign', 'g81-connected-assign-20260807-r3', { assigned_driver: 'NuVira Internal QA Driver' });
   assert(assign.ok && assign.data?.status === 'assigned', 'assign failed');
-  const pack = await fulfillment('pack', 'g81-connected-pack-20260807-v1');
+  const pack = await fulfillment('pack', 'g81-connected-pack-20260807-r3');
   assert(pack.ok && pack.data?.status === 'packed', 'pack failed');
 
-  const forbidden = await fulfillment('out_for_delivery', 'g81-connected-ood-forbidden-20260807-v1', { update_customer_order_status: true, notify_customer: true });
+  const forbidden = await fulfillment('out_for_delivery', 'g81-connected-ood-forbidden-20260807-r3', { update_customer_order_status: true, notify_customer: true });
   assert(!forbidden.ok && forbidden.data?.error_code === 'test_task_customer_side_effects_forbidden', 'test customer side-effect gate did not reject');
 
-  const ood = await fulfillment('out_for_delivery', 'g81-connected-ood-20260807-v1', {
+  const ood = await fulfillment('out_for_delivery', 'g81-connected-ood-20260807-r3', {
     update_customer_order_status: true, notify_customer: true, allow_internal_test_customer_side_effects: true,
   });
   assert(ood.ok && ood.data?.status === 'out_for_delivery' && ood.data?.customer_order_updated === true, `out for delivery failed: ${JSON.stringify(ood)}`);
@@ -185,7 +193,7 @@ try {
   assert(oodLogs.length >= 1, 'out_for_delivery communication was not logged');
   evidence.communications.out_for_delivery = summarizeLogs(oodLogs);
 
-  const delivered = await fulfillment('delivered_operational', 'g81-connected-delivered-20260807-v1', {
+  const delivered = await fulfillment('delivered_operational', 'g81-connected-delivered-20260807-r3', {
     update_customer_order_status: true, notify_customer: true, allow_internal_test_customer_side_effects: true,
     delivery_drop_location: 'Internal Test Completion', delivery_notes: 'G81 internal delivery proof test',
   });

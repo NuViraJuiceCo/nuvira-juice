@@ -26,6 +26,11 @@ const tests = [
     assert.match(handler, /queued: true,[\s\S]*reason: 'order_status_entity_automation_triggered'/);
     assert.match(ui, /notification\.queued\) pieces\.push\('customer notification queued'\)/);
   }],
+  ['immediate lifecycle replays fall back to persisted task audit evidence', () => {
+    assert.match(handler, /function lifecycleAuditReplayApplied\(task, action, requestId\)/);
+    assert.match(handler, /!existingLog && lifecycleAuditReplayApplied\(task, action, requestId\)/);
+    assert.match(handler, /reason: 'lifecycle_audit_trail_present'/);
+  }],
 ];
 
 let passed = 0;

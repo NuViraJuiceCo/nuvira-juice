@@ -392,6 +392,16 @@ function auditTrailAppend({ action, actorEmail, requestId, now, reason }) {
   };
 }
 
+function lifecycleAuditReplayApplied(batch, action, requestId) {
+  const normalizedRequestId = sanitizeId(requestId);
+  const expectedAction = `production_batch_${normalizeLower(action)}`;
+  if (!normalizedRequestId || !expectedAction) return false;
+  return (Array.isArray(batch?.audit_trail) ? batch.audit_trail : []).some((entry) => (
+    sanitizeId(entry?.request_id) === normalizedRequestId &&
+    normalizeLower(entry?.action) === expectedAction
+  ));
+}
+
 function normalizePassFail(value) {
   const text = normalizeLower(value);
   return ['passed', 'failed'].includes(text) ? text : '';
@@ -993,6 +1003,19 @@ export default async function handler(req: Request) {
         native_writer_enabled: true,
         writes_performed: false,
       }, { status: 409 });
+    }
+    if (!existingLog && lifecycleAuditReplayApplied(batch, action, requestId)) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        idempotent: true,
+        action,
+        request_id: requestId,
+        idempotency_key: idempotencyKey,
+        native_writer_enabled: true,
+        writes_performed: false,
+        reason: 'lifecycle_audit_trail_present',
+      });
     }
 
     const now = new Date().toISOString();

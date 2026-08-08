@@ -39,8 +39,10 @@ const harnesses = [
   'scripts/migration/run-g75-live-function-routing-integrity-tests.mjs',
   'scripts/migration/run-g76-order-session-error-boundary-tests.mjs',
   'scripts/migration/run-g76-product-cart-accessibility-tests.mjs',
+  'scripts/migration/run-g83-fulfillment-operational-gate-tests.mjs',
   'scripts/migration/run-g85-react-router-security-tests.mjs',
   'scripts/migration/run-g86-subscription-gateway-readiness-tests.mjs',
+  'scripts/migration/run-g87-production-immediate-idempotency-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

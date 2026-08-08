@@ -7,7 +7,15 @@ function data(response) { return response?.data || response || {}; }
 function assert(condition, message) { if (!condition) throw new Error(message); }
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 async function invoke(payload) {
-  try { return { ok: true, data: data(await base44.functions.invoke('executeNativeFulfillmentTaskLifecycle', payload)) }; }
+  try {
+    return {
+      ok: true,
+      data: data(await base44.functions.invoke('getAdminOperationsDashboardSummary', {
+        gateway_action: 'executeNativeFulfillmentTaskLifecycle',
+        payload,
+      })),
+    };
+  }
   catch (error) { return { ok: false, status: error?.status || error?.response?.status || null, data: error?.response?.data || null, message: String(error?.message || error).slice(0, 240) }; }
 }
 async function action(name, requestId, extra = {}) {

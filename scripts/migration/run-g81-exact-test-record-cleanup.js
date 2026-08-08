@@ -41,6 +41,9 @@ assert(tasks.length <= 1, 'test task lookup is ambiguous');
 await deleteRows('FulfillmentTask', tasks, record => record.is_test_task === true, summary);
 
 if (testOrder) {
+  const deliveryLogs = await find('CustomerMessageDeliveryLog', { order_id: testOrder.id }, 100);
+  await deleteRows('CustomerMessageDeliveryLog', deliveryLogs, record => record.order_id === testOrder.id, summary);
+
   const notifications = await find('Notification', { order_id: testOrder.id }, 100);
   await deleteRows('Notification', notifications, record => record.order_id === testOrder.id, summary);
 }

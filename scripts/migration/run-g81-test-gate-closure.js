@@ -7,7 +7,13 @@ function responseData(response) {
 
 async function invoke(name, payload) {
   try {
-    return { ok: true, data: responseData(await base44.functions.invoke(name, payload)) };
+    return {
+      ok: true,
+      data: responseData(await base44.functions.invoke('getAdminOperationsDashboardSummary', {
+        gateway_action: name,
+        payload,
+      })),
+    };
   } catch (error) {
     return {
       ok: false,
