@@ -466,7 +466,44 @@ const results = [];
   assert.equal(row.fulfillment_status, 'delivered');
   assert.equal(row.proof_available, true);
   assert.equal(row.delivery_notes, 'Left in insulated bag at front door');
-  results.push('completed_route_context_overrides_stale_pending_fulfillment_status');
+  assert.equal(row.data_source, 'customer_app_native_task');
+  assert.equal(row.native_primary, true);
+  assert.equal(row.hub_fallback_used, false);
+  assert.equal(payload.hub_fallback_row_count, 0);
+  results.push('native_completed_route_remains_authoritative');
+}
+
+{
+  const { payload } = await invoke({
+    orders: [nativeOrder({ shopify_order_number: 'NV-HUB-COMPLETION', id: 'shopify_NV-HUB-COMPLETION', fulfillment_status: 'pending' })],
+    tasks: [nativeTask({
+      order_number: 'NV-HUB-COMPLETION',
+      order_id: 'shopify_NV-HUB-COMPLETION',
+      status: 'pending',
+      delivery_status: 'pending',
+    })],
+    hubData: emptyHubData({
+      sections: {
+        delivery_stops: [],
+        completed: [hubStop({
+          order_number: 'NV-HUB-COMPLETION',
+          task_status: 'Completed',
+          delivery_status: 'delivered',
+          fulfillment_status: 'delivered',
+          delivery_photo_url: 'https://example.test/proof.jpg',
+          delivery_drop_location: 'Front Door',
+        })],
+      },
+    }),
+  });
+  const row = payload.sections.completed.find(stop => stop.order_number === 'NV-HUB-COMPLETION');
+  assert.ok(row);
+  assert.equal(row.delivery_status, 'delivered');
+  assert.equal(row.data_source, 'native_with_hub_completed_context');
+  assert.equal(row.native_primary, true);
+  assert.equal(row.hub_fallback_used, true);
+  assert.equal(row.fallback_reason, 'hub_completed_state_preferred_for_native_duplicate');
+  results.push('hub_completed_context_retained_for_nonterminal_native_task');
 }
 
 {
