@@ -18,6 +18,7 @@
     "ci:diagnostic-baseline": "node scripts/ci/verify-diagnostic-baseline.mjs",
     "ci:secret-scan": "node scripts/ci/scan-tracked-secrets.mjs",
     "release:verify-bundle-parity": "node scripts/release/verify-web-native-bundle-parity.mjs",
+    "release:verify-deployment-provenance": "node scripts/release/verify-deployment-provenance.mjs",
     "release:verify-open-critical-prs": "node scripts/release/verify-open-critical-prs.mjs",
     "release:verify-source": "node scripts/release/verify-native-release-source.mjs",
     "release:generate-manifest": "node scripts/release/generate-native-release-manifest.mjs",

@@ -55,6 +55,27 @@ function makeParityFixture({ assetSize = 64, budget = null, mismatch = false } =
   write('config/release/bundle-size-budget.json', JSON.stringify(budget || { max_initial_js_raw_bytes: 100000, max_initial_js_gzip_bytes: 100000, max_initial_js_brotli_bytes: 100000, max_initial_css_raw_bytes: 100000, max_initial_css_gzip_bytes: 100000, max_initial_css_brotli_bytes: 100000, max_single_js_chunk_raw_bytes: 100000, max_single_css_chunk_raw_bytes: 100000 }, null, 2), dir);
   return dir;
 }
+function makeProvenanceFixture() {
+  const dir = tempDir('g50c-provenance');
+  makePackage(dir);
+  write('dist/index.html', '<script type="module" src="/assets/index-approved.js"></script>', dir);
+  write('dist/assets/index-approved.js', 'console.log("approved")\n', dir);
+  write('capacitor.config.json', JSON.stringify({
+    appId: 'com.example.app',
+    appName: 'Example',
+    webDir: 'dist',
+    plugins: {
+      LiveUpdates: {
+        appId: 'appflow-example',
+        channel: 'Production',
+        autoUpdateMethod: 'none',
+      },
+    },
+  }, null, 2), dir);
+  initGit(dir);
+  const head = commitAll(dir, 'approved release');
+  return { dir, head, observedAt: new Date().toISOString() };
+}
 function makeManifestRepo({ staleEvidence = false, missingEvidence = false, mergeWithoutPr = false } = {}) {
   const dir = tempDir('g50c-manifest');
   makePackage(dir);
@@ -95,6 +116,7 @@ const criticalPrScript = abs('scripts/release/verify-open-critical-prs.mjs');
 const manifestScript = abs('scripts/release/generate-native-release-manifest.mjs');
 const sourceScript = abs('scripts/release/verify-native-release-source.mjs');
 const parityScript = abs('scripts/release/verify-web-native-bundle-parity.mjs');
+const provenanceScript = abs('scripts/release/verify-deployment-provenance.mjs');
 
 // 1-8 secret scanner coverage.
 test('1. secret scanner does not self-match', () => {
@@ -260,8 +282,84 @@ test('20. clean exact-main release evidence passes and no runtime writes/provide
   const manifest = makeManifestRepo();
   const manifestResult = run(process.execPath, [manifestScript, '--evidence-dir', 'release-evidence'], { cwd: manifest.dir, env: { G50C_XCODE_BUILD_SETTINGS_FIXTURE: path.join(manifest.dir, 'xcode-settings.json') } });
   assert(manifestResult.status === 0 && manifestResult.stdout.includes('validated_evidence'), `clean manifest did not pass: ${manifestResult.stderr}`);
-  const combined = ['scripts/ci/run-critical-regressions.mjs','scripts/ci/verify-diagnostic-baseline.mjs','scripts/ci/scan-tracked-secrets.mjs','scripts/release/verify-web-native-bundle-parity.mjs','scripts/release/verify-open-critical-prs.mjs','scripts/release/verify-native-release-source.mjs','scripts/release/generate-native-release-manifest.mjs'].map(read).join('\n');
+  const combined = ['scripts/ci/run-critical-regressions.mjs','scripts/ci/verify-diagnostic-baseline.mjs','scripts/ci/scan-tracked-secrets.mjs','scripts/release/verify-web-native-bundle-parity.mjs','scripts/release/verify-deployment-provenance.mjs','scripts/release/verify-open-critical-prs.mjs','scripts/release/verify-native-release-source.mjs','scripts/release/generate-native-release-manifest.mjs'].map(read).join('\n');
   assert(!/entities\.[A-Za-z]+\.(create|update|delete|upsert)|stripe\.|shopify\.|sendNotification|Hub\.(create|update|delete)/.test(combined), 'release scripts contain runtime/provider mutation calls');
+});
+
+// 21-25 deployment provenance and manifest enforcement.
+test('21. matching Base44 and active Appflow commits pass deployment provenance', () => {
+  const fixture = makeProvenanceFixture();
+  const result = run(process.execPath, [
+    provenanceScript,
+    '--approved-commit', fixture.head,
+    '--base44-deployment-id', 'deployment-123',
+    '--base44-commit', fixture.head,
+    '--base44-entry-asset', 'index-approved.js',
+    '--base44-observed-at', fixture.observedAt,
+    '--appflow-build-id', '987654',
+    '--appflow-commit', fixture.head,
+    '--appflow-status', 'active',
+    '--appflow-observed-at', fixture.observedAt,
+  ], { cwd: fixture.dir });
+  assert(result.status === 0 && result.stdout.includes('one_approved_commit'), `matching provenance did not pass: ${result.stderr}`);
+});
+test('22. stale Appflow commit blocks deployment provenance', () => {
+  const fixture = makeProvenanceFixture();
+  const staleCommit = '0'.repeat(40);
+  const result = run(process.execPath, [
+    provenanceScript,
+    '--approved-commit', fixture.head,
+    '--base44-deployment-id', 'deployment-123',
+    '--base44-commit', fixture.head,
+    '--base44-entry-asset', 'index-approved.js',
+    '--base44-observed-at', fixture.observedAt,
+    '--appflow-build-id', '987654',
+    '--appflow-commit', staleCommit,
+    '--appflow-status', 'active',
+    '--appflow-observed-at', fixture.observedAt,
+  ], { cwd: fixture.dir });
+  assert(result.status !== 0 && result.stderr.includes('Appflow Production commit does not match'), 'stale Appflow commit did not fail');
+});
+test('23. stale Base44 commit blocks deployment provenance', () => {
+  const fixture = makeProvenanceFixture();
+  const result = run(process.execPath, [
+    provenanceScript,
+    '--approved-commit', fixture.head,
+    '--base44-deployment-id', 'deployment-123',
+    '--base44-commit', '0'.repeat(40),
+    '--base44-entry-asset', 'index-approved.js',
+    '--base44-observed-at', fixture.observedAt,
+    '--appflow-build-id', '987654',
+    '--appflow-commit', fixture.head,
+    '--appflow-status', 'active',
+    '--appflow-observed-at', fixture.observedAt,
+  ], { cwd: fixture.dir });
+  assert(result.status !== 0 && result.stderr.includes('Base44 deployment commit does not match'), 'stale Base44 commit did not fail');
+});
+test('24. stale channel observation blocks deployment provenance', () => {
+  const fixture = makeProvenanceFixture();
+  const staleObservedAt = '2020-01-01T00:00:00.000Z';
+  const result = run(process.execPath, [
+    provenanceScript,
+    '--approved-commit', fixture.head,
+    '--base44-deployment-id', 'deployment-123',
+    '--base44-commit', fixture.head,
+    '--base44-entry-asset', 'index-approved.js',
+    '--base44-observed-at', staleObservedAt,
+    '--appflow-build-id', '987654',
+    '--appflow-commit', fixture.head,
+    '--appflow-status', 'active',
+    '--appflow-observed-at', fixture.observedAt,
+  ], { cwd: fixture.dir });
+  assert(result.status !== 0 && result.stderr.includes('is stale'), 'stale channel observation did not fail');
+});
+test('25. release manifest can require deployment provenance evidence', () => {
+  const fixture = makeManifestRepo();
+  const result = run(process.execPath, [manifestScript, '--require-deployment-provenance', '--evidence-dir', 'release-evidence'], {
+    cwd: fixture.dir,
+    env: { G50C_XCODE_BUILD_SETTINGS_FIXTURE: path.join(fixture.dir, 'xcode-settings.json') },
+  });
+  assert(result.status !== 0 && result.stderr.includes('deployment-provenance.json'), 'required deployment provenance was not enforced');
 });
 
 for (const { name, fn } of tests) {
@@ -286,6 +384,7 @@ for (const file of [
   'scripts/release/verify-native-release-source.mjs',
   'scripts/release/verify-open-critical-prs.mjs',
   'scripts/release/verify-web-native-bundle-parity.mjs',
+  'scripts/release/verify-deployment-provenance.mjs',
   'scripts/release/generate-native-release-manifest.mjs',
   'scripts/release/write-gate-evidence.mjs'
 ]) assert(fs.existsSync(abs(file)), `Expected G50C file missing: ${file}`);

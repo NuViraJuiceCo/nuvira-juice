@@ -13,6 +13,7 @@ Exact source branch/commit:
 Affected platforms:
 - [ ] Web
 - [ ] iOS native
+- [ ] Android native
 - [ ] Backend/Base44 functions
 
 Web/native divergence:
@@ -29,11 +30,21 @@ Real-device test required:
 - [ ] No
 - [ ] Yes, plan below
 
+Deployment provenance required:
+- [ ] No, this cannot change a deployed Web/native channel
+- [ ] Yes; Base44, Appflow Production, and native/store builds will use one approved commit
+
+Function retirement or replacement:
+- [ ] None
+- [ ] Call sites, dynamic invocations, automations, schedules, webhooks, lifecycle dependencies, replacement, observation window, and rollback are documented below
+
 Open critical PR review:
 - [ ] No open release-critical PRs affected
 - [ ] Open release-critical PRs acknowledged/excluded with reasons
 
 Rollback plan:
+
+Required production verification and owner:
 
 No-write/no-payment statement when applicable:
 - [ ] No live records mutated

@@ -10,6 +10,7 @@ const arg = (name, fallback = null) => { const idx = args.indexOf(name); return 
 const outPath = arg('--out');
 const evidenceDir = arg('--evidence-dir', 'release-evidence');
 const releaseInputPath = arg('--release-input', 'config/release/native-release-range.json');
+const requireDeploymentProvenance = args.includes('--require-deployment-provenance');
 
 function run(command, commandArgs, options = {}) {
   const result = spawnSync(command, commandArgs, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 1024 * 1024 * 50, ...options });
@@ -56,6 +57,7 @@ function validateEvidence(head) {
     'simulator-build.json',
     'critical-prs.json'
   ];
+  if (requireDeploymentProvenance) required.push('deployment-provenance.json');
   const evidence = [];
   for (const name of required) {
     const rel = `${evidenceDir}/${name}`;
@@ -180,6 +182,8 @@ try {
     native_entry_asset: nativeEntry,
     native_entry_hash: nativeEntry ? shaFile(`ios/App/App/public/${nativeEntry}`) : null,
     validated_evidence: evidence,
+    deployment_provenance_required: requireDeploymentProvenance,
+    deployment_provenance_result: evidence.find((item) => item.file.endsWith('deployment-provenance.json'))?.suite || null,
     critical_suite_result: evidence.find((item) => item.file.endsWith('critical-regressions.json'))?.suite || null,
     simulator_build_result: evidence.find((item) => item.file.endsWith('simulator-build.json'))?.suite || null,
     contains_credentials: false,
