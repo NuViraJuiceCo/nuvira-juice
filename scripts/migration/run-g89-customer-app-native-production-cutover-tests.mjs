@@ -196,9 +196,13 @@ assert.equal(orderLevelPreview.safety.writes_performed, false);
 assert.equal(orderLevelPreview.hub_fallback_required, false, 'A native ProductionBatch does not require Hub fallback.');
 assert.equal(orderLevelPreview.warnings.includes('hub_fallback_required'), false, 'Native batch previews do not show a stale Hub fallback warning.');
 
-const queue = loadFunctions(queuePath, ['loadNativeProductionBatches', 'mergeHubAndNativeBatches']);
+const queue = loadFunctions(queuePath, [
+  'loadNativeProductionBatches',
+  'loadTerminalNativeOrderNumbers',
+  'mergeHubAndNativeBatches',
+]);
 const gateway = fs.readFileSync(gatewayPath, 'utf8');
-assert.match(gateway, /Bundle revision: g89-native-production-cutover-fallback-warning-20260808/);
+assert.match(gateway, /Bundle revision: g90-terminal-hub-fallback-suppression-20260808/);
 let nativeBatchSort = null;
 const nativeRead = await queue.loadNativeProductionBatches({
   asServiceRole: {
@@ -226,6 +230,49 @@ const merged = queue.mergeHubAndNativeBatches(
 assert.equal(merged.length, 1, 'A mirrored native batch replaces its Hub duplicate in the Customer App queue.');
 assert.equal(merged[0].source, 'customer_app_native');
 
+const terminalLifecycle = await queue.loadTerminalNativeOrderNumbers({
+  asServiceRole: {
+    entities: {
+      Order: {
+        list: async () => [{ order_number: 'NV-G89-TERMINAL', status: 'delivered' }],
+      },
+      FulfillmentTask: {
+        list: async () => [{ order_number: 'NV-G89-TERMINAL', status: 'delivered' }],
+      },
+    },
+  },
+}, [{ order_numbers: ['NV-G89-TERMINAL'] }]);
+assert.equal(terminalLifecycle.available, true);
+assert.equal(terminalLifecycle.orderNumbers.has('nv-g89-terminal'), true);
+const terminalSuppressed = queue.mergeHubAndNativeBatches(
+  [{ id: 'hub_terminal', batch_id: 'BATCH-HUB-TERMINAL', order_numbers: ['NV-G89-TERMINAL'], production_date: '2026-08-07' }],
+  [],
+  20,
+  terminalLifecycle.orderNumbers,
+);
+assert.equal(terminalSuppressed.length, 0, 'A Hub-only row is suppressed only after native order and task terminal evidence agree.');
+
+const unresolvedLifecycle = await queue.loadTerminalNativeOrderNumbers({
+  asServiceRole: {
+    entities: {
+      Order: {
+        list: async () => [{ order_number: 'NV-G89-ACTIVE', status: 'delivered' }],
+      },
+      FulfillmentTask: {
+        list: async () => [{ order_number: 'NV-G89-ACTIVE', status: 'scheduled' }],
+      },
+    },
+  },
+}, [{ order_numbers: ['NV-G89-ACTIVE'] }]);
+assert.equal(unresolvedLifecycle.orderNumbers.has('nv-g89-active'), false);
+const activeFallback = queue.mergeHubAndNativeBatches(
+  [{ id: 'hub_active', batch_id: 'BATCH-HUB-ACTIVE', order_numbers: ['NV-G89-ACTIVE'], production_date: '2026-08-07' }],
+  [],
+  20,
+  unresolvedLifecycle.orderNumbers,
+);
+assert.equal(activeFallback.length, 1, 'An unresolved or active native task preserves the Hub fallback row.');
+
 const ui = fs.readFileSync(uiPath, 'utf8');
 const nativeVerificationFields = ui.match(/function nativeVerificationFields\(\)[\s\S]*?\n  }/)?.[0] || '';
 assert.doesNotMatch(nativeVerificationFields, /ccp_check_complete/);
@@ -242,7 +289,7 @@ assert.doesNotMatch(migration, /functions\.invoke|Notification\.create|CustomerM
 console.log(JSON.stringify({
   ok: true,
   suite: 'g89-customer-app-native-production-cutover',
-  checks: 29,
+  checks: 35,
   writes_performed: false,
   customer_notifications_sent: false,
   provider_calls_performed: false,

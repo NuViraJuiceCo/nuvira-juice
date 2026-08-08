@@ -44,6 +44,7 @@ const harnesses = [
   'scripts/migration/run-g86-subscription-gateway-readiness-tests.mjs',
   'scripts/migration/run-g87-production-immediate-idempotency-tests.mjs',
   'scripts/migration/run-g89-customer-app-native-production-cutover-tests.mjs',
+  'scripts/migration/run-g90-terminal-hub-fallback-suppression-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

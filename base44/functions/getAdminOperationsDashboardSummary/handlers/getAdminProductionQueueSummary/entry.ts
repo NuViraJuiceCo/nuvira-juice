@@ -8,6 +8,15 @@ const DEFAULT_RANGE_DAYS_AHEAD = 14;
 const MAX_LIMIT = 100;
 const CHICAGO_TZ = 'America/Chicago';
 const TEST_BATCH_MODES = new Set(['exclude', 'only']);
+const TERMINAL_OPERATIONAL_STATUSES = new Set([
+  'delivered',
+  'fulfilled',
+  'completed',
+  'picked_up',
+  'cancelled',
+  'canceled',
+  'refunded',
+]);
 const PRE_START_RECORD_TYPES = {
   sanitation: { entity: 'SanitationLog', dateField: 'log_date' },
   daily_checklist: { entity: 'DailyChecklist', dateField: 'checklist_date' },
@@ -118,6 +127,90 @@ function safeIngredientUsageRows(values) {
 
 function sourceKey(batch) {
   return normalizeText(batch.batch_id || batch.id).toLowerCase();
+}
+
+function normalizedOrderNumber(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function batchOrderNumbers(batch) {
+  return safeStringArray(batch?.order_numbers, 50).map(normalizedOrderNumber).filter(Boolean);
+}
+
+function lifecycleRecordTerminal(record) {
+  if (!record || typeof record !== 'object') return false;
+  if (record.delivered_at || record.fulfilled_at || record.completed_at || record.cancelled_at || record.canceled_at) {
+    return true;
+  }
+  return [
+    record.status,
+    record.order_status,
+    record.fulfillment_status,
+    record.delivery_status,
+  ].some(value => TERMINAL_OPERATIONAL_STATUSES.has(normalizeText(value).toLowerCase()));
+}
+
+async function loadTerminalNativeOrderNumbers(base44, hubBatches) {
+  const relevantOrderNumbers = new Set(
+    (Array.isArray(hubBatches) ? hubBatches : []).flatMap(batchOrderNumbers),
+  );
+  if (relevantOrderNumbers.size === 0) {
+    return { available: true, orderNumbers: new Set(), error: null };
+  }
+
+  try {
+    const orderEntity = base44.asServiceRole?.entities?.Order;
+    const taskEntity = base44.asServiceRole?.entities?.FulfillmentTask;
+    if (!orderEntity?.list || !taskEntity?.list) {
+      return { available: false, orderNumbers: new Set(), error: 'native_order_lifecycle_entity_unavailable' };
+    }
+
+    const [orders, tasks] = await Promise.all([
+      orderEntity.list('-updated_date', 500),
+      taskEntity.list('-updated_date', 500),
+    ]);
+    if (!Array.isArray(orders) || !Array.isArray(tasks)) {
+      return { available: false, orderNumbers: new Set(), error: 'native_order_lifecycle_entity_malformed' };
+    }
+
+    const ordersByNumber = new Map();
+    const tasksByNumber = new Map();
+    for (const order of orders) {
+      const orderNumber = normalizedOrderNumber(order?.order_number || order?.shopify_order_number);
+      if (!relevantOrderNumbers.has(orderNumber)) continue;
+      if (!ordersByNumber.has(orderNumber)) ordersByNumber.set(orderNumber, []);
+      ordersByNumber.get(orderNumber).push(order);
+    }
+    for (const task of tasks) {
+      const orderNumber = normalizedOrderNumber(task?.order_number || task?.shopify_order_number);
+      if (!relevantOrderNumbers.has(orderNumber)) continue;
+      if (!tasksByNumber.has(orderNumber)) tasksByNumber.set(orderNumber, []);
+      tasksByNumber.get(orderNumber).push(task);
+    }
+
+    const terminalOrderNumbers = new Set();
+    for (const orderNumber of relevantOrderNumbers) {
+      const orderRows = ordersByNumber.get(orderNumber) || [];
+      const taskRows = tasksByNumber.get(orderNumber) || [];
+      if (
+        orderRows.length > 0 &&
+        taskRows.length > 0 &&
+        orderRows.every(lifecycleRecordTerminal) &&
+        taskRows.every(lifecycleRecordTerminal)
+      ) {
+        terminalOrderNumbers.add(orderNumber);
+      }
+    }
+
+    return { available: true, orderNumbers: terminalOrderNumbers, error: null };
+  } catch {
+    return { available: false, orderNumbers: new Set(), error: 'native_order_lifecycle_read_failed' };
+  }
+}
+
+function hubBatchSuppressedByTerminalOrders(batch, terminalOrderNumbers) {
+  const orderNumbers = batchOrderNumbers(batch);
+  return orderNumbers.length > 0 && orderNumbers.every(orderNumber => terminalOrderNumbers.has(orderNumber));
 }
 
 function isInternalTestBatch(batch) {
@@ -500,14 +593,14 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
   }
 }
 
-function mergeHubAndNativeBatches(hubBatches, nativeBatches, limit) {
+function mergeHubAndNativeBatches(hubBatches, nativeBatches, limit, terminalOrderNumbers = new Set()) {
   const hubRows = Array.isArray(hubBatches)
     ? hubBatches.map(batch => sanitizeBatch({ ...batch, source: 'hub' }))
     : [];
   const nativeKeys = new Set(nativeBatches.map(sourceKey).filter(Boolean));
   const hubFallbackRows = hubRows.filter(batch => {
     const key = sourceKey(batch);
-    return key && !nativeKeys.has(key);
+    return key && !nativeKeys.has(key) && !hubBatchSuppressedByTerminalOrders(batch, terminalOrderNumbers);
   });
   const merged = [...nativeBatches, ...hubFallbackRows].sort((a, b) => {
     const dateCompare = (a.production_date || '').localeCompare(b.production_date || '');
@@ -696,7 +789,20 @@ export default async function handler(req: Request) {
       return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, nativeSourceAvailable }));
     }
 
-    const batches = mergeHubAndNativeBatches(hubData.batches, nativeBatches, limit);
+    const terminalLifecycle = await loadTerminalNativeOrderNumbers(base44, hubData.batches);
+    if (terminalLifecycle.error) warnings.push(terminalLifecycle.error);
+    const suppressedTerminalHubBatchCount = hubData.batches
+      .map(batch => sanitizeBatch({ ...batch, source: 'hub' }))
+      .filter(batch => hubBatchSuppressedByTerminalOrders(batch, terminalLifecycle.orderNumbers))
+      .length;
+    if (suppressedTerminalHubBatchCount > 0) warnings.push('stale_terminal_hub_batches_suppressed');
+
+    const batches = mergeHubAndNativeBatches(
+      hubData.batches,
+      nativeBatches,
+      limit,
+      terminalLifecycle.orderNumbers,
+    );
     const hubBatchCount = hubData.batches.length;
     const nativeAuthoritativeCount = batches.filter(batch => batch.source === 'customer_app_native').length;
     const hubFallbackCount = batches.filter(batch => batch.source === 'hub').length;
@@ -718,7 +824,9 @@ export default async function handler(req: Request) {
         native_authoritative_batch_count: nativeAuthoritativeCount,
         hub_fallback_batch_count: hubFallbackCount,
         hub_batch_count: hubBatchCount,
-        live_actions_source: 'customer_app_native_with_hub_fallback',
+        stale_terminal_hub_batch_count: suppressedTerminalHubBatchCount,
+        native_terminal_lifecycle_available: terminalLifecycle.available,
+        live_actions_source: hubFallbackCount > 0 ? 'customer_app_native_with_hub_fallback' : 'customer_app_native',
       },
       warnings,
       test_batch_mode: 'exclude',
