@@ -3,12 +3,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const COMMAND_TYPE = 'native_production_batch_lifecycle';
 const SOURCE = 'customer_app_native_admin';
-const ENABLE_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_LIFECYCLE_WRITES';
-const ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_EMAILS';
 const ENABLE_TEST_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_TEST_LIFECYCLE_WRITES';
 const TEST_ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_ALLOWED_EMAILS';
 const TEST_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_BATCH_ALLOWLIST';
-const ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS';
 const TEST_ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_ALLOWED_ACTIONS';
 const KILL_SWITCH_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH';
 const CONFIRMATION_PHRASE = 'execute_native_production_batch_lifecycle';
@@ -321,32 +318,25 @@ function findUnsupportedBodyKey(body) {
 function envGateFailure({ action, batchKeys, actorEmail, batch }) {
   if (Deno.env.get(KILL_SWITCH_FLAG) === 'true') return 'kill_switch_active';
   const isTestRequest = isInternalTestBatch(batch);
-  const enableFlag = isTestRequest ? ENABLE_TEST_WRITES_FLAG : ENABLE_WRITES_FLAG;
-  const allowedEmailsFlag = isTestRequest ? TEST_ALLOWED_EMAILS_FLAG : ALLOWED_EMAILS_FLAG;
-  const allowedActionsFlag = isTestRequest ? TEST_ALLOWED_ACTIONS_FLAG : ALLOWED_ACTIONS_FLAG;
-  if (Deno.env.get(enableFlag) !== 'true') {
-    return isTestRequest
-      ? 'native_production_batch_test_lifecycle_writes_disabled'
-      : 'native_production_batch_lifecycle_writes_disabled';
-  }
-
-  const allowedEmails = parseCsvSet(Deno.env.get(allowedEmailsFlag) || '');
-  if (allowedEmails.size === 0) return 'allowed_email_gate_required';
-  if (!allowedEmails.has(normalizeLower(actorEmail))) return 'actor_email_not_allowlisted';
-
-  const allowedActions = parseCsvSet(Deno.env.get(allowedActionsFlag) || '');
-  if (allowedActions.size === 0) return 'allowed_action_gate_required';
-  if (!allowedActions.has(action)) return 'action_not_allowlisted';
-
   const requestedBatchKeys = Array.isArray(batchKeys)
     ? batchKeys.map(normalizeLower).filter(Boolean)
     : [];
   if (requestedBatchKeys.length === 0) return 'production_batch_id_or_batch_id_required';
-  if (isInternalTestBatch(batch)) {
-    const testBatches = parseCsvSet(Deno.env.get(TEST_BATCH_ALLOWLIST_FLAG) || '');
-    if (testBatches.size === 0) return 'test_batch_allowlist_required';
-    if (!requestedBatchKeys.some(batchKey => testBatches.has(batchKey))) return 'test_batch_not_allowlisted';
-  }
+  if (!isTestRequest) return null;
+
+  if (Deno.env.get(ENABLE_TEST_WRITES_FLAG) !== 'true') return 'native_production_batch_test_lifecycle_writes_disabled';
+
+  const allowedEmails = parseCsvSet(Deno.env.get(TEST_ALLOWED_EMAILS_FLAG) || '');
+  if (allowedEmails.size === 0) return 'allowed_email_gate_required';
+  if (!allowedEmails.has(normalizeLower(actorEmail))) return 'actor_email_not_allowlisted';
+
+  const allowedActions = parseCsvSet(Deno.env.get(TEST_ALLOWED_ACTIONS_FLAG) || '');
+  if (allowedActions.size === 0) return 'allowed_action_gate_required';
+  if (!allowedActions.has(action)) return 'action_not_allowlisted';
+
+  const testBatches = parseCsvSet(Deno.env.get(TEST_BATCH_ALLOWLIST_FLAG) || '');
+  if (testBatches.size === 0) return 'test_batch_allowlist_required';
+  if (!requestedBatchKeys.some(batchKey => testBatches.has(batchKey))) return 'test_batch_not_allowlisted';
 
   return null;
 }
@@ -371,6 +361,10 @@ function isInternalTestBatch(batch) {
     sourceSystem.includes('internal_validation') ||
     ownerStatus.includes('internal_test') ||
     testPurpose.includes('internal validation');
+}
+
+function customerProjectionSuppressed(batch) {
+  return normalizeLower(batch?.native_owner_status) === 'native_owned_retroactive_delivered_no_customer_projection';
 }
 
 function appendCommonGuards(batch, blockers, warnings) {
@@ -537,6 +531,7 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
   const calibrationChecked = hasOwn(body, 'calibration_checked')
     ? body.calibration_checked === true
     : batch.calibration_checked === true;
+  const ccpCheckProvided = hasOwn(body, 'ccp_check_complete') || batch.ccp_check_complete === true;
   const ccpCheckComplete = hasOwn(body, 'ccp_check_complete')
     ? body.ccp_check_complete === true
     : batch.ccp_check_complete === true;
@@ -553,13 +548,14 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
   if (!pHStatus) blockers.push('missing_ph_pass_fail');
   if (!passedFailed) blockers.push('missing_batch_pass_fail');
   if (!calibrationChecked) blockers.push('ph_meter_calibration_not_confirmed');
-  if (!ccpCheckComplete) blockers.push('ccp_check_incomplete');
+  const correctiveActionRequired = body.corrective_action_required === true || batch.corrective_action_required === true;
+  if (correctiveActionRequired && !ccpCheckComplete) blockers.push('ccp_check_required_for_corrective_action');
   if (!sanitationVerificationComplete) blockers.push('sanitation_verification_incomplete');
   if (!labelsApplied) blockers.push('labels_not_confirmed');
   if (pHStatus === 'failed' && passedFailed === 'passed') blockers.push('batch_cannot_pass_when_ph_fails');
   if (!isPositiveNumber(quantityProduced)) blockers.push('missing_quantity_produced_for_compliance_log');
   if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
-  if (body.corrective_action_required === true || batch.corrective_action_required === true) {
+  if (correctiveActionRequired) {
     warnings.push('corrective_action_present_requires_admin_review');
   }
   if (!Array.isArray(batch.ingredients_used) || batch.ingredients_used.length === 0) {
@@ -594,7 +590,7 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
     pH_passed_failed: pHStatus,
     ...(pHMeterId ? { pH_meter_id: pHMeterId } : {}),
     calibration_checked: calibrationChecked,
-    ccp_check_complete: ccpCheckComplete,
+    ...(ccpCheckProvided ? { ccp_check_complete: ccpCheckComplete } : {}),
     sanitation_verification_complete: sanitationVerificationComplete,
     labels_applied: labelsApplied,
     passed_failed: passedFailed,
@@ -611,7 +607,7 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
       'ProductionBatch.pH_passed_failed',
       ...(pHMeterId ? ['ProductionBatch.pH_meter_id'] : []),
       'ProductionBatch.calibration_checked',
-      'ProductionBatch.ccp_check_complete',
+      ...(ccpCheckProvided ? ['ProductionBatch.ccp_check_complete'] : []),
       'ProductionBatch.sanitation_verification_complete',
       'ProductionBatch.labels_applied',
       'ProductionBatch.passed_failed',
@@ -780,9 +776,10 @@ async function createCommandLog({ base44, batch, action, status, idempotencyKey,
     actor_type: 'admin',
     payload: {
       action,
-      operational_batch_policy: 'authenticated_admin_and_lifecycle_gates',
+      operational_batch_policy: 'authenticated_admin_kill_switch_and_lifecycle_gates',
       legacy_exact_batch_allowlist_required: false,
       test_batch_allowlist_enforced: isInternalTestBatch(batch),
+      customer_projection_suppressed: customerProjectionSuppressed(batch),
       is_test_batch: isInternalTestBatch(batch),
       test_batch_id: isInternalTestBatch(batch) ? sanitizeId(batch?.batch_id) || sanitizeId(batch?.id) || null : null,
     },
@@ -795,7 +792,7 @@ async function createCommandLog({ base44, batch, action, status, idempotencyKey,
     submitted_at: now,
     completed_at: status === 'running' ? null : now,
     function_name: 'executeNativeProductionBatchLifecycle',
-    notes: 'Native ProductionBatch lifecycle command for start/complete/verify. Verify may create one BatchComplianceLog. Start may project exact linked paid Customer App Orders to in_production when explicitly requested; the active Order status automation owns messaging. No inventory, PO, ShopifyOrder, FulfillmentTask, direct provider, sync, or repair writes.',
+    notes: 'Native ProductionBatch lifecycle command for start/complete/verify. Verify may create one BatchComplianceLog. Start may project exact linked paid Customer App Orders to in_production when explicitly requested and not suppressed by batch migration policy; the active Order status automation owns messaging. No inventory, PO, ShopifyOrder, FulfillmentTask, direct provider, sync, or repair writes.',
   });
 }
 
@@ -846,16 +843,6 @@ export default async function handler(req: Request) {
   try {
     if (req.method !== 'POST') {
       return Response.json({ success: false, error_code: 'method_not_allowed', error: 'Method not allowed' }, { status: 405 });
-    }
-
-    if (Deno.env.get(ENABLE_WRITES_FLAG) !== 'true' && Deno.env.get(ENABLE_TEST_WRITES_FLAG) !== 'true') {
-      return Response.json({
-        success: false,
-        skipped: true,
-        error_code: 'native_production_batch_lifecycle_writes_disabled',
-        native_writer_enabled: false,
-        writes_performed: false,
-      }, { status: 409 });
     }
 
     const base44 = createClientFromRequest(req);
@@ -1094,7 +1081,16 @@ export default async function handler(req: Request) {
       }
       writeStage = 'production_batch_update';
       writtenBatch = await base44.asServiceRole.entities.ProductionBatch.update(batch.id, writePatch);
-      if (action === 'start' && boolFlag(body.update_customer_order_status)) {
+      if (action === 'start' && boolFlag(body.update_customer_order_status) && customerProjectionSuppressed(batch)) {
+        customerProjection = {
+          attempted: false,
+          matched_count: 0,
+          updated_count: 0,
+          skipped_count: 1,
+          notification_queued_count: 0,
+          skips: ['batch_customer_projection_suppressed'],
+        };
+      } else if (action === 'start' && boolFlag(body.update_customer_order_status)) {
         try {
           customerProjection = await projectLinkedCustomerOrdersInProduction({
             base44,

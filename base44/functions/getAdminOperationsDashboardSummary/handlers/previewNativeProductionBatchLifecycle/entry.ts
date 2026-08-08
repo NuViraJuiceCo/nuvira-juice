@@ -1,12 +1,9 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const ENABLE_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_LIFECYCLE_WRITES';
-const ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_EMAILS';
 const ENABLE_TEST_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_TEST_LIFECYCLE_WRITES';
 const TEST_ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_ALLOWED_EMAILS';
 const TEST_BATCH_ALLOWLIST_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_BATCH_ALLOWLIST';
-const ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_ALLOWED_ACTIONS';
 const TEST_ALLOWED_ACTIONS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_ALLOWED_ACTIONS';
 const KILL_SWITCH_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_KILL_SWITCH';
 const ALLOWED_ACTIONS = new Set(['start', 'complete', 'verify']);
@@ -223,23 +220,20 @@ function liveGateStatus({ action, batch, actorEmail }) {
   const blockers = [];
   const killSwitchActive = Deno.env.get(KILL_SWITCH_FLAG) === 'true';
   const internalTestBatch = isInternalTestBatch(batch);
-  const enableFlag = internalTestBatch ? ENABLE_TEST_WRITES_FLAG : ENABLE_WRITES_FLAG;
-  const allowedEmailsFlag = internalTestBatch ? TEST_ALLOWED_EMAILS_FLAG : ALLOWED_EMAILS_FLAG;
-  const allowedActionsFlag = internalTestBatch ? TEST_ALLOWED_ACTIONS_FLAG : ALLOWED_ACTIONS_FLAG;
-  const nativeWriterEnabled = Deno.env.get(enableFlag) === 'true';
+  const nativeWriterEnabled = internalTestBatch
+    ? Deno.env.get(ENABLE_TEST_WRITES_FLAG) === 'true'
+    : !killSwitchActive;
 
   if (killSwitchActive) blockers.push('kill_switch_active');
-  if (!nativeWriterEnabled) blockers.push('native_production_batch_lifecycle_writes_disabled');
-
-  const allowedEmails = parseCsvSet(Deno.env.get(allowedEmailsFlag) || '');
   const normalizedActorEmail = normalizeLower(actorEmail);
-  if (allowedEmails.size === 0) blockers.push('allowed_email_gate_required');
-  else if (!allowedEmails.has(normalizedActorEmail)) blockers.push('actor_email_not_allowlisted');
-
-  const allowedActions = parseCsvSet(Deno.env.get(allowedActionsFlag) || '');
   const normalizedAction = normalizeLower(action);
-  if (allowedActions.size === 0) blockers.push('allowed_action_gate_required');
-  else if (!allowedActions.has(normalizedAction)) blockers.push('action_not_allowlisted');
+  const allowedEmails = internalTestBatch ? parseCsvSet(Deno.env.get(TEST_ALLOWED_EMAILS_FLAG) || '') : new Set([normalizedActorEmail]);
+  const allowedActions = internalTestBatch ? parseCsvSet(Deno.env.get(TEST_ALLOWED_ACTIONS_FLAG) || '') : new Set([normalizedAction]);
+  if (internalTestBatch && !nativeWriterEnabled) blockers.push('native_production_batch_test_lifecycle_writes_disabled');
+  if (internalTestBatch && allowedEmails.size === 0) blockers.push('allowed_email_gate_required');
+  else if (internalTestBatch && !allowedEmails.has(normalizedActorEmail)) blockers.push('actor_email_not_allowlisted');
+  if (internalTestBatch && allowedActions.size === 0) blockers.push('allowed_action_gate_required');
+  else if (internalTestBatch && !allowedActions.has(normalizedAction)) blockers.push('action_not_allowlisted');
 
   const batchKeys = [
     sanitizeId(batch?.id),
@@ -261,8 +255,8 @@ function liveGateStatus({ action, batch, actorEmail }) {
     live_gate: {
       kill_switch_active: killSwitchActive,
       writer_enabled: nativeWriterEnabled,
-      actor_email_allowed: allowedEmails.size > 0 && allowedEmails.has(normalizedActorEmail),
-      action_allowed: allowedActions.size > 0 && allowedActions.has(normalizedAction),
+      actor_email_allowed: !internalTestBatch || (allowedEmails.size > 0 && allowedEmails.has(normalizedActorEmail)),
+      action_allowed: !internalTestBatch || (allowedActions.size > 0 && allowedActions.has(normalizedAction)),
       operational_batch_authorized: batchKeys.length > 0 && !internalTestBatch,
       test_batch_allowlisted: internalTestBatch && testBatchAllowlisted,
       batch_allowlisted: batchKeys.length > 0 && (!internalTestBatch || testBatchAllowlisted),
@@ -817,6 +811,7 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
   const calibrationChecked = hasOwn(verificationInput, 'calibration_checked')
     ? verificationInput.calibration_checked === true
     : batch.calibration_checked === true;
+  const ccpCheckProvided = hasOwn(verificationInput, 'ccp_check_complete') || batch.ccp_check_complete === true;
   const ccpCheckComplete = hasOwn(verificationInput, 'ccp_check_complete')
     ? verificationInput.ccp_check_complete === true
     : batch.ccp_check_complete === true;
@@ -835,13 +830,14 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
   if (!pHStatus) blockers.push('missing_ph_pass_fail');
   if (!passedFailed) blockers.push('missing_batch_pass_fail');
   if (!calibrationChecked) blockers.push('ph_meter_calibration_not_confirmed');
-  if (!ccpCheckComplete) blockers.push('ccp_check_incomplete');
+  const correctiveActionRequired = verificationInput.corrective_action_required === true || batch.corrective_action_required === true;
+  if (correctiveActionRequired && !ccpCheckComplete) blockers.push('ccp_check_required_for_corrective_action');
   if (!sanitationVerificationComplete) blockers.push('sanitation_verification_incomplete');
   if (!labelsApplied) blockers.push('labels_not_confirmed');
   if (pHStatus === 'failed' && passedFailed === 'passed') blockers.push('batch_cannot_pass_when_ph_fails');
   if (!isPositiveNumber(quantityProduced)) blockers.push('missing_quantity_produced_for_compliance_log');
   if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
-  if (verificationInput.corrective_action_required === true || batch.corrective_action_required === true) {
+  if (correctiveActionRequired) {
     warnings.push('corrective_action_present_requires_admin_review');
   }
   if (!Array.isArray(batch.ingredients_used) || batch.ingredients_used.length === 0) {
@@ -875,7 +871,7 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
     pH_passed_failed: pHStatus,
     ...(pHMeterId ? { pH_meter_id: pHMeterId } : {}),
     calibration_checked: calibrationChecked,
-    ccp_check_complete: ccpCheckComplete,
+    ...(ccpCheckProvided ? { ccp_check_complete: ccpCheckComplete } : {}),
     sanitation_verification_complete: sanitationVerificationComplete,
     labels_applied: labelsApplied,
     passed_failed: passedFailed,
@@ -897,7 +893,7 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
       'ProductionBatch.pH_passed_failed',
       ...(pHMeterId ? ['ProductionBatch.pH_meter_id'] : []),
       'ProductionBatch.calibration_checked',
-      'ProductionBatch.ccp_check_complete',
+      ...(ccpCheckProvided ? ['ProductionBatch.ccp_check_complete'] : []),
       'ProductionBatch.sanitation_verification_complete',
       'ProductionBatch.labels_applied',
       'ProductionBatch.passed_failed',
@@ -1158,8 +1154,8 @@ function buildBatchLifecycleRow({ batch, actorEmail, requestId, now, complianceL
     completion_optional_fields: [],
     completion_data_contract: 'exact_batch_actual_units_only',
     verification_input_preview: safeVerificationPreviewSummary(verificationInput),
-    verification_required_fields: ['pH_result', 'pH_passed', 'calibration_checked', 'ccp_check_complete', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
-    verification_optional_fields: ['verification_notes', 'staff_on_duty'],
+    verification_required_fields: ['pH_result', 'pH_passed', 'calibration_checked', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
+    verification_optional_fields: ['ccp_check_complete', 'verification_notes', 'staff_on_duty'],
     verification_data_contract: 'exact_batch_verification_data_only',
     verification_compliance_log_draft: verifyPlan.compliance_log_draft || null,
     can_start: startBlockers.length === 0,
@@ -1334,8 +1330,8 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     actual_units_present: safeNumber(row.actual_units) !== null,
     actual_end_time_present: Boolean(row.actual_end_time),
     verification_input_preview: row.verification_input_preview,
-    required_fields: row.verification_required_fields || ['pH_result', 'pH_passed', 'calibration_checked', 'ccp_check_complete', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
-    optional_fields: row.verification_optional_fields || ['verification_notes', 'staff_on_duty'],
+    required_fields: row.verification_required_fields || ['pH_result', 'pH_passed', 'calibration_checked', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
+    optional_fields: row.verification_optional_fields || ['ccp_check_complete', 'verification_notes', 'staff_on_duty'],
     compliance_log_draft_ready: Boolean(row.verification_compliance_log_draft),
     projected_writes_if_later_approved: row.expected_verify_writes_if_approved || [],
     blockers: row.verify_blockers || [],
@@ -1348,7 +1344,6 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     safeNumber(row.verification_input_preview?.pH_result) !== null &&
     Boolean(row.verification_input_preview?.pH_passed_failed) &&
     row.verification_input_preview?.calibration_checked === true &&
-    row.verification_input_preview?.ccp_check_complete === true &&
     row.verification_input_preview?.sanitation_verification_complete === true &&
     row.verification_input_preview?.labels_applied === true &&
     Boolean(row.verification_input_preview?.passed_failed)
@@ -1428,15 +1423,15 @@ function buildOrderLifecyclePreview({ customerOrder, nativeOrder, task, batches,
     verify_ready_count: verifyPreview.ready_count,
     verify_blocked_count: verifyPreview.blocked_count,
     verification_data_supplied_count: verificationDataSuppliedCount,
-    verification_required_fields: ['pH_result', 'pH_passed', 'calibration_checked', 'ccp_check_complete', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
-    verification_optional_fields: ['verification_notes', 'staff_on_duty'],
+    verification_required_fields: ['pH_result', 'pH_passed', 'calibration_checked', 'sanitation_verification_complete', 'labels_applied', 'batch_passed'],
+    verification_optional_fields: ['ccp_check_complete', 'verification_notes', 'staff_on_duty'],
     verification_data_contract: 'exact_batch_verification_data_only',
     verification_rows: verificationRows,
     compliance_preview: compliancePreview,
     cascade_preview: cascadePreview,
     blockers: uniqueStrings(blockers),
     warnings: uniqueStrings(warnings),
-    hub_fallback_required: true,
+    hub_fallback_required: rows.length === 0,
     live_execution_approved: liveCommandAvailable,
     live_command_available: liveCommandAvailable,
     live_command_action: nextActionKey,

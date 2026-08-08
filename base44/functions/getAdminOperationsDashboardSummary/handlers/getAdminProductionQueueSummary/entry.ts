@@ -462,6 +462,8 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
           compliance_log_id: normalizeText(batch.compliance_log_id),
           inventory_deduction_log_id: normalizeText(batch.inventory_deduction_log_id),
           source_system: normalizeText(batch.source_system),
+          source_hub_batch_id: normalizeText(batch.source_hub_batch_id),
+          native_owner_status: normalizeText(batch.native_owner_status),
           pH_result: safeNumber(batch.pH_result),
           pH_passed_failed: normalizeText(batch.pH_passed_failed),
           pH_meter_id: normalizeText(batch.pH_meter_id),
@@ -500,12 +502,12 @@ function mergeHubAndNativeBatches(hubBatches, nativeBatches, limit) {
   const hubRows = Array.isArray(hubBatches)
     ? hubBatches.map(batch => sanitizeBatch({ ...batch, source: 'hub' }))
     : [];
-  const hubKeys = new Set(hubRows.map(sourceKey).filter(Boolean));
-  const nativeOnlyRows = nativeBatches.filter(batch => {
+  const nativeKeys = new Set(nativeBatches.map(sourceKey).filter(Boolean));
+  const hubFallbackRows = hubRows.filter(batch => {
     const key = sourceKey(batch);
-    return key && !hubKeys.has(key);
+    return key && !nativeKeys.has(key);
   });
-  const merged = [...hubRows, ...nativeOnlyRows].sort((a, b) => {
+  const merged = [...nativeBatches, ...hubFallbackRows].sort((a, b) => {
     const dateCompare = (a.production_date || '').localeCompare(b.production_date || '');
     if (dateCompare !== 0) return dateCompare;
     const sourceCompare = (a.source || '').localeCompare(b.source || '');
@@ -526,10 +528,10 @@ function nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, wa
     data_sources: {
       hub_available: false,
       native_available: nativeSourceAvailable,
-      native_read_only: true,
+      native_read_only: false,
       native_batch_count: nativeBatches.length,
       hub_batch_count: 0,
-      live_actions_source: testBatchMode === 'only' ? 'native_internal_test_only' : 'hub_backed_only',
+      live_actions_source: testBatchMode === 'only' ? 'native_internal_test_only' : 'customer_app_native',
     },
     test_batch_mode: testBatchMode,
     operational_totals_exclude_test_batches: true,
@@ -694,8 +696,9 @@ export default async function handler(req: Request) {
 
     const batches = mergeHubAndNativeBatches(hubData.batches, nativeBatches, limit);
     const hubBatchCount = hubData.batches.length;
-    const nativeOnlyCount = batches.filter(batch => batch.source === 'customer_app_native').length;
-    const unmergedCount = hubBatchCount + nativeOnlyCount;
+    const nativeAuthoritativeCount = batches.filter(batch => batch.source === 'customer_app_native').length;
+    const hubFallbackCount = batches.filter(batch => batch.source === 'hub').length;
+    const unmergedCount = nativeAuthoritativeCount + hubFallbackCount;
     const truncated = hubData.truncated === true || Boolean(limit && unmergedCount > batches.length);
 
     return Response.json({
@@ -708,11 +711,12 @@ export default async function handler(req: Request) {
       data_sources: {
         hub_available: true,
         native_available: nativeSourceAvailable,
-        native_read_only: true,
+        native_read_only: false,
         native_batch_count: nativeBatches.length,
-        native_only_batch_count: nativeOnlyCount,
+        native_authoritative_batch_count: nativeAuthoritativeCount,
+        hub_fallback_batch_count: hubFallbackCount,
         hub_batch_count: hubBatchCount,
-        live_actions_source: 'hub_backed_only',
+        live_actions_source: 'customer_app_native_with_hub_fallback',
       },
       warnings,
       test_batch_mode: 'exclude',
