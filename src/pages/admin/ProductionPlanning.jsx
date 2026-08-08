@@ -4,8 +4,10 @@ import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import {
   AlertTriangle,
   CalendarDays,
+  CheckCircle2,
   FlaskConical,
   Package,
+  PackagePlus,
   RefreshCw,
 } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
@@ -502,12 +504,15 @@ export default function ProductionPlanning() {
   const [dateTo, setDateTo] = useState(addDays(today, 6));
   const [appliedDateFrom, setAppliedDateFrom] = useState(today);
   const [appliedDateTo, setAppliedDateTo] = useState(addDays(today, 6));
+  const [materializationPreview, setMaterializationPreview] = useState(null);
+  const [materializationPending, setMaterializationPending] = useState(false);
+  const [materializationMessage, setMaterializationMessage] = useState(null);
   const isCustom = preset === 'custom';
   const rangeError = validateRange(dateFrom, dateTo);
   const requestDateFrom = isCustom ? appliedDateFrom : null;
   const requestDateTo = isCustom ? appliedDateTo : null;
 
-  const { data, isLoading, isError, error, isFetching } = useQuery({
+  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ['admin-production-planning-summary', preset, requestDateFrom, requestDateTo],
     queryFn: async () => {
       const payload = isCustom
@@ -522,6 +527,71 @@ export default function ProductionPlanning() {
     staleTime: 60000,
     refetchOnWindowFocus: true,
   });
+
+  function currentPlanningPayload() {
+    return isCustom
+      ? { preset: 'custom', date_from: appliedDateFrom, date_to: appliedDateTo }
+      : { preset };
+  }
+
+  async function previewBatchMaterialization() {
+    setMaterializationPending(true);
+    setMaterializationMessage(null);
+    try {
+      const response = await base44.functions.invoke('getAdminProductionPlanningSummary', {
+        ...currentPlanningPayload(),
+        operation: 'preview_batch_materialization',
+      });
+      const result = response?.data || response;
+      if (!result?.success) throw new Error(result?.error || 'Unable to preview planned batches.');
+      setMaterializationPreview(result);
+      setMaterializationMessage({
+        type: result.ready_count > 0 ? 'success' : 'info',
+        text: result.ready_count > 0
+          ? `${result.ready_count} native batch${result.ready_count === 1 ? '' : 'es'} ready to create or update.`
+          : 'No native paid-order demand is ready for batch creation in this range.',
+      });
+    } catch (error) {
+      setMaterializationPreview(null);
+      setMaterializationMessage({ type: 'error', text: error?.message || 'Unable to preview planned batches.' });
+    } finally {
+      setMaterializationPending(false);
+    }
+  }
+
+  async function executeBatchMaterialization() {
+    if (!materializationPreview || Number(materializationPreview.ready_count || 0) === 0) return;
+    const confirmed = window.confirm(
+      `Create or update ${materializationPreview.ready_count} planned ProductionBatch record${materializationPreview.ready_count === 1 ? '' : 's'} from native paid-order demand? This does not change inventory, orders, delivery tasks, notifications, providers, or Hub data.`,
+    );
+    if (!confirmed) return;
+
+    setMaterializationPending(true);
+    setMaterializationMessage(null);
+    try {
+      const response = await base44.functions.invoke('getAdminProductionPlanningSummary', {
+        ...currentPlanningPayload(),
+        operation: 'execute_batch_materialization',
+        confirmation: 'materialize_native_production_batches',
+        request_id: `native_batch_materialization:${Date.now()}`,
+      });
+      const result = response?.data || response;
+      if (!result?.success) {
+        const firstBlocker = result?.results?.find(row => row.blockers?.length)?.blockers?.[0];
+        throw new Error(firstBlocker ? `Batch creation stopped: ${formatLabel(firstBlocker)}.` : (result?.error || 'Batch creation stopped safely.'));
+      }
+      setMaterializationPreview(null);
+      setMaterializationMessage({
+        type: 'success',
+        text: `${result.created_count || 0} created, ${result.updated_count || 0} updated, ${result.deduped_count || 0} already current. Open Production Queue to complete Batch Setup and Start.`,
+      });
+      await refetch();
+    } catch (error) {
+      setMaterializationMessage({ type: 'error', text: error?.message || 'Unable to create planned batches.' });
+    } finally {
+      setMaterializationPending(false);
+    }
+  }
 
   if (!isAdminUser(user)) {
     return (
@@ -700,6 +770,72 @@ export default function ProductionPlanning() {
         </div>
 
         <ProductionBatchDraftCards dateGroups={dateGroups} ingredients={ingredients} />
+
+        <section className="rounded-xl border border-primary/25 bg-card p-4 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <PackagePlus className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-bold text-foreground">Create native production batches</h2>
+              </div>
+              <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+                Preview exact paid-order demand first, then create or update only planned Customer App ProductionBatch records. Inventory, purchase orders, customer orders, delivery tasks, notifications, providers, and Hub data are not changed.
+              </p>
+            </div>
+            <AdminStatusPill label="Admin confirmation required" tone="warning" />
+          </div>
+
+          {materializationPreview && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <StatCard icon={CheckCircle2} label="Ready" value={formatNumber(materializationPreview.ready_count, 0)} tone="success" />
+              <StatCard icon={AlertTriangle} label="Blocked" value={formatNumber(materializationPreview.blocked_count, 0)} tone={Number(materializationPreview.blocked_count || 0) > 0 ? 'danger' : 'default'} />
+              <StatCard icon={Package} label="Drafts" value={formatNumber(materializationPreview.drafts?.length, 0)} />
+            </div>
+          )}
+
+          {materializationMessage && (
+            <p className={`rounded-lg border px-3 py-2 text-xs ${
+              materializationMessage.type === 'error'
+                ? 'border-destructive/30 bg-destructive/5 text-destructive'
+                : materializationMessage.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100'
+                  : 'border-border bg-secondary/40 text-foreground'
+            }`}>
+              {materializationMessage.text}
+            </p>
+          )}
+
+          {materializationPreview?.drafts?.some(draft => draft.blockers?.length > 0) && (
+            <div className="space-y-1 rounded-lg border border-cyan-200 bg-cyan-50/70 p-3 text-xs text-cyan-900 dark:border-cyan-900/60 dark:bg-cyan-950/20 dark:text-cyan-100">
+              {materializationPreview.drafts.filter(draft => draft.blockers?.length > 0).map(draft => (
+                <p key={`${draft.batch_id || draft.product_name}-materialization-blocker`}>
+                  <span className="font-semibold">{draft.product_name || 'Batch'}:</span> {draft.blockers.map(formatLabel).join(', ')}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={previewBatchMaterialization}
+              disabled={materializationPending || isFetching}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-4 text-sm font-bold text-primary disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${materializationPending ? 'animate-spin' : ''}`} />
+              {materializationPending ? 'Checking native demand...' : 'Preview Batch Creation'}
+            </button>
+            <button
+              type="button"
+              onClick={executeBatchMaterialization}
+              disabled={materializationPending || Number(materializationPreview?.ready_count || 0) === 0 || Number(materializationPreview?.blocked_count || 0) > 0}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-nuvira-gradient px-4 text-sm font-bold text-white disabled:opacity-50"
+            >
+              <PackagePlus className="h-4 w-4" />
+              Create or Update Planned Batches
+            </button>
+          </div>
+        </section>
 
         {warnings.length > 0 && (
           <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">

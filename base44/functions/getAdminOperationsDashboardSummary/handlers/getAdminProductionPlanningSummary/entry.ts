@@ -13,6 +13,10 @@ const VALID_PRESETS = new Set(['today', 'this_week', 'next_7_days']);
 const VALID_INGREDIENT_STATUSES = new Set(['covered', 'low', 'short', 'no_data', 'demand_based']);
 const DATE_PENDING = 'date_pending';
 const UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS = 14;
+const MATERIALIZATION_PREVIEW = 'preview_batch_materialization';
+const MATERIALIZATION_EXECUTE = 'execute_batch_materialization';
+const MATERIALIZATION_CONFIRMATION = 'materialize_native_production_batches';
+const MATERIALIZATION_COMMAND_TYPE = 'native_production_batch_materialization';
 const BUILT_IN_RECIPE_FALLBACKS = {
   'Re-Nu': [
     { ingredient_name: 'Cucumber', quantity_oz: 3, unit: 'oz' },
@@ -189,6 +193,109 @@ function sanitizeStringList(values, maxItems = 12, maxLength = 80) {
 
 function uniqueStrings(values) {
   return Array.from(new Set((Array.isArray(values) ? values : []).map(value => normalizeText(value)).filter(Boolean)));
+}
+
+function batchIdPart(value) {
+  return normalizeText(value)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 42) || 'PRODUCT';
+}
+
+function productionBatchId(productionDate, productName) {
+  return `BATCH-${normalizeText(productionDate).replace(/-/g, '')}-${batchIdPart(productName)}`;
+}
+
+function productionCategory(value) {
+  const normalized = normalizeLower(value);
+  if (normalized.includes('shot')) return 'shot';
+  if (normalized.includes('juice') || ['aura', 'oasis', 're-nu', 'renu'].includes(normalized)) return 'juice';
+  return 'other';
+}
+
+function safeOrderSource(source) {
+  return {
+    order_id: normalizeText(source?.order_id) || null,
+    order_number: normalizeText(source?.order_number).replace(/^#/, '') || null,
+    customer_email: normalizeText(source?.customer_email) || null,
+    customer_name: normalizeText(source?.customer_name) || null,
+    quantity: numberOrZero(source?.quantity),
+    source_type: normalizeText(source?.source_type) || 'direct',
+    source_item: normalizeText(source?.source_item) || null,
+  };
+}
+
+function isNativeMaterializedBatch(batch) {
+  return normalizeLower(batch?.source_system) === 'customer_app_native' &&
+    normalizeLower(batch?.native_owner_status) === 'native_owned_order_demand';
+}
+
+function materializationDraftReady(draft) {
+  return draft?.blockers?.length === 0 &&
+    ['create_planned_batch', 'update_existing_planned_batch'].includes(draft?.action);
+}
+
+function orderSourceFingerprint(orderSources) {
+  const stable = mergeOrderSources(orderSources)
+    .map(source => ({ key: orderSourceKey(source), quantity: numberOrZero(source.quantity) }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+  const value = JSON.stringify(stable);
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).toUpperCase().padStart(8, '0');
+}
+
+function supplementalProductionBatchId(productionDate, productName, orderSources) {
+  return `${productionBatchId(productionDate, productName)}-ADD-${orderSourceFingerprint(orderSources)}`;
+}
+
+function subtractOrderSources(demandSources, materializedSources) {
+  const demand = mergeOrderSources(demandSources);
+  const materializedByKey = new Map(
+    mergeOrderSources(materializedSources).map(source => [orderSourceKey(source), numberOrZero(source.quantity)]),
+  );
+  const remaining = [];
+  const overages = [];
+
+  for (const source of demand) {
+    const key = orderSourceKey(source);
+    const alreadyMaterialized = materializedByKey.get(key) || 0;
+    const quantity = numberOrZero(source.quantity) - alreadyMaterialized;
+    materializedByKey.delete(key);
+    if (quantity > 0) remaining.push({ ...source, quantity });
+    if (quantity < 0) overages.push({ ...source, quantity: Math.abs(quantity) });
+  }
+  for (const [key, quantity] of materializedByKey.entries()) {
+    if (quantity > 0) overages.push({ source_key: key, quantity });
+  }
+  return { remaining, overages };
+}
+
+function orderSourceKey(source) {
+  return [
+    normalizeText(source?.order_id),
+    normalizeText(source?.customer_app_order_id),
+    normalizeLower(source?.order_number),
+    normalizeLower(source?.source_item),
+    normalizeLower(source?.source_type),
+  ].join('::');
+}
+
+function mergeOrderSources(values) {
+  const merged = new Map();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const source = safeOrderSource(raw);
+    const key = orderSourceKey(source);
+    if (!key.replace(/:/g, '')) continue;
+    const existing = merged.get(key);
+    if (existing) existing.quantity += source.quantity;
+    else merged.set(key, source);
+  }
+  return [...merged.values()];
 }
 
 function sanitizeSummary(summary) {
@@ -789,6 +896,7 @@ function emptyNativePlanning() {
     missing_yield_count: 0,
     ambiguous_yield_count: 0,
     native_fulfillment_task_count: 0,
+    source_read_failures: [],
   };
 }
 
@@ -1150,13 +1258,22 @@ function isNativeOperationalFulfillmentTask(task) {
 }
 
 async function loadNativePlanning(base44, dateFrom, dateTo) {
+  const sourceReadFailures = new Set();
   const listEntity = async (entityName, sort, limit) => {
     try {
       const entity = base44.asServiceRole?.entities?.[entityName];
-      if (!entity || typeof entity.list !== 'function') return [];
-      const rows = await entity.list(sort, limit).catch(() => []);
-      return Array.isArray(rows) ? rows : [];
+      if (!entity || typeof entity.list !== 'function') {
+        sourceReadFailures.add(`${entityName}_unavailable`);
+        return [];
+      }
+      const rows = await entity.list(sort, limit);
+      if (!Array.isArray(rows)) {
+        sourceReadFailures.add(`${entityName}_invalid_read_result`);
+        return [];
+      }
+      return rows;
     } catch {
+      sourceReadFailures.add(`${entityName}_read_failed`);
       return [];
     }
   };
@@ -1235,7 +1352,7 @@ async function loadNativePlanning(base44, dateFrom, dateTo) {
     return productByDate.get(productionDate);
   }
 
-  function addProductDemand({ productionDate, productName, quantity, sourceCategory, source, sizeOz }) {
+  function addProductDemand({ productionDate, productName, quantity, sourceCategory, source, sizeOz, orderSource }) {
     if (!productName || quantity <= 0) return;
 
     const productMap = ensurePlanningDate(productionDate);
@@ -1289,8 +1406,20 @@ async function loadNativePlanning(base44, dateFrom, dateTo) {
       batch_count: 0,
       source_order_count: 0,
       source,
+      order_sources: [],
+      related_orders: [],
     };
     current.planned_units += quantity;
+    if (orderSource) {
+      current.order_sources = mergeOrderSources([
+        ...(current.order_sources || []),
+        { ...orderSource, quantity },
+      ]);
+      current.related_orders = uniqueStrings([
+        ...(current.related_orders || []),
+        orderSource.order_id,
+      ]).slice(0, 100);
+    }
     productMap.set(key, current);
   }
 
@@ -1321,6 +1450,15 @@ async function loadNativePlanning(base44, dateFrom, dateTo) {
           sourceCategory: 'Native Fulfillment Tasks',
           source: 'customer_app_native_fulfillment_task',
           sizeOz: product.size_oz,
+          orderSource: {
+            order_id: task.native_shopify_order_id || task.shopify_order_id || task.order_id,
+            customer_app_order_id: task.base44_order_id || null,
+            order_number: task.shopify_order_number || task.order_number,
+            customer_email: task.customer_email,
+            customer_name: task.customer_name,
+            source_type: product.source_type === 'bundle_component' ? 'bundle' : 'direct',
+            source_item: product.source_line_item,
+          },
         });
       }
     }
@@ -1355,6 +1493,15 @@ async function loadNativePlanning(base44, dateFrom, dateTo) {
           sourceCategory: 'Native Customer Orders',
           source: 'customer_app_native',
           sizeOz: product.size_oz,
+          orderSource: {
+            order_id: order.id,
+            customer_app_order_id: order.base44_order_id || null,
+            order_number: order.shopify_order_number || order.order_number,
+            customer_email: order.customer_email,
+            customer_name: order.customer_name,
+            source_type: product.source_type === 'bundle_component' ? 'bundle' : 'direct',
+            source_item: product.source_line_item,
+          },
         });
       }
     }
@@ -1460,8 +1607,392 @@ async function loadNativePlanning(base44, dateFrom, dateTo) {
     missing_yield_count: missingYieldKeys.size,
     ambiguous_yield_count: ambiguousYieldKeys.size,
     native_fulfillment_task_count: operationalTasks.length,
+    source_read_failures: [...sourceReadFailures],
     event_stock_plan: { included: false, retired: true, event_count: 0, total_units: 0, items: [] },
   };
+}
+
+async function loadMaterializationProductionBatches(base44, nativePlanning) {
+  const entity = base44.asServiceRole?.entities?.ProductionBatch;
+  if (!entity || typeof entity.filter !== 'function') throw new Error('ProductionBatch_unavailable');
+  const dates = uniqueStrings((nativePlanning?.dates || [])
+    .map(group => normalizeText(group?.production_date))
+    .filter(date => date && date !== DATE_PENDING));
+  const rows = [];
+  for (const productionDate of dates) {
+    const matches = await entity.filter({ production_date: productionDate }, '-created_date', 500);
+    if (!Array.isArray(matches)) throw new Error('ProductionBatch_invalid_read_result');
+    rows.push(...matches);
+  }
+  const seen = new Set();
+  return rows.filter(row => {
+    const key = normalizeText(row?.id) || `${normalizeLower(row?.batch_id)}:${normalizeText(row?.created_date)}`;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function materializationDrafts(nativePlanning, existingBatches) {
+  const batches = Array.isArray(existingBatches) ? existingBatches : [];
+  return (nativePlanning?.dates || []).flatMap(dateGroup => {
+    const productionDate = normalizeText(dateGroup?.production_date);
+    return (dateGroup?.product_groups || []).map(product => {
+      const baseBatchId = productionDate && productionDate !== DATE_PENDING
+        ? productionBatchId(productionDate, product?.product_name)
+        : null;
+      const baseMatches = baseBatchId
+        ? batches.filter(batch => normalizeLower(batch?.batch_id) === normalizeLower(baseBatchId))
+        : [];
+      const demandedOrderSources = mergeOrderSources(product?.order_sources || []);
+      const demandedRelatedOrders = uniqueStrings([
+        ...(product?.related_orders || []),
+        ...demandedOrderSources.map(source => source.order_id),
+      ]).slice(0, 500);
+      const ownedProductBatches = batches.filter(batch => (
+        isNativeMaterializedBatch(batch) &&
+        normalizeText(batch?.production_date) === productionDate &&
+        normalizeLower(batch?.product_name) === normalizeLower(product?.product_name)
+      ));
+      const materializedOrderSources = ownedProductBatches.flatMap(batch => batch?.order_sources || []);
+      const { remaining, overages } = subtractOrderSources(demandedOrderSources, materializedOrderSources);
+      const mutableOwnedBatches = ownedProductBatches.filter(batch => (
+        ['planned', 'ready_for_production'].includes(normalizeLower(batch?.status)) && batch?.is_locked !== true
+      ));
+      const lifecycleStartedBatches = ownedProductBatches.filter(batch => !mutableOwnedBatches.includes(batch));
+
+      let batchId = baseBatchId;
+      let existing = baseMatches.length === 1 ? baseMatches[0] : null;
+      let writeOrderSources = demandedOrderSources;
+      let writeRelatedOrders = demandedRelatedOrders;
+      let writePlannedUnits = numberOrZero(product?.planned_units);
+      const blockers = [];
+
+      if (!productionDate || productionDate === DATE_PENDING) blockers.push('production_date_required');
+      if (!normalizeText(product?.product_name)) blockers.push('product_name_required');
+      if (numberOrZero(product?.planned_units) <= 0) blockers.push('planned_units_required');
+      if (!Array.isArray(product?.order_sources) || product.order_sources.length === 0) blockers.push('exact_order_sources_required');
+      if (demandedOrderSources.length > 500) blockers.push('order_source_limit_requires_review');
+      if (baseMatches.length > 1) blockers.push('duplicate_batch_id_requires_review');
+      if (existing && !isNativeMaterializedBatch(existing)) blockers.push('existing_batch_not_native_materialization_owned');
+
+      if (blockers.length === 0 && ownedProductBatches.length > 0) {
+        if (lifecycleStartedBatches.length === 0 && mutableOwnedBatches.length === 1) {
+          existing = mutableOwnedBatches[0];
+          batchId = normalizeText(existing.batch_id) || baseBatchId;
+        } else if (overages.length > 0) {
+          blockers.push('materialized_demand_exceeds_current_paid_order_demand');
+        } else if (lifecycleStartedBatches.length > 0 && remaining.length > 0) {
+          writeOrderSources = remaining;
+          writeRelatedOrders = uniqueStrings(remaining.map(source => source.order_id)).slice(0, 500);
+          writePlannedUnits = remaining.reduce((sum, source) => sum + numberOrZero(source.quantity), 0);
+          batchId = supplementalProductionBatchId(productionDate, product?.product_name, remaining);
+          const supplementalMatches = batches.filter(batch => normalizeLower(batch?.batch_id) === normalizeLower(batchId));
+          if (supplementalMatches.length > 1) blockers.push('duplicate_batch_id_requires_review');
+          existing = supplementalMatches.length === 1 ? supplementalMatches[0] : null;
+          if (existing && !isNativeMaterializedBatch(existing)) blockers.push('existing_batch_not_native_materialization_owned');
+        } else if (lifecycleStartedBatches.length === 0 && mutableOwnedBatches.length > 1) {
+          blockers.push('multiple_mutable_native_batches_require_review');
+        }
+      }
+
+      const existingStatus = normalizeLower(existing?.status);
+      const unchanged = Boolean(existing) &&
+        numberOrZero(existing.planned_units) === writePlannedUnits &&
+        sameOrderSources(existing.order_sources, writeOrderSources) &&
+        sameStringSet(existing.related_orders, writeRelatedOrders);
+      const mutableExisting = Boolean(existing) &&
+        ['planned', 'ready_for_production'].includes(existingStatus) &&
+        existing?.is_locked !== true &&
+        isNativeMaterializedBatch(existing);
+      const demandFullyMaterialized = ownedProductBatches.length > 0 && remaining.length === 0 && overages.length === 0;
+      if (existing && isNativeMaterializedBatch(existing) && !mutableExisting && !unchanged && !demandFullyMaterialized) {
+        blockers.push(existing?.is_locked === true
+          ? 'existing_batch_locked'
+          : 'demand_changed_after_batch_start_requires_supplemental_batch');
+      }
+
+      const action = blockers.length > 0
+        ? 'blocked'
+        : demandFullyMaterialized || (existing && unchanged)
+          ? 'already_materialized'
+        : existing
+          ? 'update_existing_planned_batch'
+          : 'create_planned_batch';
+
+      return {
+        batch_id: batchId,
+        product_name: normalizeText(product?.product_name),
+        product_category: productionCategory(product?.product_name || product?.product_category),
+        production_date: productionDate || null,
+        planned_units: writePlannedUnits,
+        source_order_count: writeOrderSources.length,
+        source_order_numbers: uniqueStrings(writeOrderSources.map(source => source.order_number)).slice(0, 50),
+        existing_production_batch_id: existing?.id || null,
+        existing_status: existing?.status || null,
+        action,
+        blockers,
+        _write: {
+          order_sources: writeOrderSources,
+          related_orders: writeRelatedOrders,
+          existing,
+        },
+      };
+    });
+  });
+}
+
+function safeMaterializationDraft(draft) {
+  const { _write, ...safe } = draft || {};
+  return safe;
+}
+
+function sameStringSet(left, right) {
+  const a = uniqueStrings(left).sort();
+  const b = uniqueStrings(right).sort();
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function sameOrderSources(left, right) {
+  const normalize = values => mergeOrderSources(values)
+    .map(source => ({ ...source, quantity: numberOrZero(source.quantity) }))
+    .sort((a, b) => orderSourceKey(a).localeCompare(orderSourceKey(b)));
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+}
+
+async function createMaterializationCommandLog({ base44, user, requestId, draft, action, status, result }) {
+  const now = new Date().toISOString();
+  return base44.asServiceRole.entities.CommandLog.create({
+    command_type: MATERIALIZATION_COMMAND_TYPE,
+    command_source: 'customer_app_admin_production_planning',
+    status,
+    target_entity: 'ProductionBatch',
+    target_id: result?.production_batch_id || draft?.existing_production_batch_id || null,
+    target_display_id: draft?.batch_id || null,
+    actor_email: user?.email || 'admin',
+    actor_role: user?.role || 'admin',
+    actor_type: 'admin',
+    payload: {
+      batch_id: draft?.batch_id || null,
+      production_date: draft?.production_date || null,
+      product_name: draft?.product_name || null,
+      planned_units: numberOrZero(draft?.planned_units),
+      source_order_count: numberOrZero(draft?.source_order_count),
+    },
+    result: {
+      action,
+      blockers: Array.isArray(result?.blockers) ? result.blockers : [],
+      writes_performed: result?.writes_performed === true,
+    },
+    idempotency_key: `${MATERIALIZATION_COMMAND_TYPE}:${requestId}:${draft?.batch_id || 'unknown'}`,
+    idempotent_skipped: status === 'skipped',
+    request_id: requestId,
+    submitted_at: now,
+    started_at: status === 'running' ? now : null,
+    function_name: 'getAdminProductionPlanningSummary',
+    completed_at: status === 'running' ? null : now,
+    notes: 'Admin-only native production demand materialization. No inventory, purchase order, customer order, fulfillment, notification, provider, or Hub mutation.',
+  });
+}
+
+async function finishMaterializationCommandLog({ base44, commandLogId, status, result }) {
+  if (!commandLogId) throw new Error('materialization_command_log_missing');
+  return base44.asServiceRole.entities.CommandLog.update(commandLogId, {
+    status,
+    result,
+    idempotent_skipped: status === 'skipped',
+    completed_at: new Date().toISOString(),
+  });
+}
+
+async function executeBatchMaterialization({ base44, user, requestId, drafts }) {
+  const results = [];
+  for (const draft of drafts) {
+    if (draft.blockers.length > 0 || !draft.batch_id) {
+      const result = { ...safeMaterializationDraft(draft), writes_performed: false };
+      results.push(result);
+      continue;
+    }
+    if (draft.action === 'already_materialized') {
+      const result = {
+        ...safeMaterializationDraft(draft),
+        action: 'deduped_existing_batch',
+        blockers: [],
+        writes_performed: false,
+      };
+      results.push(result);
+      await createMaterializationCommandLog({
+        base44,
+        user,
+        requestId,
+        draft,
+        action: result.action,
+        status: 'skipped',
+        result,
+      });
+      continue;
+    }
+
+    const matches = await base44.asServiceRole.entities.ProductionBatch.filter({ batch_id: draft.batch_id }, '-created_date', 10);
+    if (!Array.isArray(matches)) throw new Error('ProductionBatch_invalid_read_result');
+    if (matches.length > 1) {
+      const result = {
+        ...safeMaterializationDraft(draft),
+        action: 'blocked',
+        blockers: ['duplicate_batch_id_requires_review'],
+        writes_performed: false,
+      };
+      results.push(result);
+      continue;
+    }
+
+    const existing = matches[0] || null;
+    const now = new Date().toISOString();
+    let action = 'created';
+    let record = existing;
+    let commandLog = null;
+
+    if (existing) {
+      const existingStatus = normalizeLower(existing.status);
+      const unchanged = numberOrZero(existing.planned_units) === numberOrZero(draft.planned_units) &&
+        sameOrderSources(existing.order_sources, draft._write.order_sources) &&
+        sameStringSet(existing.related_orders, draft._write.related_orders);
+      if (!isNativeMaterializedBatch(existing)) {
+        const result = {
+          ...safeMaterializationDraft(draft),
+          existing_production_batch_id: existing.id,
+          existing_status: existing.status,
+          action: 'blocked',
+          blockers: ['existing_batch_not_native_materialization_owned'],
+          writes_performed: false,
+        };
+        results.push(result);
+        continue;
+      }
+      if (unchanged) {
+        action = 'deduped_existing_batch';
+      } else if (!['planned', 'ready_for_production'].includes(existingStatus) || existing.is_locked === true) {
+        const result = {
+          ...safeMaterializationDraft(draft),
+          existing_production_batch_id: existing.id,
+          existing_status: existing.status,
+          action: 'blocked',
+          blockers: [existing.is_locked === true
+            ? 'existing_batch_locked'
+            : 'demand_changed_after_batch_start_requires_supplemental_batch'],
+          writes_performed: false,
+        };
+        results.push(result);
+        continue;
+      } else {
+        commandLog = await createMaterializationCommandLog({
+          base44,
+          user,
+          requestId,
+          draft,
+          action: 'update',
+          status: 'running',
+          result: { writes_performed: false },
+        });
+        const auditTrail = Array.isArray(existing.audit_trail) ? existing.audit_trail.slice(-100) : [];
+        record = await base44.asServiceRole.entities.ProductionBatch.update(existing.id, {
+          planned_units: draft.planned_units,
+          order_sources: draft._write.order_sources,
+          related_orders: draft._write.related_orders,
+          source_system: 'customer_app_native',
+          native_owner_status: 'native_owned_order_demand',
+          audit_trail: [...auditTrail, {
+            timestamp: now,
+            action: 'native_demand_materialized',
+            performed_by: user?.email || 'admin',
+            request_id: requestId,
+          }],
+        });
+        action = 'updated';
+      }
+    } else {
+      commandLog = await createMaterializationCommandLog({
+        base44,
+        user,
+        requestId,
+        draft,
+        action: 'create',
+        status: 'running',
+        result: { writes_performed: false },
+      });
+      record = await base44.asServiceRole.entities.ProductionBatch.create({
+        batch_id: draft.batch_id,
+        product_name: draft.product_name,
+        product_category: draft.product_category,
+        status: 'planned',
+        planned_units: draft.planned_units,
+        production_date: draft.production_date,
+        is_test_batch: false,
+        is_locked: false,
+        order_sources: draft._write.order_sources,
+        related_orders: draft._write.related_orders,
+        source_system: 'customer_app_native',
+        native_owner_status: 'native_owned_order_demand',
+        notes: 'Created from native Customer App paid-order demand. Complete Batch Setup before Start.',
+        audit_trail: [{
+          timestamp: now,
+          action: 'native_demand_materialized',
+          performed_by: user?.email || 'admin',
+          request_id: requestId,
+        }],
+      });
+    }
+
+    let postWriteMatches = null;
+    try {
+      postWriteMatches = await base44.asServiceRole.entities.ProductionBatch.filter({ batch_id: draft.batch_id }, '-created_date', 10);
+      if (!Array.isArray(postWriteMatches)) throw new Error('ProductionBatch_invalid_post_write_read_result');
+    } catch {
+      const result = {
+        ...safeMaterializationDraft(draft),
+        action: 'blocked',
+        blockers: ['post_write_verification_unavailable'],
+        production_batch_id: record?.id || null,
+        writes_performed: action === 'created' || action === 'updated',
+      };
+      results.push(result);
+      await finishMaterializationCommandLog({
+        base44,
+        commandLogId: commandLog?.id,
+        status: 'failed',
+        result,
+      });
+      continue;
+    }
+    const duplicateDetected = postWriteMatches.length !== 1;
+    const result = {
+      ...safeMaterializationDraft(draft),
+      action: duplicateDetected ? 'blocked' : action,
+      blockers: duplicateDetected ? ['duplicate_batch_id_requires_review'] : [],
+      production_batch_id: record?.id || null,
+      writes_performed: action === 'created' || action === 'updated',
+    };
+    results.push(result);
+    if (!commandLog) {
+      commandLog = await createMaterializationCommandLog({
+        base44,
+        user,
+        requestId,
+        draft,
+        action: result.action,
+        status: 'skipped',
+        result,
+      });
+    } else {
+      await finishMaterializationCommandLog({
+        base44,
+        commandLogId: commandLog.id,
+        status: duplicateDetected ? 'failed' : 'success',
+        result,
+      });
+    }
+  }
+  return results;
 }
 
 function sanitizeIngredient(row) {
@@ -1540,6 +2071,10 @@ export default async function handler(req: Request) {
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
     }
+    const operation = normalizeLower(body.operation);
+    if (operation && ![MATERIALIZATION_PREVIEW, MATERIALIZATION_EXECUTE].includes(operation)) {
+      return Response.json({ success: false, error: 'unsupported_production_planning_operation' }, { status: 400 });
+    }
     const productionComplianceReadModelRequested = normalizeText(body.read_model_mode).toUpperCase() === PRODUCTION_COMPLIANCE_READ_MODEL_MODE;
     const productionComplianceReadModelEnabled = readModelGateOpen();
     let dateFrom;
@@ -1583,6 +2118,122 @@ export default async function handler(req: Request) {
     } catch (error) {
       console.error('[getAdminProductionPlanningSummary] Native overlay error:', error.message);
       warnings.push('native_production_planning_overlay_unavailable');
+    }
+
+    if (operation) {
+      const requiredSourceFailures = (nativePlanning.source_read_failures || []).filter(failure => (
+        /^(ShopifyOrder|Order|FulfillmentTask|Bundle|Product)_/.test(failure)
+      ));
+      if (warnings.includes('native_production_planning_overlay_unavailable') || requiredSourceFailures.length > 0) {
+        return Response.json({
+          success: false,
+          operation,
+          error: 'native_demand_source_unavailable',
+          blockers: ['native_demand_source_unavailable'],
+          source_read_failures: requiredSourceFailures,
+          writes_performed: false,
+          notifications_sent: false,
+          provider_calls_performed: false,
+          hub_calls_performed: false,
+        }, { status: 503 });
+      }
+      let productionBatches;
+      try {
+        productionBatches = await loadMaterializationProductionBatches(base44, nativePlanning);
+      } catch {
+        return Response.json({
+          success: false,
+          operation,
+          error: 'production_batch_read_unavailable',
+          blockers: ['production_batch_read_unavailable'],
+          writes_performed: false,
+          notifications_sent: false,
+          provider_calls_performed: false,
+          hub_calls_performed: false,
+        }, { status: 503 });
+      }
+      const drafts = materializationDrafts(nativePlanning, productionBatches);
+      const requestId = sanitizeText(body.request_id, 160);
+
+      if (operation === MATERIALIZATION_EXECUTE) {
+        if (body.confirmation !== MATERIALIZATION_CONFIRMATION) {
+          return Response.json({
+            success: false,
+            error: 'materialization_confirmation_required',
+            writes_performed: false,
+          }, { status: 400 });
+        }
+        if (!requestId) {
+          return Response.json({
+            success: false,
+            error: 'materialization_request_id_required',
+            writes_performed: false,
+          }, { status: 400 });
+        }
+
+        const blockedDrafts = drafts.filter(draft => draft.blockers.length > 0);
+        if (blockedDrafts.length > 0) {
+          return Response.json({
+            success: false,
+            operation,
+            request_id: requestId,
+            error: 'materialization_preflight_blocked',
+            results: blockedDrafts.map(safeMaterializationDraft),
+            blocked_count: blockedDrafts.length,
+            writes_performed: false,
+            inventory_mutation: false,
+            purchase_order_mutation: false,
+            customer_order_mutation: false,
+            fulfillment_task_mutation: false,
+            notifications_sent: false,
+            provider_calls_performed: false,
+            hub_calls_performed: false,
+          }, { status: 409 });
+        }
+
+        const results = await executeBatchMaterialization({ base44, user, requestId, drafts });
+        const blockedCount = results.filter(row => row.action === 'blocked').length;
+        return Response.json({
+          success: blockedCount === 0,
+          operation,
+          request_id: requestId,
+          results,
+          created_count: results.filter(row => row.action === 'created').length,
+          updated_count: results.filter(row => row.action === 'updated').length,
+          deduped_count: results.filter(row => row.action === 'deduped_existing_batch').length,
+          blocked_count: blockedCount,
+          writes_performed: results.some(row => row.writes_performed === true),
+          inventory_mutation: false,
+          purchase_order_mutation: false,
+          customer_order_mutation: false,
+          fulfillment_task_mutation: false,
+          notifications_sent: false,
+          provider_calls_performed: false,
+          hub_calls_performed: false,
+          concurrency_safety: 'best_effort_deterministic_batch_id_with_post_write_duplicate_detection',
+          cross_isolate_unique_create_guarantee: false,
+          duplicate_lifecycle_block_enforced: true,
+        }, { status: blockedCount === 0 ? 200 : 409 });
+      }
+
+      return Response.json({
+        success: true,
+        operation,
+        date_from: resolvedRange.dateFrom,
+        date_to: resolvedRange.dateTo,
+        drafts: drafts.map(safeMaterializationDraft),
+        ready_count: drafts.filter(materializationDraftReady).length,
+        already_materialized_count: drafts.filter(row => row.action === 'already_materialized').length,
+        blocked_count: drafts.filter(row => row.blockers.length > 0).length,
+        writes_performed: false,
+        inventory_mutation: false,
+        purchase_order_mutation: false,
+        customer_order_mutation: false,
+        fulfillment_task_mutation: false,
+        notifications_sent: false,
+        provider_calls_performed: false,
+        hub_calls_performed: false,
+      });
     }
 
     let hubData = {

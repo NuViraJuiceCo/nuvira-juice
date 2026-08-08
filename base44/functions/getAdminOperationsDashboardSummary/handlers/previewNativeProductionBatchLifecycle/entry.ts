@@ -1531,11 +1531,54 @@ export default async function handler(req: Request) {
     if (!auth.ok) return auth.response;
 
     if (body.action && body.batch) {
+      const suppliedBatch = safeObject(body.batch);
+      const suppliedKey = sanitizeId(body.production_batch_id || suppliedBatch.id || body.batch_id || suppliedBatch.batch_id, 120);
+      let currentBatch = suppliedKey
+        ? await base44.asServiceRole.entities.ProductionBatch.get(suppliedKey).catch(() => null)
+        : null;
+      if (!currentBatch && sanitizeId(suppliedBatch.batch_id, 120)) {
+        const matches = await base44.asServiceRole.entities.ProductionBatch.filter({ batch_id: sanitizeId(suppliedBatch.batch_id, 120) }, '-created_date', 2).catch(() => []);
+        if (matches.length > 1) {
+          return Response.json({
+            success: false,
+            dry_run: true,
+            action: normalizeLower(body.action),
+            error_code: 'duplicate_batch_id_requires_review',
+            blockers: ['duplicate_batch_id_requires_review'],
+            writes_performed: false,
+          }, { status: 409 });
+        }
+        currentBatch = matches[0] || null;
+      }
+      if (!currentBatch) {
+        return Response.json({
+          success: false,
+          dry_run: true,
+          action: normalizeLower(body.action),
+          error_code: 'production_batch_not_found',
+          blockers: ['production_batch_not_found'],
+          writes_performed: false,
+        }, { status: 404 });
+      }
+      const duplicateMatches = sanitizeId(currentBatch.batch_id, 120)
+        ? await base44.asServiceRole.entities.ProductionBatch.filter({ batch_id: sanitizeId(currentBatch.batch_id, 120) }, '-created_date', 2).catch(() => [])
+        : [];
+      if (duplicateMatches.length > 1) {
+        return Response.json({
+          success: false,
+          dry_run: true,
+          action: normalizeLower(body.action),
+          error_code: 'duplicate_batch_id_requires_review',
+          blockers: ['duplicate_batch_id_requires_review'],
+          writes_performed: false,
+        }, { status: 409 });
+      }
       const preStartCompliance = normalizeLower(body.action) === 'start'
-        ? await loadPreStartCompliance(base44, safeObject(body.batch))
+        ? await loadPreStartCompliance(base44, currentBatch)
         : null;
       const result = planLifecycle({
         ...body,
+        batch: currentBatch,
         actor_email: auth.actor_email,
         pre_start_compliance: preStartCompliance,
       });

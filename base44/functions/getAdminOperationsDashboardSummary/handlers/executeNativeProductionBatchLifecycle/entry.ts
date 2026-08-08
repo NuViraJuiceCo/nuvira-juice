@@ -640,7 +640,15 @@ function buildWritePatch(batch, proposedPatch) {
 
 async function findBatch(base44, batchKey) {
   const byId = await base44.asServiceRole.entities.ProductionBatch.get(batchKey).catch(() => null);
-  if (byId?.id) return byId;
+  if (byId?.id) {
+    const displayId = sanitizeId(byId.batch_id);
+    if (displayId) {
+      const exactMatches = await base44.asServiceRole.entities.ProductionBatch.filter({ batch_id: displayId }, '-created_date', 2);
+      if (!Array.isArray(exactMatches)) throw new Error('production_batch_duplicate_check_unavailable');
+      if (Array.isArray(exactMatches) && exactMatches.length > 1) throw new Error('multiple_production_batch_matches');
+    }
+    return byId;
+  }
 
   const byBatchId = await base44.asServiceRole.entities.ProductionBatch.filter({ batch_id: batchKey }, '-created_date', 2).catch(() => []);
   if (Array.isArray(byBatchId) && byBatchId.length === 1) return byBatchId[0];
