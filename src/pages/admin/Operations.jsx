@@ -60,13 +60,6 @@ const sections = [
         icon: ShoppingCart,
         badges: ['Read-only', 'Gated tools', 'Source fallback'],
       },
-      {
-        title: 'Live Checkout Monitor',
-        route: '/admin/live-monitor',
-        description: 'One-order checkout trace visibility for app order smoke tests and bridge confirmation.',
-        icon: Activity,
-        badges: ['Read-only', 'Exact order'],
-      },
     ],
   },
   {
@@ -187,7 +180,7 @@ const sections = [
         route: '/admin/loyalty-members',
         description: 'Loyalty member status, rewards visibility, referral context, and account health.',
         icon: Gift,
-        badges: ['Read-only', 'Native'],
+        badges: ['Live ledger', 'Audited edits'],
       },
     ],
   },
@@ -198,9 +191,9 @@ const sections = [
       {
         title: 'Ops Alerts',
         route: '/admin/ops-alerts',
-        description: 'Read-only sanitized operations alerts without raw payloads or alert actions.',
+        description: 'Sanitized operations alerts with audited acknowledge, resolve, and dismiss controls.',
         icon: Bell,
-        badges: ['Read-only', 'Source-backed'],
+        badges: ['Live workflow', 'Source-backed'],
       },
       {
         title: 'Review Queue',

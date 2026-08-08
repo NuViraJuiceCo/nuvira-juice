@@ -243,8 +243,8 @@ export default function POSOrders() {
     queryKey: ['admin-pos-orders-summary', preset, appliedDateFrom, appliedDateTo],
     queryFn: async () => {
       const payload = isCustom
-        ? { preset: 'custom', date_from: appliedDateFrom, date_to: appliedDateTo, limit: 100 }
-        : { preset, limit: 100 };
+        ? { preset: 'custom', date_from: appliedDateFrom, date_to: appliedDateTo, limit: 20 }
+        : { preset, limit: 20 };
       const res = await base44.functions.invoke('getAdminPOSOrdersSummary', payload);
       const result = res?.data || res;
       if (result?.error) throw new Error(result.error);
@@ -264,10 +264,11 @@ export default function POSOrders() {
     queryKey: ['admin-pos-profile-candidates', profilePreviewPreset, profilePreviewRange.date_from, profilePreviewRange.date_to],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminPOSOrdersSummary', {
+        action: 'preview_import',
         preset: profilePreviewPreset,
         date_from: profilePreviewRange.date_from,
         date_to: profilePreviewRange.date_to,
-        limit: 100,
+        limit: 20,
       });
       const result = res?.data || res;
       if (result?.error) throw new Error(result.error);

@@ -40,11 +40,18 @@ const adminOnlyFunctions = [
   'sendOrderReceivedNotification',
   'sendOrderSms',
   'sendOrderStatusNotification',
-  'repairMissingCASubscriptionFromStripeAndHub',
 ];
+const consolidatedAdminActions = new Set([
+  'monitorPostPaymentChain',
+  'notifyOrderProcessed',
+  'sendOrderSms',
+]);
 
 for (const functionName of adminOnlyFunctions) {
-  const source = read(`base44/functions/${functionName}/entry.ts`);
+  const sourcePath = consolidatedAdminActions.has(functionName)
+    ? `base44/functions/getAdminOperationsDashboardSummary/handlers/${functionName}/entry.ts`
+    : `base44/functions/${functionName}/entry.ts`;
+  const source = read(sourcePath);
   assert.match(source, /createClientFromRequest\(req\)/, `${functionName} must create an authenticated request client`);
   assert.match(source, /auth\.me\(\)\.catch\(\(\) => null\)/, `${functionName} must explicitly authenticate the caller`);
   assert.match(source, /status:\s*401/, `${functionName} must reject anonymous callers`);
@@ -71,12 +78,12 @@ assert.ok(
   'Incomplete subscription cleanup must authenticate before feature-gate state',
 );
 
-const addressSuggest = read('base44/functions/addressSuggest/entry.ts');
+const addressSuggest = read('base44/functions/getCustomerAccountDashboardData/handlers/addressSuggest/entry.ts');
 assert.match(addressSuggest, /createClientFromRequest\(req\)/);
 assert.match(addressSuggest, /auth\.me\(\)\.catch\(\(\) => null\)/);
 assert.match(addressSuggest, /status:\s*401/);
 
-const claimReward = read('base44/functions/claimReward/entry.ts');
+const claimReward = read('base44/functions/getCustomerAccountDashboardData/handlers/claimReward/entry.ts');
 assert.match(claimReward, /requestedEmail !== authenticatedEmail/);
 assert.match(claimReward, /Cannot claim a reward for another customer/);
 assert.match(claimReward, /entities\.RewardTier\.filter/);
@@ -84,7 +91,7 @@ assert.match(claimReward, /Reward details do not match the active catalog/);
 assert.match(claimReward, /Not enough points for this reward/);
 assert.match(claimReward, /selected_pending_checkout/);
 
-const completeAccountSetup = read('base44/functions/completeAccountSetup/entry.ts');
+const completeAccountSetup = read('base44/functions/getCustomerAccountDashboardData/handlers/completeAccountSetup/entry.ts');
 assert.match(completeAccountSetup, /requestedEmail !== authenticatedEmail/);
 assert.match(completeAccountSetup, /Cannot update another customer profile/);
 assert.match(completeAccountSetup, /const phone = normalizeText\(body\.phone, 40\)/);

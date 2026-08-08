@@ -9,7 +9,7 @@ import {
 
 const read = (path) => fs.readFileSync(path, 'utf8');
 const source = read('base44/functions/customerJourneyAutomation/customerJourneyAutomation.ts');
-const campaignEntry = read('base44/functions/sendNotificationCampaign/entry.ts');
+const campaignEntry = read('base44/functions/getAdminOperationsDashboardSummary/handlers/sendNotificationCampaign/entry.ts');
 const schedulerEntry = read('base44/functions/customerJourneyAutomation/entry.ts');
 const cart = read('src/lib/cartContext.jsx');
 const checkout = read('src/pages/Checkout.jsx');
@@ -21,9 +21,9 @@ const transactionalCommunications = read('base44/functions/sendOrderStatusNotifi
 const orderStatusEntry = read('base44/functions/sendOrderStatusNotification/entry.ts');
 const orderEmailTemplate = read('base44/functions/sendOrderStatusNotification/orderEmailTemplate.js');
 const stripeWebhook = read('base44/functions/stripeWebhook/entry.ts');
-const zone3Approval = read('base44/functions/approveZone3DeliveryRequest/entry.ts');
-const zone3Denial = read('base44/functions/denyZone3DeliveryRequest/entry.ts');
-const operationsEmail = read('base44/functions/notifyOrderProcessed/entry.ts');
+const zone3Approval = read('base44/functions/getAdminOperationsDashboardSummary/handlers/approveZone3DeliveryRequest/entry.ts');
+const zone3Denial = read('base44/functions/getAdminOperationsDashboardSummary/handlers/denyZone3DeliveryRequest/entry.ts');
+const operationsEmail = read('base44/functions/getAdminOperationsDashboardSummary/handlers/notifyOrderProcessed/entry.ts');
 
 for (const entity of ['CustomerJourneyEvent', 'CustomerJourneyState']) {
   const schema = JSON.parse(read(`base44/entities/${entity}.jsonc`));

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Returns a live ETA window for a customer's delivery
 // Uses the current state of the route (delivered stops as real-time anchors)
 // to calculate how far the driver is from the customer's stop RIGHT NOW.

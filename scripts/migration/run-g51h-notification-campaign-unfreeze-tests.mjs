@@ -8,10 +8,9 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 
 const files = {
   ui: 'src/pages/admin/NotificationCampaigns.jsx',
-  sendCampaign: 'base44/functions/sendNotificationCampaign/entry.ts',
+  sendCampaign: 'base44/functions/getAdminOperationsDashboardSummary/handlers/sendNotificationCampaign/entry.ts',
   sendCustomerNotification: 'base44/functions/sendCustomerNotification/entry.ts',
   sendCustomerPush: 'base44/functions/sendCustomerPushNotification/entry.ts',
-  readiness: 'base44/functions/previewNativeOrderCutoverReadiness/entry.ts',
   docs: 'docs/ADMIN_PUSH_NOTIFICATIONS.md',
 };
 
@@ -24,7 +23,8 @@ test('admin UI no longer freezes customer campaign sending', () => {
   assert.doesNotMatch(source.ui, /CAMPAIGN_SENDS_ENABLED\s*=\s*false/);
   assert.doesNotMatch(source.ui, /Campaign Sends Frozen/);
   assert.match(source.ui, /badge=['"]Live['"]/);
-  assert.match(source.ui, /Campaign sending active/);
+  assert.match(source.ui, /customer_sends_enabled\s*\?\s*['"]Live['"]\s*:\s*['"]Sends locked['"]/);
+  assert.match(source.ui, /production_sends_enabled\s*\?\s*['"]Live['"]\s*:\s*['"]Sends locked['"]/);
   assert.match(source.ui, /sendNotificationCampaign/);
 });
 
@@ -54,7 +54,7 @@ test('campaign sender routes through customer notification creation, not direct 
 });
 
 test('customer notification function permits approved campaign notification subtypes', () => {
-  assert.match(source.sendCustomerNotification, /source\s*===\s*['"]notification_campaign['"]/);
+  assert.match(source.sendCustomerNotification, /String\(source\s*\|\|\s*['"]['"]\)\s*===\s*['"]notification_campaign['"]/);
   assert.match(source.sendCustomerNotification, /DISABLE_NOTIFICATION_CAMPAIGN_SENDS/);
   assert.match(source.sendCustomerNotification, /sendCustomerPushNotification/);
   assert.match(source.sendCustomerNotification, /source,/);
@@ -69,8 +69,8 @@ test('customer push function allows notification campaigns without opening broad
   assert.match(source.sendCustomerPush, /notification_campaign_push_disabled/);
 });
 
-test('readiness diagnostics and docs describe live campaign sends with an emergency kill switch', () => {
-  assert.match(source.readiness, /notification_campaign_sends_enabled:\s*!envEnabled\(['"]DISABLE_NOTIFICATION_CAMPAIGN_SENDS['"]\)/);
+test('consolidated sender and docs describe live campaign sends with an emergency kill switch', () => {
+  assert.match(source.sendCampaign, /DISABLE_NOTIFICATION_CAMPAIGN_SENDS/);
   assert.match(source.docs, /Customer Campaigns/);
   assert.match(source.docs, /DISABLE_NOTIFICATION_CAMPAIGN_SENDS=true/);
   assert.match(source.docs, /sent campaigns cannot be re-?sent/i);

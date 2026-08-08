@@ -6,7 +6,7 @@ import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
-import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight } from 'lucide-react';
+import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight, Loader2, RefreshCw } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 
@@ -323,7 +323,12 @@ export default function Rewards() {
   const [pendingReward, setPendingReward] = useState(null);
 
   // Single backend call resolves all Apple relay identities for points/orders/profile
-  const { data: dashData } = useQuery({
+  const {
+    data: dashData,
+    isLoading: isLoadingRewards,
+    isError: rewardsLoadFailed,
+    refetch: refetchRewards,
+  } = useQuery({
     queryKey: ['account-dashboard', user?.email],
     queryFn: async () => {
       const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
@@ -435,6 +440,33 @@ export default function Rewards() {
   };
 
   if (!user) return <GuestView />;
+
+  if (isLoadingRewards && !dashData) {
+    return (
+      <div className="min-h-[60vh] px-4 pt-12 flex flex-col items-center justify-center text-center">
+        <Loader2 className="h-7 w-7 animate-spin text-primary" aria-hidden="true" />
+        <h1 className="mt-4 font-heading text-xl font-bold text-foreground">Loading your rewards</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Confirming your current points and activity.</p>
+      </div>
+    );
+  }
+
+  if (rewardsLoadFailed) {
+    return (
+      <div className="min-h-[60vh] px-4 pt-12 flex flex-col items-center justify-center text-center">
+        <h1 className="font-heading text-xl font-bold text-foreground">Rewards are temporarily unavailable</h1>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">Your points are safe. Try loading them again.</p>
+        <button
+          type="button"
+          onClick={() => refetchRewards()}
+          className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-nuvira-gradient px-5 text-sm font-bold text-white"
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-32" style={{ background: 'hsl(var(--background))' }}>

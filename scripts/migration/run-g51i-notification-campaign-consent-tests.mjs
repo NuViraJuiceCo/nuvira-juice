@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const functionPath = 'base44/functions/sendNotificationCampaign/entry.ts';
+const functionPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/sendNotificationCampaign/entry.ts';
 const schemaPath = 'base44/entities/NotificationCampaign.jsonc';
 const pagePath = 'src/pages/admin/NotificationCampaigns.jsx';
 

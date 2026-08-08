@@ -1,0 +1,535 @@
+// @ts-nocheck
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import Stripe from 'npm:stripe@14.21.0';
+
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+
+function normalizeDiscountCode(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function normalizeCustomerEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function rowUsesDiscountCode(row, code) {
+  const normalizedCode = normalizeDiscountCode(code);
+  if (!normalizedCode) return false;
+  if (normalizeDiscountCode(row?.promotion_code) === normalizedCode) return true;
+  if (normalizeDiscountCode(row?.discount_code) === normalizedCode) return true;
+  return (Array.isArray(row?.discount_codes) ? row.discount_codes : []).some((value) => (
+    normalizeDiscountCode(value && typeof value === 'object' ? value.code : value) === normalizedCode
+  ));
+}
+
+function orderConsumesDiscount(row) {
+  if (row?.payment_captured === true) return true;
+  const paymentStates = [row?.payment_status, row?.financial_status]
+    .map((value) => String(value || '').trim().toLowerCase());
+  if (paymentStates.some((value) => ['paid', 'captured', 'partially_refunded', 'refunded'].includes(value))) return true;
+  return ['partially_refunded', 'fully_refunded'].includes(String(row?.refund_status || '').trim().toLowerCase());
+}
+
+async function customerHasConsumedDiscount(base44, customerEmail, code) {
+  const rawEmail = String(customerEmail || '').trim();
+  const normalizedEmail = normalizeCustomerEmail(rawEmail);
+  if (!normalizedEmail || !normalizeDiscountCode(code)) return false;
+  const emailCandidates = [...new Set([rawEmail, normalizedEmail].filter(Boolean))];
+  const loadRows = async (entity) => {
+    const pages = await Promise.all(emailCandidates.map((email) => (
+      entity.filter({ customer_email: email }, '-created_date', 200)
+    )));
+    return pages.flatMap((rows) => Array.isArray(rows) ? rows : []);
+  };
+  const [nativeOrders, shopifyOrders, approvalRequests] = await Promise.all([
+    loadRows(base44.asServiceRole.entities.Order),
+    loadRows(base44.asServiceRole.entities.ShopifyOrder),
+    loadRows(base44.asServiceRole.entities.DeliveryApprovalRequest),
+  ]);
+  if ([...nativeOrders, ...shopifyOrders].some((row) => (
+    orderConsumesDiscount(row) && rowUsesDiscountCode(row, code)
+  ))) return true;
+  return approvalRequests.some((row) => (
+    rowUsesDiscountCode(row, code) && (
+      String(row?.status || '').trim().toLowerCase() === 'captured' ||
+      String(row?.stripe_authorization_status || '').trim().toLowerCase() === 'succeeded'
+    )
+  ));
+}
+
+async function oneTimeRedemptionBlock(base44, discount, customerEmail) {
+  if (!discount?.code || discount.once_per_customer !== true) return null;
+  try {
+    if (!await customerHasConsumedDiscount(base44, customerEmail, discount.code)) return null;
+    return Response.json({
+      error: 'This one-time welcome offer has already been used on your account.',
+      error_code: 'DISCOUNT_ALREADY_REDEEMED',
+    }, { status: 409 });
+  } catch (error) {
+    console.error(`[Zone3] One-time discount redemption check failed: ${error.message}`);
+    return Response.json({
+      error: 'We could not verify this one-time offer right now. Please try again in a few minutes.',
+      error_code: 'DISCOUNT_REDEMPTION_CHECK_UNAVAILABLE',
+    }, { status: 503 });
+  }
+}
+
+async function resolveDiscount(base44, code, eligibleSubtotal, now = new Date()) {
+  const normalizedCode = normalizeDiscountCode(code);
+  const subtotal = Number(eligibleSubtotal);
+  if (!Number.isFinite(subtotal) || subtotal < 0) return null;
+
+  if (!normalizedCode) {
+    return { code: null, type: 'promotion', label: null, percent: 0, amount: 0, once_per_customer: false };
+  }
+
+  const candidates = await base44.asServiceRole.entities.DiscountCode.filter(
+    { code: normalizedCode },
+    '-created_date',
+    5,
+  );
+  const activeCandidates = candidates.filter((candidate) => candidate.active === true);
+  if (activeCandidates.length !== 1) return null;
+
+  const discount = activeCandidates[0];
+  const startsAt = discount.starts_at ? new Date(discount.starts_at) : null;
+  const endsAt = discount.ends_at ? new Date(discount.ends_at) : null;
+  if ((startsAt && (!Number.isFinite(startsAt.getTime()) || now < startsAt)) ||
+      (endsAt && (!Number.isFinite(endsAt.getTime()) || now > endsAt))) {
+    return null;
+  }
+
+  const minimumSubtotal = Number(discount.minimum_subtotal || 0);
+  const value = Number(discount.discount_value);
+  if (!Number.isFinite(minimumSubtotal) || subtotal < minimumSubtotal ||
+      !Number.isFinite(value) || value <= 0 ||
+      (discount.discount_type !== 'fixed_amount' && value > 100)) {
+    return null;
+  }
+
+  const uncappedAmount = discount.discount_type === 'fixed_amount'
+    ? value
+    : Math.round(subtotal * value) / 100;
+  const maximumDiscount = Number(discount.maximum_discount || 0);
+  const amount = maximumDiscount > 0 ? Math.min(uncappedAmount, maximumDiscount) : uncappedAmount;
+
+  return {
+    code: normalizedCode,
+    type: discount.discount_kind === 'referral' ? 'referral' : 'promotion',
+    label: String(discount.display_name || `${normalizedCode} discount`).trim(),
+    percent: discount.discount_type === 'fixed_amount' ? 0 : value,
+    amount: Math.min(subtotal, Math.round(amount * 100) / 100),
+    once_per_customer: discount.once_per_customer === true,
+  };
+}
+
+function normalizeNamePart(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function splitHumanFullName(value) {
+  const normalized = normalizeNamePart(value);
+  if (!normalized || normalized.includes('@')) return null;
+  const parts = normalized.split(' ').filter(Boolean);
+  if (parts.length < 2) return null;
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
+function resolveCustomerIdentity({
+  checkoutFirstName,
+  checkoutLastName,
+  checkoutCustomerName,
+  profile,
+  authUser,
+}) {
+  const requestedFirstName = normalizeNamePart(checkoutFirstName);
+  const requestedLastName = normalizeNamePart(checkoutLastName);
+  if (requestedFirstName && requestedLastName) {
+    return {
+      firstName: requestedFirstName,
+      lastName: requestedLastName,
+      source: 'checkout_structured',
+    };
+  }
+
+  const profileFirstName = normalizeNamePart(profile?.first_name);
+  const profileLastName = normalizeNamePart(profile?.last_name);
+  if (profileFirstName && profileLastName) {
+    return {
+      firstName: profileFirstName,
+      lastName: profileLastName,
+      source: 'profile_structured',
+    };
+  }
+
+  const authFirstName = normalizeNamePart(authUser?.first_name);
+  const authLastName = normalizeNamePart(authUser?.last_name);
+  if (authFirstName && authLastName) {
+    return {
+      firstName: authFirstName,
+      lastName: authLastName,
+      source: 'auth_structured',
+    };
+  }
+
+  const split = splitHumanFullName(checkoutCustomerName);
+  if (split) return { ...split, source: 'checkout_full_name' };
+  return null;
+}
+
+async function authorizeCheckoutCustomer(base44, customerEmail) {
+  const user = await base44.auth.me().catch(() => null);
+  const requested = String(customerEmail || '').trim().toLowerCase();
+  const requester = String(user?.email || '').trim().toLowerCase();
+  if (!user?.email || !requested) {
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  if (user.role === 'admin' || requester === requested) return null;
+  return Response.json({ error: 'forbidden' }, { status: 403 });
+}
+
+const ORIGIN_ADDRESS = "619 N Main St, O'Fallon, MO 63366";
+const ALL_ZONE_RULES = [
+  { zone_key: 'zone_1a_core_0_5',          zone_name: 'Core Delivery',               zone_tier_label: 'Core Delivery',         zone_type: 'core',         min: 0,     max: 5,     delivery_fee: 3.99,  minimum_order: null },
+  { zone_key: 'zone_1b_core_5_10',         zone_name: 'Core Delivery',               zone_tier_label: 'Core Delivery',         zone_type: 'core',         min: 5.01,  max: 10,    delivery_fee: 5.99,  minimum_order: null },
+  { zone_key: 'zone_1c_core_10_15',        zone_name: 'Core Delivery',               zone_tier_label: 'Core Delivery',         zone_type: 'core',         min: 10.01, max: 15,    delivery_fee: 7.99,  minimum_order: null },
+  { zone_key: 'zone_2_extended',           zone_name: 'Extended Delivery',           zone_tier_label: 'Extended Delivery',     zone_type: 'extended',     min: 15.01, max: 25,    delivery_fee: 9.99,  minimum_order: 49.99 },
+  { zone_key: 'zone_3a_route_review_25_30',zone_name: 'Route Review Zone',           zone_tier_label: 'Route Review Required', zone_type: 'route_review', min: 25.01, max: 30,    delivery_fee: 12.99, minimum_order: 59.99 },
+  { zone_key: 'zone_3b_route_review_30_35',zone_name: 'Extended Route Review Zone',  zone_tier_label: 'Route Review Required', zone_type: 'route_review', min: 30.01, max: 35,    delivery_fee: 15.99, minimum_order: 72.0 },
+  { zone_key: 'waitlist_only',             zone_name: 'Delivery Waitlist Area',      zone_tier_label: 'Not Yet Available',     zone_type: 'waitlist_only',min: 35.01, max: 99999, delivery_fee: null,  minimum_order: null },
+];
+// Zone 3 rules only (for route review eligibility check)
+const ZONE_RULES = ALL_ZONE_RULES.filter(z => z.zone_type === 'route_review' || z.zone_type === 'waitlist_only');
+
+async function canUseTestDistanceOverride(base44, req) {
+  if (Deno.env.get('NUVIRA_STAGING_SAFE_MODE') !== 'true') return false;
+
+  const user = await base44.auth.me().catch(() => null);
+  return user?.role === 'admin';
+}
+
+async function getEligibility(address, subtotal, context: any = {}) {
+  const { base44, req, testDistanceMiles } = context;
+  let distanceMiles = null;
+  let driveTimeMinutes = null;
+  let distanceConfidence = 'driving';
+
+  if (typeof testDistanceMiles === 'number') {
+    if (!await canUseTestDistanceOverride(base44, req)) {
+      throw new Error('_test_distance_miles override is only allowed in Gate D staging admin context');
+    }
+    distanceMiles = testDistanceMiles;
+    driveTimeMinutes = Math.round(testDistanceMiles * 1.5);
+    distanceConfidence = 'staging_test';
+    console.log(`[Zone3] STAGING TEST distance override: ${distanceMiles} miles`);
+  }
+
+  const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
+  if (distanceMiles === null) {
+    if (!apiKey) throw new Error('GOOGLE_MAPS_API_KEY not configured');
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(ORIGIN_ADDRESS)}&destinations=${encodeURIComponent(address)}&units=imperial&key=${apiKey}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status !== 'OK') throw new Error(`Maps API: ${data.status}`);
+    const element = data.rows?.[0]?.elements?.[0];
+    if (element?.status !== 'OK') throw new Error(`Maps element: ${element?.status}`);
+    distanceMiles = Math.round((element.distance.value / 1609.344) * 10) / 10;
+    driveTimeMinutes = Math.round(element.duration.value / 60);
+  }
+
+  const zone = ALL_ZONE_RULES.find(z => distanceMiles >= z.min && distanceMiles <= z.max) || ALL_ZONE_RULES[ALL_ZONE_RULES.length - 1];
+  const z3 = ZONE_RULES.find(z => distanceMiles >= z.min && distanceMiles <= z.max) || null;
+  const minimumMet = !z3?.minimum_order || subtotal >= z3.minimum_order;
+  return { zone_key: zone.zone_key, zone_type: zone.zone_type, zone_name: z3?.zone_name || zone.zone_key, delivery_fee: z3?.delivery_fee || null, minimum_order: z3?.minimum_order || null, minimum_order_met: minimumMet, amount_needed: minimumMet ? 0 : Math.round((z3.minimum_order - subtotal) * 100) / 100, estimated_distance_miles: distanceMiles, estimated_drive_time_minutes: driveTimeMinutes, distance_confidence: distanceConfidence };
+}
+
+/**
+ * createZone3AuthorizationIntent
+ * Creates a Stripe PaymentIntent with capture_method=manual for Zone 3 route review.
+ * Does NOT create an Order, sync Hub, or seed production.
+ */
+export default async function handler(req: Request) {
+  try {
+    const base44 = createClientFromRequest(req);
+
+    const body = await req.json();
+    const unauthorized = await authorizeCheckoutCustomer(base44, body.customer_email);
+    if (unauthorized) return unauthorized;
+    const authenticatedUser = await base44.auth.me().catch(() => null);
+
+    // Normalize input keys — accept both frontend contract and legacy/test variants
+    const items = body.items ?? body.cart_items ?? [];
+    const subtotal = body.subtotal ?? body.cart_subtotal ?? 0;
+    const delivery_fee = body.delivery_fee ?? null;
+    const total = body.total ?? null;
+    const delivery_address = body.delivery_address ?? null;
+    const address_line1 = body.address_line1 ?? '';
+    const address_line2 = body.address_line2 ?? '';
+    const address_city = body.address_city ?? '';
+    const address_state = body.address_state ?? '';
+    const address_postal_code = body.address_postal_code ?? '';
+    const contact_phone = body.contact_phone ?? body.customer_phone ?? body.phone ?? '';
+    const customer_email = body.customer_email ?? '';
+    const inputCustomerName = body.customer_name ?? '';
+    const inputCustomerFirstName = body.customer_first_name ?? '';
+    const inputCustomerLastName = body.customer_last_name ?? '';
+    const customer_acknowledged_hold = body.customer_acknowledged_hold ?? false;
+    const testDistanceMiles = body._test_distance_miles;
+    const discountCode = body.discount_code ?? body.promotion_code ?? body.referral_code ?? null;
+    const discountEligibleSubtotal = Number(body.discount_eligible_subtotal ?? subtotal);
+    if (!Number.isFinite(discountEligibleSubtotal) ||
+        Math.abs(discountEligibleSubtotal - Number(subtotal || 0)) > 0.01) {
+      return Response.json({
+        error: 'The route-review checkout total could not be verified.',
+        error_code: 'INVALID_DISCOUNT_SUBTOTAL',
+      }, { status: 400 });
+    }
+
+    const normalizedPhone = String(contact_phone || '').trim();
+    const normalizedAddress = {
+      line1: String(address_line1 || '').trim(),
+      line2: String(address_line2 || '').trim(),
+      city: String(address_city || '').trim(),
+      state: String(address_state || '').trim(),
+      postalCode: String(address_postal_code || '').trim(),
+    };
+    const invalidItem = !Array.isArray(items) || items.length === 0 || items.some((item) => (
+      !String(item?.title || '').trim() ||
+      !Number.isFinite(Number(item?.price)) ||
+      Number(item?.price) < 0 ||
+      !Number.isInteger(Number(item?.quantity)) ||
+      Number(item?.quantity) < 1
+    ));
+    if (invalidItem) {
+      return Response.json({
+        error: 'Your cart contains an invalid item. Please review it and try again.',
+        error_code: 'INVALID_ORDER_ITEMS',
+      }, { status: 400 });
+    }
+    if (normalizedPhone.replace(/\D/g, '').length < 10) {
+      return Response.json({
+        error: 'A valid phone number is required for fulfillment.',
+        error_code: 'CUSTOMER_PHONE_REQUIRED',
+      }, { status: 400 });
+    }
+    if (
+      !normalizedAddress.line1 ||
+      !normalizedAddress.city ||
+      !normalizedAddress.state ||
+      !normalizedAddress.postalCode
+    ) {
+      return Response.json({
+        error: 'A complete delivery address is required.',
+        error_code: 'DELIVERY_ADDRESS_REQUIRED',
+      }, { status: 400 });
+    }
+
+    // Require customer acknowledgment
+    if (!customer_acknowledged_hold) {
+      return Response.json({ error: 'Customer must acknowledge the authorization hold before proceeding.' }, { status: 400 });
+    }
+
+    const discount = await resolveDiscount(base44, discountCode, discountEligibleSubtotal);
+    if (!discount) {
+      return Response.json({
+        error: 'This discount code is not valid for the current order.',
+        error_code: 'INVALID_DISCOUNT_CODE',
+      }, { status: 400 });
+    }
+    const redemptionBlock = await oneTimeRedemptionBlock(base44, discount, customer_email || authenticatedUser?.email);
+    if (redemptionBlock) return redemptionBlock;
+
+    let customerProfile = null;
+    if (customer_email) {
+      const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email });
+      customerProfile = profiles[0] || null;
+    }
+    const customerIdentity = resolveCustomerIdentity({
+      checkoutFirstName: inputCustomerFirstName,
+      checkoutLastName: inputCustomerLastName,
+      checkoutCustomerName: inputCustomerName,
+      profile: customerProfile,
+      authUser: authenticatedUser,
+    });
+    if (!customerIdentity) {
+      return Response.json({
+        error: 'A first and last name are required for receipts and delivery.',
+        error_code: 'CUSTOMER_NAME_REQUIRED',
+      }, { status: 400 });
+    }
+    const customer_name = `${customerIdentity.firstName} ${customerIdentity.lastName}`;
+
+    const addrString = delivery_address || [
+      normalizedAddress.line1,
+      normalizedAddress.city,
+      normalizedAddress.state,
+      normalizedAddress.postalCode,
+    ].filter(Boolean).join(', ');
+    if (!addrString || addrString.trim().length < 5) return Response.json({ error: 'Valid delivery address is required.' }, { status: 400 });
+
+    // Validate Zone 3
+    let eligibility;
+    try {
+      eligibility = await getEligibility(addrString, subtotal || 0, {
+        base44,
+        req,
+        testDistanceMiles,
+      });
+    } catch (err) {
+      console.error(`[Zone3] Eligibility check failed: ${err.message}`);
+      return Response.json({ error: 'Could not verify delivery eligibility. Please try again.' }, { status: 400 });
+    }
+
+    if (eligibility.zone_type !== 'route_review') {
+      return Response.json({
+        error: eligibility.zone_type === 'waitlist_only'
+          ? 'Your address is outside our delivery area. You can join the waitlist.'
+          : 'This address does not require route review. Please use the standard checkout.',
+        zone_type: eligibility.zone_type,
+        zone_key: eligibility.zone_key,
+      }, { status: 400 });
+    }
+
+    if (!eligibility.minimum_order_met) {
+      return Response.json({
+        error: `A minimum order of $${eligibility.minimum_order?.toFixed(2)} is required for your delivery area. Add $${eligibility.amount_needed?.toFixed(2)} more to continue.`,
+        reason_code: 'MINIMUM_ORDER_NOT_MET',
+        amount_needed: eligibility.amount_needed,
+      }, { status: 400 });
+    }
+
+    const estimatedDeliveryFee = eligibility.delivery_fee || (delivery_fee || 0);
+    const discountedMerchandiseTotal = Math.max(0, discountEligibleSubtotal - discount.amount);
+    const effectiveTotal = Math.max(0, Math.round((discountedMerchandiseTotal + estimatedDeliveryFee) * 100) / 100);
+    const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
+
+    // Generate request number
+    const requestNumber = `DAR-${Date.now().toString(36).toUpperCase()}`;
+
+    // Store pre-authorization DeliveryApprovalRequest (draft)
+    const darRecord = await base44.asServiceRole.entities.DeliveryApprovalRequest.create({
+      request_number: requestNumber,
+      customer_name,
+      customer_email: customer_email || '',
+      customer_phone: normalizedPhone,
+      delivery_address: addrString,
+      address_line1: normalizedAddress.line1,
+      address_line2: normalizedAddress.line2,
+      address_city: normalizedAddress.city,
+      address_state: normalizedAddress.state,
+      address_postal_code: normalizedAddress.postalCode,
+      address_country: 'US',
+      cart_items: (items || []).map(i => ({ product_id: i.product_id, title: i.title, price: i.price, quantity: i.quantity })),
+      cart_subtotal: subtotal || 0,
+      discount_eligible_subtotal: discountEligibleSubtotal,
+      discount_amount: discount.amount,
+      discount_percent: discount.percent,
+      ...(discount.code ? {
+        discount_code: discount.code,
+        discount_kind: discount.type,
+      } : {}),
+      estimated_delivery_fee: estimatedDeliveryFee,
+      estimated_total: effectiveTotal,
+      estimated_distance_miles: eligibility.estimated_distance_miles,
+      estimated_drive_time_minutes: eligibility.estimated_drive_time_minutes,
+      zone_key: eligibility.zone_key,
+      zone_name: eligibility.zone_name,
+      zone_type: eligibility.zone_type,
+      customer_acknowledged_hold: true,
+      status: 'pending_authorization',
+      audit_trail: [{
+        action: 'authorization_initiated',
+        performed_by: customer_email || 'customer',
+        timestamp: new Date().toISOString(),
+        note: `Zone 3 route review initiated. Distance: ${eligibility.estimated_distance_miles} miles. Zone: ${eligibility.zone_key}.${discount.code ? ` Discount: ${discount.code} (-$${discount.amount.toFixed(2)}).` : ''}`,
+      }],
+    });
+
+    console.log(`[Zone3] DeliveryApprovalRequest created: ${darRecord.id} (${requestNumber})`);
+
+    // Create Stripe PaymentIntent with manual capture
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: 'usd',
+      capture_method: 'manual',
+      payment_method_types: ['card'],
+      receipt_email: customer_email || undefined,
+      description: `NuVira Zone 3 Route Review ${requestNumber}`,
+      metadata: {
+        base44_app_id: Deno.env.get('BASE44_APP_ID'),
+        source_app: 'customer_app',
+        checkout_version: 'zone3_manual_capture_v1',
+        flow_type: 'zone3_route_review',
+        request_number: requestNumber,
+        dar_id: darRecord.id,
+        order_type: 'one_time',
+        customer_email: customer_email || '',
+        customer_name,
+        customer_first_name: customerIdentity.firstName,
+        customer_last_name: customerIdentity.lastName,
+        customer_name_source: customerIdentity.source,
+        customer_phone: normalizedPhone,
+        delivery_address_line1: normalizedAddress.line1,
+        delivery_address_line2: normalizedAddress.line2,
+        delivery_city: normalizedAddress.city,
+        delivery_state: normalizedAddress.state,
+        delivery_postal_code: normalizedAddress.postalCode,
+        delivery_zone_key: eligibility.zone_key,
+        delivery_zone_type: eligibility.zone_type,
+        estimated_distance_miles: String(eligibility.estimated_distance_miles || ''),
+        estimated_delivery_fee: String(estimatedDeliveryFee),
+        cart_subtotal: String(subtotal || 0),
+        discount_eligible_subtotal: String(discountEligibleSubtotal),
+        discount_code: discount.code || '',
+        discount_kind: discount.code ? discount.type : '',
+        discount_amount: discount.amount.toFixed(2),
+        effective_total: String(effectiveTotal),
+        customer_acknowledged_hold: 'true',
+      },
+      shipping: {
+        name: customer_name,
+        phone: normalizedPhone,
+        address: {
+          line1: normalizedAddress.line1,
+          line2: normalizedAddress.line2 || undefined,
+          city: normalizedAddress.city,
+          state: normalizedAddress.state,
+          postal_code: normalizedAddress.postalCode,
+          country: 'US',
+        },
+      },
+    });
+
+    // Update DAR with Stripe PI ID
+    await base44.asServiceRole.entities.DeliveryApprovalRequest.update(darRecord.id, {
+      stripe_payment_intent_id: paymentIntent.id,
+      amount_authorized: effectiveTotal,
+      authorization_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Stripe holds up to 7 days
+    });
+
+    console.log(`[Zone3] PI ${paymentIntent.id} created for DAR ${requestNumber}, amount=${amountCents}¢, capture_method=manual`);
+
+    return Response.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      publishableKey: Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+      requestNumber,
+      darId: darRecord.id,
+      effectiveTotal,
+      estimatedDeliveryFee,
+      zoneKey: eligibility.zone_key,
+      zoneName: eligibility.zone_name,
+      distanceMiles: eligibility.estimated_distance_miles,
+      discountCode: discount.code,
+      discountLabel: discount.label,
+      discountAmount: discount.amount,
+    });
+
+  } catch (error) {
+    console.error('[Zone3] createZone3AuthorizationIntent error:', error.message);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}

@@ -13,6 +13,8 @@ const googleServices = JSON.parse(fs.readFileSync('android/app/google-services.j
 const pushSource = fs.readFileSync('src/lib/pushNotifications.js', 'utf8');
 const rootGitignore = fs.readFileSync('.gitignore', 'utf8');
 const androidGitignore = fs.readFileSync('android/.gitignore', 'utf8');
+const capacitorSettings = fs.readFileSync('android/capacitor.settings.gradle', 'utf8');
+const capacitorAppGradle = fs.readFileSync('android/app/capacitor.build.gradle', 'utf8');
 
 const tests = [];
 function test(name, fn) {
@@ -94,6 +96,13 @@ test('10. Google services configuration matches the registered Android app.', ()
     googleServices.client?.map(client => client?.client_info?.android_client_info?.package_name),
     ['com.nuvirajuice.app'],
   );
+});
+
+test('11. Native authentication includes the Capacitor Browser plugin in the Android project.', () => {
+  assert.equal(packageJson.dependencies['@capacitor/browser'], '8.0.4');
+  assert.match(capacitorSettings, /include ':capacitor-browser'/);
+  assert.match(capacitorSettings, /node_modules\/@capacitor\/browser\/android/);
+  assert.match(capacitorAppGradle, /implementation project\(':capacitor-browser'\)/);
 });
 
 for (const item of tests) {

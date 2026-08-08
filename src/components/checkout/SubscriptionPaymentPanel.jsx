@@ -20,7 +20,7 @@ import { CheckCircle2, Lock } from 'lucide-react';
  * No iframes, no redirects — customer stays in the app.
  *
  * Props:
- *   clientSecret: string — PaymentIntent client_secret from createSubscriptionPaymentElementIntent
+ *   clientSecret: string — PaymentIntent client_secret from the customer account gateway
  *   publishableKey: string
  *   amountDue: number — dollars (e.g. 36.00)
  *   planName: string

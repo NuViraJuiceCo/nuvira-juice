@@ -6,7 +6,7 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
 
     if (!user) {
       return Response.json({ error: 'Authentication required' }, { status: 401 });

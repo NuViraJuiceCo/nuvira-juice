@@ -344,14 +344,17 @@ async function maybeRunNativeSafeSyncWriter(base44, { record, topic }) {
   const idempotencyKey = `native_safe_sync:shopify_webhook:${topicKey(topic)}:${orderKey}`;
 
   try {
-    const response = await base44.asServiceRole.functions.invoke('executeNativeSafeSyncOrderUpdate', {
-      mode: 'live',
-      source,
-      event_type: eventType,
-      request_id: requestId,
-      idempotency_key: idempotencyKey,
-      internal_secret: config.customerAppSyncSecret,
-      incoming_payload: nativeSafeSyncPayload(record),
+    const response = await base44.asServiceRole.functions.invoke('getAdminOperationsDashboardSummary', {
+      gateway_action: 'executeNativeSafeSyncOrderUpdate',
+      payload: {
+        mode: 'live',
+        source,
+        event_type: eventType,
+        request_id: requestId,
+        idempotency_key: idempotencyKey,
+        internal_secret: config.customerAppSyncSecret,
+        incoming_payload: nativeSafeSyncPayload(record),
+      },
     });
     const result = response?.data || response || {};
     const handled = nativeSafeSyncHandled(result);
@@ -414,10 +417,16 @@ async function createOrderWriteAuditLog(base44, { record, topic, action, reason,
 async function syncIngestedOrderToHub(base44, record, topic) {
   if (!record?.id || !['orders/create', 'orders/paid'].includes(topic)) return { skipped: true };
   try {
-    const response = await base44.asServiceRole.functions.invoke('syncShopifyOrderToHub', record, {
-      headers: { 'x-internal-secret': getCustomerAppSyncSecret() },
+    const response = await base44.asServiceRole.functions.fetch('/getAdminOperationsDashboardSummary', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${getCustomerAppSyncSecret()}`,
+      },
+      body: JSON.stringify({ gateway_action: 'syncShopifyOrderToHub', payload: record }),
     });
-    const result = response?.data || response;
+    const result: any = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result?.error || `syncShopifyOrderToHub_http_${response.status}`);
     if (result?.success !== true && result?.skipped !== true) throw new Error(result?.error || 'hub_sync_failed');
     return result;
   } catch (error) {
@@ -529,7 +538,7 @@ Deno.serve(async (req) => {
   const existing = await base44.asServiceRole.entities.ShopifyOrder.filter({ shopify_order_id: shopifyOrderId });
   let nativeOpsResult = null;
   let nativeOpsAttempted = false;
-  let nativeSafeSyncBridge = { attempted: false, handled: false };
+  let nativeSafeSyncBridge: any = { attempted: false, handled: false };
 
   if (topic === 'orders/create' || topic === 'orders/paid') {
     let record;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 const MAX_ROWS = 1000;
 
 function text(value: unknown, max = 300): string {
@@ -45,6 +46,16 @@ function orderPaid(row: any): boolean {
 
 function profileFullName(profile: any): string {
   return text([profile?.first_name, profile?.last_name].map(part => text(part, 100)).filter(Boolean).join(' '), 180);
+}
+
+function normalizedNameKey(value: unknown): string {
+  return text(value, 180)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(' ');
 }
 
 function orderName(order: any): string {
@@ -145,12 +156,26 @@ async function listMembers(base44: any) {
       || number(member.lifetime_points) !== number(point.lifetime_points)
       || number(member.redeemed_points) !== number(point.redeemed_points)
     ));
-    const fullName = profileFullName(profile) || orderName(latestOrder) || profileFullName(claim) || text(member?.full_name, 180);
+    const authoritativeProfileName = profileFullName(profile);
+    const candidateNames = [
+      authoritativeProfileName,
+      ...customerOrders.slice(0, 5).map(orderName),
+      profileFullName(claim),
+      text(member?.full_name, 180),
+    ].filter(Boolean);
+    const distinctNameKeys = new Set(candidateNames.map(normalizedNameKey).filter(Boolean));
+    // A complete customer-managed profile is the canonical current identity.
+    // Historical order labels may contain reversed names or checkout typos and
+    // should not leave an otherwise complete member in a permanent review state.
+    const nameConflict = !authoritativeProfileName && distinctNameKeys.size > 1;
+    const fullName = authoritativeProfileName || candidateNames[0] || '';
     const phone = normalizePhone(profile?.phone || profile?.phone_number) || orderPhone(latestOrder) || normalizePhone(claim?.phone) || normalizePhone(member?.phone);
+    const missingName = !fullName;
+    const phoneNotProvided = !phone;
     rows.push({
       id: point?.id || member?.id,
       customer_email: customerEmail,
-      full_name: fullName || 'Profile incomplete',
+      full_name: fullName || 'Name not provided',
       first_name: text(profile?.first_name || claim?.first_name, 100),
       last_name: text(profile?.last_name || claim?.last_name, 100),
       phone,
@@ -165,8 +190,19 @@ async function listMembers(base44: any) {
       lifetime_spend: Number(customerOrders.reduce((sum: number, row: any) => sum + netOrderTotal(row), 0).toFixed(2)),
       last_order_at: latestOrder?.created_date || latestOrder?.customer_order_date || null,
       last_order_number: latestOrder ? orderReference(latestOrder) : null,
-      reconciliation_status: cacheMismatch ? 'cache_mismatch' : !fullName || !phone ? 'profile_incomplete' : 'current',
-      anomalies: [cacheMismatch ? 'cache_mismatch' : '', !fullName ? 'missing_name' : '', !phone ? 'missing_phone' : ''].filter(Boolean),
+      reconciliation_status: cacheMismatch
+        ? 'cache_mismatch'
+        : nameConflict || missingName
+          ? 'identity_review'
+          : phoneNotProvided
+            ? 'phone_not_provided'
+            : 'current',
+      anomalies: [
+        cacheMismatch ? 'cache_mismatch' : '',
+        missingName ? 'missing_name' : '',
+        nameConflict ? 'name_conflict' : '',
+        phoneNotProvided ? 'phone_not_provided' : '',
+      ].filter(Boolean),
       recent_transactions: ledgerRows.slice(0, 12).map((row: any) => ({
         id: row.id,
         amount: number(row.amount),
@@ -184,8 +220,9 @@ async function listMembers(base44: any) {
     rows,
     summary: {
       member_count: rows.length,
-      profile_incomplete_count: rows.filter(row => row.anomalies.includes('missing_name') || row.anomalies.includes('missing_phone')).length,
-      contact_pending_count: rows.filter(row => row.anomalies.includes('missing_name') || row.anomalies.includes('missing_phone')).length,
+      profile_incomplete_count: rows.filter(row => row.anomalies.includes('missing_name') || row.anomalies.includes('name_conflict')).length,
+      contact_pending_count: rows.filter(row => row.anomalies.includes('missing_name') || row.anomalies.includes('name_conflict')).length,
+      phone_not_provided_count: rows.filter(row => row.anomalies.includes('phone_not_provided')).length,
       cache_mismatch_count: rows.filter(row => row.anomalies.includes('cache_mismatch')).length,
       balance_issue_count: rows.filter(row => row.anomalies.includes('cache_mismatch')).length,
       total_outstanding_points: rows.reduce((sum, row) => sum + row.total_points, 0),
@@ -220,7 +257,8 @@ export async function handleLoyaltyAdminAction(base44: any, user: any, body: any
         source_type: 'admin_adjustment',
         source_id: requestId,
         metadata: { admin_email: user.email },
-      }, { headers: { 'x-internal-secret': Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' } });
+        internal_secret: Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '',
+      });
       const result = response?.data || response;
       return Response.json(result, { status: result?.success === true ? 200 : 409 });
     }
@@ -229,13 +267,23 @@ export async function handleLoyaltyAdminAction(base44: any, user: any, body: any
       const firstName = text(body?.first_name, 100);
       const lastName = text(body?.last_name, 100);
       const phone = normalizePhone(body?.phone);
-      if (!firstName || !lastName || !phone) return Response.json({ error: 'complete_name_and_valid_phone_required' }, { status: 400 });
+      const phoneInputPresent = text(body?.phone, 80).length > 0;
+      if ((firstName && !lastName) || (!firstName && lastName)) {
+        return Response.json({ error: 'first_and_last_name_must_be_saved_together' }, { status: 400 });
+      }
+      if (phoneInputPresent && !phone) return Response.json({ error: 'valid_phone_required_when_phone_is_provided' }, { status: 400 });
+      if ((!firstName || !lastName) && !phone) return Response.json({ error: 'verified_name_or_phone_required' }, { status: 400 });
       const [customerProfiles, contactProfiles] = await Promise.all([
         base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail }, '-updated_date', 5),
         base44.asServiceRole.entities.UserProfile.filter({ contact_email: customerEmail }, '-updated_date', 5),
       ]);
       const profiles = [...customerProfiles, ...contactProfiles].filter((row, index, all) => all.findIndex(candidate => candidate.id === row.id) === index);
-      const payload = { customer_email: profiles[0]?.customer_email || customerEmail, contact_email: customerEmail, first_name: firstName, last_name: lastName, phone };
+      const payload = {
+        customer_email: profiles[0]?.customer_email || customerEmail,
+        contact_email: customerEmail,
+        ...(firstName && lastName ? { first_name: firstName, last_name: lastName } : {}),
+        ...(phone ? { phone } : {}),
+      };
       const profile = profiles[0]
         ? await base44.asServiceRole.entities.UserProfile.update(profiles[0].id, payload)
         : await base44.asServiceRole.entities.UserProfile.create(payload);

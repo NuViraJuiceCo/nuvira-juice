@@ -98,7 +98,7 @@ function sanitizeLineItems(items) {
 }
 
 function compactObject(value) {
-  const out = {};
+  const out: Record<string, any> = {};
   for (const [key, item] of Object.entries(value || {})) {
     if (item !== undefined && item !== null && item !== '') out[key] = item;
   }
@@ -861,13 +861,16 @@ async function runPlanner({ base44, source, record, existing, idempotencyKey }) 
     delete plannerPayload.shopify_order_id;
   }
 
-  const plannerResponse = await base44.asServiceRole.functions.invoke('previewNativeSafeSyncOrderUpdate', {
-    mode: 'dry_run',
-    fixture_id: 'native_order_ops',
-    source: source === 'shopify_pos' ? 'admin' : 'customer_app',
-    idempotency_key: idempotencyKey,
-    incoming_payload: plannerPayload,
-    starting_order: existing || null,
+  const plannerResponse = await base44.asServiceRole.functions.invoke('getAdminOperationsDashboardSummary', {
+    gateway_action: 'previewNativeSafeSyncOrderUpdate',
+    payload: {
+      mode: 'dry_run',
+      fixture_id: 'native_order_ops',
+      source: source === 'shopify_pos' ? 'admin' : 'customer_app',
+      idempotency_key: idempotencyKey,
+      incoming_payload: plannerPayload,
+      starting_order: existing || null,
+    },
   }, getNativeSafeSyncPreviewInvokeOptions());
   return plannerResponse?.data || plannerResponse;
 }
@@ -962,7 +965,7 @@ export async function handleNativeOrderOpsRequest(req: Request) {
       }, { status: 202 });
     }
 
-    const outputs = source === 'shopify_pos'
+    const outputs: any = source === 'shopify_pos'
       ? buildPosRecord({ order, source, eventType, lineItems, paymentStatus })
       : buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus });
     const existing = await findExistingOrder(base44, outputs.record);
@@ -1019,7 +1022,7 @@ export async function handleNativeOrderOpsRequest(req: Request) {
     const fieldsUpdated = Object.keys(planner.accepted_fields || outputs.record);
     let writeAction = existing ? 'skipped' : 'created';
     let writtenRecord = existing || outputs.record;
-    let fulfillmentTaskResult = {
+    let fulfillmentTaskResult: any = {
       action: mode === 'live' ? 'not_run' : (outputs.fulfillment_need.requires_fulfillment_task ? 'would_create_or_update' : 'not_required'),
       record: null,
     };

@@ -203,15 +203,15 @@ export function buildLoyaltyIntegrityReport({
   }
 
   const incompleteProfiles = [];
+  const phoneNotProvidedProfiles = [];
   for (const rows of membersByEmail.values()) {
     if (rows.length !== 1) continue;
     const member = rows[0];
     const email = normalizeEmail(member?.email);
     if (!email) continue;
     const contact = memberContact(member, profilesByEmail, ordersByEmail, shopifyOrdersByEmail);
-    if (!contact.name || !contact.phone) {
-      incompleteProfiles.push({ email, loyalty_member_id: member?.id, missing_name: !contact.name, missing_phone: !contact.phone });
-    }
+    if (!contact.name) incompleteProfiles.push({ email, loyalty_member_id: member?.id, missing_name: true });
+    if (!contact.phone) phoneNotProvidedProfiles.push({ email, loyalty_member_id: member?.id, phone_not_provided: true });
   }
 
   const paidOrderEmails = new Set();
@@ -247,6 +247,7 @@ export function buildLoyaltyIntegrityReport({
   const informationalCounts = {
     paid_customers_not_enrolled_in_loyalty: paidCustomersWithoutPoints.length,
     test_points_accounts_without_member: testPointsWithoutMembers.length,
+    phone_not_provided: phoneNotProvidedProfiles.length,
   };
   const criticalExceptionCount = Object.values(criticalCounts).reduce((sum, count) => sum + count, 0);
   const warningCount = Object.values(warningCounts).reduce((sum, count) => sum + count, 0);
@@ -282,6 +283,7 @@ export function buildLoyaltyIntegrityReport({
       history_integrity: historyExceptions,
       cache_mismatches: cacheMismatches,
       incomplete_profiles: incompleteProfiles,
+      phone_not_provided: phoneNotProvidedProfiles,
       paid_customers_without_points: paidCustomersWithoutPoints,
     },
     read_errors: readErrors,

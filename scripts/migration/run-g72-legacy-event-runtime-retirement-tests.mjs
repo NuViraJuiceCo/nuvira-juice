@@ -33,7 +33,6 @@ for (const functionName of [
 }
 
 for (const functionName of [
-  'getAdminResourcesSummary',
   'getAdminPOSOrdersSummary',
   'syncOrderToHub',
 ]) {
@@ -47,11 +46,8 @@ assert.match(nativeOrderOps, /native_order_ops/);
 assert.match(nativeOrderOps, /native_ops_ready/);
 assert.match(read('base44/functions/syncOrderToHub/entry.ts'), /handleNativeOrderOpsRequest/);
 assert.match(read('base44/functions/getAdminPOSOrdersSummary/entry.ts'), /handlePOSCustomerClaims/);
-assert.match(read('base44/functions/getAdminResourcesSummary/entry.ts'), /handleAdminDataSummary/);
-
-const readiness = read('base44/functions/previewNativeOrderCutoverReadiness/entry.ts');
-assert.match(readiness, /native_order_ops/);
-assert.match(readiness, /ENABLE_NATIVE_ORDER_OPS/);
+assert.match(read('base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminResourcesSummary/entry.ts'), /handleAdminDataSummary/);
+assert.equal(exists('base44/functions/previewNativeOrderCutoverReadiness'), false);
 
 const pushClient = read('src/lib/pushNotifications.js');
 assert.match(pushClient, /nuvira_native_push_target_v2/);

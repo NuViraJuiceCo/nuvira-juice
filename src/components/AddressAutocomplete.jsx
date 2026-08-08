@@ -40,8 +40,12 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
   };
 
   const handleStreetChange = (e) => {
-    emit({ ...addr, street: e.target.value });
-    fetchSuggestions(e.target.value);
+    const nextStreet = e.target.value;
+    // A changed street must not be combined with locality fields from a
+    // previously selected address. Google selection (or deliberate manual
+    // re-entry below) restores one internally consistent address.
+    emit({ street: nextStreet, city: '', state: '', zip: '' });
+    fetchSuggestions(nextStreet);
   };
 
   const handleSelect = (s) => {
@@ -61,12 +65,14 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
       {/* Street */}
       <div className="relative">
         <Input
+          name="streetAddress"
+          aria-label="Street address"
           value={addr.street}
           onChange={handleStreetChange}
           onFocus={() => suggestions.length > 0 && setOpen(true)}
           placeholder={placeholder || '123 Main St'}
           className={className}
-          autoComplete="off"
+          autoComplete="address-line1"
         />
         {open && suggestions.length > 0 && (
           <ul className="absolute z-10 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto text-sm">
@@ -90,28 +96,37 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
       <div className="grid grid-cols-5 gap-2">
         <div className="col-span-2">
           <Input
+            name="city"
+            aria-label="City"
             value={addr.city}
             onChange={e => emit({ ...addr, city: e.target.value })}
             placeholder="City"
             className={className}
+            autoComplete="address-level2"
           />
         </div>
         <div className="col-span-1">
           <Input
+            name="state"
+            aria-label="State"
             value={addr.state}
             onChange={e => emit({ ...addr, state: e.target.value })}
             placeholder="ST"
             maxLength={2}
             className={className}
+            autoComplete="address-level1"
           />
         </div>
         <div className="col-span-2">
           <Input
+            name="postalCode"
+            aria-label="ZIP code"
             value={addr.zip}
             onChange={e => emit({ ...addr, zip: e.target.value })}
             placeholder="ZIP"
             maxLength={10}
             className={className}
+            autoComplete="postal-code"
           />
         </div>
       </div>

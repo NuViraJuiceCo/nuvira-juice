@@ -65,8 +65,8 @@ test('6. Native delivery fusion does not write Shopify, production, inventory, p
 test('7. Delivery Queue exposes Hub-like native controls before diagnostics', () => {
   assert.match(deliveryPageSource, /function NativeDeliveryActionControls/);
   assert.match(deliveryPageSource, /NativeDeliveryActionControls stop=\{stop\}/);
-  assert.match(deliveryPageSource, /NativeFulfillmentPreviewPanel stop=\{stop\}/);
-  assert.ok(deliveryPageSource.indexOf('NativeDeliveryActionControls stop={stop}') < deliveryPageSource.indexOf('NativeFulfillmentPreviewPanel stop={stop}'));
+  assert.match(deliveryPageSource, /NativeDeliveryActionControls stop=\{stop\}/);
+  assert.doesNotMatch(deliveryPageSource, /<NativeFulfillmentPreviewPanel stop=\{stop\}/);
 });
 
 test('8. Native UI opts into customer projection and notification only for delivery milestones', () => {

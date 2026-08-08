@@ -13,10 +13,23 @@ export default function LowercaseRedirect() {
 
   useEffect(() => {
     const { pathname, search, hash } = location;
-    const lower = pathname.toLowerCase();
-    if (lower !== pathname) {
+    const segments = pathname.split('/');
+    const routeRoot = segments[1]?.toLowerCase() || '';
+    const preservesDynamicIdentifier = new Set([
+      'shop',
+      'product',
+      'products',
+      'program',
+      'cart',
+      'order-confirmation',
+      'order-tracker',
+    ]).has(routeRoot) && segments.length > 2;
+    const canonicalPath = preservesDynamicIdentifier
+      ? `/${routeRoot}/${segments.slice(2).join('/')}`
+      : pathname.toLowerCase();
+    if (canonicalPath !== pathname) {
       // Replace so back-button doesn't loop
-      navigate(lower + search + hash, { replace: true });
+      navigate(canonicalPath + search + hash, { replace: true });
     }
   }, [location.pathname]);
 

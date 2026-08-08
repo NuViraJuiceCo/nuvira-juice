@@ -9,6 +9,25 @@ const TERMINAL_SKIPPED_ACTIONS = new Set([
   'manual_review_required',
 ]);
 
+async function invokeInternalFunction(base44, functionName, payload, secret) {
+  const usesAdminGateway = functionName === 'syncSubscriptionWithFulfillments';
+  const targetFunction = usesAdminGateway ? 'getAdminOperationsDashboardSummary' : functionName;
+  const requestPayload = usesAdminGateway
+    ? { gateway_action: functionName, payload }
+    : payload;
+  const response = await base44.asServiceRole.functions.fetch(`/${targetFunction}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-secret': secret || '',
+    },
+    body: JSON.stringify(requestPayload),
+  });
+  const data: any = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || data?.error_code || `${functionName}_http_${response.status}`);
+  return { data };
+}
+
 function isRetryAttemptLog(log) {
   if (!log?.order_number) return false;
   if (log.status === 'error') return true;
@@ -238,12 +257,10 @@ Deno.serve(async (req) => {
         // could appear as service-role calls.
         console.log(`[RetryHubSyncs] Active subscription ${stripeSubId} (${activeSub.customer_email}) — retrying Hub sync`);
         try {
-          const syncResult = await base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+          const syncResult = await invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
             subscription_id: activeSub.id,
             customer_email: activeSub.customer_email,
-          }, {
-            headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' },
-          });
+          }, Deno.env.get('HUB_SYNC_SECRET') || '');
           const hubResp = syncResult?.data || syncResult;
 
           // ── 409 SUBSCRIPTION_QUARANTINED — write terminal skipped log, stop retry ──

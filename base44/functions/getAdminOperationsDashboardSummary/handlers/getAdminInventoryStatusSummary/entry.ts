@@ -1,0 +1,470 @@
+// @ts-nocheck
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+
+const HUB_API_URL = Deno.env.get('HUB_API_URL');
+const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
+const MAX_LIMIT = 200;
+const DEFAULT_LIMIT = 100;
+const VALID_STATUSES = new Set(['ok', 'low', 'critical', 'out_of_stock', 'demand_based']);
+const FOOD_STOCK_EXCLUDED_CATEGORIES = new Set(['produce', 'juice base', 'spices & herbs']);
+
+async function readJsonBody(req) {
+  try {
+    const body = await req.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  } catch {
+    return null;
+  }
+}
+
+function normalizeText(value) {
+  return (value || '').toString().trim();
+}
+
+function normalizeLower(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function normalizeMatchKey(value) {
+  return normalizeLower(value)
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeLimit(value) {
+  const text = normalizeText(value);
+  if (!text) return DEFAULT_LIMIT;
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error('limit must be a positive integer');
+  }
+  return Math.min(parsed, MAX_LIMIT);
+}
+
+function normalizeStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  if (!status) return '';
+  if (!VALID_STATUSES.has(status)) {
+    throw new Error('status must be one of ok, low, critical, out_of_stock, demand_based');
+  }
+  return status;
+}
+
+function numberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sanitizeSummary(summary) {
+  return {
+    total_items: Number(summary?.total_items) || 0,
+    stock_tracked_item_count: Number(summary?.stock_tracked_item_count) || 0,
+    demand_based_food_count: Number(summary?.demand_based_food_count) || 0,
+    food_stock_warnings_suppressed_count: Number(summary?.food_stock_warnings_suppressed_count) || 0,
+    low_stock_count: Number(summary?.low_stock_count) || 0,
+    critical_count: Number(summary?.critical_count) || 0,
+    out_of_stock_count: Number(summary?.out_of_stock_count) || 0,
+    category_count: Number(summary?.category_count) || 0,
+    procurement_item_count: Number(summary?.procurement_item_count) || 0,
+    procurement_supplier_count: Number(summary?.procurement_supplier_count) || 0,
+    open_purchase_order_count: Number(summary?.open_purchase_order_count) || 0,
+    net_procurement_item_count: Number(summary?.net_procurement_item_count) || 0,
+  };
+}
+
+function mergeSummary(a, b) {
+  return sanitizeSummary({
+    total_items: Number(a?.total_items || 0) + Number(b?.total_items || 0),
+    stock_tracked_item_count: Number(a?.stock_tracked_item_count || 0) + Number(b?.stock_tracked_item_count || 0),
+    demand_based_food_count: Number(a?.demand_based_food_count || 0) + Number(b?.demand_based_food_count || 0),
+    food_stock_warnings_suppressed_count: Number(a?.food_stock_warnings_suppressed_count || 0) + Number(b?.food_stock_warnings_suppressed_count || 0),
+    low_stock_count: Number(a?.low_stock_count || 0) + Number(b?.low_stock_count || 0),
+    critical_count: Number(a?.critical_count || 0) + Number(b?.critical_count || 0),
+    out_of_stock_count: Number(a?.out_of_stock_count || 0) + Number(b?.out_of_stock_count || 0),
+    category_count: Math.max(Number(a?.category_count || 0), Number(b?.category_count || 0)),
+    procurement_item_count: Number(a?.procurement_item_count || 0) + Number(b?.procurement_item_count || 0),
+    procurement_supplier_count: Math.max(Number(a?.procurement_supplier_count || 0), Number(b?.procurement_supplier_count || 0)),
+    open_purchase_order_count: Number(a?.open_purchase_order_count || 0) + Number(b?.open_purchase_order_count || 0),
+    net_procurement_item_count: Number(a?.net_procurement_item_count || 0) + Number(b?.net_procurement_item_count || 0),
+  });
+}
+
+function isFoodInventoryItem(item) {
+  return FOOD_STOCK_EXCLUDED_CATEGORIES.has(normalizeLower(item?.category));
+}
+
+function rawThresholdStatus(item) {
+  const stock = Number(item.stock);
+  const reorderPoint = Number(item.reorder_point);
+  if (!Number.isFinite(stock)) return null;
+  if (stock <= 0) return 'out_of_stock';
+  if (Number.isFinite(reorderPoint) && reorderPoint > 0 && stock <= reorderPoint * 0.5) return 'critical';
+  if (Number.isFinite(reorderPoint) && reorderPoint > 0 && stock <= reorderPoint) return 'low';
+  return 'ok';
+}
+
+function deriveInventoryStatus(item) {
+  if (isFoodInventoryItem(item)) return 'demand_based';
+  return rawThresholdStatus(item);
+}
+
+function stockTrackingPolicy(item) {
+  return isFoodInventoryItem(item) ? 'food_make_to_order' : 'stock_tracked';
+}
+
+function stockWarningSuppressed(item) {
+  if (!isFoodInventoryItem(item)) return false;
+  return ['low', 'critical', 'out_of_stock'].includes(rawThresholdStatus(item));
+}
+
+function sanitizeItem(item) {
+  const policy = stockTrackingPolicy(item);
+  const rawStatus = normalizeText(item.status).toLowerCase();
+  const status = policy === 'food_make_to_order'
+    ? 'demand_based'
+    : VALID_STATUSES.has(rawStatus)
+      ? rawStatus
+      : null;
+  return {
+    id: item.id || null,
+    ingredient: item.ingredient || null,
+    category: item.category || null,
+    unit: item.unit || null,
+    stock: numberOrNull(item.stock),
+    reorder_point: numberOrNull(item.reorder_point),
+    max_stock: numberOrNull(item.max_stock),
+    cost_per_unit: numberOrNull(item.cost_per_unit),
+    cost_per_supplier_unit: numberOrNull(item.cost_per_supplier_unit),
+    supplier_packaging_unit: item.supplier_packaging_unit || null,
+    supplier_packaging_qty: item.supplier_packaging_qty || null,
+    supplier: item.supplier || null,
+    location: item.location || null,
+    status,
+    stock_tracking_policy: policy,
+    stock_authoritative: policy === 'stock_tracked',
+    stock_warning_suppressed: stockWarningSuppressed(item),
+    updated_date: item.updated_date || null,
+    source: item.source || null,
+  };
+}
+
+function sanitizeStringArray(values, max = 20) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map(value => normalizeText(value))
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+function sanitizeProcurementPlanItem(item) {
+  const policy = stockTrackingPolicy(item);
+  const rawStatus = normalizeText(item.status).toLowerCase();
+  return {
+    inventory_item_id: item.inventory_item_id || null,
+    ingredient: item.ingredient || null,
+    category: item.category || null,
+    supplier: item.supplier || null,
+    status: policy === 'food_make_to_order'
+      ? 'demand_based'
+      : VALID_STATUSES.has(rawStatus)
+        ? rawStatus
+        : null,
+    stock: numberOrNull(item.stock),
+    reorder_point: numberOrNull(item.reorder_point),
+    max_stock: numberOrNull(item.max_stock),
+    unit: item.unit || null,
+    supplier_packaging_unit: item.supplier_packaging_unit || null,
+    supplier_packaging_qty: item.supplier_packaging_qty || null,
+    suggested_quantity: numberOrNull(item.suggested_quantity),
+    open_po_quantity: numberOrNull(item.open_po_quantity),
+    open_po_numbers: sanitizeStringArray(item.open_po_numbers, 10),
+    net_suggested_quantity: numberOrNull(item.net_suggested_quantity),
+    estimated_cost: numberOrNull(item.estimated_cost),
+    stock_tracking_policy: policy,
+    stock_authoritative: policy === 'stock_tracked',
+    stock_warning_suppressed: stockWarningSuppressed(item),
+    source: item.source || null,
+  };
+}
+
+function summaryFromItems(items, procurementPlan, openPurchaseOrders) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const safePlan = Array.isArray(procurementPlan) ? procurementPlan : [];
+  const safePurchaseOrders = Array.isArray(openPurchaseOrders) ? openPurchaseOrders : [];
+  return sanitizeSummary({
+    total_items: safeItems.length,
+    stock_tracked_item_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked').length,
+    demand_based_food_count: safeItems.filter(item => item.stock_tracking_policy === 'food_make_to_order').length,
+    food_stock_warnings_suppressed_count: safeItems.filter(item => item.stock_warning_suppressed === true).length,
+    low_stock_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status === 'low').length,
+    critical_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status === 'critical').length,
+    out_of_stock_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status === 'out_of_stock').length,
+    category_count: new Set(safeItems.map(item => item.category).filter(Boolean)).size,
+    procurement_item_count: safePlan.length,
+    procurement_supplier_count: new Set(safePlan.map(item => item.supplier).filter(Boolean)).size,
+    open_purchase_order_count: safePurchaseOrders.length,
+    net_procurement_item_count: safePlan.filter(item => Number(item.net_suggested_quantity || 0) > 0).length,
+  });
+}
+
+function sanitizePurchaseOrder(po) {
+  const items = Array.isArray(po.items)
+    ? po.items.slice(0, 25).map(item => ({
+      ingredient: item?.ingredient || null,
+      quantity: numberOrNull(item?.quantity),
+      unit: item?.unit || null,
+      unit_cost: numberOrNull(item?.unit_cost),
+    })).filter(item => item.ingredient)
+    : [];
+
+  return {
+    id: po.id || null,
+    po_number: po.po_number || null,
+    supplier: po.supplier || null,
+    status: po.status || null,
+    item_count: numberOrNull(po.item_count) || items.length,
+    items,
+    total_amount: numberOrNull(po.total_amount),
+    order_date: po.order_date || null,
+    expected_date: po.expected_date || null,
+    updated_date: po.updated_date || null,
+    source: po.source || null,
+  };
+}
+
+function poItemKey(value) {
+  return normalizeMatchKey(value);
+}
+
+async function loadNativeInventorySummary(base44, { status, category, search, limit }) {
+  const nativeItems = await base44.asServiceRole.entities.InventoryItem.list('ingredient', 500).catch(() => []);
+  const nativePurchaseOrders = await base44.asServiceRole.entities.PurchaseOrder.list('-order_date', 200).catch(() => []);
+  const openPoStatuses = new Set(['draft', 'ordered', 'in transit']);
+  const openPoByIngredient = new Map();
+
+  for (const po of nativePurchaseOrders) {
+    if (!openPoStatuses.has(normalizeLower(po.status))) continue;
+    for (const item of Array.isArray(po.items) ? po.items : []) {
+      const key = poItemKey(item?.ingredient);
+      if (!key) continue;
+      const current = openPoByIngredient.get(key) || { quantity: 0, poNumbers: [] };
+      current.quantity += Number(item?.quantity) || 0;
+      if (po.po_number) current.poNumbers.push(po.po_number);
+      openPoByIngredient.set(key, current);
+    }
+  }
+
+  let items = nativeItems.map(item => {
+    const derivedStatus = deriveInventoryStatus(item);
+    return sanitizeItem({
+      ...item,
+      status: derivedStatus,
+      source: 'customer_app_native',
+    });
+  });
+
+  if (category) {
+    items = items.filter(item => normalizeLower(item.category) === normalizeLower(category));
+  }
+  if (status) {
+    items = items.filter(item => normalizeLower(item.status) === status);
+  }
+  if (search) {
+    const searchKey = normalizeLower(search);
+    items = items.filter(item => [
+      item.ingredient,
+      item.category,
+      item.supplier,
+      item.location,
+    ].some(value => normalizeLower(value).includes(searchKey)));
+  }
+
+  const procurementPlan = items
+    .filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status && item.status !== 'ok')
+    .map(item => {
+      const key = poItemKey(item.ingredient);
+      const poCoverage = openPoByIngredient.get(key) || { quantity: 0, poNumbers: [] };
+      const stock = Number(item.stock) || 0;
+      const target = Number(item.max_stock ?? item.reorder_point ?? 0) || 0;
+      const suggestedQuantity = Math.max(0, target - stock);
+      const netSuggestedQuantity = Math.max(0, suggestedQuantity - poCoverage.quantity);
+      return sanitizeProcurementPlanItem({
+        inventory_item_id: item.id,
+        ingredient: item.ingredient,
+        category: item.category,
+        supplier: item.supplier,
+        status: item.status,
+        stock: item.stock,
+        reorder_point: item.reorder_point,
+        max_stock: item.max_stock,
+        unit: item.unit,
+        supplier_packaging_unit: item.supplier_packaging_unit,
+        supplier_packaging_qty: item.supplier_packaging_qty,
+        suggested_quantity: suggestedQuantity,
+        open_po_quantity: poCoverage.quantity,
+        open_po_numbers: poCoverage.poNumbers,
+        net_suggested_quantity: netSuggestedQuantity,
+        estimated_cost: item.cost_per_unit === null || item.cost_per_unit === undefined ? null : netSuggestedQuantity * Number(item.cost_per_unit),
+        source: 'customer_app_native',
+      });
+    });
+
+  const openPurchaseOrders = nativePurchaseOrders
+    .filter(po => openPoStatuses.has(normalizeLower(po.status)))
+    .slice(0, 50)
+    .map(po => sanitizePurchaseOrder({ ...po, source: 'customer_app_native' }));
+
+  const summary = summaryFromItems(items, procurementPlan, openPurchaseOrders);
+
+  return {
+    summary,
+    items: items.slice(0, limit),
+    procurement_plan: procurementPlan.slice(0, 100),
+    open_purchase_orders: openPurchaseOrders,
+    source_available: nativeItems.length > 0 || nativePurchaseOrders.length > 0,
+  };
+}
+
+export default async function handler(req: Request) {
+  try {
+    const base44 = createClientFromRequest(req);
+
+    let user = null;
+    try {
+      user = await base44.auth.me();
+    } catch {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const body = await readJsonBody(req);
+    if (body === null) {
+      return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
+    }
+    let status;
+    let limit;
+
+    try {
+      status = normalizeStatus(body.status);
+      limit = normalizeLimit(body.limit);
+    } catch (error) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+
+    const category = normalizeText(body.category);
+    const search = normalizeText(body.search);
+    const nativeData = await loadNativeInventorySummary(base44, { status, category, search, limit });
+
+    let hubData = null;
+    let hubWarning = null;
+    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
+      hubWarning = 'hub_inventory_status_service_not_configured';
+    } else {
+      const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+      });
+      if (category) params.set('category', category);
+      if (search) params.set('search', search);
+
+      let hubResponse;
+      try {
+        hubResponse = await fetch(`${hubBase}/functions/getInventoryStatusSummaryForCustomerApp?${params.toString()}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
+          },
+        });
+      } catch {
+        hubWarning = 'hub_inventory_status_fetch_failed';
+      }
+
+      if (!hubResponse) {
+        // Native inventory/procurement data remains usable when Hub is temporarily unreachable.
+      } else if (!hubResponse.ok) {
+        hubWarning = `hub_inventory_status_unavailable:${hubResponse.status}`;
+      } else {
+        const parsedHubData = await hubResponse.json().catch(() => null);
+        if (!parsedHubData || parsedHubData.success !== true || !Array.isArray(parsedHubData.items)) {
+          hubWarning = 'hub_inventory_status_malformed_response';
+        } else {
+          hubData = parsedHubData;
+        }
+      }
+    }
+
+    let hubItemsForDedupe = hubData ? hubData.items.map(item => sanitizeItem({ ...item, source: 'hub' })) : [];
+    if (category) {
+      hubItemsForDedupe = hubItemsForDedupe.filter(item => normalizeLower(item.category) === normalizeLower(category));
+    }
+    if (search) {
+      const searchKey = normalizeLower(search);
+      hubItemsForDedupe = hubItemsForDedupe.filter(item => [
+        item.ingredient,
+        item.category,
+        item.supplier,
+        item.location,
+      ].some(value => normalizeLower(value).includes(searchKey)));
+    }
+    const hubItemKeys = new Set(hubItemsForDedupe.map(item => normalizeMatchKey(item.ingredient)).filter(Boolean));
+    const hubItems = status
+      ? hubItemsForDedupe.filter(item => normalizeLower(item.status) === status)
+      : hubItemsForDedupe;
+    const nativeOnlyItems = nativeData.items.filter(item => !hubItemKeys.has(normalizeMatchKey(item.ingredient)));
+    const allSanitizedItems = [...hubItems, ...nativeOnlyItems];
+    const sanitizedItems = allSanitizedItems.slice(0, limit);
+    const procurementPlan = [
+      ...(hubData && Array.isArray(hubData.procurement_plan)
+        ? hubData.procurement_plan.slice(0, 100).map(item => sanitizeProcurementPlanItem({ ...item, source: 'hub' })).filter(Boolean)
+        : []),
+      ...nativeData.procurement_plan.filter(item => !hubItemKeys.has(normalizeMatchKey(item.ingredient))),
+    ].filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status && item.status !== 'ok' && item.status !== 'demand_based').slice(0, 100);
+    const allOpenPurchaseOrders = [
+      ...(hubData && Array.isArray(hubData.open_purchase_orders)
+        ? hubData.open_purchase_orders.slice(0, 50).map(po => sanitizePurchaseOrder({ ...po, source: 'hub' })).filter(Boolean)
+        : []),
+      ...nativeData.open_purchase_orders,
+    ];
+    const openPurchaseOrders = allOpenPurchaseOrders.slice(0, 50);
+    const truncated = hubData?.truncated === true || sanitizedItems.length < allSanitizedItems.length;
+
+    if (!hubData && !nativeData.source_available) {
+      return Response.json({
+        error: 'Unable to load inventory status summary',
+        warning: hubWarning,
+      }, { status: 503 });
+    }
+
+    return Response.json({
+      success: true,
+      summary: summaryFromItems(allSanitizedItems, procurementPlan, allOpenPurchaseOrders),
+      count: sanitizedItems.length,
+      truncated,
+      items: sanitizedItems,
+      procurement_plan: procurementPlan,
+      open_purchase_orders: openPurchaseOrders,
+      data_sources: {
+        hub_available: Boolean(hubData),
+        native_available: nativeData.source_available,
+        native_read_only: true,
+        food_inventory_policy: 'food_and_juice_make_to_order',
+        food_stock_warnings_suppressed: true,
+        non_food_inventory_counts_enabled: true,
+        inventory_deduction_enabled: false,
+        purchase_order_automation_enabled: false,
+      },
+      warnings: [hubWarning].filter(Boolean),
+    });
+  } catch (error) {
+    console.error('[getAdminInventoryStatusSummary] Error:', error.message);
+    return Response.json({ error: 'Unable to load inventory status summary' }, { status: 500 });
+  }
+}

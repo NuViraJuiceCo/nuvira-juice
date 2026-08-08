@@ -3,17 +3,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
 const fixturePath = path.join(repoRoot, 'docs/migration/fixtures/safe-sync-order-update/fixtures.json');
-const plannerPath = path.join(repoRoot, 'base44/functions/previewNativeSafeSyncOrderUpdate/entry.ts');
+const plannerPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeSafeSyncOrderUpdate/entry.ts');
 
 function loadPlanner() {
   const source = fs.readFileSync(plannerPath, 'utf8');
-  const plannerOnly = source.split('Deno.serve')[0] + '\nglobalThis.__planSafeSync = planSafeSync;\n';
+  const plannerOnly = source.split('export default async')[0] + '\nglobalThis.__planSafeSync = planSafeSync;\n';
+  const executablePlanner = ts.transpileModule(plannerOnly, {
+    compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
   const context = vm.createContext({ console, globalThis: {} });
-  vm.runInContext(plannerOnly, context, { filename: plannerPath });
+  vm.runInContext(executablePlanner, context, { filename: plannerPath });
   return context.globalThis.__planSafeSync;
 }
 

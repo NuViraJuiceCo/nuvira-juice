@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import SEO from '@/components/SEO';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
-import ApplePayMountDiagnostic from '@/components/checkout/ApplePayMountDiagnostic';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Truck, Gift } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -46,46 +45,43 @@ const CHECKOUT_COPY = {
   SLOW_PROCESSING: 'Still checking your checkout. Please don’t close, refresh, or tap again.',
 };
 
+const BAG_RETURN_COMPLETED_STATUSES = new Set([
+  'delivered',
+  'picked_up',
+  'fulfilled',
+  'completed',
+  'complete',
+]);
+
+const normalizeOrderStatus = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[\s-]+/g, '_');
+
+const isEligibleBagReturnSourceOrder = (order) => {
+  if (!order || order.is_test_order || order.is_abandoned_checkout || order.do_not_recover) return false;
+
+  const paymentWasCaptured = order.payment_captured === true
+    || ['paid', 'refunded'].includes(normalizeOrderStatus(order.payment_status))
+    || ['paid', 'refunded'].includes(normalizeOrderStatus(order.financial_status));
+  if (!paymentWasCaptured) return false;
+
+  return [
+    order.status,
+    order.delivery_status,
+    order.fulfillment_status,
+    order.effective_delivery_status,
+    order.effective_fulfillment_status,
+  ].some(status => BAG_RETURN_COMPLETED_STATUSES.has(normalizeOrderStatus(status)));
+};
+
 
 export default function Checkout() {
-  const { user, isLoadingAuth } = useAuth();
-  const diagnosticRequested = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('apple_pay_mount_diagnostic') === '1';
-  const diagnosticAuthorized = user?.role === 'admin' || user?.role === 'owner';
-
-  if (diagnosticRequested) {
-    return (
-      <ApplePayMountDiagnostic
-        isAuthLoading={isLoadingAuth}
-        isAuthorized={diagnosticAuthorized}
-      />
-    );
-  }
-
   return <CheckoutFlow />;
 }
 
 function CheckoutFlow() {
   const navigate = useNavigate();
-
-  // DIAGNOSTIC: dump all checkout-related storage keys on mount
-  React.useEffect(() => {
-    console.group('[NuVira Checkout] Storage Audit on Mount');
-    const lsKeys = Object.keys(localStorage).filter(k =>
-      k.includes('nuvira') || k.includes('stripe') || k.includes('checkout') || k.includes('session') || k.includes('pending')
-    );
-    const ssKeys = Object.keys(sessionStorage).filter(k =>
-      k.includes('nuvira') || k.includes('stripe') || k.includes('checkout') || k.includes('session') || k.includes('pending')
-    );
-    console.log('localStorage matching keys  :', lsKeys.length ? lsKeys : '(none)');
-    lsKeys.forEach(k => console.log(`  localStorage["${k}"] =`, '[redacted]'));
-    console.log('sessionStorage matching keys:', ssKeys.length ? ssKeys : '(none)');
-    ssKeys.forEach(k => console.log(`  sessionStorage["${k}"] =`, '[redacted]'));
-    console.groupEnd();
-
-    // Force-nuke any stale pending session to guarantee a fresh PI
-    localStorage.removeItem('nuvira_pending_checkout_session');
-    sessionStorage.removeItem('nuvira_pending_checkout_session');
-  }, []);
 
   // Safety net 1: if Stripe redirected back to /checkout with session_id in URL
   React.useEffect(() => {
@@ -200,24 +196,38 @@ function CheckoutFlow() {
 
   // Validate address in real-time for delivery orders
   const addressDebounceRef = React.useRef(null);
+  const addressValidationRequestRef = React.useRef(0);
   const [hasShownOutOfAreaModal, setHasShownOutOfAreaModal] = React.useState(false);
 
   React.useEffect(() => {
+    const validationRequestId = ++addressValidationRequestRef.current;
+    if (addressDebounceRef.current) {
+      clearTimeout(addressDebounceRef.current);
+      addressDebounceRef.current = null;
+    }
+
     if (fulfillmentType !== 'delivery') {
       setAddressValidated(true);
+      setValidatingAddress(false);
       return;
     }
 
+    const hasCompleteDeliveryAddress = Boolean(
+      address.street?.trim() &&
+      address.city?.trim() &&
+      address.state?.trim() &&
+      address.zip?.trim()
+    );
     const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
-    if (!addrString.trim() || addrString.length < 5) {
+    if (!hasCompleteDeliveryAddress) {
       setAddressValidated(false);
       setZoneEligibility(null);
       setDeliveryZone(null);
       setHasShownOutOfAreaModal(false);
+      setValidatingAddress(false);
       return;
     }
 
-    if (addressDebounceRef.current) clearTimeout(addressDebounceRef.current);
     setValidatingAddress(true);
     // Clear previous result while re-validating
     setZoneEligibility(null);
@@ -235,6 +245,7 @@ function CheckoutFlow() {
           order_type: 'one_time',
         });
         const eligibility = res.data;
+        if (addressValidationRequestRef.current !== validationRequestId) return;
         setZoneEligibility(eligibility);
 
         // Zone 1 & Zone 2 (minimum met) → valid for checkout
@@ -250,12 +261,15 @@ function CheckoutFlow() {
           setShowOutOfArea(true);
         }
       } catch (err) {
+        if (addressValidationRequestRef.current !== validationRequestId) return;
         console.error('Address validation error:', err);
         setAddressValidated(false);
         setZoneEligibility(null);
         setDeliveryZone(null);
       } finally {
-        setValidatingAddress(false);
+        if (addressValidationRequestRef.current === validationRequestId) {
+          setValidatingAddress(false);
+        }
       }
     }, 800);
 
@@ -293,7 +307,14 @@ function CheckoutFlow() {
 
   const { data: lastOrderData = [] } = useQuery({
     queryKey: ['last-order-checkout', user?.email],
-    queryFn: () => base44.entities.Order.filter({ customer_email: user?.email }, '-created_date', 1),
+    queryFn: async () => {
+      const recentOrders = await base44.entities.Order.filter(
+        { customer_email: user?.email },
+        '-created_date',
+        20
+      );
+      return recentOrders.filter(isEligibleBagReturnSourceOrder).slice(0, 1);
+    },
     enabled: !!user?.email,
   });
 
@@ -884,11 +905,14 @@ function CheckoutFlow() {
 
       {/* Discount Code */}
       <div className="mx-4 mb-5">
-        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+        <Label htmlFor="discount-code" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
           Discount Code
         </Label>
         <div className="flex gap-2">
           <Input
+            id="discount-code"
+            name="discountCode"
+            aria-label="Discount Code"
             value={discountCodeInput}
             onChange={e => {
               setDiscountCodeInput(e.target.value);
@@ -954,6 +978,8 @@ function CheckoutFlow() {
           </Label>
           <div className="grid grid-cols-2 gap-3">
             <Input
+              name="firstName"
+              aria-label="First name"
               value={firstName}
               onChange={e => setFirstName(e.target.value)}
               placeholder="First name"
@@ -961,6 +987,8 @@ function CheckoutFlow() {
               className="rounded-xl h-11"
             />
             <Input
+              name="lastName"
+              aria-label="Last name"
               value={lastName}
               onChange={e => setLastName(e.target.value)}
               placeholder="Last name"
@@ -970,10 +998,15 @@ function CheckoutFlow() {
           </div>
         </div>
         <div>
-          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+          <Label htmlFor="checkout-phone" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
             Phone Number
           </Label>
           <Input
+            id="checkout-phone"
+            name="phone"
+            type="tel"
+            aria-label="Phone Number"
+            autoComplete="tel"
             value={phone}
             onChange={e => setPhone(e.target.value)}
             placeholder="(555) 123-4567"

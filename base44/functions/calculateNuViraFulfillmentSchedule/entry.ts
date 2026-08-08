@@ -49,7 +49,7 @@ function getChicagoParts(timestamp) {
     hour12: false,
   });
 
-  const values = {};
+  const values: Record<string, string> = {};
   formatter.formatToParts(parsed).forEach((part) => {
     values[part.type] = part.value;
   });
@@ -99,7 +99,7 @@ function getOffsetMinutesForZone(utcDate, timeZone) {
     second: '2-digit',
     hour12: false,
   });
-  const values = {};
+  const values: Record<string, string> = {};
   formatter.formatToParts(utcDate).forEach((part) => {
     values[part.type] = part.value;
   });

@@ -1305,6 +1305,10 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
       action,
       request_id: requestIdFor(`native_${action}_execute`, batch),
       reason: `Admin Production Queue native ${formatLabel(action)}.`,
+      ...(action === 'start' ? {
+        update_customer_order_status: true,
+        notify_customer: true,
+      } : {}),
       ...(action === 'complete' ? nativeCompletionFields() : {}),
       ...(action === 'verify' ? nativeVerificationFields() : {}),
     };
@@ -1369,7 +1373,9 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     const label = formatLabel(action);
     const warning = action === 'verify'
       ? 'This may create one batch compliance log and link it to this exact ProductionBatch. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.'
-      : 'This updates this exact ProductionBatch lifecycle record and audit log. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.';
+      : action === 'start'
+        ? 'This updates this exact ProductionBatch and projects any exact linked paid customer orders to In Production. The Order-status automation owns the single customer push/in-app message. It will not deduct inventory, update delivery tasks, or call payment or commerce providers.'
+        : 'This updates this exact ProductionBatch lifecycle record and audit log. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.';
     if (!window.confirm(`Save ${label} for ${batch.batch_id || batch.product_name}? ${warning}`)) {
       return;
     }

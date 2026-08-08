@@ -165,7 +165,7 @@ function getSafeDarkLaunchOrderIdentifier(order) {
   return order?.order_number || order?.id || null;
 }
 
-function summarizeDarkLaunchComparison(comparison, skippedReason = null, config = getNativeSafeSyncDarkLaunchConfig()) {
+function summarizeDarkLaunchComparison(comparison, skippedReason = null, config = getNativeSafeSyncDarkLaunchConfig()): Record<string, any> {
   if (skippedReason) {
     return {
       enabled: config.enabled,
@@ -373,13 +373,16 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
 
   try {
     const idempotencyKey = `syncOrderToHub:${payload?.order?.id || payload?.order?.order_number || 'unknown'}`;
-    const nativeResponse = await base44.asServiceRole.functions.invoke('previewNativeSafeSyncOrderUpdate', {
-      mode: 'dry_run',
-      fixture_id: 'runtime_dark_launch_syncOrderToHub',
-      source,
-      idempotency_key: idempotencyKey,
-      incoming_payload: payload.order,
-      starting_order: null,
+    const nativeResponse = await base44.asServiceRole.functions.invoke('getAdminOperationsDashboardSummary', {
+      gateway_action: 'previewNativeSafeSyncOrderUpdate',
+      payload: {
+        mode: 'dry_run',
+        fixture_id: 'runtime_dark_launch_syncOrderToHub',
+        source,
+        idempotency_key: idempotencyKey,
+        incoming_payload: payload.order,
+        starting_order: null,
+      },
     }, getNativeSafeSyncPreviewInvokeOptions());
     const nativeResult = nativeResponse?.data || nativeResponse;
     const nativeFields = nativeResult?.order_sync_log_draft || {};
@@ -434,13 +437,16 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
         : null,
     };
 
-    const comparisonResponse = await base44.asServiceRole.functions.invoke('previewNativeSafeSyncDarkLaunchComparison', {
-      mode: 'dry_run',
-      fixture_id: 'runtime_dark_launch_syncOrderToHub',
-      source,
-      idempotency_key: idempotencyKey,
-      hub_result: hubSummary,
-      native_result: nativeResult,
+    const comparisonResponse = await base44.asServiceRole.functions.invoke('getAdminOperationsDashboardSummary', {
+      gateway_action: 'previewNativeSafeSyncDarkLaunchComparison',
+      payload: {
+        mode: 'dry_run',
+        fixture_id: 'runtime_dark_launch_syncOrderToHub',
+        source,
+        idempotency_key: idempotencyKey,
+        hub_result: hubSummary,
+        native_result: nativeResult,
+      },
     }, getNativeSafeSyncPreviewInvokeOptions());
     const comparison = comparisonResponse?.data || comparisonResponse;
     const summary = summarizeDarkLaunchComparison({
@@ -467,7 +473,7 @@ async function maybeRunNativeSafeSyncDarkLaunch({ base44, payload, hubAction, lo
     return summary;
   } catch (error) {
     console.warn(`[safeSync dark launch] comparison failed safely: ${error?.message || 'unknown error'}`);
-    const summary = {
+    const summary: Record<string, any> = {
       enabled: true,
       sampled: true,
       parity_status: 'needs_manual_review',
@@ -509,7 +515,7 @@ async function maybeRunNativeOrderOps({ req, payload, body }) {
   }
   const orderNumber = nativeOrder?.shopify_order_number || nativeOrder?.order_number || nativeOrder?.id || 'unknown';
   const refundSuffix = eventType === 'order.refunded'
-    ? `:${nativeOrder?.refund_id || nativeOrder?.refunded_at || 'refund'}`
+    ? `:${nativeOrder?.stripe_refund_id || nativeOrder?.refund_event_id || nativeOrder?.refund_id || nativeOrder?.refunded_at || 'refund'}`
     : '';
 
   try {
@@ -744,8 +750,13 @@ Deno.serve(async (req) => {
   const eventType = payment_status === 'refunded' ? 'order.refunded' : 'order.created';
   const isFullRefund = eventType === 'order.refunded' && (
     stripeSession?.is_full_refund === true ||
-    order.is_partial_refund !== true
+    order.refund_type === 'full' ||
+    order.refund_status === 'fully_refunded' ||
+    (order.refund_type == null && order.refund_status == null && order.is_partial_refund !== true)
   );
+  const refundReference = eventType === 'order.refunded'
+    ? (order.stripe_refund_id || order.refund_event_id || order.refund_id || stripeSession?.id || null)
+    : null;
   const refundAmount = eventType === 'order.refunded'
     ? (order.refund_amount ?? stripeSession?.refund_amount ?? (isFullRefund ? order.total : null))
     : null;
@@ -806,13 +817,13 @@ Deno.serve(async (req) => {
       fulfillment_mode,
       // Refund-specific fields
       refunded_at:      order.refunded_at      || null,
-      refund_id:        order.refund_id        || null,
-      stripe_charge_id:  order.stripe_charge_id || order.refund_id || null,
-      stripe_refund_id:  order.stripe_refund_id || null,
+      refund_id:        refundReference,
+      stripe_charge_id:  order.stripe_charge_id || null,
+      stripe_refund_id:  order.stripe_refund_id || refundReference,
       refund_amount:    refundAmount,
       charge_amount:    order.total ?? null,
       is_full_refund:   isFullRefund,
-      is_partial_refund: order.is_partial_refund || false,
+      is_partial_refund: eventType === 'order.refunded' ? !isFullRefund : false,
     },
   };
 
@@ -836,7 +847,7 @@ Deno.serve(async (req) => {
       console.log(`[syncOrderToHub:REFUND] Sending order.refunded event for ${order.order_number}`);
       console.log(`[syncOrderToHub:REFUND] Endpoint: ${hubApiUrl}`);
       console.log(`[syncOrderToHub:REFUND] Auth configured: ${customerAppSyncSecret ? 'yes' : 'no'}`);
-      console.log(`[syncOrderToHub:REFUND] Refund details: amount=$${order.refund_amount}, id=${order.refund_id}, full=${!order.is_partial_refund}`);
+      console.log(`[syncOrderToHub:REFUND] Refund details: amount=$${refundAmount}, reference_present=${Boolean(refundReference)}, full=${isFullRefund}`);
     }
 
     const response = await fetch(hubApiUrl, {

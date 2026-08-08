@@ -17,6 +17,57 @@ function resolveFinalScheduleSource(source, fallback = 'backend_cadence') {
   return LOCKED_FINAL_SCHEDULE_SOURCES.has(candidate) ? candidate : fallback;
 }
 
+function verifiedCheckoutSchedule(checkoutData: Record<string, any> = {}, metadata: Record<string, any> = {}) {
+  const productionDate = checkoutData.assigned_production_day
+    || checkoutData.production_date
+    || metadata.assigned_production_day
+    || metadata.production_date
+    || null;
+  const deliveryDate = checkoutData.assigned_delivery_date
+    || checkoutData.estimated_delivery_date
+    || metadata.selected_delivery_date
+    || metadata.requested_delivery_date
+    || null;
+  const windowLabel = checkoutData.delivery_window_label || metadata.delivery_window_label || null;
+  const windowStart = checkoutData.assigned_delivery_window_start
+    || checkoutData.delivery_window_start
+    || metadata.assigned_delivery_window_start
+    || metadata.delivery_window_start
+    || null;
+  const windowEnd = checkoutData.assigned_delivery_window_end
+    || checkoutData.delivery_window_end
+    || metadata.assigned_delivery_window_end
+    || metadata.delivery_window_end
+    || null;
+
+  if (!productionDate || !deliveryDate || !windowLabel || !windowStart || !windowEnd) return null;
+
+  const productionDow = new Date(`${productionDate}T12:00:00`).getDay();
+  const deliveryDow = new Date(`${deliveryDate}T12:00:00`).getDay();
+  const isWednesday = productionDow === 2 && deliveryDow === 3 && windowLabel === 'Wednesday 5 PM - 8 PM';
+  const isSaturday = productionDow === 5 && deliveryDow === 6 && windowLabel === 'Saturday 12 PM - 3 PM';
+  if (!isWednesday && !isSaturday) return null;
+
+  return {
+    assigned_production_day: productionDate,
+    production_date: productionDate,
+    assigned_delivery_date: deliveryDate,
+    delivery_date: deliveryDate,
+    delivery_window_label: windowLabel,
+    assigned_delivery_window_start: windowStart,
+    delivery_window_start: windowStart,
+    assigned_delivery_window_end: windowEnd,
+    delivery_window_end: windowEnd,
+    delivery_window_timezone: checkoutData.delivery_window_timezone || metadata.delivery_window_timezone || 'America/Chicago',
+    schedule_timezone: checkoutData.schedule_timezone || metadata.schedule_timezone || 'America/Chicago',
+    timezone: checkoutData.schedule_timezone || metadata.schedule_timezone || 'America/Chicago',
+    cutoff_window_label: checkoutData.cutoff_window_label || metadata.cutoff_window_label || 'customer_selected',
+    final_schedule_source: resolveFinalScheduleSource(checkoutData.final_schedule_source || metadata.final_schedule_source),
+    scheduling_reason: 'customer_selected_at_checkout',
+    schedule_reason: 'customer_selected_at_checkout',
+  };
+}
+
 function isStagingSafeMode() {
   return Deno.env.get('NUVIRA_STAGING_SAFE_MODE') === 'true';
 }
@@ -27,6 +78,44 @@ function skipLoyaltyWrite(stagingSafeMode) {
   return true;
 }
 
+async function invokeInternalFunction(base44, functionName, payload, secret) {
+  if (isStagingSafeMode()) {
+    console.log(`[stripeWebhook] STAGING SAFE MODE: skipped internal function ${functionName}`);
+    return { data: { skipped: true, function_name: functionName } };
+  }
+  const adminGatewayFunctions = new Set([
+    'sendOrderSms',
+    'syncSubscriptionWithFulfillments',
+  ]);
+  const usesAdminGateway = adminGatewayFunctions.has(functionName);
+  const targetFunction = usesAdminGateway ? 'getAdminOperationsDashboardSummary' : functionName;
+  const requestPayload = usesAdminGateway
+    ? { gateway_action: functionName, payload }
+    : payload;
+  const response = await base44.asServiceRole.functions.fetch(`/${targetFunction}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-secret': secret || '',
+    },
+    body: JSON.stringify(requestPayload),
+  });
+  const data: any = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || data?.error_code || `${functionName}_http_${response.status}`);
+  return { data };
+}
+
+async function invokeAdminGatewayFunction(base44, functionName, payload) {
+  if (isStagingSafeMode()) {
+    console.log(`[stripeWebhook] STAGING SAFE MODE: skipped internal function ${functionName}`);
+    return { data: { skipped: true, function_name: functionName } };
+  }
+  return base44.asServiceRole.functions.invoke('getAdminOperationsDashboardSummary', {
+    gateway_action: functionName,
+    payload,
+  });
+}
+
 async function postLoyaltyTransaction(base44, payload) {
   const secret = Deno.env.get('LOYALTY_LEDGER_SECRET')
     || Deno.env.get('CUSTOMER_APP_SYNC_SECRET')
@@ -35,7 +124,8 @@ async function postLoyaltyTransaction(base44, payload) {
   const response = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
     action: 'post',
     ...payload,
-  }, { headers: { 'x-internal-secret': secret } });
+    internal_secret: secret,
+  });
   const result = response?.data || response;
   if (result?.success !== true) throw new Error(result?.error || 'loyalty_transaction_failed');
   return result;
@@ -109,311 +199,6 @@ function installStagingSideEffectGuards(base44, stagingSafeMode) {
 }
 
 
-const G35N_REFUND_WEBHOOK_SHADOW_MARKER = 'g35n_default_off_stripe_refund_webhook_shadow';
-const G35N_SHADOW_PREVIEW_MODE = 'STRIPE_REFUND_WEBHOOK_SHADOW_PREVIEW';
-const G35N_REQUIRED_POLICY = 'READ_ONLY_NO_MUTATION_NO_PROVIDER_CALLS';
-const G35N_REFUND_EVENT_TYPES = new Set(['charge.refunded', 'refund.created', 'refund.updated', 'charge.refund.updated']);
-const G35N_DEFAULT_ALLOWED_EVENT_TYPES = new Set(['charge.refunded', 'refund.created', 'refund.updated', 'charge.refund.updated']);
-const G35N_REQUIRED_GATE_NAMES = [
-  'ENABLE_STRIPE_REFUND_WEBHOOK_SHADOW_PREVIEW',
-  'STRIPE_REFUND_WEBHOOK_SHADOW_KILL_SWITCH',
-  'STRIPE_REFUND_WEBHOOK_SHADOW_ALLOWED_EVENT_TYPES',
-  'STRIPE_REFUND_WEBHOOK_SHADOW_LOGGING_MODE',
-  'STRIPE_REFUND_WEBHOOK_SHADOW_ORDER_ALLOWLIST',
-  'STRIPE_REFUND_WEBHOOK_SHADOW_EVENT_ALLOWLIST',
-  'STRIPE_REFUND_WEBHOOK_SHADOW_SAMPLE_RATE',
-  'STRIPE_REFUND_WEBHOOK_SHADOW_POLICY',
-];
-
-function g35nText(value) {
-  return String(value ?? '').trim();
-}
-
-function g35nLower(value) {
-  return g35nText(value).toLowerCase();
-}
-
-function g35nEnv(name) {
-  const value = Deno.env.get(name);
-  return value === undefined ? undefined : String(value);
-}
-
-function g35nCsv(value) {
-  return g35nText(value)
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean);
-}
-
-function g35nId(value) {
-  if (!value) return '';
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'object' && value.id) return g35nText(value.id);
-  return '';
-}
-
-function g35nMinorToDecimal(amount) {
-  return Number.isFinite(amount) ? Number((amount / 100).toFixed(2)) : null;
-}
-
-function g35nGateState() {
-  const raw = Object.fromEntries(G35N_REQUIRED_GATE_NAMES.map(name => [name, g35nEnv(name)]));
-  const missing_gates = G35N_REQUIRED_GATE_NAMES.filter(name => raw[name] === undefined);
-  const enabled = g35nLower(raw.ENABLE_STRIPE_REFUND_WEBHOOK_SHADOW_PREVIEW) === 'true';
-  const kill_switch_active = g35nLower(raw.STRIPE_REFUND_WEBHOOK_SHADOW_KILL_SWITCH) !== 'false';
-  const logging_mode = g35nLower(raw.STRIPE_REFUND_WEBHOOK_SHADOW_LOGGING_MODE || '');
-  const policy = g35nText(raw.STRIPE_REFUND_WEBHOOK_SHADOW_POLICY);
-  const sample_rate = Number(g35nText(raw.STRIPE_REFUND_WEBHOOK_SHADOW_SAMPLE_RATE) || '0');
-  const allowed_event_types = new Set(g35nCsv(raw.STRIPE_REFUND_WEBHOOK_SHADOW_ALLOWED_EVENT_TYPES).map(g35nLower));
-  const order_allowlist = new Set(g35nCsv(raw.STRIPE_REFUND_WEBHOOK_SHADOW_ORDER_ALLOWLIST).map(item => item.toUpperCase()));
-  const event_allowlist = new Set(g35nCsv(raw.STRIPE_REFUND_WEBHOOK_SHADOW_EVENT_ALLOWLIST));
-  const blockers = [];
-
-  if (missing_gates.length) blockers.push('stripe_refund_webhook_shadow_gate_missing');
-  if (!enabled) blockers.push('stripe_refund_webhook_shadow_disabled');
-  if (kill_switch_active) blockers.push('stripe_refund_webhook_shadow_kill_switch_active');
-  if (logging_mode !== 'none') blockers.push('stripe_refund_webhook_shadow_logging_mode_not_none');
-  if (policy !== G35N_REQUIRED_POLICY) blockers.push('stripe_refund_webhook_shadow_policy_not_read_only');
-  if (Number.isFinite(sample_rate) && sample_rate > 0 && event_allowlist.size === 0 && order_allowlist.size === 0) {
-    blockers.push('stripe_refund_webhook_shadow_broad_sampling_blocked');
-  }
-
-  return {
-    marker: G35N_REFUND_WEBHOOK_SHADOW_MARKER,
-    enabled,
-    kill_switch_active,
-    logging_mode,
-    policy,
-    sample_rate: Number.isFinite(sample_rate) ? sample_rate : 0,
-    allowed_event_types,
-    order_allowlist,
-    event_allowlist,
-    missing_gates,
-    blockers,
-    can_consider_shadow: blockers.length === 0,
-  };
-}
-
-function g35nIsRefundShadowEvent(eventType) {
-  return G35N_REFUND_EVENT_TYPES.has(g35nLower(eventType));
-}
-
-function g35nEventTypeAllowed(gates, eventType) {
-  const normalized = g35nLower(eventType);
-  if (!gates?.allowed_event_types?.size) return G35N_DEFAULT_ALLOWED_EVENT_TYPES.has(normalized);
-  return gates.allowed_event_types.has(normalized);
-}
-
-function g35nRefundObject(event) {
-  return event?.data?.object || {};
-}
-
-function g35nRefundAmountAndType(event) {
-  const eventType = g35nLower(event?.type);
-  const obj = g35nRefundObject(event);
-  const metadataRefundType = g35nLower(obj?.metadata?.refund_type || obj?.refund_type);
-  const explicitRefundType = ['full', 'partial', 'unknown'].includes(metadataRefundType) ? metadataRefundType : '';
-
-  if (eventType === 'charge.refunded') {
-    const amountRefunded = Number(obj?.amount_refunded);
-    const amountTotal = Number(obj?.amount);
-    const decimalAmount = g35nMinorToDecimal(amountRefunded);
-    let refundType = 'unknown';
-    if (Number.isFinite(amountRefunded) && Number.isFinite(amountTotal) && amountTotal > 0) {
-      refundType = amountRefunded >= amountTotal ? 'full' : 'partial';
-    }
-    return {
-      refund_type: explicitRefundType || refundType,
-      refund_amount: decimalAmount,
-      source_refund_amount_minor: Number.isFinite(amountRefunded) ? amountRefunded : null,
-      amount_conversion: Number.isFinite(amountRefunded) ? 'stripe_minor_units_to_decimal' : 'not_available',
-    };
-  }
-
-  const refundAmount = Number(obj?.amount);
-  return {
-    refund_type: explicitRefundType || 'unknown',
-    refund_amount: g35nMinorToDecimal(refundAmount),
-    source_refund_amount_minor: Number.isFinite(refundAmount) ? refundAmount : null,
-    amount_conversion: Number.isFinite(refundAmount) ? 'stripe_minor_units_to_decimal' : 'not_available',
-  };
-}
-
-function g35nNormalizeStripeRefundEvent(event) {
-  const eventType = g35nLower(event?.type || 'unknown');
-  const obj = g35nRefundObject(event);
-  const amount = g35nRefundAmountAndType(event);
-  const paymentIntentId = g35nId(obj?.payment_intent || obj?.paymentIntent || obj?.payment_intent_id || obj?.paymentIntentId);
-  const chargeId = eventType === 'charge.refunded'
-    ? g35nId(obj?.id || obj?.charge_id)
-    : g35nId(obj?.charge || obj?.charge_id);
-  const refundId = eventType === 'charge.refunded'
-    ? g35nId(obj?.refunds?.data?.[0]?.id || obj?.refund_id || obj?.refund)
-    : g35nId(obj?.id || obj?.refund_id);
-  const currency = g35nText(obj?.currency || obj?.refund_currency).toUpperCase();
-  return {
-    preview_mode: G35N_SHADOW_PREVIEW_MODE,
-    event_type: eventType,
-    stripe_event_id: g35nText(event?.id),
-    stripe_refund_id: refundId,
-    payment_intent_id: paymentIntentId,
-    charge_id: chargeId,
-    refund_type: amount.refund_type,
-    refund_amount: amount.refund_amount,
-    refund_currency: currency,
-    source_refund_amount_minor: amount.source_refund_amount_minor,
-    amount_conversion: amount.amount_conversion,
-    event_source: 'stripe_webhook_shadow',
-    request_id: event?.id ? `stripe_refund_shadow_${event.id}` : '',
-    raw_payload_included: false,
-  };
-}
-
-async function g35nResolveLocalRefundOrderContext(base44, summary) {
-  const out = {
-    order_number: '',
-    customer_app_order_id: '',
-    native_shopify_order_id: '',
-    native_fulfillment_task_id: '',
-    lookup_strategy: [],
-  };
-  const entities = base44?.asServiceRole?.entities;
-  if (!entities) return out;
-
-  let order = null;
-  if (summary.payment_intent_id) {
-    const rows = await entities.Order.filter({ stripe_payment_intent_id: summary.payment_intent_id }, '-created_date', 2).catch(() => []);
-    order = Array.isArray(rows) ? rows[0] : null;
-    if (order) out.lookup_strategy.push('payment_intent_id');
-  }
-  if (!order && summary.charge_id) {
-    const rows = await entities.Order.filter({ stripe_charge_id: summary.charge_id }, '-created_date', 2).catch(() => []);
-    order = Array.isArray(rows) ? rows[0] : null;
-    if (order) out.lookup_strategy.push('charge_id');
-  }
-  if (order) {
-    out.order_number = g35nText(order.order_number).toUpperCase();
-    out.customer_app_order_id = g35nText(order.id);
-  }
-
-  let nativeOrder = null;
-  if (out.customer_app_order_id) {
-    const rows = await entities.ShopifyOrder.filter({ base44_order_id: out.customer_app_order_id }, '-created_date', 2).catch(() => []);
-    nativeOrder = Array.isArray(rows) ? rows[0] : null;
-    if (nativeOrder) {
-      out.native_shopify_order_id = g35nText(nativeOrder.id);
-      out.lookup_strategy.push('customer_app_order_id_to_native_shopify_order');
-    }
-  }
-
-  if (out.customer_app_order_id || out.native_shopify_order_id || out.order_number) {
-    const taskQueries = [
-      out.native_shopify_order_id ? { native_shopify_order_id: out.native_shopify_order_id } : null,
-      out.customer_app_order_id ? { base44_order_id: out.customer_app_order_id } : null,
-      out.order_number ? { order_number: out.order_number } : null,
-    ].filter(Boolean);
-    for (const query of taskQueries) {
-      const rows = await entities.FulfillmentTask.filter(query, '-created_date', 2).catch(() => []);
-      const task = Array.isArray(rows) ? rows[0] : null;
-      if (task) {
-        out.native_fulfillment_task_id = g35nText(task.id);
-        out.lookup_strategy.push('fulfillment_task');
-        break;
-      }
-    }
-  }
-  return out;
-}
-
-function g35nAllowlisted(gates, summary, localContext) {
-  const eventAllowed = Boolean(summary?.stripe_event_id && gates?.event_allowlist?.has(summary.stripe_event_id));
-  const resolvedOrder = g35nText(localContext?.order_number || summary?.order_number).toUpperCase();
-  const orderAllowed = Boolean(resolvedOrder && gates?.order_allowlist?.has(resolvedOrder));
-  return { allowed: eventAllowed || orderAllowed, eventAllowed, orderAllowed, resolvedOrder };
-}
-
-function g35nPreviewPayload(summary, localContext = {}) {
-  return {
-    preview_mode: G35N_SHADOW_PREVIEW_MODE,
-    event_type: summary.event_type,
-    stripe_event_id: summary.stripe_event_id || undefined,
-    stripe_refund_id: summary.stripe_refund_id || undefined,
-    payment_intent_id: summary.payment_intent_id || undefined,
-    charge_id: summary.charge_id || undefined,
-    order_number: localContext.order_number || undefined,
-    customer_app_order_id: localContext.customer_app_order_id || undefined,
-    native_shopify_order_id: localContext.native_shopify_order_id || undefined,
-    native_fulfillment_task_id: localContext.native_fulfillment_task_id || undefined,
-    refund_type: summary.refund_type || 'unknown',
-    refund_amount: summary.refund_amount ?? undefined,
-    refund_currency: summary.refund_currency || undefined,
-    event_source: 'stripe_webhook_shadow',
-    request_id: summary.request_id || undefined,
-  };
-}
-
-function g35nPreviewInternalSecret() {
-  return Deno.env.get('NATIVE_SAFE_SYNC_PREVIEW_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '';
-}
-
-function g35nTimeout(ms) {
-  return new Promise(resolve => setTimeout(() => resolve({ timeout: true }), ms));
-}
-
-async function runStripeRefundWebhookShadowPreview({ base44, event, timeoutMs = 1500 } = {}) {
-  const gates = g35nGateState();
-  const eventType = g35nLower(event?.type || 'unknown');
-  const baseResult = {
-    marker: G35N_REFUND_WEBHOOK_SHADOW_MARKER,
-    shadow_attempted: false,
-    shadow_skipped: true,
-    skip_reason: '',
-    writes_performed: false,
-    provider_call_impact: false,
-    notification_impact: { notification_held: true, notification_would_send: false },
-  };
-
-  try {
-    if (!g35nIsRefundShadowEvent(eventType)) return { ...baseResult, skip_reason: 'not_refund_shadow_event_type' };
-    if (!g35nEventTypeAllowed(gates, eventType)) return { ...baseResult, skip_reason: 'refund_shadow_event_type_not_allowed' };
-    if (!gates.can_consider_shadow) return { ...baseResult, skip_reason: gates.blockers[0] || 'stripe_refund_webhook_shadow_gates_closed', gate_blockers: gates.blockers };
-
-    const summary = g35nNormalizeStripeRefundEvent(event);
-    const localContext = await g35nResolveLocalRefundOrderContext(base44, summary);
-    const allowlist = g35nAllowlisted(gates, summary, localContext);
-    if (!allowlist.allowed) return { ...baseResult, skip_reason: 'stripe_refund_webhook_shadow_exact_allowlist_required', normalized_event: summary, local_order_lookup: localContext };
-
-    const payload = g35nPreviewPayload(summary, localContext);
-    if (payload.refund_type === 'partial' && (payload.refund_amount === undefined || payload.refund_amount === null || !payload.refund_currency)) {
-      return { ...baseResult, skip_reason: 'missing_refund_amount_for_partial_preview', normalized_event: summary, local_order_lookup: localContext };
-    }
-
-    const secret = g35nPreviewInternalSecret();
-    const previewPromise = base44.asServiceRole.functions.invoke('previewNativeOrderCutoverReadiness', payload, {
-      headers: secret ? { 'x-internal-secret': secret } : {},
-    }).catch(error => ({ error_code: 'shadow_preview_error', error_message: error?.message || 'shadow preview failed' }));
-    const previewResult = await Promise.race([previewPromise, g35nTimeout(timeoutMs)]);
-    if (previewResult?.timeout) return { ...baseResult, shadow_attempted: true, skip_reason: 'shadow_preview_timeout', normalized_event: summary, local_order_lookup: localContext };
-    const preview = previewResult?.data || previewResult || {};
-    return {
-      marker: G35N_REFUND_WEBHOOK_SHADOW_MARKER,
-      shadow_attempted: true,
-      shadow_skipped: false,
-      writes_performed: false,
-      provider_call_impact: false,
-      notification_impact: { notification_held: true, notification_would_send: false },
-      normalized_event: summary,
-      local_order_lookup: localContext,
-      routed_preview_mode: preview?.refund_impact_preview?.preview_mode || preview?.preview_mode || null,
-      preview_next_action: preview?.next_action || null,
-      preview_data_stable: preview?.preview_data_stable === true || preview?.refund_impact_preview?.preview_data_stable === true,
-      read_consistency_stable: preview?.read_consistency?.stable === true || preview?.refund_impact_preview?.read_consistency?.stable === true,
-      preview_error_code: preview?.error_code || null,
-    };
-  } catch (error) {
-    return { ...baseResult, skip_reason: 'stripe_refund_webhook_shadow_error', error_code: 'shadow_error_suppressed' };
-  }
-}
 
 Deno.serve(async (req) => {
   const body = await req.text();
@@ -443,7 +228,6 @@ Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
   const stagingSafeMode = isStagingSafeMode();
   installStagingSideEffectGuards(base44, stagingSafeMode);
-  void runStripeRefundWebhookShadowPreview({ base44, event }).catch(() => {});
 
   try {
     if (event.type === 'checkout.session.completed') {
@@ -452,7 +236,7 @@ Deno.serve(async (req) => {
       const amountPaid = session.amount_total / 100; // convert cents to dollars
 
       // Fetch checkout data from entity (recovery layer)
-      let orderData = {};
+      let orderData: Record<string, any> = {};
       try {
         const checkoutSessions = await base44.asServiceRole.entities.CheckoutSession.filter({ stripe_session_id: session.id });
         if (checkoutSessions.length > 0) {
@@ -708,10 +492,10 @@ Deno.serve(async (req) => {
           // Sync to Hub using the new 4-fulfillment payload builder
           // Fire-and-forget: Stripe already got 200 at this point.
           // On failure, write an error OrderSyncLog so retryFailedHubSyncs can pick it up.
-          base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+          invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
             subscription_id: subscription.id,
             customer_email: customerEmail,
-          }, { headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' } }).then(() => {
+          }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
             console.log(`[stripeWebhook] ✅ Hub sync dispatched for subscription ${subscription.id}`);
           }).catch(err => {
             console.error(`[stripeWebhook] Hub sync failed for subscription ${subscription.id}: ${err.message}`);
@@ -801,7 +585,11 @@ Deno.serve(async (req) => {
             resolvedItems = (stripeLineItems.data || [])
               .filter(li => li.description !== 'Delivery Fee')
               .map(li => ({
-                title: li.description || li.price?.product?.name || 'Item',
+                title: li.description || (
+                  typeof li.price?.product === 'object' && li.price.product && 'name' in li.price.product
+                    ? li.price.product.name
+                    : ''
+                ) || 'Item',
                 quantity: li.quantity || 1,
                 price: (li.price?.unit_amount || 0) / 100,
                 product_id: li.price?.product || '',
@@ -995,7 +783,7 @@ Deno.serve(async (req) => {
           .catch(err => console.error('Failed to send order confirmation email:', err.message));
 
         // Send operations notification
-        base44.asServiceRole.functions.invoke('notifyOrderProcessed', {
+        invokeAdminGatewayFunction(base44, 'notifyOrderProcessed', {
           order_id: order.id,
           order_number: orderNumber,
           customer_email: customerEmail,
@@ -1016,7 +804,7 @@ Deno.serve(async (req) => {
 
         // Send SMS if phone provided
         if (resolvedPhone) {
-          base44.asServiceRole.functions.invoke('sendOrderSms', {
+          invokeInternalFunction(base44, 'sendOrderSms', {
             order_id: order.id,
             phone_number: resolvedPhone,
             order_number: orderNumber,
@@ -1024,7 +812,7 @@ Deno.serve(async (req) => {
             total: order.total || orderData.total || 0,
             assigned_delivery_date: resolvedDeliveryDate,
             delivery_window_label: resolvedWindowLabel,
-          }, { headers: { 'x-internal-secret': Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '' } })
+          }, Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '')
             .catch(err => console.error('Failed to send order confirmation SMS:', err.message));
         }
       }
@@ -1176,6 +964,16 @@ Deno.serve(async (req) => {
       // Find pre-created pending Order
       const existingOrders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: pi.id });
 
+      // The PaymentIntent creator already validates the exact customer-selected
+      // schedule against the backend options and stores that canonical choice in
+      // CheckoutSession. Preserve it here; recalculating only the default option
+      // after payment silently changes an explicit Wednesday selection to Saturday.
+      let checkoutData: Record<string, any> = {};
+      try {
+        const csSessions = await base44.asServiceRole.entities.CheckoutSession.filter({ stripe_session_id: pi.id });
+        if (csSessions[0]) checkoutData = csSessions[0].checkout_data || {};
+      } catch {}
+
       // ── TERMINAL STATE GUARD ──────────────────────────────────────────
       // CRITICAL: Do NOT resurrect refunded/cancelled/terminal orders.
       // Webhook replay order is NOT guaranteed—later refunds can exist before earlier payment events.
@@ -1221,16 +1019,20 @@ Deno.serve(async (req) => {
         // Webhook event.created is when the success actually occurred (when Stripe sent this event).
         // This overrides stale pi.created (when PI was first created) if they differ.
         // If payment crosses a cutoff boundary between PI creation and actual success, webhook time wins.
-        let finalSchedule = null;
-        try {
-          const successTimestamp = new Date((event.created || Date.now()) * 1000).toISOString();
-          const schedResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
-            paid_at: successTimestamp,
-          });
-          finalSchedule = schedResp.data || schedResp;
-          console.log(`[PI succeeded] Final schedule from event.created (${successTimestamp}): prod=${finalSchedule.production_date} del=${finalSchedule.delivery_date} window="${finalSchedule.delivery_window_label}" reason="${finalSchedule.schedule_reason}"`);
-        } catch (schedErr) {
-          console.error(`[PI succeeded] Schedule recalculation failed: ${schedErr.message} — keeping pending order dates`);
+        let finalSchedule = verifiedCheckoutSchedule(checkoutData, meta);
+        if (finalSchedule) {
+          console.log(`[PI succeeded] Preserving verified customer selection: prod=${finalSchedule.production_date} del=${finalSchedule.delivery_date} window="${finalSchedule.delivery_window_label}"`);
+        } else {
+          try {
+            const successTimestamp = new Date((event.created || Date.now()) * 1000).toISOString();
+            const schedResp = await base44.asServiceRole.functions.invoke('calculateNuViraFulfillmentSchedule', {
+              paid_at: successTimestamp,
+            });
+            finalSchedule = schedResp.data || schedResp;
+            console.log(`[PI succeeded] Final schedule from event.created (${successTimestamp}): prod=${finalSchedule.production_date} del=${finalSchedule.delivery_date} window="${finalSchedule.delivery_window_label}" reason="${finalSchedule.schedule_reason}"`);
+          } catch (schedErr) {
+            console.error(`[PI succeeded] Schedule recalculation failed: ${schedErr.message} — keeping pending order dates`);
+          }
         }
 
         // Finalize the order — promote from pending_payment to operational
@@ -1240,7 +1042,7 @@ Deno.serve(async (req) => {
           message: 'Payment confirmed — your order is scheduled for juicing!',
         }];
 
-        const finalOrderUpdate = {
+        const finalOrderUpdate: Record<string, any> = {
           status:           'scheduled_for_juicing',
           payment_status:   'paid',
           financial_status: 'paid',
@@ -1282,13 +1084,6 @@ Deno.serve(async (req) => {
             await base44.asServiceRole.entities.Order.update(order.id, { referral_code: null });
           }
         }
-
-        // Deduct points / credits from CheckoutSession data
-        let checkoutData = {};
-        try {
-          const csSessions = await base44.asServiceRole.entities.CheckoutSession.filter({ stripe_session_id: pi.id });
-          if (csSessions[0]) checkoutData = csSessions[0].checkout_data || {};
-        } catch {}
 
         await linkPendingBagReturn(
           base44,
@@ -1384,23 +1179,23 @@ Deno.serve(async (req) => {
           items:                  order.items,
           total:                  order.total,
           delivery_address:       order.delivery_address,
-          assigned_delivery_date: order.assigned_delivery_date,
-          delivery_window_label:  order.delivery_window_label,
+          assigned_delivery_date: finalOrderUpdate.assigned_delivery_date || order.assigned_delivery_date,
+          delivery_window_label:  finalOrderUpdate.delivery_window_label || order.delivery_window_label,
         }).catch(err => console.error('[PI succeeded] Email failed:', err.message));
 
         if (order.contact_phone) {
-          base44.asServiceRole.functions.invoke('sendOrderSms', {
+          invokeInternalFunction(base44, 'sendOrderSms', {
             order_id:                order.id,
             phone_number:           order.contact_phone,
             order_number:           orderNumber,
             items:                  order.items,
             total:                  order.total,
-            assigned_delivery_date: order.assigned_delivery_date,
-            delivery_window_label:  order.delivery_window_label,
-          }, { headers: { 'x-internal-secret': Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '' } }).catch(err => console.error('[PI succeeded] SMS failed:', err.message));
+            assigned_delivery_date: finalOrderUpdate.assigned_delivery_date || order.assigned_delivery_date,
+            delivery_window_label:  finalOrderUpdate.delivery_window_label || order.delivery_window_label,
+          }, Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '').catch(err => console.error('[PI succeeded] SMS failed:', err.message));
         }
 
-        base44.asServiceRole.functions.invoke('notifyOrderProcessed', {
+        invokeAdminGatewayFunction(base44, 'notifyOrderProcessed', {
           order_id: order.id, order_number: orderNumber, customer_email: customerEmail,
         }).catch(err => console.error('[PI succeeded] Ops notify failed:', err.message));
 
@@ -1739,10 +1534,10 @@ Deno.serve(async (req) => {
 
       // Sync to Hub using the new 4-fulfillment payload builder (invoice.payment_succeeded path)
       // Fire-and-forget: write error log on failure so retryFailedHubSyncs can recover.
-      base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+      invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
         subscription_id: newSubscription.id,
         customer_email: customerEmail,
-      }, { headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' } }).then(() => {
+      }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
         console.log(`[invoice.payment_succeeded] ✅ Hub sync dispatched for subscription ${newSubscription.id}`);
       }).catch(err => {
         console.error(`[invoice.payment_succeeded] Hub sync failed for subscription ${newSubscription.id}: ${err.message}`);
@@ -1918,10 +1713,10 @@ Deno.serve(async (req) => {
 
       // Sync to Hub using the new 4-fulfillment payload builder (invoice.paid path)
       // Fire-and-forget: write error log on failure so retryFailedHubSyncs can recover.
-      base44.asServiceRole.functions.invoke('syncSubscriptionWithFulfillments', {
+      invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
         subscription_id: newSubscriptionPaid.id,
         customer_email: customerEmail,
-      }, { headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || '' } }).then(() => {
+      }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
         console.log(`[invoice.paid] ✅ Hub sync dispatched for subscription ${newSubscriptionPaid.id}`);
       }).catch(err => {
         console.error(`[invoice.paid] Hub sync failed for subscription ${newSubscriptionPaid.id}: ${err.message}`);
@@ -1956,7 +1751,7 @@ Deno.serve(async (req) => {
         if (existingForUpdate.status === 'cancelled' && newStatus === 'active') {
           console.warn(`[sub.updated] Subscription ${stripeSubId} is cancelled in CA but Stripe says active. Skipping reactivation to prevent resurrection of terminal state.`);
         } else {
-          const updates = { status: newStatus };
+          const updates: Record<string, any> = { status: newStatus };
           if (nextDeliveryStr) updates.next_delivery_date = nextDeliveryStr;
           await base44.asServiceRole.entities.Subscription.update(existingForUpdate.id, updates);
           console.log(`[sub.updated] Subscription ${stripeSubId} updated to ${newStatus}`);
@@ -2261,13 +2056,12 @@ Deno.serve(async (req) => {
 
       // Sync refund to Hub via shared helper
       try {
-        const refundSyncResult = await base44.asServiceRole.functions.invoke('syncRefundToHub', {
+        const refundSyncResponse = await invokeInternalFunction(base44, 'syncRefundToHub', {
           order_id: order.id,
           stripe_session: { id: charge.id },
           triggered_by: 'stripe_refund_webhook',
-        }, {
-          headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' },
-        });
+        }, Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '');
+        const refundSyncResult = refundSyncResponse?.data || refundSyncResponse;
         if (refundSyncResult?.success) {
           console.log(`[charge.refunded] ✅ Order ${orderNumber} refund synced to Hub successfully`);
         } else {

@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     let startingAfter = undefined;
 
     while (true) {
-      const params = {
+      const params: any = {
         status: 'incomplete',
         limit: 100,
         created: { lt: cutoffTimestamp },

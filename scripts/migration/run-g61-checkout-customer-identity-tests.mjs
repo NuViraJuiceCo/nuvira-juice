@@ -15,7 +15,7 @@ const embeddedPayment = read('src/components/checkout/EmbeddedPayment.jsx');
 const nativeApplePay = read('src/lib/nativeApplePay.js');
 const nativeApplePayPlugin = read('ios/App/App/NativeApplePayPlugin.swift');
 const createPaymentIntent = read('base44/functions/createPaymentIntent/entry.ts');
-const createZone3AuthorizationIntent = read('base44/functions/createZone3AuthorizationIntent/entry.ts');
+const createZone3AuthorizationIntent = read('base44/functions/getCustomerAccountDashboardData/handlers/createZone3AuthorizationIntent/entry.ts');
 const profileSetup = read('src/components/onboarding/ProfileSetup.jsx');
 const accountSettings = read('src/pages/AccountSettings.jsx');
 

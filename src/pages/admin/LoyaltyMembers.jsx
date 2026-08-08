@@ -15,7 +15,8 @@ import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 const FILTERS = [
   { value: 'all', label: 'All members' },
   { value: 'balance', label: 'Balance issues' },
-  { value: 'contact', label: 'Contact pending' },
+  { value: 'identity', label: 'Identity review' },
+  { value: 'phone', label: 'Phone not provided' },
   { value: 'current', label: 'Current' },
 ];
 
@@ -58,10 +59,12 @@ export default function LoyaltyMembers() {
     const query = searchQuery.trim().toLowerCase();
     return members.filter(member => {
       const balanceIssue = member.anomalies?.includes('cache_mismatch');
-      const contactPending = member.anomalies?.includes('missing_name') || member.anomalies?.includes('missing_phone');
+      const identityReview = member.anomalies?.includes('missing_name') || member.anomalies?.includes('name_conflict');
+      const phoneNotProvided = member.anomalies?.includes('phone_not_provided');
       if (filter === 'balance' && !balanceIssue) return false;
-      if (filter === 'contact' && !contactPending) return false;
-      if (filter === 'current' && (balanceIssue || contactPending)) return false;
+      if (filter === 'identity' && !identityReview) return false;
+      if (filter === 'phone' && !phoneNotProvided) return false;
+      if (filter === 'current' && (balanceIssue || identityReview || phoneNotProvided)) return false;
       if (!query) return true;
       return [member.full_name, member.customer_email, member.phone, member.last_order_number]
         .some(value => String(value || '').toLowerCase().includes(query));
@@ -120,7 +123,8 @@ export default function LoyaltyMembers() {
           {[
             ['Members', summary.member_count || 0, Sparkles],
             ['Outstanding points', Number(summary.total_outstanding_points || 0).toLocaleString(), SlidersHorizontal],
-            ['Contact pending', summary.contact_pending_count ?? summary.profile_incomplete_count ?? 0, Phone],
+            ['Identity review', summary.contact_pending_count ?? summary.profile_incomplete_count ?? 0, Phone],
+            ['Phone not provided', summary.phone_not_provided_count ?? 0, Phone],
             ['Balance issues', summary.balance_issue_count ?? summary.cache_mismatch_count ?? 0, CheckCircle2],
           ].map(([label, value, Icon]) => (
             <div key={label} className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
@@ -158,15 +162,16 @@ export default function LoyaltyMembers() {
         <section className="grid gap-3 lg:grid-cols-2">
           {filteredMembers.map(member => {
             const balanceIssue = member.anomalies?.includes('cache_mismatch');
-            const contactPending = member.anomalies?.includes('missing_name') || member.anomalies?.includes('missing_phone');
-            const statusLabel = balanceIssue ? 'Balance issue' : contactPending ? 'Contact pending' : 'Current';
+            const identityReview = member.anomalies?.includes('missing_name') || member.anomalies?.includes('name_conflict');
+            const phoneNotProvided = member.anomalies?.includes('phone_not_provided');
+            const statusLabel = balanceIssue ? 'Balance issue' : identityReview ? 'Identity review' : phoneNotProvided ? 'Phone not provided' : 'Current';
             return (
               <button key={member.customer_email} type="button" onClick={() => openMember(member)} className="rounded-2xl border border-border/60 bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate font-bold text-foreground">{member.full_name}</p>
-                      <Badge variant={balanceIssue ? 'destructive' : contactPending ? 'outline' : 'secondary'}>{statusLabel}</Badge>
+                      <Badge variant={balanceIssue ? 'destructive' : identityReview || phoneNotProvided ? 'outline' : 'secondary'}>{statusLabel}</Badge>
                     </div>
                     <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                       <p className="flex items-center gap-2 truncate"><Mail className="h-3.5 w-3.5" />{member.customer_email}</p>
@@ -204,7 +209,7 @@ export default function LoyaltyMembers() {
               </div>
 
               <section className="space-y-3">
-                <div><h3 className="font-bold">Customer profile</h3><p className="text-xs text-muted-foreground">Fill verified information without changing the account email.</p></div>
+                <div><h3 className="font-bold">Customer profile</h3><p className="text-xs text-muted-foreground">Save only verified information. A phone number can remain “not provided” until the customer supplies one.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Input value={profileForm.first_name} onChange={event => setProfileForm(current => ({ ...current, first_name: event.target.value }))} placeholder="First name" />
                   <Input value={profileForm.last_name} onChange={event => setProfileForm(current => ({ ...current, last_name: event.target.value }))} placeholder="Last name" />

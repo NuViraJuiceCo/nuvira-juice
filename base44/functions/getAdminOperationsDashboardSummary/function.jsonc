@@ -1,0 +1,68 @@
+{
+  "name": "getAdminOperationsDashboardSummary",
+  "entry": "entry.ts",
+  "automations": [
+    {
+      "name": "Post-Payment Chain Monitor",
+      "description": "Hourly read-only verification that payment, Hub synchronization, loyalty, and subscription completion remain connected.",
+      "function_args": {
+        "gateway_action": "monitorPostPaymentChain"
+      },
+      "is_active": true,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "minutes",
+      "repeat_interval": 60,
+      "ends_type": "never"
+    },
+    {
+      "name": "Sync Merch to Shopify",
+      "description": "Preserved inactive legacy automation; route through the consolidated admin gateway if deliberately re-enabled.",
+      "function_args": {
+        "gateway_action": "pushMerchToShopify"
+      },
+      "is_active": false,
+      "type": "entity",
+      "entity_name": "Merch",
+      "event_types": ["create", "update"]
+    },
+    {
+      "name": "Push Product to Shopify on Create/Update",
+      "description": "Preserved inactive legacy automation; route through the consolidated admin gateway if deliberately re-enabled.",
+      "function_args": {
+        "gateway_action": "pushProductToShopify"
+      },
+      "is_active": false,
+      "type": "entity",
+      "entity_name": "Product",
+      "event_types": ["create", "update"]
+    },
+    {
+      "name": "Upcoming Delivery Notifications",
+      "description": "Preserved inactive scheduled automation under the consolidated admin gateway.",
+      "function_args": {
+        "gateway_action": "sendUpcomingDeliveryNotifications"
+      },
+      "is_active": false,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "days",
+      "repeat_interval": 1,
+      "start_time": "13:00",
+      "ends_type": "never"
+    },
+    {
+      "name": "Sync Shopify Orders to Hub",
+      "description": "Preserved inactive entity automation under the consolidated admin gateway.",
+      "function_args": {
+        "gateway_action": "syncShopifyOrderToHub"
+      },
+      "is_active": false,
+      "type": "entity",
+      "entity_name": "ShopifyOrder",
+      "event_types": ["create"]
+    }
+  ]
+}

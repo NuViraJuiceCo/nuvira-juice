@@ -76,7 +76,7 @@ function buildGMCProduct(product) {
   if (!product.title || !product.image_url || !product.price) return null;
 
   const offerId = product.id;
-  const gmcProduct = {
+  const gmcProduct: Record<string, any> = {
     offerId,
     title: product.title,
     description: product.description || product.short_description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co., delivered in the St. Louis, MO area.`,

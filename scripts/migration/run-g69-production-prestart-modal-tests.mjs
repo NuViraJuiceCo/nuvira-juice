@@ -24,7 +24,9 @@ const batch = {
 
 function loadHandler(relativePath) {
   const filename = path.join(repoRoot, relativePath);
-  let source = fs.readFileSync(filename, 'utf8').replace(/^import .*$/gm, '');
+  let source = fs.readFileSync(filename, 'utf8')
+    .replace(/^import .*$/gm, '')
+    .replace('export default async function handler(req: Request)', 'globalThis.__handler = async function handler(req)');
   const context = vm.createContext({
     console,
     Date,
@@ -101,8 +103,8 @@ async function call(handler, base44, body) {
   return { status: response.status, payload: await response.json() };
 }
 
-const statusHandler = loadHandler('base44/functions/getAdminProductionQueueSummary/entry.ts');
-const linkHandler = loadHandler('base44/functions/saveAdminComplianceRecord/entry.ts');
+const statusHandler = loadHandler('base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionQueueSummary/entry.ts');
+const linkHandler = loadHandler('base44/functions/getAdminOperationsDashboardSummary/handlers/saveAdminComplianceRecord/entry.ts');
 
 {
   const store = makeBase44(readyRows());

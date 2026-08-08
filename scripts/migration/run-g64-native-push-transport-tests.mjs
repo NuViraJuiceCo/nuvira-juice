@@ -5,7 +5,7 @@ import fs from 'node:fs';
 const eventPush = fs.readFileSync('src/lib/pushNotifications.js', 'utf8');
 const app = fs.readFileSync('src/App.jsx', 'utf8');
 const notificationPrompt = fs.readFileSync('src/components/home/NotificationPrompt.jsx', 'utf8');
-const registerPush = fs.readFileSync('base44/functions/registerPushSubscription/entry.ts', 'utf8');
+const registerPush = fs.readFileSync('base44/functions/getCustomerAccountDashboardData/handlers/registerPushSubscription/entry.ts', 'utf8');
 const sendPush = fs.readFileSync('base44/functions/sendCustomerPushNotification/entry.ts', 'utf8');
 
 const existingSubscriptionBody = eventPush.match(

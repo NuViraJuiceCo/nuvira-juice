@@ -1,9 +1,18 @@
+// @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 import {
   CUSTOMER_ORDER_ADJUSTMENT_ACTIONS,
   handleCustomerOrderAdjustmentRequest,
 } from './customerOrderAdjustment.ts';
+
+const FULL_ORDER_REFUND_ACTIONS = new Set(['preview_full_order_refund', 'execute_full_order_refund']);
+const FULL_ORDER_REFUND_CONFIRMATION = 'refund_exact_paid_order';
+
+function safeRefundId(value: unknown, maxLength = 180) {
+  const normalized = String(value ?? '').trim();
+  return normalized.length <= maxLength && /^[A-Za-z0-9._:@/-]+$/.test(normalized) ? normalized : '';
+}
 
 /**
  * Manually processes a refund for an order that was refunded in Stripe
@@ -48,7 +57,109 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (Deno.env.get('ENABLE_ADMIN_MANUAL_REFUNDS') !== 'true') {
+    let providerRefundResult = null;
+    const requestedAction = String(body.action || '').trim().toLowerCase();
+    if (FULL_ORDER_REFUND_ACTIONS.has(requestedAction)) {
+      if (!user || !['admin', 'owner'].includes(String(user.role || '').trim().toLowerCase())) {
+        return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+      }
+
+      const orderNumber = safeRefundId(body.order_number, 80).replace(/^#/, '');
+      const expectedOrderId = safeRefundId(body.expected_order_id, 180);
+      const requestId = safeRefundId(body.request_id, 180);
+      if (!orderNumber || !expectedOrderId || !requestId) {
+        return Response.json({ error: 'order_number, expected_order_id, and request_id are required' }, { status: 400 });
+      }
+
+      const orders = await base44.asServiceRole.entities.Order.filter({ order_number: orderNumber }, '-created_date', 2);
+      if (orders.length !== 1 || orders[0]?.id !== expectedOrderId) {
+        return Response.json({ error: 'exact_order_identity_mismatch' }, { status: 409 });
+      }
+
+      const refundOrder = orders[0];
+      const amount = Math.round(Number(refundOrder.total || 0) * 100) / 100;
+      const paymentIntentId = safeRefundId(refundOrder.stripe_payment_intent_id, 180);
+      const paymentStatus = String(refundOrder.payment_status || '').trim().toLowerCase();
+      const orderStatus = String(refundOrder.status || '').trim().toLowerCase();
+      const subscriptionLike = Boolean(refundOrder.stripe_subscription_id) || String(refundOrder.order_type || '').trim().toLowerCase().includes('subscription');
+      const blockers = [];
+      if (!['paid', 'succeeded', 'complete'].includes(paymentStatus) || refundOrder.payment_captured !== true) blockers.push('order_payment_not_captured');
+      if (['refunded', 'cancelled', 'canceled'].includes(orderStatus)) blockers.push('order_already_terminal');
+      if (!paymentIntentId || !paymentIntentId.startsWith('pi_')) blockers.push('stripe_payment_intent_missing');
+      if (!Number.isFinite(amount) || amount <= 0) blockers.push('refund_amount_invalid');
+      if (subscriptionLike) blockers.push('subscription_order_not_supported');
+
+      if (requestedAction === 'preview_full_order_refund') {
+        return Response.json({
+          success: true,
+          dry_run: true,
+          order_number: orderNumber,
+          order_id: refundOrder.id,
+          refund_amount: amount,
+          currency: String(refundOrder.currency || 'usd').trim().toLowerCase(),
+          eligible: blockers.length === 0,
+          blockers,
+          projected_writes: blockers.length === 0 ? [
+            'Stripe.Refund',
+            'Order.refund_status',
+            'LoyaltyTransaction.reversal',
+            'UserPoints.projection',
+            'LoyaltyMember.projection',
+            'Hub.refund_projection',
+            'OrderSyncLog.audit',
+          ] : [],
+          provider_calls_performed: false,
+          writes_performed: false,
+        });
+      }
+
+      if (String(body.confirmation || '').trim() !== FULL_ORDER_REFUND_CONFIRMATION) {
+        return Response.json({ error: 'confirmation phrase is required' }, { status: 400 });
+      }
+      if (blockers.length > 0) {
+        return Response.json({ success: false, error: 'full_order_refund_preflight_blocked', blockers }, { status: 409 });
+      }
+
+      const stripeKey = Deno.env.get('STRIPE_SECRET_KEY') || '';
+      if (!stripeKey) return Response.json({ error: 'refund_service_unavailable' }, { status: 503 });
+      const stripe = new Stripe(stripeKey, { apiVersion: '2023-10-16' });
+      const refund = await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        reason: 'requested_by_customer',
+        metadata: {
+          operation: 'exact_full_order_refund',
+          order_number: orderNumber,
+          request_id: requestId,
+        },
+      }, {
+        idempotencyKey: `exact-full-order-refund:${refundOrder.id}:${requestId}`,
+      });
+
+      providerRefundResult = {
+        id: safeRefundId(refund?.id, 180),
+        status: String(refund?.status || '').trim().toLowerCase(),
+        amount: Number(refund?.amount || 0) / 100,
+        currency: String(refund?.currency || refundOrder.currency || 'usd').trim().toLowerCase(),
+      };
+      if (providerRefundResult.status !== 'succeeded') {
+        return Response.json({
+          success: false,
+          pending: providerRefundResult.status === 'pending',
+          error: providerRefundResult.status === 'pending' ? 'refund_processing' : 'refund_provider_failed',
+          provider_refund: providerRefundResult,
+          writes_performed: false,
+        }, { status: providerRefundResult.status === 'pending' ? 202 : 502 });
+      }
+
+      body = {
+        order_number: orderNumber,
+        refund_amount: providerRefundResult.amount,
+        is_full_refund: true,
+        stripe_refund_id: providerRefundResult.id,
+      };
+    }
+
+    if (!providerRefundResult && Deno.env.get('ENABLE_ADMIN_MANUAL_REFUNDS') !== 'true') {
       return Response.json({
         success: true,
         skipped: true,
@@ -98,16 +209,25 @@ Deno.serve(async (req) => {
       message: `Manual refund processed: $${effectiveRefundAmount} (${isFull ? 'FULL' : 'PARTIAL'}). ${stripe_refund_id ? 'Refund ID: ' + stripe_refund_id : ''}`,
     }];
 
+    const refundTimestamp = new Date().toISOString();
+    const refundReference = stripe_refund_id || `manual_refund_${order.id}_${refundTimestamp}`;
     await base44.asServiceRole.entities.Order.update(order.id, {
-      status: 'refunded',
-      payment_status: 'refunded',
-      financial_status: 'refunded',
-      payment_captured: false,
-      refunded_at: new Date().toISOString(),
-      refund_id: stripe_refund_id || 'manual_refund_' + new Date().toISOString(),
+      status: isFull ? 'refunded' : order.status,
+      payment_status: isFull ? 'refunded' : order.payment_status,
+      financial_status: isFull ? 'refunded' : order.financial_status,
+      payment_captured: isFull ? false : order.payment_captured,
+      refund_status: isFull ? 'fully_refunded' : 'partially_refunded',
+      refund_type: isFull ? 'full' : 'partial',
       refund_amount: effectiveRefundAmount,
-      is_partial_refund: !isFull,
-      sync_status: 'refund_pending_hub_sync',
+      refund_currency: String(order.currency || 'usd').trim().toLowerCase(),
+      refunded_at: refundTimestamp,
+      refund_source: 'admin',
+      refund_event_id: refundReference,
+      stripe_refund_id: stripe_refund_id || null,
+      refund_reason: 'Admin-authorized order refund.',
+      refund_review_required: false,
+      refund_review_status: 'resolved',
+      do_not_recover: isFull,
       status_history: statusHistory,
     });
 
@@ -161,6 +281,33 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Service-role entity writes do not consistently emit the customer-facing
+    // status automation. Send through the canonical transactional pipeline;
+    // its refund marker makes this idempotent with any automation replay.
+    let customerCommunication: any = null;
+    try {
+      const communicationResponse = await base44.asServiceRole.functions.invoke('sendOrderStatusNotification', {
+        order_id: order.id,
+        new_status: 'refunded',
+        event_id: refundReference,
+        refund_amount: effectiveRefundAmount,
+      });
+      customerCommunication = communicationResponse?.data || communicationResponse || null;
+    } catch (communicationError) {
+      customerCommunication = {
+        success: false,
+        error: communicationError instanceof Error ? communicationError.message : String(communicationError),
+      };
+      await base44.asServiceRole.entities.OrderSyncLog.create({
+        order_number,
+        status: 'error',
+        description: `Refund completed, but the customer refund communication requires retry: ${customerCommunication.error}`,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        triggered_by: 'manual_refund_process',
+      });
+    }
+
     // Create audit log
     await base44.asServiceRole.entities.OrderSyncLog.create({
       order_number: order_number,
@@ -181,6 +328,8 @@ Deno.serve(async (req) => {
       action: isFull ? 'full_refund_processed' : 'partial_refund_manual_review',
       hub_sync_attempted: true,
       points_reversed: isFull,
+      provider_refund: providerRefundResult,
+      customer_communication: customerCommunication,
     });
 
   } catch (error) {

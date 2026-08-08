@@ -70,16 +70,20 @@ Deno.serve(async (req) => {
 
     console.log(`[syncRefundToHub] Starting refund sync for ${orderNumber} (${triggered_by})`);
     console.log(`[syncRefundToHub] Order state: status=${order.status}, payment_status=${order.payment_status}`);
-    console.log(`[syncRefundToHub] Refund details: amount=$${order.refund_amount}, id=${order.refund_id}, full=${!order.is_partial_refund}`);
+    const refundReference = order.stripe_refund_id || order.refund_event_id || order.refund_id || stripe_session?.id || null;
+    const isFullRefund = order.refund_type === 'full' ||
+      order.refund_status === 'fully_refunded' ||
+      (order.refund_type == null && order.refund_status == null && order.is_partial_refund !== true);
+    console.log(`[syncRefundToHub] Refund details: amount=$${order.refund_amount}, reference_present=${Boolean(refundReference)}, full=${isFullRefund}`);
 
     // Delegate to syncOrderToHub with refund event
     const syncInvokeResult = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
       order_id: order.id,
       stripe_session: {
         payment_status: 'refunded',
-        id: stripe_session?.id || 'manual_refund',
+        id: refundReference || 'manual_refund',
         refund_amount: order.refund_amount,
-        is_full_refund: !order.is_partial_refund,
+        is_full_refund: isFullRefund,
       },
       triggered_by: triggered_by || 'refund_sync_helper',
     });
