@@ -11,6 +11,9 @@ const repoRoot = path.resolve(__dirname, '../..');
 function loadFunction(filePath, exportNames, env = {}) {
   let source = fs.readFileSync(filePath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
+  source = source
+    .replaceAll('req: Request', 'req')
+    .replace('export default async function handler(req)', 'async function handler(req)');
   source += `\nglobalThis.__exports = { ${exportNames.join(', ')} };\n`;
 
   const context = vm.createContext({
@@ -52,7 +55,7 @@ const openGateEnv = {
 };
 
 const executeFns = loadFunction(
-  path.join(repoRoot, 'base44/functions/executeNativeProductionBatchLifecycle/entry.ts'),
+  path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/executeNativeProductionBatchLifecycle/entry.ts'),
   ['envGateFailure', 'testBatchMarkerFailure', 'planLifecycle'],
   openGateEnv,
 );
@@ -130,7 +133,7 @@ assert.equal(
 );
 
 const previewFns = loadFunction(
-  path.join(repoRoot, 'base44/functions/previewNativeProductionBatchLifecycle/entry.ts'),
+  path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeProductionBatchLifecycle/entry.ts'),
   ['planLifecycle', 'requirePreviewAccess'],
   openGateEnv,
 );
@@ -277,7 +280,7 @@ assert.equal(verifyWithoutMeterId.blockers.length, 0);
 assert.equal(Object.hasOwn(verifyWithoutMeterId.proposed_patch, 'pH_meter_id'), false);
 
 const closedPreviewFns = loadFunction(
-  path.join(repoRoot, 'base44/functions/previewNativeProductionBatchLifecycle/entry.ts'),
+  path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeProductionBatchLifecycle/entry.ts'),
   ['planLifecycle'],
   {},
 );
@@ -294,9 +297,24 @@ preview = closedPreviewFns.planLifecycle({
   },
 });
 assert.equal(preview.lifecycle_ready, true);
-assert.equal(preview.live_command_available, false);
-assert.equal(preview.native_write_allowed, false);
-assert.ok(preview.live_command_blockers.includes('native_production_batch_lifecycle_writes_disabled'));
+assert.equal(preview.live_command_available, true, 'Real production uses authenticated admin, kill-switch, lifecycle, and compliance guards without a temporary launch enable flag.');
+assert.equal(preview.native_write_allowed, true);
+assert.deepEqual(Array.from(preview.live_command_blockers), []);
+
+preview = closedPreviewFns.planLifecycle({
+  mode: 'dry_run',
+  action: 'start',
+  batch: g53TestBatch,
+  actor_email: 'info@nuvirajuice.com',
+  request_id: 'g51d_preview_test_closed',
+  pre_start_compliance: {
+    enforced: true,
+    ready: true,
+    blockers: [],
+  },
+});
+assert.equal(preview.live_command_available, false, 'Internal test batches remain closed without their dedicated enable, actor, action, and batch allowlists.');
+assert.ok(preview.live_command_blockers.includes('native_production_batch_test_lifecycle_writes_disabled'));
 
 const productionPage = fs.readFileSync(path.join(repoRoot, 'src/pages/admin/ProductionQueueSummary.jsx'), 'utf8');
 const writeAvailableFunction = productionPage.match(/function nativePreviewWriteAvailable[\s\S]*?\n}\n/)?.[0] || '';

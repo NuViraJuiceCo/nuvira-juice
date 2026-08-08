@@ -43,6 +43,7 @@ const harnesses = [
   'scripts/migration/run-g85-react-router-security-tests.mjs',
   'scripts/migration/run-g86-subscription-gateway-readiness-tests.mjs',
   'scripts/migration/run-g87-production-immediate-idempotency-tests.mjs',
+  'scripts/migration/run-g89-customer-app-native-production-cutover-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

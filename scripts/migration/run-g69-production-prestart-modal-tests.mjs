@@ -232,7 +232,7 @@ assert.ok(modalSource.includes('min-h-0 flex-1 space-y-4 overflow-y-auto'));
 assert.ok(cssSource.includes('[data-scroll] {'));
 assert.equal(productionSource.includes('pH meter ID'), false);
 assert.ok(productionSource.includes('pH meter calibration checked'));
-assert.ok(productionSource.includes('CCP monitoring complete'));
+assert.equal(productionSource.includes('CCP monitoring complete'), false, 'Routine verification does not ask operators for a CCP sign-off.');
 assert.ok(productionSource.includes('The system never invents a pH value or pass/fail result.'));
 assert.ok(productionSource.includes('Check ${formatLabel(activeAction)} Readiness'));
 assert.equal((productionSource.match(/onReadyChange=\{handlePreStartReadyChange\}/g) || []).length, 2);

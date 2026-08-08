@@ -106,6 +106,10 @@ function isNativeBatch(batch) {
   return batch?.source === 'customer_app_native';
 }
 
+function customerProjectionSuppressed(batch) {
+  return batch?.native_owner_status === 'native_owned_retroactive_delivered_no_customer_projection';
+}
+
 function batchSourceLabel(batch) {
   if (batch?.source_label) return batch.source_label;
   return isNativeBatch(batch) ? 'Native Customer App' : 'Source';
@@ -1251,7 +1255,6 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     pH_result: batch.pH_result || '',
     pH_passed_failed: batch.pH_passed_failed || '',
     calibration_checked: batch.calibration_checked === true,
-    ccp_check_complete: batch.ccp_check_complete === true,
     sanitation_verification_complete: batch.sanitation_verification_complete === true,
     labels_applied: batch.labels_applied === true,
     passed_failed: batch.passed_failed || '',
@@ -1306,7 +1309,6 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
       pH_result: Number(completeForm.pH_result),
       pH_passed_failed: completeForm.pH_passed_failed,
       calibration_checked: completeForm.calibration_checked,
-      ccp_check_complete: completeForm.ccp_check_complete,
       sanitation_verification_complete: completeForm.sanitation_verification_complete,
       labels_applied: completeForm.labels_applied,
       passed_failed: completeForm.passed_failed,
@@ -1319,6 +1321,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
   }
 
   function executionPayload(action) {
+    const suppressCustomerProjection = customerProjectionSuppressed(batch);
     return {
       mode: 'live',
       confirmation: 'execute_native_production_batch_lifecycle',
@@ -1328,8 +1331,8 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
       request_id: requestIdFor(`native_${action}_execute`, batch),
       reason: `Admin Production Queue native ${formatLabel(action)}.`,
       ...(action === 'start' ? {
-        update_customer_order_status: true,
-        notify_customer: true,
+        update_customer_order_status: !suppressCustomerProjection,
+        notify_customer: !suppressCustomerProjection,
       } : {}),
       ...(action === 'complete' ? nativeCompletionFields() : {}),
       ...(action === 'verify' ? nativeVerificationFields() : {}),
@@ -1393,10 +1396,13 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     }
 
     const label = formatLabel(action);
+    const suppressCustomerProjection = customerProjectionSuppressed(batch);
     const warning = action === 'verify'
       ? 'This may create one batch compliance log and link it to this exact ProductionBatch. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.'
       : action === 'start'
-        ? 'This updates this exact ProductionBatch and projects any exact linked paid customer orders to In Production. The Order-status automation owns the single customer push/in-app message. It will not deduct inventory, update delivery tasks, or call payment or commerce providers.'
+        ? suppressCustomerProjection
+          ? 'This is a retroactive record for an already delivered order. It will update only this ProductionBatch and its audit log; the customer order and notifications are explicitly suppressed.'
+          : 'This updates this exact ProductionBatch and projects any exact linked paid customer orders to In Production. The Order-status automation owns the single customer push/in-app message. It will not deduct inventory, update delivery tasks, or call payment or commerce providers.'
         : 'This updates this exact ProductionBatch lifecycle record and audit log. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.';
     if (!window.confirm(`Save ${label} for ${batch.batch_id || batch.product_name}? ${warning}`)) {
       return;
@@ -1613,7 +1619,6 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {[
                   ['calibration_checked', 'pH meter calibration checked'],
-                  ['ccp_check_complete', 'CCP monitoring complete'],
                   ['sanitation_verification_complete', 'Sanitation verification complete'],
                   ['labels_applied', 'Labels applied and checked'],
                 ].map(([key, label]) => (
