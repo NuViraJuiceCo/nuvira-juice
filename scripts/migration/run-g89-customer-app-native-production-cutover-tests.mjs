@@ -44,6 +44,7 @@ function loadFunctions(relativePath, exportNames, env = {}) {
 const executePath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/executeNativeProductionBatchLifecycle/entry.ts';
 const previewPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeProductionBatchLifecycle/entry.ts';
 const queuePath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionQueueSummary/entry.ts';
+const gatewayPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts');
 const uiPath = path.join(repoRoot, 'src/pages/admin/ProductionQueueSummary.jsx');
 const migrationPath = path.join(repoRoot, 'scripts/migration/run-g89-materialize-retroactive-production-batches.js');
 
@@ -179,6 +180,8 @@ assert.match(previewSource, /verification_required_fields: \['pH_result', 'pH_pa
 assert.match(previewSource, /verification_optional_fields: \['ccp_check_complete', 'verification_notes', 'staff_on_duty'\]/);
 
 const queue = loadFunctions(queuePath, ['loadNativeProductionBatches', 'mergeHubAndNativeBatches']);
+const gateway = fs.readFileSync(gatewayPath, 'utf8');
+assert.match(gateway, /Bundle revision: g89-native-production-cutover-20260808/);
 let nativeBatchSort = null;
 const nativeRead = await queue.loadNativeProductionBatches({
   asServiceRole: {
@@ -222,7 +225,7 @@ assert.doesNotMatch(migration, /functions\.invoke|Notification\.create|CustomerM
 console.log(JSON.stringify({
   ok: true,
   suite: 'g89-customer-app-native-production-cutover',
-  checks: 25,
+  checks: 26,
   writes_performed: false,
   customer_notifications_sent: false,
   provider_calls_performed: false,
