@@ -392,8 +392,8 @@ test('numeric order routes are treated as order numbers instead of Base44 entity
 test('picked-up hub orders always use the pickup tracker journey', async () => {
   assert.match(trackerSource, /\['ready_for_pickup', 'picked_up'\]\.includes\(currentStatus\)/);
   assert.match(trackerSource, /fulfillment_type: isPickupOrder \? 'pickup' : 'delivery'/);
-  assert.match(trackerSource, /currentStatus === 'picked_up' \? 'Pickup Status'/);
-  assert.match(trackerSource, /currentStatus === 'picked_up'[\s\S]*?\? 'Pickup complete'/);
+  assert.match(trackerSource, /journey\.normalizedStatus === 'picked_up'[\s\S]*?\? 'Pickup status'/);
+  assert.match(trackerSource, /journey\.normalizedStatus === 'picked_up'[\s\S]*?\? 'Pickup complete'/);
 });
 
 test('no customer-visible G43C diagnostic fields are added', async () => {

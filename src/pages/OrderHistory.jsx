@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
+import { getCustomerOrderJourney } from '@/lib/customer-order-journey';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -55,6 +56,14 @@ export default function OrderHistory() {
       return res.data?.all_orders_raw || [];
     },
     enabled: !!user?.email,
+    staleTime: 30 * 1000,
+    refetchInterval: query => {
+      const rows = query.state.data || [];
+      return rows.some(order => !['delivered', 'picked_up', 'cancelled', 'refunded', 'failed'].includes(order?.status)) ? 60000 : false;
+    },
+    refetchIntervalInBackground: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   // Fetch user profile ONCE at the list level — not per-card
@@ -154,6 +163,10 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
     && order.items.every(item => item?.product_id);
   const { addItem } = useCart();
   const navigate = useNavigate();
+  const fulfillmentType = order.fulfillment_type === 'pickup' || ['ready_for_pickup', 'picked_up'].includes(order.status)
+    ? 'pickup'
+    : 'delivery';
+  const journey = getCustomerOrderJourney({ status: order.status, fulfillmentType });
 
   // Resolve customer name from passed-down profile
 
@@ -197,11 +210,23 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
                 : isCancelled ? 'bg-destructive/10 text-destructive'
                 : 'bg-secondary text-muted-foreground'
               }`}>
-                {statusLabels[order.status] || order.status}
+                {journey.statusLabel || statusLabels[order.status] || order.status}
               </Badge>
               <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
             </div>
           </div>
+          {isActive && journey.isKnownStage && (
+            <div className="mb-3 rounded-xl bg-primary/[0.06] px-3 py-2.5">
+              <div className="flex items-center justify-between gap-3 mb-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-primary">{journey.statusLabel}</p>
+                <p className="text-[10px] font-semibold text-muted-foreground">Step {journey.currentIndex + 1} of {journey.stages.length}</p>
+              </div>
+              <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                <div className="h-full rounded-full bg-nuvira-gradient transition-all" style={{ width: `${journey.progressPercent}%` }} />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5">{journey.statusDescription}</p>
+            </div>
+          )}
           {bagReturn && (
             <div className="flex items-center gap-1.5 mb-2">
               <Leaf className="w-3 h-3 text-primary" />
