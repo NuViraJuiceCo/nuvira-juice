@@ -843,7 +843,7 @@ function HubTimelinePanel({ order }) {
       if (order.hub_order_id) timelineRequest.hub_order_id = order.hub_order_id;
       if (order.order_number) timelineRequest.order_number = order.order_number;
       if (order.stripe_subscription_id) timelineRequest.stripe_subscription_id = order.stripe_subscription_id;
-      if (order.id) timelineRequest.customer_app_order_id = order.id;
+      if (order.customer_app_order_id) timelineRequest.customer_app_order_id = order.customer_app_order_id;
 
       const res = await base44.functions.invoke('getAdminOrderTimeline', timelineRequest);
       const result = res?.data || res;
@@ -898,6 +898,7 @@ function HubTimelinePanel({ order }) {
                 <InfoRow label="Fulfillment" value={event.fulfillment_number ? `#${event.fulfillment_number}` : null} />
                 <InfoRow label="Task ID" value={event.task_id} />
                 <InfoRow label="Window" value={event.delivery_window_label} />
+                <InfoRow label="Internal note" value={event.details?.internal_note} />
                 <InfoRow label="Proof" value={event.details?.proof_available ? 'Available' : null} />
                 <InfoRow label="Proof Link" value={proofLink} />
                 <InfoRow label="Drop" value={event.details?.delivery_drop_location} />
@@ -917,15 +918,16 @@ function generateRequestId() {
   return `hub-note-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function InternalHubNoteComposer({ order }) {
+function InternalOrderNoteComposer({ order }) {
   const [note, setNote] = useState('');
   const trimmedNote = note.trim();
-  const hasIdentifiers = Boolean(order.hub_order_id || order.order_number);
+  const hasIdentifiers = Boolean(order.customer_app_order_id || order.native_shopify_order_id || order.order_number);
 
   const appendNoteMutation = useMutation({
     mutationFn: async ({ requestId }) => {
       const res = await base44.functions.invoke('appendAdminHubOrderNote', {
-        hub_order_id: order.hub_order_id || null,
+        customer_app_order_id: order.customer_app_order_id || null,
+        native_shopify_order_id: order.native_shopify_order_id || null,
         order_number: order.order_number || null,
         note: trimmedNote,
         request_id: requestId,
@@ -938,16 +940,14 @@ function InternalHubNoteComposer({ order }) {
       if (result?.skipped && result?.reason === 'duplicate_request_id') {
         toast.info('Note already submitted');
       } else {
-        toast.success('Internal source note appended');
+        toast.success('Internal note appended');
       }
       setNote('');
     },
     onError: () => {
-      toast.error('Unable to append internal source note');
+      toast.error('Unable to append internal note');
     },
   });
-
-  if (!order.is_hub_order) return null;
 
   const isDisabled = appendNoteMutation.isPending || !hasIdentifiers || !trimmedNote || trimmedNote.length > 1000;
 
@@ -961,17 +961,17 @@ function InternalHubNoteComposer({ order }) {
     <form onSubmit={handleSubmit} className="bg-secondary/40 rounded-xl p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Internal Source Note</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Internal Order Note</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">Append-only · Admin-only · Not customer-visible.</p>
         </div>
         <div className="flex flex-col items-end gap-1 text-right">
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Append-only</span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 border border-cyan-200 leading-tight">Only source-note write available here</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 leading-tight dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-900">Customer App audit</span>
         </div>
       </div>
 
       {!hasIdentifiers ? (
-        <p className="text-xs text-muted-foreground italic">No source note identifiers available</p>
+        <p className="text-xs text-muted-foreground italic">No Customer App order identifier is available</p>
       ) : (
         <>
           <textarea
@@ -1155,7 +1155,7 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
                 </section>
               )}
 
-              <InternalHubNoteComposer order={order} />
+              <InternalOrderNoteComposer order={order} />
 
               <section className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-3">
                   <SectionLabel

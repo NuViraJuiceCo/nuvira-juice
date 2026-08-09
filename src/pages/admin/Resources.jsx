@@ -184,8 +184,6 @@ export default function Resources() {
   const team = data?.sections?.team || [];
   const equipment = data?.sections?.equipment || [];
   const warnings = Array.isArray(data?.warnings) ? data.warnings.filter(Boolean) : [];
-  const isNativeFallback = data?.source === 'customer_app_native_resources_fallback'
-    || data?.data_sources?.hub_available === false;
   const categories = useMemo(() => categoryOptions(team, equipment, categoryFilter), [categoryFilter, equipment, team]);
   const hasResults = team.length > 0 || equipment.length > 0;
 
@@ -201,8 +199,8 @@ export default function Resources() {
     <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Resources"
-        subtitle="Read-only source resources"
-        badge="Read-only"
+        subtitle="Customer App team and equipment context"
+        badge="Customer App"
       />
 
       <div className="px-4 mt-4 space-y-4">
@@ -264,12 +262,10 @@ export default function Resources() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">
-              {isNativeFallback ? 'Native Customer App resources fallback' : 'Source Resources view'}
+              Customer App resources
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {isNativeFallback
-                ? 'Read-only native team and equipment-like resource visibility while source resources are unavailable.'
-                : 'Read-only team and equipment visibility from source records.'}
+              Active operators and equipment recorded by native production activity.
             </p>
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
@@ -277,9 +273,7 @@ export default function Resources() {
 
         {warnings.length > 0 && (
           <p className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
-            {warnings.includes('native_read_only_fallback')
-              ? 'Source resources are unavailable. Showing native Customer App read-only resource context where available.'
-              : warnings.slice(0, 2).join(', ')}
+            {warnings.slice(0, 2).join(', ')}
           </p>
         )}
 

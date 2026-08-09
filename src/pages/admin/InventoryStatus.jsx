@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
-import { AlertTriangle, ClipboardList, Copy, Download, MapPin, Package, RefreshCw, Search, ShoppingCart, TrendingDown } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Copy, Download, MapPin, Package, Pencil, RefreshCw, Search, ShoppingCart } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
@@ -134,7 +135,7 @@ function StatusBadge({ status }) {
   return <AdminStatusPill value={status} label={formatStatus(status)} size="md" />;
 }
 
-function InventoryTable({ items }) {
+function InventoryTable({ items, onEdit }) {
   return (
     <div className="hidden sm:block bg-card border border-border rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
@@ -151,6 +152,7 @@ function InventoryTable({ items }) {
               <th className="hidden lg:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Supplier</th>
               <th className="hidden xl:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Location</th>
               <th className="hidden xl:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Last source update</th>
+              <th className="w-12 px-4 py-3"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -166,6 +168,17 @@ function InventoryTable({ items }) {
                 <td className="hidden lg:table-cell px-4 py-3.5 text-muted-foreground truncate">{item.supplier || '-'}</td>
                 <td className="hidden xl:table-cell px-4 py-3.5 text-muted-foreground truncate">{item.location || '-'}</td>
                 <td className="hidden xl:table-cell px-4 py-3.5 text-muted-foreground">{formatDateTime(item.updated_date) || '-'}</td>
+                <td className="px-4 py-3.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(item)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:border-primary/60"
+                    aria-label={`Edit ${item.ingredient || 'inventory item'}`}
+                    title="Edit inventory item"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -175,7 +188,7 @@ function InventoryTable({ items }) {
   );
 }
 
-function InventoryCards({ items }) {
+function InventoryCards({ items, onEdit }) {
   return (
     <div className="sm:hidden space-y-3">
       {items.map(item => (
@@ -187,7 +200,17 @@ function InventoryCards({ items }) {
                 {item.category || 'Uncategorized'} · {sourceLabel(item.source)}
               </p>
             </div>
-            <StatusBadge status={item.status} />
+            <div className="flex items-center gap-2">
+              <StatusBadge status={item.status} />
+              <button
+                type="button"
+                onClick={() => onEdit(item)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground"
+                aria-label={`Edit ${item.ingredient || 'inventory item'}`}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-2 py-2 border-t border-b border-border/30">
@@ -227,6 +250,119 @@ function InventoryCards({ items }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function InventoryEditor({ item, open, onOpenChange, onSave, pending }) {
+  const [form, setForm] = useState(null);
+
+  React.useEffect(() => {
+    if (!item || !open) return;
+    setForm({
+      ingredient: item.ingredient || '',
+      unit: item.unit || 'units',
+      stock: item.stock ?? '',
+      reorder_point: item.reorder_point ?? '',
+      max_stock: item.max_stock ?? '',
+      cost_per_unit: item.cost_per_unit ?? '',
+      supplier: item.supplier || '',
+      supplier_packaging_unit: item.supplier_packaging_unit || '',
+      supplier_packaging_qty: item.supplier_packaging_qty || '',
+      cost_per_supplier_unit: item.cost_per_supplier_unit ?? '',
+      location: item.location || '',
+      category: item.category || 'Supplies',
+    });
+  }, [item, open]);
+
+  if (!form) return null;
+  const setField = (field, value) => setForm(current => ({ ...current, [field]: value }));
+
+  return (
+    <Dialog open={open} onOpenChange={next => !pending && onOpenChange(next)}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto border-border bg-card p-0 text-card-foreground">
+        <DialogHeader className="border-b border-border bg-secondary/40 px-4 py-4 pr-12 text-left">
+          <DialogTitle className="text-base font-black text-foreground">Update Tracked Supply</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Save Customer App stock thresholds for this non-food item. Food and juice ingredients remain demand-based.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-4 px-4 py-4"
+          onSubmit={event => {
+            event.preventDefault();
+            onSave(form);
+          }}
+        >
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor="inventory-item-name">Item</label>
+            <input id="inventory-item-name" value={form.ingredient} disabled className="h-10 w-full rounded-lg border border-border bg-muted px-3 text-sm text-foreground opacity-80" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Category
+              <select value={form.category} onChange={event => setField('category', event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground">
+                {['Packaging', 'Supplies', 'Other'].map(value => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Unit
+              <select value={form.unit} onChange={event => setField('unit', event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground">
+                {['lbs', 'g', 'L', 'mL', 'units', 'cases', 'bottles'].map(value => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              ['stock', 'Current stock'],
+              ['reorder_point', 'Reorder at'],
+              ['max_stock', 'Target stock'],
+            ].map(([field, label]) => (
+              <label key={field} className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                {label}
+                <input type="number" min="0" step="any" value={form[field]} onChange={event => setField(field, event.target.value)} disabled={pending} required={field !== 'max_stock'} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground" />
+              </label>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Supplier
+              <input value={form.supplier} maxLength={160} onChange={event => setField('supplier', event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground" />
+            </label>
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Storage location
+              <input value={form.location} maxLength={160} onChange={event => setField('location', event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground" />
+            </label>
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Cost per unit
+              <input type="number" min="0" step="0.01" value={form.cost_per_unit} onChange={event => setField('cost_per_unit', event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground" />
+            </label>
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Supplier pack type
+              <select value={form.supplier_packaging_unit} onChange={event => setField('supplier_packaging_unit', event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground">
+                <option value="">Not set</option>
+                {['case', 'bunch', 'lb', 'kg', 'count', 'box', 'bag', 'other'].map(value => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Supplier pack quantity
+              <input value={form.supplier_packaging_qty} maxLength={120} onChange={event => setField('supplier_packaging_qty', event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground" />
+            </label>
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Cost per supplier pack
+              <input type="number" min="0" step="0.01" value={form.cost_per_supplier_unit} onChange={event => setField('cost_per_supplier_unit', event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground" />
+            </label>
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => onOpenChange(false)} disabled={pending} className="h-10 rounded-lg border border-border bg-background px-4 text-xs font-bold text-foreground disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={pending} className="h-10 rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">{pending ? 'Saving...' : 'Save inventory item'}</button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -362,10 +498,13 @@ function OpenPurchaseOrders({ purchaseOrders }) {
 
 export default function InventoryStatus() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [copyMessage, setCopyMessage] = useState(null);
+  const [migrationPreview, setMigrationPreview] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['admin-inventory-status-summary', search, statusFilter, categoryFilter],
@@ -394,6 +533,55 @@ export default function InventoryStatus() {
   const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
   const categoryOptions = useMemo(() => categorySelectOptions(items, categoryFilter), [items, categoryFilter]);
   const procurementExportDate = format(new Date(), 'yyyy-MM-dd');
+
+  const inventoryMigration = useMutation({
+    mutationFn: async ({ operation, expectedCount = null }) => {
+      const fallback = Math.random().toString(36).slice(2);
+      const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+      const res = await base44.functions.invoke('getAdminInventoryStatusSummary', {
+        operation,
+        request_id: `inventory_cutover_${Date.now()}_${randomId}`,
+        expected_count: expectedCount,
+        confirm: operation === 'execute_non_food_import',
+        limit: 200,
+      });
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: async (result) => {
+      if (result?.dry_run) {
+        setMigrationPreview(result);
+        return;
+      }
+      setMigrationPreview(null);
+      setCopyMessage({ type: 'success', text: `${result?.imported_count || 0} non-food inventory records moved into the Customer App.` });
+      await queryClient.invalidateQueries({ queryKey: ['admin-inventory-status-summary'] });
+    },
+  });
+
+  const inventoryItemUpdate = useMutation({
+    mutationFn: async (item) => {
+      const fallback = Math.random().toString(36).slice(2);
+      const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+      const res = await base44.functions.invoke('getAdminInventoryStatusSummary', {
+        operation: 'update_native_item',
+        item_id: editingItem.id,
+        expected_updated_date: editingItem.updated_date || '',
+        request_id: `inventory_item_update_${Date.now()}_${randomId}`,
+        confirm: true,
+        item,
+      });
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: async () => {
+      setEditingItem(null);
+      setCopyMessage({ type: 'success', text: 'Inventory item updated in the Customer App.' });
+      await queryClient.invalidateQueries({ queryKey: ['admin-inventory-status-summary'] });
+    },
+  });
 
   async function copyProcurementPlan() {
     try {
@@ -425,14 +613,13 @@ export default function InventoryStatus() {
     <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Inventory"
-        subtitle="Read-only inventory status"
-        badge="Read-only"
+        subtitle="Customer App non-food stock and procurement"
+        badge="Customer App"
       />
 
       <div className="px-4 mt-4 space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
-          <StatCard icon={Package} label="Total Items" value={summary.total_items ?? 0} />
-          <StatCard icon={TrendingDown} label="Demand-Based Food" value={summary.demand_based_food_count ?? 0} />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+          <StatCard icon={Package} label="Tracked Items" value={summary.total_items ?? 0} />
           <StatCard icon={Package} label="Tracked Supplies" value={summary.stock_tracked_item_count ?? 0} />
           <StatCard icon={AlertTriangle} label="Supply Critical / Out" value={(summary.critical_count ?? 0) + (summary.out_of_stock_count ?? 0)} />
           <StatCard icon={ShoppingCart} label="Supply Needs" value={summary.net_procurement_item_count ?? 0} />
@@ -459,7 +646,6 @@ export default function InventoryStatus() {
                 className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="all">All Statuses</option>
-                <option value="demand_based">Demand Based</option>
                 <option value="ok">OK</option>
                 <option value="low">Low</option>
                 <option value="critical">Critical</option>
@@ -486,10 +672,10 @@ export default function InventoryStatus() {
           <div>
             <p className="text-xs font-semibold text-foreground">Inventory view</p>
             <p className="text-[10px] text-muted-foreground">
-              Food and juice ingredients are demand-based; packaging, supplies, merch, and other non-food items remain stock-tracked. No stock deduction or purchase orders are created here.
+              Packaging, supplies, merch, and other non-food items are stock-tracked here. Food and juice ingredients are purchased from production demand and are excluded from inventory counts.
             </p>
             <p className="text-[10px] text-muted-foreground mt-1">
-              Sources: Primary source {dataSources.hub_available ? 'available' : 'unavailable'} · Native {dataSources.native_available ? 'available' : 'empty'} · Food warnings suppressed {dataSources.food_stock_warnings_suppressed ? 'yes' : 'no'}
+              Customer App {dataSources.native_authoritative ? 'is authoritative' : 'cutover is pending'} · Food rows hidden {dataSources.food_inventory_rows_hidden ? 'yes' : 'no'}
             </p>
             <AdminStatusLegend className="mt-2" />
           </div>
@@ -503,6 +689,17 @@ export default function InventoryStatus() {
               <Copy className="h-3.5 w-3.5" />
               Copy Plan
             </button>
+            {!dataSources.native_authoritative && Number(dataSources.non_food_import_candidate_count || 0) > 0 && (
+              <button
+                type="button"
+                onClick={() => inventoryMigration.mutate({ operation: 'preview_non_food_import' })}
+                disabled={inventoryMigration.isPending}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Review cutover
+              </button>
+            )}
             <button
               type="button"
               onClick={downloadProcurementCsv}
@@ -515,6 +712,43 @@ export default function InventoryStatus() {
             <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
           </div>
         </div>
+
+        {migrationPreview && (
+          <section className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-foreground">Non-food inventory cutover</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {migrationPreview.candidate_count} validated records are ready. This creates Customer App inventory records only; it does not change the historical source, food demand, orders, notifications, or providers.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={inventoryMigration.isPending || migrationPreview.blocker_count > 0}
+                onClick={() => {
+                  if (!window.confirm(`Import ${migrationPreview.candidate_count} non-food inventory records into the Customer App?`)) return;
+                  inventoryMigration.mutate({ operation: 'execute_non_food_import', expectedCount: migrationPreview.candidate_count });
+                }}
+                className="h-10 shrink-0 rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50"
+              >
+                {inventoryMigration.isPending ? 'Importing...' : 'Import records'}
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {(migrationPreview.candidates || []).map(item => (
+                <span key={item.ingredient} className="rounded-full border border-border bg-background px-2 py-1 text-[10px] font-semibold text-foreground">
+                  {item.ingredient}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {inventoryMigration.isError && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+            {inventoryMigration.error?.message || 'Inventory cutover could not be completed.'}
+          </div>
+        )}
 
         {copyMessage && (
           <div className={`rounded-lg border p-3 text-xs ${
@@ -529,8 +763,14 @@ export default function InventoryStatus() {
         {warnings.length > 0 && (
           <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
             {warnings.includes('hub_inventory_status_service_not_configured') || warnings.some(warning => warning?.startsWith?.('hub_inventory_status_unavailable'))
-              ? 'Primary inventory summary is unavailable, so this view is showing native Customer App inventory/procurement records only.'
-              : 'Inventory status returned warnings. Review source and native context before making procurement decisions.'}
+              ? 'Historical cutover verification is unavailable. Customer App inventory remains available.'
+              : 'Inventory status returned a migration warning. Review the Customer App records before making procurement decisions.'}
+          </div>
+        )}
+
+        {inventoryItemUpdate.isError && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+            {inventoryItemUpdate.error?.message || 'Inventory item could not be updated.'}
           </div>
         )}
 
@@ -571,11 +811,19 @@ export default function InventoryStatus() {
                 Results are capped. Narrow the search or filters for a more complete view.
               </p>
             )}
-            <InventoryTable items={items} />
-            <InventoryCards items={items} />
+            <InventoryTable items={items} onEdit={setEditingItem} />
+            <InventoryCards items={items} onEdit={setEditingItem} />
           </div>
         )}
       </div>
+
+      <InventoryEditor
+        item={editingItem}
+        open={Boolean(editingItem)}
+        onOpenChange={open => !open && setEditingItem(null)}
+        onSave={item => inventoryItemUpdate.mutate(item)}
+        pending={inventoryItemUpdate.isPending}
+      />
     </div>
   );
 }

@@ -7,11 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
-const functionPath = path.join(repoRoot, 'base44/functions/getAdminInventoryStatusSummary/entry.ts');
+const functionPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminInventoryStatusSummary/entry.ts');
 
 function loadHandler({ env = {}, hubData = hubInventoryResponse() } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
+  source = source.replace('export default async function handler(req: Request)', 'globalThis.__handler = async function handler(req)');
 
   const context = vm.createContext({
     console,
@@ -35,9 +36,6 @@ function loadHandler({ env = {}, hubData = hubInventoryResponse() } = {}) {
     fetch: async () => new Response(JSON.stringify(hubData), { status: 200 }),
     Deno: {
       env: { get: key => env[key] || '' },
-      serve: handler => {
-        context.globalThis.__handler = handler;
-      },
     },
     globalThis: {},
   });
@@ -148,16 +146,15 @@ assert.equal(payload.success, true);
 assert.equal(payload.data_sources.food_inventory_policy, 'food_and_juice_make_to_order');
 assert.equal(payload.data_sources.food_stock_warnings_suppressed, true);
 assert.equal(payload.data_sources.non_food_inventory_counts_enabled, true);
-assert.equal(payload.summary.total_items, 2);
-assert.equal(payload.summary.demand_based_food_count, 1);
+assert.equal(payload.summary.total_items, 1);
+assert.equal(payload.summary.demand_based_food_count, 0);
 assert.equal(payload.summary.stock_tracked_item_count, 1);
-assert.equal(payload.summary.food_stock_warnings_suppressed_count, 1);
+assert.equal(payload.summary.food_stock_warnings_suppressed_count, 0);
 assert.equal(payload.summary.low_stock_count, 0);
 assert.equal(payload.summary.critical_count, 1);
 assert.equal(payload.summary.out_of_stock_count, 0);
 assert.equal(payload.summary.net_procurement_item_count, 1);
-assert.equal(payload.items.find(item => item.ingredient === 'Watermelon')?.status, 'demand_based');
-assert.equal(payload.items.find(item => item.ingredient === 'Watermelon')?.stock_authoritative, false);
+assert.equal(payload.items.find(item => item.ingredient === 'Watermelon'), undefined);
 assert.equal(payload.items.find(item => item.ingredient === 'Bottle Cases')?.status, 'critical');
 assert.equal(payload.procurement_plan.length, 1);
 assert.equal(payload.procurement_plan[0].ingredient, 'Bottle Cases');
@@ -169,8 +166,8 @@ const demandOnly = await invoke({
   store: { inventoryItems: [trackedPackaging], purchaseOrders: [] },
 });
 assert.equal(demandOnly.status, 200);
-assert.equal(demandOnly.payload.summary.total_items, 1);
-assert.equal(demandOnly.payload.items[0].ingredient, 'Watermelon');
+assert.equal(demandOnly.payload.summary.total_items, 0);
+assert.equal(demandOnly.payload.items.length, 0);
 assert.equal(demandOnly.payload.procurement_plan.length, 0);
 assert.equal(demandOnly.writes.length, 0);
 
@@ -202,14 +199,15 @@ const duplicateHiddenFromFilteredView = await invoke({
   },
 });
 assert.equal(duplicateHiddenFromFilteredView.status, 200);
-assert.equal(duplicateHiddenFromFilteredView.payload.summary.total_items, 0);
-assert.equal(duplicateHiddenFromFilteredView.payload.items.length, 0);
-assert.equal(duplicateHiddenFromFilteredView.payload.procurement_plan.length, 0);
+assert.equal(duplicateHiddenFromFilteredView.payload.summary.total_items, 1);
+assert.equal(duplicateHiddenFromFilteredView.payload.items.length, 1);
+assert.equal(duplicateHiddenFromFilteredView.payload.items[0].ingredient, 'Bottle Cases');
+assert.equal(duplicateHiddenFromFilteredView.payload.procurement_plan.length, 1);
 assert.equal(duplicateHiddenFromFilteredView.writes.length, 0);
 
 console.log(JSON.stringify({
   suite: 'g56a_food_demand_based_inventory_policy',
-  passed: 2,
+  passed: 3,
   failed: 0,
   writes_performed: false,
   provider_calls_performed: false,

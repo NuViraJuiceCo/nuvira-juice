@@ -2,8 +2,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleAdminDataSummary } from './adminDataSummary.ts';
 
-const HUB_API_URL = Deno.env.get('HUB_API_URL');
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
 const VALID_CATEGORIES = new Set(['team member', 'equipment']);
@@ -263,10 +261,10 @@ async function loadNativeResources(base44, { category, status, search, limit }) 
   };
 }
 
-function nativeFallbackResponse({ nativeResources, reason, hubStatus = null }) {
+function nativeResourcesResponse(nativeResources) {
   return Response.json({
     success: true,
-    source: 'customer_app_native_resources_fallback',
+    source: 'customer_app_native_resources',
     summary: sanitizeSummary(nativeResources.summary),
     count: nativeResources.count,
     truncated: nativeResources.truncated === true,
@@ -274,14 +272,12 @@ function nativeFallbackResponse({ nativeResources, reason, hubStatus = null }) {
       team: nativeResources.sections.team.map(sanitizeTeamItem),
       equipment: nativeResources.sections.equipment.map(sanitizeEquipmentItem),
     },
-    warnings: [
-      hubStatus ? `hub_resources_unavailable:${hubStatus}` : `hub_resources_unavailable:${reason}`,
-      'native_read_only_fallback',
-    ],
+    warnings: [],
     data_sources: {
       hub_available: false,
       native_available: true,
       native_read_only: true,
+      native_authoritative: true,
     },
   });
 }
@@ -329,78 +325,7 @@ async function handleOperationalResourcesSummary(req: Request) {
       limit,
     });
 
-    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      const nativeResources = await loadNativeResourcesSummary();
-      return nativeFallbackResponse({
-        nativeResources,
-        reason: 'missing_config',
-      });
-    }
-
-    const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-    const params = new URLSearchParams({
-      limit: limit.toString(),
-    });
-    if (category) params.set('category', category);
-    if (status) params.set('status', status);
-    if (search) params.set('search', search);
-
-    let hubResponse;
-    try {
-      hubResponse = await fetch(`${hubBase}/functions/getResourcesSummaryForCustomerApp?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-        },
-      });
-    } catch (error) {
-      console.warn('[getAdminResourcesSummary] Hub fetch failed; returning native fallback:', error.message);
-      const nativeResources = await loadNativeResourcesSummary();
-      return nativeFallbackResponse({
-        nativeResources,
-        reason: 'fetch_failed',
-      });
-    }
-
-    if (!hubResponse.ok) {
-      const nativeResources = await loadNativeResourcesSummary();
-      return nativeFallbackResponse({
-        nativeResources,
-        reason: 'non_ok',
-        hubStatus: hubResponse.status,
-      });
-    }
-
-    const hubData = await hubResponse.json().catch(() => null);
-    if (
-      !hubData ||
-      hubData.success !== true ||
-      !hubData.sections ||
-      !Array.isArray(hubData.sections.team) ||
-      !Array.isArray(hubData.sections.equipment)
-    ) {
-      const nativeResources = await loadNativeResourcesSummary();
-      return nativeFallbackResponse({
-        nativeResources,
-        reason: 'malformed_response',
-      });
-    }
-
-    const team = hubData.sections.team.map(sanitizeTeamItem).slice(0, limit);
-    const equipment = hubData.sections.equipment.map(sanitizeEquipmentItem).slice(0, limit);
-    const returnedCount = team.length + equipment.length;
-    const upstreamCount = Number(hubData.count) || returnedCount;
-
-    return Response.json({
-      success: true,
-      summary: sanitizeSummary(hubData.summary),
-      count: returnedCount,
-      truncated: hubData.truncated === true || returnedCount < upstreamCount,
-      sections: {
-        team,
-        equipment,
-      },
-    });
+    return nativeResourcesResponse(await loadNativeResourcesSummary());
   } catch (error) {
     console.error('[getAdminResourcesSummary] Error:', error.message);
     return Response.json({ error: 'Unable to load resources summary' }, { status: 500 });

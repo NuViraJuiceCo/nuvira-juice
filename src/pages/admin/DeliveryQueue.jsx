@@ -228,6 +228,8 @@ function isNativeDeliveryTaskStop(stop) {
   return stop?.data_source === 'customer_app_native_task';
 }
 
+const HISTORICAL_DELIVERY_ACTIONS_RETIRED = true;
+
 function canonicalTaskStatus(value) {
   return taskStatusKey(value) || null;
 }
@@ -2287,10 +2289,19 @@ function StopCard({ stop, completed, selectedDate, onAssignmentSuccess }) {
           )}
         </>
       ) : (
-        <>
-          <DriverAssignmentControls stop={stop} onAssignmentSuccess={onAssignmentSuccess} />
-          <OperationalStatusControls stop={stop} onStatusSuccess={onAssignmentSuccess} />
-        </>
+        HISTORICAL_DELIVERY_ACTIONS_RETIRED ? (
+          <div className="rounded-xl border border-border bg-secondary/30 p-3">
+            <p className="text-xs font-bold text-foreground">Historical delivery record</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              This legacy source row remains visible for audit context only. Assignment and delivery changes must use a Customer App fulfillment task.
+            </p>
+          </div>
+        ) : (
+          <>
+            <DriverAssignmentControls stop={stop} onAssignmentSuccess={onAssignmentSuccess} />
+            <OperationalStatusControls stop={stop} onStatusSuccess={onAssignmentSuccess} />
+          </>
+        )
       )}
     </div>
   );
@@ -2314,7 +2325,7 @@ function StopSection({ title, subtitle, stops, completed, selectedDate, onAssign
           <p className="text-sm font-semibold text-foreground">
             {completed ? 'No completed deliveries found' : 'No active delivery stops found'}
           </p>
-          <p className="text-xs text-muted-foreground mt-1">This source route summary has no rows for this section.</p>
+          <p className="text-xs text-muted-foreground mt-1">The Customer App route queue has no rows for this section.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">

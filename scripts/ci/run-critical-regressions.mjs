@@ -47,6 +47,9 @@ const harnesses = [
   'scripts/migration/run-g90-terminal-hub-fallback-suppression-tests.mjs',
   'scripts/migration/run-g92-native-production-batch-materialization-tests.mjs',
   'scripts/migration/run-g39d-admin-delivery-route-native-first-tests.mjs',
+  'scripts/migration/run-g39h-admin-calendar-events-native-first-tests.mjs',
+  'scripts/migration/run-g56a-food-demand-based-inventory-policy-tests.mjs',
+  'scripts/migration/run-g93-hub-operator-retirement-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

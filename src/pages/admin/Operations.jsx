@@ -150,7 +150,7 @@ const sections = [
       {
         title: 'Resources',
         route: '/admin/resources',
-        description: 'Read-only team and equipment visibility from source resources.',
+        description: 'Read-only team and equipment visibility from Customer App records.',
         icon: UsersRound,
         badges: ['Read-only', 'Source-backed'],
       },
@@ -215,20 +215,6 @@ const sections = [
         description: 'Read-only command history with safe metadata and hidden raw payload/result bodies.',
         icon: ClipboardList,
         badges: ['Read-only', 'Audit'],
-      },
-      {
-        title: 'Sync Health',
-        route: '/admin/sync-health',
-        description: 'Read-only bridge health with aggregate sync counts and sanitized error categories.',
-        icon: Activity,
-        badges: ['Read-only', 'Source-backed'],
-      },
-      {
-        title: 'Sync Status',
-        route: '/admin/sync-status',
-        description: 'Current order-sync status guidance with a direct path into the full Sync Health console.',
-        icon: BarChart3,
-        badges: ['Read-only', 'Native'],
       },
       {
         title: 'Notifications',

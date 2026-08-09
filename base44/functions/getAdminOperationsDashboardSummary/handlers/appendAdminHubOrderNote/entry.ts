@@ -1,8 +1,6 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const HUB_API_URL = Deno.env.get('HUB_API_URL');
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_NOTE_LENGTH = 1000;
 
 function normalizeText(value) {
@@ -11,10 +9,6 @@ function normalizeText(value) {
 
 function normalizeSingleLine(value) {
   return normalizeText(value).replace(/\s+/g, ' ');
-}
-
-function normalizeNote(value) {
-  return normalizeSingleLine(value);
 }
 
 async function readJsonBody(req) {
@@ -26,100 +20,130 @@ async function readJsonBody(req) {
   }
 }
 
-function sanitizeHubResponse(data, requestId) {
+async function findFirst(entity, filters) {
+  for (const filter of filters) {
+    const rows = await entity.filter(filter, '-created_date', 2).catch(() => []);
+    if (rows.length > 0) return rows[0];
+  }
+  return null;
+}
+
+async function resolveOrder(base44, { customerAppOrderId, nativeOrderId, orderNumber }) {
+  const entities = base44.asServiceRole.entities;
+  const customerOrder = await findFirst(entities.Order, [
+    ...(customerAppOrderId ? [{ id: customerAppOrderId }] : []),
+    ...(orderNumber ? [{ order_number: orderNumber }] : []),
+  ]);
+  const resolvedOrderNumber = orderNumber || normalizeText(customerOrder?.order_number);
+  const nativeOrder = await findFirst(entities.ShopifyOrder, [
+    ...(nativeOrderId ? [{ id: nativeOrderId }] : []),
+    ...(customerAppOrderId ? [{ base44_order_id: customerAppOrderId }] : []),
+    ...(resolvedOrderNumber ? [{ shopify_order_number: resolvedOrderNumber }] : []),
+  ]);
+
+  if (!customerOrder && !nativeOrder) return null;
   return {
-    success: data?.success === true,
-    appended: data?.appended === true,
-    skipped: data?.skipped === true,
-    reason: data?.reason || null,
-    request_id: data?.request_id || requestId || null,
-    hub_order_id: data?.hub_order_id || null,
-    order_number: data?.order_number || null,
+    customerOrder,
+    nativeOrder,
+    orderNumber: resolvedOrderNumber || normalizeText(nativeOrder?.shopify_order_number),
+    targetId: normalizeText(nativeOrder?.id || customerOrder?.id),
+    relatedOrderId: normalizeText(customerOrder?.id || nativeOrder?.base44_order_id || nativeOrder?.id),
   };
 }
 
 export default async function handler(req: Request) {
   try {
     const base44 = createClientFromRequest(req);
-
-    let user = null;
-    try {
-      user = await base44.auth.me();
-    } catch {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await readJsonBody(req);
-    if (body === null) {
-      return Response.json({ error: 'malformed_json' }, { status: 400 });
-    }
+    if (body === null) return Response.json({ error: 'malformed_json' }, { status: 400 });
 
-    const hubOrderId = normalizeText(body.hub_order_id);
-    const orderNumber = normalizeText(body.order_number);
-    const note = normalizeNote(body.note);
+    const customerAppOrderId = normalizeText(body.customer_app_order_id);
+    const nativeOrderId = normalizeText(body.native_shopify_order_id);
+    const orderNumber = normalizeSingleLine(body.order_number);
+    const note = normalizeSingleLine(body.note);
     const requestId = normalizeSingleLine(body.request_id);
 
-    if (!hubOrderId && !orderNumber) {
+    if (!customerAppOrderId && !nativeOrderId && !orderNumber) {
       return Response.json({
-        error: 'At least one scoped identifier is required',
-        required_any_of: ['hub_order_id', 'order_number'],
+        error: 'At least one scoped Customer App order identifier is required',
+        required_any_of: ['customer_app_order_id', 'native_shopify_order_id', 'order_number'],
       }, { status: 400 });
     }
-
-    if (!note) {
-      return Response.json({ error: 'note is required' }, { status: 400 });
-    }
-
+    if (!note) return Response.json({ error: 'note is required' }, { status: 400 });
     if (note.length > MAX_NOTE_LENGTH) {
       return Response.json({ error: `note must be ${MAX_NOTE_LENGTH} characters or fewer` }, { status: 400 });
     }
+    if (!requestId) return Response.json({ error: 'request_id is required' }, { status: 400 });
 
-    if (!requestId) {
-      return Response.json({ error: 'request_id is required' }, { status: 400 });
-    }
-
-    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub note service is not configured' }, { status: 503 });
-    }
-
-    const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-    const hubResponse = await fetch(`${hubBase}/functions/appendOrderInternalNoteForCustomerApp`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-      body: JSON.stringify({
-        hub_order_id: hubOrderId || null,
-        order_number: orderNumber || null,
-        note,
+    const idempotencyKey = `admin_order_note:${requestId}`;
+    const existing = await base44.asServiceRole.entities.CommandLog.filter(
+      { idempotency_key: idempotencyKey },
+      '-created_date',
+      1,
+    ).catch(() => []);
+    if (existing.length > 0) {
+      return Response.json({
+        success: true,
+        appended: false,
+        skipped: true,
+        reason: 'duplicate_request_id',
         request_id: requestId,
-        actor_email: user.email,
-        actor_role: user.role,
-        source: 'customer_app_admin',
-      }),
+        order_number: normalizeText(existing[0]?.related_order_number) || null,
+        note_id: existing[0]?.id || null,
+        source: 'customer_app_native',
+      });
+    }
+
+    const resolved = await resolveOrder(base44, { customerAppOrderId, nativeOrderId, orderNumber });
+    if (!resolved) return Response.json({ error: 'Customer App order not found' }, { status: 404 });
+
+    const now = new Date().toISOString();
+    const command = await base44.asServiceRole.entities.CommandLog.create({
+      command_id: requestId,
+      command_type: 'admin_order_note_appended',
+      command_source: 'customer_app_admin',
+      status: 'success',
+      target_entity: resolved.nativeOrder ? 'ShopifyOrder' : 'Order',
+      target_id: resolved.targetId,
+      target_display_id: resolved.orderNumber || resolved.targetId,
+      actor_email: user.email,
+      actor_role: user.role,
+      actor_type: 'authenticated_admin',
+      payload: {
+        note_length: note.length,
+      },
+      result: {
+        appended: true,
+        source: 'customer_app_native',
+      },
+      idempotency_key: idempotencyKey,
+      idempotent_skipped: false,
+      request_id: requestId,
+      submitted_at: now,
+      started_at: now,
+      completed_at: now,
+      duration_ms: 0,
+      function_name: 'appendAdminHubOrderNote',
+      related_order_id: resolved.relatedOrderId || null,
+      related_order_number: resolved.orderNumber || null,
+      notes: note,
     });
 
-    const hubData = await hubResponse.json().catch(() => null);
-
-    if (!hubResponse.ok) {
-      return Response.json({
-        error: hubData?.error || 'Unable to append Hub internal note',
-        hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
-    }
-
-    return Response.json(sanitizeHubResponse(hubData, requestId));
+    return Response.json({
+      success: true,
+      appended: true,
+      skipped: false,
+      request_id: requestId,
+      order_number: resolved.orderNumber || null,
+      note_id: command?.id || null,
+      source: 'customer_app_native',
+    });
   } catch (error) {
-    console.error('[appendAdminHubOrderNote] Error:', error.message);
-    return Response.json({ error: 'Unable to append Hub internal note' }, { status: 500 });
+    console.error('[appendAdminHubOrderNote] Unable to append Customer App order note:', error?.message || 'unknown');
+    return Response.json({ error: 'Unable to append internal order note' }, { status: 500 });
   }
 }
