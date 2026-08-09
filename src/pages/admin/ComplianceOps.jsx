@@ -236,7 +236,7 @@ export default function ComplianceOps() {
             <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
               <p className="font-semibold">Production/compliance lifecycle read model ready</p>
               <p className="mt-0.5 text-blue-800 dark:text-blue-200/80">
-                Exact matches: {productionComplianceReadModel.summary?.exact_batch_log_match_count || 0} · missing logs: {productionComplianceReadModel.summary?.missing_log_count || 0} · review required: {productionComplianceReadModel.summary?.review_required_count || 0}. Hub fallback remains available and existing compliance write actions remain unchanged.
+                Exact matches: {productionComplianceReadModel.summary?.exact_batch_log_match_count || 0} · missing logs: {productionComplianceReadModel.summary?.missing_log_count || 0} · review required: {productionComplianceReadModel.summary?.review_required_count || 0}. Customer App batch links and compliance write actions are active.
               </p>
             </div>
           )}

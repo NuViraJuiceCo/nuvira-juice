@@ -43,6 +43,7 @@ function sanitizeEvent(event) {
       proof_available: details.proof_available === true,
       delivery_photo_url: details.delivery_photo_url || null,
       delivery_drop_location: details.delivery_drop_location || null,
+      internal_note: details.internal_note || null,
     },
   };
 }
@@ -107,6 +108,7 @@ function nativeEvent({
   source,
   status = null,
   task = null,
+  details = null,
 }) {
   return sanitizeEvent({
     type,
@@ -126,6 +128,7 @@ function nativeEvent({
       proof_available: Boolean(task?.delivery_photo_url),
       delivery_photo_url: task?.delivery_photo_url || null,
       delivery_drop_location: task?.delivery_drop_location || null,
+      internal_note: details?.internal_note || null,
     },
   });
 }
@@ -136,7 +139,7 @@ function eventMoment(event) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
+function buildNativeTimeline({ customerOrder, nativeOrder, tasks, commandLogs, limit }) {
   const events = [];
 
   if (customerOrder?.created_date) {
@@ -212,6 +215,21 @@ function buildNativeTimeline({ customerOrder, nativeOrder, tasks, limit }) {
     }
   }
 
+  for (const command of Array.isArray(commandLogs) ? commandLogs : []) {
+    if (normalizeEventToken(command?.command_type) !== 'admin_order_note_appended') continue;
+    if (normalizeEventToken(command?.status) !== 'success' || !normalizeText(command?.notes)) continue;
+    events.push(nativeEvent({
+      type: 'internal_note_added',
+      label: 'Internal Note Added',
+      timestamp: command.completed_at || command.created_date || null,
+      source: 'Command Log',
+      status: 'recorded',
+      details: {
+        internal_note: normalizeText(command.notes).slice(0, 1000),
+      },
+    }));
+  }
+
   const seen = new Set();
   return events
     .filter((event) => {
@@ -265,10 +283,29 @@ async function findNativeTimelineRecords(base44, { orderNumber, customerAppOrder
     return true;
   });
 
+  const commandQueries = [];
+  if (resolvedOrderNumber) {
+    commandQueries.push(entities.CommandLog.filter({ related_order_number: resolvedOrderNumber }, '-created_date', limit).catch(() => []));
+  }
+  if (customerOrder?.id) {
+    commandQueries.push(entities.CommandLog.filter({ related_order_id: customerOrder.id }, '-created_date', limit).catch(() => []));
+  }
+  if (nativeOrder?.id) {
+    commandQueries.push(entities.CommandLog.filter({ target_id: nativeOrder.id }, '-created_date', limit).catch(() => []));
+  }
+  const seenCommands = new Set();
+  const commandLogs = (await Promise.all(commandQueries)).flat().filter((command) => {
+    const identity = normalizeText(command?.id || command?.idempotency_key);
+    if (!identity || seenCommands.has(identity)) return false;
+    seenCommands.add(identity);
+    return normalizeEventToken(command?.command_type) === 'admin_order_note_appended';
+  });
+
   return {
     customerOrder,
     nativeOrder,
     tasks,
+    commandLogs,
     orderNumber: resolvedOrderNumber || normalizeText(nativeOrder?.shopify_order_number),
   };
 }
@@ -318,6 +355,7 @@ export default async function handler(req: Request) {
       customerOrder: nativeRecords.customerOrder,
       nativeOrder: nativeRecords.nativeOrder,
       tasks: nativeRecords.tasks,
+      commandLogs: nativeRecords.commandLogs,
       limit,
     });
 

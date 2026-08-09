@@ -22,6 +22,7 @@ function todayDate() {
 }
 
 const LIVE_INVENTORY_DEDUCTION_REQUIRES_EXACT_APPROVAL = true;
+const HISTORICAL_SOURCE_ACTIONS_RETIRED = true;
 
 function addDays(dateStr, days) {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -1843,21 +1844,25 @@ function BatchCard({ batch, onActionSuccess }) {
           <NativeLifecyclePreviewPanel batch={batch} onActionSuccess={onActionSuccess} />
         </>
       ) : (
-        <>
-          <ProductionLifecyclePanel batch={batch} onActionSuccess={onActionSuccess} />
-          {batch.status === 'verified_logged' && (
+        HISTORICAL_SOURCE_ACTIONS_RETIRED ? (
+          <div className="rounded-xl border border-border bg-secondary/30 p-3">
+            <p className="text-xs font-bold text-foreground">Historical record</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              This legacy source row is retained for audit history only. Production changes must use a Customer App batch; legacy Start, Complete, Verify, correction, cascade, and inventory actions are retired.
+            </p>
+          </div>
+        ) : (
+          <>
+            <ProductionLifecyclePanel batch={batch} onActionSuccess={onActionSuccess} />
+            {batch.status === 'verified_logged' && (
             <>
               <IngredientUsageCorrectionPanel batch={batch} onCorrectionSuccess={onActionSuccess} />
               <PostVerifyCascadesPanel batch={batch} onCascadeSuccess={onActionSuccess} />
               <InventoryDeductionPanel batch={batch} onDeductionSuccess={onActionSuccess} />
             </>
-          )}
-          {batch.status !== 'verified_logged' && (
-            <div className="rounded-xl border border-border/50 bg-muted/20 p-3 text-xs text-muted-foreground">
-              Ingredient correction and inventory deduction become available after Complete and Verify.
-            </div>
-          )}
-        </>
+            )}
+          </>
+        )
       )}
     </div>
   );
@@ -1895,7 +1900,7 @@ function ProductionDateSection({ date, batches, today, onActionSuccess }) {
             </p>
           </div>
           <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-card/70 border border-border text-muted-foreground">
-            {nativeCount > 0 ? `Source ${hubCount} · Native ${nativeCount}` : 'Source Production'}
+            {hubCount > 0 ? `Customer App ${nativeCount} · Historical ${hubCount}` : `Customer App ${nativeCount}`}
           </span>
         </div>
       </div>
@@ -2397,7 +2402,7 @@ export default function ProductionQueueSummary() {
             <p className="text-xs text-muted-foreground mt-1">
               {rangeIsPast
                 ? 'History is scoped to the selected production date range. Use Last 31 Days or select the exact production date.'
-                : 'This date range has no Customer App or source-backed production batch rows yet. Check the planning handoff above for unbatched demand.'}
+                : 'This date range has no Customer App production batches yet. Check the planning handoff above for unbatched demand.'}
             </p>
           </div>
         ) : !rangeInvalid && filteredBatches.length === 0 ? (

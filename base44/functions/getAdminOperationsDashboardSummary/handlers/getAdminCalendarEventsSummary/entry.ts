@@ -9,6 +9,7 @@ const DEFAULT_LIMIT = 150;
 const MAX_LIMIT = 250;
 const VALID_PRESETS = new Set(['current_month', 'next_30_days', 'today']);
 const VALID_TYPES = new Set(['event', 'production', 'delivery', 'compliance']);
+const VALID_EVENT_OPERATIONS = new Set(['create_event', 'update_event', 'archive_event']);
 const CHICAGO_TZ = 'America/Chicago';
 
 async function readJsonBody(req) {
@@ -111,6 +112,179 @@ function normalizeType(value) {
     throw new Error('type must be one of event, production, delivery, compliance');
   }
   return type;
+}
+
+function sanitizeEventUrl(value, fieldName) {
+  const text = sanitizeText(value, 500);
+  if (!text) return null;
+  let parsed;
+  try {
+    parsed = new URL(text);
+  } catch {
+    throw new Error(`${fieldName} must be a valid HTTPS URL`);
+  }
+  if (parsed.protocol !== 'https:') throw new Error(`${fieldName} must use HTTPS`);
+  return parsed.toString();
+}
+
+function optionalNumber(value, fieldName, { min = 0 } = {}) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min) throw new Error(`${fieldName} must be ${min} or greater`);
+  return parsed;
+}
+
+function eventMutationPayload(body) {
+  const event = body?.event && typeof body.event === 'object' && !Array.isArray(body.event) ? body.event : {};
+  const title = sanitizeText(event.title, 140);
+  const date = parseIsoDate(event.date, 'event.date');
+  if (!title) throw new Error('event.title is required');
+  if (!date) throw new Error('event.date is required');
+  return {
+    title,
+    description: sanitizeText(event.description, 2000) || null,
+    date,
+    time: sanitizeText(event.time, 40) || null,
+    location: sanitizeText(event.location, 240) || null,
+    image_url: sanitizeEventUrl(event.image_url, 'event.image_url'),
+    price: optionalNumber(event.price, 'event.price'),
+    capacity: optionalNumber(event.capacity, 'event.capacity', { min: 1 }),
+    is_active: event.is_active !== false,
+    tags: Array.isArray(event.tags)
+      ? event.tags.map(value => sanitizeText(value, 40)).filter(Boolean).slice(0, 12)
+      : [],
+    website_link: sanitizeEventUrl(event.website_link, 'event.website_link'),
+    tickets_link: sanitizeEventUrl(event.tickets_link, 'event.tickets_link'),
+  };
+}
+
+async function createEventAudit({ base44, user, requestId, operation, eventId, eventTitle }) {
+  const now = new Date().toISOString();
+  return base44.asServiceRole.entities.CommandLog.create({
+    command_id: requestId,
+    command_type: `admin_event_${operation}`,
+    command_source: 'customer_app_admin',
+    status: 'pending',
+    target_entity: 'Event',
+    target_id: eventId,
+    target_display_id: eventTitle,
+    actor_email: user.email,
+    actor_role: user.role,
+    actor_type: 'authenticated_admin',
+    payload: { operation },
+    result: { saved: false },
+    idempotency_key: `admin_event:${operation}:${requestId}`,
+    idempotent_skipped: false,
+    request_id: requestId,
+    submitted_at: now,
+    started_at: now,
+    function_name: 'getAdminCalendarEventsSummary',
+  });
+}
+
+async function handleEventMutation({ base44, user, body }) {
+  const operation = normalizeLower(body.operation);
+  if (!VALID_EVENT_OPERATIONS.has(operation)) return null;
+  const requestId = sanitizeText(body.request_id, 160);
+  if (!requestId) return Response.json({ error: 'request_id is required' }, { status: 400 });
+
+  const idempotencyKey = `admin_event:${operation}:${requestId}`;
+  const existingCommands = await base44.asServiceRole.entities.CommandLog.filter(
+    { idempotency_key: idempotencyKey }, '-created_date', 1,
+  ).catch(() => []);
+  if (existingCommands.length > 0) {
+    const prior = existingCommands[0];
+    if (prior.status !== 'success') {
+      return Response.json({ error: 'A prior event change requires review before retrying' }, { status: 409 });
+    }
+    return Response.json({
+      success: true,
+      operation,
+      skipped: true,
+      reason: 'duplicate_request_id',
+      event_id: prior?.target_id || null,
+      source: 'customer_app_native',
+    });
+  }
+
+  const eventId = sanitizeText(body.event_id, 100);
+  if (operation !== 'create_event' && !eventId) {
+    return Response.json({ error: 'event_id is required' }, { status: 400 });
+  }
+
+  let existingEvent = null;
+  if (eventId) {
+    const matches = await base44.asServiceRole.entities.Event.filter({ id: eventId }, '-created_date', 1).catch(() => []);
+    existingEvent = matches[0] || null;
+    if (!existingEvent) return Response.json({ error: 'Event not found' }, { status: 404 });
+  }
+
+  let payload = null;
+  if (operation !== 'archive_event') {
+    try {
+      payload = eventMutationPayload(body);
+    } catch (error) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+  }
+
+  const command = await createEventAudit({
+    base44,
+    user,
+    requestId,
+    operation,
+    eventId: eventId || `pending-native-${requestId}`,
+    eventTitle: payload?.title || existingEvent?.title || 'Event',
+  });
+
+  let saved;
+  try {
+    if (operation === 'archive_event') {
+      saved = await base44.asServiceRole.entities.Event.update(eventId, { is_active: false });
+    } else if (operation === 'create_event') {
+      saved = await base44.asServiceRole.entities.Event.create({
+        ...payload,
+        hub_event_id: `native-${requestId}`,
+      });
+    } else {
+      saved = await base44.asServiceRole.entities.Event.update(eventId, payload);
+    }
+  } catch {
+    await base44.asServiceRole.entities.CommandLog.update(command.id, {
+      status: 'failed',
+      completed_at: new Date().toISOString(),
+      error_code: 'event_write_failed',
+      error_message: 'Event change failed',
+      result: { saved: false },
+    }).catch(() => null);
+    return Response.json({ error: 'Unable to save event' }, { status: 500 });
+  }
+
+  await base44.asServiceRole.entities.CommandLog.update(command.id, {
+    status: 'success',
+    target_id: saved?.id || eventId,
+    target_display_id: saved?.title || existingEvent?.title || 'Event',
+    completed_at: new Date().toISOString(),
+    result: { saved: true, source: 'customer_app_native' },
+  });
+
+  return Response.json({
+    success: true,
+    operation,
+    skipped: false,
+    event: sanitizeEventItem({
+      ...existingEvent,
+      ...saved,
+      start_datetime: saved?.date || existingEvent?.date,
+      status: saved?.is_active === false ? 'inactive' : 'active',
+    }),
+    event_id: saved?.id || eventId,
+    source: 'customer_app_native',
+    writes_performed: true,
+    provider_call_impact: false,
+    notifications_sent: false,
+    hub_mutation_performed: false,
+  });
 }
 
 function numberOrZero(value) {
@@ -821,6 +995,8 @@ export default async function handler(req: Request) {
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
     }
+    const mutationResponse = await handleEventMutation({ base44, user, body });
+    if (mutationResponse) return mutationResponse;
     let dateFrom;
     let dateTo;
     let preset;
