@@ -348,11 +348,10 @@ function sanitizeHaccpPlanReview(row) {
 }
 
 function sanitizeComplianceDocument(row) {
-  return sanitizeRecord(row, [
+  const sanitized = sanitizeRecord(row, [
     ['id', 'id', 140],
     ['name', 'name', 160],
     ['type', 'type', 80],
-    ['status', 'status', 80],
     ['expiry_date', 'expiry_date', 40],
     ['issued_date', 'issued_date', 40],
     ['owner', 'owner', 160],
@@ -362,6 +361,18 @@ function sanitizeComplianceDocument(row) {
     ['notes', 'notes', 1000],
     ['updated_date', 'updated_date', 80],
   ]);
+  const expiryDate = sanitizeText(row?.expiry_date, 40);
+  if (!expiryDate) return { ...sanitized, status: 'Pending' };
+  const expiry = new Date(`${expiryDate}T00:00:00.000Z`);
+  if (Number.isNaN(expiry.getTime())) return { ...sanitized, status: 'Pending' };
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const daysRemaining = Math.ceil((expiry.getTime() - today.getTime()) / 86400000);
+  const reminderDays = row?.reminder_days === undefined || row?.reminder_days === null
+    ? 30
+    : Math.max(0, safeNumber(row.reminder_days));
+  const status = daysRemaining < 0 ? 'Expired' : daysRemaining <= reminderDays ? 'Due Soon' : 'Valid';
+  return { ...sanitized, status };
 }
 
 function newestFirst(rows, dateField, limit = 50) {

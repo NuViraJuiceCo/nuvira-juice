@@ -109,7 +109,12 @@ export default function ComplianceOps() {
   const [user, setUser] = useState(null);
   const isPageVisible = usePageVisibility();
 
-  const { data: complianceSummary, isFetching: complianceSummaryFetching, isError: complianceSummaryError } = useQuery({
+  const {
+    data: complianceSummary,
+    isFetching: complianceSummaryFetching,
+    isError: complianceSummaryError,
+    refetch: refetchComplianceSummary,
+  } = useQuery({
     queryKey: ['admin_compliance_ops_summary'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminComplianceOpsSummary', {});
@@ -272,7 +277,7 @@ export default function ComplianceOps() {
           </TabsContent>
 
           <TabsContent value="documents">
-            <ComplianceDocumentsTab nativeCompliance={nativeCompliance} />
+            <ComplianceDocumentsTab nativeCompliance={nativeCompliance} onSaved={refetchComplianceSummary} />
           </TabsContent>
 
           <TabsContent value="temperature">
