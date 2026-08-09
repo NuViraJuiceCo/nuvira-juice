@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
-import { getCustomerOrderJourney } from '@/lib/customer-order-journey';
+import { getCustomerOrderJourney, resolveCustomerJourneyFulfillmentType } from '@/lib/customer-order-journey';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -33,7 +33,7 @@ const statusLabels = {
   arriving_soon: 'Arriving',
   delivered: 'Delivered',
   ready_for_pickup: 'Ready',
-  picked_up: 'Picked Up',
+  picked_up: 'Complete',
   cancelled: 'Cancelled',
   refunded: 'Refunded',
   failed: 'Failed',
@@ -163,9 +163,10 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
     && order.items.every(item => item?.product_id);
   const { addItem } = useCart();
   const navigate = useNavigate();
-  const fulfillmentType = order.fulfillment_type === 'pickup' || ['ready_for_pickup', 'picked_up'].includes(order.status)
-    ? 'pickup'
-    : 'delivery';
+  const fulfillmentType = resolveCustomerJourneyFulfillmentType({
+    orderFulfillmentType: order.fulfillment_type,
+    status: order.status,
+  });
   const journey = getCustomerOrderJourney({ status: order.status, fulfillmentType });
 
   // Resolve customer name from passed-down profile

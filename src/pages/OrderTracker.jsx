@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, Clock3, ChevronDown, CircleCheckBig, Sparkles } from 'lucide-react';
 import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
-import { buildCustomerJourneyTimeline, getCustomerOrderJourney } from '@/lib/customer-order-journey';
+import { buildCustomerJourneyTimeline, getCustomerOrderJourney, resolveCustomerJourneyFulfillmentType } from '@/lib/customer-order-journey';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
@@ -124,11 +124,11 @@ export default function OrderTracker() {
   const hubOrder = detail?.hub_order;
   const deliveryStatus = detail?.delivery_status;
   const currentStatus = deliveryStatus?.status || order?.status || hubOrder?.status || hubOrder?.production_status || 'order_received';
-  const trackerFulfillmentType = order?.fulfillment_type === 'pickup'
-    || hubOrder?.fulfillment_method === 'pickup'
-    || ['ready_for_pickup', 'picked_up'].includes(currentStatus)
-    ? 'pickup'
-    : 'delivery';
+  const trackerFulfillmentType = resolveCustomerJourneyFulfillmentType({
+    orderFulfillmentType: order?.fulfillment_type,
+    hubFulfillmentMethod: hubOrder?.fulfillment_method,
+    status: currentStatus,
+  });
   const journey = getCustomerOrderJourney({
     status: currentStatus,
     fulfillmentType: trackerFulfillmentType,
@@ -358,7 +358,7 @@ export default function OrderTracker() {
         order?.assigned_delivery_date || displayOrder.estimated_delivery_date,
       )
     : journey.normalizedStatus === 'picked_up'
-      ? 'Pickup complete'
+      ? 'Order complete'
       : isOnRoute && etaData?.eta_window
         ? etaData.eta_window
         : (displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)
@@ -367,10 +367,10 @@ export default function OrderTracker() {
   const fulfillmentMomentLabelTitle = journey.normalizedStatus === 'delivered'
     ? 'Delivered on'
     : journey.normalizedStatus === 'picked_up'
-      ? 'Pickup status'
+      ? 'Order status'
       : isOnRoute && etaData?.eta_window
         ? 'Estimated arrival'
-        : isDelivery ? 'Expected delivery' : 'Expected pickup';
+        : isDelivery ? 'Expected delivery' : 'Order timing';
 
   return (
     <div className="pb-10 min-h-screen bg-background">

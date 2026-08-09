@@ -84,7 +84,7 @@ const processSteps = [
   {
     icon: Truck,
     title: 'Served locally',
-    body: 'Delivery routes, pickup moments, and local events keep the product close to the people drinking it.',
+    body: 'Delivery routes and local events keep the product close to the people drinking it.',
   },
 ];
 

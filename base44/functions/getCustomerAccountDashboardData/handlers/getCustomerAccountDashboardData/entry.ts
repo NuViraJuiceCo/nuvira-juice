@@ -461,7 +461,10 @@ function sanitizeAuthoritativeHistoryOrder(order) {
     subtotal,
     delivery_fee: Math.max(0, finiteNumber(order?.delivery_fee) ?? 0),
     total,
-    fulfillment_type: fulfillmentMethod === 'delivery' ? 'delivery' : 'pickup',
+    fulfillment_type: ['pickup', 'pos'].includes(fulfillmentMethod)
+      || normalizeLower(order?.source_channel) === 'pos'
+      ? 'pickup'
+      : 'delivery',
     estimated_delivery_date: normalizeText(order?.requested_delivery_date) || null,
     assigned_delivery_date: normalizeText(order?.assigned_delivery_date) || null,
     delivery_window_label: normalizeText(order?.delivery_window_label || order?.requested_time_window) || null,

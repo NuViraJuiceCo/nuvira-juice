@@ -71,7 +71,7 @@ function buildProductHighlights(product, isMerchProduct) {
   if (isBundle || title.toLowerCase().includes('trio')) {
     return [
       { label: 'Full lineup', value: 'AURA, OASIS, and RE-NU together', icon: Sparkles },
-      { label: 'Fresh route', value: 'Made for local delivery or pickup', icon: Truck },
+      { label: 'Fresh route', value: 'Made for local delivery', icon: Truck },
       { label: 'Bottle count', value: size || '3 signature bottles', icon: Package },
     ];
   }

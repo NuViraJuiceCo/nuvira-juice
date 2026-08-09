@@ -255,7 +255,7 @@ export default function OrderConfirmation() {
           <Truck className="w-5 h-5 text-primary shrink-0" />
           <div>
             <p className="text-sm font-semibold text-primary">
-              {order.fulfillment_type === 'pickup' ? 'Ready for pickup' : 'Estimated delivery'}
+              Estimated delivery
             </p>
             <p className="text-xs text-muted-foreground">
               {order.estimated_delivery_date

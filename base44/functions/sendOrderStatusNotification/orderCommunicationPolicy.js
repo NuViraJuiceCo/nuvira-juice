@@ -44,7 +44,7 @@ export const ORDER_COMMUNICATION_POLICY = Object.freeze({
     notification_subtype: 'in_production',
   }),
   ready_for_pickup: Object.freeze({
-    label: 'Ready for pickup',
+    label: 'Order ready',
     email: 'fallback',
     push: 'always',
     in_app: true,
@@ -206,12 +206,12 @@ export function buildOrderCommunicationCopy(value, context = {}) {
       heading: '', detail: '', cta: 'Follow your order',
     },
     ready_for_pickup: {
-      subject: `Order #${number} is ready for pickup`,
-      title: 'Your order is ready for pickup',
-      message: `Order #${number} is ready. Open NuVira for pickup details.`,
+      subject: `Order #${number} is ready`,
+      title: 'Your order is ready',
+      message: `Order #${number} is ready. Open NuVira for details.`,
       heading: 'Ready when you are',
-      detail: `Your fresh NuVira order #${number} is ready for pickup.`,
-      cta: 'View pickup details',
+      detail: `Your fresh NuVira order #${number} is ready.`,
+      cta: 'View order details',
     },
     out_for_delivery: {
       subject: `Order #${number} is out for delivery`,

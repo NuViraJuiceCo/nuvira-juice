@@ -50,8 +50,8 @@ const STATUS_NOTIF_MAP: Record<string, any> = {
   },
   ready_for_pickup: {
     subtype: 'delivery_reminder',
-    title: 'Ready for Pickup 📦',
-    message: 'Your NuVira order is ready for pickup!',
+    title: 'Your Order Is Ready 📦',
+    message: 'Your NuVira order is ready!',
     deep_link: '/account/orders',
   },
   cancelled: {

@@ -37,9 +37,9 @@ export const PICKUP_JOURNEY_STAGES = Object.freeze([
   { key: 'order_received', label: 'Confirmed', description: 'We have your payment and order details.' },
   { key: 'scheduled_for_juicing', label: 'Fresh Batch', description: 'Your juices are reserved for a fresh production batch.' },
   { key: 'in_production', label: 'Freshly Made', description: "We're pressing and preparing your juices." },
-  { key: 'bottled_packed', label: 'Packed', description: 'Your juices are bottled, packed, and ready for pickup.' },
-  { key: 'ready_for_pickup', label: 'Ready', description: 'Your order is ready for pickup.' },
-  { key: 'picked_up', label: 'Picked Up', description: 'Your pickup is complete. Enjoy!' },
+  { key: 'bottled_packed', label: 'Packed', description: 'Your juices are bottled, packed, and ready.' },
+  { key: 'ready_for_pickup', label: 'Ready', description: 'Your order is ready.' },
+  { key: 'picked_up', label: 'Complete', description: 'Your order is complete. Enjoy!' },
 ]);
 
 function cleanStatus(value) {
@@ -54,10 +54,28 @@ export function normalizeCustomerOrderStatus(value) {
   return STATUS_ALIASES[status] || status || 'order_received';
 }
 
-export function journeyStageKeyForStatus(value, fulfillmentType = 'delivery') {
-  const normalizedStatus = normalizeCustomerOrderStatus(value);
-  if (normalizedStatus === 'arriving_soon') return 'out_for_delivery';
+export function resolveCustomerJourneyFulfillmentType({ orderFulfillmentType, hubFulfillmentMethod, status } = {}) {
+  const orderType = cleanStatus(orderFulfillmentType);
+  if (orderType === 'delivery') return 'delivery';
+  if (orderType === 'pickup') return 'pickup';
+
+  const hubType = cleanStatus(hubFulfillmentMethod);
+  const normalizedStatus = normalizeCustomerOrderStatus(status);
+  return hubType === 'pickup' || hubType === 'pos' || ['ready_for_pickup', 'picked_up'].includes(normalizedStatus)
+    ? 'pickup'
+    : 'delivery';
+}
+
+function statusForFulfillment(normalizedStatus, fulfillmentType) {
+  if (fulfillmentType === 'delivery' && normalizedStatus === 'ready_for_pickup') return 'bottled_packed';
+  if (fulfillmentType === 'delivery' && normalizedStatus === 'picked_up') return 'delivered';
   if (fulfillmentType === 'pickup' && normalizedStatus === 'delivered') return 'picked_up';
+  return normalizedStatus;
+}
+
+export function journeyStageKeyForStatus(value, fulfillmentType = 'delivery') {
+  const normalizedStatus = statusForFulfillment(normalizeCustomerOrderStatus(value), fulfillmentType);
+  if (normalizedStatus === 'arriving_soon') return 'out_for_delivery';
   return normalizedStatus;
 }
 
@@ -67,12 +85,12 @@ function statusPresentation(normalizedStatus, fulfillmentType, fallbackLabel) {
     order_received: ['Order Confirmed', 'We have your payment and order details.'],
     scheduled_for_juicing: ['Fresh Batch Scheduled', 'Your juices are reserved for an upcoming fresh production batch.'],
     in_production: ['Being Freshly Made', "We're pressing and preparing your juices."],
-    bottled_packed: ['Bottled & Packed', pickup ? 'Your order is packed and getting ready for pickup.' : 'Your order is packed and getting ready for delivery.'],
+    bottled_packed: ['Bottled & Packed', pickup ? 'Your order is packed and nearly ready.' : 'Your order is packed and getting ready for delivery.'],
     out_for_delivery: ['Out for Delivery', 'Your driver is on the way.'],
     arriving_soon: ['Arriving Soon', 'Your order is almost there.'],
     delivered: ['Delivered', 'Your fresh juices have arrived. Enjoy!'],
-    ready_for_pickup: ['Ready for Pickup', 'Your order is ready when you are.'],
-    picked_up: ['Picked Up', 'Your pickup is complete. Enjoy!'],
+    ready_for_pickup: ['Order Ready', 'Your order is ready.'],
+    picked_up: ['Order Complete', 'Your order is complete. Enjoy!'],
     cancelled: ['Order Cancelled', 'This order was cancelled.'],
     refunded: ['Order Refunded', 'A refund has been issued for this order.'],
     failed: ['Payment Failed', 'Payment was not completed.'],
@@ -82,7 +100,7 @@ function statusPresentation(normalizedStatus, fulfillmentType, fallbackLabel) {
 }
 
 export function getCustomerOrderJourney({ status, fulfillmentType = 'delivery', fallbackLabel = '' } = {}) {
-  const normalizedStatus = normalizeCustomerOrderStatus(status);
+  const normalizedStatus = statusForFulfillment(normalizeCustomerOrderStatus(status), fulfillmentType);
   const stageKey = journeyStageKeyForStatus(normalizedStatus, fulfillmentType);
   const baseStages = fulfillmentType === 'pickup' ? PICKUP_JOURNEY_STAGES : DELIVERY_JOURNEY_STAGES;
   const currentIndex = baseStages.findIndex(stage => stage.key === stageKey);

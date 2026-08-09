@@ -221,7 +221,7 @@ function sanitizeHubOrderForCustomer(order) {
     requested_delivery_date: normalizeText(order.requested_delivery_date) || null,
     assigned_delivery_date: normalizeText(order.assigned_delivery_date) || null,
     requested_time_window: customerStatus === 'picked_up'
-      ? 'Pickup complete'
+      ? 'Order complete'
       : normalizeText(order.requested_time_window) || null,
     delivery_window_label: normalizeText(order.delivery_window_label) || null,
     delivered_at: normalizeText(order.delivered_at) || null,
@@ -649,8 +649,8 @@ export default async function handler(req: Request) {
       out_for_delivery: 'Out for Delivery',
       arriving_soon: 'Arriving Soon',
       delivered: 'Delivered',
-      ready_for_pickup: 'Ready for Pickup',
-      picked_up: 'Picked Up',
+      ready_for_pickup: 'Order Ready',
+      picked_up: 'Order Complete',
       cancelled: 'Cancelled',
       refunded: 'Refunded',
       failed: 'Payment Failed',
@@ -683,7 +683,7 @@ export default async function handler(req: Request) {
     // ── 10. Customer-visible status ───────────────────────────────────────────
     const customerVisibleStatus = (() => {
       if (orderStatus === 'delivered') return 'Delivered ✓';
-      if (orderStatus === 'picked_up') return 'Picked Up ✓';
+      if (orderStatus === 'picked_up') return 'Order Complete ✓';
       if (orderStatus === 'cancelled') return 'Cancelled';
       if (orderStatus === 'refunded') return 'Refunded';
       if (orderStatus === 'failed') return 'Payment Failed';

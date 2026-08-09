@@ -427,6 +427,35 @@ test('paid POS order owned by normalized profile phone is included without a Cus
   assert.equal(JSON.stringify(json.all_orders_raw[0]).includes('shopify_raw_payload'), false);
 });
 
+test('missing Hub fulfillment metadata defaults to delivery instead of inventing pickup', async () => {
+  const { json } = await invoke({
+    storeArgs: {
+      orders: [],
+      profiles: [{ id: 'profile_customer', customer_email: 'customer', contact_email: 'customer', phone: '5551234567' }],
+      nativeOrders: [makeNativeOrder({
+        id: 'native_delivery_default',
+        shopify_order_number: 'NV-DELIVERY-DEFAULT',
+        base44_order_id: '',
+        customer_email: 'checkout-alias',
+        customer_phone: '+15551234567',
+        customer_name: 'Customer',
+        source_channel: 'online',
+        fulfillment_method: '',
+        fulfillment_status: 'fulfilled',
+        shopify_fulfillment_status: 'fulfilled',
+        production_status: 'fulfilled',
+        payment_status: 'paid',
+        financial_status: 'paid',
+      })],
+      tasks: [],
+    },
+  });
+
+  assert.equal(json.all_orders_raw.length, 1);
+  assert.equal(json.all_orders_raw[0].fulfillment_type, 'delivery');
+  assert.equal(json.all_orders_raw[0].status, 'delivered');
+});
+
 test('authoritative source merge deduplicates an owned Shopify or POS mirror by order number', async () => {
   const current = makeOrder({ order_number: '1058' });
   const { json } = await invoke({
