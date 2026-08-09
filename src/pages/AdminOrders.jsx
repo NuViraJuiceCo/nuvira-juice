@@ -136,7 +136,7 @@ function AdminOrderLifecycleReadModelPanel({ model }) {
           </div>
         )}
         <p className="mt-2 text-[10px] font-medium text-blue-900/80 dark:text-blue-100/80">
-          Source fallback remains active. Customer App Order identity remains canonical. Read readiness does not imply write readiness.
+          Customer App Order identity is canonical. This diagnostic view does not enable write actions.
         </p>
       </div>
     </section>
@@ -220,18 +220,6 @@ function hasRecordedValue(value) {
 function numericValue(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
-}
-
-function itemSummary(items = []) {
-  if (!Array.isArray(items) || items.length === 0) return 'Items pending';
-  return items
-    .slice(0, 2)
-    .map(item => {
-      const quantity = Number(item.quantity || item.qty || 1);
-      const name = item.title || item.name || item.product_name || item.variant_title || 'Item';
-      return `${quantity}x ${name}`;
-    })
-    .join(' · ') + (items.length > 2 ? ` +${items.length - 2} more` : '');
 }
 
 function AuditInfoRow({ label, value, formatter, missing = 'Not recorded' }) {
@@ -1225,6 +1213,7 @@ export default function AdminOrders() {
   const isPageVisible = usePageVisibility();
   const [filter, setFilter] = useState('active');
   const [focusedOrderKey, setFocusedOrderKey] = useState(null);
+  const showLifecycleDiagnostics = searchParams.get('diagnostics') === '1';
 
   const [search, setSearch] = useState('');
 
@@ -1261,7 +1250,7 @@ export default function AdminOrders() {
       });
       return unwrapFunctionData(res, {});
     },
-    enabled: isAdminUser(user) && isPageVisible,
+    enabled: isAdminUser(user) && isPageVisible && showLifecycleDiagnostics,
     refetchInterval: isPageVisible ? 30000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
@@ -1272,8 +1261,8 @@ export default function AdminOrders() {
     ? orderLifecycleData.admin_order_lifecycle_read_model
     : null;
 
-  // getAdminOrdersWithHub already consolidates Customer App orders, native
-  // ShopifyOrder mirrors, and FulfillmentTask occurrences. A second 14-date
+  // getAdminOrdersWithHub already consolidates Customer App orders, ShopifyOrder
+  // mirrors, and FulfillmentTask occurrences without a default Hub read. A second 14-date
   // route-summary fan-out duplicated that work and could exhaust read capacity.
   const orders = primaryOrders;
   const isLoading = ordersLoading;
@@ -1388,7 +1377,7 @@ export default function AdminOrders() {
       <AdminOpsHeader
         title="Order Management"
         subtitle={headerSubtitle}
-        badge="Source + Native"
+        badge="Customer App"
         onBack={() => navigate('/admin/operations')}
       />
 
@@ -1398,7 +1387,7 @@ export default function AdminOrders() {
         ordersQueryError={ordersQueryError}
       />
 
-      {adminOrderLifecycleReadModel && (
+      {showLifecycleDiagnostics && adminOrderLifecycleReadModel && (
         <AdminOrderLifecycleReadModelPanel model={adminOrderLifecycleReadModel} />
       )}
 

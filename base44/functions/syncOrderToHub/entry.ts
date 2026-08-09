@@ -25,6 +25,10 @@ function isNativeOrderOpsEnabled() {
   return Deno.env.get('ENABLE_NATIVE_ORDER_OPS') === 'true';
 }
 
+function isLegacyHubOrderBridgeEnabled() {
+  return Deno.env.get('ENABLE_LEGACY_HUB_ORDER_BRIDGE') === 'true';
+}
+
 function getNativeSafeSyncDarkLaunchConfig() {
   // Read dark-launch gates per request so Base44 runtime artifact/env
   // propagation cannot leave allowlists or kill switches on stale values.
@@ -41,7 +45,7 @@ function getNativeSafeSyncDarkLaunchConfig() {
 }
 
 /**
- * Syncs an app-originated order to the operations hub.
+ * Projects an app-originated order into Customer App operational entities.
  * Called by: stripeWebhook on checkout.session.completed
  * Payload: { order_id: "<id>" }  OR  { data: <Order>, stripe_session: <Stripe session> }
  *
@@ -52,7 +56,7 @@ function getNativeSafeSyncDarkLaunchConfig() {
  *
  * NOTE: is_preorder is passed through as-is from the stored order record for
  * backward compatibility with existing orders. New orders will always have
- * is_preorder: false and this field has no effect on Hub processing behavior.
+ * is_preorder: false and this field has no effect on native processing behavior.
  */
 
 // Hardcoded test order numbers that must never reach Hub production systems.
@@ -650,11 +654,6 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Fake Stripe IDs blocked' }, { status: 400 });
   }
 
-  if (!hubApiUrl) {
-    console.log('syncOrderToHub: HUB_API_URL not set, skipping');
-    return Response.json({ success: true, skipped: true });
-  }
-
   // Resolve payment_status from Stripe session (source of truth)
   let payment_status = 'pending';
   if (stripeSession?.payment_status === 'paid') {
@@ -702,8 +701,9 @@ Deno.serve(async (req) => {
 
   // ── PHASE 5: Validate canonical schedule fields ───────────────────────────
   // All new paid orders have production_date and assigned_delivery_date set by
-  // calculateNuViraFulfillmentSchedule (event.created authority). ABORT before Hub push if invalid.
-  // Refunded orders skip schedule validation — they just need to reach Hub for cancellation.
+  // calculateNuViraFulfillmentSchedule (event.created authority). Abort native
+  // materialization if the canonical schedule is invalid. Refunded orders skip
+  // schedule validation so their native cancellation can still be projected.
   const finalProductionDate  = order.production_date || null;
   const finalDeliveryDate    = order.assigned_delivery_date || order.estimated_delivery_date || null;
   const finalWindowLabel     = order.delivery_window_label || '5 PM – 8 PM';
@@ -838,9 +838,49 @@ Deno.serve(async (req) => {
   console.log(`syncOrderToHub: PAYLOAD for ${order.order_number}: ${payloadSummary}`);
 
   try {
-    // The native operational mirror is consolidated inside this core sync
-    // endpoint. Its failure remains isolated so the Hub bridge still runs.
-    await maybeRunNativeOrderOps({ req, payload, body });
+    // Keep the deployed function name and caller contract, but make the
+    // Customer App entities the operational writer. The external Hub bridge
+    // is retained only as a default-off rollback path for older clients.
+    const nativeOrderOps = await maybeRunNativeOrderOps({ req, payload, body });
+    if (nativeOrderOps?.success !== true) {
+      if (!isLegacyHubOrderBridgeEnabled()) {
+        return Response.json({
+          success: false,
+          error: 'Native operational order processing did not complete',
+          error_code: nativeOrderOps?.error_code || 'native_order_ops_required',
+          native_authoritative: true,
+          native_order_ops: nativeOrderOps?.result || nativeOrderOps,
+          hub_bridge_retired: true,
+          hub_operational_dependency: false,
+          external_calls_performed: false,
+        }, { status: nativeOrderOps?.status || 503 });
+      }
+    }
+
+    if (!isLegacyHubOrderBridgeEnabled()) {
+      return Response.json({
+        success: true,
+        log_status: nativeOrderOps?.action === 'skipped' ? 'deduped' : 'success',
+        hub_action: 'retired_no_external_sync',
+        hub_response: null,
+        native_authoritative: true,
+        native_order_ops: nativeOrderOps?.result || nativeOrderOps,
+        hub_bridge_retired: true,
+        hub_sync_skipped: true,
+        hub_operational_dependency: false,
+        external_calls_performed: false,
+      });
+    }
+
+    if (!hubApiUrl || !customerAppSyncSecret) {
+      return Response.json({
+        success: false,
+        error: 'Legacy Hub order bridge is enabled but not configured',
+        error_code: 'legacy_hub_bridge_not_configured',
+        native_authoritative: nativeOrderOps?.success === true,
+        native_order_ops: nativeOrderOps?.result || nativeOrderOps,
+      }, { status: 503 });
+    }
 
     // Log refund-specific details
     if (eventType === 'order.refunded') {

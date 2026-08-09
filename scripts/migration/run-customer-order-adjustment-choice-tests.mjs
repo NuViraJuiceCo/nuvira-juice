@@ -103,6 +103,7 @@ function fixture() {
         { product_name: 'Oasis', quantity: 1 },
       ],
     }]),
+    ProductionBatch: entityStore(),
     OrderReviewQueue: entityStore(),
     CustomerMessageDeliveryLog: entityStore(),
   };
@@ -126,8 +127,6 @@ const ENV = {
   RESEND_API_KEY: 'synthetic_resend_key',
   TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN: 'synthetic_internal_token',
   STRIPE_SECRET_KEY: 'sk_test_synthetic_only',
-  HUB_API_URL: 'https://hub.example.test',
-  CUSTOMER_APP_SYNC_SECRET: 'synthetic_hub_secret',
 };
 
 async function responseJson(response) {
@@ -153,21 +152,11 @@ function testFetch(calls, response = { ok: true, status: 200, json: async () => 
   };
 }
 
-function workflowFetch(emailCalls, hubCalls, options = {}) {
+function workflowFetch(emailCalls, options = {}) {
   return async (url, init) => {
     if (url === 'https://api.resend.com/emails') {
       emailCalls.push({ url, init });
       return options.emailResponse || { ok: true, status: 200, json: async () => ({ id: 'synthetic_email_1' }) };
-    }
-    if (url === 'https://hub.example.test/api/functions/receiveCustomerAppEvent') {
-      hubCalls.push({ url, init });
-      const request = JSON.parse(init.body);
-      if (typeof options.hubResponse === 'function') return options.hubResponse(request, hubCalls.length);
-      return options.hubResponse || {
-        ok: true,
-        status: 200,
-        json: async () => ({ status: 'success', action: request.event === 'order.adjustment_preflight' ? 'preflight_passed' : 'updated' }),
-      };
     }
     throw new Error(`unexpected external URL: ${url}`);
   };
@@ -322,9 +311,8 @@ async function run() {
   for (const choice of Object.keys(CUSTOMER_ORDER_ADJUSTMENT_CHOICES)) {
     const choiceState = fixture();
     const calls = [];
-    const hubCalls = [];
     const stripe = stripeMock();
-    const fetchImpl = workflowFetch(calls, hubCalls);
+    const fetchImpl = workflowFetch(calls);
     await handleCustomerOrderAdjustmentRequest({
       base44: choiceState.base44,
       body: { ...prepareBody(), request_id: `choice-${choice}-20260804` },
@@ -346,17 +334,7 @@ async function run() {
     assert.equal(response.body.request.selected_choice, choice);
     assert.equal(response.body.request.request_state, 'completed');
     assert.equal(choiceState.stores.OrderReviewQueue.rows[0].status, 'resolved');
-    assert.equal(hubCalls.length, 2);
-    const preflightRequest = JSON.parse(hubCalls[0].init.body);
-    const hubRequest = JSON.parse(hubCalls[1].init.body);
-    assert.equal(preflightRequest.event, 'order.adjustment_preflight');
-    assert.equal(hubRequest.event, 'order.adjustment_selected');
-    assert.equal(preflightRequest.data.choice, choice);
-    assert.equal(hubRequest.data.choice, choice);
-    assert.equal(hubCalls[0].init.headers.Authorization, `Bearer ${ENV.CUSTOMER_APP_SYNC_SECRET}`);
-    assert.equal(JSON.stringify(hubCalls).includes(ENV.CUSTOMER_APP_SYNC_SECRET), true, 'secret is confined to the authorization header');
-    assert.equal(JSON.stringify(preflightRequest).includes(ENV.CUSTOMER_APP_SYNC_SECRET), false);
-    assert.equal(JSON.stringify(hubRequest).includes(ENV.CUSTOMER_APP_SYNC_SECRET), false);
+    assert.equal(calls.length, 1, 'submit must not contact an external Hub or resend email');
 
     if (choice === 'full_order_saturday') {
       assert.equal(choiceState.stores.Order.rows[0].production_date, '2026-08-07');
@@ -397,17 +375,16 @@ async function run() {
     }));
     assert.equal(replay.status, 200);
     assert.equal(replay.body.skipped, true);
-    assert.equal(hubCalls.length, 2, 'completed replay must not repeat Hub preflight or synchronization');
+    assert.equal(calls.length, 1, 'completed replay must not contact an external Hub or resend email');
     if (choice === 'oasis_refund') assert.equal(stripe.calls.length, 1, 'completed replay must not repeat Stripe refund');
-    assertions += choice === 'full_order_saturday' ? 22 : (choice === 'oasis_saturday' ? 23 : 28);
+    assertions += choice === 'full_order_saturday' ? 12 : (choice === 'oasis_saturday' ? 13 : 18);
   }
 
-  const stateHubCalls = [];
   const stateStripe = stripeMock();
   const selected = await responseJson(await handleCustomerOrderAdjustmentRequest({
     base44: state.base44,
     body: { action: 'submit_customer_order_adjustment', token, choice: 'full_order_saturday' },
-    fetchImpl: workflowFetch(emailCalls, stateHubCalls),
+    fetchImpl: workflowFetch(emailCalls),
     envGet: (name) => ENV[name] || '',
     stripeClient: stateStripe.client,
     now: NOW,
@@ -422,7 +399,7 @@ async function run() {
   const replay = await responseJson(await handleCustomerOrderAdjustmentRequest({
     base44: state.base44,
     body: { action: 'submit_customer_order_adjustment', token, choice: 'full_order_saturday' },
-    fetchImpl: workflowFetch(emailCalls, stateHubCalls),
+    fetchImpl: workflowFetch(emailCalls),
     envGet: (name) => ENV[name] || '',
     stripeClient: stateStripe.client,
     now: NOW,
@@ -435,7 +412,7 @@ async function run() {
   const conflicting = await responseJson(await handleCustomerOrderAdjustmentRequest({
     base44: state.base44,
     body: { action: 'submit_customer_order_adjustment', token, choice: 'oasis_refund' },
-    fetchImpl: workflowFetch(emailCalls, stateHubCalls),
+    fetchImpl: workflowFetch(emailCalls),
     envGet: (name) => ENV[name] || '',
     stripeClient: stateStripe.client,
     now: NOW,
@@ -487,9 +464,8 @@ async function run() {
   {
     const failedRefundState = fixture();
     const emails = [];
-    const hubCalls = [];
     const failedStripe = stripeMock({ error: true });
-    const fetchImpl = workflowFetch(emails, hubCalls);
+    const fetchImpl = workflowFetch(emails);
     await handleCustomerOrderAdjustmentRequest({
       base44: failedRefundState.base44,
       body: { ...prepareBody(), request_id: 'refund-provider-failure-20260804' },
@@ -511,69 +487,51 @@ async function run() {
     assert.equal(failed.body.retryable, true);
     assert.equal(failedRefundState.stores.Order.rows[0].refund_status, undefined);
     assert.equal(failedRefundState.stores.Order.rows[0].payment_status, 'paid');
-    assert.equal(hubCalls.length, 1, 'read-only Hub preflight must run before Stripe');
-    assert.equal(JSON.parse(hubCalls[0].init.body).event, 'order.adjustment_preflight');
-    assertions += 6;
+    assert.equal(emails.length, 1, 'failed refund must not contact any system beyond the initial email and mocked Stripe boundary');
+    assertions += 5;
   }
 
   {
-    const hubRetryState = fixture();
+    const unavailableState = fixture();
     const emails = [];
-    const failedHubCalls = [];
-    const stripe = stripeMock();
-    const failedHubFetch = workflowFetch(emails, failedHubCalls, {
-      hubResponse: (request) => request.event === 'order.adjustment_preflight'
-        ? { ok: true, status: 200, json: async () => ({ status: 'success', action: 'preflight_passed' }) }
-        : { ok: false, status: 503, json: async () => ({ error: 'synthetic_hub_failure' }) },
-    });
     await handleCustomerOrderAdjustmentRequest({
-      base44: hubRetryState.base44,
-      body: { ...prepareBody(), request_id: 'refund-hub-retry-20260804' },
+      base44: unavailableState.base44,
+      body: { ...prepareBody(), request_id: 'native-preflight-unavailable-20260804' },
       caller: { role: 'admin' },
-      fetchImpl: failedHubFetch,
+      fetchImpl: workflowFetch(emails),
       envGet: (name) => ENV[name] || '',
       now: NOW,
     });
-    const retryToken = tokenFromEmail(emails);
-    const pending = await responseJson(await handleCustomerOrderAdjustmentRequest({
-      base44: hubRetryState.base44,
-      body: { action: 'submit_customer_order_adjustment', token: retryToken, choice: 'oasis_refund' },
-      fetchImpl: failedHubFetch,
+    const token = tokenFromEmail(emails);
+    delete unavailableState.base44.asServiceRole.entities.ProductionBatch;
+    const blocked = await responseJson(await handleCustomerOrderAdjustmentRequest({
+      base44: unavailableState.base44,
+      body: { action: 'submit_customer_order_adjustment', token, choice: 'full_order_saturday' },
+      fetchImpl: workflowFetch(emails),
       envGet: (name) => ENV[name] || '',
-      stripeClient: stripe.client,
       now: NOW,
     }));
-    assert.equal(pending.status, 503);
-    assert.equal(pending.body.retryable, true);
-    assert.equal(pending.body.request.request_state, 'hub_retry_required');
-    assert.equal(stripe.calls.length, 1);
-    assert.equal(hubRetryState.stores.Order.rows[0].refund_status, 'partially_refunded');
-
-    const successfulHubCalls = [];
-    const completed = await responseJson(await handleCustomerOrderAdjustmentRequest({
-      base44: hubRetryState.base44,
-      body: { action: 'submit_customer_order_adjustment', token: retryToken, choice: 'oasis_refund' },
-      fetchImpl: workflowFetch(emails, successfulHubCalls),
-      envGet: (name) => ENV[name] || '',
-      stripeClient: stripe.client,
-      now: new Date('2026-08-04T22:35:00.000Z'),
-    }));
-    assert.equal(completed.status, 200);
-    assert.equal(completed.body.request.request_state, 'completed');
-    assert.equal(stripe.calls.length, 1, 'Hub retry must reuse the successful Stripe refund');
-    assert.equal(successfulHubCalls.length, 2);
-    assert.equal(hubRetryState.stores.FulfillmentTask.rows[0].audit_trail.filter((row) => row.event === 'customer_order_adjustment_applied').length, 1);
-    assertions += 10;
+    assert.equal(blocked.status, 503);
+    assert.equal(blocked.body.error, 'order_adjustment_preflight_unavailable');
+    assert.equal(unavailableState.stores.Order.rows[0].assigned_delivery_date, '2026-08-05');
+    assertions += 3;
   }
 
   {
     const lockedState = fixture();
     const emails = [];
-    const hubCalls = [];
     const stripe = stripeMock();
-    const fetchImpl = workflowFetch(emails, hubCalls, {
-      hubResponse: { ok: false, status: 409, json: async () => ({ error: 'locked_production_batch_requires_operator' }) },
+    lockedState.stores.ProductionBatch.rows.push({
+      id: 'batch_locked',
+      batch_id: 'BATCH-TEST-OASIS',
+      product_name: 'Oasis',
+      production_date: '2026-08-04',
+      status: 'in_production',
+      is_locked: true,
+      related_orders: ['shopify_lee'],
+      order_sources: [{ order_id: 'order_lee', order_number: 'NV-TEST-LEE', quantity: 1 }],
     });
+    const fetchImpl = workflowFetch(emails);
     await handleCustomerOrderAdjustmentRequest({
       base44: lockedState.base44,
       body: { ...prepareBody(), request_id: 'locked-hub-preflight-20260804' },
@@ -598,7 +556,7 @@ async function run() {
     assert.equal(blocked.status, 409);
     assert.equal(blocked.body.error, 'order_adjustment_no_longer_available');
     assert.equal(stripe.calls.length, 0);
-    assert.equal(hubCalls.length, 1);
+    assert.equal(emails.length, 1, 'native lock preflight must not call an external Hub');
     assert.deepEqual(lockedState.stores.Order.rows[0], before.order);
     assert.deepEqual(lockedState.stores.ShopifyOrder.rows[0], before.operational);
     assert.equal(lockedState.stores.OrderReviewQueue.rows[0].incoming_payload.selected_choice, null);

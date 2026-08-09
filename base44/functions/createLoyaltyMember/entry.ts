@@ -23,7 +23,7 @@ async function requireOwnerOrAdmin(base44: any, email: unknown, authEmail: unkno
 /**
  * Single entry point for loyalty enrollment.
  * 1. Posts an idempotent local loyalty-ledger transaction
- * 2. Mirrors enrollment to Hub and maintains profile projections
+ * 2. Maintains Customer App profile projections
  * Called by: completeAccountSetup, enrollNewCustomerInLoyalty
  */
 Deno.serve(async (req) => {
@@ -71,38 +71,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: loyaltyResult?.error || 'loyalty_enrollment_failed' }, { status: 500 });
     }
 
-    // Step 2: Mirror the enrollment to Hub. The local ledger remains
-    // authoritative, so a temporary Hub outage cannot duplicate signup points.
-    const hubApiUrl = Deno.env.get('HUB_API_URL');
-    const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
-
-    if (hubApiUrl && hubSecret) {
-      try {
-        await fetch(`${hubApiUrl}/api/customer-app-sync/enroll-loyalty`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${hubSecret}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: customerEmail,
-            full_name: fullName,
-            phone: phone || null,
-            signup_date: signup_date || new Date().toISOString().split('T')[0],
-            status: 'active',
-            total_points: preorderBonus,
-            lifetime_points: preorderBonus,
-            redeemed_points: 0,
-            points_history: [bonusEntry],
-          }),
-        });
-        console.log(`Enrolled in hub: ${customerEmail}`);
-      } catch (hubErr) {
-        console.warn('Hub enrollment mirror failed:', hubErr instanceof Error ? hubErr.message : String(hubErr));
-      }
-    }
-
-    // Step 3: Update/create the canonical profile projection.
+    // Step 2: Update/create the canonical Customer App profile projection.
     const authenticatedEmail = normalizeEmail(auth_email) || customerEmail;
     const [customerProfiles, contactProfiles, authenticatedProfiles] = await Promise.all([
       base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail }),

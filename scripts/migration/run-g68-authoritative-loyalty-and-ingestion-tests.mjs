@@ -97,10 +97,14 @@ assert(
   'Internal function authentication uses the SDK fetch transport that actually forwards headers.',
   poller.includes("functions.fetch(`/${functionName}`") &&
     retrySync.includes("functions.fetch(`/${targetFunction}`") &&
-    stripe.includes("functions.fetch(`/${targetFunction}`") &&
-    receiver.includes("functions.fetch('/getAdminOperationsDashboardSummary'") &&
-    receiver.includes("gateway_action: 'syncShopifyOrderToHub'") &&
-    receiver.includes('authorization: `Bearer ${getCustomerAppSyncSecret()}`'),
+    stripe.includes("functions.fetch(`/${targetFunction}`"),
+);
+assert(
+  'Canonical Shopify ingestion no longer projects orders into the retired Hub gateway.',
+  receiver.includes("source: 'customer_app_native_authoritative'") &&
+    receiver.includes('hub_operational_dependency: false') &&
+    !receiver.includes("functions.fetch('/getAdminOperationsDashboardSummary'") &&
+    !receiver.includes("gateway_action: 'syncShopifyOrderToHub'"),
 );
 assert(
   'Central loyalty calls carry their internal credential in the supported request body.',

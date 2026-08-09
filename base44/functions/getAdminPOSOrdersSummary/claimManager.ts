@@ -1,6 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.41';
 
-const HUB_API_URL = Deno.env.get('HUB_API_URL') || '';
 const SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
 const PAGE_SIZE = 50;
 const MAX_ROWS = 5000;
@@ -186,32 +185,6 @@ async function listAll(entity: any, fields: string[]) {
     if (page.length < PAGE_SIZE) break;
   }
   return rows;
-}
-
-function hubBaseUrl() {
-  return HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-}
-
-async function hubRequest(path: string, init: RequestInit = {}) {
-  if (!HUB_API_URL || !SYNC_SECRET) throw new Error('operations_source_not_configured');
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  try {
-    const response = await fetch(`${hubBaseUrl()}/functions/${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${SYNC_SECRET}`,
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(init.headers || {}),
-      },
-      signal: controller.signal,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload?.error) throw new Error(payload?.error || `operations_${response.status}`);
-    return payload;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 async function requireUser(base44: any) {
@@ -578,15 +551,6 @@ export async function handlePOSCustomerClaims(req: Request) {
         return Response.json({ error: 'complete_name_and_valid_phone_required' }, { status: 400 });
       }
 
-      const operations = await hubRequest('receiveLoyaltySignup', {
-        method: 'POST',
-        body: JSON.stringify({
-          email: userEmail,
-          full_name: `${firstName} ${lastName}`,
-          phone,
-          signup_date: new Date().toISOString().slice(0, 10),
-        }),
-      });
       const now = new Date().toISOString();
       const profiles = normalizeRows(await service.entities.UserProfile.filter({ customer_email: userEmail }));
       const profilePayload = {
@@ -602,29 +566,56 @@ export async function handlePOSCustomerClaims(req: Request) {
       else await service.entities.UserProfile.create(profilePayload);
       await base44.auth.updateMe({ first_name: firstName, last_name: lastName, phone_number: phone }).catch(() => {});
 
-      const expectedTotal = number(operations.total_points);
-      const expectedLifetime = number(operations.lifetime_points);
-      const expectedRedeemed = number(operations.redeemed_points);
-      const reconciliationKey = `pos_claim:${claim.id}:${text(operations.member_id || 'member', 100)}:${expectedTotal}:${expectedLifetime}:${expectedRedeemed}`;
-      const loyaltyResponse = await service.functions.invoke('enrollNewCustomerInLoyalty', {
-        action: 'reconcile',
+      const internalSecret = Deno.env.get('LOYALTY_LEDGER_SECRET') || SYNC_SECRET;
+      const signupResponse = await service.functions.invoke('enrollNewCustomerInLoyalty', {
+        action: 'post',
         customer_email: userEmail,
-        expected_total: expectedTotal,
-        expected_lifetime: expectedLifetime,
-        expected_redeemed: expectedRedeemed,
-        idempotency_key: reconciliationKey,
-        description: 'Verified POS purchase-history claim reconciliation',
-        source_type: 'pos_customer_claim',
-        source_id: claim.id,
-        metadata: {
-          operations_member_id: operations.member_id || '',
-          eligible_order_count: number(claim.eligible_order_count),
-          eligible_spend: number(claim.eligible_spend),
-        },
-        internal_secret: Deno.env.get('LOYALTY_LEDGER_SECRET') || SYNC_SECRET,
+        amount: 250,
+        transaction_type: 'bonus',
+        idempotency_key: `loyalty_signup:${userEmail}`,
+        description: 'NuVira Rewards signup bonus',
+        source_type: 'loyalty_signup',
+        source_id: userEmail,
+        occurred_at: now,
+        metadata: { enrollment_source: 'pos_customer_claim' },
+        internal_secret: internalSecret,
       });
-      const loyaltyResult = loyaltyResponse?.data || loyaltyResponse;
-      if (loyaltyResult?.success !== true) throw new Error(loyaltyResult?.error || 'pos_claim_loyalty_reconciliation_failed');
+      const signupResult = signupResponse?.data || signupResponse;
+      if (signupResult?.success !== true) throw new Error(signupResult?.error || 'pos_claim_signup_bonus_failed');
+
+      const purchasePoints = Math.max(0, Math.trunc(number(claim.pending_points)));
+      let purchaseResult: any = { success: true, idempotent: true };
+      if (purchasePoints > 0) {
+        const purchaseResponse = await service.functions.invoke('enrollNewCustomerInLoyalty', {
+          action: 'post',
+          customer_email: userEmail,
+          amount: purchasePoints,
+          transaction_type: 'earned',
+          idempotency_key: `pos_claim:${claim.id}:purchase_history`,
+          description: 'Verified POS purchase-history points',
+          source_type: 'pos_customer_claim',
+          source_id: claim.id,
+          occurred_at: now,
+          metadata: {
+            eligible_order_count: number(claim.eligible_order_count),
+            eligible_spend: number(claim.eligible_spend),
+          },
+          internal_secret: internalSecret,
+        });
+        purchaseResult = purchaseResponse?.data || purchaseResponse;
+        if (purchaseResult?.success !== true) throw new Error(purchaseResult?.error || 'pos_claim_purchase_points_failed');
+      }
+
+      const [pointsRows, memberRows] = await Promise.all([
+        service.entities.UserPoints.filter({ customer_email: userEmail }, '-updated_date', 1),
+        service.entities.LoyaltyMember.filter({ email: userEmail }, '-updated_date', 1),
+      ]);
+      const pointsProjection = normalizeRows(pointsRows)[0] || {};
+      const memberProjection = normalizeRows(memberRows)[0] || {};
+      const availablePoints = number(pointsProjection.total_points ?? memberProjection.total_points);
+      const lifetimePoints = number(pointsProjection.lifetime_points ?? memberProjection.lifetime_points);
+      const redeemedPoints = number(pointsProjection.redeemed_points ?? memberProjection.redeemed_points);
+      const loyaltyMemberId = text(memberProjection.id, 100) || null;
 
       const emailOptIn = body?.email_marketing_opt_in === true;
       const smsOptIn = body?.sms_marketing_opt_in === true;
@@ -655,7 +646,7 @@ export async function handlePOSCustomerClaims(req: Request) {
         status: 'claimed',
         claimed_at: now,
         claimed_by_email: userEmail,
-        operations_member_id: operations.member_id,
+        operations_member_id: loyaltyMemberId,
         pending_points: 0,
         profile_completion_required: false,
         email_marketing_status: consentPayload.email_status,
@@ -664,10 +655,10 @@ export async function handlePOSCustomerClaims(req: Request) {
       });
       return Response.json({
         success: true,
-        idempotent: Number(operations.backfilled_order_count || 0) === 0,
-        available_points: loyaltyResult.available_points ?? expectedTotal,
-        lifetime_points: loyaltyResult.lifetime_points ?? expectedLifetime,
-        redeemed_points: loyaltyResult.redeemed_points ?? expectedRedeemed,
+        idempotent: signupResult.idempotent === true && purchaseResult.idempotent === true,
+        available_points: availablePoints,
+        lifetime_points: lifetimePoints,
+        redeemed_points: redeemedPoints,
         eligible_order_count: number(claim.eligible_order_count),
         eligible_spend: number(claim.eligible_spend),
         emails_sent: 0,

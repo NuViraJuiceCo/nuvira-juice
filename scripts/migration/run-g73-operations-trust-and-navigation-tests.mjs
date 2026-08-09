@@ -70,9 +70,12 @@ assert.equal(primaryPathCount, 8);
 assert.ok(nav.includes("label: 'Inventory & Purchasing'"));
 assert.ok(nav.includes("label: 'Customers & Growth'"));
 assert.ok(nav.includes("label: 'Compliance & Audit'"));
-assert.ok(nav.includes("label: 'System Health'"));
+assert.ok(nav.includes("label: 'Team & Equipment'"));
+assert.equal(nav.includes("label: 'System Health'"), false);
+assert.ok(app.includes('path="/admin/sync-health"'));
+assert.ok(app.includes('<Navigate to="/admin/operations" replace />'));
 assert.ok(nav.includes('(item.matches || []).some'));
-results.push('desktop_navigation_is_consolidated_to_eight_operating_areas');
+results.push('desktop_navigation_is_consolidated_to_eight_operating_areas_and_saved_system_health_links_redirect');
 
 const operations = read('src/pages/admin/Operations.jsx');
 assert.ok(operations.includes("badges: ['Live ledger', 'Audited edits']"));

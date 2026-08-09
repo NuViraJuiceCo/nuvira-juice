@@ -839,9 +839,7 @@ export default function ProductionPlanning() {
 
         {warnings.length > 0 && (
           <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
-            {warnings.includes('hub_production_planning_service_not_configured') || warnings.some(warning => warning?.startsWith?.('hub_production_planning_unavailable'))
-              ? 'Source production planning is unavailable, so this view is showing native Customer App order mirror demand only.'
-              : 'Production planning returned warnings. Review native and source planning context before batching.'}
+            Production planning returned warnings. Review the Customer App demand and batch context before batching.
           </div>
         )}
 
@@ -872,7 +870,7 @@ export default function ProductionPlanning() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">Date-Grouped Production Summary</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Grouped production demand from Hub batches, native order mirrors, and event stock plans</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Customer App production batches, paid-order demand, and event stock plans grouped by production date</p>
               </div>
               {dateGroups.length > 0 ? (
                 <div className="space-y-3">

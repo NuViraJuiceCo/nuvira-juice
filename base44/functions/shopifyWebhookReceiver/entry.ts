@@ -416,33 +416,14 @@ async function createOrderWriteAuditLog(base44, { record, topic, action, reason,
 
 async function syncIngestedOrderToHub(base44, record, topic) {
   if (!record?.id || !['orders/create', 'orders/paid'].includes(topic)) return { skipped: true };
-  try {
-    const response = await base44.asServiceRole.functions.fetch('/getAdminOperationsDashboardSummary', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${getCustomerAppSyncSecret()}`,
-      },
-      body: JSON.stringify({ gateway_action: 'syncShopifyOrderToHub', payload: record }),
-    });
-    const result: any = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result?.error || `syncShopifyOrderToHub_http_${response.status}`);
-    if (result?.success !== true && result?.skipped !== true) throw new Error(result?.error || 'hub_sync_failed');
-    return result;
-  } catch (error) {
-    const message = safeLogText(error?.message || error, 300) || 'hub_sync_failed';
-    await base44.asServiceRole.entities.OrderSyncLog.create({
-      order_number: record.shopify_order_number || record.id,
-      status: 'error',
-      description: `Shopify ingestion succeeded; Hub projection failed: ${message}`,
-      started_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-      triggered_by: 'shopify_ingestion',
-      idempotency_key: `shopify_hub_sync:${record.shopify_order_id || record.id}`,
-    }).catch(() => {});
-    console.error(`[shopifyWebhookReceiver] Hub projection failed safely for ${record.shopify_order_number || record.id}: ${message}`);
-    return { success: false, error: message };
-  }
+  return {
+    success: true,
+    skipped: true,
+    retired: true,
+    source: 'customer_app_native_authoritative',
+    hub_operational_dependency: false,
+    external_calls_performed: false,
+  };
 }
 
 Deno.serve(async (req) => {

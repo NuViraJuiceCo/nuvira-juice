@@ -73,7 +73,8 @@ async function createDeliveryLog(base44, payload) {
 
 /**
  * approveZone3DeliveryRequest (Admin-only)
- * Captures a Zone 3 manual authorization, creates the Order, syncs Hub.
+ * Captures a Zone 3 manual authorization, creates the Order, and projects it
+ * into Customer App operational entities.
  */
 export default async (req: Request) => {
   try {
@@ -237,20 +238,27 @@ export default async (req: Request) => {
       }],
     });
 
-    // Sync to Hub
+    // Project into Customer App operational entities through the retained
+    // syncOrderToHub compatibility boundary.
     if (stagingSafeMode) {
-      console.log(`[Zone3 Approve] STAGING SAFE MODE: skipped Hub sync for ${orderNumber}`);
+      console.log(`[Zone3 Approve] STAGING SAFE MODE: skipped native operational projection for ${orderNumber}`);
     } else {
       base44.asServiceRole.functions.invoke('syncOrderToHub', {
         order_id: order.id,
         stripe_session: { payment_status: 'paid', id: dar.stripe_payment_intent_id },
         triggered_by: 'zone3_approval',
-      }).then(() => console.log(`[Zone3 Approve] ✅ Order ${orderNumber} synced to Hub`))
+      }).then((projectionResponse) => {
+        const projectionResult = projectionResponse?.data || projectionResponse || {};
+        if (projectionResult?.success !== true) {
+          throw new Error(projectionResult?.error_code || projectionResult?.error || 'native_order_projection_failed');
+        }
+        console.log(`[Zone3 Approve] ✅ Order ${orderNumber} projected to native operations`);
+      })
         .catch(err => {
-          console.error(`[Zone3 Approve] Hub sync failed: ${err.message}`);
+          console.error(`[Zone3 Approve] Native operational projection failed: ${err.message}`);
           base44.asServiceRole.entities.OrderSyncLog.create({
             order_number: orderNumber, status: 'error',
-            description: `Zone3 approval Hub sync failed: ${err.message}`,
+            description: `Zone3 approval native operational projection failed: ${err.message}`,
             started_at: new Date().toISOString(), completed_at: new Date().toISOString(),
             triggered_by: 'zone3_approval',
           }).catch(() => {});

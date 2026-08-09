@@ -689,7 +689,7 @@ export default function InventoryStatus() {
               <Copy className="h-3.5 w-3.5" />
               Copy Plan
             </button>
-            {!dataSources.native_authoritative && Number(dataSources.non_food_import_candidate_count || 0) > 0 && (
+            {dataSources.historical_inventory_cutover_review_available === true && (
               <button
                 type="button"
                 onClick={() => inventoryMigration.mutate({ operation: 'preview_non_food_import' })}
@@ -697,7 +697,7 @@ export default function InventoryStatus() {
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60"
               >
                 <Download className="h-3.5 w-3.5" />
-                Review cutover
+                Review historical import
               </button>
             )}
             <button

@@ -217,6 +217,7 @@ async function handlePOSOrdersSummary(req: Request) {
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
     }
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
     let preset;
     let dateFrom;
     let dateTo;
@@ -272,7 +273,7 @@ async function handlePOSOrdersSummary(req: Request) {
     let hubCount = 0;
     let hubTruncated = false;
 
-    if (HUB_API_URL && CUSTOMER_APP_SYNC_SECRET) {
+    if (includeHubHistoricalContext && HUB_API_URL && CUSTOMER_APP_SYNC_SECRET) {
       const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
       const params = new URLSearchParams({ limit: limit.toString() });
       if (preset === 'custom') {
@@ -332,6 +333,9 @@ async function handlePOSOrdersSummary(req: Request) {
       hub_summary: hubSummary,
       hub_count: hubCount,
       native_count: nativePosOrders.length,
+      customer_app_native_authoritative: true,
+      hub_operational_dependency: false,
+      include_hub_historical_context: includeHubHistoricalContext,
       count: orders.length,
       truncated: hubTruncated || mergedOrderCount > orders.length,
       orders,

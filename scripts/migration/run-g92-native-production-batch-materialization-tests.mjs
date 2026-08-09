@@ -300,7 +300,7 @@ assert.match(uiSource, /preview_batch_materialization/);
 assert.match(uiSource, /execute_batch_materialization/);
 assert.match(uiSource, /materialize_native_production_batches/);
 assert.doesNotMatch(uiSource, /startProductionBatchForCustomerApp/);
-assert.match(gatewaySource, /Bundle revision: g92-native-production-batch-materialization-20260808/);
+assert.match(gatewaySource, /Bundle revision: g95-customer-app-operational-authority-20260808/);
 
 console.log(JSON.stringify({
   ok: true,

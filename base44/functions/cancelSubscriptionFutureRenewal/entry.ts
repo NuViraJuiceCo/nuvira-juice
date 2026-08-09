@@ -8,10 +8,10 @@ import Stripe from 'npm:stripe@14.21.0';
  * - Does NOT immediately cancel the subscription.
  * - Does NOT refund the current paid month.
  * - Does NOT reverse loyalty points.
- * - Does NOT cancel current Hub FulfillmentTasks or ProductionBatch.
+ * - Does NOT cancel current Customer App FulfillmentTask or ProductionBatch records.
  * - Marks CA Subscription with cancel_at_period_end=true for display.
- * - Notifies Hub with event 'customer.subscription_future_cancel' so Hub
- *   can stop scheduling future fulfillment cycles after period_end.
+ * - Customer App subscription state is authoritative; subscription purchase
+ *   remains disabled while native future-cycle scheduling is unavailable.
  *
  * For admin immediate cancel/refund, use the admin override path (Stripe dashboard).
  */
@@ -77,27 +77,6 @@ Deno.serve(async (req) => {
       cancel_effective_date: periodEnd,
     });
     console.log(`[cancelFutureRenewal] CA Subscription ${subscription_id} marked cancel_at_period_end=true`);
-
-    // Notify Hub: future cancel only — Hub should NOT cancel current cycle production/fulfillment
-    // Hub must distinguish 'customer_future_cancel' from 'admin_refund_cancel'
-    try {
-      await base44.asServiceRole.functions.invoke('syncCustomerToHub', {
-        event: 'customer.subscription_future_cancel',
-        customer_email: user.email,
-        data: {
-          subscription_id: subscription_id,
-          stripe_subscription_id: stripeSubId || null,
-          cancel_type: 'customer_future_cancel',
-          cancel_at_period_end: true,
-          effective_date: periodEnd,
-          current_cycle_intact: true, // Hub: do NOT cancel current FulfillmentTasks or ProductionBatch
-          message: 'Customer cancelled future renewal. Current paid month remains active. Future fulfillment cycles should be halted after effective_date.',
-        },
-      });
-      console.log(`[cancelFutureRenewal] Hub notified: customer_future_cancel for ${user.email}`);
-    } catch (hubErr) {
-      console.warn(`[cancelFutureRenewal] Hub notify failed (non-blocking): ${hubErr.message}`);
-    }
 
     return Response.json({
       success: true,

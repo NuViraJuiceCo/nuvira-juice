@@ -36,10 +36,10 @@ async function requireAdminOrInternalAuth(base44: any, req: Request) {
 }
 
 /**
- * Shared helper to sync a refund event to Hub.
- * Used by both charge.refunded webhook and manual repair.
- * 
- * This ensures both paths use identical endpoint, auth, and error handling.
+ * Backward-compatible refund projection entry point.
+ * The deployed name is retained for existing callers, while syncOrderToHub
+ * applies the refund to Customer App operational entities. External Hub writes
+ * are retired unless the explicit legacy rollback gate is enabled there.
  */
 Deno.serve(async (req) => {
   try {
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     const order = orders[0];
     const orderNumber = order.order_number;
 
-    console.log(`[syncRefundToHub] Starting refund sync for ${orderNumber} (${triggered_by})`);
+    console.log(`[syncRefundToHub] Starting native refund projection for ${orderNumber} (${triggered_by})`);
     console.log(`[syncRefundToHub] Order state: status=${order.status}, payment_status=${order.payment_status}`);
     const refundReference = order.stripe_refund_id || order.refund_event_id || order.refund_id || stripe_session?.id || null;
     const isFullRefund = order.refund_type === 'full' ||
@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
       (order.refund_type == null && order.refund_status == null && order.is_partial_refund !== true);
     console.log(`[syncRefundToHub] Refund details: amount=$${order.refund_amount}, reference_present=${Boolean(refundReference)}, full=${isFullRefund}`);
 
-    // Delegate to syncOrderToHub with refund event
+    // Delegate to the retained order-sync boundary with a refund event.
     const syncInvokeResult = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
       order_id: order.id,
       stripe_session: {
@@ -90,36 +90,17 @@ Deno.serve(async (req) => {
     const syncResult = syncInvokeResult?.data || syncInvokeResult || {};
 
     console.log(`[syncRefundToHub] Sync result status: ${syncResult?.success ? 'success' : 'failed'}`);
-    console.log(`[syncRefundToHub] Hub action: ${syncResult?.hub_action}`);
-    console.log(`[syncRefundToHub] Hub response:`, JSON.stringify(syncResult?.hub_response).substring(0, 300));
-
-    // Check for auth or endpoint errors
-    if (syncResult?.error) {
-      const err = syncResult.error;
-      const is403 = err.includes('403') || err.includes('Forbidden');
-      const is405 = err.includes('405') || err.includes('Method Not Allowed');
-      const isAuth = err.includes('Bearer') || err.includes('Authorization');
-
-      if (is403 || is405) {
-        console.error(`[syncRefundToHub] ❌ ENDPOINT ERROR: ${err}`);
-        console.error(`[syncRefundToHub] This indicates Hub endpoint mismatch:`);
-        console.error(`  - Check HUB_API_URL and endpoint path`);
-        console.error(`  - Check receiveCustomerAppEvent accepts order.refunded`);
-        console.error(`  - Check HTTP method is POST`);
-        console.error(`  - Check Authorization: Bearer token matches CUSTOMER_APP_SYNC_SECRET`);
-      }
-      if (isAuth) {
-        console.error(`[syncRefundToHub] ❌ AUTH ERROR: ${err}`);
-        console.error(`  - Check CUSTOMER_APP_SYNC_SECRET is set`);
-        console.error(`  - Check Hub validates the same secret`);
-      }
-    }
+    console.log(`[syncRefundToHub] Projection action: ${syncResult?.hub_action || syncResult?.native_order_ops?.action || 'unknown'}`);
 
     return Response.json({
       success: syncResult?.success || false,
       order_number: orderNumber,
       hub_action: syncResult?.hub_action,
-      hub_response: syncResult?.hub_response,
+      hub_response: syncResult?.hub_response || null,
+      native_authoritative: syncResult?.native_authoritative === true,
+      native_order_ops: syncResult?.native_order_ops || null,
+      hub_bridge_retired: syncResult?.hub_bridge_retired === true,
+      external_calls_performed: syncResult?.external_calls_performed === true,
       error: syncResult?.error,
     });
 

@@ -1,4 +1,4 @@
-import { Activity, ClipboardList, Factory, Gift, LayoutDashboard, ShieldCheck, ShoppingCart, Truck } from 'lucide-react';
+import { ClipboardList, Factory, Gift, LayoutDashboard, ShieldCheck, ShoppingCart, Truck } from 'lucide-react';
 
 export const adminNavGroups = [
   {
@@ -16,7 +16,7 @@ export const adminNavGroups = [
       { path: '/admin/inventory-status', icon: ShoppingCart, label: 'Inventory & Purchasing', matches: ['/admin/purchase-orders', '/admin/suppliers', '/admin/products'] },
       { path: '/admin/loyalty-members', icon: Gift, label: 'Customers & Growth', matches: ['/admin/notifications', '/admin/discount-codes'] },
       { path: '/admin/compliance-ops', icon: ShieldCheck, label: 'Compliance & Audit', matches: ['/admin/ops-alerts', '/admin/review-queue', '/admin/reporting', '/admin/audit-trail'] },
-      { path: '/admin/sync-health', icon: Activity, label: 'System Health', matches: ['/admin/sync-status', '/admin/live-monitor', '/admin/resources'] },
+      { path: '/admin/resources', icon: ShieldCheck, label: 'Team & Equipment' },
     ],
   },
 ];

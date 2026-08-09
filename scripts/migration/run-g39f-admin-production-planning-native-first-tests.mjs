@@ -7,12 +7,15 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
-const functionPath = path.join(repoRoot, 'base44/functions/getAdminProductionPlanningSummary/entry.ts');
+const functionPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts');
 const PRODUCTION_DATE = '2026-06-20';
 
 function loadHandler({ env = {}, hubData = emptyHubPlanning(), hubStatus = 200, fetchError = null } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
+  source = source.replace('export default async function handler(req: Request)', 'async function handler(req)');
+  source += '\nglobalThis.__handler = handler;\n';
+  const fetchCalls = [];
 
   const context = vm.createContext({
     console,
@@ -34,7 +37,8 @@ function loadHandler({ env = {}, hubData = emptyHubPlanning(), hubStatus = 200, 
     Promise,
     Intl,
     createClientFromRequest: req => req.__base44,
-    fetch: async () => {
+    fetch: async (...args) => {
+      fetchCalls.push(args);
       if (fetchError) throw fetchError;
       return new Response(JSON.stringify(hubData), { status: hubStatus });
     },
@@ -48,7 +52,7 @@ function loadHandler({ env = {}, hubData = emptyHubPlanning(), hubStatus = 200, 
   });
 
   vm.runInContext(source, context, { filename: functionPath });
-  return context.globalThis.__handler;
+  return { handler: context.globalThis.__handler, fetchCalls };
 }
 
 function lineItems(overrides = {}) {
@@ -233,7 +237,7 @@ function makeBase44({
 
 async function invoke({ store = {}, hubData = emptyHubPlanning(), hubEnv = true, body = {}, hubStatus = 200 } = {}) {
   const { base44, writes } = makeBase44(store);
-  const handler = loadHandler({
+  const { handler, fetchCalls } = loadHandler({
     env: hubEnv ? { HUB_API_URL: 'https://hub.example.test/functions/getProductionPlanningSummaryForCustomerApp', CUSTOMER_APP_SYNC_SECRET: 'synthetic-secret' } : {},
     hubData,
     hubStatus,
@@ -245,7 +249,7 @@ async function invoke({ store = {}, hubData = emptyHubPlanning(), hubEnv = true,
   };
   const response = await handler(req);
   const payload = await response.json();
-  return { status: response.status, payload, writes };
+  return { status: response.status, payload, writes, hubFetchCount: fetchCalls.length };
 }
 
 function assertNoForbiddenPayloads(payload) {
@@ -329,7 +333,9 @@ const results = [];
   assert.equal(status, 200);
   assert.equal(payload.success, true);
   assert.equal(payload.native_first_enabled, true);
-  assert.equal(payload.production_planning_source, 'customer_app_native_first');
+  assert.equal(payload.production_planning_source, 'customer_app_native_authoritative');
+  assert.equal(payload.customer_app_native_authoritative, true);
+  assert.equal(payload.hub_operational_dependency, false);
   assert.equal(payload.writes_performed, false);
   assert.equal(payload.provider_call_impact, false);
   assert.equal(payload.notifications_sent, false);
@@ -372,20 +378,22 @@ const results = [];
 }
 
 {
-  const { payload } = await invoke({
+  const { payload, hubFetchCount } = await invoke({
     store: { nativeOrders: [] },
     hubData: hubPlanningWithPineapple({ product_name: 'Pineapple Juice' }),
   });
-  assert.equal(payload.production_planning_source, 'hub_fallback');
-  assert.equal(payload.hub_fallback_used, true);
-  assert.equal(payload.fallback_required, true);
-  assert.ok(payload.fallback_reasons.includes('native_planning_row_missing'));
-  assert.ok(payload.dates.some(row => row.data_source === 'hub_fallback'));
-  results.push('native_data_missing_hub_fallback_used');
+  assert.equal(payload.production_planning_source, 'empty');
+  assert.equal(payload.hub_fallback_used, false);
+  assert.equal(payload.fallback_required, false);
+  assert.equal(payload.dates.length, 0);
+  assert.equal(payload.hub_operational_dependency, false);
+  assert.equal(hubFetchCount, 0);
+  results.push('native_data_missing_does_not_activate_hub_operational_fallback');
+  results.push('daily_planning_does_not_call_hub');
 }
 
 {
-  const { payload } = await invoke({
+  const { payload, hubFetchCount } = await invoke({
     store: {
       nativeOrders: [
         nativeOrder({
@@ -402,31 +410,27 @@ const results = [];
       ],
     },
     hubData: hubPlanningWithPineapple({ planned_units: 15, required_quantity: 480 }),
+    body: { include_hub_historical_context: true },
   });
-  const scheduledHubRow = payload.dates.find(row => row.production_date === PRODUCTION_DATE && row.data_source === 'hub_fallback');
   const pendingNativeRow = payload.dates.find(row => row.production_date === 'date_pending' && row.data_source === 'customer_app_native');
-  const scheduledHubIngredient = payload.ingredients.find(row => (
-    row.data_source === 'hub_fallback' &&
-    Array.isArray(row.production_dates) &&
-    row.production_dates.includes(PRODUCTION_DATE)
-  ));
   const pendingNativeIngredient = payload.ingredients.find(row => (
     row.data_source === 'customer_app_native' &&
     Array.isArray(row.production_dates) &&
     row.production_dates.includes('date_pending')
   ));
-  assert.equal(payload.summary.planned_units, 15);
+  assert.equal(payload.summary.planned_units, 0);
   assert.equal(payload.summary.date_pending_planned_units, 1);
-  assert.equal(payload.summary.production_date_count, 1);
+  assert.equal(payload.summary.production_date_count, 0);
   assert.equal(pendingNativeRow?.excluded_from_scheduled_totals, true);
   assert.equal(pendingNativeRow?.review_only, true);
   assert.ok(pendingNativeRow?.warnings?.includes('date_pending_review_only'));
-  assert.ok(scheduledHubRow);
-  assert.ok(scheduledHubIngredient);
+  assert.equal(payload.hub_historical_planned_units, 15);
+  assert.equal(payload.hub_historical_context_excluded_from_operational_totals, true);
+  assert.equal(hubFetchCount, 1);
   assert.equal(pendingNativeIngredient?.excluded_from_scheduled_totals, true);
   assert.ok(payload.warnings.includes('native_date_pending_excluded_from_scheduled_totals'));
-  results.push('date_pending_native_overlay_excluded_from_scheduled_hub_totals');
-  results.push('date_pending_native_ingredients_do_not_suppress_dated_hub_ingredients');
+  results.push('date_pending_native_overlay_excluded_from_scheduled_totals');
+  results.push('hub_historical_context_excluded_from_operational_rows');
 }
 
 {
@@ -465,15 +469,16 @@ const results = [];
   });
   assert.equal(payload.native_first_enabled, true);
   assert.ok(payload.dates.some(row => row.data_source === 'customer_app_native'));
-  assert.ok(payload.ingredients.some(row => row.data_source === 'native_with_hub_fallback_context'));
-  assert.ok(payload.fallback_reasons.includes('native_data_incomplete_for_production_planning'));
-  results.push('native_data_incomplete_hub_fallback_context_used');
+  assert.equal(payload.ingredients.some(row => row.data_source === 'native_with_hub_fallback_context'), false);
+  assert.equal(payload.fallback_required, false);
+  results.push('native_data_incomplete_does_not_activate_hub_operational_fallback');
 }
 
 {
   const { payload } = await invoke({
     store: { nativeOrders: [nativeOrder()] },
     hubData: hubPlanningWithPineapple(),
+    body: { include_hub_historical_context: true },
   });
   const pineappleDateRows = payload.dates.filter(row => row.production_date === PRODUCTION_DATE);
   assert.equal(pineappleDateRows[0].data_source, 'customer_app_native');
@@ -500,10 +505,10 @@ const results = [];
     store: { nativeOrders: [nativeOrder({ order_type: 'subscription', source_channel: 'subscription', stripe_subscription_id: 'sub_synthetic' })] },
     hubData: hubPlanningWithPineapple({ product_name: 'Subscription Juice' }),
   });
-  assert.equal(payload.production_planning_source, 'hub_fallback');
-  assert.ok(payload.fallback_reasons.includes('native_planning_row_missing'));
+  assert.equal(payload.production_planning_source, 'empty');
+  assert.equal(payload.fallback_required, false);
   assert.equal(payload.live_production_command_candidate, false);
-  results.push('subscription_multi_delivery_context_remains_hub_source_of_truth');
+  results.push('subscription_multi_delivery_excluded_until_native_contract_exists');
 }
 
 {

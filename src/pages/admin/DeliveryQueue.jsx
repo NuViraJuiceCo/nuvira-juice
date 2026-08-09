@@ -230,10 +230,6 @@ function isNativeDeliveryTaskStop(stop) {
 
 const HISTORICAL_DELIVERY_ACTIONS_RETIRED = true;
 
-function canonicalTaskStatus(value) {
-  return taskStatusKey(value) || null;
-}
-
 function normalizedStatus(value) {
   return (value || '').toString().trim().toLowerCase();
 }
@@ -278,12 +274,6 @@ function deliveredRequestId(taskId) {
   return `fulfillment_delivered_${taskId}_${Date.now()}_${randomId}`;
 }
 
-function nativePreviewRequestId(action, stop) {
-  const fallback = Math.random().toString(36).slice(2);
-  const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
-  return `native_fulfillment_preview_${action}_${stop.task_id || stop.order_number || 'task'}_${Date.now()}_${randomId}`;
-}
-
 function nativeExecuteRequestId(action, stop) {
   const fallback = Math.random().toString(36).slice(2);
   const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
@@ -320,54 +310,6 @@ function nativeScheduleCorrectionErrorText(error) {
 
   if (parts.length > 0) return parts.join(' | ');
   return error?.message || 'Unable to run native schedule correction.';
-}
-
-function itemsSummaryToDriverItems(summary) {
-  const text = `${summary || ''}`.trim();
-  if (!text) return [];
-  const parsed = text
-    .split(',')
-    .map(part => part.trim())
-    .filter(Boolean)
-    .map(part => {
-      const prefixMatch = part.match(/^(\d+(?:\.\d+)?)\s*(?:x|×)\s+(.+)$/i);
-      if (prefixMatch) {
-        return {
-          title: prefixMatch[2].trim(),
-          quantity: Number(prefixMatch[1]),
-        };
-      }
-      const suffixMatch = part.match(/^(.+?)\s*(?:x|×)\s*(\d+(?:\.\d+)?)$/i);
-      if (suffixMatch) {
-        return {
-          title: suffixMatch[1].trim(),
-          quantity: Number(suffixMatch[2]),
-        };
-      }
-      return null;
-    });
-
-  if (parsed.length > 0 && parsed.every(item => item?.title && Number.isFinite(item.quantity))) {
-    return parsed;
-  }
-
-  return [{ title: text, quantity: null }];
-}
-
-function nativeTaskPayload(stop) {
-  return {
-    id: stop.task_id || null,
-    fulfillment_task_id: stop.task_id || null,
-    order_number: stop.order_number || null,
-    status: canonicalTaskStatus(stop.task_status),
-    delivery_status: canonicalTaskStatus(stop.delivery_status),
-    fulfillment_type: 'delivery',
-    source_type: stop.source_type || 'customer_app_native',
-    delivery_date: stop.delivery_date || null,
-    address: stop.delivery_address || null,
-    assigned_driver: stop.assigned_driver || null,
-    items: itemsSummaryToDriverItems(stop.items_summary),
-  };
 }
 
 function routeStopPayload(stop) {
@@ -1475,233 +1417,6 @@ function NativeDeliveryActionControls({ stop, onActionSuccess }) {
   );
 }
 
-function NativeFulfillmentPreviewPanel({ stop, onActionSuccess }) {
-  const [activeAction, setActiveAction] = useState('assign');
-  const [driverLabel, setDriverLabel] = useState('');
-  const [preview, setPreview] = useState(null);
-  const [pending, setPending] = useState(false);
-  const [actionPending, setActionPending] = useState(false);
-  const [message, setMessage] = useState(null);
-
-  const canPreview = Boolean(stop.task_id || stop.order_number);
-  const blockers = Array.isArray(preview?.blockers) ? preview.blockers : [];
-  const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
-  const projectedWrites = Array.isArray(preview?.projected_writes) ? preview.projected_writes : [];
-  const actions = [
-    { key: 'assign', label: 'Assign' },
-    { key: 'unassign', label: 'Unassign' },
-    { key: 'pack', label: 'Pack' },
-    { key: 'out_for_delivery', label: 'Out For Delivery' },
-    { key: 'delivered_operational', label: 'Delivered' },
-  ];
-
-  async function runPreview(action) {
-    const nextDriver = trimDriverLabel(driverLabel);
-    if (action === 'assign' && !nextDriver) {
-      setMessage({ type: 'error', text: 'Enter an internal driver label to preview assignment.' });
-      return;
-    }
-
-    setActiveAction(action);
-    setPending(true);
-    setPreview(null);
-    setMessage(null);
-
-    try {
-      const payload = {
-        action,
-        mode: 'dry_run',
-        task: nativeTaskPayload(stop),
-        request_id: nativePreviewRequestId(action, stop),
-      };
-
-      if (action === 'assign') {
-        payload.assignment_input = { assigned_driver: nextDriver };
-      }
-
-      const res = await base44.functions.invoke('previewNativeFulfillmentTaskLifecycle', payload);
-      const result = unwrapBase44Result(res);
-      if (result?.error && result?.success !== true) throw new Error(result.error);
-      setPreview(result);
-      setMessage({
-        type: result.lifecycle_ready ? 'success' : 'warn',
-        text: result.lifecycle_ready
-          ? `${formatLabel(action)} readiness preview passed. Native execution remains exact-gated.`
-          : `${formatLabel(action)} has preview blockers or warnings.`,
-      });
-    } catch (error) {
-      setMessage({ type: 'error', text: error?.message || `Unable to preview native ${formatLabel(action)}.` });
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function runNative(action) {
-    const nextDriver = trimDriverLabel(driverLabel);
-    if (!stop.task_id) {
-      setMessage({ type: 'error', text: 'A native FulfillmentTask id is required before execution.' });
-      return;
-    }
-    if (!preview?.lifecycle_ready || preview.action !== action) return;
-    if (action === 'assign' && !nextDriver) {
-      setMessage({ type: 'error', text: 'Enter an internal driver label before assigning.' });
-      return;
-    }
-    if (!window.confirm(`Run native ${formatLabel(action)} for ${stop.order_number || stop.task_id}? This is exact-task gated and does not update orders, notify customers, save routes, or process proof/drop evidence.`)) {
-      return;
-    }
-
-    setActionPending(true);
-    setMessage(null);
-
-    try {
-      const payload = {
-        mode: 'live',
-        confirmation: 'execute_native_fulfillment_task_lifecycle',
-        fulfillment_task_id: stop.task_id,
-        action,
-        request_id: nativeExecuteRequestId(action, stop),
-        reason: `Admin Delivery Queue native ${formatLabel(action)}.`,
-      };
-
-      if (action === 'assign') {
-        payload.assigned_driver = nextDriver;
-      }
-
-      const res = await base44.functions.invoke('executeNativeFulfillmentTaskLifecycle', payload);
-      const result = unwrapBase44Result(res);
-      if (!result?.success) {
-        const gate = result?.error_code ? ` (${formatLabel(result.error_code)})` : '';
-        throw new Error(`${result?.error || 'Native fulfillment action was not allowed'}${gate}`);
-      }
-      setPreview(null);
-      setMessage({
-        type: result.skipped ? 'warn' : 'success',
-        text: result.skipped ? 'Native action was already recorded.' : `Native ${formatLabel(action)} completed.`,
-      });
-      await onActionSuccess?.();
-    } catch (error) {
-      setMessage({ type: 'error', text: error?.message || `Unable to run native ${formatLabel(action)}.` });
-    } finally {
-      setActionPending(false);
-    }
-  }
-
-  const canExecuteNative = Boolean(stop.task_id && preview?.lifecycle_ready && preview.action === activeAction);
-
-  return (
-    <div className="rounded-lg border border-border/50 bg-background p-2 space-y-3">
-      <div>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Fulfillment Preview</p>
-        <p className="text-[10px] text-muted-foreground mt-1">
-          Dry-run only. No native task update, notification, proof/drop action, route save, provider call, or customer-facing status write occurs.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        {actions.map(action => (
-          <button
-            key={action.key}
-            type="button"
-            disabled={pending || !canPreview}
-            onClick={() => runPreview(action.key)}
-            className={`h-9 rounded-lg border px-2 text-xs font-semibold ${
-              activeAction === action.key
-                ? 'bg-nuvira-gradient text-white border-primary'
-                : 'bg-card text-foreground border-border disabled:opacity-50'
-            }`}
-          >
-            {pending && activeAction === action.key ? 'Previewing...' : action.label}
-          </button>
-        ))}
-      </div>
-
-      {activeAction === 'assign' && (
-        <label className="space-y-1 block">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Preview driver label</span>
-          <input
-            type="text"
-            value={driverLabel}
-            onChange={event => setDriverLabel(event.target.value.slice(0, 120))}
-            placeholder="Driver name or internal label"
-            disabled={pending}
-            maxLength={120}
-            className="w-full h-9 rounded-lg border border-border bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
-          />
-        </label>
-      )}
-
-      {message && (
-        <p className={`text-xs ${
-          message.type === 'error'
-            ? 'text-destructive'
-            : message.type === 'warn'
-              ? 'text-cyan-700'
-              : 'text-green-700'
-        }`}>
-          {message.text}
-        </p>
-      )}
-
-      {preview && (
-        <div className="space-y-2">
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg bg-card p-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ready</p>
-              <p className="text-sm font-bold">{preview.lifecycle_ready ? 'Yes' : 'No'}</p>
-            </div>
-            <div className="rounded-lg bg-card p-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Write</p>
-              <p className="text-sm font-bold">{preview.native_write_allowed ? 'Yes' : 'No'}</p>
-            </div>
-            <div className="rounded-lg bg-card p-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Action</p>
-              <p className="text-sm font-bold">{formatLabel(preview.action)}</p>
-            </div>
-          </div>
-
-          {(blockers.length > 0 || warnings.length > 0) && (
-            <div className="space-y-1">
-              {blockers.map(blocker => (
-                <div key={`native-fulfillment-blocker-${blocker}`} className="flex items-start gap-2 text-xs text-cyan-800">
-                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span>Blocker: {formatLabel(blocker)}</span>
-                </div>
-              ))}
-              {warnings.map(warning => (
-                <div key={`native-fulfillment-warning-${warning}`} className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span>{formatLabel(warning)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {projectedWrites.length > 0 && (
-            <p className="text-[10px] text-muted-foreground">
-              Checked fields: {projectedWrites.map(formatLabel).join(', ')}
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => runNative(activeAction)}
-              disabled={!canExecuteNative || actionPending}
-              className="h-9 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              {actionPending ? 'Saving...' : `Save ${formatLabel(activeAction)}`}
-            </button>
-            <p className="text-[10px] text-muted-foreground">
-              Requires exact task allowlist and native fulfillment gates before saving.
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function NativeOrderScheduleCorrectionPanel({ stop, selectedDate, onCorrected }) {
   const [deliveryDate, setDeliveryDate] = useState(stop.delivery_date || selectedDate || '');
   const [productionDate, setProductionDate] = useState(stop.production_date || (selectedDate ? shiftDate(selectedDate, -1) : ''));
@@ -2500,7 +2215,7 @@ export default function DeliveryQueue() {
           <p className="text-xs text-muted-foreground">
             {testTaskMode === 'only'
               ? `Showing formally marked internal test tasks only for ${formatDate(deliveryDate)}.`
-              : `Showing Customer App and source-backed delivery route summary for ${formatDate(deliveryDate)}.`}
+              : `Showing the Customer App delivery route for ${formatDate(deliveryDate)}.`}
           </p>
           {(showInternalTestValidation || testTaskMode === 'only') && (
             <button
@@ -2516,7 +2231,7 @@ export default function DeliveryQueue() {
             </button>
           )}
           <AdminStatusLegend />
-          <p className="text-[10px] text-muted-foreground">Source-backed data plus native Customer App delivery rows. Native task controls are exact-gated and show diagnostics when a gate blocks execution.</p>
+          <p className="text-[10px] text-muted-foreground">Customer App orders and delivery tasks are authoritative. Task controls remain exact-gated and explain any blocked action.</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
@@ -2595,7 +2310,7 @@ export default function DeliveryQueue() {
         ) : !hasRows ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
             <p className="text-sm font-semibold text-foreground">No delivery stops found</p>
-            <p className="text-xs text-muted-foreground mt-1">This date has no scheduled source-backed delivery route summary or native date-pending delivery orders yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">This date has no scheduled Customer App delivery tasks or date-pending delivery orders.</p>
           </div>
         ) : (
           <div className="space-y-6">

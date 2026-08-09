@@ -1,8 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const HUB_API_URL = Deno.env.get('HUB_API_URL');
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
-
 function bearerToken(req) {
   const header = req.headers.get('authorization') || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -36,31 +33,16 @@ export default async (req: Request) => {
       return Response.json({ error: 'No order data' }, { status: 400 });
     }
 
-    if (!HUB_API_URL) {
-      console.log('syncShopifyOrderToHub: HUB_API_URL not set, skipping');
-      return Response.json({ success: true, skipped: true });
-    }
-
-    console.log(`Syncing Shopify order ${shopifyOrder.shopify_order_number || shopifyOrder.id} to hub`);
-
-    const response = await fetch(HUB_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-      body: JSON.stringify({ event: 'shopify_order.created', source: 'customer_app', order: shopifyOrder }),
+    return Response.json({
+      success: true,
+      skipped: true,
+      retired: true,
+      source: 'customer_app_native_authoritative',
+      shopify_order_id: shopifyOrder.id,
+      hub_response: null,
+      hub_operational_dependency: false,
+      external_calls_performed: false,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Hub sync failed (${response.status}):`, errorText);
-      return Response.json({ error: `Hub returned ${response.status}`, details: errorText }, { status: response.status });
-    }
-
-    const result = await response.json();
-    console.log(`Shopify order synced to hub successfully:`, result);
-    return Response.json({ success: true, hub_response: result });
   } catch (error) {
     console.error('syncShopifyOrderToHub error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });

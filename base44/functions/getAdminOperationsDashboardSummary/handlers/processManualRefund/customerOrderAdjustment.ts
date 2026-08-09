@@ -419,7 +419,7 @@ async function applyCustomerAppAdjustment({ base44, context, review, choice, ful
     estimated_delivery_date: first.delivery_date,
     production_date: first.production_date,
     assigned_production_day: first.production_date,
-    sync_status: 'customer_adjustment_hub_pending',
+    sync_status: 'customer_adjustment_native_pending',
     ...refundPatch,
   };
   await base44.asServiceRole.entities.Order.update(context.customerOrder.id, customerOrderPatch);
@@ -430,7 +430,7 @@ async function applyCustomerAppAdjustment({ base44, context, review, choice, ful
     production_date: first.production_date,
     fulfillment_mode: fulfillments.length > 1 ? 'multi_delivery' : 'single_delivery',
     fulfillments,
-    sync_status: 'customer_adjustment_hub_pending',
+    sync_status: 'customer_adjustment_native_pending',
     ...refundPatch,
   };
   await base44.asServiceRole.entities.ShopifyOrder.update(context.operationalOrder.id, operationalPatch);
@@ -438,63 +438,73 @@ async function applyCustomerAppAdjustment({ base44, context, review, choice, ful
   return { taskIds };
 }
 
-function hubEndpoint(envGet) {
-  const base = text(envGet('HUB_API_URL'), 1000).replace(/\/$/, '');
-  return base ? `${base}/api/functions/receiveCustomerAppEvent` : '';
+function batchReferencesOrder(batch, context) {
+  const orderIds = new Set([
+    context?.customerOrder?.id,
+    context?.operationalOrder?.id,
+  ].map((value) => text(value, 180)).filter(Boolean));
+  const orderNumber = normalizeOrderNumber(context?.customerOrder?.order_number);
+  if ((Array.isArray(batch?.related_orders) ? batch.related_orders : [])
+    .some((value) => orderIds.has(text(value, 180)))) return true;
+  return (Array.isArray(batch?.order_sources) ? batch.order_sources : []).some((source) => (
+    orderIds.has(text(source?.order_id, 180)) ||
+    normalizeOrderNumber(source?.order_number) === orderNumber
+  ));
 }
 
-async function callAdjustmentHub({
-  fetchImpl,
-  envGet,
-  event,
+async function preflightAdjustmentInCustomerApp({
+  base44,
   review,
   context,
-  choice,
   fulfillments,
-  refundResult = null,
 }) {
-  const endpoint = hubEndpoint(envGet);
-  const secret = text(envGet('CUSTOMER_APP_SYNC_SECRET'), 1000);
-  if (!endpoint || !secret) return { success: false, error: 'hub_sync_unavailable' };
-  const response = await fetchImpl(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${secret}`,
-    },
-    body: JSON.stringify({
-      event,
-      data: {
-        request_id: review.id,
-        order_number: normalizeOrderNumber(context.customerOrder.order_number),
-        choice,
-        current_delivery_date: validIsoDate(review.incoming_payload?.current_delivery_date),
-        current_production_date: validIsoDate(review.incoming_payload?.current_production_date),
-        target_delivery_date: validIsoDate(review.incoming_payload?.target_delivery_date),
-        target_production_date: validIsoDate(review.incoming_payload?.target_production_date),
-        fulfillments,
-        refund: choice === 'oasis_refund' ? {
-          amount: money(review.incoming_payload?.oasis_refund_amount),
-          currency: REFUND_CURRENCY,
-          stripe_refund_id: refundResult?.refund_id || null,
-          status: refundResult?.status || (event === 'order.adjustment_preflight' ? 'pending' : null),
-        } : null,
-      },
-    }),
-  }).catch(() => null);
-  if (!response) return { success: false, error: 'hub_sync_failed' };
-  const result = await response.json().catch(() => ({}));
-  return response.ok && result?.status === 'success'
-    ? { success: true, action: text(result.action, 80) || 'updated' }
-    : { success: false, error: 'hub_sync_failed', status: response.status };
-}
+  const entity = base44.asServiceRole?.entities?.ProductionBatch;
+  if (!entity || typeof entity.filter !== 'function') {
+    return { success: false, error: 'native_production_batch_read_unavailable', status: 503 };
+  }
+  const dates = Array.from(new Set([
+    validIsoDate(review?.incoming_payload?.current_production_date),
+    validIsoDate(review?.incoming_payload?.target_production_date),
+    ...(Array.isArray(fulfillments) ? fulfillments.map((row) => validIsoDate(row?.production_date)) : []),
+  ].filter(Boolean)));
+  const batches = [];
+  try {
+    for (const productionDate of dates) {
+      const rows = await entity.filter({ production_date: productionDate }, '-created_date', 500);
+      if (!Array.isArray(rows)) throw new Error('invalid_production_batch_read');
+      for (const row of rows) {
+        if (row?.id && !batches.some((candidate) => candidate.id === row.id)) batches.push(row);
+      }
+    }
+  } catch {
+    return { success: false, error: 'native_production_batch_read_unavailable', status: 503 };
+  }
 
-async function preflightAdjustmentOnHub(args) {
-  return callAdjustmentHub({ ...args, event: 'order.adjustment_preflight' });
-}
+  const linked = batches.filter((batch) => batchReferencesOrder(batch, context));
+  const mutableStatuses = new Set(['planned', 'ready_for_production']);
+  const blockedBatches = linked.filter((batch) => (
+    batch?.is_locked === true || !mutableStatuses.has(lower(batch?.status, 80))
+  ));
+  const blockedTasks = (context?.tasks || []).filter((task) => [
+    'packed', 'ready_for_delivery', 'out_for_delivery', 'delivered', 'picked_up',
+    'completed', 'cancelled', 'canceled',
+  ].includes(lower(task?.status || task?.delivery_status, 80)));
 
-async function syncAdjustmentToHub(args) {
-  return callAdjustmentHub({ ...args, event: 'order.adjustment_selected' });
+  if (blockedBatches.length > 0 || blockedTasks.length > 0) {
+    return {
+      success: false,
+      error: 'native_operational_state_locked',
+      status: 409,
+      blocked_batch_count: blockedBatches.length,
+      blocked_task_count: blockedTasks.length,
+    };
+  }
+  return {
+    success: true,
+    action: 'native_preflight_passed',
+    linked_batch_count: linked.length,
+    linked_task_count: (context?.tasks || []).length,
+  };
 }
 
 function requestKey(digest) {
@@ -875,9 +885,6 @@ async function submitRequest({ base44, body, fetchImpl, envGet, cryptoImpl, stri
   if (!currentProductionDate || !currentDeliveryDate || !targetProductionDate || !targetDeliveryDate) {
     return Response.json({ error: 'order_schedule_incomplete' }, { status: 409 });
   }
-  if (!hubEndpoint(envGet) || !text(envGet('CUSTOMER_APP_SYNC_SECRET'), 1000)) {
-    return Response.json({ error: 'order_adjustment_service_unavailable' }, { status: 503 });
-  }
   if (choice === 'oasis_refund' && (!stripeClient || !text(envGet('STRIPE_SECRET_KEY'), 1000))) {
     return Response.json({ error: 'refund_service_unavailable' }, { status: 503 });
   }
@@ -902,16 +909,12 @@ async function submitRequest({ base44, body, fetchImpl, envGet, cryptoImpl, stri
     address: fulfillmentAddress(context.operationalOrder, primaryTask),
   });
 
-  // The Hub is the operational source of truth for physical production. Recheck
-  // its batch/task locks immediately before recording the customer's choice or
-  // moving money. This is read-only and prevents a known locked batch from being
-  // discovered only after a partial refund has already succeeded.
-  const preflightResult = await preflightAdjustmentOnHub({
-    fetchImpl,
-    envGet,
+  // Customer App production batches and fulfillment tasks are authoritative.
+  // Recheck their locks before recording the choice or moving money.
+  const preflightResult = await preflightAdjustmentInCustomerApp({
+    base44,
     review,
     context,
-    choice,
     fulfillments,
   });
   if (!preflightResult.success) {
@@ -927,7 +930,7 @@ async function submitRequest({ base44, body, fetchImpl, envGet, cryptoImpl, stri
     status: 'reviewing',
     resolved_action: `customer_selected:${choice}`,
     recommended_action: guidance,
-    admin_notes: 'Customer selection recorded. The approved automated order-adjustment workflow is processing the schedule, fulfillment, Hub, and refund effects.',
+    admin_notes: 'Customer selection recorded. The approved automated order-adjustment workflow is processing the Customer App schedule, fulfillment, and refund effects.',
     last_seen_at: now.toISOString(),
     incoming_payload: {
       ...payload,
@@ -993,42 +996,20 @@ async function submitRequest({ base44, body, fetchImpl, envGet, cryptoImpl, stri
     return Response.json({ error: 'order_adjustment_local_update_failed', retryable: true }, { status: 503 });
   }
 
-  const hubResult = await syncAdjustmentToHub({
-    fetchImpl,
-    envGet,
-    review: claimReadback,
-    context,
-    choice,
-    fulfillments,
-    refundResult,
-  });
-  if (!hubResult.success) {
-    const pending = await base44.asServiceRole.entities.OrderReviewQueue.update(review.id, {
-      last_seen_at: now.toISOString(),
-      admin_notes: 'Customer selection and Customer App records are applied. Hub synchronization requires a safe retry.',
-      incoming_payload: {
-        ...claimReadback.incoming_payload,
-        request_state: 'hub_retry_required',
-        customer_app_task_ids: localResult.taskIds,
-      },
-    });
-    return Response.json({ error: 'order_adjustment_hub_sync_failed', retryable: true, request: safeRequestView(pending) }, { status: 503 });
-  }
-
   await base44.asServiceRole.entities.Order.update(context.customerOrder.id, { sync_status: 'synced' });
   await base44.asServiceRole.entities.ShopifyOrder.update(context.operationalOrder.id, { sync_status: 'synced' });
   const completed = await base44.asServiceRole.entities.OrderReviewQueue.update(review.id, {
     status: 'resolved',
     resolved_at: now.toISOString(),
     resolved_by: 'customer_self_service',
-    admin_notes: 'Customer selection applied to Customer App and Hub. Any approved Stripe partial refund is recorded separately from the paid order lifecycle.',
+    admin_notes: 'Customer selection applied to Customer App operational records. Any approved Stripe partial refund is recorded separately from the paid order lifecycle.',
     last_seen_at: now.toISOString(),
     incoming_payload: {
       ...claimReadback.incoming_payload,
       request_state: 'completed',
       completed_at: now.toISOString(),
       customer_app_task_ids: localResult.taskIds,
-      hub_sync_status: 'success',
+      native_projection_status: 'success',
       stripe_refund_id: refundResult.refund_id || claimReadback.incoming_payload?.stripe_refund_id || null,
       stripe_refund_status: refundResult.status || claimReadback.incoming_payload?.stripe_refund_status || null,
     },

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -50,6 +51,7 @@ function chargeRefundedEvent({
 } = {}) {
   return {
     id,
+    created: 1785882600,
     type: 'charge.refunded',
     data: {
       object: {
@@ -79,6 +81,7 @@ function refundUpdatedEvent({
 } = {}) {
   return {
     id,
+    created: 1785882600,
     type: 'refund.updated',
     data: {
       object: {
@@ -140,15 +143,24 @@ function makeState(orderOverrides = {}) {
       return makeEntityStore(String(name), rows[name], writes);
     },
   });
-  const allowedFunctions = new Set(['syncRefundToHub', 'sendOrderReceivedNotification']);
+  const allowedFunctions = new Set(['enrollNewCustomerInLoyalty', 'sendOrderReceivedNotification']);
   const base44 = {
     asServiceRole: {
       entities,
       functions: {
+        async fetch(path, init) {
+          if (path !== '/syncRefundToHub') throw new Error(`unexpected function fetch: ${path}`);
+          const payload = JSON.parse(init?.body || '{}');
+          calls.push({ name: 'syncRefundToHub', payload, options: { headers: clone(init?.headers || {}) } });
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        },
         async invoke(name, payload, options) {
           if (!allowedFunctions.has(name)) throw new Error(`unexpected function invocation: ${name}`);
           calls.push({ name, payload: clone(payload), options: options ? clone(options) : null });
-          return name === 'syncRefundToHub' ? { success: true } : { success: true, mocked: true };
+          return { success: true, mocked: true };
         },
       },
       integrations: { Core: {} },
@@ -160,6 +172,12 @@ function makeState(orderOverrides = {}) {
 function loadHandler(state, env = BASE_ENV) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
+  source = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.None,
+    },
+  }).outputText;
   const capturedLogs = [];
   const safeConsole = {};
   for (const method of ['log', 'warn', 'error', 'info']) {
@@ -269,7 +287,7 @@ let assertions = 0;
     refundId: 're_synthetic_generic_partial',
     operation: null,
   }));
-  assert.equal(result.status, 200);
+  assert.equal(result.status, 200, JSON.stringify({ body: result.body, logs: result.capturedLogs }));
   assert.equal(result.body.action, 'partial_refund_review_required');
   assert.equal(state.rows.Order[0].status, 'scheduled_for_juicing');
   assert.equal(state.rows.Order[0].payment_status, 'paid');
@@ -309,13 +327,13 @@ let assertions = 0;
     refundId: 're_synthetic_full_refund',
     operation: null,
   }));
-  assert.equal(result.status, 200);
+  assert.equal(result.status, 200, JSON.stringify({ body: result.body, logs: result.capturedLogs }));
   assert.equal(result.body.action, 'full_refund_processed');
   assert.equal(state.rows.Order[0].status, 'refunded');
   assert.equal(state.rows.Order[0].payment_status, 'refunded');
   assert.equal(state.rows.Order[0].financial_status, 'refunded');
   assert.equal(state.rows.Order[0].payment_captured, false);
-  assert.deepEqual(state.calls.map((call) => call.name), ['syncRefundToHub', 'sendOrderReceivedNotification']);
+  assert.deepEqual(state.calls.map((call) => call.name), ['syncRefundToHub', 'enrollNewCustomerInLoyalty', 'sendOrderReceivedNotification']);
   assert.equal(state.providerCalls.length, 1);
   assertions += 8;
 }

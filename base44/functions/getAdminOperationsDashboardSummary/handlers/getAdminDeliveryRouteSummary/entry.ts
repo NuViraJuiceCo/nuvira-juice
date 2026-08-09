@@ -1159,6 +1159,7 @@ export default async function handler(req: Request) {
     }
     const deliveryLifecycleReadModelRequested = isDeliveryLifecycleReadModelRequest(body);
     const deliveryLifecycleReadModelActive = deliveryLifecycleReadModelEnabled();
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
     let deliveryDate;
     let limit;
     let testTaskMode;
@@ -1175,7 +1176,7 @@ export default async function handler(req: Request) {
 
     let hubData = null;
     let hubWarning = null;
-    if (testTaskMode === 'only') {
+    if (!includeHubHistoricalContext || testTaskMode === 'only') {
       hubWarning = null;
     } else if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       hubWarning = 'hub_delivery_queue_service_not_configured';
@@ -1211,73 +1212,57 @@ export default async function handler(req: Request) {
 
     const hubActiveRaw = hubData ? hubData.sections.delivery_stops.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
     const hubCompletedRaw = hubData ? hubData.sections.completed.map(stop => sanitizeStop({ ...stop, data_source: 'hub' })) : [];
-    const activeReconciliation = nativeFirstMergeSection({
-      nativeRows: nativeData.sections.delivery_stops,
-      hubRows: hubActiveRaw,
-      nativeScheduleIndex: nativeData.native_schedule_index,
-      section: 'delivery_stops',
-      limit,
-    });
-    const completedReconciliation = nativeFirstMergeSection({
-      nativeRows: nativeData.sections.completed,
-      hubRows: hubCompletedRaw,
-      nativeScheduleIndex: nativeData.native_schedule_index,
-      section: 'completed',
-      limit,
-    });
-    const suppressedHubRows = [...activeReconciliation.suppressed, ...completedReconciliation.suppressed];
+    const historicalHubRows = [...hubActiveRaw, ...hubCompletedRaw];
     const suppressedNativeStaleRows = (nativeData.sections.suppressed_stale_delivery_tasks || []).slice(0, limit);
     const completedOrderKeys = new Set(
-      completedReconciliation.rows
+      nativeData.sections.completed
         .map(stop => orderKey(stop.order_number))
         .filter(Boolean),
     );
     const visibleOrderNumbers = new Set([
-      ...activeReconciliation.rows,
-      ...completedReconciliation.rows,
+      ...nativeData.sections.delivery_stops,
+      ...nativeData.sections.completed,
     ].map(stop => normalizeLower(stop.order_number)).filter(Boolean));
     const unscheduledStops = (nativeData.sections.unscheduled_delivery_orders || [])
       .filter(stop => !visibleOrderNumbers.has(normalizeLower(stop.order_number)))
       .map(stop => decorateNativeRouteRow(stop))
       .slice(0, limit);
-    const deliveryStops = activeReconciliation.rows
+    const deliveryStops = nativeData.sections.delivery_stops
+      .map(stop => decorateNativeRouteRow(stop))
       .filter(stop => !completedOrderKeys.has(orderKey(stop.order_number)))
       .slice(0, limit);
-    const completedStops = completedReconciliation.rows.slice(0, limit);
-    const fallbackReasons = [...new Set([
-      ...activeReconciliation.fallback_reasons,
-      ...completedReconciliation.fallback_reasons,
-      hubWarning ? 'hub_delivery_summary_unavailable_or_unconfigured' : null,
-    ].filter(Boolean))];
+    const completedStops = nativeData.sections.completed
+      .map(stop => decorateNativeRouteRow(stop))
+      .slice(0, limit);
     const allVisibleRows = [...deliveryStops, ...completedStops, ...unscheduledStops];
-    const hubFallbackRowCount = allVisibleRows.filter(stop => stop?.hub_fallback_used === true || stop?.data_source === 'hub_fallback').length;
+    const hubFallbackRowCount = 0;
     const nativeRowCount = allVisibleRows.filter(stop => stop?.native_primary === true || (stop?.data_source || '').startsWith('customer_app_native') || stop?.data_source === 'native_with_hub_fallback_context').length;
-    const staleHubFallbackDetected = suppressedHubRows.some(row => row.merge_status === 'native_schedule_active_hub_fallback_stale_date');
+    const staleHubFallbackDetected = false;
     const deliveryLifecycleReadModelRows = allVisibleRows;
     let deliveryLifecycleReadModel = null;
     const deliveryLifecycleReadModelCanBuild = deliveryLifecycleReadModelRequested && deliveryLifecycleReadModelActive && typeof buildDeliveryLifecycleReadModel === 'function';
     if (deliveryLifecycleReadModelCanBuild) {
       const readModelSources = await loadDeliveryLifecycleReadModelSources(base44, testTaskMode);
       deliveryLifecycleReadModel = buildDeliveryLifecycleReadModel({
-        deliveryDate: hubData?.delivery_date || deliveryDate,
+        deliveryDate,
         routeSummaryRows: deliveryLifecycleReadModelRows,
         ...readModelSources,
         sourceMode: testTaskMode === 'only'
           ? 'native_internal_test_only'
-          : hubData ? 'native_first_with_hub_fallback' : 'native_only',
+          : 'customer_app_native_authoritative',
       });
     }
 
-    if (!hubData && !nativeData.source_available) {
+    if (!nativeData.source_available) {
       return Response.json({
         error: 'Unable to load delivery queue summary',
-        warning: hubWarning,
+        warning: 'customer_app_native_delivery_source_unavailable',
       }, { status: 503 });
     }
 
     return Response.json({
       success: true,
-      delivery_date: hubData?.delivery_date || deliveryDate,
+      delivery_date: deliveryDate,
       test_task_mode: testTaskMode,
       operational_totals_exclude_test_tasks: true,
       summary: summarizeStops(deliveryStops, completedStops, unscheduledStops),
@@ -1289,13 +1274,17 @@ export default async function handler(req: Request) {
       },
       native_row_count: nativeRowCount,
       hub_fallback_row_count: hubFallbackRowCount,
-      suppressed_hub_row_count: suppressedHubRows.length,
-      fallback_required: hubFallbackRowCount > 0 || fallbackReasons.length > 0,
-      fallback_reasons: fallbackReasons,
+      suppressed_hub_row_count: 0,
+      fallback_required: false,
+      fallback_reasons: [],
       stale_hub_fallback_detected: staleHubFallbackDetected,
       stale_native_delivery_task_detected: suppressedNativeStaleRows.length > 0,
       suppressed_native_stale_task_count: suppressedNativeStaleRows.length,
       native_first_enabled: true,
+      customer_app_native_authoritative: true,
+      hub_operational_dependency: false,
+      include_hub_historical_context: includeHubHistoricalContext,
+      hub_historical_context_row_count: historicalHubRows.length,
       delivery_lifecycle_read_model_available: true,
       delivery_lifecycle_read_model_enabled: Boolean(deliveryLifecycleReadModelActive && deliveryLifecycleReadModelRequested),
       delivery_lifecycle_read_model_version: DELIVERY_LIFECYCLE_READ_MODEL_VERSION,
@@ -1317,21 +1306,28 @@ export default async function handler(req: Request) {
         native_available: nativeData.source_available,
         native_read_only: true,
         native_first_enabled: true,
-        hub_fallback_available: Boolean(hubData),
-        hub_fallback_row_count: hubFallbackRowCount,
+        customer_app_native_authoritative: true,
+        hub_operational_dependency: false,
+        hub_fallback_available: false,
+        hub_fallback_row_count: 0,
+        hub_historical_context_requested: includeHubHistoricalContext,
+        hub_historical_context_available: Boolean(hubData),
+        hub_historical_context_row_count: historicalHubRows.length,
         stale_native_delivery_task_suppression_ready: true,
       },
       hub_fallback_reconciliation: {
-        merge_status: suppressedHubRows.length > 0
-          ? 'native_first_hub_fallback_rows_suppressed_or_contextualized'
-          : 'native_first_no_hub_fallback_rows_suppressed',
-        stale_hub_fallback_detected: staleHubFallbackDetected,
-        suppressed_hub_row_count: suppressedHubRows.length,
-        suppressed_hub_rows: suppressedHubRows.slice(0, 20),
-        native_schedule_preferred: suppressedHubRows.length > 0,
+        merge_status: 'hub_operational_fallback_retired',
+        stale_hub_fallback_detected: false,
+        suppressed_hub_row_count: 0,
+        suppressed_hub_rows: [],
+        native_schedule_preferred: true,
         native_first_enabled: true,
-        hub_fallback_row_count: hubFallbackRowCount,
-        fallback_reasons: fallbackReasons,
+        customer_app_native_authoritative: true,
+        hub_operational_dependency: false,
+        hub_fallback_row_count: 0,
+        fallback_reasons: [],
+        hub_historical_context_requested: includeHubHistoricalContext,
+        hub_historical_context_row_count: historicalHubRows.length,
       },
       native_task_reconciliation: {
         stale_nonterminal_tasks_suppressed: suppressedNativeStaleRows.length,
@@ -1342,10 +1338,8 @@ export default async function handler(req: Request) {
         action_window_days: NATIVE_DELIVERY_TASK_ACTION_WINDOW_DAYS,
       },
       warnings: [
-        hubWarning,
+        includeHubHistoricalContext ? hubWarning : null,
         nativeData.native_read_failure_count > 0 ? 'native_delivery_source_read_partial' : null,
-        staleHubFallbackDetected ? 'hub_fallback_stale_date_detected' : null,
-        suppressedHubRows.length > 0 ? 'native_first_hub_fallback_rows_suppressed_or_contextualized' : null,
         suppressedNativeStaleRows.length > 0 ? 'stale_native_fulfillment_task_excluded_from_active_route' : null,
       ].filter(Boolean),
     });

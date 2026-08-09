@@ -508,8 +508,6 @@ export default function Calendar() {
   const summary = data?.summary || {};
   const dates = data?.dates || [];
   const warnings = Array.isArray(data?.warnings) ? data.warnings.filter(Boolean) : [];
-  const isNativeFallback = data?.source === 'customer_app_native_calendar_fallback'
-    || data?.data_sources?.hub_available === false;
   const hasResults = dates.length > 0;
   const hasCompliance = Number(summary.compliance_items || 0) > 0 || dates.some(group => Number(group.counts?.compliance || 0) > 0) || typeFilter === 'compliance';
   const showError = isError && !data && !isFetching;
@@ -688,7 +686,7 @@ export default function Calendar() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">
-              {isNativeFallback ? 'Native Customer App calendar fallback' : 'Source Calendar view'}
+              Customer App calendar
             </p>
             <p className="text-[10px] text-muted-foreground">Read-only schedule visibility. Use the month controls to move the calendar; event, production, delivery, compliance, and order actions are not available here.</p>
             <p className="text-[10px] font-semibold text-primary mt-1">{formatMonthLabel(visibleDateFrom, visibleDateTo)}</p>

@@ -113,6 +113,7 @@ export default async function handler(req: Request) {
     const orderNumber = normalizeText(body.order_number);
     const stripeSubscriptionId = normalizeText(body.stripe_subscription_id);
     const customerAppOrderId = normalizeText(body.customer_app_order_id);
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
     const fulfillmentNumber = normalizeFulfillmentNumber(body.fulfillment_number);
     const limit = normalizeLimit(body.limit);
 
@@ -143,6 +144,18 @@ export default async function handler(req: Request) {
       });
     }
 
+    if (!includeHubHistoricalContext) {
+      return Response.json({
+        success: true,
+        matched_by: null,
+        source: 'customer_app_native',
+        count: 0,
+        tasks: [],
+        hub_operational_dependency: false,
+        hub_historical_context_requested: false,
+      });
+    }
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       return Response.json({
         success: true,
@@ -151,6 +164,8 @@ export default async function handler(req: Request) {
         count: 0,
         tasks: [],
         warning: 'legacy_source_unavailable',
+        hub_operational_dependency: false,
+        hub_historical_context_requested: true,
       });
     }
 
@@ -198,6 +213,9 @@ export default async function handler(req: Request) {
       matched_by: hubData.matched_by || null,
       count: tasks.length,
       tasks,
+      source: 'hub_historical_context',
+      hub_operational_dependency: false,
+      hub_historical_context_requested: true,
     });
   } catch (error) {
     console.error('[getAdminFulfillmentTaskDetails] Error:', error.message);

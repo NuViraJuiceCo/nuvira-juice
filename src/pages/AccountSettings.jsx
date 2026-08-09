@@ -73,7 +73,6 @@ export default function AccountSettings() {
         });
       }
       await base44.auth.updateMe({ first_name: normalizedFirstName, last_name: normalizedLastName, phone, address: addrString, birthday });
-      await base44.functions.invoke('syncUserToHub', { email: user?.email, first_name: normalizedFirstName, last_name: normalizedLastName, phone, address: addrString, birthday });
       setSaveSuccess(true);
       await refreshUser();
       setTimeout(() => { setSaveSuccess(false); }, 1500);

@@ -409,24 +409,38 @@ async function loadNativeOpsAlerts(base44, filters, limit) {
   };
 }
 
-function nativeFallbackResponse({ nativeAlerts, reason, hubStatus = null, reviewQueue = null }) {
+function nativeFallbackResponse({
+  nativeAlerts,
+  reason = null,
+  hubStatus = null,
+  reviewQueue = null,
+  hubHistoricalContextRequested = false,
+  hubHistoricalContextAvailable = false,
+  hubHistoricalContextAlertCount = 0,
+}) {
   return Response.json({
     success: true,
-    source: 'customer_app_native_ops_alerts_fallback',
+    source: 'customer_app_native_ops_alerts_authoritative',
     summary: sanitizeSummary(nativeAlerts.summary),
     count: nativeAlerts.alerts.length,
     truncated: nativeAlerts.truncated === true,
     alerts: nativeAlerts.alerts,
     review_queue: reviewQueue,
-    warnings: [
-      hubStatus ? `hub_ops_alerts_unavailable:${hubStatus}` : `hub_ops_alerts_unavailable:${reason}`,
-      'native_read_only_fallback',
-    ],
+    warnings: [hubHistoricalContextRequested && reason
+      ? (hubStatus ? `hub_ops_alerts_historical_context_unavailable:${hubStatus}` : `hub_ops_alerts_historical_context_unavailable:${reason}`)
+      : null].filter(Boolean),
     data_sources: {
-      hub_available: false,
+      hub_available: hubHistoricalContextAvailable,
       native_available: true,
       native_read_only: true,
+      customer_app_native_authoritative: true,
+      hub_operational_dependency: false,
+      hub_historical_context_requested: hubHistoricalContextRequested,
+      hub_historical_context_available: hubHistoricalContextAvailable,
+      hub_historical_context_alert_count: hubHistoricalContextAlertCount,
     },
+    customer_app_native_authoritative: true,
+    hub_operational_dependency: false,
     writes_performed: false,
     provider_calls_performed: false,
     notifications_sent: false,
@@ -461,6 +475,7 @@ export default async function handler(req: Request) {
     const includeReviewQueueOnly = body.include_review_queue_only === true;
     const includeLegacyReviewQueue = body.include_legacy_review_queue === true;
     const includeInternalTestReviewQueue = body.include_internal_test_review_queue === true;
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
     let limit;
     let reviewLimit = DEFAULT_REVIEW_LIMIT;
     let reviewStatus = 'open';
@@ -523,13 +538,18 @@ export default async function handler(req: Request) {
       includeLegacy: includeLegacyReviewQueue,
       includeInternalTest: includeInternalTestReviewQueue,
     }) : null;
+    const nativeAlerts = await loadNativeAlerts();
+
+    if (!includeHubHistoricalContext) {
+      return nativeFallbackResponse({ nativeAlerts, reviewQueue });
+    }
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      const nativeAlerts = await loadNativeAlerts();
       return nativeFallbackResponse({
         nativeAlerts,
         reason: 'missing_config',
         reviewQueue,
+        hubHistoricalContextRequested: true,
       });
     }
 
@@ -552,48 +572,40 @@ export default async function handler(req: Request) {
       });
     } catch (error) {
       console.warn('[getAdminOpsAlertsSummary] Hub fetch failed; returning native fallback:', error.message);
-      const nativeAlerts = await loadNativeAlerts();
       return nativeFallbackResponse({
         nativeAlerts,
         reason: 'fetch_failed',
         reviewQueue,
+        hubHistoricalContextRequested: true,
       });
     }
 
     if (!hubResponse.ok) {
-      const nativeAlerts = await loadNativeAlerts();
       return nativeFallbackResponse({
         nativeAlerts,
         reason: 'non_ok',
         hubStatus: hubResponse.status,
         reviewQueue,
+        hubHistoricalContextRequested: true,
       });
     }
 
     const hubData = await hubResponse.json().catch(() => null);
     if (!hubData || hubData.success !== true || !Array.isArray(hubData.alerts)) {
-      const nativeAlerts = await loadNativeAlerts();
       return nativeFallbackResponse({
         nativeAlerts,
         reason: 'malformed_response',
         reviewQueue,
+        hubHistoricalContextRequested: true,
       });
     }
 
-    const sanitizedAlerts = hubData.alerts.map(sanitizeAlert).slice(0, limit);
-    const truncated = hubData.truncated === true || sanitizedAlerts.length < hubData.alerts.length;
-
-    return Response.json({
-      success: true,
-      summary: sanitizeSummary(hubData.summary),
-      count: sanitizedAlerts.length,
-      truncated,
-      alerts: sanitizedAlerts,
-      review_queue: reviewQueue,
-      writes_performed: false,
-      provider_calls_performed: false,
-      notifications_sent: false,
-      hub_mutation_performed: false,
+    return nativeFallbackResponse({
+      nativeAlerts,
+      reviewQueue,
+      hubHistoricalContextRequested: true,
+      hubHistoricalContextAvailable: true,
+      hubHistoricalContextAlertCount: hubData.alerts.length,
     });
   } catch (error) {
     console.error('[getAdminOpsAlertsSummary] Error:', error.message);
