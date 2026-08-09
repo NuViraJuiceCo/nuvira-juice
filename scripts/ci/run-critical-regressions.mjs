@@ -62,6 +62,7 @@ const harnesses = [
   'scripts/migration/run-g97-native-cutover-monitor-tests.mjs',
   'scripts/migration/run-g98-native-compliance-document-tests.mjs',
   'scripts/migration/run-g99-compliance-document-upload-tests.mjs',
+  'scripts/migration/run-g100-customer-order-journey-tracker-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

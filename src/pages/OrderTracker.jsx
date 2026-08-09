@@ -4,9 +4,10 @@ import { base44 } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, Clock3, ChevronDown, CircleCheckBig, Sparkles } from 'lucide-react';
 import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
+import { buildCustomerJourneyTimeline, getCustomerOrderJourney } from '@/lib/customer-order-journey';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 
@@ -50,24 +51,11 @@ function formatDeliveredAt(deliveredAt, fallbackDateStr) {
   return formatLocalDate(deliveredAt || fallbackDateStr) || 'Delivered';
 }
 
-const DELIVERY_STAGES = [
-  { key: 'order_received', label: 'Order Received', desc: "We've received your order" },
-  { key: 'scheduled_for_juicing', label: 'Scheduled for Juicing', desc: 'Your juice is scheduled for our next fresh batch' },
-  { key: 'in_production', label: 'In Production', desc: "We're currently preparing your order" },
-  { key: 'bottled_packed', label: 'Bottled & Packed', desc: 'Your juice has been bottled and packed' },
-  { key: 'out_for_delivery', label: 'Out for Delivery', desc: 'Your driver is on the way' },
-  { key: 'arriving_soon', label: 'Arriving Soon', desc: 'Your order is almost there' },
-  { key: 'delivered', label: 'Delivered', desc: 'Your juice has been delivered' },
-];
-
-const PICKUP_STAGES = [
-  { key: 'order_received', label: 'Order Received', desc: "We've received your order" },
-  { key: 'scheduled_for_juicing', label: 'Scheduled for Juicing', desc: 'Your juice is scheduled for our next fresh batch' },
-  { key: 'in_production', label: 'In Production', desc: "We're currently preparing your order" },
-  { key: 'bottled_packed', label: 'Bottled & Packed', desc: 'Your juice has been bottled and packed' },
-  { key: 'ready_for_pickup', label: 'Ready for Pickup', desc: 'Your order is ready for pickup' },
-  { key: 'picked_up', label: 'Picked Up', desc: 'Your order has been picked up' },
-];
+function formatStatusTimestamp(value) {
+  const date = parseLocalDate(value);
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return format(date, 'MMM d · h:mm a');
+}
 
 export default function OrderTracker() {
   const rawParam = window.location.pathname.split('/').pop();
@@ -101,20 +89,23 @@ export default function OrderTracker() {
 
   const hasLookupKey = !!(lookupPayload.order_number || lookupPayload.order_id || lookupPayload.stripe_checkout_session_id || lookupPayload.stripe_payment_intent_id);
 
-  const { data: detail, isLoading, isError, refetch } = useQuery({
+  const { data: detail, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['order-detail', rawParam, sessionId, paymentIntentId, user?.email],
     queryFn: async () => {
       const res = await base44.functions.invoke('getCustomerOrderDetail', lookupPayload);
       return res.data;
     },
     enabled: !!user?.email && hasLookupKey,
-    staleTime: 60 * 1000,  // 1 min — order status doesn't change faster than syncHubDeliveryStatuses (30 min)
-    refetchInterval: (data) => {
-      // Only poll during post_checkout sync window (waiting for webhook), stop once found
-      if (source === 'post_checkout' && data && !data.found) return 5000;
+    staleTime: 30 * 1000,
+    refetchInterval: (query) => {
+      const currentDetail = query.state.data;
+      if (source === 'post_checkout' && currentDetail && !currentDetail.found) return 5000;
+      if (currentDetail?.found && !currentDetail?.is_terminal) return 45000;
       return false;
     },
-    refetchIntervalInBackground: false, // stop polling when tab is inactive
+    refetchIntervalInBackground: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     retry: 1,
   });
 
@@ -132,6 +123,17 @@ export default function OrderTracker() {
   const order = detail?.order;
   const hubOrder = detail?.hub_order;
   const deliveryStatus = detail?.delivery_status;
+  const currentStatus = deliveryStatus?.status || order?.status || hubOrder?.status || hubOrder?.production_status || 'order_received';
+  const trackerFulfillmentType = order?.fulfillment_type === 'pickup'
+    || hubOrder?.fulfillment_method === 'pickup'
+    || ['ready_for_pickup', 'picked_up'].includes(currentStatus)
+    ? 'pickup'
+    : 'delivery';
+  const journey = getCustomerOrderJourney({
+    status: currentStatus,
+    fulfillmentType: trackerFulfillmentType,
+    fallbackLabel: detail?.customer_visible_status,
+  });
 
   // Resolve customer name
   const resolveCustomerName = () => {
@@ -142,7 +144,8 @@ export default function OrderTracker() {
     return order?.customer_email || hubOrder?.customer_email || 'Customer';
   };
 
-  const isOnRoute = ['out_for_delivery', 'arriving_soon'].includes(order?.status) && order?.fulfillment_type === 'delivery';
+  const isOnRoute = ['out_for_delivery', 'arriving_soon'].includes(journey.normalizedStatus)
+    && trackerFulfillmentType === 'delivery';
 
   const { data: etaData } = useQuery({
     queryKey: ['delivery-eta', order?.id],
@@ -253,11 +256,9 @@ export default function OrderTracker() {
   }
 
   // ── Terminal / cancelled / refunded status views ───────────────────────────
-  const currentStatus = order?.status || hubOrder?.status || hubOrder?.production_status || 'unknown';
-
-  if (['cancelled', 'refunded', 'failed'].includes(currentStatus)) {
-    const isCancelled = currentStatus === 'cancelled';
-    const isRefunded = currentStatus === 'refunded';
+  if (['cancelled', 'refunded', 'failed'].includes(journey.normalizedStatus)) {
+    const isCancelled = journey.normalizedStatus === 'cancelled';
+    const isRefunded = journey.normalizedStatus === 'refunded';
     const displayNum = order?.order_number || hubOrder?.shopify_order_number || orderNumberParam || rawParam;
 
     return (
@@ -324,9 +325,7 @@ export default function OrderTracker() {
   }
 
   // ── Normal order detail view ───────────────────────────────────────────────
-  const isPickupOrder = order?.fulfillment_type === 'pickup'
-    || hubOrder?.fulfillment_method === 'pickup'
-    || ['ready_for_pickup', 'picked_up'].includes(currentStatus);
+  const isPickupOrder = trackerFulfillmentType === 'pickup';
   const displayOrder = order || {
     order_number: hubOrder?.shopify_order_number || orderNumberParam,
     status: hubOrder?.status || hubOrder?.production_status || 'order_received',
@@ -342,81 +341,137 @@ export default function OrderTracker() {
     delivery_window_label: hubOrder?.requested_time_window || null,
   };
 
-  const stages = displayOrder.fulfillment_type === 'pickup' ? PICKUP_STAGES : DELIVERY_STAGES;
-  const currentIndex = stages.findIndex(s => s.key === displayOrder.status);
+  const stages = journey.stages;
+  const currentIndex = journey.currentIndex;
   const isDelivery = displayOrder.fulfillment_type !== 'pickup';
   const displayNum = displayOrder.order_number || hubOrder?.shopify_order_number || orderNumberParam || rawParam;
   const deliveredTimelineTimestamp = [...(detail?.status_timeline || [])]
     .reverse()
     .find(entry => entry?.status === 'delivered')?.timestamp;
+  const timelineByStage = buildCustomerJourneyTimeline(detail?.status_timeline, displayOrder.fulfillment_type);
+  const lastUpdatedLabel = dataUpdatedAt
+    ? new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(dataUpdatedAt))
+    : null;
+  const fulfillmentMomentLabel = journey.normalizedStatus === 'delivered'
+    ? formatDeliveredAt(
+        deliveryStatus?.delivered_at || order?.delivered_at || displayOrder.delivered_at || deliveredTimelineTimestamp,
+        order?.assigned_delivery_date || displayOrder.estimated_delivery_date,
+      )
+    : journey.normalizedStatus === 'picked_up'
+      ? 'Pickup complete'
+      : isOnRoute && etaData?.eta_window
+        ? etaData.eta_window
+        : (displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)
+          ? formatLocalDate(displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)
+          : displayOrder.delivery_window_label || 'Next fresh batch';
+  const fulfillmentMomentLabelTitle = journey.normalizedStatus === 'delivered'
+    ? 'Delivered on'
+    : journey.normalizedStatus === 'picked_up'
+      ? 'Pickup status'
+      : isOnRoute && etaData?.eta_window
+        ? 'Estimated arrival'
+        : isDelivery ? 'Expected delivery' : 'Expected pickup';
 
   return (
-    <div className="pb-8 min-h-screen bg-background">
+    <div className="pb-10 min-h-screen bg-background">
       <BrowserAppPrompt pageRoute={`/order-tracker/${displayNum || ''}`} />
-      {/* Header — G40D: safe-area-inset-top so back button never sits under iOS status bar */}
-      <div className="bg-nuvira-gradient px-4 pb-6" style={{ paddingTop: SAFE_TOP_PADDING }}>
-        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4 mt-3">
-          <ArrowLeft className="w-4 h-4 text-white" />
-        </button>
-        <p className="text-white/70 text-xs font-medium uppercase tracking-wider">Order #{displayNum} • {resolveCustomerName()}</p>
-        <h1 className="font-heading text-2xl font-bold text-white mt-0.5">
-          {currentStatus === 'delivered' ? 'Order Delivered' : currentStatus === 'picked_up' ? 'Order Picked Up' : 'Track Your Order'}
-        </h1>
-
-        {/* ETA / Date Card */}
-        <div className="mt-4 bg-white/15 rounded-2xl p-4 flex items-start gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-            {isDelivery ? <Truck className="w-5 h-5 text-white" /> : <Package className="w-5 h-5 text-white" />}
-          </div>
-          <div className="flex-1">
-            <p className="text-primary-foreground/70 text-xs">
-              {currentStatus === 'delivered' ? 'Delivered On'
-                : currentStatus === 'picked_up' ? 'Pickup Status'
-                : isOnRoute && etaData?.eta_window ? 'Estimated Arrival Window'
-                : isDelivery ? 'Estimated Delivery'
-                : 'Estimated Pickup'}
-            </p>
-            <p className="font-heading text-xl font-bold text-white">
-              {currentStatus === 'delivered'
-              // Priority: operational delivery detail -> authoritative customer order -> schedule fallback.
-              // The delivery detail can be absent when the Customer App Order itself was updated first.
-              ? formatDeliveredAt(
-                  deliveryStatus?.delivered_at || order?.delivered_at || displayOrder.delivered_at || deliveredTimelineTimestamp,
-                  order?.assigned_delivery_date || displayOrder.estimated_delivery_date,
-                )
-                : currentStatus === 'picked_up'
-                  ? 'Pickup complete'
-                : isOnRoute && etaData?.eta_window
-                  ? etaData.eta_window
-                  : (displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)
-                    ? formatLocalDate(displayOrder.assigned_delivery_date || displayOrder.estimated_delivery_date)
-                    : displayOrder.delivery_window_label
-                      ? displayOrder.delivery_window_label
-                      : 'Next fresh batch'}
-            </p>
-            {isOnRoute && etaData?.message && (
-              <div className="flex items-center gap-1.5 mt-1.5">
-                <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse shrink-0" />
-                <p className="text-white/80 text-xs font-medium">{etaData.message}</p>
-              </div>
-            )}
+      <div className="bg-nuvira-gradient px-4 pb-10" style={{ paddingTop: SAFE_TOP_PADDING }}>
+        <div className="flex items-center justify-between mb-7 mt-3">
+          <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white/15 border border-white/15 rounded-full flex items-center justify-center active:scale-95 transition-transform" aria-label="Back">
+            <ArrowLeft className="w-4 h-4 text-white" />
+          </button>
+          <div className="text-right">
+            <p className="text-white/60 text-[10px] uppercase tracking-[0.18em]">Order #{displayNum}</p>
+            <p className="text-white/85 text-xs font-medium">{resolveCustomerName()}</p>
           </div>
         </div>
 
-        {/* Delivery proof for delivered orders */}
-        {currentStatus === 'delivered' && deliveryStatus?.delivery_drop_location && (
-          <div className="mt-3 bg-white/10 rounded-xl px-4 py-2.5">
-            <p className="text-white/70 text-xs">Left at: <span className="text-white font-medium">{deliveryStatus.delivery_drop_location}</span></p>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+              <span className={`w-1.5 h-1.5 rounded-full ${journey.isTerminal ? 'bg-white' : 'bg-lime-300 animate-pulse'}`} />
+              {journey.isTerminal ? 'Complete' : 'Live status'}
+            </span>
+            {lastUpdatedLabel && <span className="text-[10px] text-white/55">Updated {lastUpdatedLabel}</span>}
           </div>
-        )}
+          <h1 className="font-heading text-[2rem] leading-tight font-bold text-white">{journey.statusLabel}</h1>
+          <p className="text-sm leading-relaxed text-white/75 mt-2 max-w-sm">{journey.statusDescription}</p>
+        </motion.div>
+
+        <div className="mt-6 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
+            {isDelivery ? <Truck className="w-5 h-5 text-white" /> : <Package className="w-5 h-5 text-white" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wider text-white/60">{fulfillmentMomentLabelTitle}</p>
+            <p className="font-heading text-lg font-bold text-white leading-snug">{fulfillmentMomentLabel}</p>
+            {displayOrder.delivery_window_label && !isOnRoute && !journey.isTerminal && (
+              <p className="text-xs text-white/65 mt-0.5">{displayOrder.delivery_window_label}</p>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Live Delivery Progress Card */}
+      <section className="mx-4 -mt-5 rounded-3xl border border-border/50 bg-card p-5 shadow-[0_18px_50px_rgba(9,56,36,0.10)]">
+        <div className="flex items-end justify-between gap-3 mb-5">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground font-bold">Freshness journey</p>
+            <p className="font-heading text-lg font-bold mt-0.5">
+              {currentIndex >= 0 ? `Step ${currentIndex + 1} of ${stages.length}` : 'Processing your order'}
+            </p>
+          </div>
+          <span className="text-xs font-bold text-primary">{journey.progressPercent}%</span>
+        </div>
+
+        <div className="relative px-2">
+          <div className="absolute left-5 right-5 top-3 h-1 rounded-full bg-secondary" />
+          <motion.div
+            className="absolute left-5 top-3 h-1 rounded-full bg-nuvira-gradient"
+            initial={{ width: 0 }}
+            animate={{ width: `calc((100% - 2.5rem) * ${journey.progressPercent / 100})` }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+          />
+          <div className="relative grid gap-1" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
+            {stages.map(stage => {
+              const isCurrent = stage.state === 'current';
+              const isComplete = stage.state === 'complete';
+              return (
+                <div key={stage.key} className="flex min-w-0 flex-col items-center text-center">
+                  <div className={`z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all ${
+                    isCurrent ? 'border-primary bg-primary text-primary-foreground ring-4 ring-primary/15'
+                      : isComplete ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card text-muted-foreground'
+                  }`}>
+                    {isComplete || (isCurrent && journey.isTerminal)
+                      ? <Check className="h-3.5 w-3.5" />
+                      : <span className={`h-1.5 w-1.5 rounded-full ${isCurrent ? 'bg-primary-foreground' : 'bg-muted-foreground/35'}`} />}
+                  </div>
+                  <p className={`mt-2 text-[9px] leading-tight font-semibold ${isCurrent ? 'text-primary' : isComplete ? 'text-foreground/75' : 'text-muted-foreground/65'}`}>{stage.label}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl bg-primary/[0.07] p-4 flex gap-3">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            {journey.isTerminal ? <CircleCheckBig className="w-4 h-4 text-primary" /> : <Sparkles className="w-4 h-4 text-primary" />}
+          </div>
+          <div>
+            <p className="text-xs font-bold text-primary uppercase tracking-wide">{journey.isTerminal ? 'Journey complete' : "What's happening now"}</p>
+            <p className="text-sm text-foreground/75 mt-1 leading-relaxed">{journey.statusDescription}</p>
+          </div>
+        </div>
+      </section>
+
       {isOnRoute && etaData?.on_route && (
-        <div className="mx-4 mt-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+        <section className="mx-4 mt-4 bg-emerald-50 border border-emerald-200 rounded-3xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0" />
-            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">Driver is on the way</p>
+            <div>
+              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">Driver is on the way</p>
+              {etaData?.message && <p className="text-xs text-emerald-700/75 mt-0.5">{etaData.message}</p>}
+            </div>
           </div>
           {etaData.stops_total > 1 && (
             <div className="mb-3">
@@ -446,86 +501,112 @@ export default function OrderTracker() {
             </div>
           </div>
           <p className="text-[10px] text-emerald-600/70 mt-2.5 text-center">ETA updates automatically · Driver location is private</p>
-        </div>
+        </section>
       )}
 
-      {/* Delivery proof photo */}
-      {currentStatus === 'delivered' && deliveryStatus?.delivery_photo_url && (
-        <div className="mx-4 mt-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-2">Delivery Photo</h2>
-          <div className="rounded-2xl overflow-hidden border border-border/40">
+      {journey.normalizedStatus === 'delivered' && (deliveryStatus?.delivery_photo_url || deliveryStatus?.delivery_drop_location) && (
+        <section className="mx-4 mt-4 rounded-3xl border border-border/50 bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-foreground/55">Delivery confirmation</h2>
+            <Check className="w-4 h-4 text-primary" />
+          </div>
+          {deliveryStatus?.delivery_photo_url && <div className="rounded-2xl overflow-hidden border border-border/40">
             <img src={deliveryStatus.delivery_photo_url} alt="Delivery proof" className="w-full object-cover max-h-56" />
-          </div>
-        </div>
+          </div>}
+          {deliveryStatus?.delivery_drop_location && (
+            <p className="mt-3 text-sm text-muted-foreground">Left at <span className="font-semibold text-foreground">{deliveryStatus.delivery_drop_location}</span></p>
+          )}
+        </section>
       )}
 
-      {/* Progress Tracker */}
-      <div className="mx-4 mt-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-4">Status Updates</h2>
-        <div className="space-y-0">
-          {stages.map((stage, index) => {
-            const isCompleted = index <= currentIndex;
-            const isCurrent = index === currentIndex;
-            return (
-              <motion.div
-                key={stage.key}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.06 }}
-                className="flex gap-4"
-              >
-                <div className="flex flex-col items-center">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border-2 transition-all ${
-                    isCurrent ? 'bg-nuvira-gradient border-transparent text-white ring-4 ring-primary/20'
-                    : isCompleted ? 'bg-nuvira-gradient border-transparent text-white'
-                    : 'bg-background border-border text-muted-foreground'
-                  }`}>
-                    {isCompleted ? <Check className="w-4 h-4" /> : <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />}
+      <div className="mx-4 mt-4 space-y-3">
+        <details className="group rounded-2xl border border-border/50 bg-card overflow-hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between p-4 active:bg-secondary/40">
+            <div className="flex items-center gap-3">
+              <Clock3 className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-sm font-semibold">Status history</p>
+                <p className="text-[11px] text-muted-foreground">See when each milestone was reached</p>
+              </div>
+            </div>
+            <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-border/40 px-4 py-2">
+            {stages.filter(stage => stage.state !== 'upcoming').map((stage, index, visibleStages) => {
+              const event = timelineByStage[stage.key];
+              const timestamp = formatStatusTimestamp(event?.timestamp);
+              return (
+                <div key={stage.key} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className={`mt-3 w-6 h-6 rounded-full flex items-center justify-center ${stage.state === 'current' ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
+                      {stage.state === 'complete' ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-current" />}
+                    </div>
+                    {index < visibleStages.length - 1 && <div className="w-px flex-1 bg-border min-h-6" />}
                   </div>
-                  {index < stages.length - 1 && (
-                    <div className={`w-0.5 h-12 transition-colors ${index < currentIndex ? 'bg-nuvira-gradient' : 'bg-border'}`} />
-                  )}
+                  <div className="py-3 flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-sm font-semibold">{stage.label}</p>
+                      <p className="text-[10px] text-muted-foreground shrink-0">{timestamp || (stage.state === 'current' ? 'Current' : 'Completed')}</p>
+                    </div>
+                    {(event?.message || stage.state === 'current') && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{event?.message || journey.statusDescription}</p>
+                    )}
+                  </div>
                 </div>
-                <div className="pb-10 pt-1.5">
-                  <p className={`text-sm font-semibold ${isCurrent ? 'text-primary' : isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}>{stage.label}</p>
-                  <p className={`text-xs mt-0.5 ${isCurrent ? 'text-foreground/70' : 'text-muted-foreground'}`}>{stage.desc}</p>
-                  {isCurrent && !detail?.is_terminal && (
-                    <span className="inline-block mt-1.5 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">In Progress</span>
-                  )}
-                  {isCurrent && detail?.is_terminal && currentStatus === 'delivered' && (
-                    <span className="inline-block mt-1.5 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">✓ Complete</span>
-                  )}
+              );
+            })}
+          </div>
+        </details>
+
+        <details className="group rounded-2xl border border-border/50 bg-card overflow-hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between p-4 active:bg-secondary/40">
+            <div className="flex items-center gap-3">
+              <Package className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-sm font-semibold">Order details</p>
+                <p className="text-[11px] text-muted-foreground">{displayOrder.items?.length || 0} items · ${(displayOrder.total || 0).toFixed(2)}</p>
+              </div>
+            </div>
+            <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-border/40 divide-y divide-border/40">
+            {displayOrder.items?.map((item, i) => (
+              <div key={i} className="flex items-center gap-3 p-4">
+                <div className="w-12 h-12 bg-secondary rounded-xl overflow-hidden shrink-0">
+                  {item.image_url
+                    ? <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                    : <div className="w-full h-full flex items-center justify-center text-xl">🍊</div>}
                 </div>
-              </motion.div>
-            );
-          })}
-        </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{item.title}</p>
+                  <p className="text-xs text-foreground/55">Qty: {item.quantity}</p>
+                </div>
+                <p className="text-sm font-bold">${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</p>
+              </div>
+            ))}
+            <div className="px-4 py-3 flex justify-between bg-secondary/25">
+              <p className="text-sm font-bold">Total</p>
+              <p className="text-sm font-bold">${(displayOrder.total || 0).toFixed(2)}</p>
+            </div>
+          </div>
+        </details>
       </div>
 
-      {/* Order Items */}
-      <div className="mx-4 mt-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-3">Your Items</h2>
-        <div className="bg-card rounded-2xl border border-border/40 overflow-hidden divide-y divide-border/40">
-          {displayOrder.items?.map((item, i) => (
-            <div key={i} className="flex items-center gap-3 p-4">
-              <div className="w-12 h-12 bg-secondary rounded-xl overflow-hidden shrink-0">
-                {item.image_url
-                  ? <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                  : <div className="w-full h-full flex items-center justify-center text-xl">🍊</div>}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate">{item.title}</p>
-                <p className="text-xs text-foreground/55">Qty: {item.quantity}</p>
-              </div>
-              <p className="text-sm font-bold">${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</p>
-            </div>
-          ))}
-          <div className="px-4 py-3 flex justify-between">
-            <p className="text-sm font-bold">Total</p>
-            <p className="text-sm font-bold">${(displayOrder.total || 0).toFixed(2)}</p>
+      {journey.isTerminal && !['cancelled', 'refunded', 'failed'].includes(journey.normalizedStatus) && (
+        <section className="mx-4 mt-4 rounded-3xl bg-primary/[0.07] p-5 text-center">
+          <CircleCheckBig className="w-8 h-8 text-primary mx-auto" />
+          <h2 className="font-heading text-lg font-bold mt-2">Thank you for choosing NuVira</h2>
+          <p className="text-xs text-muted-foreground mt-1">Return your NuVira bags and earn rewards toward a future order.</p>
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <button onClick={() => navigate('/return-reward')} className="rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground active:scale-95 transition-transform">Return + Reward</button>
+            <button onClick={() => navigate('/account/orders')} className="rounded-xl bg-card border border-border px-3 py-2.5 text-xs font-bold active:scale-95 transition-transform">View Orders</button>
           </div>
-        </div>
-      </div>
+        </section>
+      )}
+
+      <p className="mx-4 mt-6 text-center text-[11px] text-muted-foreground">
+        Need help? <a href="mailto:info@nuvirajuice.com" className="font-semibold text-primary">Contact NuVira Support</a>
+      </p>
     </div>
   );
 }
