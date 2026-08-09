@@ -7,6 +7,11 @@
       "number": 647,
       "merge_commit": "b36cfa71f849109a4846ebe4c824ec7fe8a06adc",
       "title": "Harden loyalty and customer operations"
+    },
+    {
+      "number": 655,
+      "merge_commit": "cef28666a1e56a73f1fa5d419a54700e985eed28",
+      "title": "Represent the internal main-branch sync performed during PR #655"
     }
   ],
   "allow_empty_included_prs_when_no_merge_commits": true
