@@ -28,6 +28,7 @@
       "schedule_mode": "recurring",
       "schedule_type": "simple",
       "repeat_unit": "weeks",
+      "repeat_interval": 1,
       "repeat_on_days": [1],
       "start_time": "14:30",
       "ends_type": "never"

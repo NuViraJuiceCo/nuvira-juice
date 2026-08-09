@@ -184,6 +184,7 @@ assert.match(gateway, /g97-customer-app-native-monitoring-20260808/);
 assert.match(config, /Customer App Compliance Expiry Review/);
 assert.match(config, /"gateway_action": "monitorComplianceExpiry"/);
 assert.match(config, /"repeat_unit": "weeks"/);
+assert.match(config, /"repeat_interval": 1/);
 assert.match(config, /"repeat_on_days": \[1\]/);
 assert.match(gateway, /automationArgs/);
 assert.equal(fs.existsSync(`${root}/base44/functions/getAdminOperationsDashboardSummary/handlers/monitorComplianceExpiry/entry.ts`), false);
