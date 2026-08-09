@@ -149,15 +149,20 @@ const complianceClient = {
     integrations: { Core: { SendEmail: async payload => { sentEmails.push(payload); return { success: true }; } } },
   },
 };
-const compliancePath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/monitorComplianceExpiry/entry.ts';
+const compliancePath = monitorPath;
 const compliance = loadHandler(compliancePath, complianceClient);
-const dryRun = await (await compliance.handler(new Request('https://example.test', { method: 'POST', body: '{}' }))).json();
+const complianceRequest = body => new Request('https://example.test', {
+  method: 'POST',
+  headers: { 'x-nuvira-admin-action': 'monitorComplianceExpiry' },
+  body: JSON.stringify(body),
+});
+const dryRun = await (await compliance.handler(complianceRequest({}))).json();
 assert.equal(dryRun.mode, 'dry_run');
 assert.equal(dryRun.expired_count, 1);
 assert.equal(dryRun.due_soon_count, 1);
 assert.equal(sentEmails.length, 0);
 
-const liveResult = await (await compliance.handler(new Request('https://example.test', { method: 'POST', body: JSON.stringify({ mode: 'live' }) }))).json();
+const liveResult = await (await compliance.handler(complianceRequest({ mode: 'live' }))).json();
 assert.equal(liveResult.sent, true);
 assert.equal(liveResult.internal_admin_notifications_sent, 1);
 assert.equal(sentEmails.length, 1);
@@ -168,17 +173,20 @@ const deniedCompliance = loadHandler(compliancePath, {
   ...complianceClient,
   auth: { me: async () => ({ role: 'user', email: 'customer@example.test' }) },
 });
-assert.equal((await deniedCompliance.handler(new Request('https://example.test', { method: 'POST', body: '{}' }))).status, 403);
+assert.equal((await deniedCompliance.handler(complianceRequest({}))).status, 403);
 
 const gateway = read('base44/functions/getAdminOperationsDashboardSummary/entry.ts');
 const config = read('base44/functions/getAdminOperationsDashboardSummary/function.jsonc');
 assert.match(gateway, /monitorComplianceExpiry/);
+assert.match(gateway, /"monitorComplianceExpiry": handler61/);
+assert.match(gateway, /x-nuvira-admin-action/);
 assert.match(gateway, /g97-customer-app-native-monitoring-20260808/);
 assert.match(config, /Customer App Compliance Expiry Review/);
 assert.match(config, /"gateway_action": "monitorComplianceExpiry"/);
 assert.match(config, /"repeat_unit": "weeks"/);
 assert.match(config, /"repeat_on_days": \[1\]/);
 assert.match(gateway, /automationArgs/);
+assert.equal(fs.existsSync(`${root}/base44/functions/getAdminOperationsDashboardSummary/handlers/monitorComplianceExpiry/entry.ts`), false);
 assert.doesNotMatch(read(monitorPath), /HUB_API_URL|CUSTOMER_APP_SYNC_SECRET|no_hub_sync_log|hub_sync_status/);
 
 console.log(JSON.stringify({

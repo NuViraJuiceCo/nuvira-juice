@@ -67,7 +67,6 @@ import handler60 from './handlers/previewNativeSafeSyncOrderUpdate/entry.ts';
 import handler61 from './handlers/monitorPostPaymentChain/entry.ts';
 import handler62 from './handlers/executeNativeSafeSyncOrderUpdate/entry.ts';
 import handler63 from './handlers/notifyOrderProcessed/entry.ts';
-import handler64 from './handlers/monitorComplianceExpiry/entry.ts';
 
 const HANDLERS = {
   "appendAdminHubOrderNote": handler0,
@@ -134,7 +133,7 @@ const HANDLERS = {
   "monitorPostPaymentChain": handler61,
   "executeNativeSafeSyncOrderUpdate": handler62,
   "notifyOrderProcessed": handler63,
-  "monitorComplianceExpiry": handler64,
+  "monitorComplianceExpiry": handler61,
 };
 
 const DEFAULT_ACTION = 'getAdminOperationsDashboardSummary';
@@ -196,9 +195,11 @@ Deno.serve(async (req) => {
       ? actionBody.payload
       : Object.fromEntries(Object.entries(actionBody).filter(([key]) => key !== 'gateway_action')))
     : actionBody;
+  const forwardedHeaders = new Headers(req.headers);
+  forwardedHeaders.set('x-nuvira-admin-action', requestedAction);
   const forwarded = new Request(req.url, {
     method: 'POST',
-    headers: req.headers,
+    headers: forwardedHeaders,
     body: JSON.stringify(payload),
   });
   const response = await handler(forwarded);
