@@ -48,6 +48,19 @@ export default async (req: Request) => {
       console.log(`[syncSubWithFulfillments] Caller: internal service (x-internal-secret verified)`);
     }
 
+    if (Deno.env.get('ENABLE_LEGACY_HUB_SUBSCRIPTION_BRIDGE') !== 'true') {
+      return Response.json({
+        success: false,
+        skipped: true,
+        retired: true,
+        error_code: 'NATIVE_SUBSCRIPTION_FULFILLMENT_NOT_READY',
+        error: 'Subscription fulfillment remains unavailable while the Customer App native scheduler is incomplete.',
+        source: 'customer_app_native_authoritative',
+        hub_operational_dependency: false,
+        external_calls_performed: false,
+      }, { status: 409 });
+    }
+
     const { subscription_id, customer_email } = body;
 
     if (!subscription_id || !customer_email) {

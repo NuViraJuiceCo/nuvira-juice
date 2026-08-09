@@ -310,6 +310,22 @@ Deno.serve(async (req) => {
       return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
     }
 
+    if (Deno.env.get('ENABLE_LEGACY_HUB_DELIVERY_BRIDGE') !== 'true') {
+      return Response.json({
+        success: true,
+        skipped: true,
+        retired: true,
+        dry_run: body.dry_run === true || body.mode === 'dry_run',
+        active_orders: 0,
+        updated: 0,
+        updated_fulfillment_tasks: 0,
+        reason: 'legacy_hub_delivery_bridge_retired',
+        source: 'customer_app_native_delivery_authoritative',
+        hub_operational_dependency: false,
+        external_calls_performed: false,
+      });
+    }
+
     const dryRun = body.dry_run === true || body.mode === 'dry_run';
     const syncGateEnabled = Deno.env.get('ENABLE_HUB_DELIVERY_STATUS_SYNC') === 'true';
 

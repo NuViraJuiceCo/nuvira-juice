@@ -79,32 +79,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Sync to hub
-    try {
-      const hubApiUrl = Deno.env.get('HUB_API_URL');
-      const hubSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
-
-      if (hubApiUrl && hubSecret) {
-        await fetch(`${hubApiUrl}/api/customer-app-sync/reward-claims`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${hubSecret}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            customer_email: authenticatedEmail,
-            reward_id,
-            reward_title: reward.title,
-            reward_type: reward.reward_type,
-            points_required: requiredPoints,
-            claimed_at: new Date().toISOString(),
-          }),
-        }).catch(err => console.warn('Hub sync failed:', err.message));
-      }
-    } catch (syncErr) {
-      console.warn('Failed to sync to hub:', syncErr.message);
-    }
-
     return Response.json({
       success: true,
       reward_id,
@@ -112,6 +86,8 @@ Deno.serve(async (req) => {
       reward_type: reward.reward_type,
       points_required: requiredPoints,
       already_selected: alreadyClaimed,
+      source: 'customer_app_native',
+      hub_operational_dependency: false,
     });
   } catch (error) {
     console.error('Claim reward error:', error);

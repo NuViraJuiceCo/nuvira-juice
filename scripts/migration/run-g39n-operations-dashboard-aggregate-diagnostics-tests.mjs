@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
-const functionPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts');
+const functionPath = path.join(
+  repoRoot,
+  'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminOperationsDashboardSummary/entry.ts',
+);
 const CHICAGO_TZ = 'America/Chicago';
 
 function todayChicagoDate() {
@@ -35,6 +38,10 @@ const PRIOR_DATE = addDays(DATE, -1);
 function loadHandler({ env = {}, hubData = hubResponse(), hubStatus = 200, fetchError = null } = {}) {
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
+  source = source.replace(
+    'export default async function handler(req: Request)',
+    'globalThis.__handler = async function handler(req)',
+  );
 
   const context = vm.createContext({
     console,
@@ -242,7 +249,13 @@ async function invoke({ store = makeStore(), functionResponses = null, hubData =
   const req = {
     method: 'POST',
     __base44: base44,
-    json: async () => ({ preset: 'custom', date_from: DATE, date_to: DATE, ...body }),
+    json: async () => ({
+      preset: 'custom',
+      date_from: DATE,
+      date_to: DATE,
+      include_hub_historical_context: true,
+      ...body,
+    }),
   };
   const response = await handler(req);
   const data = await response.json();
@@ -255,10 +268,10 @@ function diagnostic(data, name) {
 
 function assertSafetyMetadata(data) {
   assert.equal(data.operations_dashboard_diagnostics_enabled, true);
-  assert.equal(data.native_first_enabled, false);
-  assert.equal(data.hub_primary_enabled, true);
-  assert.equal(data.hub_fallback_active, true);
-  assert.equal(data.dashboard_source_mode, 'current_behavior_with_diagnostics');
+  assert.equal(data.native_first_enabled, true);
+  assert.equal(data.hub_primary_enabled, false);
+  assert.equal(data.hub_fallback_active, false);
+  assert.equal(data.dashboard_source_mode, 'customer_app_native_authoritative');
   assert.equal(data.writes_performed, false);
   assert.equal(data.provider_call_impact, false);
   assert.equal(data.notifications_sent, false);
@@ -282,7 +295,7 @@ test('matching native/Hub aggregate returns no mismatch', async () => {
 test('native lower than Hub returns native_count_lower_than_hub', async () => {
   const { data } = await invoke({ hubData: hubResponse({ summary: fullSummary({ orders: { total: 2 } }) }) });
   const total = diagnostic(data, 'orders.total');
-  assert.equal(total.displayed_value, 2);
+  assert.equal(total.displayed_value, 1);
   assert.equal(total.mismatch_detected, true);
   assert.equal(total.mismatch_category, 'native_count_lower_than_hub');
   assert.equal(data.aggregate_mismatch_categories.native_count_lower_than_hub >= 1, true);
@@ -305,27 +318,27 @@ test('date bucket mismatch classified', async () => {
   assert.equal(total.mismatch_category, 'date_window_mismatch');
 });
 
-test('payment/refund aggregate stays Hub/payment source-of-truth', async () => {
+test('payment aggregate uses the Customer App payment projection', async () => {
   const store = makeStore({ Order: [nativeOrder({ payment_status: 'pending', payment_captured: false })] });
   const { data } = await invoke({ store, hubData: hubResponse({ summary: fullSummary({ orders: { paid: 1 } }) }) });
   const paid = diagnostic(data, 'orders.paid');
-  assert.equal(paid.source_of_truth, 'payment_provider_hub');
-  assert.equal(paid.native_first_ready, false);
+  assert.equal(paid.source_of_truth, 'customer_app_payment_projection');
+  assert.equal(paid.native_first_ready, true);
   assert.equal(paid.mismatch_category, 'payment_refund_semantic_mismatch');
 });
 
-test('subscription aggregate stays Hub source-of-truth', async () => {
+test('subscription aggregate uses Customer App order classification', async () => {
   const { data } = await invoke({ hubData: hubResponse({ summary: fullSummary({ source_mix: { subscription: 1 } }) }) });
   const subscription = diagnostic(data, 'source_mix.subscription');
-  assert.equal(subscription.source_of_truth, 'subscription_hub');
-  assert.equal(subscription.native_first_ready, false);
+  assert.equal(subscription.source_of_truth, 'customer_app_native');
+  assert.equal(subscription.native_first_ready, true);
   assert.equal(subscription.mismatch_category, 'subscription_multi_delivery_mismatch');
 });
 
 test('delivery aggregate references native-first route summary readiness', async () => {
   const { data } = await invoke();
   const delivery = diagnostic(data, 'delivery.today_stops');
-  assert.equal(delivery.source_of_truth, 'mixed');
+  assert.equal(delivery.source_of_truth, 'customer_app_native');
   assert.equal(delivery.native_first_ready, true);
   assert.match(delivery.recommendation, /g39d/i);
 });
@@ -505,12 +518,12 @@ test('old failed command logs do not inflate current operations health', async (
 test('production planning aggregate references native-first planning readiness', async () => {
   const { data } = await invoke();
   const production = diagnostic(data, 'production.batch_count');
-  assert.equal(production.source_of_truth, 'mixed');
+  assert.equal(production.source_of_truth, 'customer_app_native');
   assert.equal(production.native_first_ready, true);
   assert.match(production.recommendation, /g39f/i);
 });
 
-test('native production overlay fills dashboard when Hub omits current native batches', async () => {
+test('native production remains authoritative when Hub omits current native batches', async () => {
   const { data } = await invoke({
     store: makeStore({
       ProductionBatch: [
@@ -523,15 +536,13 @@ test('native production overlay fills dashboard when Hub omits current native ba
   });
   assert.equal(data.summary.production.batch_count, 3);
   assert.equal(data.summary.production.planned_units, 170);
-  assert.equal(data.native_production_overlay.applied, true);
-  assert.ok(data.warnings.includes('native_production_queue_overlay_applied'));
   const production = diagnostic(data, 'production.planned_units');
   assert.equal(production.displayed_value, 170);
   assert.equal(production.hub_value, 0);
   assert.equal(production.native_value, 170);
 });
 
-test('native production overlay replaces stale lower Hub production counts', async () => {
+test('native production ignores stale lower Hub production counts', async () => {
   const { data } = await invoke({
     store: makeStore({
       ProductionBatch: [
@@ -546,9 +557,7 @@ test('native production overlay replaces stale lower Hub production counts', asy
   });
   assert.equal(data.summary.production.batch_count, 5);
   assert.equal(data.summary.production.planned_units, 185);
-  assert.equal(data.native_production_overlay.applied, true);
-  assert.equal(data.native_production_overlay.reason, 'native_current_production_more_complete');
-  assert.ok(data.warnings.includes('native_production_queue_overlay_applied'));
+  assert.equal(data.customer_app_native_authoritative, true);
 });
 
 test('calendar aggregate references native-first calendar readiness', async () => {
@@ -561,13 +570,13 @@ test('calendar aggregate references native-first calendar readiness', async () =
   assert.match(calendar.recommendation, /g39h/i);
 });
 
-test('admin orders aggregate remains Hub-first/default because G39L had zero eligible rows', async () => {
+test('admin orders aggregate is Customer App authoritative', async () => {
   const { data } = await invoke();
   const total = diagnostic(data, 'orders.total');
-  assert.equal(data.native_first_enabled, false);
-  assert.equal(total.source_of_truth, 'hub');
-  assert.equal(total.native_first_ready, false);
-  assert.match(total.blocker, /g39l_zero_eligible/i);
+  assert.equal(data.native_first_enabled, true);
+  assert.equal(total.source_of_truth, 'customer_app_native');
+  assert.equal(total.native_first_ready, true);
+  assert.equal(total.blocker, null);
 });
 
 test('inventory/PO aggregate remains held', async () => {
@@ -607,7 +616,7 @@ test('food inventory rows are demand-based and do not inflate low-stock operatio
   assert.equal(data.summary.inventory.critical, 1);
 });
 
-test('merged inventory policy summary keeps operations dashboard aligned with inventory page', async () => {
+test('native inventory policy keeps operations dashboard aligned with tracked non-food rows', async () => {
   const { data } = await invoke({
     hubData: hubResponse({ summary: fullSummary({ inventory: { low: 0, critical: 0, out_of_stock: 23 } }) }),
     functionResponses: {
@@ -630,12 +639,10 @@ test('merged inventory policy summary keeps operations dashboard aligned with in
     },
   });
   assert.equal(data.summary.inventory.low, 0);
-  assert.equal(data.summary.inventory.critical, 0);
-  assert.equal(data.summary.inventory.out_of_stock, 6);
-  assert.equal(data.summary.inventory.demand_based_food, 20);
-  assert.equal(data.summary.inventory.stock_tracked, 15);
-  assert.equal(data.native_inventory_policy_overlay.merged_inventory.out_of_stock, 6);
-  assert.equal(data.native_inventory_policy_overlay.reason, 'merged_food_demand_based_inventory_policy_applied');
+  assert.equal(data.summary.inventory.critical, 1);
+  assert.equal(data.summary.inventory.out_of_stock, 0);
+  assert.equal(data.summary.inventory.demand_based_food, 0);
+  assert.equal(data.summary.inventory.stock_tracked, 1);
 });
 
 test('repair/replay aggregate remains manual-review/log governed', async () => {
@@ -714,14 +721,14 @@ test('customer_facing_behavior_changed:false', async () => {
   assert.equal(data.customer_facing_behavior_changed, false);
 });
 
-test('displayed values remain current behavior', async () => {
+test('displayed values remain Customer App authoritative', async () => {
   const { data } = await invoke({ hubData: hubResponse({ summary: fullSummary({ orders: { total: 9 } }) }) });
-  assert.equal(data.source, 'hub_operations_dashboard_summary');
-  assert.equal(data.summary.orders.total, 9);
+  assert.equal(data.source, 'customer_app_native_operations_dashboard_authoritative');
+  assert.equal(data.summary.orders.total, 1);
   const total = diagnostic(data, 'orders.total');
-  assert.equal(total.displayed_value, 9);
-  assert.equal(total.current_display_source, 'hub_primary_with_native_operations_overlay');
-  assert.equal(data.native_inventory_policy_overlay.applied, true);
+  assert.equal(total.displayed_value, 1);
+  assert.equal(total.current_display_source, 'customer_app_native_authoritative');
+  assert.equal(data.hub_operational_dependency, false);
 });
 
 let passed = 0;

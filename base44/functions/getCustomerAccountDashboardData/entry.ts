@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g95-customer-app-loyalty-authority-20260808.
 import handler0 from './handlers/addressSuggest/entry.ts';
 import handler2 from './handlers/cancelSubscriptionFutureRenewal/entry.ts';
 import handler3 from './handlers/claimReward/entry.ts';

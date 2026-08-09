@@ -952,14 +952,45 @@ export default async function handler(req: Request) {
       });
     }
 
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
+    const nativeResponse = {
+      success: true,
+      dry_run: true,
+      read_only: true,
+      source: 'customer_app_native_compliance_authoritative',
+      native_available: nativeComplianceReady(native),
+      date_from: dateFrom,
+      date_to: dateTo,
+      test_record_mode: 'exclude',
+      operational_totals_exclude_test_records: true,
+      summary: native.summary,
+      issues: native.issues,
+      recent_logs: native.recent_logs,
+      batch_compliance: native.records?.batch_compliance || [],
+      attention_batches: [],
+      records: native.records,
+      native,
+      warnings: safeStringArray(native.warnings),
+      hub_operational_dependency: false,
+      hub_fallback_used: false,
+      hub_historical_context_requested: includeHubHistoricalContext,
+      hub_historical_context_available: false,
+      hub_historical_context_summary: {},
+      hub_mutation_performed: false,
+      writes_performed: false,
+      provider_calls_performed: false,
+      customer_notifications_sent: false,
+    };
+
+    if (!includeHubHistoricalContext) {
+      return Response.json(nativeResponse);
+    }
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      const fallback = fallbackHubUnavailableSummary(
-        dateFrom,
-        dateTo,
-        'Hub compliance ops summary service is not configured',
-        503
-      );
-      return Response.json(withNativeFallback(fallback, native));
+      return Response.json({
+        ...nativeResponse,
+        warnings: [...nativeResponse.warnings, 'hub_compliance_historical_context_not_configured'],
+      });
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -977,41 +1008,29 @@ export default async function handler(req: Request) {
         },
       });
     } catch {
-      const fallback = fallbackHubUnavailableSummary(
-        dateFrom,
-        dateTo,
-        'Hub compliance ops summary fetch failed; native compliance summary remains available',
-        503
-      );
-      return Response.json(withNativeFallback(fallback, native));
+      return Response.json({
+        ...nativeResponse,
+        warnings: [...nativeResponse.warnings, 'hub_compliance_historical_context_fetch_failed'],
+      });
     }
 
     const hubData = await hubResponse.json().catch(() => null);
     if (!hubResponse.ok) {
-      const fallback = fallbackHubUnavailableSummary(
-        dateFrom,
-        dateTo,
-        sanitizeText(hubData?.error, 160) || 'Unable to load Hub compliance ops summary',
-        hubResponse.status
-      );
-      return Response.json(withNativeFallback(fallback, native));
+      return Response.json({
+        ...nativeResponse,
+        warnings: [...nativeResponse.warnings, `hub_compliance_historical_context_unavailable:${hubResponse.status}`],
+      });
     }
 
     const hub = sanitizeHubResponse(hubData, dateFrom, dateTo);
-    const hubWarnings = safeStringArray(hub.warnings);
     return Response.json({
-      ...hub,
-      native,
-      native_available: nativeComplianceReady(native),
-      source_warnings: hubWarnings,
-      summary: mergeNativeComplianceCounts(hub.summary, native.summary),
-      issues: {
-        ...hub.issues,
-        native_attention_items: native.issues.total_attention_items,
-      },
-      warnings: nativeComplianceReady(native)
-        ? safeStringArray(native.warnings)
-        : [...hubWarnings, ...safeStringArray(native.warnings)],
+      ...nativeResponse,
+      hub_historical_context_available: hub.success === true,
+      hub_historical_context_summary: safeObjectNumberMap(hub.summary),
+      hub_historical_context_excluded_from_operational_totals: true,
+      warnings: hub.success === true
+        ? nativeResponse.warnings
+        : [...nativeResponse.warnings, 'hub_compliance_historical_context_malformed'],
     });
   } catch (error) {
     console.error('[getAdminComplianceOpsSummary] Error:', error.message);

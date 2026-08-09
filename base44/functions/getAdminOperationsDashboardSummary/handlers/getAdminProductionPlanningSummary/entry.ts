@@ -782,49 +782,62 @@ function applyIngredientStatsToDateRows(dateRows, ingredientRows) {
   });
 }
 
-function buildNativeFirstPlanningParts(nativePlanning, hubData) {
+function buildNativeAuthoritativePlanningParts(nativePlanning, hubData) {
   const nativeDates = Array.isArray(nativePlanning?.dates) ? nativePlanning.dates : [];
   const hubDates = Array.isArray(hubData?.dates) ? hubData.dates : [];
   const nativeIngredients = Array.isArray(nativePlanning?.ingredients) ? nativePlanning.ingredients : [];
   const hubIngredients = Array.isArray(hubData?.ingredients) ? hubData.ingredients : [];
 
-  const dateMerge = mergeDateGroupsNativeFirst(nativeDates, hubDates);
-  const ingredientMerge = mergeIngredientsNativeFirst(nativeIngredients, hubIngredients);
-  const fallbackReasons = new Set([...dateMerge.fallbackReasons, ...ingredientMerge.fallbackReasons]);
-  const hubFallbackRowCount = dateMerge.hubFallbackRowCount + ingredientMerge.hubFallbackRowCount;
-  const suppressedHubRowCount = dateMerge.suppressedHubRowCount + ingredientMerge.suppressedHubRowCount;
-  const hubOnlyCount = dateMerge.hubOnlyCount + ingredientMerge.hubOnlyCount;
-  const nativeOnlyCount = dateMerge.nativeOnlyCount + ingredientMerge.nativeOnlyCount;
-  const mismatchCount = dateMerge.mismatchCount + ingredientMerge.mismatchCount;
+  const dateRows = applyIngredientStatsToDateRows(
+    nativeDates.map(group => decorateDateGroup(markDatePendingDateGroup(group), {
+      data_source: 'customer_app_native',
+      native_primary: true,
+      hub_fallback_used: false,
+    })),
+    nativeIngredients.map(row => decorateIngredient(markDatePendingIngredient(row), {
+      data_source: 'customer_app_native',
+      native_primary: true,
+      hub_fallback_used: false,
+    })),
+  );
+  const ingredientRows = nativeIngredients.map(row => decorateIngredient(markDatePendingIngredient(row), {
+    data_source: 'customer_app_native',
+    native_primary: true,
+    hub_fallback_used: false,
+  }));
   const nativeOverlayRowCount = nativeDates.length + nativeIngredients.length;
   const hubSummaryRowCount = hubDates.length + hubIngredients.length;
-  const hubFallbackUsed = hubFallbackRowCount > 0;
   const nativeDataPresent = nativeOverlayRowCount > 0;
-  const dateRows = applyIngredientStatsToDateRows(dateMerge.rows, ingredientMerge.rows);
-  const summary = summaryFromNativeFirstRows(dateRows, ingredientMerge.rows, nativePlanning, hubData, hubFallbackUsed);
+  const summary = summaryFromNativeFirstRows(dateRows, ingredientRows, nativePlanning, {}, false);
+  const hubHistoricalPlannedUnits = hubDates.reduce((sum, row) => sum + numberOrZero(row?.planned_units), 0);
 
   return {
     summary,
     dates: dateRows,
-    ingredients: ingredientMerge.rows,
+    ingredients: ingredientRows,
     metadata: {
       native_first_enabled: true,
+      customer_app_native_authoritative: true,
       native_row_count: nativeDates.length,
-      hub_fallback_row_count: hubFallbackRowCount,
+      hub_fallback_row_count: 0,
       native_overlay_row_count: nativeOverlayRowCount,
       hub_summary_row_count: hubSummaryRowCount,
-      suppressed_hub_row_count: suppressedHubRowCount,
-      fallback_required: hubFallbackUsed,
-      fallback_reasons: Array.from(fallbackReasons).sort(),
-      hub_fallback_used: hubFallbackUsed,
-      native_missing_count: nativeDataPresent ? 0 : hubSummaryRowCount,
-      hub_only_count: hubOnlyCount,
-      native_only_count: nativeOnlyCount,
-      mismatch_count: mismatchCount,
-      date_pending_review_row_count: dateMerge.rows.filter(isDatePendingDateGroup).length,
-      date_pending_review_ingredient_count: ingredientMerge.rows.filter(isDatePendingOnlyIngredient).length,
+      hub_historical_context_row_count: hubSummaryRowCount,
+      hub_historical_planned_units: hubHistoricalPlannedUnits,
+      hub_historical_context_excluded_from_operational_totals: true,
+      suppressed_hub_row_count: hubSummaryRowCount,
+      fallback_required: false,
+      fallback_reasons: [],
+      hub_fallback_used: false,
+      native_missing_count: 0,
+      hub_only_count: hubSummaryRowCount,
+      native_only_count: nativeOverlayRowCount,
+      mismatch_count: 0,
+      date_pending_review_row_count: dateRows.filter(isDatePendingDateGroup).length,
+      date_pending_review_ingredient_count: ingredientRows.filter(isDatePendingOnlyIngredient).length,
       date_pending_excluded_from_scheduled_totals: numberOrZero(summary.date_pending_planned_units) > 0 || numberOrZero(summary.date_pending_ingredient_count) > 0,
-      production_planning_source: nativeDataPresent ? 'customer_app_native_first' : (hubFallbackUsed ? 'hub_fallback' : 'empty'),
+      production_planning_source: nativeDataPresent ? 'customer_app_native_authoritative' : 'empty',
+      hub_operational_dependency: false,
       writes_performed: false,
       provider_call_impact: false,
       notifications_sent: false,
@@ -2077,6 +2090,7 @@ export default async function handler(req: Request) {
     }
     const productionComplianceReadModelRequested = normalizeText(body.read_model_mode).toUpperCase() === PRODUCTION_COMPLIANCE_READ_MODEL_MODE;
     const productionComplianceReadModelEnabled = readModelGateOpen();
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
     let dateFrom;
     let dateTo;
     let preset;
@@ -2247,9 +2261,9 @@ export default async function handler(req: Request) {
       truncated: false,
     };
 
-    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
+    if (includeHubHistoricalContext && (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET)) {
       warnings.push('hub_production_planning_service_not_configured');
-    } else {
+    } else if (includeHubHistoricalContext) {
       const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
       const params = new URLSearchParams();
       if (preset === 'custom') {
@@ -2282,7 +2296,10 @@ export default async function handler(req: Request) {
       }
     }
 
-    const nativeFirstPlanning = buildNativeFirstPlanningParts(nativePlanning, hubData);
+    const nativeFirstPlanning = buildNativeAuthoritativePlanningParts(nativePlanning, hubData);
+    if (includeHubHistoricalContext && nativeFirstPlanning.metadata.hub_historical_context_row_count > 0) {
+      warnings.push('hub_historical_planning_excluded_from_operational_totals');
+    }
     if (nativeFirstPlanning.metadata.date_pending_excluded_from_scheduled_totals) {
       warnings.push('native_date_pending_excluded_from_scheduled_totals');
     }
@@ -2307,7 +2324,7 @@ export default async function handler(req: Request) {
         dateFrom: resolvedRange.dateFrom,
         dateTo: resolvedRange.dateTo,
         enabled: true,
-        sourceMode: 'customer_app_native_first_with_hub_fallback',
+        sourceMode: 'customer_app_native_authoritative',
       });
     }
 
@@ -2315,11 +2332,11 @@ export default async function handler(req: Request) {
       success: true,
       date_from: resolvedRange.dateFrom,
       date_to: resolvedRange.dateTo,
-      generated_at: hubData.generated_at || new Date().toISOString(),
+      generated_at: new Date().toISOString(),
       summary: nativeFirstPlanning.summary,
       dates: nativeFirstPlanning.dates.slice(0, 62),
       ingredients: nativeFirstPlanning.ingredients.slice(0, 200),
-      truncated: hubData.truncated === true,
+      truncated: false,
       ...nativeFirstPlanning.metadata,
       native_overlay: {
         source: 'customer_app_shopify_order_mirror',

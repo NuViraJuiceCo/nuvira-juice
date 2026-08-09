@@ -16,7 +16,7 @@ function safeRefundId(value: unknown, maxLength = 180) {
 
 /**
  * Manually processes a refund for an order that was refunded in Stripe
- * but didn't propagate to Customer App, Hub, Production, or Fulfillment.
+ * but did not propagate to Customer App production or fulfillment records.
  * 
  * This is a repair function for the refund flow gap identified on 2026-05-07.
  * 
@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
             'LoyaltyTransaction.reversal',
             'UserPoints.projection',
             'LoyaltyMember.projection',
-            'Hub.refund_projection',
+            'CustomerApp.operational_refund_projection',
             'OrderSyncLog.audit',
           ] : [],
           provider_calls_performed: false,
@@ -249,32 +249,41 @@ Deno.serve(async (req) => {
         order_id: order.id,
         order_number,
         metadata: { refund_amount: effectiveRefundAmount, full_refund: true },
-      }, { headers: { 'x-internal-secret': Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' } });
+        internal_secret: Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '',
+      });
       const loyaltyResult = loyaltyResponse?.data || loyaltyResponse;
       if (loyaltyResult?.success !== true) throw new Error(loyaltyResult?.error || 'manual_refund_loyalty_transaction_failed');
       console.log(`[processManualRefund] Reversed ${pointsToReverse} points for ${order.customer_email}`);
     }
 
-    // Sync to Hub with refund event via shared helper
+    // Project the refund into Customer App operational entities through the
+    // retained compatibility entry point.
     try {
-      const syncResult = await base44.asServiceRole.functions.invoke('syncRefundToHub', {
-        order_id: order.id,
-        stripe_session: { id: stripe_refund_id || 'manual_refund' },
-        triggered_by: 'manual_refund_process',
-      }, {
-        headers: { 'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '' },
+      const syncResponse = await base44.asServiceRole.functions.fetch('/syncRefundToHub', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-internal-secret': Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '',
+        },
+        body: JSON.stringify({
+          order_id: order.id,
+          stripe_session: { id: stripe_refund_id || 'manual_refund' },
+          triggered_by: 'manual_refund_process',
+        }),
       });
+      const syncResult = await syncResponse.json().catch(() => ({}));
+      if (!syncResponse.ok) throw new Error(syncResult?.error || `syncRefundToHub_http_${syncResponse.status}`);
       if (syncResult?.success) {
-        console.log(`[processManualRefund] ✅ Hub refund sync succeeded`);
+        console.log(`[processManualRefund] ✅ Native refund projection succeeded`);
       } else {
-        console.log(`[processManualRefund] ⚠️ Hub refund sync returned:`, syncResult);
+        console.log(`[processManualRefund] ⚠️ Native refund projection returned:`, syncResult);
       }
     } catch (syncErr) {
-      console.error(`[processManualRefund] ❌ Hub refund sync helper failed: ${syncErr.message}`);
+      console.error(`[processManualRefund] ❌ Native refund projection failed: ${syncErr.message}`);
       await base44.asServiceRole.entities.OrderSyncLog.create({
         order_number: order_number,
         status: 'error',
-        description: `Manual refund Hub sync failed: ${syncErr.message}. Manual Hub update required.`,
+        description: `Manual refund native operational projection failed: ${syncErr.message}. Review Customer App order and task state.`,
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString(),
         triggered_by: 'manual_refund_process',
@@ -312,8 +321,8 @@ Deno.serve(async (req) => {
     await base44.asServiceRole.entities.OrderSyncLog.create({
       order_number: order_number,
       status: 'success',
-      hub_action: 'manual_refund_processed',
-      description: `MANUAL REFUND: $${effectiveRefundAmount} (${isFull ? 'FULL' : 'PARTIAL'}). Order updated in Customer App. Hub sync attempted. Earned points ${isFull ? 'reversed' : 'not changed for partial refund'}.`,
+      hub_action: 'native_manual_refund_processed',
+      description: `MANUAL REFUND: $${effectiveRefundAmount} (${isFull ? 'FULL' : 'PARTIAL'}). Order and native operational projection processed in Customer App. Earned points ${isFull ? 'reversed' : 'not changed for partial refund'}.`,
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
       triggered_by: 'manual_refund_process',
@@ -326,7 +335,8 @@ Deno.serve(async (req) => {
       refund_amount: effectiveRefundAmount,
       is_full_refund: isFull,
       action: isFull ? 'full_refund_processed' : 'partial_refund_manual_review',
-      hub_sync_attempted: true,
+      hub_sync_attempted: false,
+      native_operational_projection_attempted: true,
       points_reversed: isFull,
       provider_refund: providerRefundResult,
       customer_communication: customerCommunication,

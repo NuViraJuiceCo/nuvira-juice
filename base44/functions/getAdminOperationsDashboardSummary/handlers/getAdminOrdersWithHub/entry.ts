@@ -494,7 +494,16 @@ function compactAdminOrderRow(order = {}) {
   };
 }
 
-function buildAdminOrderListCompactResponse({ merged = [], localOrders = [], allLocalOrders = localOrders, allHubOrders = [], nativeShopifyOrders = [], fulfillmentTasks = [], diagnostics = {} } = {}) {
+function buildAdminOrderListCompactResponse({
+  merged = [],
+  localOrders = [],
+  allLocalOrders = localOrders,
+  allHubOrders = [],
+  nativeShopifyOrders = [],
+  fulfillmentTasks = [],
+  diagnostics = {},
+  includeHubHistoricalContext = false,
+} = {}) {
   const normalized = merged
     .map(order => normalizeOrderNum(order?.order_number))
     .filter(Boolean);
@@ -532,7 +541,11 @@ function buildAdminOrderListCompactResponse({ merged = [], localOrders = [], all
     native_shopify_order_count: nativeShopifyOrders.length,
     source_truncated: anySourceTruncated,
     source_truncated_by_entity: sourceTruncated,
-    fallback_active: true,
+    fallback_active: false,
+    customer_app_native_authoritative: true,
+    hub_operational_dependency: false,
+    include_hub_historical_context: includeHubHistoricalContext,
+    hub_historical_context_count: includeHubHistoricalContext ? allHubOrders.length : 0,
     duplicate_order_number_count: duplicateOrderNumbers,
     warnings: [
       anySourceTruncated ? 'source_truncated' : null,
@@ -1007,19 +1020,19 @@ function applyLimitedNativePrimaryMetadata(order, evaluation) {
  * 🏛️ ACTIVE ARCHITECTURE FUNCTION — Option B (Read-Only Hub Expansion)
  * 
  * Role: Admin view of ALL orders (local + Hub-verified) with full merge and expansion.
- * Source of Truth: Hub (for operational orders, subscriptions, deliveries)
+ * Source of Truth: Customer App Order, ShopifyOrder, and FulfillmentTask entities.
  * 
  * PROCESS:
  * 1. Fetch all local orders (excluding superseded, cancelled, ghost pre-orders)
- * 2. Fetch ALL UserProfile records to get every customer's contact email
- * 3. Query Hub for each customer's orders (include cancelled-only customers for visibility)
- * 4. Expand Hub subscription orders into fulfillment-level display records
+ * 2. Fetch UserProfile records for Customer App customer context
+ * 3. Optionally query Hub only when explicit historical context is requested
+ * 4. Expand historical Hub subscriptions only in that diagnostic mode
  * 5. Expand local subscription orders via FulfillmentTask references
- * 6. Merge: Hub remains the primary row on order_number; local + native context attach for same-order visibility
+ * 6. Merge Customer App and native operational records by order number
  * 7. Return merged list sorted by created_date (newest first)
  * 
  * FULFILLMENT EXPANSION:
- * - Hub subscriptions: broken into individual fulfillments (e.g., 4 weekly deliveries)
+ * - Historical Hub subscriptions: broken into individual fulfillments only when requested
  * - Local subscriptions: expanded via FulfillmentTask if available
  * - Result: Admins see individual deliveries, not parent "0-item" records
  * 
@@ -1054,6 +1067,7 @@ export default async function handler(req: Request) {
     const adminOrderLifecycleReadModelRequested = isAdminOrderLifecycleReadModelRequest(body);
     const adminOrderLifecycleReadModelActive = adminOrderLifecycleReadModelEnabled();
     const adminOrderListCompactRequested = isAdminOrderListCompactRequest(body);
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
 
     if (hasConflictingAdminOrderLifecycleModeValues(body)) {
       return Response.json(buildAdminOrderLifecycleModeConflictResponse(), { status: 400 });
@@ -1260,7 +1274,7 @@ export default async function handler(req: Request) {
 
     let allHubOrders = [];
 
-    if (hubBase && hubSecret) {
+    if (includeHubHistoricalContext && hubBase && hubSecret) {
       // Fetch in batches of 5 to avoid Hub rate limiting
       const emailList = Array.from(hubQueryEmails);
       const BATCH_SIZE = 5;
@@ -1502,8 +1516,8 @@ export default async function handler(req: Request) {
       syncContext: nativeContext,
     });
 
-    // 4. Merge: Hub remains the primary operational row when present, but same-order
-    // Customer App + native context is attached to that row instead of hidden.
+    // 4. Customer App records are operationally authoritative. Hub rows are loaded only
+    // for an explicit historical-context request and cannot affect the default admin list.
     // Normalize order numbers for comparison: strip leading #, lowercase, trim
     const mergedMap = new Map();
 
@@ -1597,6 +1611,7 @@ export default async function handler(req: Request) {
         nativeShopifyOrders,
         fulfillmentTasks,
         diagnostics,
+        includeHubHistoricalContext,
       }));
     }
 
@@ -1606,6 +1621,10 @@ export default async function handler(req: Request) {
       local_count: localOrders.length,
       hub_count: allHubOrders.length,
       native_shopify_order_count: nativeShopifyOrders.length,
+      customer_app_native_authoritative: true,
+      hub_operational_dependency: false,
+      include_hub_historical_context: includeHubHistoricalContext,
+      hub_historical_context_count: includeHubHistoricalContext ? allHubOrders.length : 0,
       orders: merged,
       ...diagnostics,
       admin_order_lifecycle_read_model_available: true,

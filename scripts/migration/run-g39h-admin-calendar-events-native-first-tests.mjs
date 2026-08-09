@@ -12,6 +12,7 @@ const DATE = '2026-06-20';
 const STALE_DATE = '2026-06-19';
 
 function loadHandler({ env = {}, hubData = emptyHubCalendar(), hubStatus = 200, fetchError = null } = {}) {
+  let fetchCallCount = 0;
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
   source = source.replace('export default async function handler(req: Request)', 'globalThis.__handler = async function handler(req)');
@@ -37,6 +38,7 @@ function loadHandler({ env = {}, hubData = emptyHubCalendar(), hubStatus = 200, 
     Intl,
     createClientFromRequest: req => req.__base44,
     fetch: async () => {
+      fetchCallCount += 1;
       if (fetchError) throw fetchError;
       return new Response(JSON.stringify(hubData), { status: hubStatus });
     },
@@ -47,7 +49,10 @@ function loadHandler({ env = {}, hubData = emptyHubCalendar(), hubStatus = 200, 
   });
 
   vm.runInContext(source, context, { filename: functionPath });
-  return context.globalThis.__handler;
+  return {
+    handler: context.globalThis.__handler,
+    getFetchCallCount: () => fetchCallCount,
+  };
 }
 
 function nativeEvent(overrides = {}) {
@@ -207,7 +212,7 @@ function makeBase44({ events = [], batches = [], tasks = [], compliance = [] } =
 
 async function invoke({ store = {}, hubData = emptyHubCalendar(), hubEnv = true, body = {}, hubStatus = 200 } = {}) {
   const { base44, writes } = makeBase44(store);
-  const handler = loadHandler({
+  const { handler, getFetchCallCount } = loadHandler({
     env: hubEnv ? { HUB_API_URL: 'https://hub.example.test/functions/getCalendarEventsSummaryForCustomerApp', CUSTOMER_APP_SYNC_SECRET: 'synthetic-secret' } : {},
     hubData,
     hubStatus,
@@ -219,7 +224,7 @@ async function invoke({ store = {}, hubData = emptyHubCalendar(), hubEnv = true,
   };
   const response = await handler(req);
   const payload = await response.json();
-  return { status: response.status, payload, writes };
+  return { status: response.status, payload, writes, fetchCallCount: getFetchCallCount() };
 }
 
 function allItems(payload) {
@@ -251,7 +256,7 @@ function assertSafety(payload, writes) {
 const results = [];
 
 {
-  const { status, payload, writes } = await invoke({
+  const { status, payload, writes, fetchCallCount } = await invoke({
     store: { events: [nativeEvent({ id: 'native_only_event' })] },
     hubData: emptyHubCalendar(),
   });
@@ -262,30 +267,30 @@ const results = [];
   assert.equal(item.native_primary, true);
   assert.equal(item.hub_fallback_used, false);
   assert.equal(payload.native_first_enabled, true);
-  assert.equal(payload.calendar_events_source, 'customer_app_native_first_with_hub_fallback');
+  assert.equal(payload.calendar_events_source, 'customer_app_native_authoritative');
   assert.equal(payload.native_event_count, 1);
+  assert.equal(payload.customer_app_native_authoritative, true);
+  assert.equal(payload.hub_operational_dependency, false);
+  assert.equal(fetchCallCount, 0);
   assertSafety(payload, writes);
   results.push('native_calendar_event_present_native_primary');
   results.push('hub_event_absent_native_still_returned');
-  results.push('native_first_fallback_metadata_returned');
+  results.push('daily_calendar_does_not_fetch_hub');
 }
 
 {
-  const { payload, writes } = await invoke({
+  const { payload, writes, fetchCallCount } = await invoke({
     store: {},
     hubData: emptyHubCalendar({ dates: [dateGroup(DATE, [hubEvent({ id: 'hub_only_event' })])] }),
   });
   const item = findItem(payload, row => row.id === 'hub_only_event');
-  assert.ok(item);
-  assert.equal(item.data_source, 'hub_fallback');
-  assert.equal(item.native_primary, false);
-  assert.equal(item.hub_fallback_used, true);
-  assert.equal(item.fallback_reason, 'native_calendar_event_missing');
-  assert.equal(payload.hub_fallback_event_count, 1);
-  assert.equal(payload.fallback_required, true);
+  assert.equal(item, undefined);
+  assert.equal(fetchCallCount, 0);
+  assert.equal(payload.hub_fallback_event_count, 0);
+  assert.equal(payload.fallback_required, false);
   assertSafety(payload, writes);
-  results.push('native_event_missing_hub_fallback_used');
-  results.push('hub_only_active_event_retained');
+  results.push('hub_only_event_excluded_from_operational_calendar');
+  results.push('no_hub_fallback_when_native_event_missing');
 }
 
 {
@@ -295,27 +300,29 @@ const results = [];
   });
   const item = findItem(payload, row => row.id === 'shared_incomplete_event');
   assert.ok(item);
-  assert.equal(item.data_source, 'native_with_hub_fallback_context');
+  assert.equal(item.data_source, 'customer_app_native');
   assert.equal(item.native_primary, true);
-  assert.equal(item.hub_fallback_used, true);
-  assert.equal(item.fallback_reason, 'native_data_incomplete_for_calendar_event');
-  assert.equal(payload.hub_fallback_event_count, 1);
+  assert.equal(item.hub_fallback_used, false);
+  assert.equal(payload.hub_fallback_event_count, 0);
   assertSafety(payload, writes);
-  results.push('native_event_incomplete_uses_hub_fallback_context');
+  results.push('native_event_incomplete_does_not_absorb_hub_context');
 }
 
 {
-  const { payload, writes } = await invoke({
+  const { payload, writes, fetchCallCount } = await invoke({
     store: { batches: [nativeBatch()] },
     hubData: emptyHubCalendar({ dates: [dateGroup(DATE, [hubProduction()])] }),
+    body: { include_hub_historical_context: true },
   });
   const productionItems = allItems(payload).filter(row => row.type === 'production');
   assert.equal(productionItems.length, 1);
   assert.equal(productionItems[0].data_source, 'customer_app_native');
-  assert.equal(payload.suppressed_hub_event_count, 1);
-  assert.ok(payload.fallback_reasons.includes('duplicate_native_hub_event_deduped'));
+  assert.equal(fetchCallCount, 1);
+  assert.equal(payload.hub_historical_context_event_count, 1);
+  assert.equal(payload.suppressed_hub_event_count, 0);
+  assert.deepEqual(payload.fallback_reasons, []);
   assertSafety(payload, writes);
-  results.push('duplicate_native_hub_event_deduped');
+  results.push('explicit_hub_historical_context_excluded_from_calendar_totals');
 }
 
 {
@@ -324,11 +331,10 @@ const results = [];
     hubData: emptyHubCalendar({ dates: [dateGroup(DATE, [hubEvent({ id: 'subscription_event', event_type: 'subscription_occurrence' })])] }),
   });
   const item = findItem(payload, row => row.id === 'subscription_event');
-  assert.ok(item);
-  assert.equal(item.fallback_reason, 'subscription_calendar_event_hub_source_of_truth');
-  assert.ok(payload.fallback_reasons.includes('subscription_calendar_event_hub_source_of_truth'));
+  assert.equal(item, undefined);
+  assert.equal(payload.hub_only_count, 0);
   assertSafety(payload, writes);
-  results.push('subscription_multi_delivery_hub_source_of_truth');
+  results.push('hub_subscription_event_not_an_operational_dependency');
 }
 
 {
@@ -337,11 +343,10 @@ const results = [];
     hubData: emptyHubCalendar({ dates: [dateGroup(DATE, [hubEvent({ id: 'historical_event', event_type: 'historical_late_mirror' })])] }),
   });
   const item = findItem(payload, row => row.id === 'historical_event');
-  assert.ok(item);
-  assert.equal(item.fallback_reason, 'historical_hub_event_retained');
+  assert.equal(item, undefined);
   assert.equal(payload.live_command_candidate, false);
   assertSafety(payload, writes);
-  results.push('historical_late_mirror_not_command_candidate');
+  results.push('historical_hub_event_excluded_from_operational_calendar');
   results.push('live_command_candidate_false');
 }
 
@@ -351,18 +356,19 @@ const results = [];
     hubData: emptyHubCalendar({ dates: [dateGroup(STALE_DATE, [hubEvent({ id: 'stale_shared_event', start_datetime: `${STALE_DATE}T15:00:00Z` })])] }),
   });
   assert.equal(findItem(payload, row => row.id === 'stale_shared_event')?.data_source, 'customer_app_native');
-  assert.equal(payload.suppressed_hub_event_count, 1);
-  assert.equal(payload.mismatch_count, 1);
-  assert.ok(payload.fallback_reasons.includes('stale_hub_event_suppressed'));
+  assert.equal(payload.suppressed_hub_event_count, 0);
+  assert.equal(payload.mismatch_count, 0);
+  assert.deepEqual(payload.fallback_reasons, []);
   assertSafety(payload, writes);
-  results.push('stale_hub_event_suppressed_when_corrected_native_date_exists');
+  results.push('stale_hub_event_cannot_change_corrected_native_date');
 }
 
 {
   const { payload, writes } = await invoke({ store: {}, hubData: emptyHubCalendar() });
   assert.equal(payload.summary.total_items, 0);
   assert.deepEqual(payload.dates, []);
-  assert.ok(payload.fallback_reasons.includes('no_calendar_events_found'));
+  assert.deepEqual(payload.fallback_reasons, []);
+  assert.equal(payload.calendar_events_source, 'empty');
   assertSafety(payload, writes);
   results.push('no_events_empty_safe_response');
 }
@@ -385,6 +391,9 @@ const results = [];
   assert.ok(Object.hasOwn(payload.summary, 'production_days'));
   assert.ok(Object.hasOwn(payload.summary, 'delivery_days'));
   assert.ok(Object.hasOwn(payload.summary, 'compliance_items'));
+  assert.equal(payload.customer_app_native_authoritative, true);
+  assert.equal(payload.hub_operational_dependency, false);
+  assert.equal(payload.fallback_required, false);
   assertNoForbiddenPayloads(payload);
   assertSafety(payload, writes);
   results.push('existing_response_shape_backward_compatible');

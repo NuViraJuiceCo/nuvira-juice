@@ -79,6 +79,10 @@ function skipLoyaltyWrite(stagingSafeMode) {
   return true;
 }
 
+function legacyHubSubscriptionBridgeEnabled() {
+  return Deno.env.get('ENABLE_LEGACY_HUB_SUBSCRIPTION_BRIDGE') === 'true';
+}
+
 async function invokeInternalFunction(base44, functionName, payload, secret) {
   if (isStagingSafeMode()) {
     console.log(`[stripeWebhook] STAGING SAFE MODE: skipped internal function ${functionName}`);
@@ -490,25 +494,24 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Sync to Hub using the new 4-fulfillment payload builder
-          // Fire-and-forget: Stripe already got 200 at this point.
-          // On failure, write an error OrderSyncLog so retryFailedHubSyncs can pick it up.
-          invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
-            subscription_id: subscription.id,
-            customer_email: customerEmail,
-          }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
-            console.log(`[stripeWebhook] ✅ Hub sync dispatched for subscription ${subscription.id}`);
-          }).catch(err => {
-            console.error(`[stripeWebhook] Hub sync failed for subscription ${subscription.id}: ${err.message}`);
-            base44.asServiceRole.entities.OrderSyncLog.create({
-              order_number: `SUB-${stripeSubscriptionId}`,
-              status: 'error',
-              description: `Hub sync failed after checkout.session.completed: ${err.message}. Subscription=${subscription.id}. Will be retried.`,
-              started_at: new Date().toISOString(),
-              completed_at: new Date().toISOString(),
-              triggered_by: 'stripe_webhook',
-            }).catch(() => {});
-          });
+          if (legacyHubSubscriptionBridgeEnabled()) {
+            invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
+              subscription_id: subscription.id,
+              customer_email: customerEmail,
+            }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
+              console.log(`[stripeWebhook] Legacy subscription bridge dispatched for subscription ${subscription.id}`);
+            }).catch(err => {
+              console.error(`[stripeWebhook] Legacy subscription bridge failed for subscription ${subscription.id}: ${err.message}`);
+              base44.asServiceRole.entities.OrderSyncLog.create({
+                order_number: `SUB-${stripeSubscriptionId}`,
+                status: 'error',
+                description: `Legacy subscription bridge failed after checkout.session.completed: ${err.message}. Subscription=${subscription.id}.`,
+                started_at: new Date().toISOString(),
+                completed_at: new Date().toISOString(),
+                triggered_by: 'stripe_webhook',
+              }).catch(() => {});
+            });
+          }
 
         } else {
           console.log(`[stripeWebhook] Subscription already exists for ${customerEmail} (stripe_sub=${stripeSubscriptionId}), skipping creation`);
@@ -744,8 +747,8 @@ Deno.serve(async (req) => {
         base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: order.id })
           .catch(err => console.error('Failed to push order to Shopify:', err.message));
 
-        // Sync to hub — pass stripe session for correct payment_status mapping
-        // CRITICAL: Do NOT throw here — Hub sync failures must not cause Stripe to receive 500.
+        // Project to native operations — pass Stripe session for correct
+        // payment-status mapping. Do not fail the payment webhook after capture.
         // Stripe would retry the entire webhook, potentially duplicating orders.
         base44.asServiceRole.functions.invoke('syncOrderToHub', {
           order_id: order.id,
@@ -754,14 +757,22 @@ Deno.serve(async (req) => {
             id: session.id,
           },
           triggered_by: 'stripe_webhook',
-        }).then(() => {
-          console.log(`✅ Order ${orderNumber} synced to Hub successfully`);
+        }).then((projectionResponse) => {
+          const projectionResult = projectionResponse?.data || projectionResponse || {};
+          if (projectionResult?.skipped) {
+            console.log(`Order ${orderNumber} native operational projection skipped in staging-safe mode`);
+            return;
+          }
+          if (projectionResult?.success !== true) {
+            throw new Error(projectionResult?.error_code || projectionResult?.error || 'native_order_projection_failed');
+          }
+          console.log(`✅ Order ${orderNumber} projected to native operations successfully`);
         }).catch(syncErr => {
-          console.error(`❌ Order ${orderNumber} (${order.id}) failed to sync to Hub: ${syncErr.message}`);
+          console.error(`❌ Order ${orderNumber} (${order.id}) failed native operational projection: ${syncErr.message}`);
           base44.asServiceRole.entities.OrderSyncLog.create({
             order_number: orderNumber,
             status: 'error',
-            description: `Failed to sync to Hub immediately after webhook: ${syncErr.message}`,
+            description: `Native operational projection failed immediately after webhook: ${syncErr.message}`,
             started_at: new Date().toISOString(),
             completed_at: new Date().toISOString(),
             triggered_by: 'stripe_webhook',
@@ -1149,24 +1160,28 @@ Deno.serve(async (req) => {
         base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: order.id })
           .catch(err => console.error('[PI succeeded] Shopify push failed:', err.message));
 
-        // Sync to Hub
+        // Project the paid order to native operations.
         try {
           const hubSyncResult = await base44.asServiceRole.functions.invoke('syncOrderToHub', {
             order_id:    order.id,
             stripe_session: { payment_status: 'paid', id: pi.id },
             triggered_by: 'stripe_webhook',
           });
-          if (hubSyncResult?.data?.skipped) {
-            console.log(`[PI succeeded] Hub sync skipped in staging-safe mode for ${orderNumber}`);
+          const projectionResult = hubSyncResult?.data || hubSyncResult || {};
+          if (projectionResult?.skipped) {
+            console.log(`[PI succeeded] Native operational projection skipped in staging-safe mode for ${orderNumber}`);
           } else {
-            console.log(`[PI succeeded] ✅ Order ${orderNumber} synced to Hub`);
+            if (projectionResult?.success !== true) {
+              throw new Error(projectionResult?.error_code || projectionResult?.error || 'native_order_projection_failed');
+            }
+            console.log(`[PI succeeded] ✅ Order ${orderNumber} projected to native operations`);
           }
         } catch (syncErr) {
-          console.error(`[PI succeeded] ❌ Hub sync failed for ${orderNumber}: ${syncErr.message}`);
+          console.error(`[PI succeeded] ❌ Native operational projection failed for ${orderNumber}: ${syncErr.message}`);
           try {
             await base44.asServiceRole.entities.OrderSyncLog.create({
               order_number: orderNumber, status: 'error',
-              description: `Hub sync failed after PI succeeded: ${syncErr.message}`,
+              description: `Native operational projection failed after PI succeeded: ${syncErr.message}`,
               started_at: new Date().toISOString(), completed_at: new Date().toISOString(),
               triggered_by: 'stripe_webhook',
             });
@@ -1288,12 +1303,18 @@ Deno.serve(async (req) => {
           .catch(error => console.warn(`[PI succeeded] Safety-net bag return link failed: ${error.message}`));
         console.log(`[PI succeeded] Safety-net Order created: ${newOrder.id}`);
 
-        // Sync safety-net order to Hub
+        // Project the safety-net order to native operations.
         base44.asServiceRole.functions.invoke('syncOrderToHub', {
           order_id: newOrder.id,
           stripe_session: { payment_status: 'paid', id: pi.id },
           triggered_by: 'stripe_webhook',
-        }).catch(err => console.error('[PI succeeded] Hub sync failed (safety-net):', err.message));
+        }).then((projectionResponse) => {
+          const projectionResult = projectionResponse?.data || projectionResponse || {};
+          if (projectionResult?.skipped) return;
+          if (projectionResult?.success !== true) {
+            throw new Error(projectionResult?.error_code || projectionResult?.error || 'native_order_projection_failed');
+          }
+        }).catch(err => console.error('[PI succeeded] Native operational projection failed (safety-net):', err.message));
 
         // Notifications
         base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
@@ -1533,24 +1554,24 @@ Deno.serve(async (req) => {
         }).catch(err => console.warn(`[invoice.payment_succeeded] Failed to update pending checkout: ${err.message}`));
       }
 
-      // Sync to Hub using the new 4-fulfillment payload builder (invoice.payment_succeeded path)
-      // Fire-and-forget: write error log on failure so retryFailedHubSyncs can recover.
-      invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
-        subscription_id: newSubscription.id,
-        customer_email: customerEmail,
-      }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
-        console.log(`[invoice.payment_succeeded] ✅ Hub sync dispatched for subscription ${newSubscription.id}`);
-      }).catch(err => {
-        console.error(`[invoice.payment_succeeded] Hub sync failed for subscription ${newSubscription.id}: ${err.message}`);
-        base44.asServiceRole.entities.OrderSyncLog.create({
-          order_number: `SUB-${stripeSubscriptionId}`,
-          status: 'error',
-          description: `Hub sync failed after invoice.payment_succeeded: ${err.message}. Subscription=${newSubscription.id}. Will be retried.`,
-          started_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-          triggered_by: 'stripe_webhook',
-        }).catch(() => {});
-      });
+      if (legacyHubSubscriptionBridgeEnabled()) {
+        invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
+          subscription_id: newSubscription.id,
+          customer_email: customerEmail,
+        }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
+          console.log(`[invoice.payment_succeeded] Legacy subscription bridge dispatched for subscription ${newSubscription.id}`);
+        }).catch(err => {
+          console.error(`[invoice.payment_succeeded] Legacy subscription bridge failed for subscription ${newSubscription.id}: ${err.message}`);
+          base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: `SUB-${stripeSubscriptionId}`,
+            status: 'error',
+            description: `Legacy subscription bridge failed after invoice.payment_succeeded: ${err.message}. Subscription=${newSubscription.id}.`,
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+            triggered_by: 'stripe_webhook',
+          }).catch(() => {});
+        });
+      }
 
       console.log(`[invoice.payment_succeeded] ✅ Subscription ${stripeSubscriptionId} fully activated for ${customerEmail}`);
       return Response.json({ received: true });
@@ -1712,24 +1733,24 @@ Deno.serve(async (req) => {
         }).catch(err => console.warn(`[invoice.paid] Failed to update pending checkout: ${err.message}`));
       }
 
-      // Sync to Hub using the new 4-fulfillment payload builder (invoice.paid path)
-      // Fire-and-forget: write error log on failure so retryFailedHubSyncs can recover.
-      invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
-        subscription_id: newSubscriptionPaid.id,
-        customer_email: customerEmail,
-      }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
-        console.log(`[invoice.paid] ✅ Hub sync dispatched for subscription ${newSubscriptionPaid.id}`);
-      }).catch(err => {
-        console.error(`[invoice.paid] Hub sync failed for subscription ${newSubscriptionPaid.id}: ${err.message}`);
-        base44.asServiceRole.entities.OrderSyncLog.create({
-          order_number: `SUB-${stripeSubscriptionId}`,
-          status: 'error',
-          description: `Hub sync failed after invoice.paid: ${err.message}. Subscription=${newSubscriptionPaid.id}. Will be retried.`,
-          started_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-          triggered_by: 'stripe_webhook',
-        }).catch(() => {});
-      });
+      if (legacyHubSubscriptionBridgeEnabled()) {
+        invokeInternalFunction(base44, 'syncSubscriptionWithFulfillments', {
+          subscription_id: newSubscriptionPaid.id,
+          customer_email: customerEmail,
+        }, Deno.env.get('HUB_SYNC_SECRET') || '').then(() => {
+          console.log(`[invoice.paid] Legacy subscription bridge dispatched for subscription ${newSubscriptionPaid.id}`);
+        }).catch(err => {
+          console.error(`[invoice.paid] Legacy subscription bridge failed for subscription ${newSubscriptionPaid.id}: ${err.message}`);
+          base44.asServiceRole.entities.OrderSyncLog.create({
+            order_number: `SUB-${stripeSubscriptionId}`,
+            status: 'error',
+            description: `Legacy subscription bridge failed after invoice.paid: ${err.message}. Subscription=${newSubscriptionPaid.id}.`,
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+            triggered_by: 'stripe_webhook',
+          }).catch(() => {});
+        });
+      }
 
       console.log(`[invoice.paid] ✅ Subscription ${stripeSubscriptionId} fully activated for ${customerEmail}`);
       return Response.json({ received: true });
@@ -1779,20 +1800,6 @@ Deno.serve(async (req) => {
         });
         console.log(`[sub.deleted] Subscription ${stripeSubIdDeleted} marked cancelled (type=${cancelType})`);
 
-        // Notify Hub with cancel type so it can distinguish customer period-end vs admin refund
-        base44.asServiceRole.functions.invoke('syncCustomerToHub', {
-          event: wasCustomerFutureCancel ? 'customer.subscription_period_ended' : 'customer.subscription_cancelled',
-          customer_email: cancelledSub.customer_email,
-          data: {
-            subscription_id: cancelledSub.id,
-            stripe_subscription_id: stripeSubIdDeleted,
-            cancel_type: cancelType,
-            current_cycle_intact: wasCustomerFutureCancel, // Hub: keep fulfilled FulfillmentTasks if period-end cancel
-            message: wasCustomerFutureCancel
-              ? 'Customer subscription period ended after future cancellation. Current cycle was fully served. Stop all future fulfillment cycles.'
-              : 'Subscription cancelled (admin/immediate). Stop all production and fulfillment.',
-          },
-        }).catch(err => console.warn(`[sub.deleted] Hub notify failed: ${err.message}`));
       } else {
         console.log(`[sub.deleted] No CA Subscription found for stripe_sub=${stripeSubIdDeleted}, skipping`);
       }
@@ -1883,30 +1890,7 @@ Deno.serve(async (req) => {
             console.log(`[charge.refunded] Subscription ${subscription.id} already cancelled, skipping`);
           }
 
-          // --- Notify Hub (await, tolerate no-op) ---
-          let hubResult = 'not_sent';
-          try {
-            const hubResp = await base44.asServiceRole.functions.invoke('syncCustomerToHub', {
-              event: 'customer.subscription_cancelled',
-              customer_email: subEmail,
-              data: {
-                subscription_id: subscription.id,
-                customer_app_subscription_id: subscription.id,
-                stripe_subscription_id: stripeSubscriptionId,
-                customer_email: subEmail,
-                cancellation_reason: 'refunded',
-                refund_amount: refundAmount,
-                is_full_refund: isFullRefund,
-                payment_intent_id: paymentIntentId,
-                cancelled_at: new Date().toISOString(),
-              },
-            });
-            hubResult = hubResp?.hub_response?.status || hubResp?.success ? 'sent_ok' : 'sent_noop';
-            console.log(`[charge.refunded] Hub cancel notify result: ${hubResult}`);
-          } catch (hubErr) {
-            hubResult = `failed: ${hubErr.message}`;
-            console.error(`[charge.refunded] Hub cancel notify failed: ${hubErr.message}`);
-          }
+          const hubResult = 'retired_no_external_sync';
 
           // --- Audit log ---
           await base44.asServiceRole.entities.OrderSyncLog.create({
@@ -2034,7 +2018,7 @@ Deno.serve(async (req) => {
         refund_id: stripeRefundId,
         refund_amount: refundAmount,
         is_partial_refund: false,
-        sync_status: 'refund_pending_hub_sync',
+        sync_status: 'refund_pending_native_projection',
         status_history: statusHistory,
       });
 
@@ -2046,7 +2030,7 @@ Deno.serve(async (req) => {
           order_number: orderNumber,
           status: 'success',
           hub_action: 'refund_received',
-          description: `💰 Stripe refund received: $${refundAmount} (${isFullRefund ? 'FULL' : 'PARTIAL'}). Refund ID: ${charge.id}. Customer App order updated. Syncing to Hub...`,
+          description: `💰 Stripe refund received: $${refundAmount} (${isFullRefund ? 'FULL' : 'PARTIAL'}). Refund ID: ${charge.id}. Customer App order updated. Projecting to native operations...`,
           started_at: new Date().toISOString(),
           completed_at: new Date().toISOString(),
           triggered_by: 'stripe_webhook',
@@ -2055,7 +2039,7 @@ Deno.serve(async (req) => {
         console.warn(`[charge.refunded] Failed to log refund: ${logErr.message}`);
       }
 
-      // Sync refund to Hub via shared helper
+      // Project the refund to native operations via the retained compatibility helper.
       try {
         const refundSyncResponse = await invokeInternalFunction(base44, 'syncRefundToHub', {
           order_id: order.id,
@@ -2064,17 +2048,17 @@ Deno.serve(async (req) => {
         }, Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '');
         const refundSyncResult = refundSyncResponse?.data || refundSyncResponse;
         if (refundSyncResult?.success) {
-          console.log(`[charge.refunded] ✅ Order ${orderNumber} refund synced to Hub successfully`);
+          console.log(`[charge.refunded] ✅ Order ${orderNumber} refund projected to native operations`);
         } else {
           console.error(`[charge.refunded] ⚠️ Order ${orderNumber} refund sync returned: ${refundSyncResult?.error}`);
         }
       } catch (syncErr) {
-        console.error(`[charge.refunded] ❌ Hub sync helper failed for ${orderNumber}: ${syncErr.message}`);
+        console.error(`[charge.refunded] ❌ Native refund projection failed for ${orderNumber}: ${syncErr.message}`);
         try {
           await base44.asServiceRole.entities.OrderSyncLog.create({
             order_number: orderNumber,
             status: 'error',
-            description: `Failed to sync refund to Hub: ${syncErr.message}. Manual sync required.`,
+            description: `Native operational refund projection failed: ${syncErr.message}. Manual review required.`,
             started_at: new Date().toISOString(),
             completed_at: new Date().toISOString(),
             triggered_by: 'stripe_refund_webhook',

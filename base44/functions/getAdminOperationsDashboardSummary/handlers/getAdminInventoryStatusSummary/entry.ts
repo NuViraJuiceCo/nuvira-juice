@@ -269,8 +269,25 @@ function poItemKey(value) {
 }
 
 async function loadNativeInventorySummary(base44, { status, category, search, limit }) {
-  const nativeItems = await base44.asServiceRole.entities.InventoryItem.list('ingredient', 500).catch(() => []);
-  const nativePurchaseOrders = await base44.asServiceRole.entities.PurchaseOrder.list('-order_date', 200).catch(() => []);
+  let nativeItems;
+  let nativePurchaseOrders;
+  try {
+    [nativeItems, nativePurchaseOrders] = await Promise.all([
+      base44.asServiceRole.entities.InventoryItem.list('ingredient', 500),
+      base44.asServiceRole.entities.PurchaseOrder.list('-order_date', 200),
+    ]);
+  } catch {
+    return {
+      summary: summaryFromItems([], [], []),
+      items: [],
+      procurement_plan: [],
+      open_purchase_orders: [],
+      source_available: false,
+      all_item_keys: [],
+    };
+  }
+  nativeItems = Array.isArray(nativeItems) ? nativeItems : [];
+  nativePurchaseOrders = Array.isArray(nativePurchaseOrders) ? nativePurchaseOrders : [];
   const openPoStatuses = new Set(['draft', 'ordered', 'in transit']);
   const openPoByIngredient = new Map();
 
@@ -353,7 +370,7 @@ async function loadNativeInventorySummary(base44, { status, category, search, li
     items: items.slice(0, limit),
     procurement_plan: procurementPlan.slice(0, 100),
     open_purchase_orders: openPurchaseOrders,
-    source_available: nativeItems.length > 0 || nativePurchaseOrders.length > 0,
+    source_available: true,
     all_item_keys: nativeItems.map(item => normalizeMatchKey(item?.ingredient)).filter(Boolean),
   };
 }
@@ -695,6 +712,47 @@ export default async function handler(req: Request) {
     const itemMutationResponse = await handleInventoryItemMutation({ base44, user, body });
     if (itemMutationResponse) return itemMutationResponse;
     const nativeData = await loadNativeInventorySummary(base44, { status, category, search, limit });
+    const inventoryMigrationRequested = INVENTORY_MIGRATION_OPERATIONS.has(normalizeLower(body.operation));
+
+    if (!inventoryMigrationRequested) {
+      if (!nativeData.source_available) {
+        return Response.json({ error: 'Unable to load Customer App inventory records' }, { status: 503 });
+      }
+      const nativeItems = nativeData.items.filter(item => item.stock_tracking_policy === 'stock_tracked');
+      const nativeProcurementPlan = nativeData.procurement_plan
+        .filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status && item.status !== 'ok' && item.status !== 'demand_based');
+      return Response.json({
+        success: true,
+        source: 'customer_app_native_inventory_authoritative',
+        summary: summaryFromItems(nativeItems, nativeProcurementPlan, nativeData.open_purchase_orders),
+        count: nativeItems.length,
+        truncated: false,
+        items: nativeItems,
+        procurement_plan: nativeProcurementPlan,
+        open_purchase_orders: nativeData.open_purchase_orders,
+        data_sources: {
+          hub_available: false,
+          native_available: true,
+          native_read_only: false,
+          native_authoritative: true,
+          hub_operational_dependency: false,
+          hub_transition_read_only: true,
+          historical_inventory_cutover_review_available: nativeData.all_item_keys.length === 0,
+          non_food_import_candidate_count: null,
+          food_inventory_policy: 'food_and_juice_make_to_order',
+          food_inventory_rows_hidden: true,
+          food_stock_warnings_suppressed: true,
+          non_food_inventory_counts_enabled: true,
+          inventory_deduction_enabled: false,
+          purchase_order_automation_enabled: false,
+        },
+        warnings: [],
+        writes_performed: false,
+        provider_calls_performed: false,
+        customer_notifications_sent: false,
+        hub_mutation_performed: false,
+      });
+    }
 
     let hubData = null;
     let hubWarning = null;

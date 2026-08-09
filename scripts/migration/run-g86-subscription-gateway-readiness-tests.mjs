@@ -17,6 +17,7 @@ assert.match(checkout, /export default async function handler\(req: Request\)/, 
 assert.doesNotMatch(checkout, /Deno\.serve\(/, 'nested subscription handler must not start a second server');
 
 assert.match(checkout, /ENABLE_SUBSCRIPTION_CHECKOUTS/, 'subscription checkout must retain an explicit rollout gate');
+assert.match(checkout, /ENABLE_NATIVE_SUBSCRIPTION_FULFILLMENT/, 'subscription checkout must remain blocked until native recurring fulfillment exists');
 assert.match(checkout, /authorizeCheckoutCustomer/, 'subscription checkout must bind the requested customer to the authenticated user');
 assert.match(checkout, /getSubDeliveryEligibility\(resolvedAddress/, 'subscription checkout must revalidate delivery eligibility server-side');
 assert.match(checkout, /payment_behavior:\s*'default_incomplete'/, 'subscription must remain incomplete until payment succeeds');

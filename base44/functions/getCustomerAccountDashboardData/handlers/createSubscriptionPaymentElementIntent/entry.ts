@@ -92,6 +92,15 @@ export default async function handler(req: Request) {
         message: 'Subscription checkout is currently unavailable. One-time orders are still available.',
       }, { status: 409 });
     }
+    if (Deno.env.get('ENABLE_NATIVE_SUBSCRIPTION_FULFILLMENT') !== 'true') {
+      return Response.json({
+        success: false,
+        skipped: true,
+        gate: 'ENABLE_NATIVE_SUBSCRIPTION_FULFILLMENT',
+        reason: 'native_subscription_fulfillment_not_ready',
+        message: 'Subscription checkout is currently unavailable. One-time orders are still available.',
+      }, { status: 503 });
+    }
 
     const base44 = createClientFromRequest(req);
 

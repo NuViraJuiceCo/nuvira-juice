@@ -25,6 +25,7 @@ class FixedDate extends Date {
 }
 
 function loadHandler({ env = {}, hubData = null, hubStatus = 200, fetchError = null } = {}) {
+  let fetchCallCount = 0;
   let source = fs.readFileSync(functionPath, 'utf8');
   source = source.replace(/^import .*$/gm, '');
   source = source.replace(
@@ -53,6 +54,7 @@ function loadHandler({ env = {}, hubData = null, hubStatus = 200, fetchError = n
     Intl,
     createClientFromRequest: req => req.__base44,
     fetch: async () => {
+      fetchCallCount += 1;
       if (fetchError) throw fetchError;
       return new Response(JSON.stringify(hubData), { status: hubStatus });
     },
@@ -66,7 +68,10 @@ function loadHandler({ env = {}, hubData = null, hubStatus = 200, fetchError = n
   });
 
   vm.runInContext(source, context, { filename: functionPath });
-  return context.globalThis.__handler;
+  return {
+    handler: context.globalThis.__handler,
+    getFetchCallCount: () => fetchCallCount,
+  };
 }
 
 function lineItems() {
@@ -217,7 +222,7 @@ function makeBase44({ tasks = [], orders = [] } = {}) {
 
 async function invoke({ tasks = [], orders = [], hubData = emptyHubData(), hubEnv = true, body = {}, hubStatus = 200 } = {}) {
   const { base44, writes } = makeBase44({ tasks, orders });
-  const handler = loadHandler({
+  const { handler, getFetchCallCount } = loadHandler({
     env: hubEnv ? { HUB_API_URL: 'https://hub.example.test/functions/getDeliveryRouteSummaryForCustomerApp', CUSTOMER_APP_SYNC_SECRET: 'synthetic-secret' } : {},
     hubData,
     hubStatus,
@@ -229,7 +234,7 @@ async function invoke({ tasks = [], orders = [], hubData = emptyHubData(), hubEn
   };
   const response = await handler(req);
   const payload = await response.json();
-  return { status: response.status, payload, writes };
+  return { status: response.status, payload, writes, fetchCallCount: getFetchCallCount() };
 }
 
 function allRows(payload) {
@@ -269,20 +274,20 @@ const results = [];
 }
 
 {
-  const { payload } = await invoke({
+  const { payload, fetchCallCount } = await invoke({
     orders: [],
     tasks: [],
     hubData: emptyHubData({ sections: { delivery_stops: [hubStop({ order_number: 'NV-HUBONLY' })], completed: [] } }),
   });
   const row = payload.sections.delivery_stops.find(stop => stop.order_number === 'NV-HUBONLY');
-  assert.ok(row);
-  assert.equal(row.data_source, 'hub_fallback');
-  assert.equal(row.native_primary, false);
-  assert.equal(row.hub_fallback_used, true);
-  assert.equal(row.fallback_reason, 'native_route_row_missing');
-  assert.equal(payload.hub_fallback_row_count, 1);
-  results.push('native_missing_hub_fallback_used');
-  results.push('hub_only_active_row_retained');
+  assert.equal(row, undefined);
+  assert.equal(fetchCallCount, 0);
+  assert.equal(payload.hub_fallback_row_count, 0);
+  assert.equal(payload.fallback_required, false);
+  assert.equal(payload.customer_app_native_authoritative, true);
+  assert.equal(payload.hub_operational_dependency, false);
+  results.push('daily_route_does_not_fetch_hub');
+  results.push('hub_only_active_row_excluded_from_operational_route');
 }
 
 {
@@ -293,29 +298,28 @@ const results = [];
   });
   const row = payload.sections.delivery_stops.find(stop => stop.order_number === 'NV-INCOMPLETE');
   assert.ok(row);
-  assert.equal(row.data_source, 'native_with_hub_fallback_context');
+  assert.equal(row.data_source, 'customer_app_native_task');
   assert.equal(row.native_primary, true);
-  assert.equal(row.hub_fallback_used, true);
-  assert.equal(row.fallback_reason, 'native_row_incomplete_for_route_display');
-  assert.equal(row.delivery_address, 'Hub Context Address');
-  assert.equal(row.delivery_window_label, '1 PM - 3 PM');
-  assert.equal(row.items_summary, '1x RE-NU');
-  assert.ok(payload.fallback_reasons.includes('native_row_incomplete_for_route_display'));
-  results.push('native_incomplete_uses_hub_fallback_context');
+  assert.equal(row.hub_fallback_used, false);
+  assert.notEqual(row.delivery_address, 'Hub Context Address');
+  assert.equal(payload.fallback_required, false);
+  results.push('native_incomplete_does_not_absorb_hub_context');
 }
 
 {
-  const { payload } = await invoke({
+  const { payload, fetchCallCount } = await invoke({
     orders: [nativeOrder({ shopify_order_number: 'NV-STALE', id: 'shopify_NV-STALE', assigned_delivery_date: '2026-06-21', selected_delivery_date: '2026-06-21', requested_delivery_date: '2026-06-21' })],
     tasks: [nativeTask({ order_number: 'NV-STALE', order_id: 'shopify_NV-STALE', delivery_date: '2026-06-21', scheduled_date: '2026-06-21', assigned_delivery_date: '2026-06-21' })],
     hubData: emptyHubData({ sections: { delivery_stops: [hubStop({ order_number: 'NV-STALE', delivery_date: DELIVERY_DATE })], completed: [] } }),
+    body: { include_hub_historical_context: true },
   });
   assert.equal(allRows(payload).some(stop => stop.order_number === 'NV-STALE'), false);
-  assert.equal(payload.stale_hub_fallback_detected, true);
-  assert.equal(payload.suppressed_hub_row_count, 1);
-  assert.ok(payload.warnings.includes('hub_fallback_stale_date_detected'));
-  results.push('native_corrected_date_suppresses_stale_hub_row');
-  results.push('g32f_stale_hub_fallback_scenario_covered');
+  assert.equal(fetchCallCount, 1);
+  assert.equal(payload.stale_hub_fallback_detected, false);
+  assert.equal(payload.hub_historical_context_row_count, 1);
+  assert.equal(payload.hub_fallback_row_count, 0);
+  results.push('explicit_hub_historical_context_excluded_from_operational_rows');
+  results.push('historical_hub_context_never_changes_native_schedule');
 }
 
 {
@@ -328,8 +332,8 @@ const results = [];
   assert.equal(rows.length, 1);
   assert.equal(rows[0].data_source, 'customer_app_native_task');
   assert.equal(rows[0].native_primary, true);
-  assert.equal(payload.suppressed_hub_row_count, 1);
-  results.push('duplicate_native_hub_same_date_deduped_native_primary');
+  assert.equal(payload.suppressed_hub_row_count, 0);
+  results.push('native_route_remains_primary_without_hub_merge');
 }
 
 {
@@ -496,14 +500,13 @@ const results = [];
       },
     }),
   });
-  const row = payload.sections.completed.find(stop => stop.order_number === 'NV-HUB-COMPLETION');
+  const row = payload.sections.delivery_stops.find(stop => stop.order_number === 'NV-HUB-COMPLETION');
   assert.ok(row);
-  assert.equal(row.delivery_status, 'delivered');
-  assert.equal(row.data_source, 'native_with_hub_completed_context');
+  assert.equal(row.delivery_status, 'pending');
+  assert.equal(row.data_source, 'customer_app_native_task');
   assert.equal(row.native_primary, true);
-  assert.equal(row.hub_fallback_used, true);
-  assert.equal(row.fallback_reason, 'hub_completed_state_preferred_for_native_duplicate');
-  results.push('hub_completed_context_retained_for_nonterminal_native_task');
+  assert.equal(row.hub_fallback_used, false);
+  results.push('hub_completed_state_cannot_advance_native_task');
 }
 
 {
@@ -532,6 +535,9 @@ const results = [];
   assert.ok(payload.data_sources);
   assert.ok(payload.hub_fallback_reconciliation);
   assert.equal(payload.native_first_enabled, true);
+  assert.equal(payload.customer_app_native_authoritative, true);
+  assert.equal(payload.hub_operational_dependency, false);
+  assert.equal(payload.fallback_required, false);
   assert.equal(payload.writes_performed, false);
   assert.equal(payload.provider_call_impact, false);
   assert.equal(payload.notifications_sent, false);

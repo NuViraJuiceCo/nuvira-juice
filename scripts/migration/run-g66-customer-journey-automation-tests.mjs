@@ -202,8 +202,9 @@ assert.match(campaigns, /sendNotificationCampaign/);
 
 assert.doesNotMatch(loyalty, /ENABLE_LEGACY_LOYALTY_WELCOME_EMAIL/);
 assert.doesNotMatch(loyalty, /api\.resend\.com\/emails/);
-assert.match(loyalty, /total_points:\s*preorderBonus/);
-assert.match(loyalty, /points_history:\s*\[bonusEntry\]/);
+assert.match(loyalty, /idempotency_key:\s*`loyalty_signup:\$\{customerEmail\}`/);
+assert.match(loyalty, /transaction_type:\s*'bonus'/);
+assert.doesNotMatch(loyalty, /api\/customer-app-sync\/enroll-loyalty/);
 
 console.log(JSON.stringify({
   ok: true,

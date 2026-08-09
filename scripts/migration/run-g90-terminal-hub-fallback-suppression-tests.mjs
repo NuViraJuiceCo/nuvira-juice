@@ -37,16 +37,7 @@ function loadHandler(hubBatches) {
     Promise,
     URLSearchParams,
     createClientFromRequest: req => req.__base44,
-    fetch: async url => {
-      assert.match(url, /^https:\/\/hub\.example\.test\/functions\/getProductionQueueSummaryForCustomerApp\?/);
-      return Response.json({
-        success: true,
-        date_from: '2026-08-04',
-        date_to: '2026-08-07',
-        batches: hubBatches,
-        truncated: false,
-      });
-    },
+    fetch: async () => { throw new Error('unexpected Hub fetch for operational production queue'); },
     Deno: {
       env: {
         get: key => ({
@@ -133,10 +124,10 @@ const duplicateNativeHubRow = {
   assert.equal(payload.count, 1);
   assert.equal(payload.batches[0].source, 'customer_app_native');
   assert.equal(payload.data_sources.hub_fallback_batch_count, 0);
-  assert.equal(payload.data_sources.stale_terminal_hub_batch_count, 4);
-  assert.equal(payload.data_sources.native_terminal_lifecycle_available, true);
   assert.equal(payload.data_sources.live_actions_source, 'customer_app_native');
-  assert.ok(payload.warnings.includes('stale_terminal_hub_batches_suppressed'));
+  assert.equal(payload.data_sources.customer_app_native_authoritative, true);
+  assert.equal(payload.data_sources.hub_operational_dependency, false);
+  assert.equal(payload.hub_historical_context_batch_count, 0);
 }
 
 {
@@ -149,23 +140,22 @@ const duplicateNativeHubRow = {
     order_numbers: ['NV-ACTIVE'],
   };
   const { payload } = await invoke([...staleRows, activeHubRow]);
-  assert.equal(payload.data_sources.hub_fallback_batch_count, 1);
-  assert.equal(payload.data_sources.live_actions_source, 'customer_app_native_with_hub_fallback');
-  assert.equal(payload.batches.some(row => row.batch_id === activeHubRow.batch_id), true);
+  assert.equal(payload.data_sources.hub_fallback_batch_count, 0);
+  assert.equal(payload.data_sources.live_actions_source, 'customer_app_native');
+  assert.equal(payload.batches.some(row => row.batch_id === activeHubRow.batch_id), false);
 }
 
 {
   const { payload } = await invoke(staleRows, { lifecycleAvailable: false });
-  assert.equal(payload.data_sources.native_terminal_lifecycle_available, false);
-  assert.equal(payload.data_sources.stale_terminal_hub_batch_count, 0);
-  assert.equal(payload.data_sources.hub_fallback_batch_count, 4);
-  assert.ok(payload.warnings.includes('native_order_lifecycle_entity_unavailable'));
+  assert.equal(payload.data_sources.hub_fallback_batch_count, 0);
+  assert.equal(payload.count, 1);
+  assert.equal(payload.customer_app_native_authoritative, true);
 }
 
 console.log(JSON.stringify({
   ok: true,
-  suite: 'g90-terminal-hub-fallback-suppression',
-  checks: 16,
+  suite: 'g90-customer-app-production-queue-authority',
+  checks: 17,
   writes_performed: false,
   customer_notifications_sent: false,
   provider_calls_performed: false,

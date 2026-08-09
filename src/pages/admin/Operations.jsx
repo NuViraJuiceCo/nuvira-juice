@@ -871,8 +871,6 @@ function OperationsSnapshot({ user }) {
 
   const summary = data?.summary || {};
   const warnings = Array.isArray(data?.warnings) ? data.warnings.filter(Boolean) : [];
-  const isNativeFallback = data?.source === 'customer_app_native_operations_dashboard_fallback'
-    || data?.data_sources?.hub_available === false;
   const showError = isError && !data && !isFetching;
   const contextLabel = useMemo(() => {
     if (isCustom) {
@@ -916,7 +914,7 @@ function OperationsSnapshot({ user }) {
             </span>
           </div>
           <p className="text-xs font-medium text-slate-300 mt-0.5">
-            {isNativeFallback ? 'Native Customer App fallback summary' : 'Operations summary'}
+            Customer App operations summary
           </p>
         </div>
         <div className="text-right">
@@ -1187,7 +1185,7 @@ export default function Operations() {
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-950 p-3 shadow-sm">
           <p className="text-xs font-black text-white">Customer App operations console</p>
           <p className="text-[10px] font-medium text-emerald-100 mt-0.5">
-            Live admin workspace for production, compliance, fulfillment, catalog, notifications, and source-backed visibility.
+            Live admin workspace for production, compliance, fulfillment, catalog, notifications, and operational review.
           </p>
           <AdminStatusLegend className="mt-2" showHubFallback={false} />
         </div>

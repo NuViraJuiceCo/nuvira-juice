@@ -7,10 +7,10 @@ import Stripe from 'npm:stripe@14.21.0';
  *
  * Customer self-service: pauses the NEXT billing cycle only.
  * - Does NOT affect the current paid billing cycle.
- * - Does NOT cancel current Hub FulfillmentTasks or ProductionBatch.
+ * - Does NOT cancel current Customer App FulfillmentTask or ProductionBatch records.
  * - Sets pause_collection in Stripe to take effect at current period end.
- * - Notifies Hub with event 'customer.subscription_future_pause' so Hub
- *   does not schedule fulfillment for the paused period.
+ * - Customer App subscription state is authoritative; subscription purchase
+ *   remains disabled while native future-cycle scheduling is unavailable.
  *
  * Payload: { subscription_id, paused_until }
  * paused_until: ISO date string (YYYY-MM-DD) — when to resume
@@ -76,26 +76,6 @@ export default async function handler(req: Request) {
       paused_until: paused_until,
     });
     console.log(`[pauseSubscription] CA Subscription ${subscription_id} set to paused until ${paused_until}`);
-
-    // Notify Hub: future pause only — current cycle fulfillment stays intact
-    try {
-      await base44.asServiceRole.functions.invoke('syncCustomerToHub', {
-        event: 'customer.subscription_future_pause',
-        customer_email: user.email,
-        data: {
-          subscription_id: subscription_id,
-          stripe_subscription_id: stripeSubId || null,
-          pause_type: 'customer_future_pause',
-          pause_effective_after: periodEnd,
-          resumes_at: paused_until,
-          current_cycle_intact: true, // Hub: do NOT cancel current FulfillmentTasks
-          message: `Customer paused next billing cycle. Current paid month is active. Do not cancel current production/fulfillment. Pause effective after ${periodEnd}, resumes ${paused_until}.`,
-        },
-      });
-      console.log(`[pauseSubscription] Hub notified: customer_future_pause for ${user.email}`);
-    } catch (hubErr) {
-      console.warn(`[pauseSubscription] Hub notify failed (non-blocking): ${hubErr.message}`);
-    }
 
     return Response.json({
       success: true,

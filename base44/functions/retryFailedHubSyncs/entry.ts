@@ -58,6 +58,19 @@ async function writeRetryFailureLog(base44, { orderNumber, startTime, descriptio
  * Deduplicates by stripe_checkout_session_id / order_number.
  */
 Deno.serve(async (req) => {
+  if (Deno.env.get('ENABLE_LEGACY_HUB_ORDER_BRIDGE') !== 'true') {
+    return Response.json({
+      success: true,
+      skipped: true,
+      retired: true,
+      retried: 0,
+      reason: 'legacy_hub_order_bridge_retired',
+      source: 'customer_app_native_authoritative',
+      hub_operational_dependency: false,
+      external_calls_performed: false,
+    });
+  }
+
   if (Deno.env.get('ENABLE_FAILED_HUB_SYNC_RETRY') !== 'true') {
     return Response.json({
       success: true,

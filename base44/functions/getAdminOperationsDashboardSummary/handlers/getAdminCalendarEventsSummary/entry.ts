@@ -908,7 +908,15 @@ function mergeNativeAndHubCalendar({ nativeCalendar, hubCalendar }) {
   };
 }
 
-function nativeFirstCalendarResponse({ dateFrom, dateTo, nativeCalendar, hubData = null, hubWarning = null, hubAvailable = false }) {
+function nativeFirstCalendarResponse({
+  dateFrom,
+  dateTo,
+  nativeCalendar,
+  hubData = null,
+  hubWarning = null,
+  hubAvailable = false,
+  hubHistoricalContextRequested = false,
+}) {
   const hubCalendar = hubData && Array.isArray(hubData.dates)
     ? {
       summary: sanitizeSummary(hubData.summary),
@@ -916,43 +924,54 @@ function nativeFirstCalendarResponse({ dateFrom, dateTo, nativeCalendar, hubData
     }
     : { summary: {}, dates: [] };
 
-  const merged = mergeNativeAndHubCalendar({ nativeCalendar, hubCalendar });
+  const merged = mergeNativeAndHubCalendar({ nativeCalendar, hubCalendar: { summary: {}, dates: [] } });
+  const hubHistoricalContextEventCount = hubCalendar.dates.reduce(
+    (count, group) => count + (Array.isArray(group.items) ? group.items.length : 0),
+    0,
+  );
   const warnings = [];
-  if (hubWarning) warnings.push(hubWarning, 'native_read_only_fallback');
-  if (merged.suppressed_hub_event_count > 0) warnings.push('hub_calendar_rows_suppressed_or_deduped');
-  for (const reason of merged.fallback_reasons) {
-    if (['stale_hub_event_suppressed', 'subscription_calendar_event_hub_source_of_truth', 'historical_hub_event_retained'].includes(reason)) warnings.push(reason);
-  }
+  if (hubHistoricalContextRequested && hubWarning) warnings.push(hubWarning);
 
   return Response.json({
     success: true,
-    source: hubAvailable ? 'customer_app_native_calendar_first' : 'customer_app_native_calendar_fallback',
-    date_from: hubData?.date_from || dateFrom,
-    date_to: hubData?.date_to || dateTo,
-    generated_at: hubData?.generated_at || new Date().toISOString(),
+    source: 'customer_app_native_calendar_authoritative',
+    date_from: dateFrom,
+    date_to: dateTo,
+    generated_at: new Date().toISOString(),
     summary: merged.summary,
     dates: merged.dates,
-    truncated: hubData?.truncated === true,
+    truncated: false,
     warnings: [...new Set(warnings)].filter(Boolean),
     data_sources: {
       hub_available: hubAvailable,
       native_available: true,
       native_read_only: true,
       native_first: true,
-      hub_fallback_active: true,
+      customer_app_native_authoritative: true,
+      hub_operational_dependency: false,
+      hub_fallback_active: false,
+      hub_historical_context_requested: hubHistoricalContextRequested,
+      hub_historical_context_available: hubAvailable,
+      hub_historical_context_event_count: hubHistoricalContextEventCount,
     },
     native_first_enabled: true,
+    customer_app_native_authoritative: true,
+    hub_operational_dependency: false,
+    include_hub_historical_context: hubHistoricalContextRequested,
+    hub_historical_context_event_count: hubHistoricalContextEventCount,
     native_event_count: merged.native_event_count,
-    hub_fallback_event_count: merged.hub_fallback_event_count,
-    suppressed_hub_event_count: merged.suppressed_hub_event_count,
-    fallback_required: merged.fallback_required,
-    fallback_reasons: merged.fallback_reasons,
-    hub_fallback_used: merged.hub_fallback_used,
-    native_missing_count: merged.native_missing_count,
-    hub_only_count: merged.hub_only_count,
+    hub_fallback_event_count: 0,
+    suppressed_hub_event_count: 0,
+    fallback_required: false,
+    fallback_reasons: [],
+    hub_fallback_used: false,
+    native_missing_count: 0,
+    hub_only_count: 0,
     native_only_count: merged.native_only_count,
-    mismatch_count: merged.mismatch_count,
-    calendar_events_source: hubAvailable ? 'customer_app_native_first_with_hub_fallback' : 'customer_app_native_first_hub_unavailable',
+    mismatch_count: 0,
+    calendar_events_source: merged.native_event_count > 0
+      ? 'customer_app_native_authoritative'
+      : 'empty',
     writes_performed: false,
     provider_call_impact: false,
     notifications_sent: false,
@@ -969,6 +988,7 @@ function nativeFallbackResponse({ dateFrom, dateTo, nativeCalendar, reason, hubS
     nativeCalendar,
     hubWarning: hubStatus ? `hub_calendar_unavailable:${hubStatus}` : `hub_calendar_unavailable:${reason}`,
     hubAvailable: false,
+    hubHistoricalContextRequested: true,
   });
 }
 
@@ -1037,6 +1057,7 @@ export default async function handler(req: Request) {
 
     const status = sanitizeText(body.status, 60) || '';
     const search = sanitizeText(body.search, 80) || '';
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
     const resolvedRange = resolveDateRange({ preset, dateFrom, dateTo });
     const nativeCalendar = await loadNativeCalendarSummary(base44, {
       dateFrom: resolvedRange.date_from,
@@ -1046,6 +1067,15 @@ export default async function handler(req: Request) {
       search,
       limit,
     });
+
+    if (!includeHubHistoricalContext) {
+      return nativeFirstCalendarResponse({
+        dateFrom: resolvedRange.date_from,
+        dateTo: resolvedRange.date_to,
+        nativeCalendar,
+        hubHistoricalContextRequested: false,
+      });
+    }
 
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       return nativeFallbackResponse({
@@ -1119,6 +1149,7 @@ export default async function handler(req: Request) {
       nativeCalendar,
       hubData,
       hubAvailable: true,
+      hubHistoricalContextRequested: true,
     });
   } catch (error) {
     console.error('[getAdminCalendarEventsSummary] Error:', error.message);

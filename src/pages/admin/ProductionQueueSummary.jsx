@@ -2270,7 +2270,7 @@ export default function ProductionQueueSummary() {
             </p>
           )}
           <p className="text-[10px] text-muted-foreground">
-            Customer App and source-backed production data. Batch steps are guarded by exact-batch checks; inventory deduction stays separate.
+            Customer App production data is authoritative. Batch steps are guarded by exact-batch checks; inventory deduction stays separate.
           </p>
           <details className="rounded-lg border border-border/60 bg-background/70 p-3">
             <summary className="cursor-pointer text-xs font-semibold text-foreground">Need an older date?</summary>

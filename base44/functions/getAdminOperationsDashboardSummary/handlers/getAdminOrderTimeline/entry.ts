@@ -337,6 +337,7 @@ export default async function handler(req: Request) {
     const orderNumber = normalizeText(body.order_number);
     const stripeSubscriptionId = normalizeText(body.stripe_subscription_id);
     const customerAppOrderId = normalizeText(body.customer_app_order_id);
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
     const limit = normalizeLimit(body.limit);
 
     if (!hubOrderId && !orderNumber && !stripeSubscriptionId && !customerAppOrderId) {
@@ -374,6 +375,21 @@ export default async function handler(req: Request) {
       });
     }
 
+    if (!includeHubHistoricalContext) {
+      return Response.json({
+        success: true,
+        matched_by: null,
+        source: 'customer_app_native',
+        order_number: nativeRecords.orderNumber || orderNumber || null,
+        count: 0,
+        source_event_count: 0,
+        duplicate_projection_count: 0,
+        events: [],
+        hub_operational_dependency: false,
+        hub_historical_context_requested: false,
+      });
+    }
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       return Response.json({
         success: true,
@@ -385,6 +401,8 @@ export default async function handler(req: Request) {
         duplicate_projection_count: 0,
         events: [],
         warning: 'legacy_source_unavailable',
+        hub_operational_dependency: false,
+        hub_historical_context_requested: true,
       });
     }
 
@@ -434,6 +452,9 @@ export default async function handler(req: Request) {
       source_event_count: sourceEvents.length,
       duplicate_projection_count: sourceEvents.length - events.length,
       events,
+      source: 'hub_historical_context',
+      hub_operational_dependency: false,
+      hub_historical_context_requested: true,
     });
   } catch (error) {
     console.error('[getAdminOrderTimeline] Error:', error.message);

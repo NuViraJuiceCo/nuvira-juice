@@ -181,6 +181,7 @@ function pass(name) { results.push(name); }
 
 // Non-food inventory preview/import excludes Honey and supports audited native edits.
 {
+  let externalRequests = 0;
   const hubData = {
     success: true,
     items: [
@@ -193,14 +194,24 @@ function pass(name) { results.push(name); }
   };
   const handler = loadHandler('getAdminInventoryStatusSummary', {
     env: { HUB_API_URL: 'https://hub.example.test/functions/inventory', CUSTOMER_APP_SYNC_SECRET: 'synthetic' },
-    fetchImpl: async () => new Response(JSON.stringify(hubData), { status: 200 }),
+    fetchImpl: async () => {
+      externalRequests += 1;
+      return new Response(JSON.stringify(hubData), { status: 200 });
+    },
   });
   const store = createStore({ InventoryItem: [], PurchaseOrder: [], CommandLog: [] });
+  const daily = await invoke(handler, base44For(store), { limit: 100 });
+  assert.equal(daily.status, 200);
+  assert.equal(daily.body.source, 'customer_app_native_inventory_authoritative');
+  assert.equal(daily.body.data_sources.hub_operational_dependency, false);
+  assert.equal(daily.body.data_sources.food_inventory_policy, 'food_and_juice_make_to_order');
+  assert.equal(externalRequests, 0);
   const forbidden = await invoke(handler, base44For(createStore(), { role: 'staff' }), { operation: 'preview_non_food_import', limit: 100 });
   assert.equal(forbidden.status, 403);
   const preview = await invoke(handler, base44For(store), { operation: 'preview_non_food_import', limit: 100 });
   assert.equal(preview.status, 200);
   assert.equal(preview.body.candidate_count, 1);
+  assert.equal(externalRequests, 1);
   assert.equal(preview.body.candidates[0].ingredient, 'Bottle Labels');
   assert.equal(store.writes.length, 0);
 

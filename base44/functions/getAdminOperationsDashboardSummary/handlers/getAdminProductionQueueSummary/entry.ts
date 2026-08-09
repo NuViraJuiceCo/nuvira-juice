@@ -612,7 +612,17 @@ function mergeHubAndNativeBatches(hubBatches, nativeBatches, limit, terminalOrde
   return limit ? merged.slice(0, limit) : merged;
 }
 
-function nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, testBatchMode = 'exclude', nativeSourceAvailable = true }) {
+function nativeOnlyProductionQueueResponse({
+  dateFrom,
+  dateTo,
+  nativeBatches,
+  warnings,
+  testBatchMode = 'exclude',
+  nativeSourceAvailable = true,
+  hubHistoricalContextRequested = false,
+  hubHistoricalContextAvailable = false,
+  hubHistoricalContextBatchCount = 0,
+}) {
   return {
     success: true,
     date_from: dateFrom,
@@ -625,9 +635,20 @@ function nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, wa
       native_available: nativeSourceAvailable,
       native_read_only: false,
       native_batch_count: nativeBatches.length,
+      native_authoritative_batch_count: nativeBatches.length,
       hub_batch_count: 0,
+      hub_fallback_batch_count: 0,
+      customer_app_native_authoritative: true,
+      hub_operational_dependency: false,
+      hub_historical_context_requested: hubHistoricalContextRequested,
+      hub_historical_context_available: hubHistoricalContextAvailable,
+      hub_historical_context_batch_count: hubHistoricalContextBatchCount,
       live_actions_source: testBatchMode === 'only' ? 'native_internal_test_only' : 'customer_app_native',
     },
+    customer_app_native_authoritative: true,
+    hub_operational_dependency: false,
+    include_hub_historical_context: hubHistoricalContextRequested,
+    hub_historical_context_batch_count: hubHistoricalContextBatchCount,
     test_batch_mode: testBatchMode,
     operational_totals_exclude_test_batches: true,
     warnings,
@@ -670,6 +691,7 @@ export default async function handler(req: Request) {
     let dateTo;
     let limit;
     let testBatchMode;
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
 
     try {
       dateFrom = parseIsoDate(body.date_from, 'date_from');
@@ -709,13 +731,13 @@ export default async function handler(req: Request) {
     const nativeSourceAvailable = nativeRead.available === true;
     const warnings = [];
     if (nativeRead.error) warnings.push(nativeRead.error);
+    if (!nativeSourceAvailable) {
+      return Response.json({
+        error: 'Unable to load Customer App production queue summary',
+        warnings,
+      }, { status: 503 });
+    }
     if (testBatchMode === 'only') {
-      if (!nativeSourceAvailable) {
-        return Response.json({
-          error: 'Unable to load native production queue summary',
-          warnings,
-        }, { status: 503 });
-      }
       warnings.push('internal_test_batches_only');
       return Response.json(nativeOnlyProductionQueueResponse({
         dateFrom,
@@ -727,16 +749,28 @@ export default async function handler(req: Request) {
       }));
     }
 
-    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      if (!nativeSourceAvailable) {
-        return Response.json({
-          error: 'Hub production queue service is not configured',
-          warnings: ['hub_production_queue_service_not_configured'],
-        }, { status: 503 });
-      }
+    if (!includeHubHistoricalContext) {
+      return Response.json(nativeOnlyProductionQueueResponse({
+        dateFrom,
+        dateTo,
+        nativeBatches,
+        warnings,
+        testBatchMode,
+        nativeSourceAvailable,
+      }));
+    }
 
-      warnings.push('hub_production_queue_service_not_configured');
-      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, testBatchMode, nativeSourceAvailable }));
+    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
+      warnings.push('hub_historical_production_context_not_configured');
+      return Response.json(nativeOnlyProductionQueueResponse({
+        dateFrom,
+        dateTo,
+        nativeBatches,
+        warnings,
+        testBatchMode,
+        nativeSourceAvailable,
+        hubHistoricalContextRequested: true,
+      }));
     }
 
     const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
@@ -755,83 +789,55 @@ export default async function handler(req: Request) {
         },
       });
     } catch {
-      warnings.push('hub_production_queue_unavailable:fetch_failed');
-      if (!nativeSourceAvailable) {
-        return Response.json({
-          error: 'Unable to load production queue summary',
-          warnings,
-        }, { status: 503 });
-      }
-
-      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, testBatchMode, nativeSourceAvailable }));
+      warnings.push('hub_historical_production_context_unavailable:fetch_failed');
+      return Response.json(nativeOnlyProductionQueueResponse({
+        dateFrom,
+        dateTo,
+        nativeBatches,
+        warnings,
+        testBatchMode,
+        nativeSourceAvailable,
+        hubHistoricalContextRequested: true,
+      }));
     }
 
     if (!hubResponse.ok) {
-      warnings.push(`hub_production_queue_unavailable:${hubResponse.status}`);
-      if (!nativeSourceAvailable) {
-        return Response.json({
-          error: 'Unable to load production queue summary',
-          hub_status: hubResponse.status,
-          warnings,
-        }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
-      }
-
-      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, testBatchMode, nativeSourceAvailable }));
+      warnings.push(`hub_historical_production_context_unavailable:${hubResponse.status}`);
+      return Response.json(nativeOnlyProductionQueueResponse({
+        dateFrom,
+        dateTo,
+        nativeBatches,
+        warnings,
+        testBatchMode,
+        nativeSourceAvailable,
+        hubHistoricalContextRequested: true,
+      }));
     }
 
     const hubData = await hubResponse.json().catch(() => null);
     if (!hubData || hubData.success !== true || !Array.isArray(hubData.batches)) {
-      warnings.push('hub_production_queue_malformed_response');
-      if (!nativeSourceAvailable) {
-        return Response.json({ error: 'Malformed production queue summary response', warnings }, { status: 502 });
-      }
-
-      return Response.json(nativeOnlyProductionQueueResponse({ dateFrom, dateTo, nativeBatches, warnings, nativeSourceAvailable }));
+      warnings.push('hub_historical_production_context_malformed_response');
+      return Response.json(nativeOnlyProductionQueueResponse({
+        dateFrom,
+        dateTo,
+        nativeBatches,
+        warnings,
+        testBatchMode,
+        nativeSourceAvailable,
+        hubHistoricalContextRequested: true,
+      }));
     }
-
-    const terminalLifecycle = await loadTerminalNativeOrderNumbers(base44, hubData.batches);
-    if (terminalLifecycle.error) warnings.push(terminalLifecycle.error);
-    const suppressedTerminalHubBatchCount = hubData.batches
-      .map(batch => sanitizeBatch({ ...batch, source: 'hub' }))
-      .filter(batch => hubBatchSuppressedByTerminalOrders(batch, terminalLifecycle.orderNumbers))
-      .length;
-    if (suppressedTerminalHubBatchCount > 0) warnings.push('stale_terminal_hub_batches_suppressed');
-
-    const batches = mergeHubAndNativeBatches(
-      hubData.batches,
+    return Response.json(nativeOnlyProductionQueueResponse({
+      dateFrom,
+      dateTo,
       nativeBatches,
-      limit,
-      terminalLifecycle.orderNumbers,
-    );
-    const hubBatchCount = hubData.batches.length;
-    const nativeAuthoritativeCount = batches.filter(batch => batch.source === 'customer_app_native').length;
-    const hubFallbackCount = batches.filter(batch => batch.source === 'hub').length;
-    const unmergedCount = nativeAuthoritativeCount + hubFallbackCount;
-    const truncated = hubData.truncated === true || Boolean(limit && unmergedCount > batches.length);
-
-    return Response.json({
-      success: true,
-      date_from: hubData.date_from || dateFrom,
-      date_to: hubData.date_to || dateTo,
-      count: batches.length,
-      truncated,
-      batches,
-      data_sources: {
-        hub_available: true,
-        native_available: nativeSourceAvailable,
-        native_read_only: false,
-        native_batch_count: nativeBatches.length,
-        native_authoritative_batch_count: nativeAuthoritativeCount,
-        hub_fallback_batch_count: hubFallbackCount,
-        hub_batch_count: hubBatchCount,
-        stale_terminal_hub_batch_count: suppressedTerminalHubBatchCount,
-        native_terminal_lifecycle_available: terminalLifecycle.available,
-        live_actions_source: hubFallbackCount > 0 ? 'customer_app_native_with_hub_fallback' : 'customer_app_native',
-      },
       warnings,
-      test_batch_mode: 'exclude',
-      operational_totals_exclude_test_batches: true,
-    });
+      testBatchMode,
+      nativeSourceAvailable,
+      hubHistoricalContextRequested: true,
+      hubHistoricalContextAvailable: true,
+      hubHistoricalContextBatchCount: hubData.batches.length,
+    }));
   } catch (error) {
     console.error('[getAdminProductionQueueSummary] Error:', error.message);
     return Response.json({ error: 'Unable to load production queue summary' }, { status: 500 });

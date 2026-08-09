@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Bundle revision: g92-native-production-batch-materialization-20260808.
+// Bundle revision: g95-customer-app-operational-authority-20260808.
 // Base44 deploy hashing does not track nested handler-only edits, so update this
 // marker whenever a gateway handler changes and must be repackaged.
 import handler0 from './handlers/appendAdminHubOrderNote/entry.ts';
@@ -136,6 +136,27 @@ const HANDLERS = {
 
 const DEFAULT_ACTION = 'getAdminOperationsDashboardSummary';
 
+const RETIRED_LEGACY_HUB_ACTIONS = new Set([
+  'bottleAdminProductionVerifyShopifyOrder',
+  'completeAdminProductionBatch',
+  'correctAdminProductionIngredientUsage',
+  'deductAdminProductionInventory',
+  'getAdminSyncHealthSummary',
+  'markAdminFulfillmentTaskOutForDelivery',
+  'packAdminProductionVerifyFulfillmentTasks',
+  'previewAdminProductionBatchComplete',
+  'previewAdminProductionBatchStart',
+  'previewAdminProductionBatchVerify',
+  'previewAdminProductionIngredientUsageCorrection',
+  'previewAdminProductionInventoryDeduction',
+  'previewAdminProductionVerifyCascades',
+  'recordAdminFulfillmentTaskDelivered',
+  'startAdminProductionBatch',
+  'updateAdminFulfillmentTaskAssignment',
+  'updateAdminOpsAlertStatus',
+  'verifyAdminProductionBatch',
+]);
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
 
@@ -148,6 +169,16 @@ Deno.serve(async (req) => {
   }
 
   const requestedAction = typeof body.gateway_action === 'string' ? body.gateway_action : DEFAULT_ACTION;
+  if (RETIRED_LEGACY_HUB_ACTIONS.has(requestedAction)) {
+    return Response.json({
+      success: false,
+      error: 'This legacy Hub action is retired. Use the Customer App native workflow.',
+      error_code: 'legacy_hub_action_retired',
+      action: requestedAction,
+      hub_operational_dependency: false,
+      writes_performed: false,
+    }, { status: 410 });
+  }
   const handler = HANDLERS[requestedAction];
   if (!handler) return Response.json({ error: 'unsupported_admin_operation' }, { status: 400 });
 

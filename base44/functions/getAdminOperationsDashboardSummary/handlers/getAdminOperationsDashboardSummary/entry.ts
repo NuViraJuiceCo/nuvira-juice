@@ -19,45 +19,45 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     group: 'orders',
     key: 'total',
     domain: 'admin_orders',
-    source_of_truth: 'hub',
-    blocker: 'admin_orders_not_broad_native_first_g39l_zero_eligible_rows',
-    recommendation: 'preserve_current_display_until_admin_order_aggregate_parity_is_proven',
+    source_of_truth: 'customer_app_native',
+    native_first_candidate_if_match: true,
+    recommendation: 'customer_app_order_entities_are_authoritative',
   },
   {
     name: 'orders.paid',
     group: 'orders',
     key: 'paid',
     domain: 'payment_refund',
-    source_of_truth: 'payment_provider_hub',
+    source_of_truth: 'customer_app_payment_projection',
     mismatch_category: 'payment_refund_semantic_mismatch',
-    blocker: 'payment_refund_source_of_truth_hold',
-    recommendation: 'keep_hub_payment_refund_source_of_truth_until_payment_parity_is_proven',
+    native_first_candidate_if_match: true,
+    recommendation: 'use_customer_app_order_payment_projection_for_dashboard_counts',
   },
   {
     name: 'orders.fulfilled',
     group: 'orders',
     key: 'fulfilled',
     domain: 'admin_orders',
-    source_of_truth: 'hub',
-    blocker: 'fulfillment_status_semantics_not_row_proven_for_broad_orders',
-    recommendation: 'use_admin_orders_diagnostics_before_switching_order_fulfillment_counts',
+    source_of_truth: 'customer_app_native',
+    native_first_candidate_if_match: true,
+    recommendation: 'use_customer_app_order_and_fulfillment_task_lifecycle',
   },
   {
     name: 'orders.delivered',
     group: 'orders',
     key: 'delivered',
     domain: 'admin_orders',
-    source_of_truth: 'hub',
+    source_of_truth: 'customer_app_native',
     mismatch_category: 'delivered_completed_semantic_mismatch',
-    blocker: 'order_delivered_count_not_equivalent_to_route_task_count',
-    recommendation: 'reference_g39d_route_summary_but_keep_order_delivered_count_current_source_for_now',
+    native_first_candidate_if_match: true,
+    recommendation: 'use_customer_app_order_and_route_task_delivery_state',
   },
   {
     name: 'production.batch_count',
     group: 'production',
     key: 'batch_count',
     domain: 'production_planning',
-    source_of_truth: 'mixed',
+    source_of_truth: 'customer_app_native',
     mismatch_category: 'production_status_semantic_mismatch',
     native_first_candidate_if_match: true,
     recommendation: 'reference_g39f_production_planning_before_switching_displayed_count',
@@ -67,7 +67,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     group: 'production',
     key: 'planned_units',
     domain: 'production_planning',
-    source_of_truth: 'mixed',
+    source_of_truth: 'customer_app_native',
     mismatch_category: 'schema_meaning_mismatch',
     native_first_candidate_if_match: true,
     recommendation: 'compare_unit_semantics_with_g39f_planning_before_switching_displayed_units',
@@ -77,7 +77,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     group: 'production',
     key: 'produced_units',
     domain: 'production_planning',
-    source_of_truth: 'mixed',
+    source_of_truth: 'customer_app_native',
     mismatch_category: 'schema_meaning_mismatch',
     native_first_candidate_if_match: true,
     recommendation: 'compare_actual_units_final_usable_quantity_and_hub_produced_units_before_switching',
@@ -87,7 +87,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     group: 'delivery',
     key: 'today_stops',
     domain: 'delivery_route',
-    source_of_truth: 'mixed',
+    source_of_truth: 'customer_app_native',
     native_first_candidate_if_match: true,
     recommendation: 'reference_g39d_native_first_route_summary_for_date_bucket_semantics',
   },
@@ -96,7 +96,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     group: 'delivery',
     key: 'tomorrow_stops',
     domain: 'delivery_route',
-    source_of_truth: 'mixed',
+    source_of_truth: 'customer_app_native',
     native_first_candidate_if_match: true,
     recommendation: 'reference_g39d_native_first_route_summary_for_date_bucket_semantics',
   },
@@ -105,7 +105,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     group: 'delivery',
     key: 'unscheduled',
     domain: 'delivery_route',
-    source_of_truth: 'mixed',
+    source_of_truth: 'customer_app_native',
     native_first_candidate_if_match: true,
     recommendation: 'surface_paid_delivery_orders_without_route_dates_before_planning_routes',
   },
@@ -114,7 +114,7 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     group: 'delivery',
     key: 'completed_in_range',
     domain: 'delivery_route',
-    source_of_truth: 'mixed',
+    source_of_truth: 'customer_app_native',
     mismatch_category: 'delivered_completed_semantic_mismatch',
     native_first_candidate_if_match: true,
     recommendation: 'reference_g39d_completed_task_semantics_before_switching_displayed_count',
@@ -204,30 +204,30 @@ const G39N_AGGREGATE_SPECS = Object.freeze([
     group: 'source_mix',
     key: 'one_time',
     domain: 'admin_orders',
-    source_of_truth: 'hub',
+    source_of_truth: 'customer_app_native',
     mismatch_category: 'aggregate_includes_different_row_classes',
-    blocker: 'one_time_source_mix_not_equivalent_to_g39l_native_primary_eligibility',
-    recommendation: 'keep_source_mix_current_display_until_one_time_classification_parity_is_proven',
+    native_first_candidate_if_match: true,
+    recommendation: 'use_customer_app_order_source_classification',
   },
   {
     name: 'source_mix.subscription',
     group: 'source_mix',
     key: 'subscription',
     domain: 'subscription',
-    source_of_truth: 'subscription_hub',
+    source_of_truth: 'customer_app_native',
     mismatch_category: 'subscription_multi_delivery_mismatch',
-    blocker: 'subscription_multi_delivery_hub_source_of_truth',
-    recommendation: 'keep_subscription_counts_hub_source_of_truth',
+    native_first_candidate_if_match: true,
+    recommendation: 'use_customer_app_order_subscription_classification',
   },
   {
     name: 'source_mix.pos',
     group: 'source_mix',
     key: 'pos',
     domain: 'pos_event',
-    source_of_truth: 'hub',
+    source_of_truth: 'customer_app_native',
     mismatch_category: 'aggregate_includes_different_row_classes',
-    blocker: 'pos_event_order_classification_not_in_native_first_scope',
-    recommendation: 'keep_pos_event_source_mix_current_display_until_pos_parity_is_proven',
+    native_first_candidate_if_match: true,
+    recommendation: 'use_customer_app_order_pos_event_classification',
   },
   {
     name: 'source_mix.other',
@@ -508,13 +508,21 @@ function aggregateDiagnosticForSpec({
   const mismatchDetected = Boolean(mismatchCategory) && mismatchCategory !== 'not_comparable';
   const sourceOfTruth = comparisonAvailable ? spec.source_of_truth : (spec.source_of_truth || 'not_comparable');
   const sourceHold = sourceOfTruthIsHold(sourceOfTruth) || Boolean(spec.blocker);
-  const nativeFirstReady = Boolean(spec.native_first_candidate_if_match)
-    && comparisonAvailable
-    && !mismatchDetected
-    && !sourceHold;
-  const fallbackRequired = !nativeFirstReady || currentDisplaySource !== 'native_primary';
+  const nativeAuthority = sourceOfTruth === 'customer_app_native'
+    || sourceOfTruth === 'customer_app_payment_projection';
+  const nativeFirstReady = nativeAuthority
+    ? nativeValue !== null && nativeValue !== undefined && !sourceHold
+    : Boolean(spec.native_first_candidate_if_match)
+      && comparisonAvailable
+      && !mismatchDetected
+      && !sourceHold;
+  const nativeDisplayActive = currentDisplaySource === 'native_primary'
+    || currentDisplaySource === 'customer_app_native_authoritative';
+  const fallbackRequired = nativeAuthority
+    ? false
+    : !nativeFirstReady || !nativeDisplayActive;
   const reviewRequired = mismatchDetected || sourceOfTruth === 'manual_review' || sourceOfTruth === 'unknown' || sourceOfTruth === 'not_comparable';
-  const blocker = nativeFirstReady
+  const blocker = nativeAuthority || nativeFirstReady
     ? null
     : spec.blocker || (comparisonAvailable ? null : 'aggregate_comparison_not_available');
   const fallbackReason = fallbackRequired
@@ -651,10 +659,12 @@ function buildOperationsDashboardDiagnostics({
     operations_dashboard_diagnostics_enabled: true,
     operations_dashboard_diagnostics_marker: G39N_DIAGNOSTICS_MARKER,
     operations_dashboard_delivery_completed_marker: deliveryCompletedGuard?.marker || G39Q_DELIVERY_COMPLETED_MARKER,
-    native_first_enabled: false,
-    hub_primary_enabled: true,
-    hub_fallback_active: true,
-    dashboard_source_mode: 'current_behavior_with_diagnostics',
+    native_first_enabled: currentDisplaySource === 'customer_app_native_authoritative',
+    hub_primary_enabled: currentDisplaySource !== 'customer_app_native_authoritative',
+    hub_fallback_active: false,
+    dashboard_source_mode: currentDisplaySource === 'customer_app_native_authoritative'
+      ? 'customer_app_native_authoritative'
+      : 'historical_diagnostics_only',
     delivery_completed_in_range_native_primary_enabled: deliveryCompletedGuard?.enabled === true,
     delivery_completed_in_range_guard_passed: deliveryCompletedGuard?.guard_passed === true,
     delivery_completed_in_range_guard_reason: deliveryCompletedGuard?.guard_reason || 'native_route_date_guard_not_evaluated',
@@ -1796,37 +1806,58 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
   };
 }
 
-function nativeFallbackResponse({ dateFrom, dateTo, summary, deliveryCompletedGuard, reason, hubStatus = null, backendReadiness = null }) {
+function nativeFallbackResponse({
+  dateFrom,
+  dateTo,
+  summary,
+  deliveryCompletedGuard,
+  reason = null,
+  hubStatus = null,
+  backendReadiness = null,
+  hubSummary = null,
+  hubRange = null,
+  hubHistoricalContextRequested = false,
+  hubHistoricalContextAvailable = false,
+}) {
   const diagnostics = buildOperationsDashboardDiagnostics({
     displayedSummary: summary,
     nativeSummary: summary,
-    hubSummary: null,
-    currentDisplaySource: 'native_fallback',
+    hubSummary,
+    currentDisplaySource: 'customer_app_native_authoritative',
     requestedRange: { date_from: dateFrom, date_to: dateTo },
-    hubRange: null,
+    hubRange,
     deliveryCompletedGuard,
   });
+  const warnings = [
+    hubHistoricalContextRequested && reason
+      ? (hubStatus
+        ? `hub_operations_dashboard_historical_context_unavailable:${hubStatus}`
+        : `hub_operations_dashboard_historical_context_unavailable:${reason}`)
+      : null,
+    ...deliveryCompletedWarnings(deliveryCompletedGuard),
+  ].filter(Boolean);
 
   return Response.json({
     success: true,
-    source: 'customer_app_native_operations_dashboard_fallback',
+    source: 'customer_app_native_operations_dashboard_authoritative',
     generated_at: new Date().toISOString(),
     date_from: dateFrom,
     date_to: dateTo,
     summary,
     truncated: false,
-    warnings: [
-      hubStatus
-        ? `hub_operations_dashboard_unavailable:${hubStatus}`
-        : `hub_operations_dashboard_unavailable:${reason}`,
-      'native_read_only_fallback',
-      ...deliveryCompletedWarnings(deliveryCompletedGuard),
-    ],
+    warnings,
     data_sources: {
-      hub_available: false,
+      hub_available: hubHistoricalContextAvailable,
       native_available: true,
       native_read_only: true,
+      customer_app_native_authoritative: true,
+      hub_operational_dependency: false,
+      hub_historical_context_requested: hubHistoricalContextRequested,
+      hub_historical_context_available: hubHistoricalContextAvailable,
     },
+    customer_app_native_authoritative: true,
+    hub_operational_dependency: false,
+    include_hub_historical_context: hubHistoricalContextRequested,
     writes_performed: false,
     provider_calls_performed: false,
     notifications_sent: false,
@@ -1895,6 +1926,7 @@ export default async function handler(req: Request) {
     const sourceType = normalizeText(body.source_type);
     const sourceChannel = normalizeText(body.source_channel);
     const resolvedRange = resolveDateRange({ preset, dateFrom, dateTo });
+    const includeHubHistoricalContext = body.include_hub_historical_context === true;
     const includeBackendReadiness = body.include_backend_readiness === true;
     const backendReadiness = includeBackendReadiness
       ? await buildOperationalBackendReadiness(base44, {
@@ -1910,13 +1942,31 @@ export default async function handler(req: Request) {
       sourceChannel,
     });
 
+    if (!includeHubHistoricalContext) {
+      const nativeContext = await loadNativeContext();
+      const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
+        currentSummary: nativeContext.summary,
+        nativeRouteDateResult: nativeContext.delivery_completed_route_date,
+        hubSummary: null,
+        currentDisplaySource: 'customer_app_native_authoritative',
+      });
+      const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
+      return nativeFallbackResponse({
+        dateFrom: resolvedRange.date_from,
+        dateTo: resolvedRange.date_to,
+        summary: guardedSummary,
+        deliveryCompletedGuard,
+        backendReadiness,
+      });
+    }
+
     if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
       const nativeContext = await loadNativeContext();
       const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
         currentSummary: nativeContext.summary,
         nativeRouteDateResult: nativeContext.delivery_completed_route_date,
         hubSummary: null,
-        currentDisplaySource: 'native_fallback',
+        currentDisplaySource: 'customer_app_native_authoritative',
       });
       const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
       return nativeFallbackResponse({
@@ -1926,6 +1976,7 @@ export default async function handler(req: Request) {
         deliveryCompletedGuard,
         reason: 'missing_config',
         backendReadiness,
+        hubHistoricalContextRequested: true,
       });
     }
 
@@ -1955,7 +2006,7 @@ export default async function handler(req: Request) {
         currentSummary: nativeContext.summary,
         nativeRouteDateResult: nativeContext.delivery_completed_route_date,
         hubSummary: null,
-        currentDisplaySource: 'native_fallback',
+        currentDisplaySource: 'customer_app_native_authoritative',
       });
       const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
       return nativeFallbackResponse({
@@ -1965,6 +2016,7 @@ export default async function handler(req: Request) {
         deliveryCompletedGuard,
         reason: 'fetch_failed',
         backendReadiness,
+        hubHistoricalContextRequested: true,
       });
     }
 
@@ -1974,7 +2026,7 @@ export default async function handler(req: Request) {
         currentSummary: nativeContext.summary,
         nativeRouteDateResult: nativeContext.delivery_completed_route_date,
         hubSummary: null,
-        currentDisplaySource: 'native_fallback',
+        currentDisplaySource: 'customer_app_native_authoritative',
       });
       const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
       return nativeFallbackResponse({
@@ -1985,6 +2037,7 @@ export default async function handler(req: Request) {
         reason: 'non_ok',
         hubStatus: hubResponse.status,
         backendReadiness,
+        hubHistoricalContextRequested: true,
       });
     }
 
@@ -1995,7 +2048,7 @@ export default async function handler(req: Request) {
         currentSummary: nativeContext.summary,
         nativeRouteDateResult: nativeContext.delivery_completed_route_date,
         hubSummary: null,
-        currentDisplaySource: 'native_fallback',
+        currentDisplaySource: 'customer_app_native_authoritative',
       });
       const guardedSummary = applyDeliveryCompletedInRangeGuard(nativeContext.summary, deliveryCompletedGuard);
       return nativeFallbackResponse({
@@ -2005,66 +2058,33 @@ export default async function handler(req: Request) {
         deliveryCompletedGuard,
         reason: 'malformed_response',
         backendReadiness,
+        hubHistoricalContextRequested: true,
       });
     }
 
     const hubSummary = sanitizeSummary(hubData.summary);
     const nativeContext = await loadNativeContext();
     const nativeSummary = nativeContext.summary;
-    const productionOverlay = buildNativeProductionOverlay(hubSummary, nativeSummary);
-    const productionAwareSummary = applyNativeProductionOverlay(hubSummary, productionOverlay);
-    const deliveryOverlay = buildNativeDeliveryOverlay(productionAwareSummary, nativeSummary);
-    const operationsAwareSummary = applyNativeDeliveryOverlay(productionAwareSummary, deliveryOverlay);
-    const inventoryPolicyOverlay = await buildInventoryPolicyOverlay(base44, operationsAwareSummary, nativeSummary);
-    const inventoryAwareSummary = applyNativeInventoryPolicyOverlay(operationsAwareSummary, inventoryPolicyOverlay);
-    const opsHealthOverlay = buildNativeOpsHealthOverlay(inventoryAwareSummary, nativeSummary);
     const deliveryCompletedGuard = buildDeliveryCompletedInRangeGuard({
-      currentSummary: inventoryAwareSummary,
+      currentSummary: nativeSummary,
       nativeRouteDateResult: nativeContext.delivery_completed_route_date,
       hubSummary,
-      currentDisplaySource: productionOverlay.applied || deliveryOverlay.applied || inventoryPolicyOverlay.applied ? 'hub_primary_with_native_operations_overlay' : 'hub_primary',
+      currentDisplaySource: 'customer_app_native_authoritative',
     });
-    const deliveryGuardedSummary = applyDeliveryCompletedInRangeGuard(inventoryAwareSummary, deliveryCompletedGuard);
-    const displayedSummary = applyNativeOpsHealthOverlay(deliveryGuardedSummary, opsHealthOverlay);
-    const diagnostics = buildOperationsDashboardDiagnostics({
-      displayedSummary,
-      nativeSummary,
+    const displayedSummary = applyDeliveryCompletedInRangeGuard(nativeSummary, deliveryCompletedGuard);
+    return nativeFallbackResponse({
+      dateFrom: resolvedRange.date_from,
+      dateTo: resolvedRange.date_to,
+      summary: displayedSummary,
+      deliveryCompletedGuard,
+      backendReadiness,
       hubSummary,
-      currentDisplaySource: productionOverlay.applied || deliveryOverlay.applied || inventoryPolicyOverlay.applied ? 'hub_primary_with_native_operations_overlay' : 'hub_primary',
-      requestedRange: resolvedRange,
       hubRange: {
         date_from: hubData.date_from || (preset === 'custom' ? dateFrom : resolvedRange.date_from),
         date_to: hubData.date_to || (preset === 'custom' ? dateTo : resolvedRange.date_to),
       },
-      deliveryCompletedGuard,
-    });
-    const warnings = [
-      productionOverlay.applied ? 'native_production_queue_overlay_applied' : null,
-      deliveryOverlay.applied ? 'native_unscheduled_delivery_overlay_applied' : null,
-      inventoryPolicyOverlay.applied ? 'native_food_demand_based_inventory_policy_applied' : null,
-      opsHealthOverlay.applied ? 'native_current_ops_health_overlay_applied' : null,
-      ...deliveryCompletedWarnings(deliveryCompletedGuard),
-    ].filter(Boolean);
-
-    return Response.json({
-      success: true,
-      source: hubData.source || 'hub_operations_dashboard_summary',
-      generated_at: hubData.generated_at || null,
-      date_from: hubData.date_from || dateFrom || null,
-      date_to: hubData.date_to || dateTo || null,
-      summary: displayedSummary,
-      truncated: hubData.truncated === true,
-      ...(warnings.length > 0 ? { warnings } : {}),
-      ...(productionOverlay.applied ? { native_production_overlay: productionOverlay } : {}),
-      ...(deliveryOverlay.applied ? { native_delivery_overlay: deliveryOverlay } : {}),
-      native_inventory_policy_overlay: inventoryPolicyOverlay,
-      native_ops_health_overlay: opsHealthOverlay,
-      writes_performed: false,
-      provider_calls_performed: false,
-      notifications_sent: false,
-      hub_mutation_performed: false,
-      ...(backendReadiness ? { backend_readiness: backendReadiness } : {}),
-      ...diagnostics,
+      hubHistoricalContextRequested: true,
+      hubHistoricalContextAvailable: true,
     });
   } catch (error) {
     console.error('[getAdminOperationsDashboardSummary] Error:', error.message);

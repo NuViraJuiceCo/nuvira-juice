@@ -237,8 +237,6 @@ export default function OpsAlerts() {
   const alerts = data?.alerts || [];
   const summary = data?.summary || {};
   const warnings = Array.isArray(data?.warnings) ? data.warnings.filter(Boolean) : [];
-  const isNativeFallback = data?.source === 'customer_app_native_ops_alerts_fallback'
-    || data?.data_sources?.hub_available === false;
   const categoryOptions = useMemo(() => categorySelectOptions(alerts, categoryFilter), [alerts, categoryFilter]);
 
   async function refreshOpsAlertSummaries() {
@@ -398,14 +396,12 @@ export default function OpsAlerts() {
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-foreground">
-              {isNativeFallback ? 'Native Customer App alerts fallback' : 'Source Alerts view'}
+              Customer App alerts
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {isNativeFallback
-                ? 'Sanitized native alert and review visibility only. Actions remain disabled while source alerts are unavailable.'
-                : 'Sanitized alert visibility only. Acknowledge, resolve, and dismiss are available for active alerts only.'}
+              Operational alert visibility from Customer App records. Acknowledge, resolve, and dismiss remain available for active alerts only.
             </p>
-            <AdminStatusLegend className="mt-2" />
+            <AdminStatusLegend className="mt-2" showHubFallback={false} />
           </div>
           <RefreshCw className={`w-4 h-4 text-primary ${isFetching ? 'animate-spin' : ''}`} />
         </div>

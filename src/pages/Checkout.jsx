@@ -627,21 +627,6 @@ function CheckoutFlow() {
             });
           }
         }
-        // Sync bag return to hub (non-blocking)
-        try {
-          const syncPromise = base44.functions.invoke('syncCustomerToHub', {
-            event: 'customer.bag_return_requested',
-            customer_email: user.email,
-            data: {
-              small_bags_requested: bagReturn.smallBags,
-              tote_bags_requested: bagReturn.toteBags,
-              estimated_credit: (bagReturn.smallBags * 1) + (bagReturn.toteBags * 2),
-            },
-          });
-          if (syncPromise?.catch) syncPromise.catch(() => {});
-        } catch {
-          // non-blocking
-        }
       }
 
       setCheckoutStartStage(CHECKOUT_START_STAGES.CREATING_PAYMENT_ATTEMPT);

@@ -55,7 +55,6 @@ const ShopifyDashboard = React.lazy(() => import('@/pages/admin/ShopifyDashboard
 const ProductionQueueSummary = React.lazy(() => import('@/pages/admin/ProductionQueueSummary'));
 const ProductionPlanning = React.lazy(() => import('@/pages/admin/ProductionPlanning'));
 const Calendar = React.lazy(() => import('@/pages/admin/Calendar'));
-const SyncHealth = React.lazy(() => import('@/pages/admin/SyncHealth'));
 const DeliveryQueue = React.lazy(() => import('@/pages/admin/DeliveryQueue'));
 const RouteOps = React.lazy(() => import('@/pages/admin/RouteOps'));
 const InventoryStatus = React.lazy(() => import('@/pages/admin/InventoryStatus'));
@@ -459,7 +458,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin/prod-scheduler" element={<AdminRedirect to="/admin/production-planning" user={user} />} />
           <Route path="/admin/production-planning" element={<AdminProtectedRoute element={<ProductionPlanning />} user={user} />} />
           <Route path="/admin/calendar" element={<AdminProtectedRoute element={<Calendar />} user={user} />} />
-          <Route path="/admin/sync-health" element={<AdminProtectedRoute element={<SyncHealth />} user={user} />} />
+          <Route path="/admin/sync-health" element={<AdminProtectedRoute element={<Navigate to="/admin/operations" replace />} user={user} />} />
           <Route path="/admin/driver" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
           <Route path="/admin/driver/*" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
           <Route path="/admin/driver-portal" element={<AdminRedirect to="/admin/delivery-queue" user={user} />} />
