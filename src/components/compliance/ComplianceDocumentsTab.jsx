@@ -1,19 +1,22 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
   Clock,
   ExternalLink,
   FileText,
+  FileUp,
   Loader2,
   Lock,
   Pencil,
   Plus,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import moment from 'moment';
 import { base44 } from '@/api/base44Client';
 import { unwrapBase44Result } from '@/lib/base44-result';
+import { validateComplianceDocumentFile } from '@/lib/compliance-document-file';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -102,18 +105,24 @@ export default function ComplianceDocumentsTab({ nativeCompliance, onSaved }) {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
 
   const setField = (key, value) => setForm(current => ({ ...current, [key]: value }));
   const openCreate = () => {
     setEditing(null);
     setForm(documentForm(null));
     setError('');
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setDialogOpen(true);
   };
   const openEdit = record => {
     setEditing(record);
     setForm(documentForm(record));
     setError('');
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setDialogOpen(true);
   };
   const closeDialog = () => {
@@ -121,6 +130,26 @@ export default function ComplianceDocumentsTab({ nativeCompliance, onSaved }) {
     setDialogOpen(false);
     setEditing(null);
     setError('');
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const selectDocumentFile = event => {
+    const file = event.target.files?.[0] || null;
+    const validationError = validateComplianceDocumentFile(file);
+    if (validationError) {
+      setSelectedFile(null);
+      setError(validationError);
+      event.target.value = '';
+      return;
+    }
+    setSelectedFile(file);
+    setError('');
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const saveDocument = async event => {
@@ -129,11 +158,25 @@ export default function ComplianceDocumentsTab({ nativeCompliance, onSaved }) {
     setSaving(true);
     setError('');
     try {
+      let fileUrl = form.file_url.trim();
+      if (selectedFile) {
+        const validationError = validateComplianceDocumentFile(selectedFile);
+        if (validationError) throw new Error(validationError);
+        let uploadResult;
+        try {
+          uploadResult = await base44.integrations.Core.UploadFile({ file: selectedFile });
+        } catch {
+          throw new Error('document_upload_failed');
+        }
+        fileUrl = String(uploadResult?.file_url || '').trim();
+        if (!fileUrl) throw new Error('document_upload_not_confirmed');
+      }
       const response = await base44.functions.invoke('saveAdminComplianceRecord', {
         record_type: 'compliance_document',
         existing_id: editing?.id || null,
         data: {
           ...form,
+          file_url: fileUrl,
           reminder_days: Number(form.reminder_days || 30),
         },
       });
@@ -144,8 +187,15 @@ export default function ComplianceDocumentsTab({ nativeCompliance, onSaved }) {
       await onSaved?.();
       setDialogOpen(false);
       setEditing(null);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (saveError) {
-      setError(saveErrorMessage(saveError?.message));
+      const uploadMessage = String(saveError?.message || '');
+      setError(
+        uploadMessage.includes('document_upload_')
+          ? 'The document file could not be uploaded. No compliance record was changed; retry when ready.'
+          : saveErrorMessage(uploadMessage),
+      );
     } finally {
       setSaving(false);
     }
@@ -278,9 +328,40 @@ export default function ComplianceDocumentsTab({ nativeCompliance, onSaved }) {
                 <Field label="Reminder window (days)">
                   <Input type="number" min="0" max="365" step="1" value={form.reminder_days} onChange={event => setField('reminder_days', event.target.value)} inputMode="numeric" />
                 </Field>
-                <Field label="Document link">
-                  <Input type="url" value={form.file_url} onChange={event => setField('file_url', event.target.value)} maxLength={500} placeholder="https://" />
-                </Field>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs font-semibold text-foreground">Document file</Label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf,image/*"
+                    onChange={selectDocumentFile}
+                    className="sr-only"
+                  />
+                  <div className="flex min-h-12 flex-col gap-2 rounded-lg border border-dashed border-border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {selectedFile?.name || (form.file_url ? 'Existing document link saved' : 'No file selected')}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {selectedFile ? 'Uploads securely when you save this record.' : 'PDF or image, up to 20 MB.'}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {selectedFile && (
+                        <Button type="button" variant="ghost" size="icon" onClick={clearSelectedFile} aria-label="Remove selected document" disabled={saving}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-2" disabled={saving}>
+                        <FileUp className="h-4 w-4" /> {selectedFile ? 'Choose another' : 'Choose file'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs font-semibold text-foreground">Document link <span className="font-normal text-muted-foreground">(optional alternative)</span></Label>
+                  <Input type="url" value={form.file_url} onChange={event => setField('file_url', event.target.value)} maxLength={500} placeholder="https://" disabled={Boolean(selectedFile)} />
+                </div>
               </div>
               <Field label="Notes">
                 <Textarea value={form.notes} onChange={event => setField('notes', event.target.value)} maxLength={1000} rows={4} />
@@ -291,7 +372,7 @@ export default function ComplianceDocumentsTab({ nativeCompliance, onSaved }) {
               <Button type="button" variant="outline" onClick={closeDialog} disabled={saving}>Cancel</Button>
               <Button type="submit" disabled={saving || !form.name.trim() || !form.type} className="gap-2">
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                {saving ? 'Saving...' : editing ? 'Save changes' : 'Add document'}
+                {saving ? (selectedFile ? 'Uploading and saving...' : 'Saving...') : editing ? 'Save changes' : 'Add document'}
               </Button>
             </DialogFooter>
           </form>
