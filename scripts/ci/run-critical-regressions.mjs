@@ -59,6 +59,7 @@ const harnesses = [
   'scripts/migration/run-g94-customer-hub-bridge-retirement-tests.mjs',
   'scripts/migration/run-g95-hub-write-retirement-tests.mjs',
   'scripts/migration/run-g96-native-pos-claim-activation-tests.mjs',
+  'scripts/migration/run-g97-native-cutover-monitor-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

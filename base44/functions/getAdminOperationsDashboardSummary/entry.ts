@@ -1,5 +1,6 @@
 // @ts-nocheck
-// Bundle revision: g95-customer-app-operational-authority-20260808.
+// Bundle revision: g97-customer-app-native-monitoring-20260808.
+// Bundle revision: g95-customer-app-operational-authority-20260808 (prior).
 // Base44 deploy hashing does not track nested handler-only edits, so update this
 // marker whenever a gateway handler changes and must be repackaged.
 import handler0 from './handlers/appendAdminHubOrderNote/entry.ts';
@@ -66,6 +67,7 @@ import handler60 from './handlers/previewNativeSafeSyncOrderUpdate/entry.ts';
 import handler61 from './handlers/monitorPostPaymentChain/entry.ts';
 import handler62 from './handlers/executeNativeSafeSyncOrderUpdate/entry.ts';
 import handler63 from './handlers/notifyOrderProcessed/entry.ts';
+import handler64 from './handlers/monitorComplianceExpiry/entry.ts';
 
 const HANDLERS = {
   "appendAdminHubOrderNote": handler0,
@@ -132,6 +134,7 @@ const HANDLERS = {
   "monitorPostPaymentChain": handler61,
   "executeNativeSafeSyncOrderUpdate": handler62,
   "notifyOrderProcessed": handler63,
+  "monitorComplianceExpiry": handler64,
 };
 
 const DEFAULT_ACTION = 'getAdminOperationsDashboardSummary';
@@ -168,7 +171,12 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'invalid_json' }, { status: 400 });
   }
 
-  const requestedAction = typeof body.gateway_action === 'string' ? body.gateway_action : DEFAULT_ACTION;
+  const automationArgs = body.args && typeof body.args === 'object' && !Array.isArray(body.args)
+    ? body.args as Record<string, unknown>
+    : null;
+  const requestedAction = typeof body.gateway_action === 'string'
+    ? body.gateway_action
+    : (typeof automationArgs?.gateway_action === 'string' ? automationArgs.gateway_action : DEFAULT_ACTION);
   if (RETIRED_LEGACY_HUB_ACTIONS.has(requestedAction)) {
     return Response.json({
       success: false,
@@ -182,11 +190,12 @@ Deno.serve(async (req) => {
   const handler = HANDLERS[requestedAction];
   if (!handler) return Response.json({ error: 'unsupported_admin_operation' }, { status: 400 });
 
-  const payload = body.gateway_action
-    ? (body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
-      ? body.payload
-      : Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'gateway_action')))
-    : body;
+  const actionBody = automationArgs || body;
+  const payload = requestedAction !== DEFAULT_ACTION
+    ? (actionBody.payload && typeof actionBody.payload === 'object' && !Array.isArray(actionBody.payload)
+      ? actionBody.payload
+      : Object.fromEntries(Object.entries(actionBody).filter(([key]) => key !== 'gateway_action')))
+    : actionBody;
   const forwarded = new Request(req.url, {
     method: 'POST',
     headers: req.headers,

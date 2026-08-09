@@ -4,7 +4,7 @@
   "automations": [
     {
       "name": "Post-Payment Chain Monitor",
-      "description": "Hourly read-only verification that payment, Hub synchronization, loyalty, and subscription completion remain connected.",
+      "description": "Hourly read-only verification that paid orders reached Customer App native operational, fulfillment, and audit records.",
       "function_args": {
         "gateway_action": "monitorPostPaymentChain"
       },
@@ -14,6 +14,22 @@
       "schedule_type": "simple",
       "repeat_unit": "minutes",
       "repeat_interval": 60,
+      "ends_type": "never"
+    },
+    {
+      "name": "Customer App Compliance Expiry Review",
+      "description": "Weekly Customer App compliance review; sends an internal reminder only when a document is expired or within its reminder window.",
+      "function_args": {
+        "gateway_action": "monitorComplianceExpiry",
+        "mode": "live"
+      },
+      "is_active": true,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "weeks",
+      "repeat_on_days": [1],
+      "start_time": "14:30",
       "ends_type": "never"
     },
     {

@@ -1,32 +1,50 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-/**
- * monitorPostPaymentChain
- *
- * Admin-only, read-only monitor. Checks the health of the post-payment automation chain
- * for recent orders and subscriptions (created in the last N minutes).
- * Does NOT modify any data. Safe to run on a schedule or manually.
- *
- * Reports per entity:
- *   - Orders: payment_captured, status, hub sync log, shopify push
- *   - Subscriptions: status, hub_sync_status, loyalty points awarded
- *   - PendingSubscriptionCheckouts: status (pending → completed)
- *
- * Payload: { minutes_ago: number (default 15), verbose: boolean (default false) }
- */
+const ORDER_LIMIT = 80;
+const RELATED_LIMIT = 240;
+const VALID_ORDER_STATUSES = new Set([
+  'order_received',
+  'scheduled_for_juicing',
+  'in_production',
+  'bottled_packed',
+  'ready_for_pickup',
+  'out_for_delivery',
+  'arriving_soon',
+  'delivered',
+  'picked_up',
+]);
 
-async function readJsonBody(req) {
-  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
-    return { ok: true, body: {} };
-  }
+function normalizeOrderNumber(value: unknown) {
+  return String(value || '').trim().replace(/^#/, '').toUpperCase();
+}
 
+function clampMinutes(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 15;
+  return Math.min(1440, Math.max(5, Math.round(parsed)));
+}
+
+function rowTimestamp(row: any) {
+  return String(row?.sync_timestamp || row?.completed_at || row?.updated_date || row?.created_date || '');
+}
+
+function newest(rows: any[]) {
+  return [...rows].sort((left, right) => rowTimestamp(right).localeCompare(rowTimestamp(left)))[0] || null;
+}
+
+function listEntity(base44: any, name: string, sort: string, limit: number) {
+  return base44.asServiceRole.entities[name].list(sort, limit);
+}
+
+async function readJsonBody(req: Request) {
   const raw = await req.text();
-  if (!raw.trim()) {
-    return { ok: true, body: {} };
-  }
-
+  if (!raw.trim()) return { ok: true, body: {} };
   try {
-    return { ok: true, body: JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return {
+      ok: Boolean(parsed && typeof parsed === 'object' && !Array.isArray(parsed)),
+      body: parsed,
+    };
   } catch {
     return { ok: false, body: null };
   }
@@ -39,155 +57,150 @@ export default async (req: Request) => {
     }
 
     const base44 = createClientFromRequest(req);
-
     const user = await base44.auth.me().catch(() => null);
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (user.role !== 'admin' && user.role !== 'owner') {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const parsedBody = await readJsonBody(req);
-    if (!parsedBody.ok) {
+    const parsed = await readJsonBody(req);
+    if (!parsed.ok) {
       return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
     }
-    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
-    const minutesAgo = body.minutes_ago ?? 15;
-    const verbose = body.verbose ?? false;
 
+    const minutesAgo = clampMinutes(parsed.body?.minutes_ago);
+    const verbose = parsed.body?.verbose === true;
     const cutoff = new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
-    console.log(`[PostPaymentMonitor] Checking chain for items created after ${cutoff} (${minutesAgo}min window)`);
 
-    // ── 1. Recent Orders ─────────────────────────────────────────────────────
-    const recentOrders = await base44.asServiceRole.entities.Order.list('-created_date', 20);
-    const newOrders = recentOrders.filter(o => o.created_date >= cutoff && !o.is_test_order);
+    const [orders, operationalOrders, tasks, syncLogs, subscriptions, pendingCheckouts, pointsRows] = await Promise.all([
+      listEntity(base44, 'Order', '-created_date', ORDER_LIMIT),
+      listEntity(base44, 'ShopifyOrder', '-created_date', RELATED_LIMIT),
+      listEntity(base44, 'FulfillmentTask', '-created_date', RELATED_LIMIT),
+      listEntity(base44, 'OrderSyncLog', '-created_date', RELATED_LIMIT),
+      listEntity(base44, 'Subscription', '-created_date', ORDER_LIMIT),
+      listEntity(base44, 'PendingSubscriptionCheckout', '-created_date', ORDER_LIMIT),
+      listEntity(base44, 'UserPoints', '-created_date', RELATED_LIMIT),
+    ]);
 
-    const orderResults = await Promise.all(newOrders.map(async (order) => {
-      // Check hub sync log
-      const syncLogs = await base44.asServiceRole.entities.OrderSyncLog.filter({ order_number: order.order_number });
-      const latestLog = syncLogs.sort((a, b) => b.created_date > a.created_date ? 1 : -1)[0];
+    const recentOrders = orders.filter((order: any) => (
+      String(order?.created_date || '') >= cutoff && order?.is_test_order !== true
+    ));
 
-      const result = {
-        order_number: order.order_number,
-        customer_email: order.customer_email,
-        created_at: order.created_date,
-        status: order.status,
-        payment_captured: order.payment_captured,
-        payment_status: order.payment_status,
-        hub_sync: latestLog ? `${latestLog.status} (${latestLog.hub_action || 'n/a'})` : 'NO_LOG',
-        hub_order_id: latestLog?.hub_order_id || latestLog?.matched_hub_order_id || null,
-        chain_ok: (
-          order.payment_captured === true &&
-          order.payment_status === 'paid' &&
-          ['scheduled_for_juicing', 'in_production', 'bottled_packed', 'out_for_delivery', 'delivered'].includes(order.status) &&
-          latestLog && ['success', 'deduped'].includes(latestLog.status)
-        ),
-        issues: [],
+    const orderResults = recentOrders.map((order: any) => {
+      const orderNumber = normalizeOrderNumber(order?.order_number);
+      const operationalOrder = newest(operationalOrders.filter((candidate: any) => (
+        String(candidate?.base44_order_id || '') === String(order?.id || '') ||
+        normalizeOrderNumber(candidate?.shopify_order_number) === orderNumber
+      )));
+      const nativeLog = newest(syncLogs.filter((candidate: any) => (
+        candidate?.sync_source === 'native_order_ops' &&
+        normalizeOrderNumber(candidate?.order_number) === orderNumber
+      )));
+      const task = newest(tasks.filter((candidate: any) => (
+        String(candidate?.base44_order_id || '') === String(order?.id || '') ||
+        String(candidate?.order_id || '') === String(operationalOrder?.id || '') ||
+        normalizeOrderNumber(candidate?.order_number || candidate?.shopify_order_number) === orderNumber
+      )));
+      const fulfillmentType = String(order?.fulfillment_type || operationalOrder?.fulfillment_method || 'delivery').toLowerCase();
+      const deliveryRequired = fulfillmentType === 'delivery';
+      const issues: string[] = [];
+
+      if (order?.payment_captured !== true) issues.push('payment_not_captured');
+      if (order?.payment_status !== 'paid') issues.push(`payment_status=${String(order?.payment_status || 'missing')}`);
+      if (!VALID_ORDER_STATUSES.has(String(order?.status || ''))) issues.push(`order_status=${String(order?.status || 'missing')}`);
+      if (!operationalOrder) issues.push('native_operational_order_missing');
+      if (!nativeLog) issues.push('native_order_audit_missing');
+      else if (!['success', 'deduped'].includes(String(nativeLog?.status || ''))) {
+        issues.push(`native_order_audit=${String(nativeLog?.status || 'missing')}`);
+      }
+      if (deliveryRequired && !task) issues.push('native_fulfillment_task_missing');
+      if (deliveryRequired && !String(order?.assigned_delivery_date || operationalOrder?.assigned_delivery_date || task?.assigned_delivery_date || task?.delivery_date || '')) {
+        issues.push('assigned_delivery_date_missing');
+      }
+
+      return {
+        order_number: order?.order_number || 'unknown',
+        created_at: order?.created_date || null,
+        status: order?.status || 'unknown',
+        fulfillment_type: fulfillmentType,
+        payment_confirmed: order?.payment_captured === true && order?.payment_status === 'paid',
+        native_operational_order_present: Boolean(operationalOrder),
+        native_fulfillment_task_present: !deliveryRequired || Boolean(task),
+        native_audit_status: nativeLog?.status || 'missing',
+        chain_ok: issues.length === 0,
+        issues,
       };
+    });
 
-      if (!order.payment_captured) result.issues.push('payment_not_captured');
-      if (order.payment_status !== 'paid') result.issues.push(`payment_status=${order.payment_status}`);
-      if (!latestLog) result.issues.push('no_hub_sync_log');
-      else if (!['success', 'deduped'].includes(latestLog.status)) result.issues.push(`hub_sync_${latestLog.status}`);
-      if (!order.assigned_delivery_date) result.issues.push('missing_delivery_date');
-
-      return result;
-    }));
-
-    // ── 2. Recent Subscriptions ──────────────────────────────────────────────
-    const recentSubs = await base44.asServiceRole.entities.Subscription.list('-created_date', 20);
-    const newSubs = recentSubs.filter(s => s.created_date >= cutoff);
-
-    const subResults = await Promise.all(newSubs.map(async (sub) => {
-      // Check loyalty
-      const pointsRecs = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: sub.customer_email });
-      const hasLoyalty = pointsRecs[0]?.points_history?.some(h =>
-        h.description?.includes(`subscription ${sub.stripe_subscription_id}`)
-      ) ?? false;
-
-      // Check PendingSubscriptionCheckout
-      const pendingRecs = await base44.asServiceRole.entities.PendingSubscriptionCheckout.filter({
-        stripe_subscription_id: sub.stripe_subscription_id,
-      });
-      const pendingStatus = pendingRecs[0]?.status || 'not_found';
-
-      const result = {
-        subscription_id: sub.id,
-        customer_email: sub.customer_email,
-        created_at: sub.created_date,
-        status: sub.status,
-        stripe_subscription_id: sub.stripe_subscription_id,
-        hub_sync_status: sub.hub_sync_status || 'not_set',
-        loyalty_awarded: hasLoyalty,
-        pending_checkout_status: pendingStatus,
-        chain_ok: (
-          sub.status === 'active' &&
-          ['synced', 'skipped'].includes(sub.hub_sync_status) &&
-          hasLoyalty &&
-          pendingStatus === 'completed'
-        ),
-        issues: [],
+    const recentSubscriptions = subscriptions.filter((subscription: any) => String(subscription?.created_date || '') >= cutoff);
+    const subscriptionResults = recentSubscriptions.map((subscription: any) => {
+      const points = pointsRows.find((row: any) => String(row?.customer_email || '').toLowerCase() === String(subscription?.customer_email || '').toLowerCase());
+      const loyaltyAwarded = Boolean(points?.points_history?.some((entry: any) => (
+        String(entry?.description || '').includes(String(subscription?.stripe_subscription_id || '__missing__'))
+      )));
+      const pending = newest(pendingCheckouts.filter((row: any) => (
+        String(row?.stripe_subscription_id || '') === String(subscription?.stripe_subscription_id || '')
+      )));
+      const issues = ['native_subscription_fulfillment_not_enabled'];
+      if (subscription?.status !== 'active') issues.push(`subscription_status=${String(subscription?.status || 'missing')}`);
+      if (!loyaltyAwarded) issues.push('loyalty_not_awarded');
+      if (pending?.status !== 'completed') issues.push(`pending_checkout=${String(pending?.status || 'missing')}`);
+      return {
+        subscription_record_id: subscription?.id || 'unknown',
+        created_at: subscription?.created_date || null,
+        status: subscription?.status || 'unknown',
+        loyalty_awarded: loyaltyAwarded,
+        pending_checkout_status: pending?.status || 'missing',
+        chain_ok: false,
+        issues,
       };
+    });
 
-      if (sub.status !== 'active') result.issues.push(`sub_status=${sub.status}`);
-      if (!['synced', 'skipped'].includes(sub.hub_sync_status)) result.issues.push(`hub_sync=${sub.hub_sync_status}`);
-      if (!hasLoyalty) result.issues.push('loyalty_not_awarded');
-      if (pendingStatus !== 'completed') result.issues.push(`pending_checkout=${pendingStatus}`);
+    const stuckPending = pendingCheckouts.filter((row: any) => (
+      String(row?.created_date || '') >= cutoff && row?.status === 'pending'
+    ));
+    const failedOrders = orderResults.filter(result => !result.chain_ok);
+    const failedSubscriptions = subscriptionResults.filter(result => !result.chain_ok);
+    const allGreen = failedOrders.length === 0 && failedSubscriptions.length === 0 && stuckPending.length === 0;
 
-      return result;
-    }));
+    console.log(`[PostPaymentMonitor] native chain checked: orders=${orderResults.length}, subscriptions=${subscriptionResults.length}, pending=${stuckPending.length}, failures=${failedOrders.length + failedSubscriptions.length + stuckPending.length}`);
 
-    // ── 3. Pending Checkouts stuck in 'pending' ──────────────────────────────
-    const recentPending = await base44.asServiceRole.entities.PendingSubscriptionCheckout.list('-created_date', 20);
-    const stuckPending = recentPending.filter(p =>
-      p.created_date >= cutoff && p.status === 'pending'
-    );
-
-    // ── 4. Summary ───────────────────────────────────────────────────────────
-    const ordersFailed = orderResults.filter(o => !o.chain_ok);
-    const subsFailed = subResults.filter(s => !s.chain_ok);
-    const allGreen = ordersFailed.length === 0 && subsFailed.length === 0 && stuckPending.length === 0;
-
-    const summary = {
+    return Response.json({
+      success: true,
+      customer_app_native_authoritative: true,
+      hub_operational_dependency: false,
+      writes_performed: false,
+      provider_calls_performed: false,
+      customer_notifications_sent: false,
       window_minutes: minutesAgo,
       checked_at: new Date().toISOString(),
-      overall: allGreen ? '✅ ALL CLEAR' : '⚠️ ISSUES DETECTED',
+      overall: allGreen ? 'all_clear' : 'issues_detected',
       orders: {
         total: orderResults.length,
-        ok: orderResults.filter(o => o.chain_ok).length,
-        failed: ordersFailed.length,
-        ...(verbose || ordersFailed.length > 0 ? { details: orderResults } : {}),
-        failed_items: ordersFailed.map(o => ({ order_number: o.order_number, issues: o.issues })),
+        ok: orderResults.length - failedOrders.length,
+        failed: failedOrders.length,
+        ...(verbose || failedOrders.length > 0 ? { details: orderResults } : {}),
+        failed_items: failedOrders.map(result => ({ order_number: result.order_number, issues: result.issues })),
       },
       subscriptions: {
-        total: subResults.length,
-        ok: subResults.filter(s => s.chain_ok).length,
-        failed: subsFailed.length,
-        ...(verbose || subsFailed.length > 0 ? { details: subResults } : {}),
-        failed_items: subsFailed.map(s => ({ subscription_id: s.subscription_id, customer_email: s.customer_email, issues: s.issues })),
+        total: subscriptionResults.length,
+        ok: 0,
+        failed: failedSubscriptions.length,
+        native_recurring_fulfillment_enabled: false,
+        ...(verbose || failedSubscriptions.length > 0 ? { details: subscriptionResults } : {}),
+        failed_items: failedSubscriptions.map(result => ({ subscription_record_id: result.subscription_record_id, issues: result.issues })),
       },
-      stuck_pending_checkouts: stuckPending.map(p => ({
-        id: p.id,
-        customer_email: p.customer_email,
-        created_at: p.created_date,
-        plan_name: p.plan_name,
-        stripe_subscription_id: p.stripe_subscription_id || 'none',
-      })),
-    };
-
-    if (!allGreen) {
-      console.warn(`[PostPaymentMonitor] ⚠️ Issues found: ${ordersFailed.length} order(s), ${subsFailed.length} sub(s), ${stuckPending.length} stuck pending checkout(s)`);
-      ordersFailed.forEach(o => console.warn(`  Order ${o.order_number}: ${o.issues.join(', ')}`));
-      subsFailed.forEach(s => console.warn(`  Sub ${s.subscription_id} (${s.customer_email}): ${s.issues.join(', ')}`));
-    } else {
-      console.log(`[PostPaymentMonitor] ✅ All clear — ${orderResults.length} order(s), ${subResults.length} sub(s) all look good`);
-    }
-
-    return Response.json(summary);
-
+      stuck_pending_checkouts: {
+        count: stuckPending.length,
+        records: stuckPending.map((row: any) => ({
+          record_id: row?.id || 'unknown',
+          created_at: row?.created_date || null,
+          status: row?.status || 'pending',
+        })),
+      },
+    });
   } catch (error) {
-    console.error('[PostPaymentMonitor] Error:', error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('[PostPaymentMonitor] monitor_failed');
+    return Response.json({ success: false, error: 'monitor_failed' }, { status: 500 });
   }
 };
