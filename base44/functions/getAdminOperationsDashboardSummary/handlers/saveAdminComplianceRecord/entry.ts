@@ -12,6 +12,16 @@ const ALLOWED_TYPES = new Set([
   'unified',
   'label_allergen',
   'haccp_plan',
+  'compliance_document',
+]);
+const COMPLIANCE_DOCUMENT_TYPES = new Set([
+  'Certification',
+  'Permit',
+  'Audit',
+  'Inspection',
+  'Review',
+  'Log',
+  'License',
 ]);
 const PRE_START_LINK_TYPES = {
   sanitation: { entity: 'SanitationLog', dateField: 'log_date' },
@@ -347,6 +357,64 @@ function compact(record) {
   );
 }
 
+function optionalDate(value) {
+  const normalized = text(value, 40);
+  if (!normalized) return '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return '__invalid_date__';
+  const [year, month, day] = normalized.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.toISOString().slice(0, 10) === normalized ? normalized : '__invalid_date__';
+}
+
+function safeHttpUrl(value) {
+  const normalized = text(value, 500);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '__invalid_url__';
+  } catch {
+    return '__invalid_url__';
+  }
+}
+
+function complianceDocumentStatus(expiryDate, reminderDays) {
+  if (!expiryDate) return 'Pending';
+  const expiry = new Date(`${expiryDate}T00:00:00.000Z`);
+  if (Number.isNaN(expiry.getTime())) return 'Pending';
+  const today = new Date();
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const daysRemaining = Math.ceil((expiry.getTime() - todayUtc.getTime()) / 86400000);
+  if (daysRemaining < 0) return 'Expired';
+  return daysRemaining <= reminderDays ? 'Due Soon' : 'Valid';
+}
+
+function complianceDocumentRecord(data) {
+  const expiryDate = optionalDate(data?.expiry_date);
+  const issuedDate = optionalDate(data?.issued_date);
+  const reminderDays = Math.min(365, Math.max(0, Math.trunc(number(data?.reminder_days, 30))));
+  return compact({
+    name: text(data?.name, 160),
+    type: text(data?.type, 80),
+    status: complianceDocumentStatus(expiryDate, reminderDays),
+    expiry_date: expiryDate,
+    issued_date: issuedDate,
+    owner: text(data?.owner, 160),
+    issuing_body: text(data?.issuing_body, 160),
+    file_url: safeHttpUrl(data?.file_url),
+    reminder_days: reminderDays,
+    notes: text(data?.notes, 1000),
+  });
+}
+
+function applyComplianceDocumentClears(record, data) {
+  for (const field of ['expiry_date', 'issued_date', 'owner', 'issuing_body', 'file_url', 'notes']) {
+    if (Object.prototype.hasOwnProperty.call(data || {}, field) && !text(data?.[field], field === 'notes' ? 1000 : 500)) {
+      record[field] = null;
+    }
+  }
+  return record;
+}
+
 function temperatureRecord(data, user) {
   const min = number(data?.min_range, 35);
   const max = number(data?.max_range, 40);
@@ -548,6 +616,7 @@ function buildRecord(recordType, data, user) {
   if (recordType === 'batch_compliance') return { entity: 'BatchComplianceLog', record: batchComplianceRecord(data, user) };
   if (recordType === 'label_allergen') return { entity: 'LabelAllergenReview', record: labelAllergenRecord(data) };
   if (recordType === 'haccp_plan') return { entity: 'HACCPPlanReview', record: haccpPlanRecord(data) };
+  if (recordType === 'compliance_document') return { entity: 'ComplianceDoc', record: complianceDocumentRecord(data) };
   return { entity: 'ComplianceLog', record: unifiedRecord(data, user) };
 }
 
@@ -562,6 +631,11 @@ function validate(recordType, record) {
   if (recordType === 'unified' && !record.log_type) return 'compliance_log_type_required';
   if (recordType === 'label_allergen' && !record.product_name) return 'product_name_required';
   if (recordType === 'haccp_plan' && (!record.plan_version || !record.review_date)) return 'haccp_plan_version_and_review_date_required';
+  if (recordType === 'compliance_document' && !record.name) return 'compliance_document_name_required';
+  if (recordType === 'compliance_document' && !COMPLIANCE_DOCUMENT_TYPES.has(record.type)) return 'compliance_document_type_invalid';
+  if (recordType === 'compliance_document' && (record.expiry_date === '__invalid_date__' || record.issued_date === '__invalid_date__')) return 'compliance_document_date_invalid';
+  if (recordType === 'compliance_document' && record.file_url === '__invalid_url__') return 'compliance_document_url_invalid';
+  if (recordType === 'compliance_document' && record.issued_date && record.expiry_date && record.issued_date > record.expiry_date) return 'compliance_document_dates_out_of_order';
   return null;
 }
 
@@ -607,7 +681,10 @@ export default async function handler(req: Request) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!user || user.role !== 'admin') {
+    if (!user) {
+      return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin') {
       return Response.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
@@ -646,13 +723,30 @@ export default async function handler(req: Request) {
     let action = 'created';
     let saved;
     const existingId = text(body?.existing_id || data?.id, 140);
-    if (['daily_checklist', 'label_allergen', 'haccp_plan'].includes(recordType) && existingId && entityApi.update) {
-      if (recordType === 'daily_checklist' && typeof entityApi.get === 'function') {
+    if (recordType === 'compliance_document' && existingId) {
+      applyComplianceDocumentClears(record, data);
+    }
+    if (recordType === 'compliance_document' && !existingId && typeof entityApi.filter === 'function') {
+      const duplicateFilter = record.expiry_date
+        ? { name: record.name, expiry_date: record.expiry_date }
+        : { name: record.name, status: 'Pending' };
+      const duplicates = await entityApi.filter(duplicateFilter, '-updated_date', 2).catch(() => []);
+      if (Array.isArray(duplicates) && duplicates.length > 0) {
+        return Response.json({
+          success: false,
+          error: 'duplicate_compliance_document',
+          existing_id: duplicates[0]?.id || null,
+          writes_performed: false,
+        }, { status: 409 });
+      }
+    }
+    if (['daily_checklist', 'label_allergen', 'haccp_plan', 'compliance_document'].includes(recordType) && existingId && entityApi.update) {
+      if (['daily_checklist', 'compliance_document'].includes(recordType) && typeof entityApi.get === 'function') {
         const existing = await entityApi.get(existingId).catch(() => null);
         if (!existing) {
           return Response.json({ success: false, error: 'existing_record_not_found' }, { status: 404 });
         }
-        if ((existing.is_test_record === true) !== (record.is_test_record === true)) {
+        if (recordType === 'daily_checklist' && (existing.is_test_record === true) !== (record.is_test_record === true)) {
           return Response.json({ success: false, error: 'test_and_operational_checklists_cannot_be_merged' }, { status: 409 });
         }
       }

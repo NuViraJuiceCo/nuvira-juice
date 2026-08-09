@@ -1,5 +1,6 @@
 // @ts-nocheck
-// Bundle revision: g97-customer-app-native-monitoring-20260808.
+// Bundle revision: g98-native-compliance-document-management-20260808.
+// Bundle revision: g97-customer-app-native-monitoring-20260808 (prior).
 // Bundle revision: g95-customer-app-operational-authority-20260808 (prior).
 // Base44 deploy hashing does not track nested handler-only edits, so update this
 // marker whenever a gateway handler changes and must be repackaged.
