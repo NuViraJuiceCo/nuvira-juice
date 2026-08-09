@@ -219,7 +219,7 @@ for (const rewardPath of [
 const loyaltyEnrollment = read('base44/functions/createLoyaltyMember/entry.ts');
 assert.doesNotMatch(loyaltyEnrollment, /HUB_API_URL|customer-app-sync\/enroll-loyalty|Enrolled in hub/);
 assert.match(loyaltyEnrollment, /Customer App profile projection/);
-assert.match(read('base44/functions/getCustomerAccountDashboardData/entry.ts'), /Bundle revision: g95-customer-app-loyalty-authority-20260808/);
+assert.match(read('base44/functions/getCustomerAccountDashboardData/entry.ts'), /Bundle revision: g101-delivery-only-customer-order-copy-20260809/);
 pass('reward_selection_and_new_member_enrollment_are_customer_app_native_only');
 
 const posSummary = read('base44/functions/getAdminPOSOrdersSummary/entry.ts');

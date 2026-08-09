@@ -40,7 +40,7 @@ export function getDeliveryDisplayText(scheduleRules, fulfillmentType = 'deliver
   const dateStr  = format(date, 'MMM d',  { timeZone: 'America/Chicago' });
 
   if (fulfillmentType === 'pickup') {
-    return `Ready for pickup ${dayName}, ${dateStr}`;
+    return `Ready ${dayName}, ${dateStr}`;
   }
   return `Delivered ${dayName}, ${dateStr}`;
 }

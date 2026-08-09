@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Bundle revision: g95-customer-app-loyalty-authority-20260808.
+// Bundle revision: g101-delivery-only-customer-order-copy-20260809.
 import handler0 from './handlers/addressSuggest/entry.ts';
 import handler2 from './handlers/cancelSubscriptionFutureRenewal/entry.ts';
 import handler3 from './handlers/claimReward/entry.ts';

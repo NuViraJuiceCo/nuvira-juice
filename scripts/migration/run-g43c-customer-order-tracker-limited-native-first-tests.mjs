@@ -375,8 +375,8 @@ test('numeric POS order number resolves through phone-owned ShopifyOrder fallbac
   assert.equal(result.json.hub_order.shopify_order_number, '1058');
   assert.equal(result.json.hub_order.status, 'picked_up');
   assert.equal(result.json.hub_order.fulfillment_method, 'pickup');
-  assert.equal(result.json.hub_order.requested_time_window, 'Pickup complete');
-  assert.equal(result.json.customer_visible_status, 'Picked Up ✓');
+  assert.equal(result.json.hub_order.requested_time_window, 'Order complete');
+  assert.equal(result.json.customer_visible_status, 'Order Complete ✓');
   assert.equal(result.json.hub_order.line_items.length, 1);
   assert.equal(Object.hasOwn(result.json.hub_order, 'customer_email'), false);
   assert.equal(Object.hasOwn(result.json.hub_order, 'customer_phone'), false);
@@ -389,11 +389,12 @@ test('numeric order routes are treated as order numbers instead of Base44 entity
   assert.match(trackerSource, /const orderNumberParam = isOrderNumber \? rawParam\.replace\(\/\^#\//);
 });
 
-test('picked-up hub orders always use the pickup tracker journey', async () => {
-  assert.match(trackerSource, /\['ready_for_pickup', 'picked_up'\]\.includes\(currentStatus\)/);
+test('customer tracker gives native delivery precedence and neutralizes legacy POS completion copy', async () => {
+  assert.match(trackerSource, /resolveCustomerJourneyFulfillmentType/);
   assert.match(trackerSource, /fulfillment_type: isPickupOrder \? 'pickup' : 'delivery'/);
-  assert.match(trackerSource, /journey\.normalizedStatus === 'picked_up'[\s\S]*?\? 'Pickup status'/);
-  assert.match(trackerSource, /journey\.normalizedStatus === 'picked_up'[\s\S]*?\? 'Pickup complete'/);
+  assert.match(trackerSource, /journey\.normalizedStatus === 'picked_up'[\s\S]*?\? 'Order status'/);
+  assert.match(trackerSource, /journey\.normalizedStatus === 'picked_up'[\s\S]*?\? 'Order complete'/);
+  assert.doesNotMatch(trackerSource, /Pickup complete|Pickup status|Expected pickup/);
 });
 
 test('no customer-visible G43C diagnostic fields are added', async () => {

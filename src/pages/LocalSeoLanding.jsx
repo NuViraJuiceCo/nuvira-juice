@@ -270,7 +270,7 @@ export const SEO_LANDING_PAGES = {
       },
       {
         title: 'Built around local windows',
-        body: 'Checkout shows the delivery or pickup options available for your address and the current production schedule.',
+        body: 'Checkout shows the delivery options available for your address and the current production schedule.',
       },
       {
         title: 'Single bottles or programs',
@@ -338,7 +338,7 @@ export const SEO_LANDING_PAGES = {
     sections: [
       {
         title: 'Fresh juice without a store run',
-        body: 'NuVira bottles are ordered online and prepared around active production windows for local delivery or pickup routines.',
+        body: 'NuVira bottles are ordered online and prepared around active production windows for local delivery.',
       },
       {
         title: 'Useful for homes and events',
@@ -679,7 +679,7 @@ export default function LocalSeoLanding({ pageKey }) {
         <div className="mx-auto grid max-w-6xl gap-7 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Service Areas</p>
-            <h2 className="font-heading text-2xl font-bold leading-tight sm:text-3xl">Built for local delivery and pickup routines.</h2>
+            <h2 className="font-heading text-2xl font-bold leading-tight sm:text-3xl">Built for fresh local delivery.</h2>
             <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
               Availability depends on your address, selected fulfillment method, and the current production schedule.
             </p>

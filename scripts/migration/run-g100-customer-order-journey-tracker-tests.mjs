@@ -10,6 +10,7 @@ const {
   buildCustomerJourneyTimeline,
   getCustomerOrderJourney,
   normalizeCustomerOrderStatus,
+  resolveCustomerJourneyFulfillmentType,
 } = journeyModule;
 
 const deliveryCases = [
@@ -36,8 +37,18 @@ assert.equal(normalizeCustomerOrderStatus('canceled'), 'cancelled');
 
 const readyForPickup = getCustomerOrderJourney({ status: 'ready_for_pickup', fulfillmentType: 'pickup' });
 assert.equal(readyForPickup.currentIndex, 4);
-assert.equal(readyForPickup.statusLabel, 'Ready for Pickup');
+assert.equal(readyForPickup.statusLabel, 'Order Ready');
 assert.equal(getCustomerOrderJourney({ status: 'picked_up', fulfillmentType: 'pickup' }).currentIndex, 5);
+assert.equal(getCustomerOrderJourney({ status: 'picked_up', fulfillmentType: 'pickup' }).statusLabel, 'Order Complete');
+assert.equal(resolveCustomerJourneyFulfillmentType({
+  orderFulfillmentType: 'delivery',
+  hubFulfillmentMethod: 'pickup',
+  status: 'picked_up',
+}), 'delivery', 'authoritative Customer App delivery must beat stale Hub pickup metadata');
+assert.equal(resolveCustomerJourneyFulfillmentType({ orderFulfillmentType: 'pickup' }), 'pickup');
+assert.equal(resolveCustomerJourneyFulfillmentType({ hubFulfillmentMethod: 'pos' }), 'pickup');
+assert.equal(getCustomerOrderJourney({ status: 'picked_up', fulfillmentType: 'delivery' }).statusLabel, 'Delivered');
+assert.equal(getCustomerOrderJourney({ status: 'ready_for_pickup', fulfillmentType: 'delivery' }).statusLabel, 'Bottled & Packed');
 assert.equal(getCustomerOrderJourney({ status: 'refunded' }).isTerminal, true);
 assert.equal(getCustomerOrderJourney({ status: 'unexpected_provider_status' }).isKnownStage, false);
 assert.equal(getCustomerOrderJourney({ status: 'unexpected_provider_status' }).progressPercent, 0);
@@ -61,6 +72,8 @@ assert.match(tracker, /Status history/);
 assert.match(tracker, /Order details/);
 assert.match(tracker, /Return \+ Reward/);
 assert.match(tracker, /buildCustomerJourneyTimeline/);
+assert.match(tracker, /resolveCustomerJourneyFulfillmentType/);
+assert.doesNotMatch(tracker, /Pickup complete|Pickup status|Expected pickup/);
 assert.doesNotMatch(tracker, /stages\.findIndex\(s => s\.key === displayOrder\.status\)/, 'raw status equality must not drive progress');
 
 const history = read('src/pages/OrderHistory.jsx');
@@ -71,7 +84,7 @@ assert.match(history, /refetchInterval: query =>/);
 console.log(JSON.stringify({
   success: true,
   suite: 'g100-customer-order-journey-tracker',
-  cases: 39,
+  cases: 48,
   production_writes_performed: false,
   provider_calls_performed: false,
   customer_notifications_sent: false,
