@@ -164,6 +164,15 @@ function maskEmail(email: string | null | undefined) {
   return `${safeLocal}@${domain}`;
 }
 
+function orderContainsProgram(order: Record<string, any> | null | undefined) {
+  return (Array.isArray(order?.items) ? order.items : []).some((item: Record<string, any>) => {
+    const productId = String(item?.product_id || item?.id || '').trim().toLowerCase();
+    const title = String(item?.title || item?.name || '').trim().toLowerCase();
+    return /^program[_-](radiance|hydration|reset)$/.test(productId)
+      || /(radiance|hydration|reset) program/.test(title);
+  });
+}
+
 async function deliveredEmailSent(base44: any, idempotencyKey: string) {
   if (!idempotencyKey) return false;
   try {
@@ -315,19 +324,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch order if email not provided
+    // Fetch the full order when identity fields or delivered-program routing need it.
     let email = customer_email;
     let orderNum = order_number;
-    if (!email || !orderNum) {
+    let fullOrderForRouting = entityUpdate && Array.isArray(body.data?.items) ? body.data : null;
+    if (!email || !orderNum || (new_status === 'delivered' && !fullOrderForRouting)) {
       const orders = await base44.asServiceRole.entities.Order.filter({ id: order_id });
       const order = orders[0];
       if (!order) return Response.json({ error: 'order_not_found' }, { status: 404 });
       email = order.customer_email;
       orderNum = order.order_number;
+      fullOrderForRouting = order;
     }
 
     // Build deep link for order tracker
-    const deepLink = notifConfig.deep_link ?? `/order-tracker/${orderNum}`;
+    const deepLink = new_status === 'delivered' && orderContainsProgram(fullOrderForRouting)
+      ? '/account/programs'
+      : notifConfig.deep_link ?? `/order-tracker/${orderNum}`;
     const idempotencyKey = `order_status_${order_id}_${new_status}`;
     const deliveredEmailIdempotencyKey = new_status === 'delivered'
       ? `order_status_email_${order_id}_${new_status}`

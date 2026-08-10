@@ -1,5 +1,6 @@
 // @ts-nocheck
-// Bundle revision: g101-delivery-only-customer-order-copy-20260809.
+// Bundle revision: g103-premium-program-journey-20260809.
+// Bundle revision: g101-delivery-only-customer-order-copy-20260809 (retained regression provenance).
 import handler0 from './handlers/addressSuggest/entry.ts';
 import handler2 from './handlers/cancelSubscriptionFutureRenewal/entry.ts';
 import handler3 from './handlers/claimReward/entry.ts';
@@ -20,6 +21,7 @@ import handler17 from './handlers/unregisterPushSubscription/entry.ts';
 import handler18 from './handlers/validateDeliveryEligibility/entry.ts';
 import handler19 from './handlers/createZone3SubscriptionReviewRequest/entry.ts';
 import handler20 from './handlers/createSubscriptionPaymentElementIntent/entry.ts';
+import handler21 from './handlers/manageProgramJourney/entry.ts';
 
 const HANDLERS = {
   "addressSuggest": handler0,
@@ -42,6 +44,7 @@ const HANDLERS = {
   "validateDeliveryEligibility": handler18,
   "createZone3SubscriptionReviewRequest": handler19,
   "createSubscriptionPaymentElementIntent": handler20,
+  "manageProgramJourney": handler21,
 };
 
 const DEFAULT_ACTION = 'getCustomerAccountDashboardData';

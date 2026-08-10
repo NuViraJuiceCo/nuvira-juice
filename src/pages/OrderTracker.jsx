@@ -11,6 +11,7 @@ import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import { buildCustomerJourneyTimeline, getCustomerOrderJourney, resolveCustomerJourneyFulfillmentType } from '@/lib/customer-order-journey';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
+import { orderContainsProgram } from '@/lib/program-catalog';
 
 // Parse a date string safely as a LOCAL calendar date (never UTC).
 // "2026-05-09" → May 9 in local time, not May 8 at UTC midnight.
@@ -371,6 +372,7 @@ export default function OrderTracker() {
       : isOnRoute && etaData?.eta_window
         ? 'Estimated arrival'
         : isDelivery ? 'Expected delivery' : 'Order timing';
+  const hasDeliveredProgram = journey.normalizedStatus === 'delivered' && orderContainsProgram(displayOrder);
 
   return (
     <div className="pb-10 min-h-screen bg-background">
@@ -587,6 +589,20 @@ export default function OrderTracker() {
           </div>
         </details>
       </div>
+
+      {hasDeliveredProgram && (
+        <section className="mx-4 mt-4 overflow-hidden rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/12 via-card to-accent/10 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Sparkles className="h-4 w-4" /></div>
+            <div className="flex-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Your next chapter</p>
+              <h2 className="mt-1 font-heading text-xl font-bold">Your program journey is ready</h2>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Choose a start date that fits the refrigerated freshness window, then follow your private three-day guide.</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => navigate('/account/programs')} className="nuvira-gradient-button mt-4 h-11 w-full rounded-xl text-xs font-black">Open My Program Journey</button>
+        </section>
+      )}
 
       {journey.isTerminal && !['cancelled', 'refunded', 'failed'].includes(journey.normalizedStatus) && (
         <section className="mx-4 mt-4 rounded-3xl bg-primary/[0.07] p-5 text-center">

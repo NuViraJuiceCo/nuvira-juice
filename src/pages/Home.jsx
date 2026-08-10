@@ -23,6 +23,7 @@ import DeliveryAvailabilityCard from '@/components/delivery/DeliveryAvailability
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
+import ActiveProgramJourneyCard from '@/components/program/ActiveProgramJourneyCard';
 
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
@@ -164,6 +165,8 @@ export default function Home({ seoActive = true }) {
 
       {/* QuickReorder — immediately after hero for returning customers */}
       <QuickReorder lastOrder={lastOrder} />
+
+      <ActiveProgramJourneyCard enabled={Boolean(user?.email)} />
 
       {/* Delivery Availability — visible early, below hero */}
       <DeliveryAvailabilityCard />

@@ -16,6 +16,7 @@ import { motion } from 'framer-motion';
 // Account menu items grouped by section
 const accountMenuItems = [
   { icon: ShoppingBag, label: 'Order History', path: '/account/orders', desc: 'View past and active orders' },
+  { icon: Sparkles, label: 'My Program Journeys', path: '/account/programs', desc: 'Follow delivered three-day programs' },
   { icon: Repeat2, label: 'My Subscriptions', path: '/account/subscriptions', desc: 'View and manage your active ritual' },
 ];
 
