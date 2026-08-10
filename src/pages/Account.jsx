@@ -6,19 +6,21 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 
 import {
-  ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Repeat2, Gift, Shirt, Handshake, PartyPopper, Leaf, Crown, Wallet, Star, Package
+  ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Gift, Shirt, Handshake, PartyPopper, Leaf, Crown, Wallet, Star, Package
 } from 'lucide-react';
 import CreditWallet from '@/components/account/CreditWallet';
+import MemberProgramCard from '@/components/account/MemberProgramCard';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import ProfileAvatar from '@/components/account/ProfileAvatar';
+import { PROGRAM_BY_KEY } from '@/lib/program-catalog';
+import { useActiveProgramJourney } from '@/lib/program-journey-state';
 import { motion } from 'framer-motion';
 
 // Account menu items grouped by section
 const accountMenuItems = [
   { icon: ShoppingBag, label: 'Order History', path: '/account/orders', desc: 'View past and active orders' },
-  { icon: Sparkles, label: 'My Program Journeys', path: '/account/programs', desc: 'Follow your delivered programs' },
+  { icon: Sparkles, label: 'My Program Journeys', path: '/account/programs', desc: 'Current and completed program guides' },
   { icon: Star, label: 'Rewards', path: '/rewards', desc: 'View points, perks, and available rewards' },
-  { icon: Repeat2, label: 'My Subscriptions', path: '/account/subscriptions', desc: 'View and manage your active ritual' },
 ];
 
 const supportMenuItems = [
@@ -78,7 +80,17 @@ export default function Account() {
 
   const userProfile = dashData?.customer_profile || null;
   const orders = dashData?.orders || [];
-  const subscriptions = dashData?.active_subscriptions || [];
+  const {
+    journey: activeJourney,
+    journeys: programJourneys,
+    isLoading: isProgramLoading,
+    isError: isProgramError,
+    refetch: refetchPrograms,
+  } = useActiveProgramJourney(Boolean(user?.email));
+  const activeProgram = activeJourney ? (PROGRAM_BY_KEY[activeJourney.program_key] || PROGRAM_BY_KEY.hydration) : null;
+  const programPath = activeJourney
+    ? `/account/programs/${encodeURIComponent(activeJourney.id)}`
+    : '/account/programs';
 
   const handleLogout = () => {
     if (user) {
@@ -123,10 +135,12 @@ export default function Account() {
                     <span className="text-[10px] font-bold text-primary dark:text-white uppercase tracking-wide">Member</span>
                   </span>
                 )}
-                {!isDashLoading && subscriptions.length > 0 && subscriptions.some(s => s.status === 'active') && (
+                {!isProgramLoading && activeJourney && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-nuvira-gradient text-white border border-white/20 rounded-full shadow-sm">
                     <Star className="w-3 h-3 text-white" />
-                    <span className="text-[10px] font-bold text-white uppercase tracking-wide">Active Ritual</span>
+                    <span className="text-[10px] font-bold text-white uppercase tracking-wide">
+                      {activeJourney.status === 'ready' ? 'Ready to Begin' : 'Program Active'}
+                    </span>
                   </span>
                 )}
               </div>
@@ -183,17 +197,21 @@ export default function Account() {
                 <p className="font-heading text-lg font-bold text-foreground dark:text-white">{orders.length}</p>
               )}
             </div>
-            <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm">
-              <div className="flex items-center justify-center gap-1.5 mb-1">
-                <Repeat2 className="w-3.5 h-3.5 text-accent" />
-                <p className="text-[9px] font-bold text-foreground/55 dark:text-muted-foreground/80 uppercase tracking-wider">Ritual</p>
+            <Link to={programPath}>
+              <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm active:scale-95 transition-transform">
+                <div className="flex items-center justify-center gap-1.5 mb-1">
+                  <Sparkles className="w-3.5 h-3.5 text-accent" />
+                  <p className="text-[9px] font-bold text-foreground/55 dark:text-muted-foreground/80 uppercase tracking-wider">Program</p>
+                </div>
+                {isProgramLoading ? (
+                  <div className="h-6 w-10 bg-muted rounded animate-pulse mx-auto" />
+                ) : (
+                  <p className="font-heading text-base font-bold text-foreground dark:text-white truncate">
+                    {activeProgram?.name || 'Explore'}
+                  </p>
+                )}
               </div>
-              {isDashLoading ? (
-                <div className="h-6 w-10 bg-muted rounded animate-pulse mx-auto" />
-              ) : (
-                <p className="font-heading text-lg font-bold text-foreground dark:text-white">{subscriptions.filter(s => s.status === 'active').length > 0 ? 'Active' : 'None'}</p>
-              )}
-            </div>
+            </Link>
             <Link to="/rewards">
             <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm active:scale-95 transition-transform">
               <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -210,26 +228,16 @@ export default function Account() {
       {/* NuVira Wallet / Credits Card - Refined contrast */}
       {user && <div className="mt-2"><CreditWallet dashData={dashData} /></div>}
 
-      {/* Premium Quick Actions - Refined contrast */}
+      {/* Member program and referral actions */}
       <div className="px-5 mt-5 mb-6">
-        <div className="grid grid-cols-2 gap-3">
-          <Link to="/account/subscriptions">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.15 }}
-              className="group relative overflow-hidden rounded-2xl p-4 nuvira-premium-card active:scale-[0.97] transition-all hover:shadow-md" style={{ touchAction: 'pan-y' }}
-            >
-              <div className="relative">
-                <div className="w-9 h-9 rounded-lg nuvira-icon-badge flex items-center justify-center mb-2">                  <Repeat2 className="w-4 h-4 text-white" />
-                </div>
-                <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Weekly Ritual</p>
-                <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Pause, skip, or manage</p>
-                <span className="inline-block mt-2 text-[9px] font-bold text-primary bg-white/60 dark:bg-white/10 px-2 py-0.5 rounded-full border border-primary/30">Flexible</span>
-              </div>
-            </motion.div>
-          </Link>
-
+        <div className="space-y-3">
+          <MemberProgramCard
+            journey={activeJourney}
+            journeys={programJourneys}
+            isLoading={isProgramLoading}
+            isError={isProgramError}
+            onRetry={refetchPrograms}
+          />
           <Link to="/referral">
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
@@ -237,12 +245,15 @@ export default function Account() {
               transition={{ delay: 0.18 }}
               className="group relative overflow-hidden rounded-2xl p-4 nuvira-premium-card active:scale-[0.97] transition-all hover:shadow-md" style={{ touchAction: 'pan-y' }}
             >
-              <div className="relative">
-                <div className="w-9 h-9 rounded-lg nuvira-icon-badge flex items-center justify-center mb-2">
-                  <Gift className="w-4 h-4 text-white" />                </div>
-                <p className="text-sm font-bold text-foreground dark:text-white mb-0.5">Refer & Earn</p>
-                <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Give $5, get rewarded</p>
-                <span className="inline-block mt-2 text-[9px] font-bold text-primary bg-white/60 dark:bg-white/10 px-2 py-0.5 rounded-full border border-primary/30">Perk</span>
+              <div className="relative flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl nuvira-icon-badge flex items-center justify-center shrink-0">
+                  <Gift className="w-4 h-4 text-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-foreground dark:text-white">Refer & Earn</p>
+                  <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Give $5 and earn a reward when a friend orders.</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-foreground/40" />
               </div>
             </motion.div>
           </Link>
@@ -253,7 +264,7 @@ export default function Account() {
       <div className="px-5 mt-8 mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Leaf className="w-4 h-4 text-primary" />
-          <p className="text-sm font-bold text-foreground">Your Ritual</p>
+          <p className="text-sm font-bold text-foreground">Your Account</p>
         </div>
         <div className="space-y-2.5">
           {accountMenuItems.map(({ icon: Icon, label, path, desc }, i) => (
