@@ -26,6 +26,11 @@
       "default": true,
       "description": "Production scheduled, in progress"
     },
+    "program_reminders": {
+      "type": "boolean",
+      "default": true,
+      "description": "Optional reminders for an explicitly started three-day program journey"
+    },
     "promotions": {
       "type": "boolean",
       "default": true,

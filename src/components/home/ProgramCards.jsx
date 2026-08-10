@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
+import { PROGRAMS } from '@/lib/program-catalog';
 
 // Tap-vs-scroll guard — only navigate if vertical movement < 8px
 function useTapGuard() {
@@ -14,60 +15,6 @@ function useTapGuard() {
     onClick: (e) => { if (scrolled.current) e.preventDefault(); },
   };
 }
-
-const PROGRAMS = [
-  {
-    key: 'radiance',
-    name: 'Radiance',
-    tagline: 'Glow from within',
-    description: 'Antioxidant-rich blend designed to brighten skin, boost energy, and support cellular repair.',
-    composition: '9 Aura · 3 Oasis',
-    bottles: 12,
-    days: 3,
-    price: 144,
-    color: 'from-orange-100 to-orange-200',
-    accent: 'text-orange-800',
-    border: 'border-orange-300',
-    dot: 'bg-orange-500',
-    emoji: '✨',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg',
-    imagePosition: 'object-[center_40%]',
-  },
-  {
-    key: 'hydration',
-    name: 'Hydration',
-    tagline: 'Deep cellular replenishment',
-    description: 'Electrolyte-dense formula to restore hydration, reduce inflammation, and optimize performance.',
-    composition: '9 Oasis · 3 Aura',
-    bottles: 12,
-    days: 3,
-    price: 144,
-    color: 'from-red-100 to-red-200',
-    accent: 'text-red-800',
-    border: 'border-red-300',
-    dot: 'bg-red-500',
-    emoji: '💧',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg',
-    imagePosition: 'object-[center_35%]',
-  },
-  {
-    key: 'reset',
-    name: 'Reset',
-    tagline: 'Refresh & renew',
-    description: 'Nutrient-forward blend to support digestive wellness, reduce bloating, and help your body feel refreshed from the inside out.',
-    composition: '9 Re-Nu · 3 Oasis',
-    bottles: 12,
-    days: 3,
-    price: 144,
-    color: 'from-green-100 to-green-200',
-    accent: 'text-green-800',
-    border: 'border-green-300',
-    dot: 'bg-green-500',
-    emoji: '🌿',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
-    imagePosition: 'object-[center_40%]',
-  },
-];
 
 export { PROGRAMS };
 
@@ -86,8 +33,8 @@ export default function ProgramCards() {
             className="w-[78vw]"
           >
             <Link to={`/program/${program.key}`} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove} onClick={tapGuard.onClick}>
-              <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] transition-transform shadow-lg`}
-                style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
+              <div className="relative overflow-hidden border rounded-2xl active:scale-[0.98] transition-transform shadow-lg"
+                style={{ borderColor: program.palette.border, boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
                 {program.image && (
                   <div className="relative h-44 overflow-hidden">
                     <img
@@ -103,14 +50,14 @@ export default function ProgramCards() {
                     </div>
                   </div>
                 )}
-                <div className={`bg-gradient-to-br ${program.color} p-3.5`}>
-                  <p className="text-xs text-gray-900 leading-relaxed mb-3 line-clamp-2">{program.description}</p>
+                <div className="p-3.5" style={{ background: `linear-gradient(135deg, ${program.palette.soft}, color-mix(in srgb, ${program.palette.accent} 22%, white))` }}>
+                  <p className="text-xs leading-relaxed mb-3 line-clamp-2" style={{ color: program.palette.ink }}>{program.description}</p>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className={`w-2.5 h-2.5 rounded-full ${program.dot}`} />
-                      <p className="text-xs text-gray-800 font-semibold">{program.bottles} bottles · {program.days} days</p>
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: program.palette.primary }} />
+                      <p className="text-xs font-semibold" style={{ color: program.palette.ink }}>{program.bottles} bottles · {program.days} days</p>
                     </div>
-                    <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
+                    <div className="flex items-center gap-1 font-semibold text-xs" style={{ color: program.palette.primary }}>
                       Build It <ArrowRight className="w-3.5 h-3.5" />
                     </div>
                   </div>
@@ -131,8 +78,8 @@ export default function ProgramCards() {
             transition={{ delay: i * 0.08 }}
           >
             <Link to={`/program/${program.key}`}>
-              <div className={`relative overflow-hidden border ${program.border} rounded-2xl active:scale-[0.98] hover:scale-[1.01] transition-transform h-full flex flex-col shadow-lg`}
-                style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
+              <div className="relative overflow-hidden border rounded-2xl active:scale-[0.98] hover:scale-[1.01] transition-transform h-full flex flex-col shadow-lg"
+                style={{ borderColor: program.palette.border, boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
                 {program.image && (
                   <div className="relative h-52 overflow-hidden">
                     <img
@@ -148,14 +95,14 @@ export default function ProgramCards() {
                     </div>
                   </div>
                 )}
-                <div className={`bg-gradient-to-br ${program.color} p-4 flex-1 flex flex-col justify-between`}>
-                  <p className="text-xs text-gray-900 leading-relaxed mb-3">{program.description}</p>
+                <div className="p-4 flex-1 flex flex-col justify-between" style={{ background: `linear-gradient(135deg, ${program.palette.soft}, color-mix(in srgb, ${program.palette.accent} 22%, white))` }}>
+                  <p className="text-xs leading-relaxed mb-3" style={{ color: program.palette.ink }}>{program.description}</p>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className={`w-2.5 h-2.5 rounded-full ${program.dot}`} />
-                      <p className="text-xs text-gray-800 font-semibold">{program.bottles} bottles · {program.days} days</p>
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: program.palette.primary }} />
+                      <p className="text-xs font-semibold" style={{ color: program.palette.ink }}>{program.bottles} bottles · {program.days} days</p>
                     </div>
-                    <div className={`flex items-center gap-1 ${program.accent} font-semibold text-xs`}>
+                    <div className="flex items-center gap-1 font-semibold text-xs" style={{ color: program.palette.primary }}>
                       Build It <ArrowRight className="w-3.5 h-3.5" />
                     </div>
                   </div>

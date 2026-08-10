@@ -1,11 +1,12 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Search, ShoppingBag, User, Star, ShieldCheck } from 'lucide-react';
+import { Home, Search, ShoppingBag, User, Star, ShieldCheck, Sparkles } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { adminMobileNavItems, isAdminNavActive } from './adminNavItems';
 import { motion } from 'framer-motion';
+import { useActiveProgramJourney } from '@/lib/program-journey-state';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
@@ -23,17 +24,25 @@ export default function MobileNav() {
   const { itemCount } = useCart();
   const { user } = useAuth();
   const adminMode = isAdminUser(user) && location.pathname.startsWith('/admin');
-  const visibleNavItems = adminMode ? adminMobileNavItems : (isAdminUser(user) ? [...navItems, adminNavItem] : navItems);
+  const { journey: activeJourney } = useActiveProgramJourney(Boolean(user) && !adminMode);
+  const journeyNavItem = activeJourney
+    ? { path: `/account/programs/${encodeURIComponent(activeJourney.id)}`, icon: Sparkles, label: 'Journey', journey: true }
+    : null;
+  const customerNavItems = journeyNavItem
+    ? navItems.map((item) => item.label === 'Rewards' ? journeyNavItem : item)
+    : navItems;
+  const visibleNavItems = adminMode ? adminMobileNavItems : (isAdminUser(user) ? [...customerNavItems, adminNavItem] : customerNavItems);
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-xl border-t border-nuvira shadow-[0_-10px_30px_rgba(6,42,32,0.08)]" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
-        {visibleNavItems.map(({ path, icon: Icon, label }) => {
+        {visibleNavItems.map(({ path, icon: Icon, label, journey }) => {
           const isActive = adminMode
             ? isAdminNavActive(location.pathname, { path, label })
             : location.pathname === path ||
               (path === '/shop' && location.pathname.startsWith('/shop')) ||
-              (path === '/account' && location.pathname.startsWith('/account')) ||
+              (path === '/account' && location.pathname.startsWith('/account') && !location.pathname.startsWith('/account/programs')) ||
+              (journey && location.pathname.startsWith('/account/programs')) ||
               (path === '/admin/operations' && location.pathname.startsWith('/admin')) ||
               (path === '/rewards' && location.pathname === '/rewards');
           const adminItem = adminMode || label === 'Admin';
@@ -62,6 +71,9 @@ export default function MobileNav() {
                   }`}
                   strokeWidth={isActive ? 2.5 : 1.5}
                 />
+                {journey && (
+                  <span aria-hidden="true" className="absolute -right-1 -top-1 h-2 w-2 rounded-full border border-card bg-amber-400" />
+                )}
                 {label === 'Cart' && itemCount > 0 && (
                   <span className="absolute -top-1.5 -right-2.5 bg-accent text-accent-foreground text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                     {itemCount}

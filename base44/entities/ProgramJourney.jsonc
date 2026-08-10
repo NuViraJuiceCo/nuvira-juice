@@ -1,0 +1,140 @@
+{
+  "name": "ProgramJourney",
+  "type": "object",
+  "properties": {
+    "journey_key": {
+      "type": "string",
+      "description": "Stable order-line-and-unit idempotency key"
+    },
+    "customer_email": {
+      "type": "string"
+    },
+    "order_id": {
+      "type": "string"
+    },
+    "order_number": {
+      "type": "string"
+    },
+    "order_item_index": {
+      "type": "number"
+    },
+    "unit_index": {
+      "type": "number"
+    },
+    "program_key": {
+      "type": "string",
+      "enum": ["radiance", "hydration", "reset"]
+    },
+    "program_name": {
+      "type": "string"
+    },
+    "program_image_url": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ready", "in_progress", "completed", "freshness_window_ended", "archived"],
+      "default": "ready"
+    },
+    "delivered_at": {
+      "type": "string"
+    },
+    "delivered_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "quality_target_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Five-day refrigerated quality target; bottle label remains authoritative"
+    },
+    "use_by_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Earliest linked-batch use-by date, otherwise the seven-day refrigerated outer estimate"
+    },
+    "use_by_source": {
+      "type": "string",
+      "enum": ["production_batch", "delivery_estimate"]
+    },
+    "latest_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string",
+      "default": "America/Chicago"
+    },
+    "schedule_version": {
+      "type": "string"
+    },
+    "schedule": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step_id": { "type": "string" },
+          "day_number": { "type": "number" },
+          "date": { "type": "string" },
+          "sequence": { "type": "number" },
+          "time_key": { "type": "string" },
+          "time_label": { "type": "string" },
+          "suggested_time": { "type": "string" },
+          "product_name": { "type": "string" },
+          "morning_shot_name": { "type": "string" },
+          "completed_at": { "type": "string" }
+        }
+      }
+    },
+    "completed_steps": {
+      "type": "number",
+      "default": 0
+    },
+    "total_steps": {
+      "type": "number",
+      "default": 12
+    },
+    "reminders_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "last_reminder_key": {
+      "type": "string"
+    },
+    "last_reminder_at": {
+      "type": "string"
+    },
+    "recent_command_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": [
+    "journey_key",
+    "customer_email",
+    "order_id",
+    "program_key",
+    "program_name",
+    "status",
+    "delivered_date",
+    "quality_target_date",
+    "use_by_date",
+    "latest_start_date"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

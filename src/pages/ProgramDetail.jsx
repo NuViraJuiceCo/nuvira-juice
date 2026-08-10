@@ -10,43 +10,43 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import SEO from '@/components/SEO';
 import ConsumptionSchedule from '@/components/program/ConsumptionSchedule';
-import { PROGRAMS } from '@/components/home/ProgramCards';
+import { PROGRAMS } from '@/lib/program-catalog';
 import { absoluteUrl } from '@/lib/seo-slugs';
 
 const PERKS = [
   'Cold-pressed same day',
   'No fillers, no additives',
-  'Structured for 3-day results',
+  'Portioned for a 3-day routine',
   'Delivered to your door',
 ];
 
 const PROGRAM_THEMES = {
   radiance: {
-    eyebrow: 'Glow program',
-    accentClass: 'text-orange-400',
-    borderClass: 'border-orange-400/35',
-    panelClass: 'bg-orange-400/10 border-orange-400/25',
-    chipClass: 'bg-orange-400/20 text-orange-100 border-orange-300/30',
-    statClass: 'bg-orange-400/10 border-orange-400/20',
-    overlay: 'from-orange-950/95 via-black/62 to-black/28',
+    eyebrow: 'Radiance ritual',
+    accentClass: 'text-[#D69A48]',
+    borderClass: 'border-[#E6C894]/45',
+    panelClass: 'bg-[#9B5D20]/10 border-[#E6C894]/30',
+    chipClass: 'bg-[#3A2417]/65 text-[#FFF7EA] border-[#F2C97A]/40',
+    statClass: 'bg-[#D69A48]/10 border-[#E6C894]/25',
+    overlay: 'from-[#3A2417] via-[#4C2D1D]/80 to-black/20',
   },
   hydration: {
-    eyebrow: 'Hydration program',
-    accentClass: 'text-red-300',
-    borderClass: 'border-red-300/35',
-    panelClass: 'bg-red-300/10 border-red-300/25',
-    chipClass: 'bg-red-300/20 text-red-50 border-red-200/30',
-    statClass: 'bg-red-300/10 border-red-300/20',
-    overlay: 'from-red-950/95 via-black/62 to-black/28',
+    eyebrow: 'Hydration ritual',
+    accentClass: 'text-[#E5AA5C]',
+    borderClass: 'border-[#DDB895]/45',
+    panelClass: 'bg-[#7A2630]/10 border-[#DDB895]/30',
+    chipClass: 'bg-[#381619]/70 text-[#FFF4EA] border-[#E5AA5C]/40',
+    statClass: 'bg-[#C67B3C]/10 border-[#DDB895]/25',
+    overlay: 'from-[#381619] via-[#63262B]/82 to-black/18',
   },
   reset: {
-    eyebrow: 'Reset program',
-    accentClass: 'text-emerald-300',
-    borderClass: 'border-emerald-300/35',
-    panelClass: 'bg-emerald-300/10 border-emerald-300/25',
-    chipClass: 'bg-emerald-300/20 text-emerald-50 border-emerald-200/30',
-    statClass: 'bg-emerald-300/10 border-emerald-300/20',
-    overlay: 'from-emerald-950/95 via-black/62 to-black/28',
+    eyebrow: 'Reset ritual',
+    accentClass: 'text-[#B9C78F]',
+    borderClass: 'border-[#B9C7A3]/45',
+    panelClass: 'bg-[#285743]/10 border-[#B9C7A3]/30',
+    chipClass: 'bg-[#102D22]/70 text-[#F5F5E9] border-[#C6B56A]/40',
+    statClass: 'bg-[#8B9C62]/10 border-[#B9C7A3]/25',
+    overlay: 'from-[#102D22] via-[#1D4533]/82 to-black/18',
   },
 };
 
@@ -304,7 +304,7 @@ export default function ProgramDetail() {
               Each program keeps the bottle mix fixed so production, delivery, and your daily rhythm stay clear.
             </p>
             <div className="mt-5 space-y-3">
-              {['Follow the daily guide', 'Keep bottles chilled', 'Add optional AM shots'].map((item, index) => (
+              {['Follow the flexible daily guide', 'Keep bottles at 40°F or below', 'Follow every bottle’s printed date'].map((item, index) => (
                 <div key={item} className="flex items-center gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-black text-primary-foreground">
                     {index + 1}
