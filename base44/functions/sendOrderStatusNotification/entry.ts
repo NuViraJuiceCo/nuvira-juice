@@ -168,7 +168,7 @@ function orderContainsProgram(order: Record<string, any> | null | undefined) {
   return (Array.isArray(order?.items) ? order.items : []).some((item: Record<string, any>) => {
     const productId = String(item?.product_id || item?.id || '').trim().toLowerCase();
     const title = String(item?.title || item?.name || '').trim().toLowerCase();
-    return /^program[_-](radiance|hydration|reset)$/.test(productId)
+    return /^program[_-](radiance|hydration|reset)(?:[_-](?:2|3)day)?$/.test(productId)
       || /(radiance|hydration|reset) program/.test(title);
   });
 }

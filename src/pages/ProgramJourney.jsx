@@ -72,16 +72,26 @@ function programTheme(journey) {
   return PROGRAM_BY_KEY[journey?.program_key] || PROGRAM_BY_KEY.hydration;
 }
 
-function progressPercent(journey) {
-  return Math.round((Number(journey?.completed_steps || 0) / Math.max(1, Number(journey?.total_steps || 12))) * 100);
+function journeyDays(journey) {
+  const explicit = Number(journey?.program_days);
+  if (explicit === 2 || explicit === 3) return explicit;
+  const scheduleDays = Math.max(0, ...(Array.isArray(journey?.schedule) ? journey.schedule.map((step) => Number(step?.day_number || 0)) : [0]));
+  return scheduleDays === 2 ? 2 : 3;
 }
 
-function buildPreviewJourney(state = 'in_progress', requestedProgramKey = 'hydration') {
+function progressPercent(journey) {
+  const fallbackSteps = journeyDays(journey) * 4;
+  return Math.round((Number(journey?.completed_steps || 0) / Math.max(1, Number(journey?.total_steps || fallbackSteps))) * 100);
+}
+
+function buildPreviewJourney(state = 'in_progress', requestedProgramKey = 'hydration', requestedDays = 3) {
   const previewProgram = PROGRAM_BY_KEY[requestedProgramKey] || PROGRAM_BY_KEY.hydration;
+  const programDays = previewProgram.key === 'reset' ? 3 : (Number(requestedDays) === 2 ? 2 : 3);
+  const totalSteps = programDays * 4;
   const today = new Date().toISOString().slice(0, 10);
   const startDate = addDays(today, -1);
   const schedule = [];
-  for (let day = 1; day <= 3; day += 1) {
+  for (let day = 1; day <= programDays; day += 1) {
     DAILY_PROGRAM_SCHEDULES[previewProgram.key].forEach((slot, index) => {
       const completed = day === 1 || (day === 2 && index === 0);
       schedule.push({
@@ -98,7 +108,7 @@ function buildPreviewJourney(state = 'in_progress', requestedProgramKey = 'hydra
       });
     });
   }
-  const completedSteps = state === 'completed' ? 12 : state === 'ready' ? 0 : 5;
+  const completedSteps = state === 'completed' ? totalSteps : state === 'ready' ? 0 : Math.min(5, totalSteps);
   if (state === 'completed') schedule.forEach((step) => { step.completed_at = new Date().toISOString(); });
   if (state === 'ready') schedule.forEach((step) => { step.completed_at = null; });
   return {
@@ -107,6 +117,7 @@ function buildPreviewJourney(state = 'in_progress', requestedProgramKey = 'hydra
     order_number: 'NV-PREVIEW',
     program_key: previewProgram.key,
     program_name: previewProgram.name,
+    program_days: programDays,
     program_image_url: previewProgram.image,
     status: state,
     delivered_date: addDays(today, -1),
@@ -119,7 +130,7 @@ function buildPreviewJourney(state = 'in_progress', requestedProgramKey = 'hydra
     today,
     schedule: state === 'ready' ? [] : schedule,
     completed_steps: completedSteps,
-    total_steps: 12,
+    total_steps: totalSteps,
     reminders_enabled: state === 'ready' ? false : true,
     reminder_delivery_available: true,
   };
@@ -149,7 +160,7 @@ function EmptyPrograms({ onBack }) {
         </div>
         <h1 className="mt-5 font-heading text-2xl font-bold">Your program journeys will live here</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          After a paid NuVira program is delivered, its three-day guide becomes available here.
+          After a paid NuVira program is delivered, its private guide becomes available here.
         </p>
         <button type="button" onClick={onBack} className="nuvira-gradient-button mt-6 h-11 rounded-xl px-6 text-sm font-bold">
           Explore Programs
@@ -199,7 +210,7 @@ function FreshnessCard({ journey, compact = false }) {
 function ProgramList({ journeys, onOpen, onShop }) {
   return (
     <PageShell>
-      <SEO title="My Program Journeys" description="Your interactive NuVira three-day program guides." noindex />
+      <SEO title="My Program Journeys" description="Your interactive private NuVira program guides." noindex />
       <header className="border-b border-border/40 bg-background/90 px-5 pb-4 backdrop-blur-xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">NuVira Rituals</p>
         <h1 className="mt-1 font-heading text-3xl font-bold">My Program Journeys</h1>
@@ -269,11 +280,11 @@ function StartPanel({ journey, selectedDate, setSelectedDate, remindersEnabled, 
       </div>
       <h2 className="mt-2 font-heading text-2xl font-bold">When would you like to start?</h2>
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        Select a date that leaves enough time to complete all three days within the refrigerated freshness window.
+        Select a date that leaves enough time to complete all {journeyDays(journey)} days within the refrigerated freshness window.
       </p>
       {unavailable ? (
         <div className="mt-4 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4">
-          <p className="text-sm font-bold">The full three-day window has passed.</p>
+          <p className="text-sm font-bold">The full {journeyDays(journey)}-day window has passed.</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Do not use the app to extend a bottle’s printed date. Contact NuVira if you need help with this order.</p>
         </div>
       ) : (
@@ -287,7 +298,7 @@ function StartPanel({ journey, selectedDate, setSelectedDate, remindersEnabled, 
             >
               <p className="text-[9px] font-black uppercase tracking-wide opacity-70">{date === journey.today ? 'Today' : 'Start date'}</p>
               <p className="mt-0.5 text-sm font-bold">{formatDate(date, true)}</p>
-              <p className="mt-1 text-[9px] opacity-65">Ends {formatDate(addDays(date, 2))}</p>
+              <p className="mt-1 text-[9px] opacity-65">Ends {formatDate(addDays(date, journeyDays(journey) - 1))}</p>
             </button>
           ))}
         </div>
@@ -569,6 +580,7 @@ function JourneyCelebration({ celebration, program, onDismiss }) {
 
 function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pending, pendingStep, celebration, onDismissCelebration }) {
   const program = programTheme(journey);
+  const programDays = journeyDays(journey);
   const progress = progressPercent(journey);
   const [selectedDate, setSelectedDate] = React.useState(availableStartDates(journey)[0] || '');
   const [remindersEnabled, setRemindersEnabled] = React.useState(journey.reminders_enabled === true);
@@ -591,7 +603,7 @@ function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pen
         <div className="absolute inset-x-0 bottom-0 mx-auto max-w-4xl p-5 pb-7 text-white md:p-8">
           <div className="flex items-end justify-between gap-5">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white/65"><Sparkles className="h-3.5 w-3.5" /> {ready ? 'Ready to begin' : completed ? 'Journey complete' : 'Your three-day ritual'}</div>
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white/65"><Sparkles className="h-3.5 w-3.5" /> {ready ? 'Ready to begin' : completed ? 'Journey complete' : `Your ${programDays}-day ritual`}</div>
               <h1 className="mt-3 font-heading text-5xl font-bold leading-[0.9] md:text-6xl">{journey.program_name}</h1>
               <p className="mt-3 text-sm font-medium text-white/75">{program.tagline}</p>
             </div>
@@ -631,12 +643,12 @@ function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pen
             {completed && (
               <section className="overflow-hidden rounded-[1.75rem] border p-5 text-center" style={{ borderColor: program.palette.border, background: `linear-gradient(145deg, ${program.palette.soft}, white)` }}>
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ backgroundColor: program.palette.primary }}><CircleCheckBig className="h-6 w-6" /></div>
-                <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: program.palette.primary }}>Three days complete</p>
+                <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: program.palette.primary }}>{programDays} days complete</p>
                 <h2 className="mt-1 font-heading text-2xl font-bold" style={{ color: program.palette.ink }}>A ritual worth celebrating.</h2>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Thank you for making NuVira part of your routine. Your completed journey stays here as a private record.</p>
               </section>
             )}
-            {[1, 2, 3].map((day) => <DaySchedule key={day} day={day} journey={journey} onToggle={onToggle} pendingStep={pendingStep} />)}
+            {Array.from({ length: programDays }, (_, index) => index + 1).map((day) => <DaySchedule key={day} day={day} journey={journey} onToggle={onToggle} pendingStep={pendingStep} />)}
             {journey.reminder_delivery_available && <button
               type="button"
               onClick={() => onSetReminders(!journey.reminders_enabled)}
@@ -669,12 +681,13 @@ export default function ProgramJourney({ previewMode = false }) {
   const dismissCelebration = React.useCallback(() => setCelebration(null), []);
   const previewState = previewMode ? new URLSearchParams(window.location.search).get('state') || 'in_progress' : 'in_progress';
   const previewProgramKey = previewMode ? new URLSearchParams(window.location.search).get('program') || 'hydration' : 'hydration';
+  const previewDays = previewMode ? Number(new URLSearchParams(window.location.search).get('days') || 3) : 3;
   const previewCelebration = previewMode ? new URLSearchParams(window.location.search).get('celebration') : null;
-  const previewJourney = React.useMemo(() => buildPreviewJourney(previewState, previewProgramKey), [previewProgramKey, previewState]);
+  const previewJourney = React.useMemo(() => buildPreviewJourney(previewState, previewProgramKey, previewDays), [previewDays, previewProgramKey, previewState]);
 
   React.useEffect(() => {
     setPreviewDismissed(false);
-  }, [previewCelebration, previewProgramKey, previewState]);
+  }, [previewCelebration, previewDays, previewProgramKey, previewState]);
 
   const listQuery = useQuery({
     queryKey: ['program-journeys'],
@@ -712,7 +725,7 @@ export default function ProgramJourney({ previewMode = false }) {
     onError: (error) => {
       const code = error?.data?.error || error?.message;
       const messages = {
-        start_date_outside_freshness_window: 'Choose a start date that keeps all three days inside the freshness window.',
+        start_date_outside_freshness_window: 'Choose a start date that keeps the full program inside the freshness window.',
         freshness_window_ended: 'That bottle’s freshness window has ended. Follow its printed date and contact NuVira if you need help.',
         future_program_step_cannot_be_completed: 'That moment becomes available on its scheduled day.',
       };
@@ -723,7 +736,7 @@ export default function ProgramJourney({ previewMode = false }) {
 
   if (previewMode) {
     const previewReward = previewDismissed ? null : previewCelebration === 'complete'
-      ? createProgramCelebration({ journey: buildPreviewJourney('completed', previewProgramKey), stepId: 'day-3-evening', completed: true, commandId: 'preview-complete' })
+      ? createProgramCelebration({ journey: buildPreviewJourney('completed', previewProgramKey, previewDays), stepId: `day-${journeyDays(previewJourney)}-evening`, completed: true, commandId: 'preview-complete' })
       : previewCelebration === 'step'
         ? createProgramCelebration({ journey: previewJourney, stepId: 'day-2-morning', completed: true, commandId: 'preview-step' })
         : null;

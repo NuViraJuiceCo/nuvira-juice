@@ -597,7 +597,7 @@ export default function OrderTracker() {
             <div className="flex-1">
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Your next chapter</p>
               <h2 className="mt-1 font-heading text-xl font-bold">Your program journey is ready</h2>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Choose a start date that fits the refrigerated freshness window, then follow your private three-day guide.</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Choose a start date that fits the refrigerated freshness window, then follow your private program guide.</p>
             </div>
           </div>
           <button type="button" onClick={() => navigate('/account/programs')} className="nuvira-gradient-button mt-4 h-11 w-full rounded-xl text-xs font-black">Open My Program Journey</button>

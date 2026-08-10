@@ -4,6 +4,95 @@ import Stripe from 'npm:stripe@14.21.0';
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
+const PROGRAM_SCHEDULE_VERSION = '2026-08-09.v2';
+const PROGRAM_ORDER_OPTIONS = Object.freeze({
+  radiance: Object.freeze({
+    2: Object.freeze({ price: 104, bottles: 8, composition: Object.freeze([
+      Object.freeze({ product_id: 'aura', product_name: 'AURA', quantity: 6 }),
+      Object.freeze({ product_id: 'oasis', product_name: 'OASIS', quantity: 2 }),
+    ]) }),
+    3: Object.freeze({ price: 144, bottles: 12, composition: Object.freeze([
+      Object.freeze({ product_id: 'aura', product_name: 'AURA', quantity: 9 }),
+      Object.freeze({ product_id: 'oasis', product_name: 'OASIS', quantity: 3 }),
+    ]) }),
+  }),
+  hydration: Object.freeze({
+    2: Object.freeze({ price: 104, bottles: 8, composition: Object.freeze([
+      Object.freeze({ product_id: 'oasis', product_name: 'OASIS', quantity: 6 }),
+      Object.freeze({ product_id: 'aura', product_name: 'AURA', quantity: 2 }),
+    ]) }),
+    3: Object.freeze({ price: 144, bottles: 12, composition: Object.freeze([
+      Object.freeze({ product_id: 'oasis', product_name: 'OASIS', quantity: 9 }),
+      Object.freeze({ product_id: 'aura', product_name: 'AURA', quantity: 3 }),
+    ]) }),
+  }),
+  reset: Object.freeze({
+    3: Object.freeze({ price: 144, bottles: 12, composition: Object.freeze([
+      Object.freeze({ product_id: 're-nu', product_name: 'RE-NU', quantity: 9 }),
+      Object.freeze({ product_id: 'oasis', product_name: 'OASIS', quantity: 3 }),
+    ]) }),
+  }),
+});
+
+function programKeyForCheckoutItem(item) {
+  const explicit = String(item?.program_key || '').trim().toLowerCase();
+  if (PROGRAM_ORDER_OPTIONS[explicit]) return explicit;
+  const productId = String(item?.product_id || item?.id || '').trim().toLowerCase();
+  const title = String(item?.title || item?.name || '').trim().toLowerCase();
+  return Object.keys(PROGRAM_ORDER_OPTIONS).find((key) => (
+    productId === `program_${key}`
+      || productId === `program-${key}`
+      || productId.startsWith(`program_${key}_`)
+      || productId.startsWith(`program-${key}-`)
+      || title.includes(`${key} program`)
+  )) || null;
+}
+
+function programDaysForCheckoutItem(item, programKey) {
+  const productId = String(item?.product_id || item?.id || '').trim().toLowerCase();
+  const title = String(item?.title || item?.name || '').trim().toLowerCase();
+  const idMatch = productId.match(/[_-](2|3)day$/);
+  const titleMatch = title.match(/\((2|3)-day\)/);
+  const requested = Number(item?.program_days || idMatch?.[1] || titleMatch?.[1] || 3);
+  return PROGRAM_ORDER_OPTIONS[programKey]?.[requested] ? requested : null;
+}
+
+function normalizeCheckoutItem(item) {
+  const base = {
+    product_id: item.product_id,
+    title: item.title,
+    price: Number(item.price),
+    quantity: Number(item.quantity),
+    image_url: item.image_url || null,
+    category: item.category || null,
+    size: item.size || null,
+  };
+  const programKey = programKeyForCheckoutItem(item);
+  if (!programKey) return base;
+  const programDays = programDaysForCheckoutItem(item, programKey);
+  const option = programDays ? PROGRAM_ORDER_OPTIONS[programKey][programDays] : null;
+  if (!option) return base;
+  return {
+    ...base,
+    product_id: `program_${programKey}_${programDays}day`,
+    title: `${programKey[0].toUpperCase()}${programKey.slice(1)} Program (${programDays}-Day)`,
+    category: 'bundle',
+    is_program: true,
+    program_key: programKey,
+    program_days: programDays,
+    program_schedule_version: PROGRAM_SCHEDULE_VERSION,
+    bottles_per_unit: option.bottles,
+    bundle_composition: option.composition.map((component) => ({ ...component })),
+  };
+}
+
+function invalidProgramCheckoutItem(item) {
+  const programKey = programKeyForCheckoutItem(item);
+  if (!programKey) return false;
+  const programDays = programDaysForCheckoutItem(item, programKey);
+  if (!programDays) return true;
+  return Number(item?.price) !== PROGRAM_ORDER_OPTIONS[programKey][programDays].price;
+}
 
 function normalizePromotionCode(value) {
   return String(value || '').trim().toUpperCase();
@@ -493,7 +582,8 @@ Deno.serve(async (req) => {
       !Number.isFinite(Number(item?.price)) ||
       Number(item?.price) < 0 ||
       !Number.isInteger(Number(item?.quantity)) ||
-      Number(item?.quantity) < 1
+      Number(item?.quantity) < 1 ||
+      invalidProgramCheckoutItem(item)
     ));
     if (invalidItem) {
       return Response.json({
@@ -501,6 +591,7 @@ Deno.serve(async (req) => {
         error_code: 'INVALID_ORDER_ITEMS',
       }, { status: 400 });
     }
+    const normalizedItems = items.map(normalizeCheckoutItem);
     if (normalizedPhone.replace(/\D/g, '').length < 10) {
       return Response.json({
         error: 'A valid phone number is required for fulfillment.',
@@ -863,15 +954,7 @@ Deno.serve(async (req) => {
         order_number:             orderNumber,
         customer_email:           customer_email || '',
         customer_name,
-        items: items.map(i => ({
-          product_id: i.product_id,
-          title:      i.title,
-          price:      i.price,
-          quantity:   i.quantity,
-          image_url:  i.image_url || null,
-          category:   i.category || null,
-          size:       i.size || null,
-        })),
+        items: normalizedItems,
         subtotal,
         delivery_fee:             effectiveDeliveryFee,
         total:                    effectiveTotal,
@@ -948,7 +1031,7 @@ Deno.serve(async (req) => {
           address_state: normalizedAddress.state,
           address_postal_code: normalizedAddress.postalCode,
           address_country: 'US',
-          items, subtotal,
+          items: normalizedItems, subtotal,
           delivery_fee:              effectiveDeliveryFee,
           total:                     effectiveTotal,
           fulfillment_type:          fulfillment_type || 'delivery',

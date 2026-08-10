@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, Check, Package, Sparkles, Truck, Zap } from 'lucide-react';
@@ -10,13 +10,17 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import SEO from '@/components/SEO';
 import ConsumptionSchedule from '@/components/program/ConsumptionSchedule';
-import { PROGRAMS } from '@/lib/program-catalog';
+import {
+  PROGRAMS,
+  PROGRAM_SCHEDULE_VERSION,
+  programOptionForDays,
+  programProductId,
+} from '@/lib/program-catalog';
 import { absoluteUrl } from '@/lib/seo-slugs';
 
-const PERKS = [
+const BASE_PERKS = [
   'Cold-pressed same day',
   'No fillers, no additives',
-  'Portioned for a 3-day routine',
   'Delivered to your door',
 ];
 
@@ -60,7 +64,13 @@ export default function ProgramDetail() {
   const { addItem } = useCart();
 
   const program = PROGRAMS.find(p => p.key === key);
-  const [selectedShots, setSelectedShots] = useState([]); // array of shot ids, max 3
+  const [selectedDays, setSelectedDays] = useState(3);
+  const [selectedShots, setSelectedShots] = useState([]);
+
+  useEffect(() => {
+    setSelectedDays(3);
+    setSelectedShots([]);
+  }, [key]);
 
   const { data: shots = [] } = useQuery({
     queryKey: ['wellness-shots'],
@@ -93,11 +103,12 @@ export default function ProgramDetail() {
     );
   }
 
-  const basePrice = program.price;
+  const selectedOption = programOptionForDays(program, selectedDays);
+  const basePrice = selectedOption.price;
   const shotsTotal = selectedShots.reduce((sum, id) => sum + (shots.find(s => s.id === id)?.price || 0), 0);
   const total = basePrice + shotsTotal;
-  const programTitle = `${program.name} Program (3-Day)`;
-  const programDescription = `${program.description} Includes ${program.composition} across ${program.bottles} bottles, available for local delivery in Wentzville, St. Charles County, and the St. Louis area.`;
+  const programTitle = `${program.name} Program (${selectedOption.days}-Day)`;
+  const programDescription = `${program.description} Includes ${selectedOption.composition} across ${selectedOption.bottles} bottles, available for local delivery in Wentzville, St. Charles County, and the St. Louis area.`;
   const programUrl = absoluteUrl(`/program/${program.key}`);
   const programStructuredData = {
     '@context': 'https://schema.org',
@@ -110,14 +121,14 @@ export default function ProgramDetail() {
       '@type': 'Offer',
       url: programUrl,
       priceCurrency: 'USD',
-      price: program.price.toFixed(2),
+      price: selectedOption.price.toFixed(2),
       availability: 'https://schema.org/InStock',
       seller: { '@type': 'Organization', name: 'NuVira Juice Co.' },
     },
     additionalProperty: [
-      { '@type': 'PropertyValue', name: 'Program length', value: `${program.days} days` },
-      { '@type': 'PropertyValue', name: 'Bottle count', value: `${program.bottles} bottles` },
-      { '@type': 'PropertyValue', name: 'Composition', value: program.composition },
+      { '@type': 'PropertyValue', name: 'Program length', value: `${selectedOption.days} days` },
+      { '@type': 'PropertyValue', name: 'Bottle count', value: `${selectedOption.bottles} bottles` },
+      { '@type': 'PropertyValue', name: 'Composition', value: selectedOption.composition },
     ],
   };
 
@@ -126,37 +137,25 @@ export default function ProgramDetail() {
     handleOneTime();
   };
 
-  const getFixedComposition = () => {
-    const compositions = {
-      radiance: [
-        { product_id: 'aura', product_name: 'AURA', quantity: 9 },
-        { product_id: 'oasis', product_name: 'OASIS', quantity: 3 },
-      ],
-      reset: [
-        { product_id: 're-nu', product_name: 'RE-NU', quantity: 9 },
-        { product_id: 'oasis', product_name: 'OASIS', quantity: 3 },
-      ],
-      hydration: [
-        { product_id: 'oasis', product_name: 'OASIS', quantity: 9 },
-        { product_id: 'aura', product_name: 'AURA', quantity: 3 },
-      ],
-    };
-    return compositions[program.key] || [];
-  };
-
   const handleOneTime = () => {
     addItem(
       {
-        id: `program_${program.key}`,
-        title: `${program.name} Program (3-Day)`,
+        id: programProductId(program.key, selectedOption.days),
+        title: programTitle,
         price: basePrice,
         image_url: program.image,
         category: 'bundle',
-        bottle_count: program.bottles,
+        bottle_count: selectedOption.bottles,
         is_program: true,
       },
       1,
-      { bottles_per_unit: program.bottles, bundle_composition: getFixedComposition() }
+      {
+        bottles_per_unit: selectedOption.bottles,
+        bundle_composition: selectedOption.bundleComposition.map((item) => ({ ...item })),
+        program_key: program.key,
+        program_days: selectedOption.days,
+        program_schedule_version: PROGRAM_SCHEDULE_VERSION,
+      }
     );
     selectedShots.forEach(shotId => {
       const shot = shots.find(s => s.id === shotId);
@@ -190,7 +189,7 @@ export default function ProgramDetail() {
             onClick={handleStartProgram}
             className="nuvira-gradient-button h-11 min-w-0 flex-1 rounded-xl px-3 text-sm font-bold sm:min-w-[260px] sm:px-5"
           >
-            Start My 3-Day Program
+            Start My {selectedOption.days}-Day Program
           </Button>
         </div>
       </div>
@@ -204,7 +203,7 @@ export default function ProgramDetail() {
         description={programDescription}
         image={program.image}
         type="product"
-        keywords={`${program.name} juice program, ${program.composition}, 3-day juice program Wentzville MO, cold-pressed juice delivery St. Louis, NuVira ${program.name}`}
+        keywords={`${program.name} juice program, ${selectedOption.composition}, ${selectedOption.days}-day juice program Wentzville MO, cold-pressed juice delivery St. Louis, NuVira ${program.name}`}
         canonicalPath={`/program/${program.key}`}
         structuredData={programStructuredData}
       />
@@ -263,11 +262,41 @@ export default function ProgramDetail() {
           >
             <p className="mb-4 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">What's Included</p>
 
+            {program.durationOptions.length > 1 && (
+              <div className="mb-4" role="group" aria-label="Choose program length">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Choose your program length</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {program.durationOptions.map((option) => {
+                    const selected = option.days === selectedOption.days;
+                    return (
+                      <button
+                        key={option.days}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setSelectedDays(option.days);
+                          setSelectedShots((current) => current.slice(0, option.days));
+                        }}
+                        className={`rounded-2xl border-2 p-3 text-left transition-all ${selected ? 'border-primary bg-primary/10 shadow-sm' : 'border-border/55 bg-background hover:border-primary/40'}`}
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="font-heading text-lg font-bold text-foreground">{option.days} Days</span>
+                          {selected && <Check className="h-4 w-4 text-primary" />}
+                        </span>
+                        <span className="mt-1 block text-xs font-bold text-primary">${option.price}</span>
+                        <span className="mt-0.5 block text-[10px] text-muted-foreground">{option.bottles} bottles</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Days', value: program.days, icon: CalendarDays },
-                { label: 'Bottles', value: program.bottles, icon: Package },
-                { label: 'Per Bottle', value: `$${(basePrice / program.bottles).toFixed(0)}`, icon: Truck },
+                { label: 'Days', value: selectedOption.days, icon: CalendarDays },
+                { label: 'Bottles', value: selectedOption.bottles, icon: Package },
+                { label: 'Per Bottle', value: `$${(basePrice / selectedOption.bottles).toFixed(0)}`, icon: Truck },
               ].map(({ label, value, icon: Icon }) => (
                 <div key={label} className={`rounded-2xl border p-3 ${theme.statClass}`}>
                   <Icon className={`mb-2 h-4 w-4 ${theme.accentClass}`} />
@@ -279,11 +308,11 @@ export default function ProgramDetail() {
 
             <div className={`mt-4 rounded-2xl border p-4 ${theme.panelClass}`}>
               <p className={`text-xs font-black uppercase tracking-[0.16em] ${theme.accentClass}`}>{program.name} Formula</p>
-              <p className="mt-1 font-heading text-2xl font-bold text-foreground">{program.composition}</p>
+              <p className="mt-1 font-heading text-2xl font-bold text-foreground">{selectedOption.composition}</p>
             </div>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {PERKS.map(perk => (
+              {[...BASE_PERKS, `Portioned for a ${selectedOption.days}-day routine`].map(perk => (
                 <div key={perk} className="flex items-center gap-2.5 rounded-xl bg-secondary/35 px-3 py-2.5">
                   <Check className="w-3.5 h-3.5 text-primary shrink-0" />
                   <p className="text-xs font-semibold text-foreground/75">{perk}</p>
@@ -299,7 +328,7 @@ export default function ProgramDetail() {
             className={`rounded-3xl border p-5 md:p-6 ${theme.panelClass}`}
           >
             <p className={`text-xs font-black uppercase tracking-[0.18em] ${theme.accentClass}`}>How it works</p>
-            <h2 className="mt-2 font-heading text-2xl font-bold text-foreground">Three days, planned for you.</h2>
+            <h2 className="mt-2 font-heading text-2xl font-bold text-foreground">{selectedOption.days} days, planned for you.</h2>
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
               Each program keeps the bottle mix fixed so production, delivery, and your daily rhythm stay clear.
             </p>
@@ -324,6 +353,7 @@ export default function ProgramDetail() {
           >
             <ConsumptionSchedule
               programKey={program.key}
+              days={selectedOption.days}
               shotName={selectedShots.length > 0 ? shots.find(s => s.id === selectedShots[0])?.title : null}
             />
           </motion.div>
@@ -340,11 +370,11 @@ export default function ProgramDetail() {
                 <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
                 <span className="text-[10px] text-muted-foreground ml-auto">${shots[0]?.price || 6} each</span>
               </div>
-              <p className="text-[11px] text-muted-foreground mb-3">Pick up to 3 shots — one per day of your program</p>
+              <p className="text-[11px] text-muted-foreground mb-3">Pick up to {selectedOption.days} shots — one per day of your program</p>
               <div className="space-y-2">
                 {shots.map(shot => {
                   const isSelected = selectedShots.includes(shot.id);
-                  const atMax = selectedShots.length >= 3 && !isSelected;
+                  const atMax = selectedShots.length >= selectedOption.days && !isSelected;
                   return (
                     <button
                       key={shot.id}

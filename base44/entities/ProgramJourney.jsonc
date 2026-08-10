@@ -28,6 +28,11 @@
     "program_name": {
       "type": "string"
     },
+    "program_days": {
+      "type": "number",
+      "enum": [2, 3],
+      "description": "Purchased program duration; legacy journeys default to 3 days"
+    },
     "program_image_url": {
       "type": "string"
     },

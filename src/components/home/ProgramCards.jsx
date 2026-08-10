@@ -55,7 +55,7 @@ export default function ProgramCards() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: program.palette.primary }} />
-                      <p className="text-xs font-semibold" style={{ color: program.palette.ink }}>{program.bottles} bottles · {program.days} days</p>
+                      <p className="text-xs font-semibold" style={{ color: program.palette.ink }}>{program.durationOptions.length > 1 ? '8 or 12 bottles · 2 or 3 days' : `${program.bottles} bottles · ${program.days} days`}</p>
                     </div>
                     <div className="flex items-center gap-1 font-semibold text-xs" style={{ color: program.palette.primary }}>
                       Build It <ArrowRight className="w-3.5 h-3.5" />
@@ -100,7 +100,7 @@ export default function ProgramCards() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: program.palette.primary }} />
-                      <p className="text-xs font-semibold" style={{ color: program.palette.ink }}>{program.bottles} bottles · {program.days} days</p>
+                      <p className="text-xs font-semibold" style={{ color: program.palette.ink }}>{program.durationOptions.length > 1 ? '8 or 12 bottles · 2 or 3 days' : `${program.bottles} bottles · ${program.days} days`}</p>
                     </div>
                     <div className="flex items-center gap-1 font-semibold text-xs" style={{ color: program.palette.primary }}>
                       Build It <ArrowRight className="w-3.5 h-3.5" />

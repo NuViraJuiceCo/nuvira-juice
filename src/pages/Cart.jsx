@@ -371,7 +371,7 @@ export default function Cart() {
                             className="text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0"
                             style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.3)' }}
                           >
-                            ${program.price}
+                            From ${program.durationOptions[0].price}
                           </div>
                         </div>
                       </div>
@@ -381,7 +381,7 @@ export default function Cart() {
                     <div className="flex items-center justify-between px-3.5 py-2.5" style={{ background: program.gradientBg }}>
                       <div className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: program.dotColor }} />
-                        <p className="text-[11px] font-semibold" style={{ color: 'rgba(0,0,0,0.70)' }}>{program.composition} · {program.bottles} bottles</p>
+                        <p className="text-[11px] font-semibold" style={{ color: 'rgba(0,0,0,0.70)' }}>2 or 3 days · 8 or 12 bottles</p>
                       </div>
                       <p className="text-[11px] font-bold" style={{ color: program.accentColor }}>View Program →</p>
                     </div>

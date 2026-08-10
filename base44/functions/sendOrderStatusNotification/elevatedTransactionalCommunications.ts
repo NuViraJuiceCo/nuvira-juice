@@ -23,7 +23,7 @@ function orderContainsProgram(order: AnyRecord): boolean {
   return (Array.isArray(order?.items) ? order.items : []).some((item: AnyRecord) => {
     const productId = text(item?.product_id || item?.id, 160).toLowerCase();
     const title = text(item?.title || item?.name, 240).toLowerCase();
-    return /^program[_-](radiance|hydration|reset)$/.test(productId)
+    return /^program[_-](radiance|hydration|reset)(?:[_-](?:2|3)day)?$/.test(productId)
       || /(radiance|hydration|reset) program/.test(title);
   });
 }
