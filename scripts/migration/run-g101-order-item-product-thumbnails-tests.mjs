@@ -4,6 +4,7 @@ import fs from 'node:fs';
 const read = path => fs.readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
 const resolver = read('src/lib/order-item-images.js');
+const publicProducts = read('src/lib/public-products.js');
 const thumbnail = read('src/components/orders/OrderItemThumbnail.jsx');
 const tracker = read('src/pages/OrderTracker.jsx');
 const history = read('src/pages/OrderHistory.jsx');
@@ -25,9 +26,15 @@ const tests = [
       assert.match(resolver, new RegExp(marker, 'i'));
     }
   }],
+  ['catalog lookup normalizes human-readable titles to product slugs', () => {
+    assert.match(publicProducts, /slugifyProductTitle\(normalizedIdentifier\)/);
+    assert.match(publicProducts, /keys\.includes\(normalizedIdentifier\) \|\| keys\.includes\(slugIdentifier\)/);
+  }],
   ['thumbnail retries catalog candidates before a neutral package icon', () => {
     assert.match(thumbnail, /imageCandidates\.find\(candidate => !failedImageUrls\.includes\(candidate\)\)/);
     assert.match(thumbnail, /setFailedImageUrls/);
+    assert.match(thumbnail, /\{imageUrl \? \(/);
+    assert.doesNotMatch(thumbnail, /failedImageUrl\s*!==/);
     assert.match(thumbnail, /<Package className=\{iconClass\}/);
     assert.doesNotMatch(thumbnail, /🍊/);
   }],

@@ -1,4 +1,4 @@
-import { normalizeProductIdentifier, productLookupKeys } from '@/lib/seo-slugs';
+import { normalizeProductIdentifier, productLookupKeys, slugifyProductTitle } from '@/lib/seo-slugs';
 
 export const PUBLIC_PRODUCT_FALLBACKS = [
   {
@@ -127,5 +127,9 @@ export const PUBLIC_PRODUCT_FALLBACKS = [
 
 export function findPublicProductFallback(identifier = '') {
   const normalizedIdentifier = normalizeProductIdentifier(identifier);
-  return PUBLIC_PRODUCT_FALLBACKS.find(product => productLookupKeys(product).includes(normalizedIdentifier));
+  const slugIdentifier = slugifyProductTitle(normalizedIdentifier);
+  return PUBLIC_PRODUCT_FALLBACKS.find(product => {
+    const keys = productLookupKeys(product);
+    return keys.includes(normalizedIdentifier) || keys.includes(slugIdentifier);
+  });
 }
