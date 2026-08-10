@@ -5,6 +5,7 @@ const read = path => fs.readFileSync(new URL(`../../${path}`, import.meta.url), 
 
 const standalone = read('base44/functions/getCustomerOrderDetail/entry.ts');
 const gateway = read('base44/functions/getCustomerAccountDashboardData/handlers/getCustomerOrderDetail/entry.ts');
+const dashboard = read('base44/functions/getCustomerAccountDashboardData/handlers/getCustomerAccountDashboardData/entry.ts');
 const tracker = read('src/pages/OrderTracker.jsx');
 const history = read('src/pages/OrderHistory.jsx');
 
@@ -42,6 +43,29 @@ const tests = [
     assert.match(history, /order\.status === 'delivered'/);
     assert.match(history, /Delivery proof/);
     assert.match(history, /Left at \$\{order\.delivery_drop_location\}/);
+  }],
+  ['order history recovers proof from customer-owned fulfillment tasks', () => {
+    for (const marker of [
+      'applyOwnedDeliveryProofToOrderHistory',
+      "{ customer_email: customerEmail }",
+      "normalizeLower(order?.status) !== 'delivered'",
+      'task?.base44_order_id',
+      'task?.order_id',
+      'task?.shopify_order_number',
+      'proofTask?.delivery_photo_url',
+      'proofTask?.delivery_drop_location',
+    ]) assert.ok(dashboard.includes(marker), marker);
+    assert.match(dashboard, /filter\(task => !task\?\.is_test_task\)/);
+    assert.doesNotMatch(dashboard, /proofTask\?\.delivery_notes/);
+  }],
+  ['authoritative order history preserves safe delivery-proof fields', () => {
+    const sanitizer = dashboard.slice(
+      dashboard.indexOf('function sanitizeAuthoritativeHistoryOrder'),
+      dashboard.indexOf('async function loadOwnedAuthoritativeOrders'),
+    );
+    assert.match(sanitizer, /delivery_photo_url: normalizeText\(order\?\.delivery_photo_url\)/);
+    assert.match(sanitizer, /delivery_drop_location: normalizeText\(order\?\.delivery_drop_location\)/);
+    assert.doesNotMatch(sanitizer, /delivery_notes/);
   }],
   ['customer surfaces never expose driver notes or internal proof metadata', () => {
     for (const source of [tracker, history]) {
