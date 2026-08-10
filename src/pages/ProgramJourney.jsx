@@ -1,7 +1,7 @@
 import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowLeft,
   BellRing,
@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import { invokeCustomerGateway } from '@/api/base44Client';
 import { DAILY_PROGRAM_SCHEDULES, PROGRAM_BY_KEY } from '@/lib/program-catalog';
+import { createProgramCelebration } from '@/lib/program-celebration';
 import SEO from '@/components/SEO';
 
 const DATE_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
@@ -380,7 +381,119 @@ function DaySchedule({ day, journey, onToggle, pendingStep }) {
   );
 }
 
-function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pending, pendingStep }) {
+function JourneyCelebration({ celebration, program, onDismiss }) {
+  const reducedMotion = useReducedMotion();
+  const programComplete = celebration?.kind === 'program_complete';
+
+  React.useEffect(() => {
+    if (!celebration || programComplete) return undefined;
+    const timer = window.setTimeout(onDismiss, 2600);
+    return () => window.clearTimeout(timer);
+  }, [celebration, onDismiss, programComplete]);
+
+  React.useEffect(() => {
+    if (!programComplete) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onDismiss();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onDismiss, programComplete]);
+
+  return (
+    <AnimatePresence>
+      {celebration && !programComplete && (
+        <motion.div
+          key={celebration.id}
+          className="pointer-events-none fixed inset-x-0 z-[80] flex justify-center px-4"
+          style={{ bottom: 'max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem))' }}
+          initial={reducedMotion ? { opacity: 1 } : { opacity: 0, y: 28, scale: 0.94 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.97 }}
+          transition={{ type: reducedMotion ? 'tween' : 'spring', stiffness: 360, damping: 25 }}
+        >
+          <div role="status" aria-live="polite" className="pointer-events-auto relative w-full max-w-sm overflow-hidden rounded-[1.6rem] border border-white/15 bg-[#15100f]/95 p-4 text-white shadow-[0_22px_70px_rgba(25,8,5,.42)] backdrop-blur-xl">
+            <motion.span
+              aria-hidden="true"
+              className="absolute -right-5 -top-8 h-24 w-24 rounded-full opacity-30 blur-2xl"
+              style={{ backgroundColor: program.palette.glow }}
+              animate={reducedMotion ? undefined : { scale: [0.85, 1.2, 0.95], opacity: [0.18, 0.42, 0.22] }}
+              transition={{ duration: 1.8, ease: 'easeInOut' }}
+            />
+            <div className="relative flex items-center gap-3.5">
+              <motion.div
+                aria-hidden="true"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white"
+                style={{ background: `linear-gradient(145deg, ${program.palette.glow}, ${program.palette.primary})` }}
+                initial={reducedMotion ? undefined : { rotate: -18, scale: 0.55 }}
+                animate={{ rotate: 0, scale: 1 }}
+                transition={{ delay: 0.08, type: 'spring', stiffness: 430, damping: 18 }}
+              >
+                <Check className="h-5 w-5" strokeWidth={3} />
+              </motion.div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/55">{celebration.eyebrow}</p>
+                <h2 className="mt-0.5 font-heading text-xl font-bold">{celebration.title}</h2>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-white/70">{celebration.message}</p>
+              </div>
+              <Sparkles aria-hidden="true" className="h-5 w-5 shrink-0" style={{ color: program.palette.glow }} />
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {celebration && programComplete && (
+        <motion.div
+          key={celebration.id}
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-5 py-10 backdrop-blur-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="program-celebration-title"
+            className="relative w-full max-w-md overflow-hidden rounded-[2.25rem] border border-white/15 p-7 text-center text-white shadow-[0_30px_100px_rgba(0,0,0,.55)]"
+            style={{ background: `linear-gradient(155deg, ${program.palette.ink}, ${program.palette.primary})` }}
+            initial={reducedMotion ? { opacity: 1 } : { opacity: 0, scale: 0.88, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 12 }}
+            transition={{ type: reducedMotion ? 'tween' : 'spring', stiffness: 260, damping: 23 }}
+          >
+            <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
+              {[12, 31, 52, 73, 89].map((left, index) => (
+                <motion.span
+                  key={left}
+                  className="absolute h-2 w-2 rotate-45 rounded-[2px] bg-white/75"
+                  style={{ left: `${left}%`, top: `${17 + (index % 3) * 21}%` }}
+                  animate={reducedMotion ? undefined : { y: [0, -12, 4], rotate: [45, 135, 225], opacity: [0.28, 1, 0.35] }}
+                  transition={{ duration: 2.2 + index * 0.12, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              ))}
+            </div>
+            <motion.div
+              aria-hidden="true"
+              className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-white/30 bg-white/15"
+              animate={reducedMotion ? undefined : { boxShadow: ['0 0 0 0 rgba(255,255,255,.22)', '0 0 0 18px rgba(255,255,255,0)'] }}
+              transition={{ duration: 1.8, repeat: Infinity }}
+            >
+              <CircleCheckBig className="h-9 w-9" />
+            </motion.div>
+            <p className="relative mt-6 text-[10px] font-black uppercase tracking-[0.22em] text-white/65">{celebration.eyebrow}</p>
+            <h2 id="program-celebration-title" className="relative mt-2 font-heading text-4xl font-bold">{celebration.title}</h2>
+            <p className="relative mx-auto mt-3 max-w-xs text-sm leading-relaxed text-white/75">{celebration.message}</p>
+            <button type="button" onClick={onDismiss} className="relative mt-7 h-12 w-full rounded-2xl bg-white px-5 text-sm font-black text-[#26100d] shadow-lg transition active:scale-[0.98]">
+              Return to my journey
+            </button>
+          </motion.section>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pending, pendingStep, celebration, onDismissCelebration }) {
   const program = programTheme(journey);
   const progress = progressPercent(journey);
   const [selectedDate, setSelectedDate] = React.useState(availableStartDates(journey)[0] || '');
@@ -466,6 +579,7 @@ function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pen
         <SafetyWellnessCard />
         <p className="px-3 pb-4 text-center text-[9px] leading-relaxed text-muted-foreground">Suggested times are optional. Never use a completed check-in as evidence that a bottle remained refrigerated or safe.</p>
       </main>
+      <JourneyCelebration celebration={celebration} program={program} onDismiss={onDismissCelebration} />
     </PageShell>
   );
 }
@@ -475,7 +589,11 @@ export default function ProgramJourney({ previewMode = false }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pendingStep, setPendingStep] = React.useState(null);
+  const [celebration, setCelebration] = React.useState(null);
+  const lastCelebratedCommandRef = React.useRef(null);
+  const dismissCelebration = React.useCallback(() => setCelebration(null), []);
   const previewState = previewMode ? new URLSearchParams(window.location.search).get('state') || 'in_progress' : 'in_progress';
+  const previewCelebration = previewMode ? new URLSearchParams(window.location.search).get('celebration') : null;
   const previewJourney = React.useMemo(() => buildPreviewJourney(previewState), [previewState]);
 
   const listQuery = useQuery({
@@ -494,9 +612,22 @@ export default function ProgramJourney({ previewMode = false }) {
 
   const mutation = useMutation({
     mutationFn: async (payload) => (await invokeCustomerGateway('manageProgramJourney', payload)).data,
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.setQueryData(['program-journey', id], data?.journey);
       queryClient.invalidateQueries({ queryKey: ['program-journeys'] });
+      if (variables?.action === 'toggle_step' && variables?.completed === true) {
+        const nextCelebration = createProgramCelebration({
+          journey: data?.journey,
+          stepId: variables.step_id,
+          completed: variables.completed,
+          commandId: variables.command_id,
+          lastCelebratedCommandId: lastCelebratedCommandRef.current,
+        });
+        if (nextCelebration) {
+          lastCelebratedCommandRef.current = variables.command_id;
+          setCelebration(nextCelebration);
+        }
+      }
     },
     onError: (error) => {
       const code = error?.data?.error || error?.message;
@@ -511,7 +642,12 @@ export default function ProgramJourney({ previewMode = false }) {
   });
 
   if (previewMode) {
-    return <JourneyDetail journey={previewJourney} onBack={() => navigate('/')} onStart={() => {}} onToggle={() => {}} onSetReminders={() => {}} pending={false} pendingStep={null} />;
+    const previewReward = previewCelebration === 'complete'
+      ? createProgramCelebration({ journey: buildPreviewJourney('completed'), stepId: 'day-3-evening', completed: true, commandId: 'preview-complete' })
+      : previewCelebration === 'step'
+        ? createProgramCelebration({ journey: previewJourney, stepId: 'day-2-morning', completed: true, commandId: 'preview-step' })
+        : null;
+    return <JourneyDetail journey={previewJourney} onBack={() => navigate('/')} onStart={() => {}} onToggle={() => {}} onSetReminders={() => {}} pending={false} pendingStep={null} celebration={previewReward} onDismissCelebration={() => {}} />;
   }
   if (listQuery.isLoading || (id && detailQuery.isLoading)) return <LoadingState />;
   if (listQuery.isError || (id && detailQuery.isError)) {
@@ -534,6 +670,8 @@ export default function ProgramJourney({ previewMode = false }) {
       onBack={() => navigate('/account/programs')}
       pending={mutation.isPending}
       pendingStep={pendingStep}
+      celebration={celebration}
+      onDismissCelebration={dismissCelebration}
       onStart={(startDate, remindersEnabled) => mutation.mutate({ action: 'start', journey_id: id, start_date: startDate, reminders_enabled: remindersEnabled, command_id: commandId('start') })}
       onToggle={(step, completed) => {
         setPendingStep(step.step_id);

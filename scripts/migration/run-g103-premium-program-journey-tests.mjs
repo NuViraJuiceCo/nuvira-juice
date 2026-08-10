@@ -30,6 +30,22 @@ for (const prohibited of ['reduce inflammation', 'cellular repair', 'reduce bloa
 }
 pass('program_marketing_copy_avoids_unsubstantiated_health_outcomes');
 
+const celebrations = await import(`${pathToFileURL(path.join(root, 'src/lib/program-celebration.js')).href}?g103=${Date.now()}`);
+const rewardJourney = {
+  program_name: 'Hydration', status: 'in_progress', completed_steps: 5, total_steps: 12,
+  schedule: [{ step_id: 'day-2-morning', product_name: 'OASIS' }],
+};
+const stepReward = celebrations.createProgramCelebration({ journey: rewardJourney, stepId: 'day-2-morning', completed: true, commandId: 'reward-step-1' });
+assert.equal(stepReward.kind, 'step_complete');
+assert.equal(stepReward.title, 'Good job!');
+assert.match(stepReward.message, /OASIS is checked off/);
+assert.equal(celebrations.createProgramCelebration({ journey: rewardJourney, stepId: 'day-2-morning', completed: true, commandId: 'reward-step-1', lastCelebratedCommandId: 'reward-step-1' }), null);
+assert.equal(celebrations.createProgramCelebration({ journey: rewardJourney, stepId: 'day-2-morning', completed: false, commandId: 'reward-undo' }), null);
+const completionReward = celebrations.createProgramCelebration({ journey: { ...rewardJourney, status: 'completed', completed_steps: 12 }, stepId: 'day-3-evening', completed: true, commandId: 'reward-finish' });
+assert.equal(completionReward.kind, 'program_complete');
+assert.equal(completionReward.title, 'You did it.');
+pass('successful_checkins_receive_idempotent_step_and_program_completion_rewards');
+
 const handlerPath = 'base44/functions/getCustomerAccountDashboardData/handlers/manageProgramJourney/entry.ts';
 let handlerSource = read(handlerPath)
   .replace(/^import .*?;\s*$/m, '')
@@ -157,6 +173,7 @@ for (const marker of ['40°F or below', 'more than 2 hours', 'more than 1 hour',
 }
 assert.match(page, /5–7 day refrigerated shelf life/);
 assert.match(page, /future_program_step_cannot_be_completed/);
+for (const marker of ['AnimatePresence', 'useReducedMotion', 'aria-live="polite"', "previewCelebration === 'complete'", "previewCelebration === 'step'"]) assert.match(page, new RegExp(marker));
 pass('customer_experience_includes_storage_time_temperature_label_and_wellness_guardrails');
 
 const notifications = read('base44/functions/sendCustomerNotification/entry.ts');
