@@ -55,6 +55,14 @@ function asList(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function eventCategory(event = {}) {
+  const explicitCategory = [event.event_type, event.type]
+    .map(value => String(value || '').trim())
+    .find(value => value && value.toLowerCase() !== 'event');
+  if (explicitCategory) return explicitCategory;
+  return asList(event.tags).map(tag => String(tag || '').trim()).find(Boolean) || 'Community';
+}
+
 function chicagoDateString(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Chicago',
@@ -158,60 +166,63 @@ export default function Events() {
               </Link>
             </div>
           )}
-          {events.map((event, i) => (
-            <motion.div
-              key={event.id}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + i * 0.08 }}
-              className="nuvira-premium-card rounded-2xl overflow-hidden"
-            >
-              <div className="h-36 overflow-hidden">
-                <img src={event.image_url} alt={event.title} className="w-full h-full object-cover" />
-              </div>
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <h4 className="font-semibold text-sm leading-tight flex-1">{event.title}</h4>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${typeColors[event.type] || 'bg-primary/10 text-primary'}`}>
-                    {event.type}
-                  </span>
+          {events.map((event, i) => {
+            const category = eventCategory(event);
+            return (
+              <motion.div
+                key={event.id}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 + i * 0.08 }}
+                className="nuvira-premium-card rounded-2xl overflow-hidden"
+              >
+                <div className="h-36 overflow-hidden">
+                  <img src={event.image_url} alt={event.title} className="w-full h-full object-cover" />
                 </div>
-                <div className="space-y-1 mb-3">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Calendar className="w-3 h-3" />
-                    <span>{event.date} · {resolveEventTimeSemantics(event).displayTime}</span>
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h4 className="font-semibold text-sm leading-tight flex-1">{event.title}</h4>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${typeColors[category] || 'bg-primary/10 text-primary'}`}>
+                      {category}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <MapPin className="w-3 h-3" />
-                    <span>{event.location}</span>
+                  <div className="space-y-1 mb-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Calendar className="w-3 h-3" />
+                      <span>{event.date} · {resolveEventTimeSemantics(event).displayTime}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <MapPin className="w-3 h-3" />
+                      <span>{event.location}</span>
+                    </div>
                   </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>
-                {event.highlights && (
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {event.highlights.map(h => (
-                      <span key={h} className="text-[10px] font-semibold bg-primary/10 px-2 py-0.5 rounded-full text-primary">{h}</span>
-                    ))}
-                  </div>
-                )}
-                <div className="flex gap-2 mt-3">
-                  {event.tickets_link && (
-                    <a href={event.tickets_link} target="_blank" rel="noopener noreferrer"
-                      className="flex-1 text-center text-xs font-bold nuvira-gradient-button px-3 py-2 rounded-xl">
-                      Get Tickets
-                    </a>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>
+                  {event.highlights && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {event.highlights.map(h => (
+                        <span key={h} className="text-[10px] font-semibold bg-primary/10 px-2 py-0.5 rounded-full text-primary">{h}</span>
+                      ))}
+                    </div>
                   )}
-                  {event.website_link && (
-                    <a href={event.website_link} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs font-semibold text-primary px-3 py-2 rounded-xl border border-primary/30 bg-card/70">
-                      <ExternalLink className="w-3 h-3" />
-                      Website
-                    </a>
-                  )}
+                  <div className="flex gap-2 mt-3">
+                    {event.tickets_link && (
+                      <a href={event.tickets_link} target="_blank" rel="noopener noreferrer"
+                        className="flex-1 text-center text-xs font-bold nuvira-gradient-button px-3 py-2 rounded-xl">
+                        Get Tickets
+                      </a>
+                    )}
+                    {event.website_link && (
+                      <a href={event.website_link} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs font-semibold text-primary px-3 py-2 rounded-xl border border-primary/30 bg-card/70">
+                        <ExternalLink className="w-3 h-3" />
+                        Website
+                      </a>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
 
         {/* Community Message */}

@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g105-public-event-publishing-20260810.
 // Bundle revision: g98-native-compliance-document-management-20260808.
 // Bundle revision: g97-customer-app-native-monitoring-20260808 (prior).
 // Bundle revision: g95-customer-app-operational-authority-20260808 (prior).

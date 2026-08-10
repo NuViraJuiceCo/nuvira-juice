@@ -125,6 +125,7 @@ function EventRow({ event, onEdit, onArchive }) {
   const date = event.date || dateKey(event.start_datetime);
   const time = event.time || formatTime(event.start_datetime);
   const hasExternalLink = Boolean(event.website_link || event.tickets_link);
+  const category = event.type || event.event_type || (Array.isArray(event.tags) ? event.tags.find(Boolean) : '');
 
   return (
     <article className="rounded-xl border border-border/60 bg-card p-3 sm:p-4">
@@ -133,6 +134,7 @@ function EventRow({ event, onEdit, onArchive }) {
           <div className="flex flex-wrap items-center gap-1.5">
             <AdminStatusPill value={eventStatus(event)} label={eventStatus(event)} size="md" />
             <AdminStatusPill value={sourceLabel(event)} label={sourceLabel(event)} tone={sourceTone(event)} size="md" />
+            {category ? <AdminStatusPill value={category} label={category} tone="source" size="md" /> : null}
             {event.price ? <AdminStatusPill value="ticketed" label={`$${Number(event.price).toFixed(2)}`} tone="source" size="md" /> : null}
           </div>
           <div>
@@ -215,6 +217,7 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
     website_link: event?.website_link || '',
     tickets_link: event?.tickets_link || '',
     image_url: event?.image_url || '',
+    tags: Array.isArray(event?.tags) && event.tags.length > 0 ? event.tags : ['Community'],
   }));
   const setField = (field, value) => setForm(current => ({ ...current, [field]: value }));
   const canSubmit = form.title.trim() && form.date && !pending;
@@ -248,6 +251,15 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
           <label className="space-y-1">
             <span className="text-xs font-bold text-foreground">Time</span>
             <input type="time" value={form.time} onChange={e => setField('time', e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-xs font-bold text-foreground">Category</span>
+            <select value={form.tags[0] || 'Community'} onChange={e => setField('tags', [e.target.value, ...form.tags.slice(1)])} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground">
+              <option value="Pop-Up">Pop-Up</option>
+              <option value="Community">Community</option>
+              <option value="Festival">Festival</option>
+              <option value="Drop">Drop</option>
+            </select>
           </label>
           <label className="space-y-1 sm:col-span-2">
             <span className="text-xs font-bold text-foreground">Location</span>
