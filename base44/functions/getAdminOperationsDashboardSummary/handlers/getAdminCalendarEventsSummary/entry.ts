@@ -145,7 +145,7 @@ function eventMutationPayload(body) {
     description: sanitizeText(event.description, 2000) || null,
     date,
     time: sanitizeText(event.time, 40) || null,
-    location: sanitizeText(event.location, 240) || null,
+    location: sanitizePublicLocation(event.location, 240) || null,
     image_url: sanitizeEventUrl(event.image_url, 'event.image_url'),
     price: optionalNumber(event.price, 'event.price'),
     capacity: optionalNumber(event.capacity, 'event.capacity', { min: 1 }),
@@ -303,6 +303,16 @@ function sanitizeText(value, maxLength = 120) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
+function sanitizePublicLocation(value, maxLength = 240) {
+  const text = normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted]')
+    .replace(/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, '[redacted]')
+    .replace(/\b(?:bearer|authorization|token|secret|api[_-]?key)\s*[:=]\s*\S+/gi, '[redacted]');
+  if (!text) return null;
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
+}
+
 function sanitizeDate(value) {
   return normalizeText(value) || null;
 }
@@ -367,7 +377,7 @@ function sanitizeEventItem(item) {
     status: sanitizeText(item?.status, 60),
     start_datetime: sanitizeDate(item?.start_datetime),
     end_datetime: sanitizeDate(item?.end_datetime),
-    location: sanitizeText(item?.location, 120),
+    location: sanitizePublicLocation(item?.location, 120),
     summary: sanitizeText(item?.summary, 160),
     ...sanitizeItemMetadata(item),
   };
