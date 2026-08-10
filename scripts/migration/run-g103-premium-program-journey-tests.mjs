@@ -196,6 +196,14 @@ for (const marker of ['AnimatePresence', 'useReducedMotion', 'aria-live="polite"
 assert.match(page, /previewProgramKey/);
 pass('customer_experience_includes_storage_time_temperature_label_and_wellness_guardrails');
 
+assert.match(page, /resolveOrderItemImage\(\{ title: step\.product_name/);
+assert.match(page, /resolveOrderItemImage\(\{ title: step\.morning_shot_name/);
+assert.match(page, /alt=\{`\$\{step\.product_name\} bottle`\}/);
+assert.match(page, /Suggested · \$\{step\.suggested_time\} CT/);
+assert.match(page, /formatCheckinTimestamp\(step\.completed_at\)/);
+assert.match(page, /Checked \$\{checkinTimestamp \|\| 'in'\} · Tap to undo/);
+pass('checklist_uses_current_product_and_shot_images_with_clear_suggested_and_recorded_times');
+
 const notifications = read('base44/functions/sendCustomerNotification/entry.ts');
 const alwaysSendBody = notifications.match(/const ALWAYS_SEND = new Set\(\[([\s\S]*?)\]\);/)?.[1] || '';
 const elevatedBody = notifications.match(/const ELEVATED_TRANSACTIONAL_SUBTYPES = new Set\(\[([\s\S]*?)\]\);/)?.[1] || '';
