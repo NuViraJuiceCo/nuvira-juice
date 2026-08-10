@@ -33,6 +33,7 @@ const OrderTracker = React.lazy(() => import('@/pages/OrderTracker'));
 const OrderOptions = React.lazy(() => import('@/pages/OrderOptions'));
 const Account = React.lazy(() => import('@/pages/Account'));
 const OrderHistory = React.lazy(() => import('@/pages/OrderHistory'));
+const ProgramJourney = React.lazy(() => import('@/pages/ProgramJourney'));
 const Notifications = React.lazy(() => import('@/pages/Notifications'));
 const Support = React.lazy(() => import('@/pages/Support'));
 const AccountSettings = React.lazy(() => import('@/pages/AccountSettings'));
@@ -393,6 +394,8 @@ const AuthenticatedApp = () => {
           <Route path="/notifications" element={<ProtectedRoute element={<Notifications />} user={user} />} />
           <Route path="/account" element={<ProtectedRoute element={<Account />} user={user} />} />
           <Route path="/account/orders" element={<ProtectedRoute element={<OrderHistory />} user={user} />} />
+          <Route path="/account/programs" element={<ProtectedRoute element={<ProgramJourney />} user={user} />} />
+          <Route path="/account/programs/:id" element={<ProtectedRoute element={<ProgramJourney />} user={user} />} />
           <Route path="/account/settings" element={<ProtectedRoute element={<AccountSettings />} user={user} />} />
           <Route path="/delete-account" element={<DeleteAccount />} />
           <Route path="/account/subscriptions" element={<ProtectedRoute element={<SubscriptionManagement />} user={user} />} />
@@ -511,6 +514,7 @@ const AuthenticatedApp = () => {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/oauth-consent" element={<OAuthConsent />} />
         <Route path="/account-setup" element={<AccountSetup />} />
+        <Route path="/_preview/program-journey" element={import.meta.env.DEV ? <ProgramJourney previewMode /> : <Navigate to="/" replace />} />
         <Route path="/zone3-review-submitted" element={<Zone3ReviewSubmitted />} />
         {/* Redirect old/invalid routes to correct pages */}
         <Route path="/event" element={<Navigate to="/events" replace />} />

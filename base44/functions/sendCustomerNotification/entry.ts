@@ -26,6 +26,7 @@ const PREF_MAP: Record<string, string> = {
   scheduled_for_juicing:        'production_reminders',
   in_production:                'production_reminders',
   production_reminder:          'production_reminders',
+  program_reminder:             'program_reminders',
   delivery_reminder:            'delivery_updates',
   ready_for_pickup:             'delivery_updates',
   out_for_delivery:             'delivery_updates',
@@ -72,6 +73,7 @@ const ELEVATED_TRANSACTIONAL_SUBTYPES = new Set([
   'order_cancelled',
   'order_refunded',
   'order_payment_failed',
+  'program_reminder',
 ]);
 
 const DEFAULT_ALLOWED_SUBTYPES = new Set([

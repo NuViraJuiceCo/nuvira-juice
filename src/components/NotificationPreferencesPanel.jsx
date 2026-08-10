@@ -10,6 +10,7 @@ const PREFS = [
   { key: 'delivery_updates',     label: 'Delivery Updates',      desc: 'Out for delivery and delivered' },
   { key: 'subscription_updates', label: 'Subscription Updates',  desc: 'Renewals, payments, and billing alerts' },
   { key: 'production_reminders', label: 'Production Reminders',  desc: 'When your juices are being prepared' },
+  { key: 'program_reminders',    label: 'Program Reminders',     desc: 'Gentle check-ins for programs you choose to start' },
   { key: 'promotions',           label: 'Promotions',            desc: 'New drops, offers, events, announcements' },
   { key: 'rewards_credits',      label: 'Rewards & Credits',     desc: 'Points earned, credits applied' },
 ];
@@ -18,7 +19,7 @@ export default function NotificationPreferencesPanel() {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState({
     order_updates: true, delivery_updates: true, subscription_updates: true,
-    production_reminders: true, promotions: true, rewards_credits: true,
+    production_reminders: true, program_reminders: true, promotions: true, rewards_credits: true,
   });
   const [prefId, setPrefId] = useState(null);
   const [prefOwnerEmail, setPrefOwnerEmail] = useState(null);
@@ -38,6 +39,7 @@ export default function NotificationPreferencesPanel() {
             delivery_updates:     rec.delivery_updates     ?? true,
             subscription_updates: rec.subscription_updates ?? true,
             production_reminders: rec.production_reminders ?? true,
+            program_reminders:    rec.program_reminders    ?? true,
             promotions:           rec.promotions           ?? true,
             rewards_credits:      rec.rewards_credits      ?? true,
           });

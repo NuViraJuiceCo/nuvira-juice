@@ -752,6 +752,106 @@ async function emitMilestone(base44: any, eventName: string, eventId: string, em
   });
 }
 
+function programLocalClock(now: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    hour: Number(values.hour || 0),
+  };
+}
+
+async function evaluateProgramJourneyReminders(base44: any, now: Date) {
+  if (!envEnabled('ENABLE_PROGRAM_JOURNEY_REMINDERS')) {
+    return { enabled: false, scanned: 0, sent: 0, skipped: 0, failed: 0, results: [] };
+  }
+  const clock = programLocalClock(now);
+  if (clock.hour < 8 || clock.hour >= 20) {
+    return { enabled: true, quiet_hours: true, scanned: 0, sent: 0, skipped: 0, failed: 0, results: [] };
+  }
+
+  let journeys: any[] = [];
+  try {
+    journeys = await base44.asServiceRole.entities.ProgramJourney.filter(
+      { status: 'in_progress', reminders_enabled: true },
+      '-updated_date',
+      100,
+    );
+  } catch (error) {
+    return {
+      enabled: true,
+      scanned: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 1,
+      results: [{ error: `program_journey_read:${errorMessage(error)}` }],
+    };
+  }
+
+  const results: any[] = [];
+  for (const journey of journeys.slice(0, 25)) {
+    const todaySteps = (Array.isArray(journey?.schedule) ? journey.schedule : [])
+      .filter((step: any) => normalizeSingleLine(step?.date, 20) === clock.date);
+    const remaining = todaySteps.filter((step: any) => !step?.completed_at);
+    const reminderKey = `program_reminder:${journey.id}:${clock.date}`;
+    if (!todaySteps.length || !remaining.length || journey?.last_reminder_key === reminderKey) {
+      results.push({ journey_id: journey?.id || null, reminder_key: reminderKey, skipped: true, reason: !todaySteps.length ? 'no_steps_today' : !remaining.length ? 'day_complete' : 'already_reminded' });
+      continue;
+    }
+    if (normalizeSingleLine(journey?.use_by_date, 20) < clock.date) {
+      results.push({ journey_id: journey?.id || null, reminder_key: reminderKey, skipped: true, reason: 'freshness_window_ended' });
+      continue;
+    }
+
+    try {
+      const response = await base44.asServiceRole.functions.invoke('sendCustomerNotification', {
+        customer_email: normalizeEmail(journey?.customer_email),
+        type: 'general',
+        notification_subtype: 'program_reminder',
+        title: `${normalizeSingleLine(journey?.program_name, 80) || 'Your'} ritual is ready`,
+        message: `${remaining.length} moment${remaining.length === 1 ? '' : 's'} remain today. Keep your bottles refrigerated and follow each printed date.`,
+        order_id: journey?.order_id || null,
+        deep_link: `/account/programs/${encodeURIComponent(journey.id)}`,
+        idempotency_key: reminderKey,
+        source: 'elevated_transactional',
+        internal_token: Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN') || '',
+        push_priority: 'normal',
+      });
+      const data = response?.data || response || {};
+      await base44.asServiceRole.entities.ProgramJourney.update(journey.id, {
+        last_reminder_key: reminderKey,
+        last_reminder_at: now.toISOString(),
+      });
+      results.push({
+        journey_id: journey.id,
+        reminder_key: reminderKey,
+        sent: data?.success === true && data?.skipped !== true,
+        skipped: data?.skipped === true,
+        reason: data?.reason || data?.push_skipped_reason || null,
+      });
+    } catch (error) {
+      results.push({ journey_id: journey?.id || null, reminder_key: reminderKey, failed: true, error: errorMessage(error) });
+    }
+  }
+
+  return {
+    enabled: true,
+    quiet_hours: false,
+    scanned: journeys.length,
+    sent: results.filter((row) => row.sent).length,
+    skipped: results.filter((row) => row.skipped).length,
+    failed: results.filter((row) => row.failed).length,
+    results,
+  };
+}
+
 async function evaluateJourneys(base44: any) {
   const currentPolicy = policy();
   const maxEvents = boundedInteger('CUSTOMER_JOURNEY_MAX_EVENTS_PER_SWEEP', DEFAULT_MAX_EVENTS_PER_SWEEP, 1, 100);
@@ -761,6 +861,7 @@ async function evaluateJourneys(base44: any) {
   const sunsetDays = boundedInteger('CUSTOMER_JOURNEY_SUNSET_DAYS', DEFAULT_SUNSET_DAYS, 90, 730);
   const sunsetGraceDays = boundedInteger('CUSTOMER_JOURNEY_SUNSET_GRACE_DAYS', DEFAULT_SUNSET_GRACE_DAYS, 7, 60);
   const now = new Date();
+  const programReminders = await evaluateProgramJourneyReminders(base44, now);
   const results: Array<Record<string, any>> = [];
   let candidates = 0;
 
@@ -998,14 +1099,16 @@ async function evaluateJourneys(base44: any) {
     suppressed_count: results.filter((result) => !result.forwarded && !result.error).length,
     failed_count: results.filter((result) => Boolean(result.error)).length,
     capped: results.length >= maxEvents,
+    program_reminders: programReminders,
     results,
   });
 }
 
 async function preview(base44: any) {
-  const [events, states] = await Promise.all([
+  const [events, states, programJourneys] = await Promise.all([
     base44.asServiceRole.entities.CustomerJourneyEvent.list('-created_date', MAX_EVENT_SCAN),
     base44.asServiceRole.entities.CustomerJourneyState.list('-last_activity_at', MAX_STATE_SCAN),
+    base44.asServiceRole.entities.ProgramJourney.list('-updated_date', 100).catch(() => []),
   ]);
   return Response.json({
     success: true,
@@ -1019,6 +1122,7 @@ async function preview(base44: any) {
       failed_events: events.filter((row: any) => row?.resend_status === 'failed').length,
       marketing_sunset_suppressed: events.filter((row: any) => row?.event_name === 'marketing_sunset_suppressed').length,
       marketing_sunset_retained: events.filter((row: any) => row?.event_name === 'marketing_sunset_retained').length,
+      active_program_journeys: programJourneys.filter((row: any) => row?.status === 'in_progress').length,
     },
     features: {
       subscription_recommendation_enabled: subscriptionRecommendationEnabled(),
@@ -1026,6 +1130,8 @@ async function preview(base44: any) {
       marketing_preferences_url: protectedCustomerUrl('/account/settings'),
       marketing_sunset_grace_days: boundedInteger('CUSTOMER_JOURNEY_SUNSET_GRACE_DAYS', DEFAULT_SUNSET_GRACE_DAYS, 7, 60),
       marketing_sunset_auto_pause: true,
+      program_journey_reminders_enabled: envEnabled('ENABLE_PROGRAM_JOURNEY_REMINDERS'),
+      program_journey_reminders_per_day: 1,
     },
     provider: {
       events: Object.values(EVENT_PROVIDER_NAMES),

@@ -19,6 +19,15 @@ const MAX_SWEEP_ROWS = 100;
 
 type AnyRecord = Record<string, any>;
 
+function orderContainsProgram(order: AnyRecord): boolean {
+  return (Array.isArray(order?.items) ? order.items : []).some((item: AnyRecord) => {
+    const productId = text(item?.product_id || item?.id, 160).toLowerCase();
+    const title = text(item?.title || item?.name, 240).toLowerCase();
+    return /^program[_-](radiance|hydration|reset)$/.test(productId)
+      || /(radiance|hydration|reset) program/.test(title);
+  });
+}
+
 function text(value: unknown, max = 240): string {
   return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
 }
@@ -217,7 +226,9 @@ async function sendPushAndInApp(base44: any, order: AnyRecord, event: string, ev
       title: plan.copy.title,
       message: plan.copy.message,
       order_id: order.id,
-      deep_link: `/order-tracker/${encodeURIComponent(order.order_number || order.id)}`,
+      deep_link: event === 'delivered' && orderContainsProgram(order)
+        ? '/account/programs'
+        : `/order-tracker/${encodeURIComponent(order.order_number || order.id)}`,
       idempotency_key: notificationKey,
       delivery_key: notificationKey,
       source: 'elevated_transactional',
