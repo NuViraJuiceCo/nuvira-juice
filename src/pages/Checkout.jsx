@@ -1073,7 +1073,7 @@ function CheckoutFlow() {
       <div className="mx-4 bg-secondary/40 rounded-xl p-4 mb-5">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Order Summary</h3>
         {items.map(item => (
-          <div key={item.product_id} className="flex justify-between text-sm mb-1.5">
+          <div key={item.cart_line_key || item.product_id} className="flex justify-between text-sm mb-1.5">
             <span className="text-foreground/80">{item.quantity}x {item.title}</span>
             <span className="font-medium">${(item.price * item.quantity).toFixed(2)}</span>
           </div>

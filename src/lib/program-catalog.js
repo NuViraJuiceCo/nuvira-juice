@@ -1,5 +1,23 @@
 export const PROGRAM_SCHEDULE_VERSION = '2026-08-09.v2';
 
+export const PROGRAM_SHOT_PAIRINGS = Object.freeze({
+  radiance: Object.freeze({
+    title: 'Radiance Shot',
+    label: 'Radiance daily pairing',
+    description: 'Beet, apple, and lemon create a bright, produce-forward start to each Radiance day.',
+  }),
+  hydration: Object.freeze({
+    title: 'Hydration Shot',
+    label: 'Hydration daily pairing',
+    description: 'Coconut water, lime, honey, mint, and pink Himalayan salt complement the OASIS-forward rhythm.',
+  }),
+  reset: Object.freeze({
+    title: 'Reset Shot',
+    label: 'Reset daily pairing',
+    description: 'Pineapple, lemon, ginger, and black salt add a crisp, zesty start to each Reset day.',
+  }),
+});
+
 const twoDayRadiance = Object.freeze({
   days: 2,
   bottles: 8,
@@ -66,6 +84,7 @@ export const PROGRAMS = Object.freeze([
     days: 3,
     price: 144,
     durationOptions: Object.freeze([twoDayRadiance, threeDayRadiance]),
+    shotPairing: PROGRAM_SHOT_PAIRINGS.radiance,
     emoji: '✨',
     image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg',
     imagePosition: 'object-[center_40%]',
@@ -88,6 +107,7 @@ export const PROGRAMS = Object.freeze([
     days: 3,
     price: 144,
     durationOptions: Object.freeze([twoDayHydration, threeDayHydration]),
+    shotPairing: PROGRAM_SHOT_PAIRINGS.hydration,
     emoji: '◌',
     image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg',
     imagePosition: 'object-[center_35%]',
@@ -110,6 +130,7 @@ export const PROGRAMS = Object.freeze([
     days: 3,
     price: 144,
     durationOptions: Object.freeze([threeDayReset]),
+    shotPairing: PROGRAM_SHOT_PAIRINGS.reset,
     emoji: '🌿',
     image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
     imagePosition: 'object-[center_40%]',

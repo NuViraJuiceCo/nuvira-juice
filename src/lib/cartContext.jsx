@@ -89,10 +89,11 @@ export function CartProvider({ children }) {
 
   const addItem = (product, quantity = 1, extra = {}) => {
     setItems(prev => {
-      const existing = prev.find(i => i.product_id === product.id);
+      const nextLineKey = extra.cart_line_key || product.id;
+      const existing = prev.find(i => (i.cart_line_key || i.product_id) === nextLineKey);
       if (existing) {
         return prev.map(i =>
-          i.product_id === product.id
+          (i.cart_line_key || i.product_id) === nextLineKey
             ? { ...i, quantity: i.quantity + quantity }
             : i
         );
@@ -111,22 +112,22 @@ export function CartProvider({ children }) {
     });
   };
 
-  const removeItem = (productId) => {
-    setItems(prev => prev.filter(i => i.product_id !== productId));
+  const removeItem = (lineKey) => {
+    setItems(prev => prev.filter(i => (i.cart_line_key || i.product_id) !== lineKey));
   };
 
-  const updateQuantity = (productId, quantity) => {
+  const updateQuantity = (lineKey, quantity) => {
     if (quantity <= 0) {
-      removeItem(productId);
+      removeItem(lineKey);
       return;
     }
     setItems(prev =>
-      prev.map(i => i.product_id === productId ? { ...i, quantity } : i)
+      prev.map(i => (i.cart_line_key || i.product_id) === lineKey ? { ...i, quantity } : i)
     );
   };
 
-  const updateBundleComposition = (productId, composition) => {
-    setItems(prev => prev.map(i => i.product_id === productId ? { ...i, bundle_composition: composition } : i));
+  const updateBundleComposition = (lineKey, composition) => {
+    setItems(prev => prev.map(i => (i.cart_line_key || i.product_id) === lineKey ? { ...i, bundle_composition: composition } : i));
   };
 
   const clearCart = () => setItems([]);

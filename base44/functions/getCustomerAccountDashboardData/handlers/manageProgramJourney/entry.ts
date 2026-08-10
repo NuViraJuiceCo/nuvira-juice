@@ -195,12 +195,19 @@ async function useByDatesByOrder(base44: any, orders: Record<string, any>) {
   return result;
 }
 
-function expandedShots(order: Record<string, any>): string[] {
-  const shots = [];
+function expandedShots(order: Record<string, any>) {
+  const shots: Array<{ name: string; program_key: string | null }> = [];
   for (const item of Array.isArray(order?.items) ? order.items : []) {
     if (clean(item?.category, 60).toLowerCase() !== 'shot') continue;
     const quantity = Math.min(12, Math.max(1, Math.trunc(Number(item?.quantity || 1))));
-    for (let index = 0; index < quantity; index += 1) shots.push(clean(item?.title, 120) || 'Wellness shot');
+    const requestedProgramKey = clean(item?.program_addon_for, 60).toLowerCase();
+    const programKey = PROGRAMS[requestedProgramKey] ? requestedProgramKey : null;
+    for (let index = 0; index < quantity; index += 1) {
+      shots.push({
+        name: clean(item?.title, 120) || 'Wellness shot',
+        program_key: programKey,
+      });
+    }
   }
   return shots;
 }
@@ -211,7 +218,11 @@ function descriptorsForOrder(order: Record<string, any>, linkedUseByDate: string
   const useBy = linkedUseByDate || estimatedUseBy;
   const qualityTarget = earlierDate(addDays(delivered, QUALITY_TARGET_DAYS - 1), useBy);
   const shots = expandedShots(order);
-  let shotCursor = 0;
+  const unassignedShots = shots.filter((shot) => !shot.program_key).map((shot) => shot.name);
+  const assignedShots = new Map(Object.keys(PROGRAMS).map((key) => [
+    key,
+    shots.filter((shot) => shot.program_key === key).map((shot) => shot.name),
+  ]));
   const descriptors = [];
   const items = Array.isArray(order?.items) ? order.items : [];
   items.forEach((item, itemIndex) => {
@@ -220,8 +231,11 @@ function descriptorsForOrder(order: Record<string, any>, linkedUseByDate: string
     const latestStart = earlierDate(qualityTarget, addDays(useBy, -(program.days - 1)));
     const units = Math.min(MAX_PROGRAM_UNITS_PER_LINE, Math.max(1, Math.trunc(Number(item?.quantity || 1))));
     for (let unitIndex = 0; unitIndex < units; unitIndex += 1) {
-      const morningShots = shots.slice(shotCursor, shotCursor + program.days);
-      shotCursor += morningShots.length;
+      const programShots = assignedShots.get(program.key) || [];
+      const morningShots = programShots.splice(0, program.days);
+      while (morningShots.length < program.days && unassignedShots.length > 0) {
+        morningShots.push(unassignedShots.shift());
+      }
       descriptors.push({
         journey_key: `program:${order.id}:${itemIndex}:${unitIndex}`,
         customer_email: email(order.customer_email),

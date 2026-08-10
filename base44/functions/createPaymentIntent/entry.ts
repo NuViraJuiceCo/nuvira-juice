@@ -68,7 +68,19 @@ function normalizeCheckoutItem(item) {
     size: item.size || null,
   };
   const programKey = programKeyForCheckoutItem(item);
-  if (!programKey) return base;
+  if (!programKey) {
+    const addonProgramKey = String(item?.program_addon_for || '').trim().toLowerCase();
+    const addonDays = Number(item?.program_addon_days || 0);
+    if (base.category === 'shot' && PROGRAM_ORDER_OPTIONS[addonProgramKey]?.[addonDays]) {
+      return {
+        ...base,
+        program_addon_for: addonProgramKey,
+        program_addon_days: addonDays,
+        program_addon_schedule_version: PROGRAM_SCHEDULE_VERSION,
+      };
+    }
+    return base;
+  }
   const programDays = programDaysForCheckoutItem(item, programKey);
   const option = programDays ? PROGRAM_ORDER_OPTIONS[programKey][programDays] : null;
   if (!option) return base;
