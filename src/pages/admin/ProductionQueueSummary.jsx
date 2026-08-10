@@ -2213,12 +2213,15 @@ export default function ProductionQueueSummary() {
       <AdminOpsHeader
         title="Production Queue"
         subtitle="Customer App production queue for daily batch work"
+        mobileTitle="Produce"
+        mobileSubtitle="Today's batches and next actions"
+        compactMobile
         badge={testBatchMode === 'only' ? 'Internal Test View' : 'Ops v1'}
         badgeTone="warning"
       />
 
-      <div className="px-4 mt-4 space-y-4">
-        <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+      <div className="mt-3 space-y-3 px-3 md:mt-4 md:space-y-4 md:px-4">
+        <div className="hidden rounded-xl border border-border/50 bg-card p-4 space-y-3 md:block">
           <div className="flex items-center gap-2">
             <CalendarDays className="w-4 h-4 text-primary" />
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Production date range</p>
@@ -2309,7 +2312,75 @@ export default function ProductionQueueSummary() {
           <AdminStatusLegend />
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <section className="rounded-lg border border-border/60 bg-card p-3 md:hidden" aria-label="Production work window">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Work window</p>
+              <p className="truncate text-sm font-semibold text-foreground">{formatDate(dateFrom)} – {formatDate(dateTo)}</p>
+            </div>
+            <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {datePresets.map(preset => {
+              const isActive = dateFrom === preset.dateFrom && dateTo === preset.dateTo && tab === preset.tab;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => applyDatePreset(preset)}
+                  className={`h-9 rounded-md border px-2 text-xs font-semibold ${isActive ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground'}`}
+                >
+                  {preset.id === 'last31' ? 'History' : preset.label}
+                </button>
+              );
+            })}
+          </div>
+          <details className="mt-2 border-t border-border/60 pt-2">
+            <summary className="cursor-pointer text-xs font-semibold text-primary">Dates & filters</summary>
+            <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase text-muted-foreground">From</span>
+                  <input type="date" value={dateFrom} onChange={event => setDateFromValue(event.target.value)} className="h-10 w-full rounded-md border border-border bg-background px-2 text-xs" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase text-muted-foreground">To</span>
+                  <input type="date" value={dateTo} onChange={event => setDateToValue(event.target.value)} className="h-10 w-full rounded-md border border-border bg-background px-2 text-xs" />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase text-muted-foreground">Category</span>
+                  <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} className="h-10 w-full rounded-md border border-border bg-background px-2 text-xs">
+                    <option value="all">All</option>
+                    {categoryOptions.map(category => <option key={category} value={category}>{formatLabel(category)}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase text-muted-foreground">Status</span>
+                  <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 w-full rounded-md border border-border bg-background px-2 text-xs">
+                    <option value="all">All</option>
+                    {statusOptions.map(status => <option key={status} value={status}>{formatLabel(status)}</option>)}
+                  </select>
+                </label>
+              </div>
+              {rangeInvalid && <p className="text-xs text-destructive">Choose a valid range of 31 days or fewer.</p>}
+              {(showInternalTestValidation || testBatchMode === 'only') && (
+                <button type="button" onClick={() => setTestBatchMode(mode => mode === 'only' ? 'exclude' : 'only')} className="h-9 w-full rounded-md border border-amber-400 bg-amber-50 px-2 text-xs font-semibold text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+                  {testBatchMode === 'only' ? 'Return to Operational Queue' : 'Open Internal Test Validation'}
+                </button>
+              )}
+            </div>
+          </details>
+        </section>
+
+        <div className="grid grid-cols-3 divide-x divide-border/60 rounded-lg border border-border/60 bg-card md:hidden" aria-label="Production summary">
+          <div className="px-2 py-2.5 text-center"><p className="text-lg font-bold">{filteredBatches.length}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Batches</p></div>
+          <div className="px-2 py-2.5 text-center"><p className="text-lg font-bold">{totalNeeded}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Units</p></div>
+          <div className="px-2 py-2.5 text-center"><p className="text-xs font-bold">{isFetching ? 'Refreshing' : data?.truncated ? 'Partial' : 'Current'}</p><p className="mt-1 text-[9px] font-bold uppercase text-muted-foreground">Sync</p></div>
+        </div>
+
+        <div className="hidden grid-cols-3 gap-2 md:grid">
           <div className="rounded-xl border border-border/50 bg-card p-3">
             <Package className="w-4 h-4 text-primary mb-1" />
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Batches</p>
@@ -2327,18 +2398,17 @@ export default function ProductionQueueSummary() {
           </div>
         </div>
 
-        {testBatchMode === 'exclude' && (
-          <ProductionDemandHandoffPanel
-            planningData={planningData}
-            queueNeededUnits={totalNeeded}
-            isLoading={planningLoading}
-            isError={planningError}
-            error={planningQueryError}
-          />
-        )}
+        {testBatchMode === 'exclude' && <div className="hidden md:block"><ProductionDemandHandoffPanel planningData={planningData} queueNeededUnits={totalNeeded} isLoading={planningLoading} isError={planningError} error={planningQueryError} /></div>}
 
         <div className="space-y-3">
-          <div className="flex gap-0 border-b overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted/70 p-1 md:hidden" aria-label="Production queue views">
+            {tabs.map(item => (
+              <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`h-9 rounded-md px-2 text-xs font-semibold ${tab === item.id ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground'}`}>
+                {{ today: 'Upcoming', in_progress: 'In Progress', pending_verification: 'Verify', history: 'History' }[item.id] || item.label}
+              </button>
+            ))}
+          </div>
+          <div className="hidden gap-0 overflow-x-auto border-b scrollbar-none md:flex">
             {tabs.map(item => (
               <button
                 key={item.id}
@@ -2355,7 +2425,7 @@ export default function ProductionQueueSummary() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="hidden grid-cols-1 gap-2 sm:grid-cols-2 md:grid">
             <label className="space-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Category</span>
               <select
