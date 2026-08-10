@@ -468,6 +468,9 @@ function sanitizeAuthoritativeHistoryOrder(order) {
     estimated_delivery_date: normalizeText(order?.requested_delivery_date) || null,
     assigned_delivery_date: normalizeText(order?.assigned_delivery_date) || null,
     delivery_window_label: normalizeText(order?.delivery_window_label || order?.requested_time_window) || null,
+    delivered_at: normalizeText(order?.delivered_at) || null,
+    delivery_photo_url: normalizeText(order?.delivery_photo_url) || null,
+    delivery_drop_location: normalizeText(order?.delivery_drop_location) || null,
     status: authoritativeCustomerOrderStatus(order),
     payment_captured: paymentWasCaptured(order),
     payment_status: normalizeLower(order?.payment_status || order?.financial_status) || 'paid',
@@ -479,6 +482,50 @@ function sanitizeAuthoritativeHistoryOrder(order) {
     source_channel: normalizeLower(order?.source_channel) || 'online',
     customer_history_source: 'authoritative_shopify_order',
   };
+}
+
+async function applyOwnedDeliveryProofToOrderHistory(base44, orders, identityEmails) {
+  const deliveredOrders = (orders || []).filter(order => normalizeLower(order?.status) === 'delivered');
+  if (deliveredOrders.length === 0) return orders;
+
+  const taskRows = uniqueRows((await Promise.all(
+    (identityEmails || [])
+      .map(normalizeText)
+      .filter(Boolean)
+      .map(customerEmail => safeFilter(
+        base44.asServiceRole.entities.FulfillmentTask,
+        { customer_email: customerEmail },
+        '-created_date',
+        100,
+      )),
+  )).flat()).filter(task => !task?.is_test_task);
+
+  if (taskRows.length === 0) return orders;
+
+  return (orders || []).map(order => {
+    if (normalizeLower(order?.status) !== 'delivered') return order;
+    if (normalizeText(order?.delivery_photo_url) && normalizeText(order?.delivery_drop_location)) return order;
+
+    const orderId = normalizeText(order?.id);
+    const orderNumber = normalizeOrderNumber(order?.order_number);
+    const proofTask = taskRows.find(task => {
+      if (!normalizeText(task?.delivery_photo_url) && !normalizeText(task?.delivery_drop_location)) return false;
+      const taskOrderNumber = normalizeOrderNumber(task?.order_number || task?.shopify_order_number);
+      const linkedIds = [task?.base44_order_id, task?.order_id].map(normalizeText).filter(Boolean);
+      return Boolean(
+        (orderId && linkedIds.includes(orderId))
+        || (orderNumber && taskOrderNumber === orderNumber)
+      );
+    });
+
+    if (!proofTask) return order;
+    return {
+      ...order,
+      delivered_at: normalizeText(order?.delivered_at || proofTask?.delivered_at) || null,
+      delivery_photo_url: normalizeText(order?.delivery_photo_url || proofTask?.delivery_photo_url) || null,
+      delivery_drop_location: normalizeText(order?.delivery_drop_location || proofTask?.delivery_drop_location) || null,
+    };
+  });
 }
 
 async function loadOwnedAuthoritativeOrders(base44, identityEmails, profiles) {
@@ -867,6 +914,7 @@ export default async function handler(req: Request) {
     allOrdersForHistory = await applyLimitedNativeFirstOrderHistory(base44, allOrdersForHistory);
     const authoritativeOrders = await loadOwnedAuthoritativeOrders(base44, identityList, resolvedProfiles);
     allOrdersForHistory = mergeOwnedAuthoritativeOrderHistory(allOrdersForHistory, authoritativeOrders);
+    allOrdersForHistory = await applyOwnedDeliveryProofToOrderHistory(base44, allOrdersForHistory, identityList);
 
     console.log(`[getCustomerAccountDashboardData] sourceOrders=${allOrders.length} sourceValidOrders=${validOrders.length} authoritativeOrders=${authoritativeOrders.length} customerHistoryOrders=${allOrdersForHistory.length}`);
 
