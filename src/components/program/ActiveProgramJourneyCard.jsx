@@ -9,7 +9,8 @@ export default function ActiveProgramJourneyCard({ enabled }) {
   if (!journey) return null;
 
   const program = PROGRAM_BY_KEY[journey.program_key] || PROGRAM_BY_KEY.hydration;
-  const progress = Math.round((Number(journey.completed_steps || 0) / Math.max(1, Number(journey.total_steps || 12))) * 100);
+  const programDays = Number(journey.program_days) === 2 ? 2 : 3;
+  const progress = Math.round((Number(journey.completed_steps || 0) / Math.max(1, Number(journey.total_steps || programDays * 4))) * 100);
   return (
     <div className="mx-5 mt-5">
       <Link

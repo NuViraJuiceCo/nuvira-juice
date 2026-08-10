@@ -2,7 +2,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const TIMEZONE = 'America/Chicago';
-const SCHEDULE_VERSION = '2026-08-09.v1';
+const SCHEDULE_VERSION = '2026-08-09.v2';
 const QUALITY_TARGET_DAYS = 5;
 const OUTER_FRESHNESS_DAYS = 7;
 const MAX_ORDER_ROWS = 40;
@@ -16,6 +16,7 @@ function programReminderServiceEnabled(): boolean {
 const PROGRAMS = Object.freeze({
   radiance: {
     name: 'Radiance',
+    allowedDays: [2, 3],
     image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg',
     schedule: [
       ['morning', 'Morning', '8:00 AM', 'AURA'],
@@ -26,6 +27,7 @@ const PROGRAMS = Object.freeze({
   },
   hydration: {
     name: 'Hydration',
+    allowedDays: [2, 3],
     image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg',
     schedule: [
       ['morning', 'Morning', '8:00 AM', 'OASIS'],
@@ -36,6 +38,7 @@ const PROGRAMS = Object.freeze({
   },
   reset: {
     name: 'Reset',
+    allowedDays: [3],
     image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
     schedule: [
       ['morning', 'Morning', '8:00 AM', 'RE-NU'],
@@ -89,8 +92,15 @@ function programForItem(item: Record<string, any>) {
   const productId = clean(item?.product_id || item?.id, 160).toLowerCase();
   const title = clean(item?.title || item?.name, 240).toLowerCase();
   for (const [key, program] of Object.entries(PROGRAMS)) {
-    if (productId === `program_${key}` || productId === `program-${key}` || title.includes(`${program.name.toLowerCase()} program`)) {
-      return { key, ...program };
+    const explicitKey = clean(item?.program_key, 60).toLowerCase();
+    if (explicitKey === key || productId === `program_${key}` || productId === `program-${key}`
+      || productId.startsWith(`program_${key}_`) || productId.startsWith(`program-${key}-`)
+      || title.includes(`${program.name.toLowerCase()} program`)) {
+      const idMatch = productId.match(/[_-](2|3)day$/);
+      const titleMatch = title.match(/\((2|3)-day\)/);
+      const requestedDays = Number(item?.program_days || idMatch?.[1] || titleMatch?.[1] || 3);
+      const days = program.allowedDays.includes(requestedDays) ? requestedDays : 3;
+      return { key, ...program, days };
     }
   }
   return null;
@@ -200,7 +210,6 @@ function descriptorsForOrder(order: Record<string, any>, linkedUseByDate: string
   const estimatedUseBy = addDays(delivered, OUTER_FRESHNESS_DAYS - 1);
   const useBy = linkedUseByDate || estimatedUseBy;
   const qualityTarget = earlierDate(addDays(delivered, QUALITY_TARGET_DAYS - 1), useBy);
-  const latestStart = earlierDate(qualityTarget, addDays(useBy, -2));
   const shots = expandedShots(order);
   let shotCursor = 0;
   const descriptors = [];
@@ -208,9 +217,10 @@ function descriptorsForOrder(order: Record<string, any>, linkedUseByDate: string
   items.forEach((item, itemIndex) => {
     const program = programForItem(item);
     if (!program) return;
+    const latestStart = earlierDate(qualityTarget, addDays(useBy, -(program.days - 1)));
     const units = Math.min(MAX_PROGRAM_UNITS_PER_LINE, Math.max(1, Math.trunc(Number(item?.quantity || 1))));
     for (let unitIndex = 0; unitIndex < units; unitIndex += 1) {
-      const morningShots = shots.slice(shotCursor, shotCursor + 3);
+      const morningShots = shots.slice(shotCursor, shotCursor + program.days);
       shotCursor += morningShots.length;
       descriptors.push({
         journey_key: `program:${order.id}:${itemIndex}:${unitIndex}`,
@@ -221,6 +231,7 @@ function descriptorsForOrder(order: Record<string, any>, linkedUseByDate: string
         unit_index: unitIndex,
         program_key: program.key,
         program_name: program.name,
+        program_days: program.days,
         program_image_url: clean(item?.image_url, 1200) || program.image,
         delivered_at: order.delivered_at || null,
         delivered_date: delivered,
@@ -251,7 +262,7 @@ function publicJourney(descriptor: Record<string, any>, stored: Record<string, a
     status: stored?.status || (dateKeyInTimezone() > descriptor.latest_start_date ? 'freshness_window_ended' : 'ready'),
     schedule: Array.isArray(stored?.schedule) ? stored.schedule : [],
     completed_steps: Number(stored?.completed_steps || 0),
-    total_steps: Number(stored?.total_steps || 12),
+    total_steps: Number(stored?.total_steps || (Number(descriptor.program_days || 3) * 4)),
     reminders_enabled: stored?.reminders_enabled === true,
   };
   return {
@@ -261,6 +272,7 @@ function publicJourney(descriptor: Record<string, any>, stored: Record<string, a
     order_number: merged.order_number,
     program_key: merged.program_key,
     program_name: merged.program_name,
+    program_days: Number(merged.program_days || 3),
     program_image_url: merged.program_image_url,
     status: merged.status,
     is_virtual: merged.is_virtual,
@@ -289,7 +301,7 @@ function buildSchedule(descriptor: Record<string, any>, startDate: string) {
   const program = PROGRAMS[descriptor.program_key];
   const shots = Array.isArray(descriptor.morning_shots) ? descriptor.morning_shots : [];
   const schedule = [];
-  for (let day = 1; day <= 3; day += 1) {
+  for (let day = 1; day <= Number(descriptor.program_days || 3); day += 1) {
     const date = addDays(startDate, day - 1);
     program.schedule.forEach(([timeKey, timeLabel, suggestedTime, productName], sequence) => {
       schedule.push({
@@ -415,7 +427,7 @@ export default async function handler(req: Request) {
         schedule_version: SCHEDULE_VERSION,
         schedule: buildSchedule(descriptor, startDate),
         completed_steps: 0,
-        total_steps: 12,
+        total_steps: Number(descriptor.program_days || 3) * PROGRAMS[descriptor.program_key].schedule.length,
         reminders_enabled: programReminderServiceEnabled() && body?.reminders_enabled === true,
         recent_command_ids: withCommand(target.stored || {}, commandId),
       };
@@ -444,10 +456,11 @@ export default async function handler(req: Request) {
       }
       schedule[index].completed_at = completing ? new Date().toISOString() : null;
       const completedSteps = schedule.filter((step) => Boolean(step.completed_at)).length;
-      const complete = completedSteps === schedule.length && schedule.length === 12;
+      const complete = schedule.length > 0 && completedSteps === schedule.length;
       const saved = await base44.asServiceRole.entities.ProgramJourney.update(target.stored.id, {
         schedule,
         completed_steps: completedSteps,
+        total_steps: schedule.length,
         status: complete ? 'completed' : 'in_progress',
         completed_at: complete ? target.stored.completed_at || new Date().toISOString() : null,
         use_by_date: descriptor.use_by_date,

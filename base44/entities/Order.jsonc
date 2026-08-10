@@ -37,6 +37,34 @@
           },
           "size": {
             "type": "string"
+          },
+          "is_program": {
+            "type": "boolean"
+          },
+          "program_key": {
+            "type": "string",
+            "enum": ["radiance", "hydration", "reset"]
+          },
+          "program_days": {
+            "type": "number",
+            "enum": [2, 3]
+          },
+          "program_schedule_version": {
+            "type": "string"
+          },
+          "bottles_per_unit": {
+            "type": "number"
+          },
+          "bundle_composition": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "product_id": { "type": "string" },
+                "product_name": { "type": "string" },
+                "quantity": { "type": "number" }
+              }
+            }
           }
         }
       }

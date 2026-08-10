@@ -15,6 +15,15 @@ const catalog = await import(`${pathToFileURL(path.join(root, 'src/lib/program-c
 assert.equal(catalog.PROGRAMS.length, 3);
 assert.equal(catalog.DAILY_PROGRAM_SCHEDULES.hydration.length, 4);
 assert.deepEqual(catalog.DAILY_PROGRAM_SCHEDULES.hydration.map((slot) => slot.product), ['OASIS', 'AURA', 'OASIS', 'OASIS']);
+assert.deepEqual(catalog.PROGRAM_BY_KEY.radiance.durationOptions.map(({ days, bottles, price }) => ({ days, bottles, price })), [
+  { days: 2, bottles: 8, price: 104 },
+  { days: 3, bottles: 12, price: 144 },
+]);
+assert.deepEqual(catalog.PROGRAM_BY_KEY.hydration.durationOptions[0].bundleComposition.map(({ product_name, quantity }) => ({ product_name, quantity })), [
+  { product_name: 'OASIS', quantity: 6 },
+  { product_name: 'AURA', quantity: 2 },
+]);
+assert.deepEqual(catalog.PROGRAM_BY_KEY.reset.durationOptions.map((option) => option.days), [3]);
 pass('catalog_has_three_programs_and_authoritative_daily_compositions');
 
 const hydration = catalog.PROGRAM_BY_KEY.hydration;
@@ -111,6 +120,31 @@ for (const program of catalog.PROGRAMS) {
 }
 pass('radiance_hydration_and_reset_each_build_their_correct_twelve_step_schedule');
 
+for (const programKey of ['radiance', 'hydration']) {
+  const twoDayOrder = {
+    ...order,
+    id: `order-${programKey}-2day`,
+    items: [{
+      product_id: `program_${programKey}_2day`,
+      title: `${catalog.PROGRAM_BY_KEY[programKey].name} Program (2-Day)`,
+      program_key: programKey,
+      program_days: 2,
+      quantity: 1,
+      category: 'bundle',
+    }],
+  };
+  const twoDayDescriptor = logic.descriptorsForOrder(twoDayOrder, '2026-08-15')[0];
+  assert.equal(twoDayDescriptor.program_days, 2);
+  assert.equal(twoDayDescriptor.latest_start_date, '2026-08-13');
+  const twoDaySchedule = logic.buildSchedule(twoDayDescriptor, '2026-08-12');
+  assert.equal(twoDaySchedule.length, 8);
+  assert.equal(twoDaySchedule.at(-1).step_id, 'day-2-evening');
+  assert.deepEqual(Array.from(twoDaySchedule.slice(0, 4), (step) => step.product_name), expectedDailyProducts[programKey]);
+}
+const invalidResetDuration = logic.programForItem({ product_id: 'program_reset_2day', title: 'Reset Program (2-Day)', program_days: 2 });
+assert.equal(invalidResetDuration.days, 3);
+pass('two_day_radiance_and_hydration_build_eight_steps_while_reset_remains_three_day_only');
+
 const runtimeTodayParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit',
 }).formatToParts(new Date()).map((part) => [part.type, part.value]));
@@ -176,7 +210,15 @@ assert.equal(entity.rls.create.user_condition.role, 'admin');
 assert.equal(entity.rls.update.user_condition.role, 'admin');
 assert.ok(entity.properties.use_by_date);
 assert.ok(entity.properties.quality_target_date);
+assert.deepEqual(entity.properties.program_days.enum, [2, 3]);
 pass('program_journey_records_are_gateway_only_and_store_freshness_provenance');
+
+const checkout = read('base44/functions/createPaymentIntent/entry.ts');
+assert.match(checkout, /program_\$\{programKey\}_\$\{programDays\}day/);
+assert.match(checkout, /program_schedule_version: PROGRAM_SCHEDULE_VERSION/);
+assert.match(checkout, /bundle_composition: option\.composition/);
+assert.match(checkout, /items: normalizedItems/);
+pass('checkout_persists_canonical_duration_formula_and_schedule_metadata_for_each_program_order');
 
 const gateway = read('base44/functions/getCustomerAccountDashboardData/entry.ts');
 const client = read('src/api/base44Client.js');

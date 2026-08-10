@@ -114,7 +114,7 @@ export default function Shop({ seoActive = true }) {
       {
         "@type": "CollectionPage",
         "name": "Shop NuVira Cold-Pressed Juices",
-        "description": "Browse fresh NuVira cold-pressed juices, wellness shots, bundles, merch, and 3-day programs for Wentzville and the St. Louis area.",
+        "description": "Browse fresh NuVira cold-pressed juices, wellness shots, bundles, merch, and 2- or 3-day programs for Wentzville and the St. Louis area.",
         "url": absoluteUrl('/shop'),
         "isPartOf": {
           "@type": "WebSite",
@@ -273,7 +273,7 @@ export default function Shop({ seoActive = true }) {
           <div className="border-t border-border/35 pt-5">
             <h2 className="font-heading text-lg font-bold">Shop by Local Need</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Fresh cold-pressed juice, 3-day programs, and event options for Wentzville and the St. Louis area.
+              Fresh cold-pressed juice, 2- and 3-day programs, and event options for Wentzville and the St. Louis area.
             </p>
             <div className="grid grid-cols-2 gap-2 mt-4">
               <Link to="/cold-pressed-juice-delivery" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">

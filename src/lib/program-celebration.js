@@ -7,7 +7,8 @@ export function createProgramCelebration({
 }) {
   if (!completed || !commandId || commandId === lastCelebratedCommandId || !journey) return null;
 
-  const totalSteps = Math.max(1, Number(journey.total_steps || 12));
+  const programDays = Number(journey.program_days) === 2 ? 2 : 3;
+  const totalSteps = Math.max(1, Number(journey.total_steps || programDays * 4));
   const completedSteps = Math.max(0, Number(journey.completed_steps || 0));
   const programComplete = journey.status === 'completed' || completedSteps >= totalSteps;
   const step = Array.isArray(journey.schedule)
@@ -18,7 +19,7 @@ export function createProgramCelebration({
     return {
       id: commandId,
       kind: 'program_complete',
-      eyebrow: 'Three-day journey complete',
+      eyebrow: `${programDays}-day journey complete`,
       title: 'You did it.',
       message: `Your ${journey.program_name || 'NuVira'} program is complete. Take a moment to celebrate every check-in.`,
     };

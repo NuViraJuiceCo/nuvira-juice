@@ -9,7 +9,7 @@ const TIME_ICONS = {
   'Evening': Moon,
 };
 
-export default function ConsumptionSchedule({ programKey, shotName }) {
+export default function ConsumptionSchedule({ programKey, days = 3, shotName }) {
   const schedule = DAILY_PROGRAM_SCHEDULES[programKey];
   const program = PROGRAM_BY_KEY[programKey];
   if (!schedule || !program) return null;
@@ -18,7 +18,7 @@ export default function ConsumptionSchedule({ programKey, shotName }) {
     <div className="bg-card border border-border/50 rounded-2xl p-5 mb-4">
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Daily Consumption Guide</p>
       <p className="text-[11px] text-muted-foreground mb-4 leading-relaxed">
-        Repeat for days 1–3. Suggested times are a flexible guide; follow the bottle label and your own needs.
+        Repeat for days 1–{days}. Suggested times are a flexible guide; follow the bottle label and your own needs.
       </p>
       <div className="space-y-3">
         {schedule.map((item, i) => {
