@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { MessageSquare } from 'lucide-react';
 
-export default function ComplianceMonitor() {
+export default function ComplianceMonitor({ compact = false }) {
   const handleOpenAgent = async () => {
     try {
       const whatsappUrl = base44.agents.getWhatsAppConnectURL('complianceMonitor');
@@ -17,10 +17,12 @@ export default function ComplianceMonitor() {
     <Button
       onClick={handleOpenAgent}
       variant="outline"
-      className="flex gap-2"
+      className={compact ? 'h-8 w-8 shrink-0 p-0' : 'flex gap-2'}
+      aria-label="Ask Compliance AI"
+      title="Ask Compliance AI"
     >
       <MessageSquare className="w-4 h-4" />
-      Ask Compliance AI
+      {!compact && 'Ask Compliance AI'}
     </Button>
   );
 }

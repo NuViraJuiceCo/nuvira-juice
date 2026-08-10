@@ -9,6 +9,8 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Clock,
   Copy,
@@ -2167,12 +2169,15 @@ export default function DeliveryQueue() {
         subtitle={testTaskMode === 'only'
           ? 'Isolated validation tasks; excluded from operational totals'
           : 'Customer App delivery queue with live operational actions'}
+        mobileTitle="Deliver"
+        mobileSubtitle="Today's stops, proof, and route work"
+        compactMobile
         badge={testTaskMode === 'only' ? 'Test-only' : 'Ops v1'}
         badgeTone={testTaskMode === 'only' ? 'warning' : 'warning'}
       />
 
-      <div className="px-4 mt-4 space-y-4">
-        <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+      <div className="mt-3 space-y-3 px-3 md:mt-4 md:space-y-4 md:px-4">
+        <div className="hidden rounded-xl border border-border/50 bg-card p-4 space-y-3 md:block">
           <div className="flex items-center gap-2">
             <CalendarDays className="w-4 h-4 text-primary" />
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delivery date</p>
@@ -2234,7 +2239,37 @@ export default function DeliveryQueue() {
           <p className="text-[10px] text-muted-foreground">Customer App orders and delivery tasks are authoritative. Task controls remain exact-gated and explain any blocked action.</p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        <section className="rounded-lg border border-border/60 bg-card p-2 md:hidden" aria-label="Delivery date controls">
+          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2">
+            <button type="button" onClick={() => setDeliveryDate(shiftDate(deliveryDate, -1))} className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background" aria-label="Previous delivery date" title="Previous delivery date"><ChevronLeft className="h-4 w-4" /></button>
+            <label className="min-w-0">
+              <span className="sr-only">Selected delivery date</span>
+              <input type="date" value={deliveryDate} onChange={event => setDeliveryDate(event.target.value)} className="h-10 w-full rounded-md border border-border bg-background px-2 text-center text-sm font-semibold" />
+            </label>
+            <button type="button" onClick={() => setDeliveryDate(shiftDate(deliveryDate, 1))} className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background" aria-label="Next delivery date" title="Next delivery date"><ChevronRight className="h-4 w-4" /></button>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+            <p className="min-w-0 truncate text-[11px] font-medium text-muted-foreground">{formatDate(deliveryDate)} route</p>
+            <div className="flex shrink-0 items-center gap-1">
+              <button type="button" onClick={() => setDeliveryDate(defaultDate)} className="h-8 rounded-md px-2 text-xs font-semibold text-primary">Today</button>
+              <button type="button" onClick={() => refetch()} className="flex h-8 w-8 items-center justify-center rounded-md text-primary" aria-label="Refresh delivery queue" title="Refresh delivery queue"><RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /></button>
+            </div>
+          </div>
+          {(showInternalTestValidation || testTaskMode === 'only') && (
+            <button type="button" onClick={() => setTestTaskMode(testTaskMode === 'only' ? 'exclude' : 'only')} className="mt-2 h-9 w-full rounded-md border border-amber-400 bg-amber-50 px-2 text-xs font-semibold text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+              {testTaskMode === 'only' ? 'Return to Operational Queue' : 'Open Internal Test Validation'}
+            </button>
+          )}
+        </section>
+
+        <div className="grid grid-cols-4 divide-x divide-border/60 rounded-lg border border-border/60 bg-card md:hidden" aria-label="Delivery summary">
+          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{summary.active ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Active</p></div>
+          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{summary.completed ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Done</p></div>
+          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{summary.unscheduled ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Review</p></div>
+          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold"><BagReturnsValue value={summary.bag_returns} /></p><p className="text-[9px] font-bold uppercase text-muted-foreground">Returns</p></div>
+        </div>
+
+        <div className="hidden grid-cols-2 gap-2 md:grid lg:grid-cols-5">
           <StatCard icon={Truck} label="Total Stops" value={summary.total_stops ?? 0} />
           <StatCard icon={Clock} label="Active" value={summary.active ?? 0} />
           <StatCard icon={CheckCircle2} label="Completed" value={summary.completed ?? 0} />
@@ -2247,7 +2282,7 @@ export default function DeliveryQueue() {
           />
         </div>
 
-        <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
+        <div className="hidden rounded-xl border border-border/50 bg-card p-3 items-center justify-between gap-3 md:flex">
           <div>
             <p className="text-xs font-semibold text-foreground">Driver Portal route view</p>
             <p className="text-[10px] text-muted-foreground">Date-pending native orders can be previewed for task creation. Eligible native tasks support driver assignment, packing, out-for-delivery, delivered proof/drop capture, and gated customer status notifications. Route optimization remains preview-only.</p>

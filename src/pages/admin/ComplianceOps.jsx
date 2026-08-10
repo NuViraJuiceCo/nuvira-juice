@@ -71,17 +71,21 @@ function ComplianceWorkflowPanel({ setActiveTab }) {
   return (
     <section className="rounded-xl border border-border bg-card p-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
+        <div className="hidden min-w-0 md:block">
           <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Compliance Flow</p>
           <h2 className="mt-1 text-sm font-black text-foreground">Batch-linked first, standalone when needed</h2>
           <p className="mt-1 max-w-3xl text-xs font-medium leading-relaxed text-muted-foreground">
             Production Start captures pre-op sanitation, daily checklist, and temperature logs for the exact batch. Use this center for standalone or retroactive records, binder review, label/allergen review, and audit export.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="md:hidden">
+          <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Quick entry</p>
+          <h2 className="mt-0.5 text-sm font-black text-foreground">Start or review a batch log</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
           <Link
             to="/admin/production-queue"
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white"
+            className="col-span-2 inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-nuvira-gradient px-3 text-xs font-semibold text-white md:col-span-1"
           >
             <PackageCheck className="h-3.5 w-3.5" />
             Production Queue
@@ -91,7 +95,7 @@ function ComplianceWorkflowPanel({ setActiveTab }) {
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground hover:border-primary/60"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2 text-xs font-semibold text-foreground hover:border-primary/60 md:px-3"
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
@@ -183,11 +187,14 @@ export default function ComplianceOps() {
       <AdminOpsHeader
         title="Compliance Center"
         subtitle="Native Customer App compliance logs, checklists, alerts, label review, HACCP review, and audit export"
+        mobileTitle="Logs"
+        mobileSubtitle="Batch records and audit tools"
+        compactMobile
         badge="Native"
         badgeTone="success"
       />
 
-      <div className="border-b border-border bg-card p-4">
+      <div className="hidden border-b border-border bg-card p-4 md:block">
         <div className="max-w-7xl mx-auto">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -251,10 +258,42 @@ export default function ComplianceOps() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="mb-6">
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/70 p-1">
+      <div className="space-y-3 border-b border-border bg-card p-3 md:hidden">
+        {(criticalAlerts.length > 0 || incompleteChecklistCount > 0) && (
+          <div className="space-y-2">
+            {criticalAlerts.length > 0 && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-900 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100">{criticalAlerts.length} critical alert{criticalAlerts.length === 1 ? '' : 's'}: {criticalAlerts[0].message}</div>}
+            {incompleteChecklistCount > 0 && <div className="rounded-lg border border-lime-300 bg-lime-50 p-3 text-xs font-semibold text-lime-900 dark:border-lime-900 dark:bg-lime-950/30 dark:text-lime-100">{incompleteChecklistCount} incomplete checklist{incompleteChecklistCount === 1 ? '' : 's'} needs review.</div>}
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-foreground">Compliance records</p>
+            <p className="truncate text-[10px] text-muted-foreground">{complianceSummaryFetching ? 'Refreshing current status' : complianceSummaryError ? 'Summary unavailable; forms remain available' : `${nativeCompliance.summary?.production_batches || 0} batches · ${nativeCompliance.summary?.daily_checklists || 0} checklists · ${nativeCompliance.summary?.temperature || 0} temp logs`}</p>
+          </div>
+          <ComplianceMonitor compact />
+        </div>
+        <ComplianceWorkflowPanel setActiveTab={setActiveTab} />
+        {(hubComplianceWarning || productionComplianceReadModelSupported) && (
+          <details className="rounded-lg border border-border/60 bg-background/60 px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">System status details</summary>
+            <div className="mt-2 space-y-2 text-[11px] text-muted-foreground">
+              {hubComplianceWarning && !nativeComplianceReady && <p>Primary summary warning: {hubComplianceWarning}</p>}
+              {productionComplianceReadModelSupported && <p>Batch linkage: {productionComplianceReadModel.summary?.exact_batch_log_match_count || 0} exact · {productionComplianceReadModel.summary?.missing_log_count || 0} missing · {productionComplianceReadModel.summary?.review_required_count || 0} review.</p>}
+            </div>
+          </details>
+        )}
+      </div>
+
+      <div className="mx-auto max-w-7xl p-3 md:p-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full [&_[role=tabpanel]_h2]:text-xl md:[&_[role=tabpanel]_h2]:text-2xl">
+          <div className="mb-3 md:mb-6">
+            <label className="block md:hidden">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Open compliance view</span>
+              <select value={activeTab} onChange={event => setActiveTab(event.target.value)} className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground">
+                {complianceTabs.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <TabsList className="hidden h-auto w-full flex-wrap justify-start gap-1 bg-muted/70 p-1 md:flex">
               {complianceTabs.map(({ value, label, Icon }) => (
                 <TabsTrigger
                   key={value}
