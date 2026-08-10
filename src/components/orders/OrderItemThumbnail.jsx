@@ -18,7 +18,7 @@ export default function OrderItemThumbnail({ item, size = 'default', className =
 
   return (
     <div className={`${sizeClass} shrink-0 overflow-hidden bg-secondary ${className}`}>
-      {imageUrl && failedImageUrl !== imageUrl ? (
+      {imageUrl ? (
         <img
           src={imageUrl}
           alt={`${item?.title || item?.name || 'Ordered item'} product`}

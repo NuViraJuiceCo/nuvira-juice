@@ -28,6 +28,8 @@ const tests = [
   ['thumbnail retries catalog candidates before a neutral package icon', () => {
     assert.match(thumbnail, /imageCandidates\.find\(candidate => !failedImageUrls\.includes\(candidate\)\)/);
     assert.match(thumbnail, /setFailedImageUrls/);
+    assert.match(thumbnail, /\{imageUrl \? \(/);
+    assert.doesNotMatch(thumbnail, /failedImageUrl\s*!==/);
     assert.match(thumbnail, /<Package className=\{iconClass\}/);
     assert.doesNotMatch(thumbnail, /🍊/);
   }],
