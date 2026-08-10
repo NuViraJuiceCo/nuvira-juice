@@ -1,21 +1,11 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Sparkles } from 'lucide-react';
-import { invokeCustomerGateway } from '@/api/base44Client';
 import { PROGRAM_BY_KEY } from '@/lib/program-catalog';
+import { useActiveProgramJourney } from '@/lib/program-journey-state';
 
 export default function ActiveProgramJourneyCard({ enabled }) {
-  const { data } = useQuery({
-    queryKey: ['program-journeys'],
-    queryFn: async () => (await invokeCustomerGateway('manageProgramJourney', { action: 'list' })).data,
-    enabled,
-    staleTime: 60 * 1000,
-  });
-  const journeys = data?.journeys || [];
-  const journey = journeys.find((row) => row.status === 'in_progress')
-    || journeys.find((row) => row.status === 'ready')
-    || null;
+  const { journey } = useActiveProgramJourney(enabled);
   if (!journey) return null;
 
   const program = PROGRAM_BY_KEY[journey.program_key] || PROGRAM_BY_KEY.hydration;
@@ -46,4 +36,3 @@ export default function ActiveProgramJourneyCard({ enabled }) {
     </div>
   );
 }
-

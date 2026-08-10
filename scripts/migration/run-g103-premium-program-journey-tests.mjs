@@ -92,6 +92,25 @@ assert.deepEqual(Array.from(schedule.slice(0, 4), (step) => step.product_name), 
 assert.equal(schedule.every((step) => step.completed_at === null), true);
 pass('three_day_schedule_has_twelve_uncompleted_customer_checkins');
 
+const expectedDailyProducts = {
+  radiance: ['AURA', 'OASIS', 'AURA', 'AURA'],
+  hydration: ['OASIS', 'AURA', 'OASIS', 'OASIS'],
+  reset: ['RE-NU', 'OASIS', 'RE-NU', 'RE-NU'],
+};
+for (const program of catalog.PROGRAMS) {
+  const programOrder = {
+    ...order,
+    id: `order-${program.key}`,
+    items: [{ product_id: `program_${program.key}`, title: `${program.name} Program (3-Day)`, quantity: 1, category: 'bundle' }],
+  };
+  const programDescriptor = logic.descriptorsForOrder(programOrder, '2026-08-15')[0];
+  assert.equal(programDescriptor.program_key, program.key);
+  const programSchedule = logic.buildSchedule(programDescriptor, '2026-08-11');
+  assert.equal(programSchedule.length, 12);
+  assert.deepEqual(Array.from(programSchedule.slice(0, 4), (step) => step.product_name), expectedDailyProducts[program.key]);
+}
+pass('radiance_hydration_and_reset_each_build_their_correct_twelve_step_schedule');
+
 const runtimeTodayParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit',
 }).formatToParts(new Date()).map((part) => [part.type, part.value]));
@@ -174,6 +193,7 @@ for (const marker of ['40°F or below', 'more than 2 hours', 'more than 1 hour',
 assert.match(page, /5–7 day refrigerated shelf life/);
 assert.match(page, /future_program_step_cannot_be_completed/);
 for (const marker of ['AnimatePresence', 'useReducedMotion', 'aria-live="polite"', "previewCelebration === 'complete'", "previewCelebration === 'step'"]) assert.match(page, new RegExp(marker));
+assert.match(page, /previewProgramKey/);
 pass('customer_experience_includes_storage_time_temperature_label_and_wellness_guardrails');
 
 const notifications = read('base44/functions/sendCustomerNotification/entry.ts');
@@ -199,11 +219,23 @@ const app = read('src/App.jsx');
 const home = read('src/pages/Home.jsx');
 const account = read('src/pages/Account.jsx');
 const tracker = read('src/pages/OrderTracker.jsx');
+const journeyState = read('src/lib/program-journey-state.js');
+const mobileNav = read('src/components/layout/MobileNav.jsx');
+const sideNav = read('src/components/layout/SideNav.jsx');
 assert.match(app, /path="\/account\/programs\/:id"/);
 assert.match(home, /ActiveProgramJourneyCard/);
 assert.match(account, /My Program Journeys/);
+assert.match(account, /label: 'Rewards', path: '\/rewards'/);
 assert.match(tracker, /Open My Program Journey/);
 pass('journey_has_home_account_order_tracker_and_protected_detail_entry_points');
+
+assert.match(journeyState, /row\.status === 'in_progress'/);
+assert.match(journeyState, /row\.status === 'ready'/);
+assert.match(mobileNav, /label: 'Journey'/);
+assert.match(mobileNav, /location\.pathname\.startsWith\('\/account\/programs'\)/);
+assert.match(sideNav, /label: 'My Journey'/);
+assert.match(sideNav, /location\.pathname\.startsWith\('\/account\/programs'\)/);
+pass('active_or_ready_journey_remains_persistently_discoverable_on_mobile_and_desktop_navigation');
 
 console.log(JSON.stringify({
   ok: true,
