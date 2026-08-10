@@ -233,7 +233,7 @@ export default function Cart() {
             <AnimatePresence>
               {items.map(item => (
                 <motion.div
-                  key={item.product_id}
+                  key={item.cart_line_key || item.product_id}
                   layout
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -260,15 +260,15 @@ export default function Cart() {
                       <p className="text-sm font-bold mt-1 text-primary">${(item.price * item.quantity).toFixed(2)}</p>
                     </div>
                     <div className="flex flex-col items-end justify-between gap-2">
-                      <button type="button" onClick={() => removeItem(item.product_id)} aria-label={`Remove ${item.title} from cart`} className="p-1 hover:opacity-60 transition-opacity">
+                      <button type="button" onClick={() => removeItem(item.cart_line_key || item.product_id)} aria-label={`Remove ${item.title} from cart`} className="p-1 hover:opacity-60 transition-opacity">
                         <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                       </button>
                       <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-2 py-1.5">
-                        <button type="button" onClick={() => updateQuantity(item.product_id, item.quantity - 1)} aria-label={`Decrease ${item.title} quantity`} className="hover:opacity-60">
+                        <button type="button" onClick={() => updateQuantity(item.cart_line_key || item.product_id, item.quantity - 1)} aria-label={`Decrease ${item.title} quantity`} className="hover:opacity-60">
                           <Minus className="w-3 h-3" />
                         </button>
                         <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
-                        <button type="button" onClick={() => updateQuantity(item.product_id, item.quantity + 1)} aria-label={`Increase ${item.title} quantity`} className="hover:opacity-60">
+                        <button type="button" onClick={() => updateQuantity(item.cart_line_key || item.product_id, item.quantity + 1)} aria-label={`Increase ${item.title} quantity`} className="hover:opacity-60">
                           <Plus className="w-3 h-3" />
                         </button>
                       </div>
@@ -323,7 +323,7 @@ export default function Cart() {
                       bundleSize={item.bottles_per_unit * item.quantity}
                       composition={item.bundle_composition || []}
                       juices={juices}
-                      onChange={(comp) => updateBundleComposition(item.product_id, comp)}
+                      onChange={(comp) => updateBundleComposition(item.cart_line_key || item.product_id, comp)}
                     />
                   )}
                 </motion.div>

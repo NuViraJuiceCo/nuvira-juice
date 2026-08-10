@@ -65,6 +65,20 @@
                 "quantity": { "type": "number" }
               }
             }
+          },
+          "program_addon_for": {
+            "type": "string",
+            "enum": ["radiance", "hydration", "reset"],
+            "description": "Program key this optional wellness-shot quantity was selected for"
+          },
+          "program_addon_days": {
+            "type": "number",
+            "enum": [2, 3],
+            "description": "Program duration associated with this optional wellness-shot quantity"
+          },
+          "program_addon_schedule_version": {
+            "type": "string",
+            "description": "Program schedule contract used when the optional shot pairing was selected"
           }
         }
       }

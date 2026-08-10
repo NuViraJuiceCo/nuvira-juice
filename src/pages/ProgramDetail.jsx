@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Check, Package, Sparkles, Truck, Zap } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, Minus, Package, Plus, Sparkles, Truck, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { useCart } from '@/lib/cartContext';
@@ -16,7 +16,12 @@ import {
   programOptionForDays,
   programProductId,
 } from '@/lib/program-catalog';
+import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 import { absoluteUrl } from '@/lib/seo-slugs';
+
+const FALLBACK_WELLNESS_SHOTS = PUBLIC_PRODUCT_FALLBACKS.filter((product) => (
+  product.category === 'shot' && product.is_available !== false
+));
 
 const BASE_PERKS = [
   'Cold-pressed same day',
@@ -54,6 +59,25 @@ const PROGRAM_THEMES = {
   },
 };
 
+function normalizedTitle(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function capShotCounts(counts, maxCount, orderedShotIds = []) {
+  const capped = {};
+  let remaining = Math.max(0, Number(maxCount) || 0);
+  const ids = [...new Set([...orderedShotIds, ...Object.keys(counts || {})])];
+  for (const id of ids) {
+    if (remaining <= 0) break;
+    const quantity = Math.min(remaining, Math.max(0, Math.trunc(Number(counts?.[id] || 0))));
+    if (quantity > 0) {
+      capped[id] = quantity;
+      remaining -= quantity;
+    }
+  }
+  return capped;
+}
+
 function getProgramTheme(program) {
   return PROGRAM_THEMES[program?.key] || PROGRAM_THEMES.hydration;
 }
@@ -65,16 +89,24 @@ export default function ProgramDetail() {
 
   const program = PROGRAMS.find(p => p.key === key);
   const [selectedDays, setSelectedDays] = useState(3);
-  const [selectedShots, setSelectedShots] = useState([]);
+  const [selectedShotCounts, setSelectedShotCounts] = useState({});
 
   useEffect(() => {
     setSelectedDays(3);
-    setSelectedShots([]);
+    setSelectedShotCounts({});
   }, [key]);
 
   const { data: shots = [] } = useQuery({
     queryKey: ['wellness-shots'],
-    queryFn: () => base44.entities.Product.filter({ category: 'shot', is_available: true }, 'sort_order'),
+    queryFn: async () => {
+      try {
+        const liveShots = await base44.entities.Product.filter({ category: 'shot', is_available: true }, 'sort_order');
+        return Array.isArray(liveShots) && liveShots.length > 0 ? liveShots : FALLBACK_WELLNESS_SHOTS;
+      } catch {
+        return FALLBACK_WELLNESS_SHOTS;
+      }
+    },
+    placeholderData: FALLBACK_WELLNESS_SHOTS,
   });
 
   if (!program) {
@@ -104,8 +136,20 @@ export default function ProgramDetail() {
   }
 
   const selectedOption = programOptionForDays(program, selectedDays);
+  const recommendedShot = shots.find((shot) => normalizedTitle(shot.title) === normalizedTitle(program.shotPairing?.title)) || null;
+  const orderedShots = [...shots].sort((left, right) => {
+    const leftRecommended = left.id === recommendedShot?.id ? 0 : 1;
+    const rightRecommended = right.id === recommendedShot?.id ? 0 : 1;
+    return leftRecommended - rightRecommended || String(left.title || '').localeCompare(String(right.title || ''));
+  });
+  const selectedShotTotal = Object.values(selectedShotCounts).reduce((sum, count) => sum + Number(count || 0), 0);
+  const selectedShotNames = orderedShots.flatMap((shot) => (
+    Array.from({ length: Number(selectedShotCounts[shot.id] || 0) }, () => shot.title)
+  )).slice(0, selectedOption.days);
   const basePrice = selectedOption.price;
-  const shotsTotal = selectedShots.reduce((sum, id) => sum + (shots.find(s => s.id === id)?.price || 0), 0);
+  const shotsTotal = orderedShots.reduce((sum, shot) => (
+    sum + Number(selectedShotCounts[shot.id] || 0) * Number(shot.price || 0)
+  ), 0);
   const total = basePrice + shotsTotal;
   const programTitle = `${program.name} Program (${selectedOption.days}-Day)`;
   const programDescription = `${program.description} Includes ${selectedOption.composition} across ${selectedOption.bottles} bottles, available for local delivery in Wentzville, St. Charles County, and the St. Louis area.`;
@@ -157,9 +201,18 @@ export default function ProgramDetail() {
         program_schedule_version: PROGRAM_SCHEDULE_VERSION,
       }
     );
-    selectedShots.forEach(shotId => {
-      const shot = shots.find(s => s.id === shotId);
-      if (shot) addItem({ id: shot.id, title: shot.title, price: shot.price, image_url: shot.image_url, category: 'shot' }, 1);
+    orderedShots.forEach((shot) => {
+      const quantity = Number(selectedShotCounts[shot.id] || 0);
+      if (quantity > 0) addItem(
+        { id: shot.id, title: shot.title, price: shot.price, image_url: shot.image_url, category: 'shot', size: shot.size },
+        quantity,
+        {
+          cart_line_key: `${shot.id}::addon::${programProductId(program.key, selectedOption.days)}`,
+          program_addon_for: program.key,
+          program_addon_days: selectedOption.days,
+          program_addon_schedule_version: PROGRAM_SCHEDULE_VERSION,
+        },
+      );
     });
     toast.success(`${program.name} Program added to cart`);
     navigate('/cart');
@@ -177,9 +230,9 @@ export default function ProgramDetail() {
             </p>
             <p className="truncate text-sm font-semibold text-foreground">
               ${total.toFixed(2)}
-              {selectedShots.length > 0 && (
+              {selectedShotTotal > 0 && (
                 <span className="ml-1 text-xs font-medium text-muted-foreground sm:ml-2">
-                  + {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''}
+                  + {selectedShotTotal} shot{selectedShotTotal > 1 ? 's' : ''}
                 </span>
               )}
             </p>
@@ -275,7 +328,11 @@ export default function ProgramDetail() {
                         aria-pressed={selected}
                         onClick={() => {
                           setSelectedDays(option.days);
-                          setSelectedShots((current) => current.slice(0, option.days));
+                          setSelectedShotCounts((current) => capShotCounts(
+                            current,
+                            option.days,
+                            [recommendedShot?.id].filter(Boolean),
+                          ));
                         }}
                         className={`rounded-2xl border-2 p-3 text-left transition-all ${selected ? 'border-primary bg-primary/10 shadow-sm' : 'border-border/55 bg-background hover:border-primary/40'}`}
                       >
@@ -354,7 +411,7 @@ export default function ProgramDetail() {
             <ConsumptionSchedule
               programKey={program.key}
               days={selectedOption.days}
-              shotName={selectedShots.length > 0 ? shots.find(s => s.id === selectedShots[0])?.title : null}
+              shotNames={selectedShotNames}
             />
           </motion.div>
 
@@ -367,25 +424,48 @@ export default function ProgramDetail() {
             <div className="nuvira-premium-card rounded-3xl p-4 md:p-5">
               <div className="flex items-center gap-2 mb-1">
                 <Zap className="w-4 h-4 text-primary" />
-                <p className="text-sm font-semibold">Add Daily Wellness Shots</p>
-                <span className="text-[10px] text-muted-foreground ml-auto">${shots[0]?.price || 6} each</span>
+                <p className="text-sm font-semibold">Build Your Daily Shot Pairing</p>
+                <span className="text-[10px] text-muted-foreground ml-auto">Up to {selectedOption.days}</span>
               </div>
-              <p className="text-[11px] text-muted-foreground mb-3">Pick up to {selectedOption.days} shots — one per day of your program</p>
+              <p className="text-[11px] text-muted-foreground mb-3">
+                Optional. Add up to one 2 oz wellness shot for each program day; always follow the product label.
+              </p>
+              {recommendedShot && (
+                <div className={`mb-3 rounded-2xl border p-3 ${theme.statClass}`}>
+                  <div className="flex items-start gap-3">
+                    {recommendedShot.image_url ? (
+                      <img src={recommendedShot.image_url} alt={recommendedShot.title} className="h-12 w-12 rounded-xl object-cover shadow-sm" />
+                    ) : (
+                      <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-background text-xl">🍊</span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-bold text-foreground">{program.shotPairing.label}</p>
+                        <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-primary">Best match</span>
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{program.shotPairing.description}</p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={selectedShotCounts[recommendedShot.id] === selectedOption.days && selectedShotTotal === selectedOption.days ? 'secondary' : 'default'}
+                    onClick={() => setSelectedShotCounts({ [recommendedShot.id]: selectedOption.days })}
+                    className="mt-3 h-10 w-full rounded-xl text-xs font-bold"
+                  >
+                    {selectedShotCounts[recommendedShot.id] === selectedOption.days && selectedShotTotal === selectedOption.days
+                      ? `${selectedOption.days}-Day Pairing Added`
+                      : `Add ${selectedOption.days} ${recommendedShot.title}s`}
+                  </Button>
+                </div>
+              )}
               <div className="space-y-2">
-                {shots.map(shot => {
-                  const isSelected = selectedShots.includes(shot.id);
-                  const atMax = selectedShots.length >= selectedOption.days && !isSelected;
+                {orderedShots.map(shot => {
+                  const count = Number(selectedShotCounts[shot.id] || 0);
+                  const atMax = selectedShotTotal >= selectedOption.days;
                   return (
-                    <button
+                    <div
                       key={shot.id}
-                      type="button"
-                      disabled={atMax}
-                      onClick={() => setSelectedShots(prev =>
-                        isSelected ? prev.filter(id => id !== shot.id) : [...prev, shot.id]
-                      )}
-                      className={`w-full text-left flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition-all ${
-                        isSelected ? 'border-primary bg-nuvira-gradient-soft' : atMax ? 'border-border/30 opacity-40' : 'border-border/50 bg-background'
-                      }`}
+                      className={`flex w-full items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition-all ${count > 0 ? 'border-primary bg-nuvira-gradient-soft' : 'border-border/50 bg-background'}`}
                     >
                       {shot.image_url ? (
                         <img src={shot.image_url} alt={shot.title} className="w-8 h-8 rounded-lg object-cover shrink-0" />
@@ -393,19 +473,52 @@ export default function ProgramDetail() {
                         <span className="text-base shrink-0">🍊</span>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold">{shot.title}</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="text-xs font-semibold">{shot.title}</p>
+                          {shot.id === recommendedShot?.id && (
+                            <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-primary">Recommended</span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-muted-foreground">{shot.short_description}</p>
+                        <p className="mt-0.5 text-[10px] font-semibold text-foreground/70">${Number(shot.price || 0).toFixed(2)} each</p>
                       </div>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'border-primary bg-nuvira-gradient' : 'border-border'}`}>
-                        {isSelected && <Check className="w-3 h-3 text-white" />}
+                      <div className="flex shrink-0 items-center gap-2 rounded-xl border border-border/60 bg-card/80 p-1">
+                        <button
+                          type="button"
+                          aria-label={`Remove one ${shot.title}`}
+                          disabled={count === 0}
+                          onClick={() => setSelectedShotCounts((current) => {
+                            const next = { ...current };
+                            const nextCount = Math.max(0, Number(next[shot.id] || 0) - 1);
+                            if (nextCount === 0) delete next[shot.id];
+                            else next[shot.id] = nextCount;
+                            return next;
+                          })}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-secondary disabled:opacity-30"
+                        >
+                          <Minus className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="w-4 text-center text-xs font-black text-foreground">{count}</span>
+                        <button
+                          type="button"
+                          aria-label={`Add one ${shot.title}`}
+                          disabled={atMax}
+                          onClick={() => setSelectedShotCounts((current) => ({
+                            ...current,
+                            [shot.id]: Number(current[shot.id] || 0) + 1,
+                          }))}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
-              {selectedShots.length > 0 && (
+              {selectedShotTotal > 0 && (
                 <p className="text-[11px] text-primary font-medium mt-3">
-                  ✓ {selectedShots.length} shot{selectedShots.length > 1 ? 's' : ''} added (+${(selectedShots.reduce((sum, id) => sum + (shots.find(s => s.id === id)?.price || 0), 0)).toFixed(2)})
+                  ✓ {selectedShotTotal} of {selectedOption.days} daily shot{selectedOption.days > 1 ? 's' : ''} planned (+${shotsTotal.toFixed(2)})
                 </p>
               )}
             </div>

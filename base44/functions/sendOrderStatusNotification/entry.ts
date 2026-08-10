@@ -277,6 +277,25 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing order_id or new_status' }, { status: 400 });
     }
 
+    // Formal sandbox orders must never enter the customer communication path.
+    // Entity automations normally include the full row, while direct/admin calls
+    // only carry an order id, so resolve the authoritative row when the marker is
+    // not present instead of trusting caller-supplied test flags.
+    let authoritativeOrder: Record<string, any> | null = entityUpdate && body.data?.is_test_order !== undefined
+      ? body.data
+      : null;
+    if (!authoritativeOrder) {
+      const orderRows = await base44.asServiceRole.entities.Order.filter({ id: order_id }, undefined, 1);
+      authoritativeOrder = orderRows[0] || null;
+    }
+    if (authoritativeOrder?.is_test_order === true) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'test_order_customer_communications_suppressed',
+      });
+    }
+
     if (entityUpdate) {
       const changedFields = Array.isArray(body.changed_fields) ? body.changed_fields.map(String) : [];
       const priorStatus = String(body.old_data?.status || '').trim();
@@ -327,9 +346,11 @@ Deno.serve(async (req) => {
     // Fetch the full order when identity fields or delivered-program routing need it.
     let email = customer_email;
     let orderNum = order_number;
-    let fullOrderForRouting = entityUpdate && Array.isArray(body.data?.items) ? body.data : null;
+    let fullOrderForRouting = Array.isArray(authoritativeOrder?.items) ? authoritativeOrder : null;
     if (!email || !orderNum || (new_status === 'delivered' && !fullOrderForRouting)) {
-      const orders = await base44.asServiceRole.entities.Order.filter({ id: order_id });
+      const orders = authoritativeOrder
+        ? [authoritativeOrder]
+        : await base44.asServiceRole.entities.Order.filter({ id: order_id }, undefined, 1);
       const order = orders[0];
       if (!order) return Response.json({ error: 'order_not_found' }, { status: 404 });
       email = order.customer_email;

@@ -24,6 +24,9 @@ assert.deepEqual(catalog.PROGRAM_BY_KEY.hydration.durationOptions[0].bundleCompo
   { product_name: 'AURA', quantity: 2 },
 ]);
 assert.deepEqual(catalog.PROGRAM_BY_KEY.reset.durationOptions.map((option) => option.days), [3]);
+assert.equal(catalog.PROGRAM_BY_KEY.radiance.shotPairing.title, 'Radiance Shot');
+assert.equal(catalog.PROGRAM_BY_KEY.hydration.shotPairing.title, 'Hydration Shot');
+assert.equal(catalog.PROGRAM_BY_KEY.reset.shotPairing.title, 'Reset Shot');
 pass('catalog_has_three_programs_and_authoritative_daily_compositions');
 
 const hydration = catalog.PROGRAM_BY_KEY.hydration;
@@ -38,6 +41,12 @@ for (const prohibited of ['reduce inflammation', 'cellular repair', 'reduce bloa
   assert.equal(claimsText.includes(prohibited), false, `unsubstantiated outcome claim remains: ${prohibited}`);
 }
 pass('program_marketing_copy_avoids_unsubstantiated_health_outcomes');
+
+const publicProducts = read('src/lib/public-products.js').toLowerCase();
+for (const prohibited of ['brighten skin', 'boost energy', 'optimize performance', 'clear the body', 'detox-forward']) {
+  assert.equal(publicProducts.includes(prohibited), false, `unsupported wellness-shot outcome claim remains: ${prohibited}`);
+}
+pass('wellness_shot_copy_is_ingredient_led_and_claim_safe');
 
 const celebrations = await import(`${pathToFileURL(path.join(root, 'src/lib/program-celebration.js')).href}?g103=${Date.now()}`);
 const rewardJourney = {
@@ -145,6 +154,31 @@ const invalidResetDuration = logic.programForItem({ product_id: 'program_reset_2
 assert.equal(invalidResetDuration.days, 3);
 pass('two_day_radiance_and_hydration_build_eight_steps_while_reset_remains_three_day_only');
 
+const pairedOrder = {
+  ...order,
+  id: 'order-g103-tailored-pairings',
+  items: [
+    { product_id: 'program_radiance_2day', title: 'Radiance Program (2-Day)', program_key: 'radiance', program_days: 2, quantity: 1, category: 'bundle' },
+    { product_id: 'program_hydration_2day', title: 'Hydration Program (2-Day)', program_key: 'hydration', program_days: 2, quantity: 1, category: 'bundle' },
+    { product_id: 'radiance-shot', title: 'Radiance Shot', quantity: 2, category: 'shot', program_addon_for: 'radiance', program_addon_days: 2 },
+    { product_id: 'hydration-shot', title: 'Hydration Shot', quantity: 2, category: 'shot', program_addon_for: 'hydration', program_addon_days: 2 },
+  ],
+};
+const pairedDescriptors = logic.descriptorsForOrder(pairedOrder, null);
+const radiancePairing = pairedDescriptors.find((descriptor) => descriptor.program_key === 'radiance');
+const hydrationPairing = pairedDescriptors.find((descriptor) => descriptor.program_key === 'hydration');
+assert.deepEqual(Array.from(radiancePairing.morning_shots), ['Radiance Shot', 'Radiance Shot']);
+assert.deepEqual(Array.from(hydrationPairing.morning_shots), ['Hydration Shot', 'Hydration Shot']);
+assert.deepEqual(
+  Array.from(logic.buildSchedule(radiancePairing, '2026-08-12').filter((step) => step.time_key === 'morning'), (step) => step.morning_shot_name),
+  ['Radiance Shot', 'Radiance Shot'],
+);
+assert.deepEqual(
+  Array.from(logic.buildSchedule(hydrationPairing, '2026-08-12').filter((step) => step.time_key === 'morning'), (step) => step.morning_shot_name),
+  ['Hydration Shot', 'Hydration Shot'],
+);
+pass('wellness_shot_quantities_remain_associated_with_the_program_the_customer_selected');
+
 const runtimeTodayParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit',
 }).formatToParts(new Date()).map((part) => [part.type, part.value]));
@@ -218,6 +252,8 @@ assert.match(checkout, /program_\$\{programKey\}_\$\{programDays\}day/);
 assert.match(checkout, /program_schedule_version: PROGRAM_SCHEDULE_VERSION/);
 assert.match(checkout, /bundle_composition: option\.composition/);
 assert.match(checkout, /items: normalizedItems/);
+assert.match(checkout, /program_addon_for: addonProgramKey/);
+assert.match(checkout, /program_addon_days: addonDays/);
 pass('checkout_persists_canonical_duration_formula_and_schedule_metadata_for_each_program_order');
 
 const gateway = read('base44/functions/getCustomerAccountDashboardData/entry.ts');
@@ -246,6 +282,21 @@ assert.match(page, /formatCheckinTimestamp\(step\.completed_at\)/);
 assert.match(page, /Checked \$\{checkinTimestamp \|\| 'in'\} · Tap to undo/);
 pass('checklist_uses_current_product_and_shot_images_with_clear_suggested_and_recorded_times');
 
+const programDetail = read('src/pages/ProgramDetail.jsx');
+const consumptionSchedule = read('src/components/program/ConsumptionSchedule.jsx');
+const cartContext = read('src/lib/cartContext.jsx');
+assert.match(programDetail, /Build Your Daily Shot Pairing/);
+assert.match(programDetail, /Best match/);
+assert.match(programDetail, /program_addon_for: program\.key/);
+assert.match(programDetail, /program_addon_days: selectedOption\.days/);
+assert.match(programDetail, /\[recommendedShot\.id\]: selectedOption\.days/);
+assert.match(programDetail, /FALLBACK_WELLNESS_SHOTS/);
+assert.match(programDetail, /placeholderData: FALLBACK_WELLNESS_SHOTS/);
+assert.match(consumptionSchedule, /Your morning shot plan/);
+assert.match(consumptionSchedule, /Day \{index \+ 1\} · \{name\}/);
+assert.match(cartContext, /extra\.cart_line_key \|\| product\.id/);
+pass('program_detail_supports_repeat_daily_pairings_mixed_shots_and_distinct_cart_lines');
+
 const notifications = read('base44/functions/sendCustomerNotification/entry.ts');
 const alwaysSendBody = notifications.match(/const ALWAYS_SEND = new Set\(\[([\s\S]*?)\]\);/)?.[1] || '';
 const elevatedBody = notifications.match(/const ELEVATED_TRANSACTIONAL_SUBTYPES = new Set\(\[([\s\S]*?)\]\);/)?.[1] || '';
@@ -260,10 +311,20 @@ pass('program_reminders_are_opt_in_preference_aware_daily_idempotent_and_quiet_h
 
 const elevated = read('base44/functions/sendOrderStatusNotification/elevatedTransactionalCommunications.ts');
 const fallback = read('base44/functions/sendOrderStatusNotification/entry.ts');
+const dashboardGateway = read('base44/functions/getCustomerAccountDashboardData/entry.ts');
 assert.match(elevated, /event === 'delivered' && orderContainsProgram\(order\)/);
 assert.match(fallback, /new_status === 'delivered' && orderContainsProgram\(fullOrderForRouting\)/);
 assert.match(elevated, /'\/account\/programs'/);
 pass('delivered_program_notifications_deep_link_into_program_journeys');
+
+assert.match(fallback, /authoritativeOrder\?\.is_test_order === true/);
+assert.match(fallback, /test_order_customer_communications_suppressed/);
+assert.ok(
+  fallback.indexOf('test_order_customer_communications_suppressed') < fallback.indexOf('if (elevatedTransactionalEnabled())'),
+  'marked sandbox orders must be suppressed before any elevated or fallback communication path',
+);
+assert.match(dashboardGateway, /g104-program-shot-pairing-and-sandbox-safety-20260810/);
+pass('marked_test_orders_are_suppressed_before_customer_communications');
 
 const app = read('src/App.jsx');
 const home = read('src/pages/Home.jsx');

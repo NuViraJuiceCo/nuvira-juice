@@ -9,10 +9,13 @@ const TIME_ICONS = {
   'Evening': Moon,
 };
 
-export default function ConsumptionSchedule({ programKey, days = 3, shotName }) {
+export default function ConsumptionSchedule({ programKey, days = 3, shotNames = [] }) {
   const schedule = DAILY_PROGRAM_SCHEDULES[programKey];
   const program = PROGRAM_BY_KEY[programKey];
   if (!schedule || !program) return null;
+  const dailyShots = Array.isArray(shotNames) ? shotNames.slice(0, days).filter(Boolean) : [];
+  const uniqueShots = [...new Set(dailyShots)];
+  const morningShotLabel = uniqueShots.length === 1 ? uniqueShots[0] : 'Your daily wellness shot';
 
   return (
     <div className="bg-card border border-border/50 rounded-2xl p-5 mb-4">
@@ -23,7 +26,7 @@ export default function ConsumptionSchedule({ programKey, days = 3, shotName }) 
       <div className="space-y-3">
         {schedule.map((item, i) => {
           const Icon = TIME_ICONS[item.time] || Sun;
-          const showShot = item.timeKey === 'morning' && shotName;
+          const showShot = item.timeKey === 'morning' && dailyShots.length > 0;
           return (
             <div
               key={i}
@@ -45,7 +48,7 @@ export default function ConsumptionSchedule({ programKey, days = 3, shotName }) 
                   </div>
                   {showShot && (
                     <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-[10px] font-bold bg-white/70 px-2 py-0.5 rounded-full">① {shotName}</span>
+                      <span className="text-[10px] font-bold bg-white/70 px-2 py-0.5 rounded-full">① {morningShotLabel}</span>
                       <span className="text-[10px] opacity-60">then</span>
                     </div>
                   )}
@@ -59,10 +62,20 @@ export default function ConsumptionSchedule({ programKey, days = 3, shotName }) 
           );
         })}
       </div>
-      {shotName && (
-        <p className="text-[10px] text-muted-foreground mt-3 text-center italic">
-          * {shotName} should always be taken before your AM juice.
-        </p>
+      {dailyShots.length > 0 && (
+        <div className="mt-3 rounded-xl border border-border/50 bg-secondary/25 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Your morning shot plan</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {dailyShots.map((name, index) => (
+              <span key={`${name}-${index}`} className="rounded-full bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground">
+                Day {index + 1} · {name}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] italic text-muted-foreground">
+            Take the listed shot before your morning juice. Follow the label and your own needs.
+          </p>
+        </div>
       )}
       <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-border/50 bg-secondary/35 p-3">
         <Refrigerator className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
