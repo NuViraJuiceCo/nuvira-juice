@@ -150,7 +150,7 @@ export default function ProgramDetail() {
         id: `program_${program.key}`,
         title: `${program.name} Program (3-Day)`,
         price: basePrice,
-        image_url: null,
+        image_url: program.image,
         category: 'bundle',
         bottle_count: program.bottles,
         is_program: true,

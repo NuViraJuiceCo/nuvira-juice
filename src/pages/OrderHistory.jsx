@@ -22,6 +22,7 @@ function parseLocalDate(dateStr) {
 }
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
+import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 
 const statusLabels = {
   order_received: 'Received',
@@ -243,13 +244,7 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
           <div className="flex items-center gap-2">
             <div className="flex -space-x-2">
               {order.items?.slice(0, 3).map((item, i) => (
-                <div key={i} className="w-7 h-7 bg-secondary rounded-full border-2 border-card overflow-hidden">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs">🍊</div>
-                  )}
-                </div>
+                <OrderItemThumbnail key={i} item={item} size="compact" className="border-2 border-card" />
               ))}
             </div>
             <p className="text-xs text-muted-foreground flex-1 truncate">
