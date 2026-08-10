@@ -311,10 +311,20 @@ pass('program_reminders_are_opt_in_preference_aware_daily_idempotent_and_quiet_h
 
 const elevated = read('base44/functions/sendOrderStatusNotification/elevatedTransactionalCommunications.ts');
 const fallback = read('base44/functions/sendOrderStatusNotification/entry.ts');
+const dashboardGateway = read('base44/functions/getCustomerAccountDashboardData/entry.ts');
 assert.match(elevated, /event === 'delivered' && orderContainsProgram\(order\)/);
 assert.match(fallback, /new_status === 'delivered' && orderContainsProgram\(fullOrderForRouting\)/);
 assert.match(elevated, /'\/account\/programs'/);
 pass('delivered_program_notifications_deep_link_into_program_journeys');
+
+assert.match(fallback, /authoritativeOrder\?\.is_test_order === true/);
+assert.match(fallback, /test_order_customer_communications_suppressed/);
+assert.ok(
+  fallback.indexOf('test_order_customer_communications_suppressed') < fallback.indexOf('if (elevatedTransactionalEnabled())'),
+  'marked sandbox orders must be suppressed before any elevated or fallback communication path',
+);
+assert.match(dashboardGateway, /g104-program-shot-pairing-and-sandbox-safety-20260810/);
+pass('marked_test_orders_are_suppressed_before_customer_communications');
 
 const app = read('src/App.jsx');
 const home = read('src/pages/Home.jsx');

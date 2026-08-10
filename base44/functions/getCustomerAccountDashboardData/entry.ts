@@ -1,5 +1,6 @@
 // @ts-nocheck
-// Bundle revision: g103-premium-program-journey-20260809.
+// Bundle revision: g104-program-shot-pairing-and-sandbox-safety-20260810.
+// Bundle revision: g103-premium-program-journey-20260809 (retained regression provenance).
 // Bundle revision: g101-delivery-only-customer-order-copy-20260809 (retained regression provenance).
 import handler0 from './handlers/addressSuggest/entry.ts';
 import handler2 from './handlers/cancelSubscriptionFutureRenewal/entry.ts';
