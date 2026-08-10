@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, Clock3, ChevronDown, CircleCheckBig, Sparkles } from 'lucide-react';
 import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
+import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import { buildCustomerJourneyTimeline, getCustomerOrderJourney, resolveCustomerJourneyFulfillmentType } from '@/lib/customer-order-journey';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -303,9 +304,7 @@ export default function OrderTracker() {
             <div className="bg-card rounded-2xl border border-border/40 overflow-hidden divide-y divide-border/40">
               {order.items.map((item, i) => (
                 <div key={i} className="flex items-center gap-3 p-4">
-                  <div className="w-10 h-10 bg-secondary rounded-xl overflow-hidden shrink-0">
-                    {item.image_url ? <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg">🍊</div>}
-                  </div>
+                  <OrderItemThumbnail item={item} size="small" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate">{item.title}</p>
                     <p className="text-xs text-foreground/55">Qty: {item.quantity}</p>
@@ -334,7 +333,8 @@ export default function OrderTracker() {
       title: li.title,
       quantity: li.quantity,
       price: li.price,
-      image_url: null,
+      image_url: li.image_url || null,
+      product_id: li.product_id || null,
     })) || [],
     total: hubOrder?.total_price || 0,
     estimated_delivery_date: hubOrder?.requested_delivery_date || null,
@@ -572,11 +572,7 @@ export default function OrderTracker() {
           <div className="border-t border-border/40 divide-y divide-border/40">
             {displayOrder.items?.map((item, i) => (
               <div key={i} className="flex items-center gap-3 p-4">
-                <div className="w-12 h-12 bg-secondary rounded-xl overflow-hidden shrink-0">
-                  {item.image_url
-                    ? <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                    : <div className="w-full h-full flex items-center justify-center text-xl">🍊</div>}
-                </div>
+                <OrderItemThumbnail item={item} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{item.title}</p>
                   <p className="text-xs text-foreground/55">Qty: {item.quantity}</p>
