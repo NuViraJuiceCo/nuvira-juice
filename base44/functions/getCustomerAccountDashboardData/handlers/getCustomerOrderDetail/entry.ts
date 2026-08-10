@@ -596,13 +596,31 @@ export default async function handler(req: Request) {
     const resolvedOrderNumber = order?.order_number || hubOrder?.shopify_order_number || order_number;
 
     let fulfillmentTasks = [];
+    let deliveryProofTasks = [];
     if (resolvedOrderId || resolvedOrderNumber) {
-      const taskRows = await base44.asServiceRole.entities.FulfillmentTask.filter(
+      fulfillmentTasks = await base44.asServiceRole.entities.FulfillmentTask.filter(
         resolvedOrderId ? { order_id: resolvedOrderId } : { order_id: 'NONE_USE_NUMBER' },
         '-created_date',
         10
       ).catch(() => []);
-      fulfillmentTasks = taskRows;
+      deliveryProofTasks = fulfillmentTasks;
+      const primaryTaskHasProof = fulfillmentTasks.some(task => (
+        normalizeText(task?.delivery_photo_url) || normalizeText(task?.delivery_drop_location)
+      ));
+      if (!primaryTaskHasProof) {
+        const taskQueries = [];
+        if (resolvedOrderId) taskQueries.push({ base44_order_id: resolvedOrderId });
+        if (resolvedOrderNumber) {
+          const taskOrderNumber = normalizeOrderNumber(resolvedOrderNumber);
+          taskQueries.push({ order_number: taskOrderNumber });
+          taskQueries.push({ order_number: `#${taskOrderNumber}` });
+          taskQueries.push({ shopify_order_number: taskOrderNumber });
+          taskQueries.push({ shopify_order_number: `#${taskOrderNumber}` });
+        }
+        deliveryProofTasks = uniqueRows([...fulfillmentTasks, ...(await Promise.all(
+          taskQueries.map(query => safeFilter(base44.asServiceRole.entities.FulfillmentTask, query, '-created_date', 10))
+        )).flat()]);
+      }
       debugPath.push(`fulfillment_tasks: ${fulfillmentTasks.length}`);
     }
 
@@ -661,6 +679,9 @@ export default async function handler(req: Request) {
 
     const orderStatus = order?.status || customerStatusForHubOrder(hubOrder) || 'unknown';
     const isTerminal = TERMINAL_STATUSES.includes(orderStatus);
+    const deliveryProofTask = deliveryProofTasks.find(task => (
+      normalizeText(task?.delivery_photo_url) || normalizeText(task?.delivery_drop_location)
+    )) || null;
 
     const statusTimeline = (order?.status_history || []).map(h => ({
       status: h.status,
@@ -673,9 +694,9 @@ export default async function handler(req: Request) {
     const deliveryStatus = {
       status: orderStatus,
       label: STATUS_LABELS[orderStatus] || orderStatus,
-      delivered_at: order?.delivered_at || hubOrder?.delivered_at || null,
-      delivery_photo_url: order?.delivery_photo_url || hubOrder?.delivery_photo_url || null,
-      delivery_drop_location: order?.delivery_drop_location || hubOrder?.delivery_drop_location || null,
+      delivered_at: order?.delivered_at || hubOrder?.delivered_at || deliveryProofTask?.delivered_at || null,
+      delivery_photo_url: order?.delivery_photo_url || hubOrder?.delivery_photo_url || deliveryProofTask?.delivery_photo_url || null,
+      delivery_drop_location: order?.delivery_drop_location || hubOrder?.delivery_drop_location || deliveryProofTask?.delivery_drop_location || null,
       assigned_delivery_date: order?.assigned_delivery_date || order?.estimated_delivery_date || hubOrder?.assigned_delivery_date || hubOrder?.requested_delivery_date || null,
       delivery_window_label: order?.delivery_window_label || hubOrder?.delivery_window_label || hubOrder?.requested_time_window || null,
     };

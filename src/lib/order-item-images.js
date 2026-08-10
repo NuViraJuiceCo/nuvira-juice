@@ -52,22 +52,33 @@ function orderItemIdentifiers(item = {}) {
   ].map(value => String(value || '').trim()).filter(Boolean);
 }
 
-export function resolveOrderItemImage(item = {}) {
-  const storedImage = safeImageUrl(item.image_url || item.image || item.product_image_url);
-  if (storedImage) return storedImage;
+export function resolveOrderItemImageCandidates(item = {}) {
+  const candidates = [];
+  const addCandidate = value => {
+    const imageUrl = safeImageUrl(value);
+    if (imageUrl && !candidates.includes(imageUrl)) candidates.push(imageUrl);
+  };
 
   const identifiers = orderItemIdentifiers(item);
   for (const identifier of identifiers) {
     const catalogProduct = findPublicProductFallback(identifier);
-    const catalogImage = safeImageUrl(catalogProduct?.image_url);
-    if (catalogImage) return catalogImage;
+    addCandidate(catalogProduct?.image_url);
   }
 
   const label = identifiers.join(' ');
   const program = PROGRAM_IMAGES.find(candidate => candidate.matches.test(label));
-  if (program) return program.imageUrl;
+  addCandidate(program?.imageUrl);
 
   const alias = PRODUCT_ALIASES.find(candidate => candidate.matches.test(label));
-  if (!alias) return null;
-  return safeImageUrl(findPublicProductFallback(alias.title)?.image_url);
+  if (alias) addCandidate(findPublicProductFallback(alias.title)?.image_url);
+
+  // Prefer the current offering image. Historical order payloads may retain an
+  // older asset URL, which remains useful only when no catalog match exists.
+  addCandidate(item.image_url || item.image || item.product_image_url);
+
+  return candidates;
+}
+
+export function resolveOrderItemImage(item = {}) {
+  return resolveOrderItemImageCandidates(item)[0] || null;
 }
