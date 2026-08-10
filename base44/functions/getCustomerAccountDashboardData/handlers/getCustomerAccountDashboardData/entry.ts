@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+// Bundle revision: g106-mobile-operations-and-test-order-visibility-20260810.
+
 /**
  * getCustomerAccountDashboardData
  *
@@ -416,6 +418,17 @@ function paymentWasCaptured(row) {
   );
 }
 
+function isExplicitInternalTestOrder(row) {
+  const tags = Array.isArray(row?.tags) ? row.tags.map(normalizeLower) : [];
+  const visibility = normalizeLower(row?.operational_visibility);
+  const quality = normalizeLower(row?.data_quality_status);
+  return row?.is_test_order === true
+    || tags.includes('internal_test')
+    || tags.includes('test_order')
+    || ['internal_test', 'archived_test'].includes(visibility)
+    || ['internal_test', 'test_order'].includes(quality);
+}
+
 function authoritativeCustomerOrderStatus(order) {
   const payment = normalizeLower(order?.payment_status || order?.financial_status);
   const refund = normalizeLower(order?.refund_status);
@@ -554,7 +567,7 @@ async function loadOwnedAuthoritativeOrders(base44, identityEmails, profiles) {
     const ownedByPhone = Boolean(rowPhone && normalizedPhones.has(rowPhone));
     return (ownedByEmail || ownedByPhone)
       && paymentWasCaptured(row)
-      && !row?.is_test_order
+      && !isExplicitInternalTestOrder(row)
       && !row?.is_abandoned_checkout;
   });
 }
