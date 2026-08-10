@@ -26,6 +26,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { unwrapBase44Result } from '@/lib/base44-result';
 import { usePageVisibility } from '@/lib/usePageVisibility';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const MAX_RANGE_DAYS = 31;
 const presetOptions = [
@@ -829,11 +830,102 @@ function DetailedSnapshotMetrics({ summary, isFetching }) {
   );
 }
 
+function MobileSnapshotMetric({ label, value, route, tone = 'default' }) {
+  const toneClass = {
+    default: 'border-slate-700 bg-slate-900 text-slate-100',
+    success: 'border-emerald-800 bg-emerald-950/55 text-emerald-100',
+    warning: 'border-cyan-800 bg-cyan-950/55 text-cyan-100',
+  }[tone] || 'border-slate-700 bg-slate-900 text-slate-100';
+
+  return (
+    <Link
+      to={route}
+      className={`flex min-h-[64px] min-w-0 flex-col justify-between rounded-lg border p-2 active:scale-[0.98] ${toneClass}`}
+    >
+      <span className="truncate text-[8px] font-black uppercase tracking-wider opacity-70">{label}</span>
+      <span className="truncate text-sm font-black leading-tight">{value}</span>
+    </Link>
+  );
+}
+
+function MobileOperationsSnapshot({ summary, isLoading, showError, onExpand }) {
+  const orders = summary.orders || {};
+  const production = summary.production || {};
+  const delivery = summary.delivery || {};
+  const alerts = summary.alerts || {};
+  const opsHealth = summary.ops_health || {};
+  const watchCount = Number(delivery.unscheduled || 0)
+    + Number(alerts.active || 0)
+    + Number(opsHealth.review_open || 0)
+    + Number(opsHealth.command_failed || 0)
+    + Number(opsHealth.command_rejected || 0)
+    + Number(opsHealth.command_running || 0);
+  const watchRoute = Number(delivery.unscheduled || 0) > 0
+    ? '/admin/delivery-queue'
+    : Number(opsHealth.review_open || 0) > 0
+      ? '/admin/review-queue'
+      : watchCount > 0
+        ? '/admin/ops-alerts'
+        : '/admin/orders';
+  const loadingValue = isLoading ? '...' : showError ? 'Check' : null;
+
+  return (
+    <section className="rounded-xl border border-slate-700 bg-slate-950 p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="truncate text-sm font-black text-white">Live Operations</h2>
+            <span className="shrink-0 rounded-full border border-cyan-500 bg-cyan-600 px-2 py-0.5 text-[9px] font-black text-white">
+              30s
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px] font-medium text-slate-400">Today at a glance</p>
+        </div>
+        <button
+          type="button"
+          onClick={onExpand}
+          className="shrink-0 text-[10px] font-black text-emerald-300 underline decoration-emerald-700 underline-offset-4"
+        >
+          Full snapshot
+        </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-4 gap-1.5">
+        <MobileSnapshotMetric
+          label="Produce"
+          value={loadingValue || `${formatNumber(production.planned_units)} planned`}
+          route="/admin/production-queue"
+          tone={Number(production.batch_count || 0) > 0 ? 'success' : 'default'}
+        />
+        <MobileSnapshotMetric
+          label="Deliver"
+          value={loadingValue || `${formatNumber(delivery.today_stops)} today`}
+          route="/admin/delivery-queue"
+          tone={Number(delivery.today_stops || 0) > 0 ? 'success' : 'default'}
+        />
+        <MobileSnapshotMetric
+          label="Orders"
+          value={loadingValue || formatNumber(orders.total)}
+          route="/admin/orders"
+        />
+        <MobileSnapshotMetric
+          label="Watch"
+          value={loadingValue || (watchCount > 0 ? formatNumber(watchCount) : 'Clear')}
+          route={watchRoute}
+          tone={watchCount > 0 ? 'warning' : 'success'}
+        />
+      </div>
+    </section>
+  );
+}
+
 function OperationsSnapshot({ user }) {
   const queryClient = useQueryClient();
   const isPageVisible = usePageVisibility();
+  const isMobile = useIsMobile();
   const today = todayDate();
   const [preset, setPreset] = useState('today');
+  const [mobileExpanded, setMobileExpanded] = useState(false);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
@@ -900,8 +992,30 @@ function OperationsSnapshot({ user }) {
   ].every(value => Number(value || 0) === 0);
   const priorityActions = buildPriorityActions(summary);
 
+  if (isMobile && !mobileExpanded) {
+    return (
+      <MobileOperationsSnapshot
+        summary={summary}
+        isLoading={isLoading}
+        showError={showError}
+        onExpand={() => setMobileExpanded(true)}
+      />
+    );
+  }
+
   return (
-    <section className="rounded-xl border border-slate-700 bg-slate-950 p-4 space-y-4 shadow-sm">
+    <section className="rounded-xl border border-slate-700 bg-slate-950 p-3 md:p-4 space-y-4 shadow-sm">
+      {isMobile && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setMobileExpanded(false)}
+            className="text-[10px] font-black text-emerald-300 underline decoration-emerald-700 underline-offset-4"
+          >
+            Collapse snapshot
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -1184,10 +1298,13 @@ export default function Operations() {
       <div className="mx-auto mt-4 w-full max-w-[1180px] space-y-5 px-4">
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-950 p-3 shadow-sm">
           <p className="text-xs font-black text-white">Customer App operations console</p>
-          <p className="text-[10px] font-medium text-emerald-100 mt-0.5">
+          <p className="mt-0.5 hidden text-[10px] font-medium text-emerald-100 md:block">
             Live admin workspace for production, compliance, fulfillment, catalog, notifications, and operational review.
           </p>
-          <AdminStatusLegend className="mt-2" showHubFallback={false} />
+          <p className="mt-0.5 text-[10px] font-medium text-emerald-100 md:hidden">
+            Production, compliance, fulfillment, and admin tools.
+          </p>
+          <AdminStatusLegend className="mt-2 hidden md:flex" showHubFallback={false} />
         </div>
 
         <OperationsSnapshot user={user} />

@@ -67,6 +67,7 @@ const harnesses = [
   'scripts/migration/run-g102-customer-delivery-proof-tests.mjs',
   'scripts/migration/run-g103-premium-program-journey-tests.mjs',
   'scripts/migration/run-g105-event-publishing-tests.mjs',
+  'scripts/migration/run-g106-mobile-operations-and-test-order-visibility-tests.mjs',
 ];
 
 function fail(message, extra = {}) {
