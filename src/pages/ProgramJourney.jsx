@@ -22,10 +22,13 @@ import { toast } from 'sonner';
 import { invokeCustomerGateway } from '@/api/base44Client';
 import { DAILY_PROGRAM_SCHEDULES, PROGRAM_BY_KEY } from '@/lib/program-catalog';
 import { createProgramCelebration } from '@/lib/program-celebration';
+import { resolveOrderItemImage } from '@/lib/order-item-images';
 import SEO from '@/components/SEO';
 
 const DATE_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
 const LONG_DATE_FORMAT = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const CHECKIN_DATE_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' });
+const CHECKIN_TIME_FORMAT = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
 
 function dateFromKey(value) {
   return new Date(`${value}T12:00:00`);
@@ -35,6 +38,13 @@ function formatDate(value, long = false) {
   if (!value) return 'Not available';
   const date = dateFromKey(value);
   return Number.isFinite(date.getTime()) ? (long ? LONG_DATE_FORMAT : DATE_FORMAT).format(date) : value;
+}
+
+function formatCheckinTimestamp(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return `${CHECKIN_DATE_FORMAT.format(date)} · ${CHECKIN_TIME_FORMAT.format(date)} CT`;
 }
 
 function addDays(value, days) {
@@ -339,42 +349,100 @@ function SafetyWellnessCard() {
 function DaySchedule({ day, journey, onToggle, pendingStep }) {
   const steps = journey.schedule.filter((step) => Number(step.day_number) === day);
   if (!steps.length) return null;
+  const program = programTheme(journey);
   const completeCount = steps.filter((step) => step.completed_at).length;
   const futureDay = steps[0].date > journey.today;
   return (
-    <section className="overflow-hidden rounded-[1.5rem] border border-border/55 bg-card">
-      <div className="flex items-center justify-between gap-3 border-b border-border/40 p-4">
+    <section
+      className="overflow-hidden rounded-[1.75rem] border bg-card p-3 shadow-[0_16px_45px_rgba(14,35,27,0.08)]"
+      style={{ borderColor: program.palette.border }}
+    >
+      <div className="flex items-center justify-between gap-3 px-1 pb-3 pt-1">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Day {day}</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: program.palette.primary }}>Day {day}</p>
           <h3 className="mt-0.5 font-heading text-lg font-bold">{formatDate(steps[0].date, true)}</h3>
         </div>
-        <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold text-muted-foreground">{completeCount}/4 complete</span>
+        <span
+          className="rounded-full border px-3 py-1.5 text-[10px] font-black"
+          style={{ borderColor: program.palette.border, color: program.palette.primary, backgroundColor: `${program.palette.primary}10` }}
+        >
+          {completeCount}/4 complete
+        </span>
       </div>
-      <div className="divide-y divide-border/35">
+      <div className="space-y-2.5">
         {steps.map((step) => {
           const done = Boolean(step.completed_at);
+          const checkinTimestamp = formatCheckinTimestamp(step.completed_at);
           const disabled = (futureDay && !done) || journey.freshness_state === 'ended' || pendingStep === step.step_id;
+          const productImage = resolveOrderItemImage({ title: step.product_name, name: step.product_name });
+          const shotImage = step.morning_shot_name
+            ? resolveOrderItemImage({ title: step.morning_shot_name, name: step.morning_shot_name })
+            : null;
           return (
-            <button
+            <motion.button
               type="button"
               key={step.step_id}
+              aria-label={`${done ? 'Undo' : 'Mark'} ${step.product_name} ${step.time_label.toLowerCase()} check-in`}
               disabled={disabled}
               onClick={() => onToggle(step, !done)}
-              className="flex w-full items-center gap-3 p-4 text-left transition active:bg-secondary/40 disabled:cursor-not-allowed disabled:opacity-50"
+              whileTap={disabled ? undefined : { scale: 0.985 }}
+              className="relative flex w-full items-center gap-3 overflow-hidden rounded-[1.35rem] border p-2.5 text-left shadow-[0_8px_24px_rgba(14,35,27,0.06)] transition disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                borderColor: done ? `${program.palette.primary}55` : `${program.palette.border}99`,
+                background: done
+                  ? `linear-gradient(135deg, ${program.palette.primary}16, ${program.palette.glow}0D)`
+                  : 'hsl(var(--card))',
+              }}
             >
-              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${done ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-secondary/45 text-muted-foreground'}`}>
-                {done ? <Check className="h-4 w-4" /> : <Droplets className="h-4 w-4" />}
+              <span className="relative h-[4.75rem] w-[4.75rem] shrink-0 overflow-hidden rounded-[1.05rem] border border-white/15 bg-secondary">
+                {productImage ? (
+                  <img
+                    src={productImage}
+                    alt={`${step.product_name} bottle`}
+                    className={`h-full w-full object-cover transition duration-300 ${done ? 'scale-105 brightness-[0.72]' : ''}`}
+                    width="96"
+                    height="96"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center"><Droplets className="h-6 w-6 text-muted-foreground" /></span>
+                )}
+                {shotImage && !done && (
+                  <img src={shotImage} alt={`${step.morning_shot_name} shot`} className="absolute bottom-1 right-1 h-7 w-7 rounded-full border-2 border-white object-cover shadow-md" width="32" height="32" loading="lazy" decoding="async" />
+                )}
+                {done && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/15">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/50 text-white shadow-lg" style={{ backgroundColor: program.palette.primary }}>
+                      <Check className="h-4 w-4" strokeWidth={3} />
+                    </span>
+                  </span>
+                )}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] font-black uppercase tracking-[0.12em] text-muted-foreground">{step.time_label}</span>
-                  <span className="text-[10px] font-semibold text-muted-foreground">{step.suggested_time}</span>
+                  <span className="text-[9px] font-black uppercase tracking-[0.15em]" style={{ color: program.palette.primary }}>{step.time_label}</span>
+                  <span className="flex items-center gap-1 rounded-full bg-secondary/55 px-2 py-1 text-[8px] font-bold text-muted-foreground">
+                    <Clock3 className="h-3 w-3" />{done ? 'Recorded' : `Suggested · ${step.suggested_time} CT`}
+                  </span>
                 </span>
-                {step.morning_shot_name && <span className="mt-1 block text-[10px] font-semibold text-primary">{step.morning_shot_name} first · then</span>}
-                <span className={`mt-0.5 block text-sm font-bold ${done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{step.product_name}</span>
+                {step.morning_shot_name && <span className="mt-1.5 inline-flex rounded-full border border-border/60 bg-secondary/60 px-2 py-0.5 text-[8px] font-bold text-muted-foreground">{step.morning_shot_name} first</span>}
+                <span className={`mt-1 block font-heading text-lg font-bold leading-none ${done ? 'text-muted-foreground' : 'text-foreground'}`}>{step.product_name}</span>
+                <span className="mt-1 block text-[9px] font-medium text-muted-foreground">
+                  {done
+                    ? `Checked ${checkinTimestamp || 'in'} · Tap to undo`
+                    : futureDay
+                      ? 'Available on this day · Suggested times are flexible'
+                      : 'Tap when enjoyed · Suggested times are flexible'}
+                </span>
               </span>
-              <span className="text-[10px] font-bold text-muted-foreground">{done ? 'Undo' : futureDay ? 'Upcoming' : 'Mark enjoyed'}</span>
-            </button>
+              <span
+                className="shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-black"
+                style={{ borderColor: done ? `${program.palette.primary}55` : `${program.palette.border}99`, color: done ? program.palette.primary : undefined }}
+              >
+                {done ? 'Enjoyed' : futureDay ? 'Upcoming' : 'Check in'}
+              </span>
+            </motion.button>
           );
         })}
       </div>
