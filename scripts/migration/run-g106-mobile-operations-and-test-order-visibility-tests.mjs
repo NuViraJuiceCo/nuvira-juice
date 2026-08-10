@@ -30,6 +30,8 @@ check('mobile_snapshot_exposes_four_direct_work_links', [
 ].every(marker => operations.includes(marker)));
 check('mobile_snapshot_has_explicit_expand_and_collapse_controls', operations.includes('Full snapshot') && operations.includes('Collapse snapshot'));
 check('mobile_snapshot_uses_stable_four_column_dimensions', operations.includes('grid grid-cols-4 gap-1.5') && operations.includes('min-h-[64px]'));
+check('mobile_snapshot_values_fit_narrow_tiles', operations.includes('value={loadingValue || formatNumber(production.planned_units)}')
+  && operations.includes('value={loadingValue || formatNumber(delivery.today_stops)}'));
 check('desktop_snapshot_preserves_date_range_and_detailed_counts', operations.includes('Custom Range') && operations.includes('Detailed dashboard counts'));
 check('mobile_intro_hides_redundant_status_legend', operations.includes('className="mt-2 hidden md:flex"'));
 check('dashboard_refresh_stays_usage_scoped', operations.includes('refetchIntervalInBackground: false') && operations.includes('enabled: isAdminUser(user) && isPageVisible'));

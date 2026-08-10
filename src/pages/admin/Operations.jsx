@@ -893,13 +893,13 @@ function MobileOperationsSnapshot({ summary, isLoading, showError, onExpand }) {
       <div className="mt-3 grid grid-cols-4 gap-1.5">
         <MobileSnapshotMetric
           label="Produce"
-          value={loadingValue || `${formatNumber(production.planned_units)} planned`}
+          value={loadingValue || formatNumber(production.planned_units)}
           route="/admin/production-queue"
           tone={Number(production.batch_count || 0) > 0 ? 'success' : 'default'}
         />
         <MobileSnapshotMetric
           label="Deliver"
-          value={loadingValue || `${formatNumber(delivery.today_stops)} today`}
+          value={loadingValue || formatNumber(delivery.today_stops)}
           route="/admin/delivery-queue"
           tone={Number(delivery.today_stops || 0) > 0 ? 'success' : 'default'}
         />
