@@ -4,7 +4,7 @@ import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
-import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf, MapPin, Camera } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { getCustomerOrderJourney, resolveCustomerJourneyFulfillmentType } from '@/lib/customer-order-journey';
 import { toast } from 'sonner';
@@ -239,6 +239,33 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
               {bagReturn.credit_issued > 0 && (
                 <span className="text-[10px] font-semibold text-primary">+${bagReturn.credit_issued.toFixed(2)}</span>
               )}
+            </div>
+          )}
+          {order.status === 'delivered' && (order.delivery_photo_url || order.delivery_drop_location) && (
+            <div className="mb-3 flex items-center gap-3 border-t border-border/40 pt-3">
+              {order.delivery_photo_url ? (
+                <img
+                  src={order.delivery_photo_url}
+                  alt="Delivery proof"
+                  className="h-14 w-14 shrink-0 rounded-xl border border-border/40 object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <MapPin className="h-5 w-5" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+                  <Camera className="h-3 w-3" />
+                  Delivery proof
+                </p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {order.delivery_drop_location ? `Left at ${order.delivery_drop_location}` : 'Photo available'}
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             </div>
           )}
           <div className="flex items-center gap-2">

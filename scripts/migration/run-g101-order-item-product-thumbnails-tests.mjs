@@ -10,17 +10,24 @@ const history = read('src/pages/OrderHistory.jsx');
 const programDetail = read('src/pages/ProgramDetail.jsx');
 
 const tests = [
-  ['catalog-aware resolver preserves safe stored images', () => {
-    assert.match(resolver, /safeImageUrl\(item\.image_url \|\| item\.image \|\| item\.product_image_url\)/);
+  ['catalog-aware resolver prefers current offering images and preserves stored fallback', () => {
+    assert.match(resolver, /addCandidate\(item\.image_url \|\| item\.image \|\| item\.product_image_url\)/);
     assert.match(resolver, /findPublicProductFallback\(identifier\)/);
+    assert.match(resolver, /resolveOrderItemImageCandidates/);
+    assert.match(resolver, /!candidates\.includes\(imageUrl\)/);
+    assert.ok(
+      resolver.indexOf('findPublicProductFallback(identifier)') < resolver.indexOf('addCandidate(item.image_url || item.image || item.product_image_url)'),
+      'current catalog image must precede historical stored image'
+    );
   }],
   ['resolver covers products, programs, bundle, and tote aliases', () => {
     for (const marker of ['radiance', 'hydration', 'reset', 'nuvira\\s+trio', 'Radiance Shot', 'Hydration Shot', 'Reset Shot', 'RE-NU', 'OASIS', 'AURA', 'Orange Juice', 'Pineapple Juice', 'Watermelon Juice', 'Large NuVira Tote Bag']) {
       assert.match(resolver, new RegExp(marker, 'i'));
     }
   }],
-  ['thumbnail fails safely to a neutral package icon', () => {
-    assert.match(thumbnail, /onError=\{\(\) => setFailedImageUrl\(imageUrl\)\}/);
+  ['thumbnail retries catalog candidates before a neutral package icon', () => {
+    assert.match(thumbnail, /imageCandidates\.find\(candidate => !failedImageUrls\.includes\(candidate\)\)/);
+    assert.match(thumbnail, /setFailedImageUrls/);
     assert.match(thumbnail, /<Package className=\{iconClass\}/);
     assert.doesNotMatch(thumbnail, /🍊/);
   }],
@@ -31,6 +38,8 @@ const tests = [
   }],
   ['order history uses shared compact thumbnails', () => {
     assert.match(history, /<OrderItemThumbnail key=\{i\} item=\{item\} size="compact"/);
+    assert.match(history, /Delivery proof/);
+    assert.match(history, /order\.delivery_photo_url/);
     assert.doesNotMatch(history, /🍊/);
   }],
   ['future program orders retain their product image', () => {
