@@ -17,6 +17,7 @@ import { motion } from 'framer-motion';
 const accountMenuItems = [
   { icon: ShoppingBag, label: 'Order History', path: '/account/orders', desc: 'View past and active orders' },
   { icon: Sparkles, label: 'My Program Journeys', path: '/account/programs', desc: 'Follow delivered three-day programs' },
+  { icon: Star, label: 'Rewards', path: '/rewards', desc: 'View points, perks, and available rewards' },
   { icon: Repeat2, label: 'My Subscriptions', path: '/account/subscriptions', desc: 'View and manage your active ritual' },
 ];
 

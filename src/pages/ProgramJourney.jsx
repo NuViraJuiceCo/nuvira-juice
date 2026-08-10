@@ -66,12 +66,13 @@ function progressPercent(journey) {
   return Math.round((Number(journey?.completed_steps || 0) / Math.max(1, Number(journey?.total_steps || 12))) * 100);
 }
 
-function buildPreviewJourney(state = 'in_progress') {
+function buildPreviewJourney(state = 'in_progress', requestedProgramKey = 'hydration') {
+  const previewProgram = PROGRAM_BY_KEY[requestedProgramKey] || PROGRAM_BY_KEY.hydration;
   const today = new Date().toISOString().slice(0, 10);
   const startDate = addDays(today, -1);
   const schedule = [];
   for (let day = 1; day <= 3; day += 1) {
-    DAILY_PROGRAM_SCHEDULES.hydration.forEach((slot, index) => {
+    DAILY_PROGRAM_SCHEDULES[previewProgram.key].forEach((slot, index) => {
       const completed = day === 1 || (day === 2 && index === 0);
       schedule.push({
         step_id: `day-${day}-${slot.timeKey}`,
@@ -91,12 +92,12 @@ function buildPreviewJourney(state = 'in_progress') {
   if (state === 'completed') schedule.forEach((step) => { step.completed_at = new Date().toISOString(); });
   if (state === 'ready') schedule.forEach((step) => { step.completed_at = null; });
   return {
-    id: 'preview-hydration',
-    journey_key: 'preview-hydration',
+    id: `preview-${previewProgram.key}`,
+    journey_key: `preview-${previewProgram.key}`,
     order_number: 'NV-PREVIEW',
-    program_key: 'hydration',
-    program_name: 'Hydration',
-    program_image_url: PROGRAM_BY_KEY.hydration.image,
+    program_key: previewProgram.key,
+    program_name: previewProgram.name,
+    program_image_url: previewProgram.image,
     status: state,
     delivered_date: addDays(today, -1),
     quality_target_date: addDays(today, 3),
@@ -483,7 +484,12 @@ function JourneyCelebration({ celebration, program, onDismiss }) {
             <p className="relative mt-6 text-[10px] font-black uppercase tracking-[0.22em] text-white/65">{celebration.eyebrow}</p>
             <h2 id="program-celebration-title" className="relative mt-2 font-heading text-4xl font-bold">{celebration.title}</h2>
             <p className="relative mx-auto mt-3 max-w-xs text-sm leading-relaxed text-white/75">{celebration.message}</p>
-            <button type="button" onClick={onDismiss} className="relative mt-7 h-12 w-full rounded-2xl bg-white px-5 text-sm font-black text-[#26100d] shadow-lg transition active:scale-[0.98]">
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="relative mt-7 h-12 w-full rounded-2xl px-5 text-sm font-black shadow-lg transition active:scale-[0.98]"
+              style={{ backgroundColor: '#FCF8F1', color: program.palette.ink }}
+            >
               Return to my journey
             </button>
           </motion.section>
@@ -590,11 +596,17 @@ export default function ProgramJourney({ previewMode = false }) {
   const queryClient = useQueryClient();
   const [pendingStep, setPendingStep] = React.useState(null);
   const [celebration, setCelebration] = React.useState(null);
+  const [previewDismissed, setPreviewDismissed] = React.useState(false);
   const lastCelebratedCommandRef = React.useRef(null);
   const dismissCelebration = React.useCallback(() => setCelebration(null), []);
   const previewState = previewMode ? new URLSearchParams(window.location.search).get('state') || 'in_progress' : 'in_progress';
+  const previewProgramKey = previewMode ? new URLSearchParams(window.location.search).get('program') || 'hydration' : 'hydration';
   const previewCelebration = previewMode ? new URLSearchParams(window.location.search).get('celebration') : null;
-  const previewJourney = React.useMemo(() => buildPreviewJourney(previewState), [previewState]);
+  const previewJourney = React.useMemo(() => buildPreviewJourney(previewState, previewProgramKey), [previewProgramKey, previewState]);
+
+  React.useEffect(() => {
+    setPreviewDismissed(false);
+  }, [previewCelebration, previewProgramKey, previewState]);
 
   const listQuery = useQuery({
     queryKey: ['program-journeys'],
@@ -642,12 +654,12 @@ export default function ProgramJourney({ previewMode = false }) {
   });
 
   if (previewMode) {
-    const previewReward = previewCelebration === 'complete'
-      ? createProgramCelebration({ journey: buildPreviewJourney('completed'), stepId: 'day-3-evening', completed: true, commandId: 'preview-complete' })
+    const previewReward = previewDismissed ? null : previewCelebration === 'complete'
+      ? createProgramCelebration({ journey: buildPreviewJourney('completed', previewProgramKey), stepId: 'day-3-evening', completed: true, commandId: 'preview-complete' })
       : previewCelebration === 'step'
         ? createProgramCelebration({ journey: previewJourney, stepId: 'day-2-morning', completed: true, commandId: 'preview-step' })
         : null;
-    return <JourneyDetail journey={previewJourney} onBack={() => navigate('/')} onStart={() => {}} onToggle={() => {}} onSetReminders={() => {}} pending={false} pendingStep={null} celebration={previewReward} onDismissCelebration={() => {}} />;
+    return <JourneyDetail journey={previewJourney} onBack={() => navigate('/')} onStart={() => {}} onToggle={() => {}} onSetReminders={() => {}} pending={false} pendingStep={null} celebration={previewReward} onDismissCelebration={() => setPreviewDismissed(true)} />;
   }
   if (listQuery.isLoading || (id && detailQuery.isLoading)) return <LoadingState />;
   if (listQuery.isError || (id && detailQuery.isError)) {

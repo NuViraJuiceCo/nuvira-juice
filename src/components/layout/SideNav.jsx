@@ -1,11 +1,12 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Home, Search, ShoppingBag, User, Star, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Home, Search, ShoppingBag, User, Star, ShieldCheck, Sparkles } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import { adminNavGroups, isAdminNavActive } from './adminNavItems';
+import { useActiveProgramJourney } from '@/lib/program-journey-state';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -24,7 +25,12 @@ export default function SideNav() {
   const { itemCount } = useCart();
   const { user } = useAuth();
   const adminMode = isAdminUser(user) && location.pathname.startsWith('/admin');
-  const visibleNavItems = isAdminUser(user) ? [...navItems, adminNavItem] : navItems;
+  const { journey: activeJourney } = useActiveProgramJourney(Boolean(user) && !adminMode);
+  const journeyNavItem = activeJourney
+    ? { path: `/account/programs/${encodeURIComponent(activeJourney.id)}`, icon: Sparkles, label: 'My Journey', journey: true }
+    : null;
+  const customerNavItems = journeyNavItem ? [navItems[0], journeyNavItem, ...navItems.slice(1)] : navItems;
+  const visibleNavItems = isAdminUser(user) ? [...customerNavItems, adminNavItem] : customerNavItems;
   const showWebsiteFooter = !isNativeAppRuntime();
 
   return (
@@ -70,11 +76,12 @@ export default function SideNav() {
         </nav>
       ) : (
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {visibleNavItems.map(({ path, icon: Icon, label }) => {
+          {visibleNavItems.map(({ path, icon: Icon, label, journey }) => {
             const isActive =
               location.pathname === path ||
               (path === '/shop' && location.pathname.startsWith('/shop')) ||
-              (path === '/account' && location.pathname.startsWith('/account')) ||
+              (path === '/account' && location.pathname.startsWith('/account') && !location.pathname.startsWith('/account/programs')) ||
+              (journey && location.pathname.startsWith('/account/programs')) ||
               (path === '/admin/operations' && location.pathname.startsWith('/admin'));
 
             return (
