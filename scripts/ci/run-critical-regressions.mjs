@@ -70,6 +70,7 @@ const harnesses = [
   'scripts/migration/run-g106-mobile-operations-and-test-order-visibility-tests.mjs',
   'scripts/migration/run-g107-mobile-operator-workspace-tests.mjs',
   'scripts/migration/run-g108-account-program-membership-tests.mjs',
+  'scripts/migration/run-g109-account-spacing-and-notification-center-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

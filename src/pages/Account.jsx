@@ -24,7 +24,7 @@ const accountMenuItems = [
 ];
 
 const supportMenuItems = [
-  { icon: Bell, label: 'Notifications', path: '/notifications', desc: 'Delivery updates and offers' },
+  { icon: Bell, label: 'Updates', path: '/notifications', desc: 'Orders, deliveries, programs, and rewards' },
   { icon: HelpCircle, label: 'Help & Support', path: '/support', desc: 'FAQ, delivery help, and contact' },
   { icon: Settings, label: 'Settings', path: '/account/settings', desc: 'Preferences and account details' },
 ];
@@ -230,7 +230,7 @@ export default function Account() {
 
       {/* Member program and referral actions */}
       <div className="px-5 mt-5 mb-6">
-        <div className="space-y-3">
+        <div className="grid gap-3">
           <MemberProgramCard
             journey={activeJourney}
             journeys={programJourneys}
@@ -238,7 +238,7 @@ export default function Account() {
             isError={isProgramError}
             onRetry={refetchPrograms}
           />
-          <Link to="/referral">
+          <Link to="/referral" className="block">
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
