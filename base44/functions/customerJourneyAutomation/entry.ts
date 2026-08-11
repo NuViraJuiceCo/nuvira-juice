@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleCustomerJourneyRequest } from './customerJourneyAutomation.ts';
-import submitCustomerInquiry from '../getCustomerAccountDashboardData/handlers/submitCustomerInquiry/entry.ts';
+import submitCustomerInquiry from './submitCustomerInquiry.ts';
 
 /**
  * Dedicated recurring customer-journey evaluator.
