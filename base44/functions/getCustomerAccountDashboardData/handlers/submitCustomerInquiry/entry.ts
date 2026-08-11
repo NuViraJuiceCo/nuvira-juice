@@ -136,7 +136,7 @@ async function logDelivery(base44: any, payload: AnyRecord) {
   }
 }
 
-Deno.serve(async (req) => {
+export default async function handler(req: Request) {
   if (req.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
   if (!RESEND_API_KEY) return Response.json({ error: 'communications_not_configured' }, { status: 503 });
 
@@ -226,4 +226,4 @@ Deno.serve(async (req) => {
     await base44.asServiceRole.entities.CustomerInquiry.update(created.id, { last_error: message }).catch(() => {});
     return Response.json({ error: 'inquiry_delivery_failed', request_id: effectiveRequestId }, { status: 502 });
   }
-});
+}
