@@ -797,7 +797,7 @@ function sanitizeShopifyPreview(data, expectedTitle) {
 
 async function shopifyInventoryPreview(expectedTitle) {
   const queryText = normalizeText(expectedTitle).replace(/["\\]/g, ' ');
-  const data = await shopifyGraphql(`query InventoryConnectionPreview($query: String!) {
+  const inventoryData = await shopifyGraphql(`query InventoryConnectionPreview($query: String!) {
     products(first: 20, query: $query) {
       nodes {
         id title handle status
@@ -818,9 +818,23 @@ async function shopifyInventoryPreview(expectedTitle) {
       }
     }
     locations(first: 50) { nodes { id name isActive } }
-    publications(first: 50) { nodes { id name } }
   }`, { query: `title:\"${queryText}\"` });
-  return sanitizeShopifyPreview(data, expectedTitle);
+  let publicationData = {};
+  let publicationAccess = 'available';
+  let publicationWarning = null;
+  try {
+    publicationData = await shopifyGraphql(`query PointOfSalePublication {
+      publications(first: 50) { nodes { id name } }
+    }`);
+  } catch {
+    publicationAccess = 'scope_required';
+    publicationWarning = 'Automatic Shopify POS publishing needs publications access. Create or enable the bag in Shopify POS, then refresh here to link its tracked inventory.';
+  }
+  return {
+    ...sanitizeShopifyPreview({ ...inventoryData, ...publicationData }, expectedTitle),
+    publication_access: publicationAccess,
+    publication_warning: publicationWarning,
+  };
 }
 
 async function loadInventoryItem(base44, itemId) {
@@ -917,6 +931,15 @@ async function handleShopifyInventoryOperation({ base44, user, body }) {
         ...preview,
         existing_candidate_count: preview.candidates.length,
         creation_ready: preview.candidates.length === 0 && preview.locations.length > 0 && Boolean(preview.point_of_sale_publication) && Number.isFinite(Number(product.price)),
+        creation_blocker: preview.candidates.length > 0
+          ? null
+          : !preview.point_of_sale_publication
+            ? 'shopify_publication_scope_required'
+            : preview.locations.length === 0
+              ? 'shopify_location_required'
+              : !Number.isFinite(Number(product.price))
+                ? 'linked_product_price_required'
+                : null,
         writes_performed: false,
         provider_calls_performed: true,
         customer_notifications_sent: false,
