@@ -702,19 +702,27 @@ function shopifyHost() {
 
 async function shopifyAccessToken(host) {
   const clientId = normalizeText(Deno.env.get('SHOPIFY_CLIENT_ID'));
-  const clientSecret = normalizeText(
-    Deno.env.get('SHOPIFY_API_SECRET')
-      || Deno.env.get('SHOPIFY_API_SECRET_KEY')
-      || Deno.env.get('SHOPIFY_APP_SECRET'),
-  );
-  if (clientId && clientSecret) {
-    const response = await fetch(`https://${host}/admin/oauth/access_token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials' }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (response.ok && payload?.access_token) return normalizeText(payload.access_token);
+  const secretNames = [
+    'SHOPIFY_CLIENT_SECRET',
+    'SHOPIFY_API_SECRET_KEY',
+    'SHOPIFY_API_SECRET',
+    'SHOPIFY_APP_SECRET',
+    'SHOPIFY_SHARED_SECRET',
+  ];
+  const seenSecrets = new Set();
+  if (clientId) {
+    for (const name of secretNames) {
+      const clientSecret = normalizeText(Deno.env.get(name));
+      if (!clientSecret || seenSecrets.has(clientSecret)) continue;
+      seenSecrets.add(clientSecret);
+      const response = await fetch(`https://${host}/admin/oauth/access_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials' }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload?.access_token) return normalizeText(payload.access_token);
+    }
   }
   return normalizeText(Deno.env.get('SHOPIFY_API_TOKEN'));
 }

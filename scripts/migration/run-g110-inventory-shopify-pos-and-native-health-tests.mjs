@@ -17,6 +17,8 @@ const healthSource = read('base44/functions/getAdminOperationsDashboardSummary/h
 const healthUiSource = read('src/pages/admin/SyncHealth.jsx');
 const runtimeSource = read('scripts/migration/run-g55-live-backend-readiness-runtime-check.js');
 const criticalSource = read('scripts/ci/run-critical-regressions.mjs');
+const alertHandlerSource = read('base44/functions/getAdminOperationsDashboardSummary/handlers/updateAdminOpsAlertStatus/entry.ts');
+const alertUiSource = read('src/pages/admin/OpsAlerts.jsx');
 
 const schema = JSON.parse(schemaSource);
 for (const field of [
@@ -36,6 +38,9 @@ assert.match(handlerSource, /sync_shopify_inventory_quantity/);
 assert.match(handlerSource, /inventorySetQuantities/);
 assert.match(handlerSource, /compareQuantity/);
 assert.match(handlerSource, /Idempotency-Key/);
+assert.match(handlerSource, /SHOPIFY_CLIENT_SECRET/);
+assert.match(handlerSource, /SHOPIFY_SHARED_SECRET/);
+assert.match(handlerSource, /seenSecrets/);
 assert.match(handlerSource, /shopify_inventory_authority: 'shopify_pos'/);
 assert.match(handlerSource, /customer_notifications_sent: false/);
 assert.match(handlerSource, /Use the Shopify POS quantity control/);
@@ -59,6 +64,12 @@ assert.match(healthUiSource, /getAdminNativeSystemHealth/);
 assert.match(healthUiSource, /Customer App authoritative/);
 assert.match(runtimeSource, /gateway_action: name/);
 assert.match(criticalSource, /run-g110-inventory-shopify-pos-and-native-health-tests\.mjs/);
+assert.match(alertUiSource, /invoke\('maintainAdminOperationalNotices'/);
+assert.doesNotMatch(alertUiSource, /invoke\('updateAdminOpsAlertStatus'/);
+assert.match(alertHandlerSource, /native_operational_alert_status_update/);
+assert.match(alertHandlerSource, /entities\.OperationalAlert\.update/);
+assert.match(alertHandlerSource, /hub_operational_dependency: false/);
+assert.doesNotMatch(alertHandlerSource, /HUB_API_URL|CUSTOMER_APP_SYNC_SECRET|updateOpsAlertStatusForCustomerApp/);
 
 function loadHandler(fetchImpl = async () => { throw new Error('unexpected provider call'); }) {
   let source = handlerSource
@@ -74,6 +85,21 @@ function loadHandler(fetchImpl = async () => { throw new Error('unexpected provi
     globalThis: {},
   });
   vm.runInContext(source, context, { filename: handlerPath });
+  return context.globalThis.__handler;
+}
+
+function loadAlertHandler() {
+  let source = alertHandlerSource
+    .replace(/^import .*$/gm, '')
+    .replace(/: Request/g, '')
+    .replace('export default async function handler', 'globalThis.__handler = async function handler');
+  const context = vm.createContext({
+    console, Date, Math, Number, String, Boolean, Array, Object, Set, Map, RegExp, JSON,
+    Error, Response, Promise, Intl,
+    createClientFromRequest: req => req.__base44,
+    globalThis: {},
+  });
+  vm.runInContext(source, context, { filename: 'updateAdminOpsAlertStatus/entry.ts' });
   return context.globalThis.__handler;
 }
 
@@ -161,10 +187,37 @@ assert.equal(preview.body.writes_performed, false);
 assert.equal(providerCalls, 1);
 assert.equal(bagState.writes.length, 0);
 
+const alertState = store({
+  OperationalAlert: [{
+    id: 'alert_1', alert_type: 'cancellation', order_number: 'ORDER-1', severity: 'warning',
+    title: 'Canceled', message: 'Canceled test order', is_read: false, resolved: false,
+    created_date: '2026-08-10T12:00:00.000Z', updated_date: '2026-08-10T12:00:00.000Z',
+  }],
+  CommandLog: [],
+});
+const alertHandler = loadAlertHandler();
+const alertResult = await invoke(alertHandler, alertState, {
+  alert_id: 'alert_1', action: 'resolve', request_id: 'resolve_alert_1',
+  resolution_note: 'Terminal test order already cleared.',
+});
+assert.equal(alertResult.status, 200);
+assert.equal(alertResult.body.success, true);
+assert.equal(alertResult.body.source, 'customer_app_native');
+assert.equal(alertResult.body.hub_operational_dependency, false);
+assert.equal(alertState.rows.get('OperationalAlert')[0].resolved, true);
+assert.equal(alertState.rows.get('OperationalAlert')[0].is_read, true);
+assert.equal(alertState.rows.get('CommandLog')[0].status, 'success');
+const alertReplay = await invoke(alertHandler, alertState, {
+  alert_id: 'alert_1', action: 'resolve', request_id: 'resolve_alert_1',
+});
+assert.equal(alertReplay.status, 200);
+assert.equal(alertReplay.body.skipped, true);
+assert.equal(alertReplay.body.reason, 'duplicate_request_id');
+
 console.log(JSON.stringify({
   success: true,
   suite: 'g110-inventory-shopify-pos-and-native-health',
-  cases: 5,
+  cases: 6,
   writes_limited_to_test_store: true,
   live_provider_calls_performed: false,
   customer_notifications_sent: false,

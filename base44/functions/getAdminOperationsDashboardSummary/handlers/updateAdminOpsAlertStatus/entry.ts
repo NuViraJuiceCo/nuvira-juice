@@ -2,8 +2,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleOperationalNoticeMaintenance } from './noticeMaintenance.ts';
 
-const HUB_API_URL = Deno.env.get('HUB_API_URL');
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const SOURCE = 'customer_app_admin';
 const MAX_NOTE_LENGTH = 500;
 const VALID_ACTIONS = new Set(['acknowledge', 'resolve', 'dismiss']);
@@ -121,26 +119,10 @@ function findForbiddenBodyKey(body) {
   return null;
 }
 
-function sanitizeHubCommandResponse(data, requestId) {
-  return {
-    success: data?.success === true,
-    alert_id: sanitizeText(data?.alert_id, 160) || null,
-    action: sanitizeText(data?.action, 40) || null,
-    previous_status: sanitizeText(data?.previous_status, 40) || null,
-    status: sanitizeText(data?.status, 40) || null,
-    request_id: sanitizeText(data?.request_id, 160) || requestId || null,
-    skipped: data?.skipped === true,
-    updated_at: sanitizeText(data?.updated_at, 80) || null,
-  };
-}
-
-function safeHubError(data, fallback = 'Unable to update ops alert status') {
-  const error = sanitizeText(data?.error, 160);
-  const errorCode = sanitizeText(data?.error_code, 80);
-  return {
-    error: error || fallback,
-    ...(errorCode ? { error_code: errorCode } : {}),
-  };
+function alertStatus(alert) {
+  if (alert?.resolved === true) return 'resolved';
+  if (alert?.is_read === true) return 'acknowledged';
+  return 'active';
 }
 
 export default async function handler(req: Request) {
@@ -194,41 +176,123 @@ export default async function handler(req: Request) {
       return Response.json({ error: error.message }, { status: 400 });
     }
 
-    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({ error: 'Hub alert command service is not configured' }, { status: 503 });
+    const idempotencyKey = `native_ops_alert_status:${requestId}`;
+    const priorCommands = await base44.asServiceRole.entities.CommandLog.filter(
+      { idempotency_key: idempotencyKey }, '-created_date', 1,
+    ).catch(() => []);
+    if (priorCommands.length > 0) {
+      const prior = priorCommands[0];
+      if (prior.status !== 'success') {
+        return Response.json({ error: 'A prior alert update requires review before retrying' }, { status: 409 });
+      }
+      return Response.json({
+        success: true,
+        alert_id: alertId,
+        action,
+        status: sanitizeText(prior?.result?.status, 40) || null,
+        request_id: requestId,
+        skipped: true,
+        reason: 'duplicate_request_id',
+        source: 'customer_app_native',
+        hub_operational_dependency: false,
+      });
     }
 
-    const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-    const hubBody = {
-      alert_id: alertId,
-      action,
-      request_id: requestId,
-      actor_email: normalizeActorEmail(user.email),
+    const matches = await base44.asServiceRole.entities.OperationalAlert.filter(
+      { id: alertId }, '-updated_date', 2,
+    ).catch(() => []);
+    if (matches.length !== 1) {
+      return Response.json({ error: matches.length === 0 ? 'Operational alert not found' : 'Operational alert lookup is ambiguous' }, { status: matches.length === 0 ? 404 : 409 });
+    }
+    const alert = matches[0];
+    const previousStatus = alertStatus(alert);
+    const status = action === 'acknowledge' ? 'acknowledged' : action === 'dismiss' ? 'dismissed' : 'resolved';
+    const alreadyApplied = action === 'acknowledge'
+      ? alert.is_read === true
+      : alert.resolved === true;
+    if (alreadyApplied) {
+      return Response.json({
+        success: true,
+        alert_id: alertId,
+        action,
+        previous_status: previousStatus,
+        status,
+        request_id: requestId,
+        skipped: true,
+        reason: 'already_applied',
+        updated_at: alert.updated_date || null,
+        source: 'customer_app_native',
+        hub_operational_dependency: false,
+      });
+    }
+
+    const actorEmail = normalizeActorEmail(user.email);
+    const now = new Date().toISOString();
+    const command = await base44.asServiceRole.entities.CommandLog.create({
+      command_id: requestId,
+      command_type: 'native_operational_alert_status_update',
+      command_source: SOURCE,
+      status: 'pending',
+      target_entity: 'OperationalAlert',
+      target_id: alertId,
+      target_display_id: sanitizeText(alert.order_number, 160) || alertId,
+      actor_email: actorEmail,
       actor_role: sanitizeText(user.role, 60),
-      source: SOURCE,
-    };
-    if (resolutionNote) {
-      hubBody.resolution_note = resolutionNote;
-    }
-
-    const hubResponse = await fetch(`${hubBase}/functions/updateOpsAlertStatusForCustomerApp`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-      body: JSON.stringify(hubBody),
+      actor_type: 'authenticated_admin',
+      payload: { action, resolution_note_present: Boolean(resolutionNote) },
+      result: { saved: false },
+      idempotency_key: idempotencyKey,
+      idempotent_skipped: false,
+      request_id: requestId,
+      submitted_at: now,
+      started_at: now,
+      function_name: 'maintainAdminOperationalNotices',
     });
 
-    const hubData = await hubResponse.json().catch(() => null);
-    if (!hubResponse.ok) {
-      return Response.json({
-        ...safeHubError(hubData),
-        hub_status: hubResponse.status,
-      }, { status: hubResponse.status >= 400 && hubResponse.status < 500 ? hubResponse.status : 502 });
-    }
+    const update = action === 'acknowledge'
+      ? { is_read: true }
+      : {
+        is_read: true,
+        resolved: true,
+        ...(resolutionNote ? {
+          description: sanitizeText(
+            [normalizeSingleLine(alert.description), `Resolution: ${resolutionNote}`].filter(Boolean).join(' | '),
+            1000,
+          ),
+        } : {}),
+      };
 
-    return Response.json(sanitizeHubCommandResponse(hubData, requestId));
+    try {
+      const saved = await base44.asServiceRole.entities.OperationalAlert.update(alertId, update);
+      await base44.asServiceRole.entities.CommandLog.update(command.id, {
+        status: 'success',
+        completed_at: new Date().toISOString(),
+        result: { saved: true, status, source: 'customer_app_native' },
+      });
+      return Response.json({
+        success: true,
+        alert_id: alertId,
+        action,
+        previous_status: previousStatus,
+        status,
+        request_id: requestId,
+        skipped: false,
+        updated_at: saved?.updated_date || new Date().toISOString(),
+        source: 'customer_app_native',
+        hub_operational_dependency: false,
+        provider_calls_performed: false,
+        customer_notifications_sent: false,
+      });
+    } catch {
+      await base44.asServiceRole.entities.CommandLog.update(command.id, {
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+        error_code: 'native_operational_alert_update_failed',
+        error_message: 'Unable to save native operational alert status',
+        result: { saved: false },
+      }).catch(() => null);
+      return Response.json({ error: 'Unable to update ops alert status' }, { status: 500 });
+    }
   } catch (error) {
     console.error('[updateAdminOpsAlertStatus] Error:', error.message);
     return Response.json({ error: 'Unable to update ops alert status' }, { status: 500 });
