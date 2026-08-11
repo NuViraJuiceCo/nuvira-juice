@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { CheckCircle, ArrowLeft } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Link } from 'react-router-dom';
+import { submitCustomerInquiry } from '@/lib/customerCommunications';
 
 export default function WaitlistForm({ zip, onSuccess, onBack }) {
   const [form, setForm] = useState({ first_name: '', email: '', phone: '' });
@@ -39,6 +40,14 @@ export default function WaitlistForm({ zip, onSuccess, onBack }) {
         if (form.phone.trim()) createData.customer_phone = form.phone.trim();
         await base44.entities.DeliveryWaitlist.create(createData);
       }
+      await submitCustomerInquiry('delivery_waitlist', {
+        customer_name: form.first_name,
+        customer_email: form.email,
+        customer_phone: form.phone,
+        subject: `Delivery-area request for ${zip}`,
+        source: 'delivery_availability_card',
+        metadata: { postal_code: zip, requested_area: zip },
+      });
       setSubmitted(true);
       onSuccess?.();
     } catch (err) {

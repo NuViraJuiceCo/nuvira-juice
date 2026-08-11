@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { base44 } from '@/api/base44Client';
+import { submitCustomerInquiry } from '@/lib/customerCommunications';
 
 const HERO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
@@ -62,14 +62,30 @@ export default function BookEvent() {
     setLoading(true);
     const juiceTypeLabel = juiceOptions.find(j => j.value === form.juiceType)?.label || 'Not specified';
     const serviceModelLabel = serviceModels.find(s => s.value === form.serviceModel)?.label || 'Not specified';
-    await base44.integrations.Core.SendEmail({
-      to: 'nuvirajuiceco@gmail.com',
-      subject: `Event Booking Inquiry — ${form.eventType} · ${form.name}`,
-      body: `New event booking inquiry:\n\nName: ${form.name}\nEmail: ${form.email}\nPhone: ${form.phone || 'Not provided'}\nEvent Type: ${form.eventType}\nEvent Date: ${form.date || 'Not specified'}\nGuest Count: ${form.guests || 'Not specified'}\nJuice Type: ${juiceTypeLabel}\nService Model: ${serviceModelLabel}\nVenue: ${form.venue || 'Not specified'}\nAdditional Notes: ${form.notes || 'None'}`,
-    });
-    setLoading(false);
-    toast.success("We received your inquiry! We'll be in touch within 48 hours to plan your event.");
-    setForm({ name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', serviceModel: '', venue: '', notes: '' });
+    try {
+      await submitCustomerInquiry('event', {
+        customer_name: form.name,
+        customer_email: form.email,
+        customer_phone: form.phone,
+        subject: `${form.eventType} event inquiry`,
+        message: form.notes,
+        source: 'book_event_page',
+        metadata: {
+          event_type: form.eventType,
+          event_date: form.date,
+          guest_count: form.guests,
+          juice_type: juiceTypeLabel,
+          service_model: serviceModelLabel,
+          venue: form.venue,
+        },
+      });
+      toast.success("We received your inquiry! We'll be in touch within 48 hours to plan your event.");
+      setForm({ name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', serviceModel: '', venue: '', notes: '' });
+    } catch {
+      toast.error('We could not send your inquiry. Please email support@nuvirajuice.com.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

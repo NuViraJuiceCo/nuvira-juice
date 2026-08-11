@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
+import { submitCustomerInquiry } from '@/lib/customerCommunications';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useCart } from '@/lib/cartContext';
@@ -100,14 +101,19 @@ export default function Merch() {
   const handleNotify = async () => {
     if (!email) return;
     setLoading(true);
-    await base44.integrations.Core.SendEmail({
-      to: 'nuvirajuiceco@gmail.com',
-      subject: 'Merch Drop Waitlist',
-      body: `${email} wants to be notified when NuVira merch drops.`,
-    });
-    setSubmitted(true);
-    setLoading(false);
-    toast.success("You're on the list! We'll notify you when merch drops.");
+    try {
+      await submitCustomerInquiry('merch_waitlist', {
+        customer_email: email,
+        subject: 'Merch drop waitlist',
+        source: 'merch_page',
+      });
+      setSubmitted(true);
+      toast.success("You're on the list! We'll notify you when merch drops.");
+    } catch {
+      toast.error('We could not save your request. Please email support@nuvirajuice.com.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddMerch = (item) => {

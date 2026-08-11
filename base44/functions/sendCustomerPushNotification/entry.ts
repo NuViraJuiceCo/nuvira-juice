@@ -4,7 +4,7 @@ import webpush from 'npm:web-push@3.6.7';
 
 const VAPID_PUBLIC_KEY = Deno.env.get('WEB_PUSH_VAPID_PUBLIC_KEY') || '';
 const VAPID_PRIVATE_KEY = Deno.env.get('WEB_PUSH_VAPID_PRIVATE_KEY');
-const VAPID_CONTACT = Deno.env.get('WEB_PUSH_CONTACT') || 'mailto:info@nuvirajuice.com';
+const VAPID_CONTACT = Deno.env.get('WEB_PUSH_CONTACT') || 'mailto:operations@nuvirajuice.com';
 const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FIREBASE_MESSAGING_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const FIREBASE_SERVICE_ACCOUNT_JSON = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON') || '';

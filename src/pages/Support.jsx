@@ -5,10 +5,10 @@ import { ArrowLeft, MessageCircle, HelpCircle, ChevronDown, ChevronUp, ShieldChe
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
+import { submitCustomerInquiry } from '@/lib/customerCommunications';
 
 const faqs = [
   {
@@ -37,7 +37,7 @@ const faqs = [
   },
   {
     q: 'Can I subscribe to receive juices regularly?',
-    a: 'Yes! We offer flexible subscription plans so you can enjoy your favorite juices every week without reordering. Visit the Subscribe section in your account.',
+    a: 'Subscriptions are not available yet. We will introduce recurring delivery only after the fulfillment experience is ready. One-time bottles, bundles, and programs are available now.',
   },
   {
     q: 'Do you have bulk or corporate packages?',
@@ -83,10 +83,12 @@ export default function Support() {
     }
     setIsSending(true);
     try {
-      await base44.integrations.Core.SendEmail({
-        to: 'info@nuvirajuice.com',
-        subject: `Support Request: ${contactForm.subject}`,
-        body: `Name: ${contactForm.name}\nEmail: ${contactForm.email}\n\nMessage:\n${contactForm.message}`,
+      await submitCustomerInquiry('support', {
+        customer_name: contactForm.name,
+        customer_email: contactForm.email,
+        subject: contactForm.subject,
+        message: contactForm.message,
+        source: 'support_page',
       });
       toast.success('Message sent! We\'ll get back to you soon.');
       setContactForm({ name: '', email: '', subject: '', message: '' });
@@ -100,7 +102,7 @@ export default function Support() {
     <div className="pb-4">
       <SEO
         title="Help & Support — FAQ"
-        description="Frequently asked questions about NuVira Juice Co. — delivery, ingredients, subscriptions, and more."
+        description="Frequently asked questions about NuVira Juice Co. — delivery, ingredients, programs, and customer support."
         structuredData={FAQ_SCHEMA_SUPPORT}
       />
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">

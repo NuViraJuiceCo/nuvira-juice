@@ -115,7 +115,7 @@ export default function Home({ seoActive = true }) {
           <SEO
             title="Cold-Pressed Juice Delivery in Wentzville & St. Louis, MO"
             description="NuVira Juice Co. delivers fresh cold-pressed juices in Wentzville, O'Fallon, St. Charles, and the greater St. Louis area. Order online today — Real. Living. Nutrition."
-            keywords="cold pressed juice Wentzville MO, juice delivery St. Louis, fresh juice O'Fallon, NuVira Juice Co, juice cleanse St. Charles, wellness shots Missouri, cold pressed juice delivery near me"
+            keywords="cold pressed juice Wentzville MO, juice delivery St. Louis, fresh juice O'Fallon, NuVira Juice Co, juice programs St. Charles, wellness shots Missouri, cold pressed juice delivery near me"
             structuredData={LOCAL_BUSINESS_SCHEMA}
           />
           {/* Visually hidden h1 for SEO — the logo serves as the visual brand mark */}
@@ -255,7 +255,7 @@ export default function Home({ seoActive = true }) {
             <Link to="/support" className="text-xs text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
             <Link to="/legal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Legal</Link>
           </div>
-          <p className="text-center text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co. · Wentzville, MO · <a href="mailto:info@nuvirajuice.com" className="hover:text-foreground transition-colors">info@nuvirajuice.com</a></p>
+          <p className="text-center text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co. · Based in Wentzville, MO · <a href="mailto:support@nuvirajuice.com" className="hover:text-foreground transition-colors">support@nuvirajuice.com</a></p>
         </footer>
       )}
     </div>

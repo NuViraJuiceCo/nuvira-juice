@@ -568,11 +568,14 @@ async function createAndForwardEvent(base44: any, input: Record<string, any>) {
   if (prior) return { event: prior, duplicate: true, forwarded: prior.resend_status === 'accepted' };
 
   const eventAt = dateOrNull(input.event_at)?.toISOString() || isoNow();
-  const consent = await resolveConsent(base44, email, eventName);
+  const isProviderControlEvent = eventName === 'purchase_completed';
+  const consent = isProviderControlEvent
+    ? { eligible: false, status: 'unknown', reason: 'provider_control_event' }
+    : await resolveConsent(base44, email, eventName);
   const currentPolicy = policy();
   let resendStatus = 'prepared';
   let skipReason = '';
-  if (!consent.eligible) {
+  if (!isProviderControlEvent && !consent.eligible) {
     resendStatus = 'not_eligible';
     skipReason = consent.reason;
   } else if (!currentPolicy.customer_sends_enabled) {
@@ -586,7 +589,7 @@ async function createAndForwardEvent(base44: any, input: Record<string, any>) {
     skipReason = 'outside_test_recipient';
   }
 
-  if (resendStatus === 'prepared') {
+  if (resendStatus === 'prepared' && !isProviderControlEvent) {
     const [recentEvents, recentTransactional] = await Promise.all([
       recentMarketingEvents(base44, email),
       recentTransactionalMessages(base44, email),
@@ -628,7 +631,7 @@ async function createAndForwardEvent(base44: any, input: Record<string, any>) {
     cart_total: Math.max(0, finiteNumber(input.cart_total, 0)),
     order_id: normalizeSingleLine(input.order_id, 160) || null,
     order_number: normalizeSingleLine(input.order_number, 160) || null,
-    marketing_eligible: consent.eligible,
+    marketing_eligible: isProviderControlEvent ? false : consent.eligible,
     consent_status: consent.status,
     payload: input.payload || {},
     resend_event_name: providerName,
@@ -1283,6 +1286,7 @@ async function preview(base44: any) {
       marketing_cadence: marketingCadenceRules(),
       internal_and_test_identities_excluded: true,
       purchase_completion_email_suppressed: true,
+      purchase_completion_control_event_forwarded: true,
       delivery_followup_scheduled: true,
     },
     provider: {

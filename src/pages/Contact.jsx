@@ -4,9 +4,9 @@ import { ArrowLeft, Mail, MapPin, Clock, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
+import { submitCustomerInquiry } from '@/lib/customerCommunications';
 
 export default function Contact() {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
@@ -20,10 +20,12 @@ export default function Contact() {
     }
     setSending(true);
     try {
-      await base44.integrations.Core.SendEmail({
-        to: 'info@nuvirajuice.com',
-        subject: `Contact: ${form.subject}`,
-        body: `Name: ${form.name}\nEmail: ${form.email}\n\nMessage:\n${form.message}`,
+      await submitCustomerInquiry('contact', {
+        customer_name: form.name,
+        customer_email: form.email,
+        subject: form.subject,
+        message: form.message,
+        source: 'contact_page',
       });
       toast.success("Message sent! We'll get back to you soon.");
       setForm({ name: '', email: '', subject: '', message: '' });
@@ -67,7 +69,7 @@ export default function Contact() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Email</p>
-              <a href="mailto:info@nuvirajuice.com" className="text-sm font-semibold text-primary">info@nuvirajuice.com</a>
+              <a href="mailto:support@nuvirajuice.com" className="text-sm font-semibold text-primary">support@nuvirajuice.com</a>
             </div>
           </div>
 

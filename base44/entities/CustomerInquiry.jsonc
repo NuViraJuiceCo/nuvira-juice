@@ -1,0 +1,37 @@
+{
+  "name": "CustomerInquiry",
+  "type": "object",
+  "properties": {
+    "request_id": { "type": "string" },
+    "inquiry_type": {
+      "type": "string",
+      "enum": ["contact", "support", "event", "partnership", "merch_waitlist", "delivery_waitlist"]
+    },
+    "customer_name": { "type": "string" },
+    "customer_email": { "type": "string" },
+    "customer_phone": { "type": "string" },
+    "subject": { "type": "string" },
+    "message": { "type": "string" },
+    "source": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["new", "acknowledged", "in_progress", "resolved", "closed"],
+      "default": "new"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Small allowlisted inquiry details. Never stores payment credentials, auth tokens, or raw provider payloads."
+    },
+    "internal_message_id": { "type": "string" },
+    "acknowledgment_message_id": { "type": "string" },
+    "acknowledged_at": { "type": "string" },
+    "last_error": { "type": "string", "maxLength": 1000 }
+  },
+  "required": ["request_id", "inquiry_type", "customer_email", "status"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

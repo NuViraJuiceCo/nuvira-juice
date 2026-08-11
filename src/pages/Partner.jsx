@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { base44 } from '@/api/base44Client';
+import { submitCustomerInquiry } from '@/lib/customerCommunications';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -28,23 +28,32 @@ const perks = [
 
 export default function Partner() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', business: '', email: '', phone: '', age: '', type: '', notes: '' });
+  const [form, setForm] = useState({ name: '', business: '', email: '', phone: '', type: '', notes: '' });
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!form.name || !form.email || !form.business || !form.phone || !form.age) {
-      toast.error('Please fill in your name, business, email, phone, and age.');
+    if (!form.name || !form.email || !form.business || !form.phone) {
+      toast.error('Please fill in your name, business, email, and phone.');
       return;
     }
     setLoading(true);
-    await base44.integrations.Core.SendEmail({
-      to: 'admin@nuvirajuice.com',
-      subject: `New Partnership Inquiry — ${form.business}`,
-      body: `Partnership inquiry received:\n\nName: ${form.name}\nAge: ${form.age}\nBusiness: ${form.business}\nType: ${form.type || 'Not specified'}\nEmail: ${form.email}\nPhone: ${form.phone}\nNotes: ${form.notes || 'None'}`,
-    });
-    setLoading(false);
-    toast.success("We got your inquiry! We'll be in touch within 48 hours.");
-    setForm({ name: '', business: '', email: '', phone: '', age: '', type: '', notes: '' });
+    try {
+      await submitCustomerInquiry('partnership', {
+        customer_name: form.name,
+        customer_email: form.email,
+        customer_phone: form.phone,
+        subject: form.business,
+        message: form.notes,
+        source: 'partner_page',
+        metadata: { business: form.business, business_type: form.type },
+      });
+      toast.success("We got your inquiry! We'll be in touch within 48 hours.");
+      setForm({ name: '', business: '', email: '', phone: '', type: '', notes: '' });
+    } catch {
+      toast.error('We could not send your inquiry. Please email support@nuvirajuice.com.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -107,11 +116,7 @@ export default function Partner() {
       <div className="px-4 mt-6 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Get in Touch</p>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Input placeholder="Your Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="rounded-xl h-11" />
-          <Input placeholder="Age" type="number" min="18" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })} className="rounded-xl h-11" />
-        </div>
-
+        <Input placeholder="Your Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="rounded-xl h-11" />
         <Input placeholder="Business Name" value={form.business} onChange={e => setForm({ ...form, business: e.target.value })} className="rounded-xl h-11" />
         <Input placeholder="Email Address" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="rounded-xl h-11" />
         <Input placeholder="Phone Number" type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="rounded-xl h-11" />
