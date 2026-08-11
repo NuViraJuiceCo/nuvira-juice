@@ -41,7 +41,7 @@ function formatQuantity(value, unit) {
 }
 
 function isDemandBasedFood(item) {
-  return item?.stock_tracking_policy === 'food_make_to_order' || item?.stock_authoritative === false || item?.status === 'demand_based';
+  return item?.stock_tracking_policy === 'food_make_to_order' || item?.status === 'demand_based';
 }
 
 function stockBasisLabel(item, field) {
