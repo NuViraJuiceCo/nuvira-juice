@@ -451,7 +451,7 @@ function InventoryEditor({ item, open, onOpenChange, onSave, pending, productOpt
   );
 }
 
-function ShopifyInventoryDialog({ item, open, onOpenChange, preview, loading, pending, error, onRefresh, onLink, onCreate, onSync }) {
+function ShopifyInventoryDialog({ item, open, onOpenChange, preview, loading, pending, error, onRefresh, onLink, onActivate, onCreate, onSync }) {
   const [quantity, setQuantity] = useState('');
   const [locationId, setLocationId] = useState('');
 
@@ -503,15 +503,40 @@ function ShopifyInventoryDialog({ item, open, onOpenChange, preview, loading, pe
                     <p className="text-sm font-bold text-foreground">Matching Shopify product found</p>
                     <p className="text-xs text-muted-foreground">Choose the inventory-tracked variant and POS location. Its live available quantity becomes authoritative here.</p>
                   </div>
-                  {preview.candidates.flatMap(candidate => candidate.variants.flatMap(variant => variant.levels.map(level => (
-                    <button key={`${variant.variant_id}-${level.location_id}`} type="button" onClick={() => onLink(candidate, variant, level)} disabled={pending || !variant.tracked || level.available_quantity === null} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 text-left disabled:opacity-50">
-                      <span>
-                        <span className="block text-xs font-bold text-foreground">{candidate.title} · {variant.title || 'Default'}</span>
-                        <span className="mt-0.5 block text-[10px] text-muted-foreground">{level.location_name || 'Location'} · SKU {variant.sku || 'not set'}</span>
-                      </span>
-                      <span className="shrink-0 text-sm font-black text-foreground">{level.available_quantity ?? '—'}</span>
-                    </button>
-                  ))))}
+                  {preview.candidates.flatMap(candidate => candidate.variants.map(variant => {
+                    if (variant.tracked) {
+                      return variant.levels.map(level => (
+                        <button key={`${variant.variant_id}-${level.location_id}`} type="button" onClick={() => onLink(candidate, variant, level)} disabled={pending || level.available_quantity === null} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 text-left disabled:opacity-50">
+                          <span>
+                            <span className="block text-xs font-bold text-foreground">{candidate.title} · {variant.title || 'Default'}</span>
+                            <span className="mt-0.5 block text-[10px] text-muted-foreground">{level.location_name || 'Location'} · SKU {variant.sku || 'not set'}</span>
+                          </span>
+                          <span className="shrink-0 text-sm font-black text-foreground">{level.available_quantity ?? '—'}</span>
+                        </button>
+                      ));
+                    }
+                    return (
+                      <div key={variant.variant_id} className="space-y-3 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
+                        <div>
+                          <p className="text-xs font-bold text-foreground">{candidate.title} · inventory tracking is off</p>
+                          <p className="mt-1 text-[10px] text-muted-foreground">Use the verified physical count to activate this exact existing Shopify variant—no duplicate product will be created.</p>
+                        </div>
+                        {item.count_status !== 'verified' ? (
+                          <p className="text-xs text-amber-200">Complete the physical bag count from Edit before activating Shopify inventory.</p>
+                        ) : (
+                          <>
+                            <label className="block space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                              Shopify POS location
+                              <select value={locationId} onChange={event => setLocationId(event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground">
+                                {(preview.locations || []).map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+                              </select>
+                            </label>
+                            <button type="button" onClick={() => onActivate(candidate, variant, locationId)} disabled={pending || !locationId || !Number.isInteger(Number(item.stock))} className="h-10 w-full rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">{pending ? 'Activating...' : `Activate with ${Number(item.stock)} bags`}</button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  }))}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1077,6 +1102,14 @@ export default function InventoryStatus() {
           shopify_variant_id: variant.variant_id,
           shopify_inventory_item_id: variant.inventory_item_id,
           shopify_location_id: level.location_id,
+        })}
+        onActivate={(candidate, variant, locationId) => shopifyInventory.mutate({
+          operation: 'activate_shopify_inventory_item', item: shopifyItem,
+          shopify_product_id: candidate.product_id,
+          shopify_variant_id: variant.variant_id,
+          shopify_inventory_item_id: variant.inventory_item_id,
+          shopify_location_id: locationId,
+          confirmation: 'ACTIVATE SHOPIFY POS BAG',
         })}
         onCreate={(locationId, publicationId) => shopifyInventory.mutate({
           operation: 'create_shopify_bag_product', item: shopifyItem,
