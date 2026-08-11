@@ -41,6 +41,8 @@ assert.match(handlerSource, /Idempotency-Key/);
 assert.match(handlerSource, /SHOPIFY_CLIENT_SECRET/);
 assert.match(handlerSource, /SHOPIFY_SHARED_SECRET/);
 assert.match(handlerSource, /seenSecrets/);
+assert.match(handlerSource, /publication_access: publicationAccess/);
+assert.match(handlerSource, /shopify_publication_scope_required/);
 assert.match(handlerSource, /shopify_inventory_authority: 'shopify_pos'/);
 assert.match(handlerSource, /customer_notifications_sent: false/);
 assert.match(handlerSource, /Use the Shopify POS quantity control/);
@@ -51,8 +53,9 @@ assert.match(uiSource, /Physical count completed/);
 assert.match(uiSource, /Shopify POS Bag Inventory/);
 assert.match(uiSource, /guarded compare-and-set/);
 assert.match(uiSource, /Create and publish to Shopify POS/);
+assert.match(uiSource, /preview\.publication_warning/);
 
-assert.match(gatewaySource, /g110-native-inventory-shopify-pos-and-health-20260810/);
+assert.match(gatewaySource, /g110c-shopify-pos-publication-scope-fallback-20260810/);
 assert.match(gatewaySource, /"getAdminNativeSystemHealth": handler24/);
 assert.match(gatewaySource, /"maintainAdminOperationalNotices": handler46/);
 assert.match(clientSource, /'getAdminNativeSystemHealth'/);
@@ -172,10 +175,14 @@ const bagState = store({ InventoryItem: [bag], PurchaseOrder: [], Product: [{ id
 const previewHandler = loadHandler(async (_url, options) => {
   providerCalls += 1;
   const request = JSON.parse(options.body);
-  assert.match(request.query, /InventoryConnectionPreview/);
+  if (/InventoryConnectionPreview/.test(request.query)) {
+    return new Response(JSON.stringify({ data: {
+      products: { nodes: [] },
+      locations: { nodes: [{ id: 'gid://shopify/Location/1', name: 'POS', isActive: true }] },
+    } }), { status: 200 });
+  }
+  assert.match(request.query, /PointOfSalePublication/);
   return new Response(JSON.stringify({ data: {
-    products: { nodes: [] },
-    locations: { nodes: [{ id: 'gid://shopify/Location/1', name: 'POS', isActive: true }] },
     publications: { nodes: [{ id: 'gid://shopify/Publication/1', name: 'Point of Sale' }] },
   } }), { status: 200 });
 });
@@ -184,7 +191,28 @@ assert.equal(preview.status, 200);
 assert.equal(preview.body.read_only, true);
 assert.equal(preview.body.creation_ready, true);
 assert.equal(preview.body.writes_performed, false);
-assert.equal(providerCalls, 1);
+assert.equal(providerCalls, 2);
+assert.equal(bagState.writes.length, 0);
+
+let scopedProviderCalls = 0;
+const scopedPreviewHandler = loadHandler(async (_url, options) => {
+  scopedProviderCalls += 1;
+  const request = JSON.parse(options.body);
+  if (/InventoryConnectionPreview/.test(request.query)) {
+    return new Response(JSON.stringify({ data: {
+      products: { nodes: [] },
+      locations: { nodes: [{ id: 'gid://shopify/Location/1', name: 'POS', isActive: true }] },
+    } }), { status: 200 });
+  }
+  return new Response(JSON.stringify({ errors: [{ message: 'Access denied for publications field.' }] }), { status: 200 });
+});
+const scopedPreview = await invoke(scopedPreviewHandler, bagState, { operation: 'preview_shopify_inventory_link', item_id: bag.id });
+assert.equal(scopedPreview.status, 200);
+assert.equal(scopedPreview.body.read_only, true);
+assert.equal(scopedPreview.body.publication_access, 'scope_required');
+assert.equal(scopedPreview.body.creation_ready, false);
+assert.equal(scopedPreview.body.creation_blocker, 'shopify_publication_scope_required');
+assert.equal(scopedProviderCalls, 2);
 assert.equal(bagState.writes.length, 0);
 
 const alertState = store({
@@ -217,7 +245,7 @@ assert.equal(alertReplay.body.reason, 'duplicate_request_id');
 console.log(JSON.stringify({
   success: true,
   suite: 'g110-inventory-shopify-pos-and-native-health',
-  cases: 6,
+  cases: 7,
   writes_limited_to_test_store: true,
   live_provider_calls_performed: false,
   customer_notifications_sent: false,

@@ -519,6 +519,9 @@ function ShopifyInventoryDialog({ item, open, onOpenChange, preview, loading, pe
                     <p className="text-sm font-bold text-foreground">No matching Shopify bag product found</p>
                     <p className="text-xs text-muted-foreground">A new product can be created and published only to Point of Sale after the opening physical count is verified.</p>
                   </div>
+                  {preview.publication_warning && (
+                    <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">{preview.publication_warning}</div>
+                  )}
                   {item.count_status !== 'verified' ? (
                     <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">Complete the physical bag count from Edit before creating the Shopify POS item.</div>
                   ) : (
