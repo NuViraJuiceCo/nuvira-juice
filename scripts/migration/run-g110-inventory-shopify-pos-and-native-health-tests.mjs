@@ -33,6 +33,7 @@ assert.ok(schema.properties.inventory_kind.enum.includes('bag'));
 assert.match(handlerSource, /create_native_item/);
 assert.match(handlerSource, /count_required/);
 assert.match(handlerSource, /preview_shopify_inventory_link/);
+assert.match(handlerSource, /activate_shopify_inventory_item/);
 assert.match(handlerSource, /create_shopify_bag_product/);
 assert.match(handlerSource, /sync_shopify_inventory_quantity/);
 assert.match(handlerSource, /inventorySetQuantities/);
@@ -43,6 +44,8 @@ assert.match(handlerSource, /SHOPIFY_SHARED_SECRET/);
 assert.match(handlerSource, /seenSecrets/);
 assert.match(handlerSource, /publication_access: publicationAccess/);
 assert.match(handlerSource, /shopify_publication_scope_required/);
+assert.match(handlerSource, /inventoryItemUpdate/);
+assert.match(handlerSource, /ACTIVATE SHOPIFY POS BAG/);
 assert.match(handlerSource, /shopify_inventory_authority: 'shopify_pos'/);
 assert.match(handlerSource, /customer_notifications_sent: false/);
 assert.match(handlerSource, /Use the Shopify POS quantity control/);
@@ -54,8 +57,10 @@ assert.match(uiSource, /Shopify POS Bag Inventory/);
 assert.match(uiSource, /guarded compare-and-set/);
 assert.match(uiSource, /Create and publish to Shopify POS/);
 assert.match(uiSource, /preview\.publication_warning/);
+assert.match(uiSource, /Activate with \$\{Number\(item\.stock\)\} bags/);
+assert.match(uiSource, /operation: 'activate_shopify_inventory_item'/);
 
-assert.match(gatewaySource, /g110c-shopify-pos-publication-scope-fallback-20260810/);
+assert.match(gatewaySource, /g110d-existing-shopify-bag-inventory-activation-20260810/);
 assert.match(gatewaySource, /"getAdminNativeSystemHealth": handler24/);
 assert.match(gatewaySource, /"maintainAdminOperationalNotices": handler46/);
 assert.match(clientSource, /'getAdminNativeSystemHealth'/);
@@ -215,6 +220,59 @@ assert.equal(scopedPreview.body.creation_blocker, 'shopify_publication_scope_req
 assert.equal(scopedProviderCalls, 2);
 assert.equal(bagState.writes.length, 0);
 
+let activationProviderCalls = 0;
+const activationState = store({
+  InventoryItem: [bag],
+  PurchaseOrder: [],
+  Product: [{ id: 'product_bag', title: 'Large NuVira Tote Bag', category: 'merch', price: 18, is_available: true }],
+  CommandLog: [],
+});
+const activationHandler = loadHandler(async (_url, options) => {
+  activationProviderCalls += 1;
+  const request = JSON.parse(options.body);
+  if (/InventoryConnectionPreview/.test(request.query)) {
+    return new Response(JSON.stringify({ data: {
+      products: { nodes: [{
+        id: 'gid://shopify/Product/1', title: 'Large NuVira Tote Bag', handle: 'large-nuvira-tote-bag', status: 'ACTIVE',
+        variants: { nodes: [{
+          id: 'gid://shopify/ProductVariant/1', title: 'Default', sku: '', price: '18.00',
+          inventoryItem: { id: 'gid://shopify/InventoryItem/1', tracked: false, inventoryLevels: { nodes: [{ location: { id: 'gid://shopify/Location/1', name: 'POS' }, quantities: [{ name: 'available', quantity: 0 }] }] } },
+        }] },
+      }] },
+      locations: { nodes: [{ id: 'gid://shopify/Location/1', name: 'POS', isActive: true }] },
+    } }), { status: 200 });
+  }
+  if (/PointOfSalePublication/.test(request.query)) {
+    return new Response(JSON.stringify({ errors: [{ message: 'Access denied for publications field.' }] }), { status: 200 });
+  }
+  if (/TrackPosBagInventory/.test(request.query)) {
+    assert.equal(request.variables.id, 'gid://shopify/InventoryItem/1');
+    assert.equal(request.variables.input.tracked, true);
+    return new Response(JSON.stringify({ data: { inventoryItemUpdate: { inventoryItem: { id: 'gid://shopify/InventoryItem/1', tracked: true }, userErrors: [] } } }), { status: 200 });
+  }
+  assert.match(request.query, /SetOpeningPosBagQuantity/);
+  assert.equal(request.variables.input.quantities[0].quantity, 8);
+  assert.equal(request.variables.input.quantities[0].compareQuantity, 0);
+  return new Response(JSON.stringify({ data: { inventorySetQuantities: { inventoryAdjustmentGroup: { changes: [{ name: 'available', delta: 8 }] }, userErrors: [] } } }), { status: 200 });
+});
+const activated = await invoke(activationHandler, activationState, {
+  operation: 'activate_shopify_inventory_item', item_id: bag.id,
+  request_id: 'activate_existing_bag_1', confirm: true,
+  confirmation: 'ACTIVATE SHOPIFY POS BAG',
+  shopify_product_id: 'gid://shopify/Product/1',
+  shopify_variant_id: 'gid://shopify/ProductVariant/1',
+  shopify_inventory_item_id: 'gid://shopify/InventoryItem/1',
+  shopify_location_id: 'gid://shopify/Location/1',
+});
+assert.equal(activated.status, 200);
+assert.equal(activated.body.success, true);
+assert.equal(activated.body.item.shopify_sync_enabled, true);
+assert.equal(activated.body.item.shopify_inventory_authority, 'shopify_pos');
+assert.equal(activated.body.item.shopify_available_quantity, 8);
+assert.equal(activationProviderCalls, 4);
+assert.equal(activationState.rows.get('CommandLog')[0].status, 'success');
+assert.equal(activationState.rows.get('Product')[0].shopify_variant_id, 'gid://shopify/ProductVariant/1');
+
 const alertState = store({
   OperationalAlert: [{
     id: 'alert_1', alert_type: 'cancellation', order_number: 'ORDER-1', severity: 'warning',
@@ -245,7 +303,7 @@ assert.equal(alertReplay.body.reason, 'duplicate_request_id');
 console.log(JSON.stringify({
   success: true,
   suite: 'g110-inventory-shopify-pos-and-native-health',
-  cases: 7,
+  cases: 8,
   writes_limited_to_test_store: true,
   live_provider_calls_performed: false,
   customer_notifications_sent: false,

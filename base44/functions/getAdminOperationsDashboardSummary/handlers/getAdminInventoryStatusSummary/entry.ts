@@ -14,6 +14,7 @@ const INVENTORY_ITEM_OPERATIONS = new Set(['create_native_item', 'update_native_
 const SHOPIFY_INVENTORY_OPERATIONS = new Set([
   'preview_shopify_inventory_link',
   'link_shopify_inventory_item',
+  'activate_shopify_inventory_item',
   'create_shopify_bag_product',
   'sync_shopify_inventory_quantity',
 ]);
@@ -1016,6 +1017,131 @@ async function handleShopifyInventoryOperation({ base44, user, body }) {
     } catch {
       await base44.asServiceRole.entities.CommandLog.update(commandState.command.id, { status: 'failed', completed_at: new Date().toISOString(), error_code: 'shopify_inventory_link_projection_failed', error_message: 'Unable to save verified Shopify inventory link' }).catch(() => null);
       return Response.json({ error: 'Unable to save verified Shopify inventory link' }, { status: 500 });
+    }
+  }
+
+  if (operation === 'activate_shopify_inventory_item') {
+    if (normalizeText(body.confirmation) !== 'ACTIVATE SHOPIFY POS BAG') {
+      return Response.json({ error: 'confirmation phrase is required' }, { status: 400 });
+    }
+    if (countStatus(item) !== 'verified' || !Number.isInteger(Number(item.stock))) {
+      return Response.json({ error: 'Record and verify the physical bag count before activating Shopify inventory' }, { status: 409 });
+    }
+    const productId = normalizeText(body.shopify_product_id);
+    const variantId = normalizeText(body.shopify_variant_id);
+    const inventoryItemId = normalizeText(body.shopify_inventory_item_id);
+    const locationId = normalizeText(body.shopify_location_id);
+    if (!productId || !variantId || !inventoryItemId || !locationId) {
+      return Response.json({ error: 'Shopify product, variant, inventory item, and location are required' }, { status: 400 });
+    }
+    let preview;
+    try {
+      preview = await shopifyInventoryPreview(product.title);
+    } catch (error) {
+      return Response.json({ error: safeProviderError(error.message) }, { status: 502 });
+    }
+    const candidate = preview.candidates.find(value => value.product_id === productId);
+    const variant = candidate?.variants?.find(value => value.variant_id === variantId && value.inventory_item_id === inventoryItemId);
+    const location = preview.locations.find(value => value.id === locationId);
+    const level = variant?.levels?.find(value => value.location_id === locationId) || null;
+    if (!candidate || !variant || !location) return Response.json({ error: 'Shopify activation selection changed; preview again' }, { status: 409 });
+    if (variant.tracked === true && level && Number.isInteger(Number(level.available_quantity))) {
+      return Response.json({ error: 'Shopify inventory is already tracked at this location; link it instead' }, { status: 409 });
+    }
+    const commandState = await createProviderCommand(base44, user, {
+      requestId, operation, item,
+      payload: {
+        product_id: productId,
+        variant_id: variantId,
+        inventory_item_id: inventoryItemId,
+        location_id: locationId,
+        opening_quantity: Number(item.stock),
+      },
+    });
+    if (commandState.existing) {
+      if (commandState.existing.status !== 'success') return Response.json({ error: 'A prior activation attempt requires review before retrying' }, { status: 409 });
+      return Response.json({ success: true, operation, skipped: true, reason: 'duplicate_request_id', item_id: item.id });
+    }
+    let trackingEnabled = false;
+    try {
+      const trackingData = await shopifyGraphql(`mutation TrackPosBagInventory($id: ID!, $input: InventoryItemInput!) {
+        inventoryItemUpdate(id: $id, input: $input) {
+          inventoryItem { id tracked }
+          userErrors { code field message }
+        }
+      }`, { id: inventoryItemId, input: { tracked: true } }, `${commandState.idempotencyKey}:track`);
+      const trackingResult = providerUserErrors(trackingData, 'inventoryItemUpdate');
+      trackingEnabled = trackingResult?.inventoryItem?.tracked === true;
+      if (!trackingEnabled) throw new Error('Shopify did not enable inventory tracking for the bag');
+
+      if (level && Number.isInteger(Number(level.available_quantity))) {
+        const quantityData = await shopifyGraphql(`mutation SetOpeningPosBagQuantity($input: InventorySetQuantitiesInput!) {
+          inventorySetQuantities(input: $input) {
+            inventoryAdjustmentGroup { createdAt reason referenceDocumentUri changes { name delta } }
+            userErrors { code field message }
+          }
+        }`, { input: {
+          name: 'available', reason: 'correction', referenceDocumentUri: `gid://nuvira/InventoryCommand/${requestId}`,
+          quantities: [{
+            inventoryItemId,
+            locationId,
+            quantity: Number(item.stock),
+            compareQuantity: Number(level.available_quantity),
+          }],
+        } }, `${commandState.idempotencyKey}:quantity`);
+        providerUserErrors(quantityData, 'inventorySetQuantities');
+      } else {
+        const activateData = await shopifyGraphql(`mutation ActivateExistingPosBagInventory($inventoryItemId: ID!, $locationId: ID!, $available: Int!) {
+          inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: $available) {
+            inventoryLevel { id quantities(names: ["available"]) { name quantity } }
+            userErrors { field message }
+          }
+        }`, { inventoryItemId, locationId, available: Number(item.stock) }, `${commandState.idempotencyKey}:activate`);
+        providerUserErrors(activateData, 'inventoryActivate');
+      }
+
+      const now = new Date().toISOString();
+      const saved = await base44.asServiceRole.entities.InventoryItem.update(item.id, {
+        shopify_sync_enabled: true,
+        shopify_inventory_authority: 'shopify_pos',
+        shopify_product_id: productId,
+        shopify_variant_id: variantId,
+        shopify_inventory_item_id: inventoryItemId,
+        shopify_location_id: locationId,
+        shopify_location_name: location.name,
+        shopify_available_quantity: Number(item.stock),
+        shopify_synced_at: now,
+        shopify_sync_status: 'in_sync',
+        shopify_sync_error: null,
+      });
+      await base44.asServiceRole.entities.Product.update(product.id, {
+        shopify_product_id: productId,
+        shopify_variant_id: variantId,
+        shopify_handle: candidate.handle || product.shopify_handle || null,
+      });
+      await base44.asServiceRole.entities.CommandLog.update(commandState.command.id, {
+        status: 'success', completed_at: now,
+        result: { provider_write_completed: true, native_projection_completed: true, tracking_enabled: true, quantity: Number(item.stock) },
+      });
+      return Response.json({
+        success: true,
+        operation,
+        item: sanitizeItem({ ...item, ...saved, status: deriveInventoryStatus({ ...item, ...saved }) }),
+        provider_calls_performed: true,
+        inventory_mutation: true,
+        customer_notifications_sent: false,
+      });
+    } catch (error) {
+      await base44.asServiceRole.entities.CommandLog.update(commandState.command.id, {
+        status: 'failed', completed_at: new Date().toISOString(), error_code: 'shopify_inventory_activation_failed',
+        error_message: safeProviderError(error.message),
+        result: { provider_write_completed: trackingEnabled, native_projection_completed: false, tracking_enabled: trackingEnabled },
+      }).catch(() => null);
+      return Response.json({
+        error: safeProviderError(error.message),
+        partial_provider_write: trackingEnabled,
+        requires_review: trackingEnabled,
+      }, { status: 502 });
     }
   }
 

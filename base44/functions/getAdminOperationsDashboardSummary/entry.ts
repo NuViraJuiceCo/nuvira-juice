@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Bundle revision: g110c-shopify-pos-publication-scope-fallback-20260810.
+// Bundle revision: g110d-existing-shopify-bag-inventory-activation-20260810.
 // Bundle revision: g105-public-event-publishing-20260810.
 // Bundle revision: g98-native-compliance-document-management-20260808.
 // Bundle revision: g97-customer-app-native-monitoring-20260808 (prior).
