@@ -1,6 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+const INTERNAL_FROM = Deno.env.get('INTERNAL_EMAIL_FROM') || 'NuVira Juice Co <system@nuvirajuice.com>';
+const INTERNAL_REPLY_TO = Deno.env.get('INTERNAL_EMAIL_REPLY_TO') || 'operations@nuvirajuice.com';
+const OPERATIONS_EMAIL = 'operations@nuvirajuice.com';
 const ADMIN_PUSH_INTERNAL_SECRET = Deno.env.get('ADMIN_PUSH_INTERNAL_SECRET')
   || Deno.env.get('HUB_SYNC_SECRET')
   || Deno.env.get('CUSTOMER_APP_SYNC_SECRET')
@@ -52,6 +55,27 @@ function money(value: unknown): string {
   return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
 }
 
+function operationsEmailKey(orderId?: string, orderNumber?: string): string {
+  return `internal_order_processed_${String(orderId || orderNumber || 'unknown').slice(0, 180)}`;
+}
+
+async function existingOperationsEmail(base44: any, idempotencyKey: string) {
+  const rows = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter(
+    { idempotency_key: idempotencyKey },
+    '-created_date',
+    5,
+  ).catch(() => []);
+  return rows.find((row: any) => ['sent', 'delivered'].includes(row?.status)) || null;
+}
+
+async function recordOperationsEmail(base44: any, payload: Record<string, any>) {
+  try {
+    await base44.asServiceRole.entities.CustomerMessageDeliveryLog.create(payload);
+  } catch (error) {
+    console.warn(`[notifyOrderProcessed] Delivery log write failed: ${errorMessage(error)}`);
+  }
+}
+
 /**
  * Sends order processed notification to operations@nuvirajuice.com
  * Triggered by: stripeWebhook after order is confirmed
@@ -69,6 +93,20 @@ export default async (req: Request) => {
     }
 
     const { order_id, order_number, customer_email, items, total, delivery_address } = await req.json() as OrderNotificationPayload;
+    if (!String(order_id || '').trim() && !String(order_number || '').trim()) {
+      return Response.json({ error: 'order_id or order_number is required' }, { status: 400 });
+    }
+    const idempotencyKey = operationsEmailKey(order_id, order_number);
+
+    const priorEmail = await existingOperationsEmail(base44, idempotencyKey);
+    if (priorEmail) {
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'duplicate_idempotency_key',
+        existing_id: priorEmail.id,
+      });
+    }
 
     if (!RESEND_API_KEY) {
       console.error('notifyOrderProcessed: RESEND_API_KEY not set');
@@ -147,12 +185,18 @@ export default async (req: Request) => {
       headers: {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey.slice(0, 256),
       },
       body: JSON.stringify({
-        from: 'NuVira Juice Co <info@nuvirajuice.com>',
-        to: 'operations@nuvirajuice.com',
+        from: INTERNAL_FROM,
+        to: [OPERATIONS_EMAIL],
+        reply_to: INTERNAL_REPLY_TO,
         subject: `Order #${order_number || order_id} Processed`,
         html,
+        tags: [
+          { name: 'category', value: 'internal_operations' },
+          { name: 'event', value: 'order_processed' },
+        ],
       }),
     });
 
@@ -163,6 +207,22 @@ export default async (req: Request) => {
     }
 
     const result = await response.json();
+    await recordOperationsEmail(base44, {
+      idempotency_key: idempotencyKey,
+      channel: 'email',
+      message_type: 'transactional_order',
+      order_id: order_id || null,
+      order_number: order_number || null,
+      customer_email: OPERATIONS_EMAIL,
+      provider: 'resend',
+      provider_message_id: result?.id || null,
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+      metadata: {
+        recipient_scope: 'internal_operations',
+        source_function: 'notifyOrderProcessed',
+      },
+    });
     console.log(`Order processed notification sent to operations:`, result.id);
 
     let admin_push: AdminPushSummary = {

@@ -3,6 +3,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const ORDER_LIMIT = 80;
 const RELATED_LIMIT = 240;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function runtimeEnv(name: string) {
+  return typeof Deno !== 'undefined' ? Deno.env.get(name) : undefined;
+}
+
+const RESEND_API_KEY = runtimeEnv('RESEND_API_KEY') || '';
+const INTERNAL_FROM = runtimeEnv('INTERNAL_EMAIL_FROM') || 'NuVira Juice Co <system@nuvirajuice.com>';
+const INTERNAL_REPLY_TO = runtimeEnv('INTERNAL_EMAIL_REPLY_TO') || 'operations@nuvirajuice.com';
 const VALID_ORDER_STATUSES = new Set([
   'order_received',
   'scheduled_for_juicing',
@@ -134,11 +142,31 @@ async function handleComplianceExpiry(base44: any, body: any) {
   const bodyHtml = buildComplianceEmail(overdue, dueSoon);
   let sentCount = 0;
   for (const email of recipientEmails) {
-    await base44.asServiceRole.integrations.Core.SendEmail({
-      to: email,
-      subject: `NuVira compliance review: ${overdue.length} expired, ${dueSoon.length} due soon`,
-      body: bodyHtml,
+    if (!RESEND_API_KEY) throw new Error('resend_api_key_missing');
+    const idempotencyKey = `internal:compliance_review:${new Date().toISOString().slice(0, 10)}:${email}`;
+    const emailResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey.slice(0, 256),
+      },
+      body: JSON.stringify({
+        from: INTERNAL_FROM,
+        to: [email],
+        reply_to: INTERNAL_REPLY_TO,
+        subject: `NuVira compliance review: ${overdue.length} expired, ${dueSoon.length} due soon`,
+        html: bodyHtml,
+        tags: [
+          { name: 'category', value: 'internal_operations' },
+          { name: 'event', value: 'compliance_review' },
+        ],
+      }),
     });
+    const emailResult = await emailResponse.json().catch(() => ({}));
+    if (!emailResponse.ok || !emailResult?.id) {
+      throw new Error(`resend_${emailResponse.status}_${String(emailResult?.message || 'send_failed').slice(0, 200)}`);
+    }
     sentCount += 1;
   }
   console.log(`[ComplianceExpiryMonitor] documents=${evaluated.length}, expired=${overdue.length}, due_soon=${dueSoon.length}, recipients=${sentCount}`);

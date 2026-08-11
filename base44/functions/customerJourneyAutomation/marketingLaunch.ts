@@ -1,4 +1,8 @@
+import { internalOrPrivateEmail } from './marketingCadencePolicy.js';
+
 const RESEND_API_BASE = 'https://api.resend.com';
+const MARKETING_FROM = Deno.env.get('MARKETING_EMAIL_FROM') || 'NuVira Juice Co <hello@nuvirajuice.com>';
+const MARKETING_REPLY_TO = Deno.env.get('MARKETING_EMAIL_REPLY_TO') || 'support@nuvirajuice.com';
 const MARKETING_SEGMENT_NAME = 'NuVira Verified Marketing Customers';
 const TEST_SEGMENT_NAME = 'NuVira Internal Marketing Proof';
 const CAMPAIGN_RECORD_ID = '6a6ed28996d315756fa4403a';
@@ -45,13 +49,6 @@ function splitName(value: unknown): { first_name: string; last_name: string } {
     first_name: parts[0] || '',
     last_name: parts.slice(1).join(' '),
   };
-}
-
-function internalOrPrivateEmail(value: string): boolean {
-  return value.endsWith('@nuvirajuice.com')
-    || value.endsWith('@privaterelay.appleid.com')
-    || value.endsWith('@example.com')
-    || /(^|[._+-])(test|demo|sandbox|internal)([._+-]|@)/i.test(value);
 }
 
 function orderNumber(order: any): string {
@@ -616,7 +613,8 @@ async function createCustomerDraft(base44: any, body: any): Promise<Response> {
     body: JSON.stringify({
       segment_id: segment.id,
       name: 'NuVira Customer Appreciation and Rewards Launch — August 2026',
-      from: 'NuVira Juice Co <info@nuvirajuice.com>',
+      from: MARKETING_FROM,
+      reply_to: MARKETING_REPLY_TO,
       subject: 'Thank You for Being Part of NuVira — Enjoy 10% Off',
       html: marketingHtml(),
       send: false,
@@ -683,7 +681,8 @@ async function sendInternalProof(body: any): Promise<Response> {
     body: JSON.stringify({
       segment_id: segment.id,
       name: 'NuVira Customer Appreciation Launch Proof',
-      from: 'NuVira Juice Co <info@nuvirajuice.com>',
+      from: MARKETING_FROM,
+      reply_to: MARKETING_REPLY_TO,
       subject: '[TEST] Thank You for Being Part of NuVira — Enjoy 10% Off',
       html: marketingHtml(),
       send: true,

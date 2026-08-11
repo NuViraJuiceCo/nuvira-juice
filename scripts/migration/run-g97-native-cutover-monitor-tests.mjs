@@ -7,7 +7,7 @@ import ts from 'typescript';
 const root = process.cwd();
 const read = relativePath => fs.readFileSync(`${root}/${relativePath}`, 'utf8');
 
-function loadHandler(relativePath, base44, now = '2026-08-08T14:00:00.000Z') {
+function loadHandler(relativePath, base44, now = '2026-08-08T14:00:00.000Z', runtime = {}) {
   let source = read(relativePath)
     .replace(/^import .*$/gm, '')
     .replace('export default async', 'globalThis.__handler = async');
@@ -43,6 +43,7 @@ function loadHandler(relativePath, base44, now = '2026-08-08T14:00:00.000Z') {
     },
     createClientFromRequest: () => base44,
     globalThis: {},
+    ...runtime,
   });
   vm.runInContext(source, context, { filename: relativePath });
   return { handler: context.globalThis.__handler, logs };
@@ -146,11 +147,19 @@ const complianceClient = {
   auth: { me: async () => ({ role: 'admin', email: 'operator@example.test' }) },
   asServiceRole: {
     entities: complianceEntities,
-    integrations: { Core: { SendEmail: async payload => { sentEmails.push(payload); return { success: true }; } } },
   },
 };
 const compliancePath = monitorPath;
-const compliance = loadHandler(compliancePath, complianceClient);
+const compliance = loadHandler(compliancePath, complianceClient, undefined, {
+  Deno: { env: { get: name => name === 'RESEND_API_KEY' ? 're_test_key' : undefined } },
+  fetch: async (_url, init) => {
+    sentEmails.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ id: 'email_compliance_1' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  },
+});
 const complianceRequest = body => new Request('https://example.test', {
   method: 'POST',
   headers: { 'x-nuvira-admin-action': 'monitorComplianceExpiry' },
@@ -166,8 +175,9 @@ const liveResult = await (await compliance.handler(complianceRequest({ mode: 'li
 assert.equal(liveResult.sent, true);
 assert.equal(liveResult.internal_admin_notifications_sent, 1);
 assert.equal(sentEmails.length, 1);
-assert.equal(sentEmails[0].body.includes('&lt;Expired Permit&gt;'), true);
-assert.equal(sentEmails[0].body.includes('customer@example.test'), false);
+assert.deepEqual(sentEmails[0].to, ['operator@example.test']);
+assert.equal(sentEmails[0].html.includes('&lt;Expired Permit&gt;'), true);
+assert.equal(sentEmails[0].html.includes('customer@example.test'), false);
 
 const deniedCompliance = loadHandler(compliancePath, {
   ...complianceClient,

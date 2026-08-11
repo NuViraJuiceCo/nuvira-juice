@@ -2,6 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const APP_ORIGIN = 'https://www.nuvirajuice.com';
+const TRANSACTIONAL_FROM = Deno.env.get('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <orders@nuvirajuice.com>';
+const TRANSACTIONAL_REPLY_TO = Deno.env.get('TRANSACTIONAL_EMAIL_REPLY_TO') || 'support@nuvirajuice.com';
 
 function cleanText(value, max = 500) {
   return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
@@ -225,12 +227,18 @@ Deno.serve(async (req) => {
       headers: {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey.slice(0, 256) } : {}),
       },
       body: JSON.stringify({
-        from: 'NuVira Juice Co <info@nuvirajuice.com>',
+        from: TRANSACTIONAL_FROM,
         to: customer_email,
+        reply_to: TRANSACTIONAL_REPLY_TO,
         subject: `Your Order #${safeOrderNumber} is Confirmed!`,
         html,
+        tags: [
+          { name: 'category', value: 'transactional_order' },
+          { name: 'event', value: 'order_confirmation' },
+        ],
       }),
     });
 
